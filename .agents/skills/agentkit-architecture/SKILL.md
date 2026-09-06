@@ -1,46 +1,52 @@
 ---
 name: agentkit-architecture
 description:
-  "Design or review AgentKit package boundaries, extension contracts, base
-  classes, and dependency-injection composition. Use for new subsystems,
-  cross-package refactors, or dependency-direction questions; not for provider
-  protocol details."
+  "Design or review AgentKit package boundaries, extension contracts, and DI
+  composition. Use for new subsystems, cross-package refactors, or dependency
+  direction; not provider protocol details or one component's local behavior."
 ---
 
 # AgentKit Architecture
 
-Use this skill to keep new capabilities composable without inventing one giant
-plugin API.
+Use the [architecture index](../../../docs/architecture/index.md) as the map and
+the linked component and concept documents as the source of truth. When changing
+C#, also read the [modern C# rules](../references/modern-csharp.md).
 
-1. Read [AGENTS.md](../../../AGENTS.md) and map the requested behavior to an
-   extension axis: contract, selection, execution, state, policy, or
-   observation.
-2. Identify at least the consumer and two plausible implementations. If only one
-   implementation is credible, keep the code focused and postpone a public
-   abstraction unless the user explicitly requires it.
-3. Place provider-neutral contracts in `AgentKit.Abstractions`. Keep `AgentKit`
-   as the dependency-light `AgentEngine` facade. Put first-party behavior in
-   focused runtime packages and vendor, transport, or persistence behavior in
-   leaf packages. Reject any dependency from a foundation or runtime package
-   toward a concrete integration.
-4. Give each extension point a narrow interface. Add an optional base class only
-   when it supplies real reusable lifecycle, validation, streaming assembly, or
-   error-mapping behavior. Keep direct interface implementation supported.
-5. Define lifecycle and ownership: creation scope, thread safety, disposal,
-   cancellation, concurrency, retry ownership, and whether state may survive a
-   run.
-6. Design DI registration as the public composition surface. State whether
-   registrations are singular, additive, named/keyed, replaceable, and
-   idempotent. Registration code must not build or resolve a container.
-7. Keep capabilities explicit. Do not add optional members that return null or
-   throw for half the implementations when a capability interface, descriptor,
-   or discriminated result makes support observable.
-8. Add conformance tests for the contract and DI tests proving defaults can be
-   replaced. Review public API compatibility, XML documentation, and package
-   dependencies before finishing.
-9. Keep the architecture index, project structure, affected component document,
-   normative concept specifications, `AGENTS.md`, and relevant skills in sync.
-   Do not leave a package name or ownership rule documented in only one place.
+## Decision guide
 
-The output of architecture work should make the dependency graph, extension
-contract, default behavior, and unsupported behavior unambiguous.
+1. Name the behavior, its single policy owner, and the collaborators that
+   consume it. Do not create a package merely because a domain value has a name.
+2. Preserve the dependency direction in
+   [project structure](../../../docs/architecture/project-structure.md): neutral
+   contracts in `AgentKit.Abstractions`, the dependency-light facade in
+   `AgentKit`, focused implementations above it, and integrations as leaves.
+3. Validate both DAGs: project references and the closed constructor/factory
+   graph. A service locator, deferred factory, or nested scope does not repair a
+   cycle.
+4. Add a narrow contract only for a demonstrated extension axis with plausible
+   alternatives. Keep discovery, selection, policy, execution, persistence, and
+   observation separate; inheritance remains optional.
+5. Define DI cardinality, keying, replacement, collision behavior, lifetime,
+   ownership, disposal, threading, and cancellation. Registrations never build a
+   provider.
+6. Put each behavioral choice in one explicit home: DI, validated package
+   options, an immutable agent definition, or a bounded run override.
+7. Make capabilities and unsupported behavior observable before execution.
+   Credentials, endpoints, persistence targets, and authority have no fabricated
+   defaults.
+8. Keep cross-cutting hooks typed and security-neutral. Host file, network, and
+   process effects remain protected leaf boundaries.
+9. Update the architecture index, affected component page, normative concepts,
+   repository guidance, and routed skills together when ownership changes.
+
+Start with
+[composition and configuration](../../../docs/architecture/composition-and-configuration.md),
+[foundation contracts](../../../docs/architecture/foundation-contracts.md),
+[architecture boundaries](../../../docs/concepts/architecture-and-dependency-boundaries.md),
+[public API and DI](../../../docs/concepts/public-api-and-dependency-injection.md),
+and
+[configuration and overrides](../../../docs/concepts/configuration-and-overrides.md).
+
+An architecture result must state the owner, contract location, dependency
+edges, registration and selection model, lifecycle, unsupported behavior, and
+verification boundary.

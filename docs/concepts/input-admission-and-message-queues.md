@@ -10,26 +10,22 @@ Input can arrive while an agent is streaming, executing tools, idle, or
 recovering. AgentKit separates durable acceptance from promotion into model
 context so no message is lost, duplicated, or injected at an unsafe boundary.
 
-The first-party implementation belongs to `AgentKit.IO`. It coordinates
-admission and promotion through `AgentKit.Session` contracts so queue state and
-conversation state cannot diverge into separate sources of truth.
+The first-party implementation belongs to
+[`AgentKit.IO`](../architecture/input-and-output.md). It coordinates admission
+and promotion through the
+[`AgentKit.Session` contracts](sessions-persistence-and-branching.md) so queue
+state and conversation state cannot diverge into separate sources of truth.
 
 ## Input record
 
-An admitted input MUST contain:
-
-```csharp
-public sealed record AdmittedInput(
-    InputId Id,
-    SessionId SessionId,
-    long AdmittedSequence,
-    InputDelivery Delivery,
-    AgentInput Payload,
-    DateTimeOffset AdmittedAt,
-    long? PromotedEventSequence = null);
-
-public enum InputDelivery { Steer, FollowUp }
-```
+The canonical `AgentInput`, `AdmittedInput`, `InputDelivery`, and admission
+outcome shapes are defined once in the
+[input architecture](../architecture/input-and-output.md#normative-minimal-input-contracts).
+An admitted record MUST preserve its typed caller input and durable admission
+identities, addressed agent and session, monotonic admitted sequence, delivery
+class, immutable payload, complete immutable `ExecutionIdentity`, admission
+timestamp, and optional promotion sequence. Tenant and principal projections do
+not replace the identity's evidence, assurance, delegation chain, or version.
 
 `Steer` means deliver at the next safe turn boundary. `FollowUp` means deliver
 only when current work would otherwise finish. Names MAY differ, but the two
@@ -45,12 +41,18 @@ MUST be idempotent by caller- or runtime-supplied `InputId`:
 - retries MUST NOT create a second admitted sequence.
 
 Input size and schema validation MUST happen before observable admission.
-Authorization to address the session MUST also happen before append.
+Authorization to address the session MUST also happen before append. The
+admitted identity MUST equal the identity captured in its
+`SecurityAuthorizationContext`; any mismatch fails before session lookup.
 
 ## Atomic promotion
 
 Promotion marks an input visible to the loop. It MUST atomically record a
 promotion event sequence or use an idempotent transaction that is equivalent.
+Promotion reuses the durably admitted identity snapshot and MUST NOT substitute
+an ambient, reauthenticated, or current host principal. A host that requires a
+new identity starts a new authorized admission or explicit reauthentication
+boundary.
 
 At each steering boundary the executor MUST capture a durable event-sequence
 cutoff, then promote all unpromoted steering inputs admitted at or before that
@@ -65,7 +67,8 @@ remain bounded and deterministic.
 
 ## Safe boundaries
 
-Steering input MAY be promoted:
+At the [loop's named safe boundaries](agent-loop-state-machine.md), steering
+input MAY be promoted:
 
 - before the first model request;
 - after an assistant message and all accepted tool results for that turn are
@@ -97,9 +100,10 @@ ordering, idempotency, and cutoff semantics.
 
 ## Backpressure
 
-Queue capacity is a policy, not an allocation accident. When full, admission
-MUST return a typed `QueueCapacityExceeded` result with retry guidance. It MUST
-NOT silently drop oldest input or block indefinitely.
+Queue capacity is a [usage limit](usage-limits-and-budgets.md), not an
+allocation accident. When full, admission MUST return a typed
+`QueueCapacityExceeded` result with retry guidance. It MUST NOT silently drop
+oldest input or block indefinitely.
 
 Per-session and global limits SHOULD prevent one producer from starving others.
 Metrics MUST expose admitted age, depth, promotion lag, conflicts, rejections,

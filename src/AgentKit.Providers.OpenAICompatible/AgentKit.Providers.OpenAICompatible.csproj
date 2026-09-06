@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <DebugType>portable</DebugType>
+    <PackageId>AgentKit.Providers.OpenAICompatible</PackageId>
+    <Title>AgentKit Providers OpenAI-Compatible</Title>
+    <Description>Reusable OpenAI-compatible chat-completion request translation, transport, credential handling, and streaming for AgentKit provider integrations.</Description>
+    <PackageTags>agents;ai;llm;openai;providers</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" Link="README.md"/>
+  </ItemGroup>
+</Project>

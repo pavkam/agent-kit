@@ -1,14 +1,21 @@
 # AgentKit
 
 AgentKit is a composable .NET 10 framework for building agentic applications.
-Agents, orchestration loops, model and embedding providers, tools, permissions,
-memory, storage, queues, and goals are replaceable components composed through
-dependency injection.
+Agents, orchestration loops, model and embedding providers, tools, ordered
+hooks, system-wide security and approvals, memory, storage, queues, and goals
+are replaceable components composed through dependency injection.
 
-The `AgentKit` package is a dependency-light facade. `AgentEngine` and its
-builder compose explicitly selected feature packages without pulling in a loop,
+The `AgentKit` package is a dependency-light facade. A built `AgentEngine` is
+the complete process-level composition: it catalogs and runs multiple immutable
+agent definitions, each with isolated session and run state. Its builder
+composes explicitly selected feature packages without pulling in a loop,
 provider, store, policy, or tool transitively. The same service registrations
 work in standalone engines and standard .NET hosts.
+
+Every meaningful mechanism and policy has a typed configuration or DI
+replacement seam with a sensible, documented default supplied by its owning
+feature package. Domain identities such as `AgentId`, `SessionId`, and `RunId`
+are dedicated immutable value types rather than primitive strings or numbers.
 
 The repository currently contains the build foundation and architectural
 contracts for the framework. Public APIs will be added behind focused

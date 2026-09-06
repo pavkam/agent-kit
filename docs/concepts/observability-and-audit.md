@@ -11,6 +11,10 @@ Audit proves security-relevant decisions without leaking the data it protects.
 
 ## Signals
 
+Signals describe the
+[typed streaming and durable event model](streaming-and-event-protocol.md)
+without becoming an alternate source of run state.
+
 AgentKit SHOULD emit OpenTelemetry-compatible traces, metrics, and structured
 logs plus an independent security audit stream.
 
@@ -51,6 +55,10 @@ durable recovery MAY be linked or nested according to actual causality.
 
 ## Required attributes
 
+Stable [error categories](error-taxonomy.md) and
+[usage provenance](usage-limits-and-budgets.md) travel as structured attributes
+so operators never need to parse message text.
+
 Safe attributes SHOULD include implementation/capability identity, state and
 terminal reason, attempt, duration, queue delay, token/cost usage with
 provenance, message/tool counts, limit name, provider/model/deployment, retry
@@ -77,8 +85,8 @@ Audit MUST cover:
 
 - input/session authorization and administrative changes;
 - effective policy/configuration version;
-- permission decision and winning rule;
-- approval creation, consumption, expiry, denial, and revocation;
+- security request, decision, and winning rule;
+- approval and grant creation, consumption, expiry, denial, and revocation;
 - tool call start/terminal status and effect certainty;
 - memory proposal/accept/delete and retrieval authorization;
 - MCP/server identity and negotiated security context; and
@@ -89,6 +97,10 @@ restricted retention. They contain redacted fingerprints and scopes rather than
 unrestricted payloads.
 
 ## Observer behavior
+
+Required sink delivery participates in
+[run settlement](run-lifecycle-and-settlement.md); best-effort export cannot
+mutate the semantic result.
 
 Instrumentation MUST NOT mutate run state. Exporter failure MUST NOT change
 semantic results unless the host explicitly marks an audit sink as required.

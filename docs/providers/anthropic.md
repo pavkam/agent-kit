@@ -149,7 +149,9 @@ provider-defined; do not infer them by blindly adding nullable counters.
 
 ## SSE protocol
 
-Typical ordering:
+The native sequence is parsed through AgentKit's
+[typed streaming contract](../concepts/streaming-and-event-protocol.md), without
+flattening content blocks into OpenAI-style choice deltas. Typical ordering:
 
 1. <code>message_start</code> with a partial Message;
 2. zero or more blocks, each framed by <code>content_block_start</code>,
@@ -200,11 +202,12 @@ download results before deleting metadata.
 
 ## Errors and limits
 
-Errors use <code>{type:"error", error:{type,message}, request_id?}</code>.
-Important HTTP categories are 400 invalid request, 401 authentication, 403
-permission, 404 not found, 413 request too large, 429 rate limit, 500 API error,
-and 529 overloaded. Streaming errors use the same logical error object in an SSE
-event.
+Errors use <code>{type:"error", error:{type,message}, request_id?}</code> and
+map into the [stable AgentKit error taxonomy](../concepts/error-taxonomy.md)
+without discarding Anthropic's type or request ID. Important HTTP categories are
+400 invalid request, 401 authentication, 403 permission, 404 not found, 413
+request too large, 429 rate limit, 500 API error, and 529 overloaded. Streaming
+errors use the same logical error object in an SSE event.
 
 Request-size limits at verification time were 32 MB for Messages/token counting,
 256 MB for Message Batches, and 500 MB for Files. Recheck before encoding them
@@ -215,9 +218,10 @@ headers. Do not automatically retry after a tool with side effects has executed.
 
 ## Cross-platform Claude warning
 
-Claude on Amazon Bedrock and Vertex AI uses those platforms' authentication,
-endpoints, versioning, content envelopes, error types, and feature cadence.
-Reuse the canonical Claude semantics, not the direct Anthropic HTTP adapter.
+Claude on [Amazon Bedrock](aws-bedrock.md) and [Vertex AI](google-vertex-ai.md)
+uses those platforms' authentication, endpoints, versioning, content envelopes,
+error types, and feature cadence. Reuse the canonical Claude semantics, not the
+direct Anthropic HTTP adapter.
 
 ## Adapter notes
 

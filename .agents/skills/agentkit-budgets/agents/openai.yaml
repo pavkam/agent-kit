@@ -1,0 +1,6 @@
+interface:
+  display_name: "AgentKit Budgets"
+  short_description: "Reserve shared limits atomically"
+  default_prompt:
+    "Use $agentkit-budgets to implement or debug AgentKit budget accounting and
+    enforcement."

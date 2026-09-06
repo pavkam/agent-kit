@@ -18,7 +18,8 @@ validate capabilities
   -> translate provider-neutral request
   -> apply bounded provider options
   -> inject credentials and required headers
-  -> run request middleware
+  -> run typed request hooks
+  -> authorize destination and data egress
   -> send transport request
   -> validate status and response framing
   -> parse typed stream
@@ -40,6 +41,8 @@ remains responsible for its compatibility profile and observable behavior.
 The provider-neutral request MUST include:
 
 - provider/model descriptor and API family;
+- the complete immutable `ExecutionIdentity`, its matching
+  `SecurityAuthorizationContext`, and typed operation correlation;
 - ordered context messages and instruction sources;
 - tool definitions, tool-choice policy, and output schema;
 - sampling, output, cache, and reasoning settings;
@@ -68,19 +71,21 @@ extension object owned by that adapter. Unknown options MUST fail validation or
 be explicitly passed through; silent misspelling is forbidden.
 
 Header policy MUST define precedence among adapter defaults, authentication,
-host configuration, run extensions, and middleware. Sensitive or protocol-
+host configuration, run extensions, and trusted hooks. Sensitive or protocol-
 critical headers MUST NOT be replaceable by untrusted input. An explicit
 suppression value MAY remove an optional default; absence means inherit.
 
-## Middleware
+## Hooks
 
-Request middleware MAY inspect or replace the translated payload, add approved
+Request hooks MAY inspect or replace the translated payload, add approved
 headers, select transport details, and observe response headers. It MUST run in
 documented order and MUST NOT receive raw credentials unless its contract is an
 explicit trusted authentication component.
 
 Payload replacement MUST be revalidated for size and protected fields. Every
-replacement should emit a safe middleware identity in diagnostics.
+replacement should emit a safe hook identity in diagnostics. A replacement that
+changes destination, classified content, or another security input requires a
+fresh security decision.
 
 ## Transport
 
@@ -91,6 +96,19 @@ credential forwarding to an unintended origin.
 
 The transport SHOULD expose provider request IDs, rate-limit headers, retry
 hints, and status without coupling the core to an HTTP client type.
+
+Before network activity, the adapter submits the canonical destination and data
+classification to the shared security authority. AgentKit.Network validates the
+bounded grant again across DNS, connection, redirects, and upload. Provider
+credentials remain excluded from the request and audit.
+
+The adapter selects the authority named by the captured authorization context
+through `ISecurityAuthoritySelector`; it MUST NOT inject an unkeyed authority or
+resolve keyed services itself. Each attempt obtains and atomically consumes a
+fresh provider-egress grant bound to the execution identity, destination,
+classified payload, provider/model revision, and attempt fingerprint. The
+network layer obtains a separate lower-boundary grant. Neither grant may be
+reused for a retry, fallback, changed payload, redirect, or other effect.
 
 ## Retry ownership
 
@@ -132,4 +150,5 @@ selection belong to the leaf integration.
 
 - [Cancellation, timeouts, and resilience](cancellation-timeouts-and-resilience.md)
 - [Extensions, hooks, and middleware](extensions-hooks-and-middleware.md)
+- [Permissions, approvals, and trust](permissions-approvals-and-trust.md)
 - [Observability and audit](observability-and-audit.md)

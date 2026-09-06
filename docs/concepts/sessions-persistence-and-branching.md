@@ -13,14 +13,22 @@ It is not the same thing as an in-memory agent object.
 ## Session identity and scope
 
 Every session MUST have a stable `SessionId`, tenant/owner scope, created and
-updated times, schema version, and lifecycle state. A `ConversationId` MAY group
-several runs or imported histories; it MUST NOT replace the storage isolation
-key.
+updated times, schema version, and lifecycle state. Each session operation MUST
+carry the complete immutable `ExecutionIdentity` captured at admission or run
+start plus its matching `SecurityAuthorizationContext`; a tenant/principal pair
+is only a routing projection and cannot replace that identity. A
+`ConversationId` MAY group several runs or imported histories; it MUST NOT
+replace the storage isolation key.
 
 A run MUST declare its session. Standalone runs MAY use an ephemeral session
 whose behavior still satisfies ordering and correlation contracts.
 
 ## Append-only record
+
+The record is authoritative for both the
+[message model](message-and-content-model.md) and
+[input admission](input-admission-and-message-queues.md); neither subsystem
+keeps a competing durable truth.
 
 The canonical record SHOULD be append-only and contain typed entries such as:
 
@@ -29,7 +37,7 @@ The canonical record SHOULD be append-only and contain typed entries such as:
 - model/agent/settings changes;
 - compaction and context-epoch records;
 - goal and delegation transitions;
-- permission decisions and approval references; and
+- security decisions, grants, and approval references; and
 - run lifecycle and recovery checkpoints.
 
 Each entry MUST have a stable ID, monotonic sequence, optional parent/causal ID,
@@ -37,6 +45,9 @@ timestamp from an injectable clock, and schema version. Stores MUST support
 append-if-version so concurrent writers cannot silently overwrite one another.
 
 ## Branching
+
+[Context compaction](context-compaction.md) names a range within one branch and
+never rewrites that branch's covered entries.
 
 The storage model SHOULD permit entries to name a parent entry rather than
 assuming a single irreversible tail. An active branch is the path from a chosen
@@ -65,6 +76,10 @@ not undone merely because conversation state moved backward.
 
 ## Store contract
 
+Stores provide the evidence required by
+[durable recovery](durable-execution-and-recovery.md), including conditional
+append, idempotency, versioning, and stable pagination.
+
 `ISessionStore` MUST define:
 
 - create/load with tenant and principal authorization;
@@ -75,6 +90,15 @@ not undone merely because conversation state moved backward.
 - consistency and transaction guarantees;
 - retention, archival, deletion, and legal-hold behavior; and
 - conflict, unavailable, corrupt-data, and migration failures.
+
+Session directory access and session store access are separate protected
+effects. The coordinator MUST first obtain and consume a short-lived grant bound
+to the exact directory lookup or record. After the authoritative store key is
+known, it MUST obtain and consume a different grant bound to the exact store,
+operation, identity, and resource. A directory grant MUST NOT authorize store
+access, and one grant MUST NOT be reused across reads, writes, retries, or
+effecting calls. Authority selection uses the captured
+`ISecurityAuthoritySelector` binding rather than an unkeyed authority.
 
 Serialization MUST be provider-neutral and preserve unknown fields needed for
 forward-compatible round trips.

@@ -4,10 +4,14 @@
 **Depends on:** [Sessions](sessions-persistence-and-branching.md),
 [context assembly](context-assembly-and-instructions.md)
 
+The implementation boundary is defined by the
+[context compaction architecture](../architecture/context-compaction.md).
+
 ## Purpose
 
 Compaction creates a bounded semantic representation of older context while
-preserving durable history. It is a checkpointing policy, not message deletion.
+preserving [durable session history](sessions-persistence-and-branching.md). It
+is a checkpointing policy, not message deletion.
 
 ## Trigger policy
 
@@ -23,9 +27,10 @@ observable.
 ## Semantic cut point
 
 The compactor MUST choose a cut at a complete semantic boundary, preferably
-before a user turn. It MUST NOT split a tool call from its result, an assistant
-content block, a deferred request from its resolution, or an admitted input from
-its promotion.
+before a user turn. It MUST preserve the
+[history invariants](history-validation-and-repair.md): it cannot split a tool
+call from its result, an assistant content block, a deferred request from its
+resolution, or an admitted input from its promotion.
 
 When one oversized turn cannot fit, the compactor MAY summarize a prefix within
 that turn only if it creates explicit repair markers and preserves all tool

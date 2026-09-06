@@ -5,6 +5,10 @@
 
 ## Package topology
 
+The concrete package names and allowed edges live in the
+[project structure](../architecture/project-structure.md); this specification
+defines the rules those edges must satisfy.
+
 ```text
 applications / hosts
         │
@@ -30,13 +34,19 @@ ownership. It MAY depend on `AgentKit.Abstractions` and stable
 assembler, session implementation, provider, policy implementation, store, tool,
 transport, MCP, or hosting package.
 
+`AgentEngine` is the complete process-level composition, not one agent. It MUST
+host a versioned catalog of immutable agent definitions and safely run multiple
+agents and sessions concurrently through isolated run scopes. An engine-bound
+`Agent` handle MUST NOT own mutable run or session state.
+
 First-party implementations MUST live in focused packages such as
-`AgentKit.Loop`, `AgentKit.Context`, `AgentKit.IO`, `AgentKit.Session`,
-`AgentKit.Permissions`, `AgentKit.Providers`, and `AgentKit.Tools`. Feature
-families use `AgentKit.Tools.<ToolName>`, `AgentKit.Providers.<ProviderName>`,
-and `AgentKit.Session.<StorageProvider>`. Concrete provider, storage,
-filesystem, transport, MCP, and durable-backend packages are leaves. Foundation
-and runtime packages MUST NOT reference a concrete leaf.
+`AgentKit.Loop`, `AgentKit.Context`, `AgentKit.Hooks`, `AgentKit.IO`,
+`AgentKit.Session`, `AgentKit.Permissions`, `AgentKit.Providers`, and
+`AgentKit.Tools`. Feature families use `AgentKit.Tools.<ToolName>`,
+`AgentKit.Providers.<ProviderName>`, and `AgentKit.Session.<StorageProvider>`.
+Concrete provider, storage, filesystem, transport, MCP, and durable-backend
+packages are leaves. Foundation and runtime packages MUST NOT reference a
+concrete leaf.
 
 `AgentKit.Providers` MUST contain only provider-neutral catalog, selection,
 capability-validation, and attempt-coordination behavior.
@@ -49,16 +59,16 @@ credentials, or registration in packages such as `AgentKit.Providers.OpenAI`,
 
 Contracts MUST separate these axes when implementations can vary independently:
 
-| Axis        | Responsibility                  | Example contract        |
-| ----------- | ------------------------------- | ----------------------- |
-| Description | Immutable capability metadata   | `ModelDescriptor`       |
-| Discovery   | Enumerate candidates            | `IToolProvider`         |
-| Selection   | Choose a candidate              | `IModelSelector`        |
-| Resolution  | Bind identity to implementation | `IToolResolver`         |
-| Execution   | Perform one operation           | `IToolInvoker`          |
-| Policy      | Permit, deny, or defer          | `IToolPermissionPolicy` |
-| State       | Load and append domain records  | `ISessionStore`         |
-| Observation | Receive immutable events        | `IRunEventSink`         |
+| Axis        | Responsibility                  | Example contract     |
+| ----------- | ------------------------------- | -------------------- |
+| Description | Immutable capability metadata   | `ModelDescriptor`    |
+| Discovery   | Enumerate candidates            | `IToolProvider`      |
+| Selection   | Choose a candidate              | `IModelSelector`     |
+| Resolution  | Bind identity to implementation | `IToolResolver`      |
+| Execution   | Perform one operation           | `IToolInvoker`       |
+| Policy      | Permit, deny, or defer          | `ISecurityAuthority` |
+| State       | Load and append domain records  | `ISessionStore`      |
+| Observation | Receive immutable events        | `IRunEventSink`      |
 
 A public abstraction SHOULD NOT be added for a single known implementation
 unless it establishes a security, testing, or package boundary.
@@ -81,6 +91,9 @@ store.
 
 ## Capabilities, not surprise exceptions
 
+The [model capability contract](model-providers-and-capabilities.md) applies
+this rule to provider, deployment, and model combinations before request I/O.
+
 Optional behavior MUST be reported through descriptors, capability interfaces,
 or discriminated results before use. Discovering lack of support through a
 mid-run `NotSupportedException` is non-conforming.
@@ -89,6 +102,10 @@ Capability claims describe the selected model and configured deployment, not the
 theoretical union of everything a provider has ever offered.
 
 ## Composition
+
+The [public API and DI specification](public-api-and-dependency-injection.md)
+turns these dependency rules into replaceable registrations, lifetimes, and
+build-time validation.
 
 Registration extensions MUST:
 
@@ -100,6 +117,13 @@ Registration extensions MUST:
 - register defaults so applications can replace them without removing hidden
   internal services.
 
+Every behaviorally meaningful mechanism and policy MUST be configurable at one
+named boundary: DI, typed options, engine configuration, immutable agent
+definition, or explicit run override. A first-party feature package SHOULD
+register a sensible documented default with `TryAdd` semantics when a safe
+general default exists. Credentials, external endpoints, persistence targets,
+and granted authority MUST remain explicit.
+
 `AgentEngine.CreateBuilder()` MUST return a separate mutable builder whose
 `Services` property is the ordinary `IServiceCollection` composition surface.
 `Build()` MUST return an immutable engine and validate the complete graph.
@@ -110,9 +134,35 @@ Standalone and host-managed composition MUST share one registration path. The
 standalone engine owns the provider created by its builder. A hosted engine MUST
 NOT dispose the host's provider.
 
+Agent definitions are additive registrations with unique typed `AgentId` values.
+The definition catalog is singular and replaceable; its default implementation
+publishes immutable versioned snapshots. Build validation MUST validate every
+registered definition against the keyed capabilities it selects and reject
+duplicate IDs before the engine becomes runnable.
+
+Cardinality is evaluated at the boundary that owns it. The definition, session-
+store, hook-profile, security-policy, and model catalogs/selectors; validators;
+run-scope factory; hook dispatcher; approval broker; and `TimeProvider` are
+singular engine-wide services. Each runnable definition MUST resolve exactly one
+selected loop, continuation policy, input coordinator, output publisher, context
+assembler, session coordinator/run coordinator/profile/store, hook profile,
+security authority/profile, model selector, and model executor. Multiple keyed
+implementations MAY coexist in the engine; ambiguity for one definition is a
+definition validation failure, not a reason to collapse the engine to one global
+agent configuration.
+
 Named or keyed services SHOULD be used for multiple provider, queue, store, or
 policy implementations. Runtime code MUST receive explicit factories or
 selectors rather than use the container as a service locator.
+
+The package-internal run-scope factory and run-plan compiler are the sole owners
+of scope creation and arbitrary keyed contract resolution. They capture one
+definition/catalog version, resolve its keys inside one run scope, and pass an
+immutable collaborator bundle to the selected loop. Narrow package-internal
+activators MAY execute prevalidated hook, tool, or contributor factories in that
+scope, but cannot query arbitrary contracts or keys. No public or feature
+component receives `IServiceProvider`, an ambient current-agent value, or
+permission to rediscover a newer profile during the run.
 
 ## Baseline implementation set
 
@@ -120,9 +170,12 @@ The first complete runnable composition SHOULD include:
 
 - immutable message/event/result abstractions;
 - the `AgentKit` facade and strict composition validation;
-- `AgentKit.Loop`, `AgentKit.Context`, and `AgentKit.IO` implementations;
+- a versioned agent-definition catalog with at least one runnable definition;
+- `AgentKit.Loop`, `AgentKit.Context`, `AgentKit.Hooks`, and `AgentKit.IO`
+  implementations;
 - `AgentKit.Session` plus an explicitly selected store;
-- `AgentKit.Permissions` with a fail-closed policy;
+- `AgentKit.Permissions` with a fail-closed security authority, policy pipeline,
+  approval broker, and bounded grants;
 - `AgentKit.Providers`, one conversational model, and a replaceable
   `TimeProvider`;
 - scripted model and tool fakes;
@@ -135,12 +188,17 @@ make its dependencies subject to build validation.
 
 ## Acceptance criteria
 
+The [shared conformance strategy](testing-and-evaluation.md) supplies the
+behavioral and dependency-graph evidence for these criteria.
+
 - A dependency graph test proves no inward package references a leaf package.
 - Default services can be replaced through public registration APIs.
 - Two implementations of each stabilized extension pass the same behavioral
   suite.
 - Disposal occurs exactly once at the documented owner boundary.
 - Concurrent runs share immutable definitions but no mutable run state.
+- One engine can run two differently configured agents concurrently without
+  catalog, option, session, or scope leakage.
 - The facade package dependency graph contains no concrete component package.
 - A compatible provider passes shared wire-family conformance plus its own
   capability and registration suite.

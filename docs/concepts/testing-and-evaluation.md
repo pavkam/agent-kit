@@ -11,6 +11,10 @@ second integration makes the bug matrix fashionable.
 
 ## Test layers
 
+Package and conformance tests prove the
+[public replacement contracts](public-api-and-dependency-injection.md);
+evaluations measure a complete composition without bypassing them.
+
 1. **Value tests** verify immutable types, validation, canonicalization, and
    serialization migrations.
 2. **Contract conformance** runs one reusable behavioral suite against every
@@ -42,19 +46,34 @@ reports the capability unsupported before use. A surprise
 
 ## Required suites
 
+The required suites mirror the lifecycle boundaries: the
+[agent loop](agent-loop-state-machine.md),
+[provider pipeline](provider-request-pipeline.md),
+[tool pipeline](tool-call-lifecycle.md), and
+[session store](sessions-persistence-and-branching.md) each own observable
+behavior that every implementation must preserve.
+
 - Agent loop lifecycle and terminal-result conformance.
 - Input queue admission, conflict, cutoff, order, capacity, and redelivery.
 - Message serialization/version/unknown-part round-trip.
 - Provider capability, request, fragmented-stream, usage, and error mapping.
-- Tool discovery, validation, permission, approval, execution, and correlation.
+- Tool discovery, validation, security, approval, execution, and correlation.
 - Tool scheduler source order, barriers, limits, cancellation, and late result.
 - Session/store concurrency, pagination, idempotency, branch, and migration.
 - Memory/vector isolation, compatibility, deletion, and provenance.
-- Middleware ordering, isolation, replacement bounds, and failure.
+- Hook ordering, sequential mutation, reverse unwind, validation, isolation,
+  reentrancy, replacement bounds, short-circuiting, and failure.
+- Security request canonicalization, approval and grant binding, single-use
+  consumption, expiry, revocation, and denial before protected effects.
+- File-system, network, and process grant enforcement plus deterministic fake
+  parity.
 - MCP lifecycle, capability, correlation, transport cleanup, and content.
 - DI replacement, keyed composition, scope validation, and disposal.
 
 ## Determinism
+
+Deterministic tests enforce the same injected-time and replay rules required by
+[durable recovery](durable-execution-and-recovery.md).
 
 Tests MUST inject `TimeProvider`, ID source, randomness, scheduling gates, and
 transport. They SHOULD avoid wall-clock sleeps. Concurrency cases use barriers
@@ -75,9 +94,11 @@ provider send, response terminal, call record, side effect, result record,
 message append, compaction activation, and settlement. Assert recovery follows
 the evidence table in the durable execution spec.
 
-Security tests prove denial precedes effects, approvals bind exact scope,
-untrusted history cannot execute, configuration trust is enforced, MCP metadata
-cannot grant authority, and diagnostics redact seeded secrets.
+Security tests prove denial precedes effects, approvals and grants bind exact
+scope and audience, single-use grants cannot be spent concurrently, low-level
+host components enforce again, untrusted history cannot execute, configuration
+trust is enforced, MCP metadata cannot grant authority, and diagnostics redact
+seeded secrets.
 
 ## Evaluations
 
@@ -86,6 +107,14 @@ composition, comparison, and report model. It MUST operate through public
 AgentEngine, event, session, and diagnostic contracts rather than friend access
 to runtime internals. External result stores and report exporters remain leaf
 integrations.
+
+One evaluation runner is bound through DI to exactly one built `AgentEngine`.
+`RunAsync` accepts a plan, not an arbitrary engine, and the runner MUST NOT pair
+the bound engine with a separately injected definition catalog. Every case MUST
+carry an authenticated `ExecutionIdentity` and the expected `SessionProfileKey`.
+Before creating a session through the engine's public API, the runner verifies
+that the selected agent definition uses that profile; identity or profile
+mismatch fails before provider, tool, or storage effects.
 
 Evaluation cases MUST version input, expected criteria, fixtures/tools, agent
 definition, model settings, and evaluator. Results record provider/model,
@@ -97,7 +126,7 @@ tool effects. Model judges MAY assess semantic quality but require calibrated
 rubrics, blinded ordering where relevant, repeat runs, and uncertainty.
 
 Evals complement contract tests; they MUST NOT decide whether message ordering,
-permission, or persistence is correct.
+security enforcement, hook behavior, or persistence is correct.
 
 ## Live tests
 

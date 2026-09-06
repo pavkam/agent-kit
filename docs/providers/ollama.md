@@ -90,6 +90,10 @@ The non-streaming response is:
 
 ## Native streaming protocol
 
+The NDJSON lifecycle maps into the
+[AgentKit streaming contract](../concepts/streaming-and-event-protocol.md);
+complete JSON lines are transport frames, not semantic terminals by themselves.
+
 Generate, Chat, Create, Pull, and Push can stream newline-delimited JSON. Each
 line is a complete JSON document; there are no SSE
 <code>event:</code>/<code>data:</code> fields.
@@ -110,6 +114,9 @@ content. An error may terminate the stream before <code>done:true</code>; treat
 that as failure/unknown completion.
 
 ## Embeddings
+
+Embedding is a [separate semantic operation](semantic-operations.md), with the
+resolved model digest and vector dimensions retained as space identity.
 
 POST <code>/api/embed</code> accepts required model and string or string-array
 input, plus <code>truncate</code>, optional dimensions, keep-alive, and runtime
@@ -157,6 +164,10 @@ Do not retry Create/Copy/Delete/Push automatically without resolving whether the
 mutation already occurred.
 
 ## OpenAI compatibility
+
+This surface requires its own
+[capability profile](../concepts/model-providers-and-capabilities.md); the local
+endpoint shape does not make unsupported OpenAI semantics appear.
 
 Use local base <code>http://localhost:11434/v1</code>. A placeholder API key is
 required by some OpenAI SDKs but ignored locally.
@@ -226,6 +237,10 @@ authentication, retention, and availability. Record the resolved route in
 telemetry.
 
 ## Errors and adapter rules
+
+Native and compatibility failures map through the
+[AgentKit error taxonomy](../concepts/error-taxonomy.md) while retaining the
+originating dialect and daemon context.
 
 Errors use an HTTP status plus JSON <code>{error:string}</code> or a
 compatibility envelope. A missing model commonly returns 404. Stream failures

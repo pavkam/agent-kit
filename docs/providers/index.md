@@ -5,7 +5,7 @@ wire contracts, not marketing model lists. Model IDs, prices, quotas, and
 feature availability drift too quickly to hard-code here; query each provider's
 model-discovery API and capability metadata at runtime.
 
-The [provider architecture](../architecture/06-model-and-embedding-providers.md)
+The [provider architecture](../architecture/model-and-embedding-providers.md)
 defines how this research maps into AgentKit.Providers,
 AgentKit.Providers.OpenAICompatible, and concrete provider packages. Researching
 an API does not by itself commit the project to shipping its adapter.
@@ -14,7 +14,10 @@ an API does not by itself commit the project to shipping its adapter.
 
 ## Scope and completeness
 
-Each provider file covers the public APIs needed by an agent runtime:
+Each provider file supplies evidence for AgentKit's
+[model capability descriptors](../concepts/model-providers-and-capabilities.md)
+and [request pipeline](../concepts/provider-request-pipeline.md). It covers the
+public APIs needed by an agent runtime:
 
 - synchronous, streaming, background, batch, and realtime inference;
 - messages, multimodal content, reasoning, tool calls, and structured output;
@@ -83,7 +86,7 @@ flowchart LR
     Native --> BED[Bedrock Converse]
     Compat --> CC[OpenAI Chat Completions dialects]
     Compat --> MSG[Anthropic Messages dialects]
-    OAI & ANT & GEM & BED & CC & MSG --> Norm[Canonical event stream]
+OAI & ANT & GEM & BED & CC & MSG --> Norm[Canonical event stream]
     Norm --> App
 ```
 
@@ -120,10 +123,14 @@ bidirectional sessions can carry terminal errors after headers.
 
 ## Adapter invariants
 
-- Use provider-generated tool-call IDs verbatim. Never derive identity from
-  array position.
-- Accumulate streamed text and JSON arguments by event semantics; chunks are not
-  guaranteed to align with UTF-8 characters or JSON tokens.
+- Preserve the
+  [message correlation contract](../concepts/message-and-content-model.md): use
+  provider-generated tool-call IDs verbatim and never derive identity from array
+  position.
+- Follow the
+  [streaming event grammar](../concepts/streaming-and-event-protocol.md) when
+  accumulating text and JSON arguments; chunks are not guaranteed to align with
+  UTF-8 characters or JSON tokens.
 - Keep client cancellation distinct from provider cancellation and model stop.
 - Retry 408, 409 lock/contention cases, 429, and transient 5xx only when the
   operation is idempotent. Honor <code>Retry-After</code> and provider reset

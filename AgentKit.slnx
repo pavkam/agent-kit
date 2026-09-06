@@ -3,4 +3,7 @@
     <Project Path="src/AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
     <Project Path="src/AgentKit/AgentKit.csproj"/>
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AgentKit.Abstractions.Tests/AgentKit.Abstractions.Tests.csproj"/>
+  </Folder>
 </Solution>

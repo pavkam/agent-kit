@@ -12,26 +12,25 @@ final names or signatures.
 
 ## Facade and builder
 
+The [composition architecture](../architecture/composition-and-configuration.md)
+assigns this API shape to the dependency-light AgentKit package.
+
 `AgentEngine` is the immutable public facade. `AgentEngineBuilder` is a separate
-mutable composition object:
-
-```csharp
-public sealed class AgentEngine : IAsyncDisposable
-{
-    public static AgentEngineBuilder CreateBuilder();
-}
-
-public sealed class AgentEngineBuilder
-{
-    public IServiceCollection Services { get; }
-    public AgentEngine Build();
-}
-```
+mutable composition object. Their canonical signatures—including multi-agent
+catalog resolution, session creation, typed caller identity, run and stream
+operations, and ownership—are defined once in the
+[composition architecture](../architecture/composition-and-configuration.md#process-level-execution-surface).
 
 The exact operational methods remain subject to API review, but the ownership
 shape is fixed. A standalone engine owns the provider built by its builder. An
 engine resolved from an external host uses the host's scopes and MUST NOT
 dispose the host provider.
+
+The engine is the complete process-level composition and may catalog and run
+many agents. An `Agent` is an immutable concurrency-safe handle bound to one
+validated definition and catalog version. Neither the engine nor an agent holds
+mutable session/run state or exposes the service provider; each invocation
+creates an isolated run scope.
 
 `AddAgentKit` registers the same facade and composition validation into an
 existing `IServiceCollection`. Feature packages operate on that collection, so
@@ -40,19 +39,20 @@ containers using the Microsoft DI contracts.
 
 ## Execution surface
 
+Session-oriented operations expose the distinction between
+[admission and promotion](input-admission-and-message-queues.md), while run
+methods state which [completion boundary](run-lifecycle-and-settlement.md) they
+await.
+
 ```csharp
 public interface IAgentRunner
 {
     Task<AgentRunResult<TOutput>> RunAsync<TOutput>(
-        AgentDefinition agent,
-        AgentInput input,
-        AgentRunOptions? options = null,
+        AgentRunRequest request,
         CancellationToken cancellationToken = default);
 
     Task<IAgentRunStream<TOutput>> StreamAsync<TOutput>(
-        AgentDefinition agent,
-        AgentInput input,
-        AgentRunOptions? options = null,
+        AgentRunRequest request,
         CancellationToken cancellationToken = default);
 }
 ```
@@ -63,19 +63,11 @@ join/queue/reject semantics explicit when a session is active.
 
 ## Results
 
-```csharp
-public sealed record AgentRunResult<TOutput>(
-    RunId RunId,
-    SessionId SessionId,
-    ConversationId? ConversationId,
-    AgentRunOutcome Outcome,
-    TOutput? Output,
-    MessageCursor PreviousCursor,
-    ImmutableArray<AgentMessage> NewMessages,
-    RunUsage Usage,
-    ImmutableArray<DeferredToolRequest> DeferredRequests,
-    ExtensionData Metadata);
-```
+Result outcomes use the [stable error taxonomy](error-taxonomy.md) and preserve
+newly committed messages rather than reconstructing history from display text.
+The canonical `AgentRunResult<TOutput>` and discriminated `AgentRunOutcome`
+shapes are defined once in the
+[output architecture](../architecture/input-and-output.md#normative-minimal-output-contracts).
 
 `AgentRunOutcome` is a discriminated result for success, idle completion,
 deferred, cancelled, limit reached, policy halt, and failed. Null output alone
@@ -89,16 +81,23 @@ disposing it MUST have documented run-cancellation behavior.
 `AgentKit.Abstractions` SHOULD stabilize narrow contracts only after their
 specification and conformance suite:
 
+- `IAgentDefinitionCatalog` and additive definition-source contracts;
 - `IAgentLoop`, `IInputCoordinator`, `IInputQueue`, `IOutputPublisher`,
-  `ISessionExecutor`;
+  `ISessionCoordinator`;
 - `IContextAssembler`, `IHistoryProcessor`, `ICompactor`;
 - `IModelCatalog`, `IModelSelector`, `IModelRequestExecutor`, `IChatModel`,
   `IEmbeddingModel`, `IReranker`;
 - `IToolProvider`, `IToolResolver`, `IToolInvoker`, `IToolScheduler`;
-- `IToolPermissionPolicy`, `IApprovalBroker`, `IToolAuditSink`;
+- `ISecurityAuthority`, `ISecurityPolicy`, `IApprovalBroker`, security grant and
+  audit contracts;
+- `IHookDispatcher`, dedicated hook interfaces, and their `EventArgs`-derived
+  boundary types;
+- narrow file-system, network, and process capability contracts;
 - `ISessionStore`, memory/document/vector/retrieval contracts;
-- `IRunEventSink`, `IUsageBudget`, and clock/ID/random abstractions; and
-- capability/middleware contracts for demonstrated extension axes.
+- `IRunEventSink`, `IUsageBudget`, `TimeProvider`, closed
+  `IIdentifierGenerator<TIdentifier>` services, `IRandomizerFactory`, and
+  `IContentHasher`; and
+- capability and hook contracts for demonstrated extension axes.
 
 Interfaces MUST stay smaller than default implementations. Discovery, selection,
 policy, execution, state, and observation remain separate.
@@ -108,6 +107,10 @@ policy, execution, state, and observation remain separate.
 - Target .NET 10 and C# 14.
 - Use immutable records/readonly values; services with identity/lifecycle are
   classes.
+- Use dedicated `readonly record struct` domain identities such as `AgentId`,
+  `SessionId`, `RunId`, `TurnId`, `MessageId`, and `ToolCallId`; never expose
+  raw strings, GUIDs, or integers as those identities. Framework generation uses
+  a replaceable `IIdentifierGenerator<TIdentifier>`.
 - One named type per file with matching name.
 - Public async APIs accept `CancellationToken` and never block.
 - Use `IAsyncEnumerable<T>` only for actual streaming/pagination.
@@ -122,6 +125,7 @@ policy, execution, state, and observation remain separate.
 ```csharp
 builder.Services.AddAgentLoop();
 builder.Services.AddAgentContext();
+builder.Services.AddAgentHooks();
 builder.Services.AddAgentIO();
 builder.Services.AddAgentSession();
 builder.Services.AddInMemorySessionStore();
@@ -129,6 +133,7 @@ builder.Services.AddAgentPermissions();
 builder.Services.AddAgentProviders();
 builder.Services.AddOpenAI(options => { ... });
 builder.Services.AddReadTool();
+builder.Services.AddAgentDefinition(agentDefinition);
 ```
 
 Exact names are provisional. Registration methods MUST return
@@ -145,12 +150,21 @@ document:
 Multi-provider concepts SHOULD be keyed/named and selected by an injected
 catalog/selector. Runtime code MUST NOT receive `IServiceProvider` as a locator.
 
-`Build()` or hosted validation MUST require one effective loop, input
-coordinator, output publisher, session coordinator, session store, context
-assembler, permission policy, model catalog, model selector, model request
-executor, at least one conversational model, and a `TimeProvider`.
-`TimeProvider.System` is the replaceable default. Missing or ambiguous required
-services fail before the first run.
+`Build()` or hosted validation MUST require singular engine-wide composition
+services: one agent-definition catalog with at least one runnable definition,
+run-scope factory and validator, session directory/store selector, hook
+dispatcher/profile selector, security authority selector/policy catalog,
+approval broker, model catalog, and `TimeProvider`. `TimeProvider.System` is the
+replaceable default. For every runnable definition, validation resolves exactly
+one selected loop, continuation policy, input coordinator, output publisher,
+context assembler, session coordinator/run coordinator/profile/store, hook
+profile, security authority/profile, model selector, model request executor, and
+at least one compatible conversational model. Missing or ambiguous selections
+fail before the first run.
+
+Every registered definition MUST resolve all of its typed keyed selections and
+pass capability, scope, and policy validation. Agent definitions are additive;
+duplicate `AgentId` values are rejected deterministically.
 
 Tools, skills, memory, embeddings, reranking, goals, MCP, evaluation, and
 additional contributors are optional. When one is registered, validation MUST
@@ -175,12 +189,28 @@ All framework-owned time reads, delays, deadlines, and timestamps use the
 injected `TimeProvider`. External timestamps, such as provider or filesystem
 metadata, retain their source and are not rewritten to match the local clock.
 
+The facade registers `TimeProvider.System`, a cryptographically strong
+randomizer factory, a SHA-256 content hasher, and explicit closed generators for
+framework-owned identifiers as replaceable thread-safe singletons. A created
+`IRandomizer` is operation-owned and is never injected as mutable singleton
+state. Hashes carry typed algorithm and canonicalization versions; semantic
+owners canonicalize their data explicitly rather than relying on a process-wide
+implicit serialization. Replay and tests replace these services through their
+dedicated registration methods.
+
 ## Options and validation
 
 Typed options use `Microsoft.Extensions.Options`. Impossible limits, missing
 model/store keys, duplicate aliases, unsafe retry combinations, and unsupported
 configured capabilities SHOULD fail at host startup. Dynamic per-run values use
 explicit strategies rather than mutating options monitors.
+
+Every behaviorally meaningful mechanism or policy MUST be configurable through
+DI, typed options, engine configuration, an agent definition, or an explicit run
+override. Each first-party feature documents and registers sensible defaults
+with a public replacement path. Security defaults fail closed; credentials,
+remote endpoints, persistence targets, principals, and authority have no
+fabricated defaults.
 
 Credentials use dedicated providers or platform credential abstractions. They
 MUST NOT appear in option display, validation messages, or configuration
@@ -201,6 +231,8 @@ updated conformance packages.
 - Disposing a standalone engine disposes its owned provider exactly once.
 - Disposing a hosted engine does not dispose the host provider.
 - Options validation fails before the first run.
+- One engine resolves and runs multiple differently configured agents
+  concurrently without scope or configuration leakage.
 - A result distinguishes deferred, limited, cancelled, and failed without text
   parsing.
 

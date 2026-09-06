@@ -6,6 +6,10 @@
 
 ## Purpose
 
+This boundary keeps [session history](sessions-persistence-and-branching.md),
+[working context](context-assembly-and-instructions.md), durable memory,
+documents, vectors, and retrieval from becoming one policy-free store.
+
 “Memory” is not one interface. AgentKit distinguishes conversation history,
 working context, durable memory, source documents, embeddings, vector indexes,
 and retrieval so policy and storage can vary independently.
@@ -36,7 +40,7 @@ Provider SDK and database query types stay in integration packages.
 
 ## Durable memory lifecycle
 
-Memory writing is a policy decision with explicit states:
+Memory writing is a protected policy decision with explicit states:
 
 ```text
 Proposed -> Validated -> Accepted -> Active
@@ -45,15 +49,22 @@ Proposed -> Validated -> Accepted -> Active
                        Rejected     Corrected | Deleted | Expired
 ```
 
-A model may propose memory but cannot self-authorize retention. Validation
-checks provenance, scope, sensitivity, contradiction, and policy. Corrections
-append versions or tombstones; they do not rewrite unrelated history.
+A model may propose memory but cannot self-authorize retention. The shared
+security authority evaluates reads, writes, deletion, retrieval exposure, and
+embedding egress after canonicalization. Validation checks provenance, scope,
+sensitivity, contradiction, and policy. Corrections append versions or
+tombstones; they do not rewrite unrelated history.
 
 Memory records distinguish verified fact, user preference, instruction,
 decision, summary, and uncertain claim. Unverified guesses MUST not be stored as
 facts.
 
 ## Embeddings
+
+Embedding generation follows the
+[independent semantic-operation contract](../providers/semantic-operations.md);
+the memory subsystem owns space compatibility and vector lifecycle, not model
+invocation.
 
 Each vector MUST store embedding provider, model, revision, dimensions,
 modality, normalization, distance metric compatibility, source hash, chunk ID,
@@ -68,12 +79,12 @@ match is forbidden.
 
 Retrieval MUST separate:
 
-1. authorize query and candidate scope;
+1. authorize query and candidate scope through the security authority;
 2. optionally rewrite query;
 3. select sources/indexes;
 4. search with stable filters;
 5. rerank and deduplicate;
-6. authorize each result for model exposure;
+6. authorize each result and provider destination for model exposure;
 7. enforce item/token/byte budgets; and
 8. produce typed context candidates with provenance and trust class.
 

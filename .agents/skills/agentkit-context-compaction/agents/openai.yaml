@@ -1,0 +1,6 @@
+interface:
+  display_name: "AgentKit Context Compaction"
+  short_description: "Checkpoint context without rewriting history"
+  default_prompt:
+    "Use $agentkit-context-compaction to implement or debug AgentKit semantic
+    context compaction."

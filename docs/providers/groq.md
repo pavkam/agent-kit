@@ -62,6 +62,10 @@ metadata instead of deleting fields after an error.
 
 ## Chat response and SSE
 
+SSE deltas enter the
+[typed streaming contract](../concepts/streaming-and-event-protocol.md), which
+keeps text, reasoning, and tool arguments correlated until terminal validation.
+
 The response follows <code>{id,object,created,model,choices[],usage}</code>. A
 choice contains index, assistant message, and finish reason. Tool calls contain
 stable IDs, type, function name, and JSON argument text.
@@ -98,6 +102,10 @@ sequenceDiagram
 ```
 
 ## Responses beta
+
+Responses output maps to the
+[ordered message and content model](../concepts/message-and-content-model.md),
+not a single projected string.
 
 POST <code>/responses</code> supports text and eligible image inputs, function
 calling, reasoning, structured outputs, SSE, and selected hosted tools such as
@@ -204,6 +212,10 @@ not expose the feature merely because SDK types exist; require entitlement
 discovery.
 
 ## Errors, limits, and adapter rules
+
+Groq failures map through the
+[AgentKit error taxonomy](../concepts/error-taxonomy.md) while retaining
+<code>x_groq</code>, request, rate-limit, and timing diagnostics.
 
 Errors use an OpenAI-like error envelope and may include <code>x_groq</code>
 diagnostics. Preserve status, code, message, parameter, request ID, and

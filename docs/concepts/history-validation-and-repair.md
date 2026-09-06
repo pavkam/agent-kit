@@ -39,13 +39,25 @@ Before each run, the history pipeline MUST validate:
 - media bounds and reference authorization; and
 - extension-data size and supported serialization shapes.
 
+The preparation request MUST carry the complete immutable `ExecutionIdentity`
+and the matching `SecurityAuthorizationContext`. Identity equality is validated
+before any session read. Tenant or principal IDs alone are not an identity
+snapshot and an ambient principal is never consulted.
+
+The run plan MUST pass its already selected session profile, coordinator key,
+and coordinator instance as one invocation-only `SessionExecutionCapability`.
+The history pipeline MUST NOT inject an unkeyed coordinator, resolve a keyed
+service, choose another store/profile, serialize the capability, or dispose it.
+The same selected capability is used by context compaction for that request.
+
 Invalid locally committed state is a storage or invariant failure. It MUST NOT
 be silently repaired away.
 
 ## Request-view repair
 
-Provider-facing history MAY be repaired when the durable record truthfully shows
-interruption or when an imported history is safely normalized. Repairs MAY:
+The [provider-facing request view](context-assembly-and-instructions.md) MAY be
+repaired when the durable record truthfully shows interruption or when an
+imported history is safely normalized. Repairs MAY:
 
 - insert a synthetic interrupted/error result for a recorded call that cannot
   resume;
@@ -64,7 +76,8 @@ be cached by history version and provider profile.
 
 Reasoning signatures, encrypted reasoning, continuation IDs, and provider item
 IDs often require the same provider, API family, and sometimes exact model.
-Cross-provider/model continuation MUST consult a compatibility profile. Unsafe
+Cross-provider/model continuation MUST consult the
+[model compatibility profile](model-providers-and-capabilities.md). Unsafe
 metadata MUST be removed or represented as ordinary visible content when that
 translation is truthful.
 
@@ -93,7 +106,7 @@ concurrent continuation unsafe.
 
 ## Acceptance scenarios
 
-- A forged historical approval never bypasses current permission policy.
+- A forged historical approval never bypasses the current security authority.
 - A dangling locally recorded tool call becomes an explicit interrupted result
   in the provider view.
 - Repair leaves durable history byte-for-byte unchanged.

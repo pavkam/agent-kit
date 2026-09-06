@@ -116,7 +116,9 @@ Never assume <code>output[0]</code> is assistant text. Select
 
 ## Responses streaming
 
-SSE event <code>type</code> is the discriminator. Event families include:
+SSE event <code>type</code> is the discriminator. The adapter maps these event
+families into the
+[provider-neutral stream grammar](../concepts/streaming-and-event-protocol.md):
 
 - lifecycle: <code>response.created</code>, <code>response.queued</code>,
   <code>response.in_progress</code>, <code>response.completed</code>,
@@ -198,9 +200,9 @@ error events.
 
 ## Embeddings
 
-<code>POST /embeddings</code> is a stateless vector-generation operation and
-should live behind a separate embedding interface, not the conversational
-Responses adapter.
+Under the [semantic-operation contract](semantic-operations.md), <code>POST
+/embeddings</code> is a stateless vector-generation operation behind a separate
+embedding interface, not the conversational Responses adapter.
 
 ### Embedding request
 
@@ -255,9 +257,10 @@ advertise the provider-neutral <code>IReranker</code> capability.
 
 ## Errors, retries, and idempotency
 
-HTTP errors generally use <code>{error:{message,type,param?,code?}}</code>. Also
-handle terminal error objects inside Responses and Realtime streams. Capture
-request IDs on both success and failure.
+HTTP errors generally use <code>{error:{message,type,param?,code?}}</code>. The
+[AgentKit error mapping](../concepts/error-taxonomy.md) also handles terminal
+error objects inside Responses and Realtime streams and captures request IDs on
+both success and failure.
 
 - Retry 408, 409, 429, and transient 5xx with bounded exponential backoff and
   jitter.
@@ -269,7 +272,9 @@ request IDs on both success and failure.
 
 ## Adapter notes
 
-1. Model Responses as ordered items, not a single string.
+1. Map Responses into the
+   [ordered content model](../concepts/message-and-content-model.md), not a
+   single string.
 2. Keep <code>call_id</code> distinct from item <code>id</code>.
 3. Store reasoning, refusal, annotations, and safety data separately from
    visible text.

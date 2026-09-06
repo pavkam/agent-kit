@@ -2,101 +2,143 @@
 
 **Status:** Normative  
 **Depends on:** [Architecture](architecture-and-dependency-boundaries.md),
-[configuration](configuration-and-overrides.md)
+[configuration](configuration-and-overrides.md),
+[permissions](permissions-approvals-and-trust.md)
 
 ## Purpose
 
-Capabilities and middleware compose cross-cutting behavior without granting
-arbitrary access to mutable loop internals. They extend named boundaries; they
-are not a universal plugin escape hatch.
+AgentKit calls these process extension points hooks. Hooks compose cross-cutting
+behavior at named boundaries without granting arbitrary access to mutable engine
+internals. They coexist with complete strategy replacement, context
+contributors, providers, tools, and immutable event sinks; they do not replace
+those narrower contracts.
 
-## Extension forms
+## Contract shape
 
-- **Capability:** declarative contribution of instructions, tools, model
-  settings, native provider features, or lifecycle behavior.
-- **Middleware:** around/next composition for one narrow operation.
-- **Hook:** before or after notification/transformation at a named boundary.
-- **Event sink:** immutable observation with no state mutation authority.
-- **Strategy:** complete replacement of one policy or operation contract.
+Every hook point MUST define:
 
-An extension MUST use the narrowest form that fits. Generic “on anything” hooks
-are forbidden in the stable public API.
+- a dedicated hook interface in `AgentKit.Abstractions`;
+- a dedicated `EventArgs`-derived class;
+- invocation frequency and lifecycle scope;
+- read-only and writable properties;
+- validation after mutation;
+- ordering and reentrancy rules;
+- cancellation, deadline, and failure behavior; and
+- whether typed short-circuiting is permitted.
 
-## Named boundaries
+A shared `AgentHookEventArgs` base MAY expose stable agent, session, run,
+operation, correlation, timestamp, and hook-invocation identity. It MUST NOT
+expose a mutable engine, unrestricted history, credential store, or general
+service provider.
 
-AgentKit MAY expose typed boundaries for run start/end/error, node/turn start
-and end, input admission, history processing, context assembly, model selection,
-request translation, provider send/response, stream events, tool preparation,
-tool validation, permission, invocation, result normalization, output
-validation, compaction, and event publication.
+Boundary-specific derived arguments MAY expose writable properties only for
+documented transformations. Identity, causality, principal, existing security
+decision or grant, durable sequence, committed state, and prior audit facts MUST
+remain read-only.
 
-Each boundary MUST document allowed inputs, permitted replacement fields,
-ordering, cancellation, failure policy, and whether it runs once per run,
-request, attempt, or tool call.
+Hooks mutate the permitted properties of one event-argument instance in place.
+Later hooks observe the validated result of earlier hooks. The dispatcher MUST
+validate after every invocation and reject invalid state before invoking the
+next hook or owning operation.
 
-## Composition order
+## Registration and dispatch
 
-Registration order is the deterministic tie-breaker. Capabilities MAY declare
-ordering constraints such as outermost, innermost, before, after, wraps,
-wrapped-by, or requires. Composition MUST topologically sort these constraints
-and fail startup with a useful cycle/missing-dependency diagnostic.
+Applications MAY register any number of implementations for each hook interface.
+Registrations are additive and have stable hook identities. Reusing the same
+identity is a startup error unless the registration API explicitly names a
+replacement.
 
-For ordered middleware `A, B, C`:
+`AgentKit.Hooks` supplies the first-party dispatcher and `AddAgentHooks`
+registration. Runtime components depend on the dispatcher contract from
+`AgentKit.Abstractions`, not on the concrete package. A custom dispatcher MUST
+pass the same ordering, mutation, failure, cancellation, scope, and diagnostics
+conformance suites.
 
-```text
-before: A -> B -> C
-operation
-after:  C -> B -> A
-wrap:   A(B(C(operation)))
-```
+Registration order is the deterministic tie-breaker. Hooks MAY declare before,
+after, first, last, and dependency constraints. Composition MUST topologically
+sort them and fail startup for cycles, missing dependencies, duplicate
+identities, impossible lifetime capture, or unknown hook points.
 
-The same rule applies to errors unwinding through wrappers.
+Mutating hooks MUST execute sequentially. Before hooks execute in resolved
+order. Paired after and error hooks unwind in reverse order. Independent
+notification hooks use documented forward order. The dispatcher captures an
+immutable catalog for the run or named operation; in-flight dispatch never
+observes partial registration reload.
 
-## Merge behavior
+## Hook points
 
-Capability contributions use explicit algebra: instructions append, model
-settings merge by key, toolsets combine by stable identity, native tools collect
-subject to provider constraints, and scalars replace only where named.
+AgentKit MAY expose typed hooks around:
 
-Hooks returning replacements MUST use typed immutable values. They may replace
-only documented fields. Tool call ID, principal, permission outcome, durable
-sequence, and already committed state are never mutable extension fields.
+- engine, run, and turn lifecycle;
+- input admission and queued promotion;
+- session load, append, branching, checkpoints, and compaction;
+- history validation and context assembly;
+- model discovery, selection, request preparation, send, response, and stream;
+- tool discovery, validation, security authorization, invocation, and result;
+- memory proposal, write, retrieval, and context exposure;
+- goal creation, delegation, joining, and completion;
+- output validation and publication; and
+- security presentation, decision observation, approval resolution, and audit.
 
-## Isolation
+The stable API MUST NOT expose a generic hook that receives an arbitrary event
+name and object payload. Adding a new hook point is an additive public contract
+with its own event arguments and conformance cases.
 
-Stateful capabilities MUST produce a per-run instance through `ForRun` or a
-scoped factory. Shared definitions are immutable and thread-safe. Per-run state
-must not leak into another concurrent run.
+## Mutation and short-circuiting
 
-Extensions receive typed context views and explicit dependencies. They MUST NOT
-receive `IServiceProvider`, private loop state, credential stores, or unbounded
-raw history unless their specific contract requires and authorizes it.
+Writable values use explicit boundary types. A context hook may replace context
+candidates, a model hook may replace approved request options, and a tool-result
+hook may replace bounded safe result content. Replacement values MUST retain
+required identity and provenance and pass the same validation as values produced
+by the owning component.
 
-## Failure policy
+Short-circuiting is allowed only when the event arguments expose an explicit
+typed outcome. A general cancel flag is forbidden. A hook MUST NOT convert
+cancellation, denial, approval-required, budget exhaustion, protocol violation,
+or unknown side-effect state into success.
 
-Transforming/security-critical middleware fails its operation by default.
-Best-effort observers are isolated and diagnosed. An extension may not swallow
-cancellation, policy denial, budget exhaustion, or protocol failure and convert
-it into success.
+Security hooks MAY redact or clarify approval presentation, request a stricter
+decision, or observe outcomes. They MUST NOT allow, widen, forge, cache,
+consume, or mint a security grant. An operation changed after authorization MUST
+return to the security authority before execution.
 
-Hook time, allocations, exceptions, and changes SHOULD be observable. Hooks
-share the relevant operation deadline unless a smaller bound is configured.
+## Scope and reentrancy
 
-## Hot reload
+Immutable thread-safe hooks MAY be singleton. Mutable hooks MUST be scoped to a
+run or operation. A singleton MUST NOT capture scoped run state. Per-run state
+must not leak between concurrent runs.
 
-Extension code loading requires trusted configuration and normally occurs at
-host composition, not mid-run. Declarative capability configuration may reload
-at turn boundaries after full validation. Existing run-scoped instances remain
-on their captured version until the documented boundary.
+Every invocation carries hook identity, hook point, causal operation, and depth.
+A hook MUST NOT re-enter its own point implicitly. Explicit reentrancy requires
+a bounded policy and cycle detection. Async-local or static state MUST NOT be
+the authoritative reentrancy mechanism.
+
+Hooks receive cancellation and share the operation deadline unless configured
+with a smaller bound. They MUST NOT detach untracked tasks; required hook work
+is part of settlement.
+
+## Failure and observability
+
+Transforming and security-critical hook failures fail the owning operation by
+default. Best-effort notification hooks MAY isolate failure, but they must emit
+bounded diagnostics. Hook exceptions never become successful operation results.
+
+Diagnostics SHOULD record hook identity, point, duration, outcome, and names of
+changed fields. Values before and after mutation are sensitive payloads and MUST
+follow explicit content-capture and redaction policy.
 
 ## Acceptance scenarios
 
-- Ordering constraints produce a stable topology and cycles fail at startup.
-- After hooks unwind in reverse order when the operation throws.
-- Per-run capability state is isolated under concurrency.
-- An observer failure cannot mutate or fail the run.
-- A replacement hook cannot change call identity or prior permission outcome.
-- Untrusted project configuration cannot load executable middleware.
+- Three registered hooks observe mutations in deterministic order.
+- After hooks unwind in reverse order when the operation fails.
+- A mutation of a read-only identity or invalid field fails before the next
+  hook.
+- Duplicate hook identity and ordering cycles fail at startup.
+- Per-run hook state is isolated under concurrent runs.
+- Reentrant dispatch cannot recurse without a declared bounded policy.
+- A hook cannot turn a denied operation into an allowed one.
+- A changed authorized request is sent back through security evaluation.
+- An observer failure cannot mutate or fail an unrelated operation.
 
 ## Upstream evidence
 
@@ -110,5 +152,6 @@ on their captured version until the documented boundary.
 ## Related specifications
 
 - [Provider request pipeline](provider-request-pipeline.md)
+- [Permissions, approvals, and trust](permissions-approvals-and-trust.md)
 - [Observability and audit](observability-and-audit.md)
 - [Public API and dependency injection](public-api-and-dependency-injection.md)

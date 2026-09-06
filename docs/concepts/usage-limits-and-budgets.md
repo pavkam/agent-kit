@@ -6,23 +6,34 @@
 
 ## Purpose
 
+The first-party implementation boundary is defined by the
+[budgets and limits architecture](../architecture/budgets.md).
+
 Budgets bound cost, time, context, and side effects across the entire run. A
 limit is a domain outcome with a measurement source and enforcement boundary.
 
 ## Budget dimensions
 
-The runtime MUST support independent limits for:
+`BudgetDimension` is an extensible validated value, not a closed enum. AgentKit
+reserves the `agentkit.*` namespace; third-party dimensions MUST use their own
+stable namespace and register a descriptor declaring aggregation semantics and
+legal units. Unknown dimensions, incompatible units, and conflicting descriptors
+fail composition rather than becoming counters with guessed semantics.
 
-- model requests and turns/steps;
+The first-party catalog MUST support independent limits for:
+
+- model requests, concurrent model requests, and turns/steps;
 - input, output, reasoning, cached-read, and cached-write tokens;
 - per-request input and requested output tokens;
 - cost in a declared currency and pricing revision;
 - successful, attempted, and concurrently running tool calls;
 - output-validation and tool retry attempts;
+- total and concurrently active delegations;
 - wall-clock run duration and per-operation deadline;
 - context bytes/tokens and retained media;
 - queued input count, bytes, and age; and
-- event, tool-result, retrieval, and buffered-stream sizes.
+- event, final-result, tool-result, artifact, retrieval item/byte, and
+  buffered-stream sizes.
 
 Limits MAY be absent individually. Unbounded defaults for external cost or
 memory dimensions SHOULD be deliberate and visible, never an integer maximum
@@ -32,8 +43,9 @@ accident.
 
 `RunUsage` MUST distinguish measured, provider-reported, estimated, and unknown
 values. It SHOULD retain per-request and aggregate values plus provider/model
-identity. Cost calculation records pricing source/version and whether it is an
-estimate.
+identity so [observability](observability-and-audit.md) can report provenance
+without reconstructing it. Cost calculation records pricing source/version and
+whether it is an estimate.
 
 Cached tokens and reasoning tokens MUST remain separate where providers report
 them. A portable `TotalTokens` convenience value MUST document its formula.
@@ -44,10 +56,11 @@ terminal totals.
 
 ## Enforcement boundaries
 
-Before a model request, the runtime MUST check request count, elapsed time,
-known token/cost consumption, minimum output reserve, and context estimate.
-Before a tool batch, it MUST preflight attempted/successful call limits so a
-batch that cannot legally start executes none.
+Before a [model request](provider-request-pipeline.md), the runtime MUST check
+request count, elapsed time, known token/cost consumption, minimum output
+reserve, and context estimate. Before a
+[tool batch](tool-scheduling-and-concurrency.md), it MUST preflight attempted
+and successful call limits so a batch that cannot legally start executes none.
 
 Provider output tokens and cost may only be known after response. Post-response
 limits therefore stop subsequent work rather than erase received output. A
@@ -90,6 +103,14 @@ Budgets MAY apply at host, tenant, principal, agent, session, run, and operation
 scope. Effective capacity is the tightest applicable constraint. Consumption and
 reservation must be atomic at every enforced shared scope or delegated to a
 single authoritative budget service.
+
+The budget authority, ledger, and immutable profile, policy, and dimension
+catalogs are shared thread-safe services for one engine process. Tenant, agent,
+session, run, and operation scope are ledger addresses, not separate authority
+instances. `IRunBudget`, child scopes, and reservations are short-lived owned
+handles created by that authority; they MUST NOT be captured by singleton
+consumers. Profiles and policy implementations are keyed and replaceable only
+through an explicit same-key replacement registration.
 
 ## Acceptance scenarios
 

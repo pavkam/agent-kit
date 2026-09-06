@@ -156,11 +156,12 @@ preview contracts can add, rename, or remove fields independently of GA v1.
 
 ## Embeddings and rerank boundary
 
-The GA <code>POST /openai/v1/embeddings</code> request and response follow the
-OpenAI embedding contract. The request <code>model</code> is the Azure
-deployment name; the legacy dialect instead selects deployment in the URL.
-Persist both the deployment and its underlying resolved model/version, along
-with resource region, dimensions, encoding, and any caller-side normalization.
+Under the [AgentKit semantic-operation contract](semantic-operations.md), the GA
+<code>POST /openai/v1/embeddings</code> request and response follow the OpenAI
+embedding wire shape. The request <code>model</code> is the Azure deployment
+name; the legacy dialect instead selects deployment in the URL. Persist both the
+deployment and its underlying resolved model/version, along with resource
+region, dimensions, encoding, and any caller-side normalization.
 
 Azure OpenAI does not expose a generic rerank endpoint. Azure AI Search semantic
 ranker and Microsoft 365 Copilot Retrieval are separate services with different
@@ -191,8 +192,9 @@ flowchart TD
 
 Errors normally use an OpenAI-shaped
 <code>{error:{code,message,param?,type?}}</code> body, sometimes with nested
-Azure details. Preserve the full body, HTTP status, request ID, region/resource,
-deployment name, and all rate-limit headers.
+Azure details. The [error mapping](../concepts/error-taxonomy.md) preserves the
+full body, HTTP status, request ID, region/resource, deployment name, and all
+rate-limit headers as diagnostic context.
 
 - Retry 408, 429, and transient 5xx with jitter and server guidance.
 - A 400/404 can mean unsupported API version, feature, model deployment, or

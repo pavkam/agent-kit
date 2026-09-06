@@ -12,10 +12,10 @@ preflighted limits.
 
 ## Source order
 
-The provider response defines source order. Calls MUST receive an ordinal before
-execution. Scheduling MAY be concurrent, but committed result messages and the
-next provider context MUST use source order unless an explicit tool protocol
-requires another deterministic order.
+The [provider response](streaming-and-event-protocol.md) defines source order.
+Calls MUST receive an ordinal before execution. Scheduling MAY be concurrent,
+but committed result messages and the next provider context MUST use source
+order unless an explicit tool protocol requires another deterministic order.
 
 Live completion events MAY arrive in completion order. They MUST carry call ID
 and source ordinal so consumers do not mistake completion order for history
@@ -59,7 +59,8 @@ all side-effect-free work needed to decide whether the batch is schedulable:
 - evaluate call-count and concurrency limits;
 - detect duplicate call IDs and tool-name ambiguity;
 - establish source ordinals and barrier segments; and
-- run permission prechecks that do not require interactive approval.
+- run [security prechecks](permissions-approvals-and-trust.md) that do not
+  require interactive approval.
 
 If executing the batch would exceed a hard successful-tool or call limit, none
 of the batch starts. This prevents order-dependent partial side effects.
@@ -79,10 +80,11 @@ interrupted result so later results can publish.
 
 ## Cancellation
 
-On run cancellation the scheduler MUST stop admitting new segments, signal all
-running invocations, await them within a bounded drain deadline, then mark
-unsettled calls interrupted. Synchronous or remote side effects may continue;
-their result MUST say outcome unknown rather than claim rollback.
+On [run cancellation](cancellation-timeouts-and-resilience.md) the scheduler
+MUST stop admitting new segments, signal all running invocations, await them
+within a bounded drain deadline, then mark unsettled calls interrupted.
+Synchronous or remote side effects may continue; their result MUST say outcome
+unknown rather than claim rollback.
 
 Cancellation of one independent tool SHOULD NOT cancel siblings unless the batch
 policy is fail-fast. A sequential barrier failure policy MUST state whether
@@ -90,10 +92,10 @@ later segments are skipped or proceed.
 
 ## Early output termination
 
-If a structured-output tool produces a final result, end strategy decides which
-function tools still run. The scheduler MUST apply that decision before starting
-avoidable side effects. Results already running follow the cancellation and
-settlement policy.
+If a [structured-output tool](structured-output.md) produces a final result, end
+strategy decides which function tools still run. The scheduler MUST apply that
+decision before starting avoidable side effects. Results already running follow
+the cancellation and settlement policy.
 
 ## Acceptance scenarios
 

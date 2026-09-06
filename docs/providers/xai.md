@@ -150,6 +150,10 @@ collection/document/chunk identity.
 
 ## Embeddings and rerank boundary
 
+Embedding participates in AgentKit's
+[semantic-operation model](semantic-operations.md); collection search remains a
+managed retrieval capability rather than a generic reranker.
+
 xAI exposes an OpenAI-compatible <code>POST /v1/embeddings</code> route where an
 embedding model is enabled for the team. Its first-party gRPC Models service
 separately supports <code>ListEmbeddingModels</code> and
@@ -254,6 +258,10 @@ be handled natively. Preserve <code>google.rpc.Status</code>-style details and
 request IDs.
 
 ## Errors, retrying, and adapter rules
+
+REST and gRPC failures map through the
+[AgentKit error taxonomy](../concepts/error-taxonomy.md) without losing cluster,
+request, model, or service-tier diagnostics.
 
 - Preserve REST status/body/headers or gRPC status/details, plus xAI request
   IDs, cluster, model, and service tier.

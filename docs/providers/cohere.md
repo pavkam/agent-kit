@@ -90,6 +90,10 @@ separately.
 
 ## Chat streaming event protocol
 
+The adapter maps Cohere's semantic events into the
+[AgentKit streaming grammar](../concepts/streaming-and-event-protocol.md) rather
+than treating them as OpenAI choice deltas.
+
 SSE uses semantic events rather than OpenAI choice deltas. The lifecycle
 includes message start/end; content start/delta/end; citation start/delta/end;
 tool-plan and tool-call start/delta/end; and debug/usage fields as the API
@@ -132,6 +136,10 @@ flowchart LR
 ```
 
 ## Embed v2
+
+Embedding implements a
+[separate semantic-operation capability](semantic-operations.md) whose purpose,
+encoding, dimensions, and model identity travel with every result.
 
 <code>EmbedRequest</code> includes required <code>model</code>, required
 <code>input_type</code> for modern models, exactly one of <code>texts</code>,
@@ -181,6 +189,10 @@ consuming output.
 
 ## Rerank v2
 
+Reranking implements its own
+[semantic-operation contract](semantic-operations.md), not a variation of
+embedding generation.
+
 <code>RerankRequest = {model, query, documents, top_n?, max_tokens_per_doc?,
 priority?}</code>. <code>model</code>, string <code>query</code>, and non-empty
 string <code>documents[]</code> are required. Cohere recommends no more than
@@ -212,6 +224,10 @@ portable between models or guaranteed stable across model aliases. Use them for
 diagnostics and preflight, not cross-provider accounting.
 
 ## Errors and retries
+
+Cohere statuses and bodies map through the
+[AgentKit error taxonomy](../concepts/error-taxonomy.md) without losing the
+provider request ID or retry detail.
 
 The reference enumerates 400, 401, 403, 404, 422, 429, 498 invalid token, 499
 client closed, 500, 501, 503, and 504. Preserve Cohere's message/body and

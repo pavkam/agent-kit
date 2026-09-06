@@ -1,0 +1,7 @@
+# Every architecture document declares AgentKit.Abstractions contracts under
+# the single flat `AgentKit` namespace so consuming packages never need an
+# extra `using AgentKit.Abstractions;` for foundational contracts. Files are
+# still organized into responsibility-based folders per project-structure.md,
+# so folder-to-namespace matching is intentionally disabled for this project.
+[*.cs]
+dotnet_style_namespace_match_folder = false

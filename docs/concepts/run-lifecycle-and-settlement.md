@@ -21,10 +21,12 @@ claiming the run is idle.
 
 ## Single-active-run rule
 
-The default session executor MUST permit at most one active mutating run per
-session. Calls for different sessions MAY run concurrently.
+The default [session executor](sessions-persistence-and-branching.md) MUST
+permit at most one active mutating run per session. Calls for different sessions
+MAY run concurrently.
 
-When a caller starts work against a busy session, the configured API MUST do one
+When a caller starts work against a busy session, the configured API MUST follow
+the [input-admission contract](input-admission-and-message-queues.md) and do one
 of the following explicitly:
 
 - join the existing run;
@@ -51,9 +53,10 @@ RunCompleted | RunCancelled | RunLimitReached | RunFailed
 RunSettled
 ```
 
-Events MAY be enriched and live deltas interleaved, but durable semantic events
-MUST preserve causal order. `RunSettled` is always the final run lifecycle
-event.
+Events MAY be enriched and live deltas interleaved according to the
+[streaming event grammar](streaming-and-event-protocol.md), but durable semantic
+events MUST preserve causal order. `RunSettled` is always the final run
+lifecycle event.
 
 ## Observer settlement
 
@@ -62,23 +65,25 @@ The dispatcher MUST isolate observer failures and apply an explicit backpressure
 policy.
 
 Awaited critical sinks, such as the durable event store, are part of settlement.
-Best-effort telemetry exporters MAY drain independently only when dropping or
-delaying them cannot change the run result. The distinction MUST be configured,
-not guessed by sink type.
+Under the [observability contract](observability-and-audit.md), best-effort
+telemetry exporters MAY drain independently only when dropping or delaying them
+cannot change the run result. The distinction MUST be configured, not guessed by
+sink type.
 
 ## Post-run work
 
-Automatic retry, context compaction, snapshot creation, final metadata hooks,
-and queued input promotion can extend a run past a nominal agent-end event.
-Implementations MUST either perform such work before `RunCompleted` or represent
-the transition and return to active turns explicitly. They MUST NOT emit
-`RunSettled` and later resume the same run.
+Automatic retry, [context compaction](context-compaction.md), snapshot creation,
+final metadata hooks, and queued input promotion can extend a run past a nominal
+agent-end event. Implementations MUST either perform such work before
+`RunCompleted` or represent the transition and return to active turns
+explicitly. They MUST NOT emit `RunSettled` and later resume the same run.
 
 ## Cancellation and stop
 
-Cancellation requests transition the run into `Cancelling`; they do not rewrite
-prior terminal tool results. Settlement MUST await or safely abandon run-owned
-tasks according to the tool cancellation contract.
+[Cancellation requests](cancellation-timeouts-and-resilience.md) transition the
+run into `Cancelling`; they do not rewrite prior terminal tool results.
+Settlement MUST await or safely abandon run-owned tasks according to the tool
+cancellation contract.
 
 An application-requested graceful stop SHOULD finish the current atomic
 boundary, commit a truthful partial outcome, skip new side effects, and settle.

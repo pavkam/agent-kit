@@ -7,6 +7,9 @@
 
 ## Purpose
 
+The first-party processing boundary is defined by the
+[structured-output architecture](../architecture/structured-output.md).
+
 Structured output turns model output into validated application data. It is not
 equivalent to asking politely for JSON.
 
@@ -21,22 +24,21 @@ AgentKit MUST represent at least:
 - **media output:** typed image, audio, file, or provider-native result; and
 - **union output:** one of several named schemas with unambiguous selection.
 
-Capability negotiation chooses a supported mode or fails/downgrades according to
-explicit policy. A native-schema claim MUST include the provider's supported
-JSON Schema dialect and restrictions.
+[Capability negotiation](model-providers-and-capabilities.md) chooses a
+supported mode or fails or downgrades according to explicit policy. A
+native-schema claim MUST include the provider's supported JSON Schema dialect
+and restrictions.
 
 ## Output contract
 
-```csharp
-public sealed record OutputDefinition(
-    OutputMode Mode,
-    string Name,
-    JsonSchema Schema,
-    Type? RuntimeType,
-    ImmutableArray<OutputValidator> Validators,
-    OutputRetryPolicy RetryPolicy,
-    OutputEndStrategy EndStrategy);
-```
+The canonical `OutputDefinition` declaration lives in the
+[structured-output architecture](../architecture/structured-output.md#normative-minimal-contract-shape).
+This specification defines its required behavior; feature packages and provider
+adapters MUST reuse that contract rather than introduce local output
+definitions. Its identity/version, name, explicit mode, optional schema and CLR
+runtime type, union alternatives, ordered validator references, validation and
+retry policies, and `OutputEndStrategy` are one immutable value resolved before
+provider I/O.
 
 A declarative JSON schema without a CLR runtime type yields validated JSON, not
 a magically safe application object. Deserialization into a runtime type MUST
@@ -59,7 +61,8 @@ side effects unless explicitly modeled as tools.
 
 ## Retry behavior
 
-Output-validation retries use a budget separate from tool retries. A retry
+Output-validation retries use a
+[budget separate from tool retries](usage-limits-and-budgets.md). A retry
 creates a corrective model input identifying the validation issue safely and
 preserving the original causal response. Exhaustion ends with
 `OutputValidationFailed` and all attempts remain observable.
@@ -72,7 +75,7 @@ incremental validity.
 ## Tool-output end strategies
 
 When a response mixes output-tool and function-tool calls, the runtime MUST
-support named strategies:
+apply the `OutputDefinition.EndStrategy` value using these named strategies:
 
 | Strategy   | Output calls                           | Function calls                  | Winner                             |
 | ---------- | -------------------------------------- | ------------------------------- | ---------------------------------- |
@@ -81,8 +84,9 @@ support named strategies:
 | Exhaustive | Validate all                           | Run all according to schedule   | First valid output in source order |
 
 Failed output validation means another output candidate or model retry may
-continue. The scheduler applies the chosen strategy before avoidable side
-effects start. Already running tools follow cancellation/settlement policy.
+continue. The [tool scheduler](tool-scheduling-and-concurrency.md) applies the
+chosen strategy before avoidable side effects start. Already running tools
+follow cancellation and settlement policy.
 
 Ordinary assistant text alongside output tool calls MUST NOT preempt them unless
 the output definition explicitly accepts text as a union alternative.

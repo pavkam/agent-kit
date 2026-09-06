@@ -5,24 +5,20 @@
 
 ## Purpose
 
+The [architecture coverage map](../architecture/index.md#concept-coverage) keeps
+stable error values in AgentKit.Abstractions and assigns mapping to each effect
+owner instead of creating a central dependency hub.
+
 AgentKit errors are stable domain categories with structured context. Original
 provider, transport, protocol, store, and implementation details remain
 available for diagnostics without becoming the public control flow.
 
 ## Error shape
 
-```csharp
-public sealed record AgentError(
-    AgentErrorCode Code,
-    string SafeMessage,
-    bool IsRetryable,
-    SideEffectCertainty SideEffectCertainty,
-    ErrorOrigin Origin,
-    string? ExternalCode,
-    string? RequestId,
-    TimeSpan? RetryAfter,
-    ExtensionData Diagnostics);
-```
+The canonical `AgentError` declaration lives in the
+[foundation contracts](../architecture/foundation-contracts.md#stable-error-contract).
+This specification defines its behavior; feature packages MUST reuse that
+contract instead of declaring structurally similar error values.
 
 The in-process result MAY retain an original `Exception` as non-serialized
 diagnostic context. Exceptions, raw bodies, and stack traces MUST NOT appear in
@@ -54,8 +50,9 @@ on the stable category without parsing messages or vendor codes.
 ## Retryability
 
 `IsRetryable` is advice for the operation under the supplied context, not a
-guarantee. The resilience owner still checks idempotency, visible output,
-side-effect certainty, deadlines, limits, and attempt policy.
+guarantee. The [resilience owner](cancellation-timeouts-and-resilience.md) still
+checks idempotency, visible output, side-effect certainty, deadlines, limits,
+and attempt policy.
 
 Authentication, authorization, invalid request, unsupported capability, corrupt
 state, and protocol violation are non-retryable by default. Rate limit,
@@ -96,9 +93,9 @@ arguments, content filter, deferred work, and cancellation—SHOULD be
 discriminated results. Programmer errors, violated invariants, and invalid API
 arguments MAY throw.
 
-Async streams report one terminal failure event and make completion return the
-same semantic error. They MUST NOT both throw an unrelated wrapper and emit a
-different error code.
+[Async streams](streaming-and-event-protocol.md) report one terminal failure
+event and make completion return the same semantic error. They MUST NOT both
+throw an unrelated wrapper and emit a different error code.
 
 ## Safe messages and diagnostics
 

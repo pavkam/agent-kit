@@ -1,0 +1,5 @@
+interface:
+  display_name: "AgentKit Hooks"
+  short_description: "Design deterministic typed hooks"
+  default_prompt:
+    "Use $agentkit-hooks to design or review an AgentKit lifecycle hook."

@@ -143,6 +143,10 @@ code-completion semantics, not a one-message chat shortcut.
 
 ### Embeddings
 
+The embedding endpoint implements a
+[separate semantic-operation capability](semantic-operations.md); it is not an
+optional method on the conversational adapter.
+
 <code>POST /v1/embeddings</code> accepts required <code>model</code> and string
 or string-array <code>input</code>. Optional fields include
 <code>encoding_format</code> (<code>float</code> or <code>base64</code>),
@@ -203,8 +207,10 @@ authoritative. Correlate results by <code>custom_id</code>.
 
 ## Errors and adapter rules
 
-Preserve HTTP status, provider request ID, error message/type/detail, and raw
-body. Validation errors may include a structured field path.
+Map failures through the
+[AgentKit error taxonomy](../concepts/error-taxonomy.md) while preserving HTTP
+status, provider request ID, error message/type/detail, and raw body. Validation
+errors may include a structured field path.
 
 - Retry 429 and transient 5xx with jitter and provider delay headers.
 - Do not retry invalid message unions, unsupported tool/response combinations,

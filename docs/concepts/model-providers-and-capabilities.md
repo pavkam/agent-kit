@@ -6,23 +6,20 @@
 
 ## Purpose
 
+This contract describes what may enter the
+[provider request pipeline](provider-request-pipeline.md); the
+[provider profiles](../providers/index.md) supply current wire-level evidence
+for each concrete adapter.
+
 Provider, API family, endpoint/deployment, and model are distinct identities.
 Capabilities belong to their configured combination, not to a brand name.
 
 ## Identity model
 
-```csharp
-public sealed record ModelDescriptor(
-    ProviderId ProviderId,
-    ApiFamily ApiFamily,
-    ModelId ModelId,
-    DeploymentId? DeploymentId,
-    ModelCapabilities Capabilities,
-    ModelLimits Limits,
-    ModelPricing? Pricing,
-    CompatibilityProfile Compatibility,
-    ExtensionData Extensions);
-```
+The canonical public `ModelDescriptor` shape is defined once in the
+[provider architecture](../architecture/model-and-embedding-providers.md#normative-minimal-identity-and-catalog-shape).
+This concept owns the identity and capability semantics rather than a parallel
+descriptor declaration.
 
 Two deployments with the same model name MAY have different capabilities,
 limits, regions, policy, or API versions. Their descriptors MUST remain
@@ -54,9 +51,11 @@ return a typed stream/result. The adapter owns wire translation, transport,
 authentication injection, stream parsing, raw error capture, and normalized
 provider failure mapping.
 
-The adapter MUST NOT own agent retries, tool execution, permission policy,
-history selection, or compaction. It MAY expose a provider-specific request
-extension surface that is validated and isolated from other adapters.
+The adapter MUST NOT own agent retries, tool execution, security policy, history
+selection, or compaction. It MAY expose a provider-specific request extension
+surface that is validated and isolated from other adapters. It uses the shared
+security authority and network boundary for destination and data egress rather
+than deciding its own authority.
 
 ## Package ownership
 
@@ -113,6 +112,9 @@ IDs, native tool state, or unsupported media. The selector MUST fail rather than
 corrupt context.
 
 ## Embeddings are separate
+
+Canonical embedding and reranking request, identity, and result semantics live
+in the [semantic-operation profile](../providers/semantic-operations.md).
 
 Embedding generation MUST use a separate contract and descriptor containing
 provider/model/revision, dimensions, modality, normalization, and limits.

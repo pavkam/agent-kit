@@ -3,42 +3,42 @@ name: agentkit-evaluation
 description:
   "Design, run, or debug AgentKit behavioral evaluations, datasets, evaluators,
   comparisons, and reports. Use for composed-agent quality and regression
-  measurement; not for component contract conformance."
+  measurement; not component contract conformance."
 ---
 
 # AgentKit Evaluation
 
-Read [AGENTS.md](../../../AGENTS.md). Evaluate composed behavior through public
-AgentKit APIs. Do not use evaluation scores to waive deterministic correctness,
-permission, ordering, persistence, or cancellation requirements.
+Follow
+[Testing and evaluation](../../../docs/architecture/testing-and-evaluation.md)
+and its
+[normative evaluation contract](../../../docs/concepts/testing-and-evaluation.md).
+When changing C#, also read the
+[modern C# rules](../references/modern-csharp.md).
 
-1. Version each case's input, expected criteria, fixtures, tools, agent
-   definition, model settings, evaluator, and dataset membership. Record the
-   exact provider, resolved model, configuration version, usage, latency, run
-   identity, and evaluator version with every result.
-2. Prefer deterministic evaluators for schemas, state, tool effects, citations,
-   safety rules, and exact outputs. Use model judges only for semantic criteria
-   that code cannot assess honestly.
-3. Give model judges a declared provider/model, bounded prompt, explicit rubric,
-   blinded candidate order where relevant, repeated trials, and uncertainty.
-   Judge failures and refusals are evaluation outcomes, not zero-quality
-   answers.
-4. Run through `AgentEngine`, public event streams, session reads, and approved
-   diagnostics. `AgentKit.Evaluation` receives no friend access to mutable
-   runtime internals.
-5. Make external effects deterministic or isolate them behind recorded fixtures.
-   Live providers and tools are opt-in, credential-aware, time and cost bounded,
-   and separated from the required offline suite.
-6. Compare compatible cohorts. A provider, model, prompt, toolset, policy,
-   dataset, or evaluator change must remain visible instead of being blended
-   into one score.
-7. Preserve case-level evidence and distinguish pass rate, score distribution,
-   variance, error, policy halt, limit exhaustion, and infrastructure failure.
-   Do not hide a broken subset behind an average.
-8. Test the evaluation runner itself for deterministic evaluator behavior,
-   dataset versioning, cancellation, partial reports, resume/idempotency,
-   redaction, budget enforcement, and stable comparison output.
+## Decision guide
 
-Use `agentkit-conformance-testing` when the question is whether two swappable
-implementations honor the same public contract. Evaluation asks whether a fully
-composed agent did the intended work.
+1. Evaluate through the public `AgentEngine` surface. The evaluation package may
+   consume public results, events, session reads, manifests, and approved
+   artifact references, but receives no privileged mutable runtime access.
+2. Version cases, fixtures, dataset membership, agent definitions, model and
+   tool settings, evaluators, rubrics, and expected criteria.
+3. Record the resolved provider and model, configuration and policy versions,
+   usage, latency, run identity, evaluator version, and dataset version with
+   each result.
+4. Prefer deterministic evaluators for schemas, exact state, tool effects,
+   citations, and safety. Use model judges only for semantic criteria code
+   cannot assess honestly.
+5. Give model judges an explicit provider, model, prompt, rubric, repeat count,
+   uncertainty treatment, and blinded candidate order where relevant.
+6. Isolate or record external effects. Live providers and tools are opt-in,
+   credential-aware, and bounded by time, cost, and run budgets.
+7. Compare compatible cohorts. Provider, prompt, policy, toolset, dataset, or
+   evaluator changes remain visible instead of being blended into one score.
+8. Preserve case-level evidence and distinguish quality, refusal, policy halt,
+   limit exhaustion, cancellation, evaluator failure, and infrastructure error.
+9. Test the runner for versioning, cancellation, partial reports, resume and
+   idempotency, redaction, budget enforcement, and stable comparison output.
+
+Use `agentkit-conformance-testing` for interchangeable implementation contracts.
+An evaluation score never waives deterministic correctness, security,
+persistence, ordering, or cancellation requirements.

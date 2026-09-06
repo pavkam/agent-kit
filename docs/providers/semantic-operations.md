@@ -34,10 +34,13 @@ flowchart LR
     Generate --> Answer[Answer plus citations]
 ```
 
-The framework should model at least four independent capabilities:
-<code>IEmbeddingGenerator</code>, <code>IReranker</code>,
-<code>IRetriever</code>, and conversational generation. A provider adapter may
-implement any subset.
+This pipeline crosses the
+[memory and retrieval boundary](../concepts/memory-retrieval-and-storage.md)
+before selected candidates enter
+[context assembly](../concepts/context-assembly-and-instructions.md). The
+framework should model at least four independent capabilities:
+<code>IEmbeddingModel</code>, <code>IReranker</code>, <code>IRetriever</code>,
+and conversational generation. A provider adapter may implement any subset.
 
 ## Canonical embedding contract
 
@@ -102,7 +105,8 @@ must remain visible.
 ## Embedding space identity
 
 A stored vector without its space identity is corrupted data with good manners.
-Persist this immutable identity beside every vector collection:
+The [vector-storage contract](../concepts/memory-retrieval-and-storage.md)
+therefore persists this immutable identity beside every vector collection:
 
 <code>EmbeddingSpaceIdentity = {adapter, endpoint_origin, region?,
 requested_model, resolved_model, model_revision?, dimensions, element_type,
@@ -188,7 +192,7 @@ natural-language query and returns permission-trimmed extracts from SharePoint,
 OneDrive, or Copilot connectors. Its <code>relevanceScore</code> is a normalized
 cosine similarity for an extract, but callers neither receive embeddings nor
 supply the candidate set. It implements <code>IRetriever</code>, not
-<code>IEmbeddingGenerator</code> or <code>IReranker</code>.
+<code>IEmbeddingModel</code> or <code>IReranker</code>.
 
 OpenAI vector-store search and xAI collection search are likewise managed
 retrieval contracts. Do not expose them as raw embedding APIs merely because
@@ -263,11 +267,14 @@ protocol surfaces, not a promise that every account can use every model.
 4. Validate one vector per successful input, stable correlation, finite numeric
    values, expected dimensions, and legal indexes.
 5. Treat empty vectors, dimension drift, duplicate indexes, missing rerank
-   indexes, and non-finite scores as protocol failures.
+   indexes, and non-finite scores as
+   [protocol failures](../concepts/error-taxonomy.md).
 6. Redact document text and embeddings from routine logs. Vectors can leak
    information and are not harmless telemetry.
-7. Test batch ordering, partial failure, input-type asymmetry, base64 decoding,
-   provider fallback, truncation, cancellation, and unknown response fields.
+7. Use the [shared conformance strategy](../concepts/testing-and-evaluation.md)
+   to test batch ordering, partial failure, input-type asymmetry, base64
+   decoding, provider fallback, truncation, cancellation, and unknown response
+   fields.
 
 ## First-party sources
 

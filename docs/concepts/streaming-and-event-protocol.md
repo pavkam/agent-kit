@@ -17,9 +17,10 @@ AgentKit MUST separate:
   state; and
 - **live events**, useful while work is active but not required for replay.
 
-Durable events include admission, promotion, message start/commit, tool-call
-recording, bounded tool progress checkpoints, terminal tool result, compaction,
-configuration/model changes, and lifecycle terminals.
+[Durable semantic events](sessions-persistence-and-branching.md) include
+admission, promotion, message start/commit, tool-call recording, bounded tool
+progress checkpoints, terminal tool result, compaction, configuration/model
+changes, and lifecycle terminals.
 
 Live events include text/reasoning deltas, fragmented tool arguments, raw
 provider heartbeat/progress, and high-frequency output chunks. An application
@@ -32,14 +33,16 @@ One assistant response follows this grammar:
 
 ```text
 ResponseStarted
-  (PartStarted PartDelta* PartCompleted)*
-  UsageUpdated*
+  (PartStarted | PartDelta | PartCompleted | UsageUpdated)*
 ResponseCompleted | ResponseFailed | ResponseCancelled
 ```
 
-A part MUST start before deltas or completion. A part index or stable part ID
-MUST correlate fragments. Exactly one response terminal MUST occur. No response
-event may follow its terminal.
+A part MUST start before its own deltas or completion, but several parts MAY be
+open and their events MAY interleave. A part index or stable part ID MUST
+correlate every fragment. Successful completion requires every started part to
+have completed; failure or cancellation records bounded partial parts as
+interrupted. Exactly one response terminal MUST occur. No response event may
+follow its terminal.
 
 Tool argument fragments MAY interleave across call IDs when the provider does;
 the adapter parser MUST assemble them independently. A terminal tool-call part
@@ -47,8 +50,9 @@ is not accepted until its arguments are bounded and syntactically complete.
 
 ## Candidate versus committed state
 
-Live response events describe a candidate message under construction. The
-runtime MUST publish an immutable committed assistant message only after:
+Live response events describe a candidate message under construction. Under the
+[message commitment rules](message-and-content-model.md), the runtime MUST
+publish an immutable committed assistant message only after:
 
 - the provider terminal event validates;
 - all open parts are resolved or marked interrupted;
@@ -60,15 +64,8 @@ receive immutable snapshots or typed deltas.
 
 ## Consumer behavior
 
-The streaming handle SHOULD expose:
-
-```csharp
-public interface IAgentRunStream
-{
-    IAsyncEnumerable<RunEvent> ReadAllAsync(CancellationToken cancellationToken);
-    Task<AgentRunResult> Completion { get; }
-}
-```
+The canonical generic streaming handle is defined once in the
+[output architecture](../architecture/input-and-output.md#normative-minimal-output-contracts).
 
 Cancelling enumeration MUST NOT implicitly cancel the run unless the API says
 so. Consumer abandonment MUST dispose its subscription and release buffers. Run
@@ -88,7 +85,8 @@ isolated from loop state and reported through diagnostics.
 
 ## Provider parser requirements
 
-Adapters MUST treat streaming as a state machine and validate:
+The [provider request pipeline](provider-request-pipeline.md) requires adapters
+to treat streaming as a state machine and validate:
 
 - transport framing and maximum frame size;
 - response and item correlation;

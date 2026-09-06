@@ -255,9 +255,10 @@ semantics differ.
 ## Errors, retries, and governance
 
 Microsoft Graph failures use the Graph/OData error envelope and Graph request
-identifiers. Capture <code>request-id</code>, <code>client-request-id</code>,
-date, API version, tenant/user context identifier, and conversation ID without
-logging tokens or retrieved content.
+identifiers. The [AgentKit error mapping](../concepts/error-taxonomy.md)
+captures <code>request-id</code>, <code>client-request-id</code>, date, API
+version, tenant/user context identifier, and conversation ID without logging
+tokens or retrieved content.
 
 - Honor <code>Retry-After</code> for 429 and transient service failures.
 - A synchronous Chat timeout does not prove that no conversation turn committed;
@@ -272,8 +273,8 @@ logging tokens or retrieved content.
 
 ## Adapter rules
 
-1. Expose Chat and Retrieval as separate capabilities; neither implements raw
-   embedding or rerank.
+1. Expose Chat and [Retrieval](../concepts/memory-retrieval-and-storage.md) as
+   separate capabilities; neither implements raw embedding or rerank.
 2. Bind every call to the delegated user and tenant security context.
 3. Reconcile streamed conversation snapshots by IDs; do not concatenate
    snapshots as token deltas.

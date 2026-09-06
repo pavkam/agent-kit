@@ -1,0 +1,574 @@
+# Sessions
+
+**Role:** Provide the durable coordination boundary for related runs.
+
+A [session](../concepts/sessions-persistence-and-branching.md) owns an ordered
+record, active branch, admitted input, configuration and context transitions,
+and optimistic concurrency state. It is not an in-memory agent instance. Even a
+standalone run uses an ephemeral session with the same ordering and correlation
+semantics.
+
+AgentKit.Session contains session coordination, active-run ownership, branching,
+and store usage. Session contracts and durable values live in
+AgentKit.Abstractions. AddAgentSession registers the coordinator but never
+chooses a storage medium.
+
+`AgentEngine` hosts many agents and sessions concurrently. A session is always
+addressed by typed `AgentId` and `SessionId`, while every mutating operation has
+an `OperationId` and a typed before-, during-, or after-run correlation. Session
+coordination has no ambient current agent, and a bare `SessionId` is never
+sufficient to cross an isolation boundary.
+
+## Normative minimal contract shape
+
+The following C# 14 shapes are normative and minimal rather than exhaustive.
+Every named type lives in its own file in AgentKit.Abstractions. Shared
+`AgentId`, `SessionId`, `RunId`, `OperationId`,
+`IIdentifierGenerator<TIdentifier>`, and `IdempotencyKey` contracts are reused.
+
+```csharp
+namespace AgentKit;
+
+public readonly record struct SessionEntryId(Guid Value);
+
+public readonly record struct BranchId(Guid Value);
+
+public readonly record struct SessionSnapshotId(Guid Value);
+
+public readonly record struct SessionLeaseId(Guid Value);
+
+public readonly record struct SessionStoreKey(string Value);
+
+public readonly record struct SessionProfileKey(string Value);
+
+public readonly record struct SessionVersion(long Value);
+
+public readonly record struct SessionDirectoryRevision(long Value);
+
+public readonly record struct SessionSequence(long Value);
+
+public readonly record struct SessionAddress(
+    AgentId AgentId,
+    SessionId SessionId);
+```
+
+Session, entry, branch, snapshot, lease, run, and operation identities are
+allocated through injected generators. Timestamps use `TimeProvider`.
+
+```csharp
+namespace AgentKit;
+
+public sealed record SessionDescriptor(
+    SessionAddress Address,
+    ConversationId? ConversationId,
+    TenantId TenantId,
+    PrincipalId OwnerId,
+    SessionStoreKey StoreKey,
+    BranchId ActiveBranchId,
+    SessionVersion Version,
+    SessionLifecycleState State,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    SchemaVersion SchemaVersion,
+    ExtensionData Extensions);
+
+public abstract record SessionEntry(
+    SessionEntryId Id,
+    SessionAddress Address,
+    OperationCorrelation Correlation,
+    BranchId BranchId,
+    SessionSequence Sequence,
+    SessionEntryId? CausalParentId,
+    DateTimeOffset RecordedAt,
+    SchemaVersion SchemaVersion);
+
+public sealed record SessionOperationContext(
+    AgentId AgentId,
+    SessionId SessionId,
+    OperationCorrelation Correlation,
+    ExecutionIdentity Identity,
+    SecurityAuthorizationContext Authorization,
+    HookDispatchContext? Hooks);
+
+public sealed record AuthorizedSessionDirectoryRequest<TRequest>(
+    TRequest Request,
+    SecurityGrant Grant)
+    where TRequest : class;
+
+public sealed record AuthorizedSessionStoreRequest<TRequest>(
+    TRequest Request,
+    SessionStoreKey StoreKey,
+    SecurityGrant Grant)
+    where TRequest : class;
+
+public sealed record SessionAppendRequest(
+    SessionOperationContext Context,
+    BranchId BranchId,
+    SessionVersion ExpectedVersion,
+    IdempotencyKey IdempotencyKey,
+    ImmutableArray<SessionEntry> Entries);
+
+public sealed record SessionSnapshot(
+    SessionSnapshotId Id,
+    SessionAddress Address,
+    BranchId BranchId,
+    SessionSequence ThroughSequence,
+    ContentHash ContentHash,
+    ImmutableArray<byte> Payload,
+    SchemaVersion SchemaVersion,
+    DateTimeOffset CreatedAt);
+```
+
+Concrete entry records represent messages, input admission and promotion, tools,
+security, goals, checkpoints, and lifecycle facts. The common base exists to
+preserve ordering and causality; it is not an `object` payload escape hatch.
+Unknown compatible serialized fields are retained in typed extension data.
+
+`BeforeRunOperationCorrelation` covers creation, admission, and other facts
+recorded before a `RunId` exists. `InRunOperationCorrelation` carries the active
+run and optional turn. `AfterRunOperationCorrelation` names the settled causal
+run for deferred resolutions, late durable observations, and post-run cleanup
+without falsely making that run active again. Every variant retains the distinct
+`OperationId`; code must pattern-match the correlation rather than infer
+lifecycle state from nullable IDs.
+
+Snapshot writers copy or transfer payload ownership into `ImmutableArray<byte>`
+before publication. Stores may use pooled buffers internally, but no public
+snapshot may retain mutable caller-owned memory.
+
+### Store discovery, selection, and state
+
+```csharp
+namespace AgentKit;
+
+public sealed record SessionStoreDescriptor(
+    SessionStoreKey Key,
+    SessionStoreCapabilities Capabilities,
+    SessionConsistencyModel Consistency,
+    bool Durable,
+    bool SupportsDistributedFencing);
+
+public sealed record SessionLocation(
+    SessionAddress Address,
+    TenantId TenantId,
+    SessionStoreKey StoreKey,
+    SessionDirectoryRevision DirectoryRevision,
+    DateTimeOffset RecordedAt,
+    SchemaVersion SchemaVersion);
+
+public sealed record SessionDirectoryWriteRequest(
+    SessionOperationContext Context,
+    SessionLocation Location,
+    IdempotencyKey IdempotencyKey);
+
+public abstract record SessionLocationResult;
+
+public sealed record SessionLocated(SessionLocation Location)
+    : SessionLocationResult;
+
+public sealed record SessionLocationNotFound(SessionAddress Address)
+    : SessionLocationResult;
+
+public sealed record SessionDirectoryLookupUnavailable(string SafeMessage)
+    : SessionLocationResult;
+
+public abstract record SessionDirectoryWriteResult;
+
+public sealed record SessionLocationRecorded(
+    SessionLocation Location,
+    bool Existing) : SessionDirectoryWriteResult;
+
+public sealed record SessionLocationConflict(
+    SessionLocation Existing,
+    SessionStoreKey RequestedStoreKey) : SessionDirectoryWriteResult;
+
+public sealed record SessionDirectoryWriteUnavailable(string SafeMessage)
+    : SessionDirectoryWriteResult;
+
+public interface ISessionDirectory
+{
+    bool Durable { get; }
+
+    ValueTask<SessionLocationResult> LocateAsync(
+        AuthorizedSessionDirectoryRequest<SessionOperationContext> request,
+        CancellationToken cancellationToken);
+
+    ValueTask<SessionDirectoryWriteResult> RecordAsync(
+        AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest> request,
+        CancellationToken cancellationToken);
+}
+
+public interface ISessionStoreCatalog
+{
+    ImmutableArray<SessionStoreDescriptor> GetDescriptors();
+}
+
+public interface ISessionStoreSelector
+{
+    ValueTask<SessionStoreSelectionResult> SelectForCreateAsync(
+        SessionCreateRequest request,
+        CancellationToken cancellationToken);
+
+    ValueTask<SessionStoreSelectionResult> ResolveExistingAsync(
+        SessionOperationContext context,
+        CancellationToken cancellationToken);
+}
+
+public interface ISessionStore
+{
+    SessionStoreDescriptor Descriptor { get; }
+
+    ValueTask<SessionCreateResult> CreateAsync(
+        AuthorizedSessionStoreRequest<SessionCreateRequest> request,
+        CancellationToken cancellationToken);
+
+    ValueTask<SessionLoadResult> LoadAsync(
+        AuthorizedSessionStoreRequest<SessionOperationContext> request,
+        CancellationToken cancellationToken);
+
+    ValueTask<SessionAppendResult> AppendAsync(
+        AuthorizedSessionStoreRequest<SessionAppendRequest> request,
+        CancellationToken cancellationToken);
+
+    ValueTask<SessionPageResult> ReadAsync(
+        AuthorizedSessionStoreRequest<SessionReadRequest> request,
+        CancellationToken cancellationToken);
+
+    ValueTask<SessionBranchResult> CreateBranchAsync(
+        AuthorizedSessionStoreRequest<SessionBranchRequest> request,
+        CancellationToken cancellationToken);
+
+    ValueTask<SessionSnapshotResult> WriteSnapshotAsync(
+        AuthorizedSessionStoreRequest<SessionSnapshotWriteRequest> request,
+        CancellationToken cancellationToken);
+
+    ValueTask<SessionDeleteResult> DeleteAsync(
+        AuthorizedSessionStoreRequest<SessionDeleteRequest> request,
+        CancellationToken cancellationToken);
+}
+```
+
+Stores are additive, keyed state implementations. Selection occurs when a
+session is created. Before creating store state, the coordinator idempotently
+records the chosen `SessionStoreKey` in `ISessionDirectory`; retries and crash
+recovery must finish creation against that same key. The session descriptor also
+persists the key as an integrity check. Existing-session resolution asks the
+directory, then the selector maps the returned key against its explicitly
+injected store set. Callers supply the normal immutable operation context; they
+never know a store key or access keyed DI. A selector never scans stores, falls
+back to a new default, or migrates data as an incidental read.
+
+The directory is authoritative routing state with conditional, idempotent
+writes. It partitions locations by tenant and validates the supplied operation
+context and directory-specific bounded grant before reads or writes. Conflicting
+attempts to bind one address to another key fail typed. A durable session
+requires a durable directory whose availability, consistency, retention,
+authorization, and recovery guarantees are compatible with its store. Missing or
+unavailable location returns a typed result and never leaks session existence
+across an authorization boundary.
+
+Every directory and store is a protected effecting boundary. It validates the
+audience, complete execution identity, agent/session, typed lifecycle
+correlation, action, and scope of the supplied `SecurityGrant` immediately
+before access. A location or selector result is not authority. The coordinator
+authorizes directory lookup or recording first, then issues a distinct
+store-specific security request after the store key is known. It never reuses a
+directory grant for store access, a read grant for a write, or one grant across
+two effecting calls. Each grant is short-lived, normally single-use, and bound
+to its wrapper's exact request, audience, store key when applicable, and input
+fingerprint.
+
+### Coordination, policy, and observation
+
+```csharp
+namespace AgentKit;
+
+public interface ISessionCoordinator
+{
+    ValueTask<SessionCreateResult> CreateAsync(
+        SessionCreateRequest request,
+        CancellationToken cancellationToken);
+
+    ValueTask<SessionLoadResult> LoadAsync(
+        SessionOperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<SessionAppendResult> AppendAsync(
+        SessionAppendRequest request,
+        CancellationToken cancellationToken);
+
+    ValueTask<SessionBranchResult> BranchAsync(
+        SessionBranchRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface ISessionRunCoordinator
+{
+    ValueTask<SessionRunLeaseResult> AcquireAsync(
+        SessionRunLeaseRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface ISessionRunLease : IAsyncDisposable
+{
+    SessionLeaseId LeaseId { get; }
+    AgentId AgentId { get; }
+    SessionId SessionId { get; }
+    RunId RunId { get; }
+}
+
+public interface ISessionRetentionPolicy
+{
+    ValueTask<SessionRetentionDecision> EvaluateAsync(
+        SessionDescriptor session,
+        CancellationToken cancellationToken);
+}
+
+public interface ISessionEventSink
+{
+    ValueTask PublishAsync(
+        SessionEvent sessionEvent,
+        CancellationToken cancellationToken);
+}
+```
+
+The coordinator owns authorization orchestration, routing, optimistic conflict
+handling, and semantic events. It does not implement storage. The run
+coordinator owns process-local single-active-run behavior. A durable execution
+adapter may replace or augment it with fenced distributed leases; the local
+implementation never claims cluster safety. Retention policy decides when work
+is eligible, the store performs the protected mutation, and event sinks only
+observe immutable outcomes.
+
+The session coordinator never invokes the agent loop, input coordinator, context
+assembler, or durability coordinator. The engine acquires a session run lease
+and then calls the loop; durability integration decorates the lease/store
+boundary from above or below through dedicated contracts. This avoids both
+session → loop → session and session → durability → session constructor cycles.
+
+AgentKit.Session supplies sealed coordinator, store catalog and selector, branch
+service, and local run-coordinator classes. Its primary dependency shape is
+explicit:
+
+```csharp
+namespace AgentKit.Session;
+
+internal sealed class SessionCoordinator(
+    ISessionDirectory directory,
+    ISessionStoreSelector storeSelector,
+    ISecurityAuthoritySelector securityAuthorities,
+    ISessionRetentionPolicy retentionPolicy,
+    IHookDispatcher hooks,
+    IEnumerable<ISessionEventSink> eventSinks,
+    TimeProvider timeProvider,
+    IIdentifierGenerator<OperationId> operationIds) : ISessionCoordinator
+{
+}
+```
+
+The body is intentionally omitted from this constructor/dependency shape; its
+observable API is exactly `ISessionCoordinator`. Store location and selection
+remain explicit collaborators rather than container lookups.
+
+`SessionCoordinator` selects the authority named by the immutable
+`SessionOperationContext.Authorization` through `ISecurityAuthoritySelector`; it
+never injects an unkeyed authority. It validates that the operation identity
+equals `SecurityAuthorizationContext.Identity`, authorizes and consumes one
+directory grant, resolves the returned store key, then authorizes and consumes a
+separate store grant. Failure at any step returns a typed result without probing
+another store or leaking whether the session exists.
+
+AgentKit defines no session-store base class. In-memory, SQLite, and remote
+stores have materially different transaction, serialization, and ownership
+mechanics; they implement the same interface and conformance suite directly.
+
+## Configuration and dependency injection
+
+Session behavior is captured from global ceilings, a named session profile, and
+the agent definition. The agent definition's profile selects its coordinator and
+run-coordinator component keys, default `SessionStoreKey`, busy-session policy,
+paging bounds, and retention profile. Run overrides may tighten limits but
+cannot silently change the store of an existing session.
+
+```csharp
+namespace AgentKit.Session;
+
+public sealed class AgentSessionOptions
+{
+    public int MaximumAppendEntries { get; set; } = 128;
+    public int MaximumPageSize { get; set; } = 256;
+    public SessionBusyBehavior BusyBehavior { get; set; } =
+        SessionBusyBehavior.Reject;
+    public bool VerifySnapshotHashes { get; set; } = true;
+    public bool DeleteOnDispose { get; set; }
+}
+
+public static class ServiceExtensions
+{
+    extension(IServiceCollection services)
+    {
+        public IServiceCollection AddAgentSession(
+            ComponentKey<ISessionCoordinator> coordinatorKey,
+            ComponentKey<ISessionRunCoordinator> runCoordinatorKey,
+            Action<AgentSessionOptions>? configure = null) =>
+            SessionServiceRegistration.AddAgentSession(
+                services,
+                coordinatorKey,
+                runCoordinatorKey,
+                configure);
+
+        public IServiceCollection AddSessionProfile(
+            SessionProfileKey key,
+            Action<SessionProfileOptions> configure) =>
+            SessionServiceRegistration.AddSessionProfile(
+                services,
+                key,
+                configure);
+
+        public IServiceCollection AddSessionStore<TStore>(
+            SessionStoreKey key)
+            where TStore : class, ISessionStore =>
+            SessionServiceRegistration.AddSessionStore<TStore>(services, key);
+
+        public IServiceCollection AddSessionDirectory<TDirectory>()
+            where TDirectory : class, ISessionDirectory =>
+            SessionServiceRegistration.AddSessionDirectory<TDirectory>(services);
+
+        public IServiceCollection ReplaceSessionDirectory<TDirectory>()
+            where TDirectory : class, ISessionDirectory =>
+            SessionServiceRegistration.ReplaceSessionDirectory<TDirectory>(
+                services);
+
+        public IServiceCollection ReplaceSessionCoordinator<TCoordinator>(
+            ComponentKey<ISessionCoordinator> key)
+            where TCoordinator : class, ISessionCoordinator =>
+            SessionServiceRegistration.ReplaceSessionCoordinator<TCoordinator>(
+                services,
+                key);
+    }
+}
+```
+
+The package-internal `SessionServiceRegistration` helper owns the registration
+details and never builds or resolves a service provider.
+
+`AddAgentSession` is idempotent and uses `TryAddKeyed` for each selected
+coordinator/run-coordinator key and `TryAdd` for the engine-wide store catalog,
+store selector, branch service, snapshot validator, and default retention
+policy. The directory is an engine-wide singular: `AddSessionDirectory` rejects
+a conflicting registration and `ReplaceSessionDirectory` is its explicit
+replacement path. Explicit replacement methods replace one singular-per-key axis
+at a time. Stores and event sinks are additive. Store keys are keyed
+registrations; a duplicate key fails build unless an explicit replacement API
+identifies it.
+
+`AddInMemorySessionStore(key)` and `AddSqliteSessionStore(key, configure)` are
+explicit leaf registrations. The in-memory leaf may `TryAdd` its process-local
+directory for explicitly ephemeral profiles; a durable store package may
+`TryAdd` a compatible durable directory. Multiple-store or externally managed
+topologies register or replace one directory explicitly. `AddAgentSession` never
+chooses or hides a store or fabricates durable routing. Runtime code receives
+`ISessionDirectory` and `ISessionStoreSelector`, not `IServiceProvider` or a
+keyed-service locator.
+
+The directory, store catalog, and selector are thread-safe singletons over
+immutable routing snapshots; coordinators and thread-safe stores may also be
+singletons when their dependency graph permits it. A local run lease and mutable
+loaded session view are run-scoped and never retained in a singleton. Directory
+and store clients are owned and disposed by the container that created them;
+returned leases are owned by the caller and disposed exactly once. Different
+session addresses may progress concurrently. Appends and directory records use
+expected state and idempotency, and cancellation never reports an unknown commit
+as definitely absent or reroutes a retry to another store.
+
+## Composition validation and unsupported behavior
+
+A runnable engine requires one engine-wide directory, store catalog, and store
+selector. Each runnable agent definition resolves exactly one selected session
+coordinator, run coordinator, profile, and store; at least one store is
+registered explicitly. Build or agent-definition validation checks unique keys,
+default store/profile references, scope safety, page and batch bounds, snapshot
+hashing, store capabilities, serialization versions, `TimeProvider`, ID
+generators, security authority, hook dispatcher, and required event/audit
+delivery.
+
+Durable sessions cannot select an ephemeral store or a process-local directory.
+The directory must be able to locate every existing configured session store
+without probing, and selected store/directory durability and consistency must be
+compatible. Distributed-active-run mode cannot select a store without fencing.
+Unsupported transactions, branching, snapshots, retention, or migration return
+typed capability results before a partial mutation. Cross-agent, cross-session,
+cross-tenant, missing-policy, or stale-grant access fails closed without
+revealing whether the session exists. No missing store falls back to process
+memory, and no local lock is presented as a distributed lease.
+
+## Canonical record
+
+The session record is append-oriented and versioned. It contains messages, input
+admission and promotion, lifecycle transitions, model and configuration changes,
+tool calls and results, permissions and approval references, compaction, goals,
+delegation, and recovery checkpoints.
+
+AgentKit.IO coordinates admission and promotion through these contracts. It does
+not keep a private queue beside the session. An in-memory store may keep the
+record in process, while a durable store must commit admission atomically with
+the session version used to accept it.
+
+Every entry has stable identity, monotonic sequence, causal linkage, timestamp,
+and schema version. Appends use an expected version and idempotency identity so
+concurrent writers cannot silently overwrite one another and retries cannot
+duplicate facts.
+
+## Branching and compaction
+
+Branches name a committed parent and create a new leaf without changing the
+original path. Editing an earlier message, changing direction, or reverting
+creates branch state rather than rewriting history. Tool effects remain causal
+to their original calls; moving the conversation pointer backward does not undo
+the outside world.
+
+[Compaction](../concepts/context-compaction.md) appends a versioned summary and
+structured checkpoint over a complete semantic range while preserving the
+covered entries. The active request view uses the applicable summary plus the
+exact suffix. Failed or stale compaction never deletes the previous path.
+
+Snapshots may accelerate loading, but each names an exact sequence and content
+hash. A stale or corrupt snapshot is ignored in favor of verified log replay.
+
+## Store boundary
+
+The session store defines authorization, create and load, conditional append,
+pagination, branches, snapshots, consistency, transactions, retention, archival,
+deletion, migration, and failure behavior. Serialization is provider- neutral
+and preserves compatible unknown fields.
+
+Storage client types stay in leaf packages. The runtime interacts only with the
+session contract and does not keep session state forever in a shared singleton.
+
+AgentKit.Session.InMemory supplies deterministic ephemeral storage for tests,
+examples, and short-lived applications. AgentKit.Session.Sqlite supplies the
+first durable local implementation. Future stores follow
+AgentKit.Session.ProviderName. A store is registered separately and composition
+fails when none is present; there is no hidden production default.
+
+## Active-run ownership
+
+The default coordinator permits one active mutating run per session. New work
+must explicitly join, queue, wait, or fail while the session is busy. A local
+lock provides process-local coordination only. Cross-process ownership requires
+the durable execution component's leases and fencing.
+
+Conversation history belongs here. Durable memory across sessions belongs to the
+memory component. The working provider context belongs to the context component.
+Combining them into one cheerful bucket called memory would destroy their policy
+and consistency boundaries.
+
+Both the in-memory and SQLite stores run through the same session-store
+conformance suite for ordering, idempotency, optimistic concurrency, branching,
+pagination, cancellation, and disposal.
+
+## Related concept specifications
+
+- [Sessions, persistence, and branching](../concepts/sessions-persistence-and-branching.md)
+- [Context compaction](../concepts/context-compaction.md)
+- [Input admission and message queues](../concepts/input-admission-and-message-queues.md)

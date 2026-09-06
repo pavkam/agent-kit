@@ -15,13 +15,19 @@ state, but is not itself the durable conversation record.
 
 The context assembler MUST run ordered stages:
 
-1. Load the authorized session branch at a stable version.
-2. Validate, migrate, and repair a request view.
+1. Load the [authorized session branch](sessions-persistence-and-branching.md)
+   at a stable version.
+2. [Validate, migrate, and repair](history-validation-and-repair.md) a request
+   view.
 3. Resolve effective static and dynamic instructions.
-4. Obtain authorized memory/retrieval candidates with provenance.
-5. Apply history processors and active compaction summaries.
-6. Resolve the effective tool descriptions and output schema.
-7. Allocate token/byte budgets by content class.
+4. Obtain
+   [authorized memory/retrieval candidates](memory-retrieval-and-storage.md)
+   with provenance.
+5. Apply history processors and active
+   [compaction summaries](context-compaction.md).
+6. Resolve the effective [tool descriptions](tools-and-toolsets.md) and
+   [output schema](structured-output.md).
+7. Allocate [token/byte budgets](usage-limits-and-budgets.md) by content class.
 8. Select, trim, or summarize candidates deterministically.
 9. Translate roles and parts against the selected provider capability profile.
 10. Return an immutable `ModelRequestContext` plus a manifest of included and

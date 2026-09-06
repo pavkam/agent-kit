@@ -1,0 +1,6 @@
+interface:
+  display_name: "AgentKit Messages and History"
+  short_description: "Shape durable messages and safe history"
+  default_prompt:
+    "Use $agentkit-messages-and-history to implement or review AgentKit message
+    and history behavior."

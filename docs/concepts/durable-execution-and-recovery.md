@@ -32,8 +32,10 @@ Each durable operation MUST have:
 - deterministic operation name/version; and
 - a checkpoint or terminal record.
 
-Model requests, tool calls, compaction, external approval waits, and selected
-middleware MAY be durable operations. Pure context assembly normally remains a
+[Model requests](provider-request-pipeline.md),
+[tool calls](tool-call-lifecycle.md), compaction,
+[external approval waits](deferred-and-human-in-the-loop.md), and selected hooks
+MAY be durable operations. Pure context assembly normally remains a
 deterministic replayable function unless expensive enough to checkpoint.
 
 ## Checkpoints
@@ -83,7 +85,8 @@ Leases MUST have expiration, renewal, owner ID, and monotonically increasing
 fencing token. Every durable write from an owner verifies the current token so
 an expired worker cannot corrupt a resumed run.
 
-Wake signals are hints and MAY coalesce. Durable admitted inputs remain the
+Wake signals are hints and MAY coalesce.
+[Durably admitted inputs](input-admission-and-message-queues.md) remain the
 source of truth, so a lost or duplicate wake does not lose or duplicate work.
 
 ## Provider calls

@@ -180,7 +180,8 @@ require them on later turns.
 
 ## Embeddings
 
-Embedding is a separate model operation with three execution modes:
+Under AgentKit's [semantic-operation contract](semantic-operations.md),
+embedding is a separate model operation with three execution modes:
 
 | Operation          | REST method                                                             | Semantics                             |
 | ------------------ | ----------------------------------------------------------------------- | ------------------------------------- |
@@ -278,17 +279,19 @@ compensation.
 ## Errors and adapter notes
 
 Google APIs use <code>google.rpc.Status</code>-style errors: numeric code,
-message, and typed <code>details[]</code>. Retry resource exhaustion/429 and
-transient 5xx with jitter. Safety blocks can be successful HTTP responses with
-no usable candidate, so map prompt feedback and candidate finish reasons
-separately from transport errors.
+message, and typed <code>details[]</code>. The
+[AgentKit error taxonomy](../concepts/error-taxonomy.md) retains those details
+while separating transport failure from a successful response with safety
+feedback and no usable candidate.
 
 1. Choose Interactions versus GenerateContent explicitly; their state and output
    structures differ.
 2. Use <code>role:"model"</code>, not <code>assistant</code>, on native Content.
 3. Preserve ordered parts, safety metadata, thought signatures, and unknown
    union members.
-4. Keep Live session events separate from unary Content parts.
+4. Keep Live session events separate from unary Content parts and map them
+   through the
+   [typed streaming contract](../concepts/streaming-and-event-protocol.md).
 5. Never assume <code>v1beta</code> types are wire-compatible with
    <code>v1</code>.
 6. Keep embedding task type, output dimension, truncation, and resolved model in

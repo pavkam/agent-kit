@@ -117,6 +117,10 @@ model/tool output, and context-window exceeded.
 
 ## ConverseStream event order
 
+The adapter maps this AWS event-stream union into the
+[provider-neutral stream grammar](../concepts/streaming-and-event-protocol.md)
+without erasing modeled exception events.
+
 The response is an AWS event-stream union:
 
 - <code>messageStart</code>;
@@ -181,6 +185,9 @@ client request token, and tags. Persist the invocation ARN/name and poll
 
 ## Embeddings and Bedrock Agent Runtime rerank
 
+These are independent [semantic-operation capabilities](semantic-operations.md),
+even though AWS places them behind different services and endpoints.
+
 Bedrock Runtime has no provider-neutral embedding operation. Embedding models
 are invoked through <code>InvokeModel</code>, and each model family defines its
 own JSON request, vector response, maximum input, dimensions, normalization, and
@@ -235,6 +242,10 @@ retrieval/orchestration; keep it distinct from the direct caller-supplied-source
 <code>Rerank</code> capability.
 
 ## Error model
+
+Modeled AWS exceptions map through the
+[AgentKit error taxonomy](../concepts/error-taxonomy.md) while retaining the
+exception name, status, request ID, and retry metadata.
 
 Modeled exceptions include:
 

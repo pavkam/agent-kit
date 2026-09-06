@@ -101,6 +101,10 @@ truncation. Do not silently normalize away <code>truncated</code>.
 
 ## Embedding and Ranking API contracts
 
+Embedding and ranking remain independent
+[semantic-operation capabilities](semantic-operations.md), including when they
+use different Google services and identities.
+
 Vertex text and multimodal embeddings use model-family <code>:predict</code>
 schemas. For current text-embedding families, each instance can carry
 <code>content</code>, <code>task_type</code>, optional document
@@ -145,6 +149,10 @@ rerank adapter with its own endpoint, credentials/capability checks, quotas, and
 error mapping.
 
 ## OpenAI-compatible endpoint
+
+Compatibility is a distinct
+[API-family capability profile](../concepts/model-providers-and-capabilities.md),
+not evidence that every OpenAI field is supported.
 
 Vertex exposes Chat Completions compatibility at a resource-qualified endpoint
 such as:
@@ -197,6 +205,10 @@ sequenceDiagram
 
 ## Bidirectional Live protocol
 
+Live events map into the
+[AgentKit streaming contract](../concepts/streaming-and-event-protocol.md) while
+remaining separate from unary GenerateContent parts.
+
 <code>LlmBidiService.BidiGenerateContent</code> is a bidirectional streaming
 RPC. Client messages form a one-of setup, incremental client content, realtime
 media input, playback/activity signals, and tool responses. Server messages form
@@ -207,6 +219,10 @@ Use official SDKs unless implementing gRPC framing, flow control, OAuth refresh,
 reconnect, and session resumption is itself a product requirement.
 
 ## Errors, quota, and observability
+
+REST and gRPC failures map through the
+[stable AgentKit error taxonomy](../concepts/error-taxonomy.md) without
+discarding Google status details or operation identity.
 
 REST errors use <code>google.rpc.Status</code>; gRPC uses canonical status codes
 and typed details. Retry <code>RESOURCE_EXHAUSTED</code>/429 only after the

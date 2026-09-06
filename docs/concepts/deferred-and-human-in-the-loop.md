@@ -1,4 +1,4 @@
-# Deferred tools and human-in-the-loop
+# Deferred operations and human-in-the-loop
 
 **Status:** Normative  
 **Depends on:** [Permissions and approvals](permissions-approvals-and-trust.md),
@@ -6,15 +6,21 @@
 
 ## Purpose
 
-A tool can require later approval, external work, or asynchronous completion.
-Deferral suspends a causal operation without holding an in-memory task or
-pretending failure.
+Deferral extends the [tool-call lifecycle](tool-call-lifecycle.md) across a
+[settled run](run-lifecycle-and-settlement.md) by storing enough durable
+correlation for a later authorized continuation.
+
+Any protected operation can require later approval, external work, or
+asynchronous completion. Deferral suspends that causal operation without holding
+an in-memory task or pretending failure. Tool calls are one use case; file,
+network, process, memory, session, model-egress, MCP, and delegation operations
+use the same lifecycle.
 
 ## Deferral kinds
 
 - **Approval required:** execution waits for an authorized human or policy
   response.
-- **Call deferred:** an external actor or durable worker will perform the call.
+- **Operation deferred:** an external actor or durable worker will perform it.
 - **Result pending:** execution started, but the result will arrive later.
 - **Provider suspended:** the provider returned a resumable continuation handle.
 
@@ -24,26 +30,25 @@ required to resume.
 ## Deferred request
 
 ```csharp
-public sealed record DeferredToolRequest(
+public sealed record DeferredOperationRequest(
     DeferredRequestId Id,
     SessionId SessionId,
     RunId RunId,
-    ToolCallId ToolCallId,
+    OperationId OperationId,
     DeferralKind Kind,
-    ToolSnapshot Tool,
-    JsonElement ValidatedArguments,
-    string ArgumentFingerprint,
-    PermissionDecisionReference Permission,
+    ProtectedOperation Operation,
+    InputFingerprint InputFingerprint,
+    SecurityDecisionReference SecurityDecision,
     DateTimeOffset CreatedAt,
     DateTimeOffset? ExpiresAt,
-    long SessionVersion,
+    SessionVersion SessionVersion,
     ExtensionData Extensions);
 ```
 
-Arguments MUST be validated before deferral. Sensitive values require encrypted
-authorized storage and redacted presentation. A deferred request is durable; the
-runtime MUST NOT depend on a captured closure, service scope, task, or
-cancellation source to resume it.
+Inputs and resources MUST be canonicalized and validated before deferral.
+Sensitive values require encrypted authorized storage and redacted presentation.
+A deferred request is durable; the runtime MUST NOT depend on a captured
+closure, service scope, task, or cancellation source to resume it.
 
 ## Run outcome
 
@@ -57,14 +62,14 @@ observable and equivalent to the external path.
 
 ## Resolution admission
 
-A resolution is new authenticated input containing request ID, call ID,
+A resolution is new authenticated input containing request ID, operation ID,
 resolution kind, approval/result payload, resolver identity, timestamp, and an
 idempotency key. The session executor MUST:
 
 1. load the exact unresolved request;
 2. verify session/tenant ownership, expiry, version, and unresolved state;
 3. validate resolution schema and correlation;
-4. revalidate arguments and permission when required;
+4. revalidate resources, inputs, and security authority when required;
 5. atomically commit one resolution; and
 6. wake a continuation run.
 
@@ -73,20 +78,22 @@ resolution fails typed and cannot overwrite the first.
 
 ## Approval resolution
 
-Approval by itself is not a tool result. After approval, the runtime revalidates
-the exact call and executes it through the normal record/invoke/result pipeline.
-Denial creates a terminal denied result or policy halt.
+Approval by itself is not an operation result. After approval, the runtime
+revalidates the exact operation and executes it through its normal
+record/effect/result pipeline. A tool call uses the tool pipeline; another
+component uses its own typed lifecycle. Denial creates a terminal denied result
+or policy halt.
 
-If a human edits arguments, the edit forms a new fingerprint and MUST undergo
-schema validation and fresh policy evaluation. The original approval request
-cannot authorize expanded scope.
+If a human edits an input or resource, the edit forms a new fingerprint and MUST
+undergo domain validation and fresh security evaluation. The original approval
+request cannot authorize changed or expanded scope.
 
 ## Externally executed result
 
-An external result MUST include tool/call/request identity, terminal status,
+An external result MUST include operation/request identity, terminal status,
 bounded content, side-effect certainty, safe error details, and producer
-attestation appropriate to the host. The runtime validates it before committing
-the correlated tool result.
+attestation appropriate to the host. Tool results also retain tool-call
+identity. The runtime validates the result before committing it.
 
 The external worker MUST use an idempotency key for mutating calls. AgentKit
 must not retry an ambiguous externally started effect.
@@ -102,7 +109,7 @@ cancellation are separate audited transitions.
 
 - A process restart can list and resolve outstanding requests.
 - Equivalent duplicate resolution is idempotent; conflicting resolution fails.
-- Edited arguments require new validation and permission.
+- Edited inputs or resources require new validation and security evaluation.
 - Inline and external handlers emit the same semantic event sequence.
 - Expired approval cannot start execution.
 - A deferred run settles and later resolution starts a causally linked run.

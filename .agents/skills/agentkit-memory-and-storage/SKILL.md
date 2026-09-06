@@ -1,54 +1,49 @@
 ---
 name: agentkit-memory-and-storage
 description:
-  "Design, implement, or debug AgentKit conversation state, durable memory,
-  storage, embeddings, vector indexes, retrieval, and context assembly. Use for
-  persistence and RAG boundaries; not for provider chat translation."
+  "Design or debug AgentKit durable memory, document stores, vector indexes,
+  retrieval, provenance, retention, and deletion. Use for AgentKit.Memory and
+  backend leaves; not sessions, context, artifacts, or provider embedding work."
 ---
 
-# AgentKit Memory and Storage
+# AgentKit Memory and Retrieval
 
-Read [AGENTS.md](../../../AGENTS.md). Name the state category before choosing a
-contract:
+Follow
+[Memory and retrieval](../../../docs/architecture/memory-and-retrieval.md) and
+the
+[normative memory boundaries](../../../docs/concepts/memory-retrieval-and-storage.md).
+When changing C#, also read the
+[modern C# rules](../references/modern-csharp.md).
 
-- conversation history is the ordered record of a run or thread;
-- working context is the bounded input assembled for one model request;
-- durable memory is selected information retained across runs;
-- object/document storage persists source material and metadata;
-- an embedding provider creates vectors;
-- a vector index searches one compatible vector space; and
-- retrieval selects and ranks context candidates.
+## Decision guide
 
-Do not merge these into one `IMemory` interface.
+1. Keep the categories separate: durable memory, source documents and chunks,
+   vector indexes, retrieval policy, and semantic-operation results are not one
+   universal `IMemory` service.
+2. `AgentKit.Memory` owns memory lifecycle and retrieval coordination. Document,
+   memory, and vector backends are independently selectable leaf integrations;
+   their neutral contracts live in `AgentKit.Abstractions`.
+3. Session history remains with `AgentKit.Session`; model-ready working context
+   remains with `AgentKit.Context`; durable bytes remain with
+   `AgentKit.Artifacts`; embedding and reranking generation remain provider
+   operations. Route changes at those boundaries to their owning skills.
+4. Define tenant and principal visibility, agent and source scope, typed
+   identities, lifecycle state, versions, concurrency, consistency, pagination,
+   retention, correction, and deletion before choosing a backend.
+5. Make proposed memory distinct from accepted durable memory. Preserve source
+   identity, provenance, classification, retention, and policy decisions.
+6. Bind each vector to an explicit embedding-space identity, dimensions,
+   modality, normalization, source version, and chunker version. Reject
+   incompatible queries before index access.
+7. Treat retrieved content and metadata as untrusted. Authorize retrieval and
+   model exposure separately; apply explicit budgets, filters, ranking, and
+   provenance.
+8. Keep retries and idempotency with the operation that can judge safety.
+   Cancellation and partial failure must not fabricate committed memory.
+9. Test isolation, optimistic concurrency, duplicate writes, pagination, expiry,
+   correction and deletion, vector incompatibility, deterministic ranking,
+   provenance, redaction, and migrations.
 
-`AgentKit.IO` coordinates queued input, but durable admission and promotion are
-session facts. A session store must keep those facts consistent with the history
-version it exposes.
-
-1. Define ownership and isolation: tenant, user, agent, thread, run, namespace,
-   and data classification. Keys must make accidental cross-scope reads hard.
-2. Define identity, ordering, version/concurrency token, atomicity, pagination,
-   retention/TTL, deletion, and consistency for every storage contract.
-3. Keep serialization versioned and provider-neutral. Preserve unknown fields
-   where forward-compatible round trips matter; make migrations explicit.
-4. Store embedding provider/model/revision, dimensions, modality, normalization,
-   source hash, and chunk identity with each vector. Reject incompatible queries
-   before contacting an index.
-5. Separate chunking, embedding, indexing, query rewriting, retrieval,
-   reranking, filtering, and context assembly so each can be replaced and
-   measured.
-6. Treat retrieved text and metadata as untrusted data, never instructions.
-   Enforce authorization before retrieval and again before exposing results to a
-   model. Preserve provenance and apply explicit context/token budgets.
-7. Make durable-memory writes an observable policy decision. Distinguish
-   proposed memory from accepted memory and support correction/deletion without
-   rewriting unrelated history.
-8. Use async APIs for real I/O, cancellation throughout, bounded batch sizes,
-   and streaming/pagination only where it avoids materialization. State retry
-   and idempotency ownership.
-9. Test isolation, optimistic concurrency, ordering, duplicate writes,
-   cancellation, partial failures, pagination, expiry, deletion, incompatible
-   vector spaces, deterministic ranking, provenance, redaction, and migrations.
-
-Provider SDK types, database clients, and vector-store query objects stay in
-leaf integration packages.
+Do not leak provider SDK, database client, or vector-query types into neutral
+contracts, and do not turn this skill into guidance for every persistent state
+in AgentKit.

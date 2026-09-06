@@ -1,0 +1,177 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Abstractions.Tests.Identity;
+
+using System.Reflection;
+
+using AgentKit;
+
+/// <summary>
+/// A reusable conformance suite proving that every AgentKit identity value
+/// type follows the shared construction-validation contract described in
+/// <c>docs/architecture/composition-and-configuration.md#typed-identity</c>:
+/// a default/empty value is rejected by the constructor, and a genuine value
+/// round-trips through <c>Value</c> unchanged. Running this once via
+/// reflection, instead of duplicating near-identical tests per type, is what
+/// keeps this suite complete as new identity types are added.
+/// </summary>
+public sealed class IdentityValueTypeConformanceTests
+{
+    private static readonly Assembly _abstractionsAssembly = typeof(AgentId).Assembly;
+
+    public static TheoryData<Type> GuidBackedIdentityTypes => ToTheoryData(GetIdentityTypes(typeof(Guid)));
+
+    public static TheoryData<Type> StringBackedIdentityTypes => ToTheoryData(GetIdentityTypes(typeof(string)));
+
+    public static TheoryData<Type> LongBackedOrderingTypes => ToTheoryData(GetIdentityTypes(typeof(long)));
+
+    [Fact]
+    public void GuidBackedIdentityTypes_WhenDiscovered_ContainsExpectedCount() =>
+        // Guards against the reflection query silently matching nothing (for
+        // example after a refactor) and the theories below passing vacuously.
+        GetIdentityTypes(typeof(Guid)).Count.ShouldBeGreaterThanOrEqualTo(13);
+
+    [Fact]
+    public void StringBackedIdentityTypes_WhenDiscovered_ContainsExpectedCount() => GetIdentityTypes(typeof(string)).Count.ShouldBeGreaterThanOrEqualTo(20);
+
+    [Fact]
+    public void LongBackedOrderingTypes_WhenDiscovered_ContainsExpectedCount() => GetIdentityTypes(typeof(long)).Count.ShouldBeGreaterThanOrEqualTo(2);
+
+    [Theory]
+    [MemberData(nameof(GuidBackedIdentityTypes))]
+    public void Constructor_WhenGuidIsEmpty_ThrowsArgumentOutOfRangeException(Type identityType)
+    {
+        var exception = Should.Throw<TargetInvocationException>(
+            () => Activator.CreateInstance(identityType, Guid.Empty));
+
+        _ = exception.InnerException.ShouldBeOfType<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [MemberData(nameof(GuidBackedIdentityTypes))]
+    public void Constructor_WhenGuidIsNonEmpty_RoundTripsThroughValue(Type identityType)
+    {
+        var guid = Guid.NewGuid();
+
+        var instance = Activator.CreateInstance(identityType, guid);
+
+        GetValueProperty(identityType).GetValue(instance).ShouldBe(guid);
+    }
+
+    [Theory]
+    [MemberData(nameof(StringBackedIdentityTypes))]
+    public void Constructor_WhenStringIsNull_ThrowsArgumentNullException(Type identityType)
+    {
+        // ArgumentException.ThrowIfNullOrWhiteSpace, which every
+        // string-backed identity constructor delegates to, throws the more
+        // specific ArgumentNullException for a null argument and the base
+        // ArgumentException only for empty/whitespace text.
+        var exception = Should.Throw<TargetInvocationException>(
+            () => Activator.CreateInstance(identityType, [null]));
+
+        _ = exception.InnerException.ShouldBeOfType<ArgumentNullException>();
+    }
+
+    [Theory]
+    [MemberData(nameof(StringBackedIdentityTypes))]
+    public void Constructor_WhenStringIsEmptyOrWhitespace_ThrowsArgumentException(Type identityType)
+    {
+        foreach (var invalid in new[] { string.Empty, "   " })
+        {
+            var exception = Should.Throw<TargetInvocationException>(
+                () => Activator.CreateInstance(identityType, invalid));
+
+            _ = exception.InnerException.ShouldBeOfType<ArgumentException>();
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(StringBackedIdentityTypes))]
+    public void Constructor_WhenStringIsValid_RoundTripsThroughValue(Type identityType)
+    {
+        const string value = "sample-value";
+
+        var instance = Activator.CreateInstance(identityType, value);
+
+        GetValueProperty(identityType).GetValue(instance).ShouldBe(value);
+    }
+
+    [Theory]
+    [MemberData(nameof(LongBackedOrderingTypes))]
+    public void Constructor_WhenLongIsNegative_ThrowsArgumentOutOfRangeException(Type identityType)
+    {
+        var exception = Should.Throw<TargetInvocationException>(
+            () => Activator.CreateInstance(identityType, -1L));
+
+        _ = exception.InnerException.ShouldBeOfType<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [MemberData(nameof(LongBackedOrderingTypes))]
+    public void Constructor_WhenLongIsZeroOrPositive_RoundTripsThroughValue(Type identityType)
+    {
+        foreach (var value in new[] { 0L, 42L })
+        {
+            var instance = Activator.CreateInstance(identityType, value);
+
+            GetValueProperty(identityType).GetValue(instance).ShouldBe(value);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(GuidBackedIdentityTypes))]
+    [MemberData(nameof(StringBackedIdentityTypes))]
+    [MemberData(nameof(LongBackedOrderingTypes))]
+    public void Equality_WhenValuesMatch_InstancesAreStructurallyEqual(Type identityType)
+    {
+        var value = SampleValueFor(identityType);
+
+        var first = Activator.CreateInstance(identityType, value);
+        var second = Activator.CreateInstance(identityType, value);
+
+        first.ShouldBe(second);
+        first!.GetHashCode().ShouldBe(second!.GetHashCode());
+    }
+
+    private static object SampleValueFor(Type identityType)
+    {
+        var valueType = GetValueProperty(identityType).PropertyType;
+
+        return valueType switch
+        {
+            _ when valueType == typeof(Guid) => Guid.NewGuid(),
+            _ when valueType == typeof(string) => "sample-value",
+            _ when valueType == typeof(long) => 7L,
+            _ => throw new NotSupportedException($"Unsupported identity value type: {valueType}."),
+        };
+    }
+
+    private static PropertyInfo GetValueProperty(Type identityType) =>
+        identityType.GetProperty("Value")
+        ?? throw new InvalidOperationException($"{identityType} does not declare a Value property.");
+
+    private static IReadOnlyList<Type> GetIdentityTypes(Type parameterType) =>
+        [.. _abstractionsAssembly
+            .GetTypes()
+            .Where(type =>
+                type is { IsValueType: true, Namespace: "AgentKit", IsGenericTypeDefinition: false }
+                && HasSingleParameterPublicConstructor(type, parameterType))];
+
+    private static bool HasSingleParameterPublicConstructor(Type type, Type parameterType) =>
+        type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .Any(constructor =>
+                constructor.GetParameters() is [{ ParameterType: var actual }]
+                && actual == parameterType);
+
+    private static TheoryData<Type> ToTheoryData(IEnumerable<Type> types)
+    {
+        var data = new TheoryData<Type>();
+        foreach (var type in types)
+        {
+            data.Add(type);
+        }
+
+        return data;
+    }
+}

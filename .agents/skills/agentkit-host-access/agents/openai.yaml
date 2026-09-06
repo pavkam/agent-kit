@@ -1,0 +1,6 @@
+interface:
+  display_name: "AgentKit Host Access"
+  short_description: "Build protected host adapters"
+  default_prompt:
+    "Use $agentkit-host-access to design an AgentKit file, network, or process
+    boundary."

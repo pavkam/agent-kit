@@ -9,32 +9,54 @@ domain value does not earn a NuGet package merely because it has a name. The
 result is granular where applications need choice and compact where splitting
 would only create ceremony.
 
+One built `AgentEngine` is the total process-level composition and may host many
+immutable `AgentDefinition` values and concurrent run scopes. Packages register
+engine-wide capabilities and catalogs; an agent definition selects from those
+catalogs, and each invocation creates isolated mutable run state. No package
+registers a singleton "current agent."
+
 ## Foundation projects
 
-| Project               | Responsibility                                                                           | Direct dependencies                                         |
-| --------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| AgentKit.Abstractions | Provider-neutral contracts and immutable domain values used by every package             | BCL and Microsoft abstractions required by public contracts |
-| AgentKit              | AgentEngine, AgentEngineBuilder, standalone and hosted composition, and build validation | AgentKit.Abstractions and Microsoft.Extensions abstractions |
+The
+[architecture dependency rules](../concepts/architecture-and-dependency-boundaries.md)
+govern every project edge listed below.
+
+| Project               | Responsibility                                                                                                                         | Direct dependencies                                         |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| AgentKit.Abstractions | [Provider-neutral contracts, typed identities, stable errors, deterministic primitives, and immutable values](foundation-contracts.md) | BCL and Microsoft abstractions required by public contracts |
+| AgentKit              | Process-level AgentEngine, builder, agent-definition catalog/validation, standalone and hosted composition, and build validation       | AgentKit.Abstractions and Microsoft.Extensions abstractions |
 
 AgentKit.Abstractions never references AgentKit or a concrete implementation.
 AgentKit never references feature packages. Applications choose all concrete
-parts explicitly.
+parts explicitly. AgentKit may `TryAdd` only its documented foundation defaults,
+including `TimeProvider.System` and the generic
+`IIdentifierGenerator<TIdentifier>`, `IRandomizer`, and `IContentHasher`
+implementations. Those defaults are replaceable and do not authorize effects or
+pull in a runtime package.
 
 ## Runnable spine
 
-| Project              | Responsibility                                                               | Registration        |
-| -------------------- | ---------------------------------------------------------------------------- | ------------------- |
-| AgentKit.Loop        | Default agent loop, turn coordination, budgets, and run settlement           | AddAgentLoop        |
-| AgentKit.Context     | Default context assembler and ordered contributor pipeline                   | AddAgentContext     |
-| AgentKit.IO          | Input admission, queued promotion, live event fan-out, and final results     | AddAgentIO          |
-| AgentKit.Session     | Session coordination, active-run ownership, branching, and store use         | AddAgentSession     |
-| AgentKit.Permissions | Permission policy evaluation, approval coordination, and human control       | AddAgentPermissions |
-| AgentKit.Providers   | Model catalog, selection, capability validation, and model request execution | AddAgentProviders   |
+| Project                     | Responsibility                                                                                        | Registration              |
+| --------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------- |
+| AgentKit.Loop               | Default agent loop, turn coordination, state transitions, and run settlement                          | AddAgentLoop              |
+| AgentKit.Budgets            | Hierarchical limits, atomic reservations, accounting, and limit outcomes                              | AddAgentBudgets           |
+| AgentKit.Context            | Default context assembler and ordered contributor pipeline                                            | AddAgentContext           |
+| AgentKit.Context.Compaction | [Semantic cut selection, summarization, validation, and compaction activation](context-compaction.md) | AddAgentContextCompaction |
+| AgentKit.Hooks              | Hook dispatch, ordering, mutation validation, and immutable per-run catalogs                          | AddAgentHooks             |
+| AgentKit.IO                 | Input admission, queued promotion, live event fan-out, and final results                              | AddAgentIO                |
+| AgentKit.Output             | Output contracts, extraction, validation, repair decisions, and conversion                            | AddAgentOutput            |
+| AgentKit.Session            | Session coordination, active-run ownership, branching, and store use                                  | AddAgentSession           |
+| AgentKit.Permissions        | Security authority, policy evaluation, approvals, grants, and human control                           | AddAgentPermissions       |
+| AgentKit.Providers          | Model catalog, selection, capability validation, and model request execution                          | AddAgentProviders         |
 
-The facade requires one implementation of each spine contract but does not care
-whether these first-party projects or application implementations supply it. It
-also requires an explicitly selected session store, at least one conversational
-model, and a TimeProvider.
+The engine-wide facade requires one agent-definition catalog/validator, a
+`TimeProvider`, and identifier generators for every framework-created typed ID.
+Each published agent definition resolves one effective keyed implementation for
+every required spine axis and one explicit session-store/model selection; the
+catalogs may contain many alternatives. It does not care whether first-party or
+application packages supply those keys. AgentKit.Permissions supplies
+fail-closed defaults; protected operations deny or defer when no configured
+policy or approval path can grant them.
 
 AgentKit.IO owns runtime I/O coordination, not durable conversational truth.
 Durable admission and queued-input facts are written through session contracts;
@@ -42,6 +64,105 @@ the session coordinator remains authoritative for ordering and recovery.
 Reusable channel adapters may use leaf packages such as AgentKit.IO.AspNetCore
 or AgentKit.IO.Console when their behavior is substantial enough to justify a
 package.
+
+## Type, package, registration, and lifetime map
+
+This is the compact ownership topology. Component documents define the full
+contracts; this table prevents a default or lifetime from quietly migrating to
+the facade.
+
+| Boundary                 | Neutral contracts and values                                                                 | First-party owner / registration                                                                                                | Cardinality and normal lifetime                                                                                  |
+| ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Engine and definitions   | `AgentDefinition`, `IAgentDefinitionCatalog`, typed IDs, `IIdentifierGenerator<TIdentifier>` | AgentKit / `AddAgentKit` or `AgentEngine.CreateBuilder`                                                                         | Engine-wide singular catalog/validator/generators; additive definition sources; one scope per run                |
+| Loop and run             | `IAgentLoop`, run context/view, limits and outcomes                                          | AgentKit.Loop / `AddAgentLoop`                                                                                                  | Keyed, singular per definition selection; default loop and mutable run services scoped                           |
+| Budgets                  | `IBudgetAuthority`, `IBudgetScope`, reservations, limits, usage                              | AgentKit.Budgets / `AddAgentBudgets`                                                                                            | Engine/tenant authority with run- and operation-owned child scopes and reservations                              |
+| Input/output and context | I/O coordinator/publisher, queues, context assembler/contributors, compaction contracts      | AgentKit.IO / `AddAgentIO`; AgentKit.Context / `AddAgentContext`; AgentKit.Context.Compaction / `AddAgentContextCompaction`     | Keyed, singular assembler and compactor selections; additive ordered contributors/strategies                     |
+| Structured output        | output definitions, resolver, processor, validators, repair decisions                        | AgentKit.Output / `AddAgentOutput`                                                                                              | Keyed run-scoped processor; immutable definitions; additive ordered validators                                   |
+| Identity                 | execution identity, issuer mappings, validation and delegation derivation                    | AgentKit.Identity / `AddAgentIdentity`; authentication-specific leaves                                                          | Scoped ingress resolution; immutable identity values flow downstream without callback                            |
+| Hooks                    | `IHookDispatcher`, typed hook interfaces and `EventArgs`                                     | AgentKit.Hooks / `AddAgentHooks`                                                                                                | Engine-wide dispatcher; agent-selected catalog/profile; additive keyed hooks with declared lifetimes             |
+| Session                  | coordinator plus `ISessionStore` and typed entries/cursors                                   | AgentKit.Session / `AddAgentSession`; explicit store packages                                                                   | One effective coordinator/store profile per definition; keyed stores normally singleton/thread-safe              |
+| Security                 | authority, policies, approvals, grants, audit contracts                                      | AgentKit.Permissions / `AddAgentPermissions`                                                                                    | One effective authority/policy/approval selection per definition; additive policies/handlers/sinks               |
+| Providers                | model catalog/selector/executor and keyed operation contracts                                | AgentKit.Providers / `AddAgentProviders`; concrete provider `Add...` packages                                                   | Engine-wide catalog; keyed selector/executor per definition; additive models/providers; executor scoped          |
+| Tools                    | tool providers/catalog/resolver/validator/scheduler/invoker                                  | AgentKit.Tools and AgentKit.Tools.ToolName / package `Add...Tool`                                                               | Keyed effective runtime/toolset selection; additive tool sources; invocation state operation-owned               |
+| Memory/goals/durability  | Narrow stores, retrieval, goal/delegation, checkpoint/lease contracts                        | `AgentKit.Memory.*`, AgentKit.Goals; AgentKit.Durability / `AddAgentDurability` plus `AgentKit.Durability.<BackendName>` leaves | Optional; singular coordinators/catalogs with additive keyed strategies/backends/stores; explicit durable owners |
+| Observation              | `IRunEventSink`, `ISecurityAuditSink`, redaction values                                      | AgentKit.Observability.OpenTelemetry / `AddOpenTelemetryObservability`                                                          | Additive keyed sinks with declared lifetimes; singular replaceable redactor when capture is enabled              |
+| MCP                      | Neutral MCP lifecycle records plus core tool/retrieval/security contracts                    | AgentKit.Mcp.Client / `AddMcpClient` and endpoint registrations; AgentKit.Mcp.Server / `AddMcpServer`                           | Singular client factory, additive keyed endpoints/adapters; each open session explicitly owned                   |
+| File system              | Narrow read/write/directory/metadata/watch contracts                                         | AgentKit.FileSystem / `AddOperatingSystemFileSystem`; AgentKit.FileSystem.InMemory / `AddInMemoryFileSystem`                    | Singular narrow services per profile key; singleton services, operation-owned handles                            |
+| Network                  | `INetworkNameResolver`, `INetworkTransport`, request/response values                         | AgentKit.Network / `AddAgentNetwork`; AgentKit.Network.InMemory / `AddInMemoryNetwork`                                          | Singular resolver/transport pair per profile key; singleton pools, operation-owned responses                     |
+| Processes                | resolver, executor, sandbox, handle/output values                                            | AgentKit.Processes / `AddAgentProcesses`; AgentKit.Processes.Scripted / `AddScriptedProcesses`                                  | Singular resolver/executor per key, keyed sandboxes; singleton services, caller-owned handles                    |
+| Artifacts                | artifact references, coordinator, store catalog, retention, integrity                        | AgentKit.Artifacts / `AddAgentArtifacts`; explicit backend leaves                                                               | Keyed coordinators/stores; operation-owned streams; immutable references                                         |
+| Evaluation               | `IEvaluationRunner`, keyed evaluators, stores, exporters                                     | AgentKit.Evaluation / `AddAgentEvaluation`                                                                                      | Optional singular runner, additive/keyed collaborators; isolated ordinary agent run scopes                       |
+
+Singular defaults use `TryAdd` and have an explicit ordinary-DI replacement
+path. Additive services preserve deterministic registration order. Keyed
+services reject conflicting keys and are selected by an injected catalog or
+selector, never by passing `IServiceProvider` into runtime code. Repeated
+identical package calls are idempotent; conflicting configuration fails
+validation unless the registration explicitly defines a merge.
+
+Every behaviorally meaningful choice lives in one of four places: DI chooses
+implementations and topology, package options choose validated process defaults,
+an immutable agent definition selects reusable agent behavior, and run options
+provide bounded per-run overrides. A package owns and documents its safe
+defaults. The AgentKit facade cannot instantiate a hidden loop, store, provider,
+security authority, tool, exporter, protocol adapter, or host-access backend.
+
+## Acyclic dependency graphs
+
+AgentKit validates two different graphs. Passing the project-reference graph is
+necessary, but it does not prove the DI graph can be constructed.
+
+The project graph has fixed ranks:
+
+```text
+applications, hosts, and tests
+    -> vendor, transport, persistence, hosting, and backend leaves
+        -> focused first-party runtime packages
+            -> AgentKit.Abstractions
+                -> BCL and Microsoft.Extensions abstractions
+
+applications and hosts -> AgentKit facade -> AgentKit.Abstractions
+```
+
+AgentKit runtime packages do not reference one another. They exchange only
+contracts and values from AgentKit.Abstractions. A leaf may reference the one or
+more runtime extension surfaces it adapts, but an edge never points back from a
+runtime package to that leaf. AgentKit remains a sibling facade, not a parent
+assembly referenced by runtime packages.
+
+The runtime service graph is also directed:
+
+```text
+AgentEngine runtime -> run-scope factory -> compiled run plan -> agent loop
+agent loop -> session/input/context/provider/tools/output/budget collaborators
+context -> history/retrieval/compactor/output-definition collaborators
+protected component -> security authority -> policy/grant/approval stores
+consumer -> artifact coordinator -> artifact backend
+all components -> hook dispatcher and immutable event sinks
+```
+
+The lower node never constructor-depends on the caller above it. In particular:
+
+- session, approval, grant, budget, artifact, and durability stores use their
+  own narrow persistence contracts; they do not implement durability by calling
+  a higher coordinator that already depends on them;
+- output processing returns retry or repair decisions to the loop and never
+  calls the provider executor;
+- model-backed compaction uses a dedicated summary-generation operation and
+  never calls the context assembler;
+- identity resolution finishes before admission or run activation; downstream
+  components consume the immutable identity and never call the resolver;
+- event sinks and hooks do not call the dispatcher or effecting component during
+  the same dispatch; explicit nested work is a new bounded operation; and
+- artifact finalization never appends its own session/tool record. The caller
+  owns cross-store prepare/finalize or outbox coordination.
+
+Composition validation builds descriptors for every closed constructor and
+factory graph, rejects strongly connected components, checks keyed selections,
+and reports the full dependency path. Deferred factories, `Lazy<T>`, `Func<T>`,
+scopes, or service-provider lookups are not accepted as ways to hide a cycle. A
+factory is valid only when it is an explicit operation boundary whose created
+graph is independently acyclic and whose lifetime is owned.
 
 ## Session storage
 
@@ -57,6 +178,11 @@ The session coordinator and store are registered separately. There is no hidden
 production store. Composition fails when a session coordinator has no store.
 
 ## Provider runtime and integrations
+
+This split implements the
+[provider identity and capability model](../concepts/model-providers-and-capabilities.md):
+neutral selection stays in the runtime package, while wire behavior stays in
+leaf integrations.
 
 AgentKit.Providers contains no vendor protocol. It combines configured model
 descriptors, selects a model, validates required capabilities, and executes
@@ -112,7 +238,8 @@ small packages:
 
 - AgentKit.Tools.Read;
 - AgentKit.Tools.Write;
-- AgentKit.Tools.Skill; and
+- AgentKit.Tools.Skill;
+- AgentKit.Tools.Web; and
 - future packages following AgentKit.Tools.ToolName.
 
 AgentKit.Tools.Skill registers both the skill tool and its context contributor.
@@ -120,12 +247,32 @@ Read and write tools depend on file-system contracts, not the operating-system
 implementation. Installing a tool package does not grant permission to invoke
 it.
 
-## File system
+## Protected host access
 
 AgentKit.FileSystem supplies the real operating-system implementation of the
 file-system contracts. AgentKit.FileSystem.InMemory supplies a deterministic
 implementation for applications and tests. Framework and tool packages depend on
-the abstractions only.
+the abstractions only. The registration entry points are
+`AddOperatingSystemFileSystem` and `AddInMemoryFileSystem`.
+
+AgentKit.Network supplies security-aware DNS resolution, connection, redirect,
+and data-egress behavior. AgentKit.Network.InMemory supplies deterministic
+responses and network traces for tests. AgentKit.Tools.Web depends on these
+abstractions rather than a concrete HTTP stack. `AddAgentNetwork` and
+`AddInMemoryNetwork` select the real or deterministic implementation explicitly.
+
+AgentKit.Processes supplies security-aware process creation, arguments,
+environment, working-directory, sandbox, cancellation, and output behavior.
+AgentKit.Processes.Scripted supplies deterministic executions for tests. Shell
+and code-execution tools depend on these abstractions rather than calling
+operating-system process APIs directly. `AddAgentProcesses` and
+`AddScriptedProcesses` register these alternatives.
+
+Each real implementation re-canonicalizes its operation, validates and consumes
+the bounded security grant immediately before the effect, and fails closed when
+enforcement or required audit is unavailable. A tool-level decision is not
+permission to change the path, destination, executable, argument, content, or
+principal at the lower boundary. Keyed host profiles do not weaken this rule.
 
 ## Optional components
 
@@ -133,10 +280,13 @@ the abstractions only.
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | AgentKit.Memory and AgentKit.Memory.BackendName | Memory policy, retrieval, documents, and storage or vector integrations                                 |
 | AgentKit.Goals                                  | Goal lifecycle, attempts, delegation, communication, and joins                                          |
-| AgentKit.Durability.BackendName                 | Checkpoints, leases, fencing, and workflow-engine adaptation                                            |
+| AgentKit.Durability                             | Provider-neutral durability coordinator, recovery, catalog, selector, codecs, profiles, and fencing     |
+| AgentKit.Durability.BackendName                 | Concrete journal, lease, checkpoint, or workflow-engine backend adaptation                              |
 | AgentKit.Mcp.Client and AgentKit.Mcp.Server     | MCP client and server lifecycle, transports, and primitive adapters                                     |
 | AgentKit.Observability.OpenTelemetry            | Activity, metric, log, and event export without runtime control                                         |
 | AgentKit.Evaluation                             | Dataset execution, evaluators, result comparison, and reproducible reports through public AgentKit APIs |
+| AgentKit.Identity                               | Trusted-ingress identity normalization, issuer mapping, validation, and delegation derivation           |
+| AgentKit.Artifacts and backend leaves           | Durable content references, integrity, retention, reconciliation, and explicit storage backends         |
 
 Optional components do not become hidden facade dependencies. Their service
 registrations validate required collaborators only when the component is added.
@@ -148,11 +298,15 @@ Some boundaries stay explicit without receiving a catch-all package:
 - messages, content, events, identities, and result values live in
   AgentKit.Abstractions;
 - canonical history and queued-input truth live behind AgentKit.Session;
-- extensions live with the component they extend rather than in a universal
-  AgentKit.Extensions package;
+- hook implementations live with the feature they extend, while the shared
+  dispatcher and ordering machinery live in AgentKit.Hooks; there is no
+  universal AgentKit.Extensions package;
 - provider retries, tool retries, and run deadlines remain with their owning
   components rather than a generic AgentKit.Resilience layer that can repeat
   unsafe work;
+- stable error values live in AgentKit.Abstractions, while each effect boundary
+  owns its mapper; there is no central error manager that depends on every
+  subsystem;
 - credentials remain inside concrete integration boundaries and never enter a
   generic secret bag; and
 - TimeProvider is the clock abstraction. AgentKit does not wrap it for sport.
@@ -182,26 +336,47 @@ package.
 
 ## Test projects
 
+The
+[testing and evaluation specification](../concepts/testing-and-evaluation.md)
+defines which behaviors belong in package tests, shared conformance suites, API
+compatibility snapshots, and composed-agent evaluations.
+
 The tests directory mirrors source projects one for one:
 
-| Source project                      | Test project                              |
-| ----------------------------------- | ----------------------------------------- |
-| AgentKit                            | AgentKit.Tests                            |
-| AgentKit.Abstractions               | AgentKit.Abstractions.Tests               |
-| AgentKit.Loop                       | AgentKit.Loop.Tests                       |
-| AgentKit.Context                    | AgentKit.Context.Tests                    |
-| AgentKit.IO                         | AgentKit.IO.Tests                         |
-| AgentKit.Session                    | AgentKit.Session.Tests                    |
-| AgentKit.Session.InMemory           | AgentKit.Session.InMemory.Tests           |
-| AgentKit.Session.Sqlite             | AgentKit.Session.Sqlite.Tests             |
-| AgentKit.Permissions                | AgentKit.Permissions.Tests                |
-| AgentKit.Providers                  | AgentKit.Providers.Tests                  |
-| AgentKit.Providers.OpenAICompatible | AgentKit.Providers.OpenAICompatible.Tests |
-| AgentKit.Providers.OpenAI           | AgentKit.Providers.OpenAI.Tests           |
-| AgentKit.Providers.OpenRouter       | AgentKit.Providers.OpenRouter.Tests       |
-| AgentKit.Providers.ZAi              | AgentKit.Providers.ZAi.Tests              |
-| AgentKit.FileSystem                 | AgentKit.FileSystem.Tests                 |
-| Each remaining source package       | A matching PackageName.Tests project      |
+| Source project                       | Test project                               |
+| ------------------------------------ | ------------------------------------------ |
+| AgentKit                             | AgentKit.Tests                             |
+| AgentKit.Abstractions                | AgentKit.Abstractions.Tests                |
+| AgentKit.Loop                        | AgentKit.Loop.Tests                        |
+| AgentKit.Budgets                     | AgentKit.Budgets.Tests                     |
+| AgentKit.Context                     | AgentKit.Context.Tests                     |
+| AgentKit.Context.Compaction          | AgentKit.Context.Compaction.Tests          |
+| AgentKit.Hooks                       | AgentKit.Hooks.Tests                       |
+| AgentKit.IO                          | AgentKit.IO.Tests                          |
+| AgentKit.Output                      | AgentKit.Output.Tests                      |
+| AgentKit.Identity                    | AgentKit.Identity.Tests                    |
+| AgentKit.Session                     | AgentKit.Session.Tests                     |
+| AgentKit.Session.InMemory            | AgentKit.Session.InMemory.Tests            |
+| AgentKit.Session.Sqlite              | AgentKit.Session.Sqlite.Tests              |
+| AgentKit.Permissions                 | AgentKit.Permissions.Tests                 |
+| AgentKit.Providers                   | AgentKit.Providers.Tests                   |
+| AgentKit.Providers.OpenAICompatible  | AgentKit.Providers.OpenAICompatible.Tests  |
+| AgentKit.Providers.OpenAI            | AgentKit.Providers.OpenAI.Tests            |
+| AgentKit.Providers.OpenRouter        | AgentKit.Providers.OpenRouter.Tests        |
+| AgentKit.Providers.ZAi               | AgentKit.Providers.ZAi.Tests               |
+| AgentKit.FileSystem                  | AgentKit.FileSystem.Tests                  |
+| AgentKit.FileSystem.InMemory         | AgentKit.FileSystem.InMemory.Tests         |
+| AgentKit.Network                     | AgentKit.Network.Tests                     |
+| AgentKit.Network.InMemory            | AgentKit.Network.InMemory.Tests            |
+| AgentKit.Processes                   | AgentKit.Processes.Tests                   |
+| AgentKit.Processes.Scripted          | AgentKit.Processes.Scripted.Tests          |
+| AgentKit.Artifacts                   | AgentKit.Artifacts.Tests                   |
+| AgentKit.Artifacts.InMemory          | AgentKit.Artifacts.InMemory.Tests          |
+| AgentKit.Mcp.Client                  | AgentKit.Mcp.Client.Tests                  |
+| AgentKit.Mcp.Server                  | AgentKit.Mcp.Server.Tests                  |
+| AgentKit.Observability.OpenTelemetry | AgentKit.Observability.OpenTelemetry.Tests |
+| AgentKit.Evaluation                  | AgentKit.Evaluation.Tests                  |
+| Each remaining source package        | A matching PackageName.Tests project       |
 
 Test projects follow the Sharp Vision setup: .NET 10 executable test projects,
 xUnit v3, Shouldly, Microsoft.NET.Test.Sdk, and Microsoft Testing Platform code

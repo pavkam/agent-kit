@@ -1,5 +1,11 @@
 # DeepSeek API
 
+DeepSeek exposes several wire dialects rather than one interchangeable surface.
+The adapter selects an explicit
+[API-family capability profile](../concepts/model-providers-and-capabilities.md)
+before entering the
+[provider request pipeline](../concepts/provider-request-pipeline.md).
+
 **Contract snapshot:** 2026-09-06  
 **OpenAI-style base URL:** <code>https://api.deepseek.com</code>  
 **Anthropic-style base URL:** <code>https://api.deepseek.com/anthropic</code>  
@@ -218,7 +224,8 @@ expose that as ignored behavior.
 
 Prompt caching is automatic and prefix-sensitive. There is no client cache key
 or retention control on the Responses path. Usage hit/miss fields are the source
-of truth.
+of truth. All dialect-specific failures still map through the
+[stable AgentKit error taxonomy](../concepts/error-taxonomy.md).
 
 - Preserve DeepSeek error code/message, HTTP status, request ID, system
   fingerprint, and raw body/event.

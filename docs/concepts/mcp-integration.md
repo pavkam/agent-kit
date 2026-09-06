@@ -6,6 +6,11 @@
 
 ## Purpose
 
+MCP primitives enter AgentKit through the
+[tool and toolset contracts](tools-and-toolsets.md), while every protected
+remote effect remains subject to the
+[security authority](permissions-approvals-and-trust.md).
+
 The Model Context Protocol is a protocol integration, not a synonym for tools.
 AgentKit keeps host policy, MCP client lifecycle, transport, protocol messages,
 and primitive adapters separate.
@@ -70,8 +75,10 @@ remain typed. Stringifying non-text results is non-conforming.
 
 MCP tool descriptors MUST receive stable source-qualified AgentKit identities.
 Remote names, descriptions, schemas, annotations, and effect hints are
-untrusted. Calls pass through canonical schema validation, AgentKit permission,
-approval, scheduling, result bounds, and audit before/after the remote request.
+untrusted. Calls pass through canonical schema validation, the AgentKit security
+authority, approval, scheduling, result bounds, and audit before and after the
+remote request. The MCP operation grant does not replace the network or process
+grant enforced by its HTTP or stdio transport.
 
 AgentKit call ID and MCP request/call identifiers MUST remain correlated. A
 disconnect after send yields unknown side-effect certainty unless idempotency or
@@ -104,7 +111,7 @@ because it exposes a useful tool.
 - Calling a non-negotiated method fails before transport send.
 - Duplicate/mismatched JSON-RPC correlation fails typed.
 - Tool-list change does not redirect an in-flight call.
-- Permission denial prevents the MCP tool request.
+- Security denial prevents the MCP tool request and its transport effect.
 - Stdio failure reaps the child and closes every owned stream.
 - Mixed content round-trips without stringification.
 - HTTP credentials cannot be forwarded across an unsafe redirect or upstream.

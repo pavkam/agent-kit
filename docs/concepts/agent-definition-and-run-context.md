@@ -10,27 +10,38 @@ An agent definition describes reusable behavior. A run context owns mutable
 execution state. Conflating them makes concurrency unsafe and overrides leak
 between callers.
 
+## Engine, agent, and run
+
+A built `AgentEngine` is the complete process-level composition. It owns the
+versioned agent-definition catalog and shared service graph and can run many
+agents concurrently. It is not itself an agent.
+
+An `Agent` is an immutable engine-bound handle over one validated
+`AgentDefinition`. It may start concurrent runs and sessions, but it owns no
+mutable run or session state. Looking up an agent by its typed `AgentId`
+captures the catalog version used to bind the handle; a later definition reload
+affects newly resolved handles or a documented next-run boundary, never an
+in-flight run.
+
 ## Agent definition
 
-An immutable agent definition MUST be safe for concurrent use and SHOULD contain
-only declarative defaults and strategy identities:
-
-```csharp
-public sealed record AgentDefinition(
-    AgentId Id,
-    string? Name,
-    ModelSelection Model,
-    ImmutableArray<InstructionSource> Instructions,
-    ImmutableArray<ToolsetReference> Toolsets,
-    RunPolicyDefaults Policies,
-    ImmutableArray<CapabilityReference> Capabilities,
-    IReadOnlyDictionary<string, JsonElement> Metadata);
-```
+The canonical public `AgentDefinition` shape is defined once in
+[composition and configuration](../architecture/composition-and-configuration.md#agent-definitions-and-catalog).
+This concept owns its behavior: the immutable definition MUST be safe for
+concurrent use and SHOULD contain only declarative defaults, typed selections,
+and strategy identities.
 
 The final API MAY expose a builder, configuration binding, or declarative
 specification. Build-time convenience MUST produce an immutable validated
 definition. The definition MUST NOT hold current messages, a cancellation
 source, a streaming response, pending tool calls, or queued inputs.
+
+Every configurable choice belongs either in the engine's replaceable service
+graph and typed options or in the definition's declarative selections and
+defaults. The definition MUST use typed keys or identity values when selecting
+named loops, models, stores, toolsets, policies, and capability profiles; raw
+service names and an `IServiceProvider` are not a runtime selection API. The
+compiled definition records the exact resolved keys and versions used for a run.
 
 ## Run input and context
 
@@ -45,7 +56,7 @@ The context tracks at least:
 - usage and limit counters;
 - pending tool calls, tasks, and terminal results;
 - queued message snapshot/cursors;
-- run-scoped dependency object or typed dependency provider;
+- the immutable, explicitly typed collaborator bundle compiled for the run;
 - cancellation reason and deadline; and
 - run metadata, trace context, and generated event sequence.
 
@@ -55,17 +66,21 @@ invariants. Exposing `List<Message>` or a writable state property is forbidden.
 ## Dependencies
 
 Typed application dependencies MAY be injected into a run. They MUST have a
-documented lifetime and MUST NOT grant implicit authority. Permission policy
-still evaluates the principal and tool call even when a dependency can perform
-the requested side effect.
+documented lifetime and MUST NOT grant implicit authority. A generic dependency
+provider or service-locator-shaped lookup API is not allowed; the internal
+run-plan compiler resolves selected keys once and supplies explicit interfaces
+or a user-declared immutable dependency record. Permission policy still
+evaluates the principal and operation even when a dependency can perform the
+requested side effect.
 
 Dynamic instructions, model selectors, tool preparation, and middleware MAY read
-the run dependency object. They SHOULD receive a restricted immutable view, not
-the orchestration object's mutation methods.
+their declared run dependencies. They receive a restricted immutable view, not
+the orchestration object's mutation methods or the DI container.
 
 ## Effective configuration snapshot
 
-Each model request MUST resolve an effective configuration from the immutable
+Each model request MUST resolve an
+[effective configuration](configuration-and-overrides.md) from the immutable
 agent definition plus run, capability, and per-turn layers. The resolved value
 MUST be captured with the request or derivable from durable events.
 
@@ -75,8 +90,10 @@ mutate an in-flight request or retroactively reinterpret completed work.
 
 ## Continuation and resume
 
-A continuation reuses the same session but starts a new run unless a durable
-executor is resuming the exact interrupted run. A resumed run MUST restore:
+A continuation reuses the
+[same durable session](sessions-persistence-and-branching.md) but starts a new
+run unless the [durable executor](durable-execution-and-recovery.md) is resuming
+the exact interrupted run. A resumed run MUST restore:
 
 - stable IDs and sequence cursors;
 - committed messages and tool terminal states;
@@ -89,14 +106,16 @@ serialized as run state.
 
 ## Result boundary
 
-`AgentRunResult<T>` MUST include the terminal reason, output if present, new
-messages or an append cursor, usage, run/session/conversation IDs, and metadata.
-It MUST distinguish a successful output from a completed run with no output, a
-limit outcome, cancellation, policy denial, or failure.
+`AgentRunResult<TOutput>` MUST include the terminal reason, output if present,
+new messages or an append cursor, usage, run/session/conversation IDs, and
+metadata. It MUST distinguish a successful output from a completed run with no
+output, a limit outcome, cancellation, policy denial, or failure.
 
 ## Acceptance criteria
 
 - Two runs of one definition can execute concurrently without state leakage.
+- Two differently configured agents in one engine can execute concurrently
+  without definition, option, catalog, session, or run-scope leakage.
 - A run override does not alter later runs.
 - Dynamic configuration observes the correct run dependency and prior merge
   layers.

@@ -6,25 +6,20 @@
 
 ## Purpose
 
+This specification defines discoverable tool identity and schema; the
+[tool-call lifecycle](tool-call-lifecycle.md) owns authorization, invocation,
+and terminal recording for a model-requested call.
+
 A tool is an application-controlled executable capability that a model may
 request. Description, discovery, resolution, validation, authorization,
 invocation, and recording are separate responsibilities.
 
 ## Identity and descriptor
 
-```csharp
-public sealed record ToolDescriptor(
-    ToolId Id,
-    string Name,
-    ToolVersion Version,
-    string Description,
-    JsonSchema InputSchema,
-    JsonSchema? OutputSchema,
-    ToolEffects Effects,
-    ToolExecutionHints Hints,
-    ToolSource Source,
-    ExtensionData Extensions);
-```
+The canonical public `ToolDescriptor` shape is defined once in the
+[tool architecture](../architecture/tools.md#normative-minimal-contract-shape).
+This concept owns descriptor behavior, trust, and discovery semantics rather
+than a parallel API declaration.
 
 `ToolId` is stable independent of display name. A provider-visible name is an
 adapter-safe alias and MUST map back to one exact tool/version. Duplicate names
@@ -32,7 +27,7 @@ MUST be rejected or resolved by explicit deterministic precedence before the
 request is sent.
 
 Descriptions, schemas, MCP annotations, and model-selected names are untrusted
-metadata. They never grant permission.
+metadata. They never grant authority.
 
 ## Contract separation
 
@@ -40,10 +35,12 @@ metadata. They never grant permission.
 - `IToolCatalog` combines snapshots and reports collisions.
 - `IToolResolver` binds a stable identity/version to an invoker.
 - `IToolArgumentValidator` validates bounded parsed arguments.
-- `IToolPermissionPolicy` returns allow, deny, or require approval.
+- `ISecurityAuthority` evaluates the canonical tool operation and returns allow
+  with a bounded grant, deny, or require approval.
 - `IToolInvoker` performs one already-authorized invocation.
 - `IToolResultRecorder` commits terminal results.
-- `IToolAuditSink` receives redacted decisions and outcomes.
+- Security and tool audit sinks receive correlated redacted decisions, grant
+  consumption, and outcomes.
 
 Convenience function/reflection tools MAY implement these through adapters.
 Reflection and dynamic binding MUST NOT define the core contract.
@@ -85,6 +82,10 @@ Host policy MAY override or distrust hints. An unknown effect class fails closed
 for authorization.
 
 ## Dynamic and provider-native tools
+
+[MCP tools](mcp-integration.md) enter as remote catalog snapshots, while
+[provider-native tools](model-providers-and-capabilities.md) retain their
+provider-owned execution and billing lifecycle.
 
 Dynamic tools MAY appear or disappear between turns. Calls resolve against the
 catalog snapshot used in the originating request, not whatever catalog happens

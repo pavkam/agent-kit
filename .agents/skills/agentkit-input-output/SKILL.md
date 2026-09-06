@@ -1,42 +1,49 @@
 ---
 name: agentkit-input-output
 description:
-  "Implement or debug AgentKit input admission, work queues, live event streams,
-  structured final output, backpressure, and channel adapters. Use for I/O
-  boundary behavior; not for loop state transitions or session-store internals."
+  "Implement or debug AgentKit input admission, queued promotion, live event
+  fan-out, final-result publication, and channel adapters. Not for loop state,
+  structured-output validation, or session-store internals."
 ---
 
 # AgentKit Input and Output
 
-Read [AGENTS.md](../../../AGENTS.md). Keep admission, durable queue truth, live
-publication, and final results distinct even when one facade exposes them.
+Follow [Input and output](../../../docs/architecture/input-and-output.md),
+[input admission and queues](../../../docs/concepts/input-admission-and-message-queues.md),
+and the
+[streaming protocol](../../../docs/concepts/streaming-and-event-protocol.md).
+When changing C#, also read the
+[modern C# rules](../references/modern-csharp.md).
 
-1. Put provider-neutral receipts, delivery classes, queue entries, stream
-   events, subscriptions, and terminal result values in `AgentKit.Abstractions`.
-   Put the first-party coordinator in `AgentKit.IO`; keep channel adapters in
-   leaf packages.
-2. Admit input only after authorization, bounds, validation, and durable
-   recording succeed. Stable admission and idempotency identities must make an
-   exact replay return the existing receipt and conflicting content fail.
-3. Preserve steering versus follow-up delivery. Promote input only at explicit
-   safe boundaries using a captured cutoff and deterministic order; never splice
-   new content into an in-flight provider request or tool call/result pair.
-4. Define capacity, ordering, backpressure, redelivery, expiry, poison handling,
-   and cancellation for every queue. Persist durable queue state through session
-   contracts rather than creating a second source of conversational truth.
-5. Publish typed provisional events with stable sequence and correlation.
-   Bounded fan-out must distinguish required consumers from best-effort ones and
-   make dropped or coalesced output observable.
-6. Return one typed terminal result after settlement. Structured output remains
-   provisional until local validation succeeds; validation retries consume a
-   separate budget.
-7. Keep subscription disposal separate from run cancellation unless the public
-   contract explicitly grants the subscription ownership. Channel disconnects
-   must not silently abandon durable work.
-8. Test admission conflicts, concurrent cutoff races, queue capacity and
-   ordering, redelivery, fan-out backpressure, abandoned consumers, event loss
-   markers, structured-output failures, cancellation, and exactly one terminal
-   result using `TimeProvider` and controllable scheduling gates.
+## Decision guide
 
-HTTP, console, UI, and messaging adapters translate protocols. They do not
-bypass admission, session authorization, the loop, or settlement.
+1. Put provider-neutral receipts, delivery classes, queue entries, events,
+   subscriptions, and terminal results in `AgentKit.Abstractions`. `AgentKit.IO`
+   owns the first-party coordinators; channel adapters are leaves.
+2. Authorize, bound, validate, and durably record input before returning an
+   admission receipt. Equivalent idempotent replays return the existing receipt;
+   conflicting content fails explicitly.
+3. Preserve steering versus follow-up delivery. Promotion uses a captured cutoff
+   and deterministic order only at safe boundaries.
+4. Define queue capacity, ordering, leases or redelivery where relevant,
+   retention, poison handling, and backpressure. Session contracts remain the
+   durable truth; I/O does not create a second store.
+5. Publish typed provisional events with stable run correlation and sequence.
+   Required and best-effort consumers have explicit backpressure, coalescing,
+   loss-marker, and failure behavior.
+6. Subscription disposal does not cancel durable work unless the public contract
+   explicitly transfers cancellation ownership.
+7. Publish exactly one typed final result through the selected output publisher.
+   The loop owns state transitions and settlement; `AgentKit.Output` owns
+   extraction, validation, repair decisions, and conversion.
+8. Keep HTTP, console, UI, chat, and worker adapters as protocol translators.
+   They cannot append arbitrary history or bypass admission, security, the loop,
+   or settlement.
+9. Test idempotency conflicts, promotion races, full queues, redelivery, fan-out
+   pressure, abandoned consumers, event loss, cancellation, and exactly one
+   final result with deterministic scheduling.
+
+Use
+[run lifecycle and settlement](../../../docs/concepts/run-lifecycle-and-settlement.md)
+when result availability crosses runtime settlement. Structured-output behavior
+belongs to its dedicated architecture and skill, not this one.

@@ -40,7 +40,8 @@ and documentation MUST remove ambiguity.
 
 ## Retry safety
 
-A retry requires both a retryable failure and safe execution semantics. Mutating
+A retry requires both a retryable failure and safe execution semantics. Under
+the [resilience contract](cancellation-timeouts-and-resilience.md), mutating
 tools MUST NOT retry unless they declare an idempotency mechanism or the invoker
 proves the prior attempt did not start. “Transient exception” alone is
 insufficient.
@@ -81,15 +82,16 @@ data.
 
 ## Hook overrides
 
-An after-invocation hook MAY replace content, details, status, usage, or
-termination advice only through a validated typed result. Merge behavior MUST be
-fieldwise and explicit; there is no implicit deep merge of nested untrusted
-data. Hooks cannot change call/tool identity or turn a denied, unexecuted call
-into successful execution.
+An [after-invocation hook](extensions-hooks-and-middleware.md) MAY replace
+content, details, status, usage, or termination advice only through a validated
+typed result. Merge behavior MUST be fieldwise and explicit; there is no
+implicit deep merge of nested untrusted data. Hooks cannot change call/tool
+identity or turn a denied, unexecuted call into successful execution.
 
 ## Batch behavior
 
-Failure of one parallel tool does not erase sibling results. Fail-fast policy
+Under the [batch scheduling contract](tool-scheduling-and-concurrency.md),
+failure of one parallel tool does not erase sibling results. Fail-fast policy
 MAY cancel siblings but must still terminally settle every accepted call. A
 batch MAY request loop termination only through an explicit aggregate policy;
 one tool's arbitrary output flag must not silently suppress results.

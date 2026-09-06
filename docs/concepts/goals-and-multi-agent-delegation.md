@@ -7,25 +7,17 @@
 ## Purpose
 
 Goals and delegated work are durable domain state, not prose prefixes. The same
-queue, permission, budget, correlation, and settlement rules apply whether work
-is performed by one loop or several agents.
+[queue](input-admission-and-message-queues.md),
+[budget](usage-limits-and-budgets.md), correlation, and
+[settlement](run-lifecycle-and-settlement.md) rules apply whether work is
+performed by one loop or several agents.
 
 ## Goal model
 
-```csharp
-public sealed record AgentGoal(
-    GoalId Id,
-    GoalId? ParentId,
-    SessionId SessionId,
-    AgentId OwnerAgentId,
-    GoalStatus Status,
-    GoalDefinition Definition,
-    int Attempt,
-    GoalBudget Budget,
-    DateTimeOffset CreatedAt,
-    VersionToken Version,
-    ExtensionData Metadata);
-```
+The canonical public `AgentGoal` shape is defined once in the
+[goals and delegation architecture](../architecture/goals-and-delegation.md#normative-minimal-contract-shape).
+This concept owns lifecycle, causality, and delegation semantics rather than a
+parallel API declaration.
 
 Statuses MUST include proposed, ready, active, waiting, completed, failed,
 cancelled, and blocked or equivalent. Transitions are explicit durable events
@@ -58,14 +50,16 @@ Delegation creates a child goal or task envelope containing:
 - expected typed result and evidence.
 
 Delegation MUST NOT broaden authority. A child receives the intersection of
-parent authority and its assigned scope. Tools still pass current permission
-policy under the child's principal/agent context.
+parent authority and its assigned scope. Tools still pass the
+[current security authority](permissions-approvals-and-trust.md) under the
+child's principal/agent context.
 
 ## Communication
 
-Agent-to-agent messages use the normal admitted-input contract with sender,
-recipient, causal goal/attempt, delivery class, and idempotency ID. Text is
-content, not routing metadata.
+Agent-to-agent messages use the
+[normal admitted-input contract](input-admission-and-message-queues.md) with
+sender, recipient, causal goal/attempt, delivery class, and idempotency ID. Text
+is content, not routing metadata.
 
 Progress is a bounded event and MAY be live-only. Decisions, handoffs, result,
 failure, request for authority, and cancellation are durable semantic events.

@@ -1,57 +1,53 @@
 ---
 name: agentkit-tools-and-permissions
 description:
-  "Design, implement, or debug AgentKit tool descriptions, providers,
-  resolution, invocation, permission policies, approvals, and audit. Use when
-  tools can read data or cause side effects; use agentkit-mcp as well for MCP
-  transport semantics."
+  "Design or debug interactions between AgentKit.Tools and the system-wide
+  AgentKit.Permissions authority. Use when work crosses tool execution and a
+  protected boundary; use agentkit-tools for tool-only behavior."
 ---
 
-# AgentKit Tools and Permissions
+# AgentKit Tools and Security Boundaries
 
-Read [AGENTS.md](../../../AGENTS.md). Preserve this execution pipeline:
+Use this skill for the handoff between
+[Tools](../../../docs/architecture/tools.md) and
+[Security and human control](../../../docs/architecture/permissions-and-human-control.md).
+Their normative contracts are
+[tool-call lifecycle](../../../docs/concepts/tool-call-lifecycle.md) and
+[permissions, approvals, and trust](../../../docs/concepts/permissions-approvals-and-trust.md).
+When changing C#, also read the
+[modern C# rules](../references/modern-csharp.md).
 
-```text
-discover → resolve → parse/bound → validate → authorize → invoke → record → return
-```
+For tool catalog, schema, scheduling, invocation, or result work that does not
+change a security boundary, use [agentkit-tools](../agentkit-tools/SKILL.md).
 
-1. Keep `ITool`, tool descriptors, tool providers/catalogs, resolvers,
-   executors, permission evaluators, approval brokers, and audit sinks as
-   separate contracts. A registry does not execute, and an executor does not
-   decide policy.
-2. Give every tool a stable identity independent of its display name. Version
-   schemas intentionally; define duplicate-name and provider-precedence
-   behavior.
-3. Bound and parse model-produced arguments, then validate them against the
-   declared schema before policy evaluation and invocation. Return typed
-   argument failures to the loop; never let malformed JSON fall into reflection
-   or dynamic binding unchecked.
-4. Evaluate permissions per invocation using the effective agent/principal, tool
-   identity and source, normalized arguments or fingerprint, resource scope,
-   side-effect class, run/call IDs, and relevant policy context.
-5. Represent policy outcomes explicitly: allow, deny, or require approval.
-   Missing policy context, unknown tools, stale approvals, and scope expansion
-   fail closed. Cache decisions only when the policy returns an explicit scope
-   and lifetime.
-6. Bind approvals to the exact tool, arguments/resource scope, principal, and
-   expiry. Approval for discovery or one invocation is not approval for future
-   calls.
-7. Pass a `CancellationToken`, honor timeout and concurrency limits, and define
-   whether a tool is idempotent. Never silently retry mutating tools.
-8. Preserve the provider tool-call ID and produce exactly one terminal result
-   per accepted call. Parallel execution must have explicit ordering and
-   conflict rules.
-9. Audit decisions and outcomes with redacted structured fields. Do not record
-   credentials, raw secret-bearing arguments, or unrestricted tool output.
-10. Test denial before side effects, approval binding, schema edge cases,
-    cancellation, duplicate results, provider collisions, parallel calls,
-    idempotency, redaction, and untrusted metadata.
+## Decision guide
 
-Reflection-based function tools may be a convenience adapter, never the core
-contract. Their schema generation and invocation must obey the same validation
-and permission pipeline.
+1. Keep the owners distinct. `AgentKit.Tools` owns discovery, snapshots,
+   resolution, argument bounds and schema validation, scheduling, invocation,
+   normalization, and terminal result coordination.
+2. `AgentKit.Permissions` owns the system-wide security authority, policy
+   selection and evaluation, approvals and deferral, grants, revocation, and
+   security audit. It is not tool middleware.
+3. Both packages depend on neutral contracts in `AgentKit.Abstractions`; neither
+   gains a project dependency on the other implementation package.
+4. Cross the boundary only with a canonical `SecurityRequest` after operation
+   inputs and resources are normalized. Missing context, unknown operations, or
+   unavailable enforcement fail closed.
+5. Bind an allow decision to the exact identity, principal, operation,
+   resources, inputs, destination, policy version, audience, expiry, and uses.
+   The effecting component revalidates the grant immediately before acting.
+6. Treat tool descriptions, schemas, annotations, and model arguments as
+   untrusted. Identity never implies authority, and a sandbox limits consequence
+   without granting access.
+7. Apply the same authority to file, network, process, provider-egress, memory,
+   session, MCP, and delegation effects. Installing or discovering a tool grants
+   nothing.
+8. Preserve tool-call and operation correlation across authorization, durable
+   acceptance, effect, audit, and exactly one terminal result. Mutation after a
+   decision requires reevaluation.
+9. Test denial before effects, approval and grant binding, expiry and
+   revocation, atomic use consumption, lower-boundary enforcement, cancellation,
+   uncertain effects, redaction, and untrusted metadata at the owning contracts.
 
-The first-party pipeline belongs to `AgentKit.Tools`; concrete features use
-`AgentKit.Tools.<ToolName>`. `AgentKit.Tools.Read` and `AgentKit.Tools.Write`
-consume file-system abstractions only. `AgentKit.Tools.Skill` registers its tool
-and context contributor together.
+Use the dedicated security skill for authority behavior that does not involve
+tools, and `agentkit-mcp` when MCP protocol semantics also change.

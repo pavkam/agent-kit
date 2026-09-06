@@ -6,6 +6,12 @@
 
 ## Pipeline
 
+The [tool catalog and descriptor contracts](tools-and-toolsets.md) supply the
+resolved operation, the [security authority](permissions-approvals-and-trust.md)
+grants or denies its effect, and
+[durable recovery](durable-execution-and-recovery.md) relies on the
+record-before-invocation boundary.
+
 Every application tool call MUST pass through this pipeline:
 
 ```text
@@ -53,20 +59,22 @@ secret-bearing arguments MUST not be copied to logs or exceptions.
 
 ## Authorization and approval
 
-Policy evaluates normalized arguments plus principal, agent, session/run/call,
-tool identity/source/version, resource/effect scope, and relevant host context.
-An allow result can proceed; deny produces a typed result or halts according to
-policy; require-approval follows the approval contract.
+The security authority evaluates normalized arguments plus principal, agent,
+session/run/call, tool identity/source/version, resource/effect scope, and
+relevant host context. Allow produces a bounded grant; deny produces a typed
+result or halts according to policy; require-approval follows the approval
+contract.
 
 If approval changes or supplies arguments, validation and authorization MUST run
-again. Approval binds to the final fingerprint.
+again. Approval and its grant bind to the final fingerprint. The effecting
+file-system, network, or process component validates its derived grant again.
 
 ## Record before side effects
 
 The accepted call MUST be durably recorded before invocation. Its record
 includes call ID, tool snapshot identity, normalized argument fingerprint,
-permission decision reference, attempt, idempotency information, and start
-metadata with secrets redacted.
+security decision and grant reference, attempt, idempotency information, and
+start metadata with secrets redacted.
 
 If the record cannot be committed, invocation MUST NOT occur. This boundary
 enables recovery to distinguish “never started” from “side effect may have
@@ -85,6 +93,9 @@ Progress is live-only by default. Semantic checkpoints MAY be durable and MUST
 be bounded. Progress after terminal settlement is ignored and diagnosed.
 
 ## Terminal result
+
+Terminal status, retryability, and side-effect certainty follow the
+[tool error and result contract](tool-errors-retries-and-results.md).
 
 The result MUST contain call/tool IDs, terminal status, bounded typed content,
 safe structured data, normalized error when applicable, timestamps, usage or

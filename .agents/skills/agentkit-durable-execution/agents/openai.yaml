@@ -1,0 +1,6 @@
+interface:
+  display_name: "AgentKit Durable Execution"
+  short_description: "Recover work without replaying unsafe effects"
+  default_prompt:
+    "Use $agentkit-durable-execution to implement or review AgentKit crash
+    recovery and durable execution."

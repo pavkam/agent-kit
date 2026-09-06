@@ -1,0 +1,5 @@
+interface:
+  display_name: "AgentKit Context"
+  short_description: "Assemble bounded trusted model context"
+  default_prompt:
+    "Use $agentkit-context to implement or review AgentKit context assembly."

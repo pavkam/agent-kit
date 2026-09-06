@@ -39,16 +39,18 @@ The default loop MUST implement these semantic steps:
 1. Admit caller input durably or into the configured queue before acknowledging
    acceptance.
 2. Promote eligible input using the queue's atomic ordering rules.
-3. Repair and validate the history boundary.
+3. [Repair and validate the history boundary](history-validation-and-repair.md).
 4. Resolve the next-turn effective configuration, tools, model, instructions,
    and budgets.
-5. Build a bounded working context without mutating durable history.
+5. Build a [bounded working context](context-assembly-and-instructions.md)
+   without mutating durable history.
 6. Persist or publish a model-request-started boundary.
-7. Stream one provider response into typed events and a candidate immutable
+7. Stream one provider response into
+   [typed events](streaming-and-event-protocol.md) and a candidate immutable
    assistant message.
 8. Validate the terminal provider outcome before committing the message.
 9. If there are accepted tool calls, record them before side effects, then run
-   the permission and execution pipeline.
+   the [tool-call lifecycle](tool-call-lifecycle.md).
 10. Commit exactly one terminal result per accepted call in deterministic source
     order.
 11. At the tool-turn boundary, promote eligible steering input and decide
@@ -56,7 +58,7 @@ The default loop MUST implement these semantic steps:
 12. When otherwise idle, promote at most the queue policy's allowed follow-up
     work and continue, or complete the run.
 13. Perform post-run compaction, retry, persistence, and observer drains, then
-    settle.
+    [settle](run-lifecycle-and-settlement.md).
 
 ## Continuation conditions
 

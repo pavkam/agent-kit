@@ -172,7 +172,8 @@ application data policy.
 ## Errors and retries
 
 Expect JSON errors with a code/message envelope, plus request identifiers in
-bodies or headers. Preserve the exact HTTP status and raw body.
+bodies or headers. The [AgentKit error mapping](../concepts/error-taxonomy.md)
+preserves the exact HTTP status and raw body.
 
 - 400/422: invalid model, parameter combination, content part, or schema;
   terminal until the request changes.
@@ -188,11 +189,13 @@ bodies or headers. Preserve the exact HTTP status and raw body.
 
 1. Reuse OpenAI SDK transport only after setting the exact Z.ai base URL.
 2. Keep Z.ai request/response extensions in a namespaced bag.
-3. Capability-gate multimodal parts, reasoning, JSON Schema, and tools by
-   discovered model.
+3. Use the
+   [model capability profile](../concepts/model-providers-and-capabilities.md)
+   to gate multimodal parts, reasoning, JSON Schema, and tools by discovered
+   model.
 4. Preserve unknown finish reasons and stream fields.
-5. Never advertise embeddings or OpenAI Responses without a documented Z.ai
-   endpoint.
+5. Keep [semantic operations](semantic-operations.md) separate and never
+   advertise embeddings or OpenAI Responses without a documented Z.ai endpoint.
 
 ## First-party sources
 

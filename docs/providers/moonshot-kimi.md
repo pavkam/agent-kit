@@ -1,5 +1,9 @@
 # Moonshot Kimi API
 
+Kimi's Chat, Responses, and Anthropic-shaped surfaces are separate
+[API-family capability profiles](../concepts/model-providers-and-capabilities.md);
+wire resemblance does not make their lifecycle or errors interchangeable.
+
 **Contract snapshot:** 2026-09-06  
 **OpenAI-style base URL:** <code>https://api.moonshot.ai/v1</code>  
 **Anthropic-style base URL:** <code>https://api.moonshot.ai/anthropic</code>  
@@ -205,13 +209,16 @@ are live service constraints.
 
 Errors use <code>{error:{message,type,code?}}</code>; the Messages compatibility
 path can also return Anthropic-style
-<code>{type:"error",error,request_id}</code>. Preserve dialect and request ID.
+<code>{type:"error",error,request_id}</code>. The
+[AgentKit error mapping](../concepts/error-taxonomy.md) preserves the
+originating dialect and request ID.
 
 - Retry 429 and transient 5xx with jitter; do not retry validation,
   authentication, balance, or model-entitlement failures unchanged.
-- A broken SSE connection has unknown completion. Use documented Partial
-  Mode/reconnection guidance only when the application can avoid duplicate tool
-  side effects.
+- A broken SSE connection has unknown completion under the
+  [streaming terminality rules](../concepts/streaming-and-event-protocol.md).
+  Use documented Partial Mode/reconnection guidance only when the application
+  can avoid duplicate tool side effects.
 - Cache behavior is automatic and prefix-sensitive. Usage, not a client guess,
   is authoritative for cache hits/writes.
 - Model lists and allowed parameters drift. Query <code>/v1/models</code> and

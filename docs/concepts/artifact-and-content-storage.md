@@ -1,0 +1,119 @@
+# Artifact and content storage
+
+**Status:** Normative  
+**Depends on:** [Message and content model](message-and-content-model.md),
+[permissions, approvals, and trust](permissions-approvals-and-trust.md),
+[execution identity and tenancy](execution-identity-and-tenancy.md)
+
+## Purpose
+
+Large, binary, generated, or reusable content needs a durable boundary that is
+neither conversation history nor agent memory. Artifact storage owns bytes and
+metadata referenced by messages, tool results, media, evaluations, checkpoints,
+and exported reports.
+
+## Artifact identity and metadata
+
+An artifact reference MUST include stable typed identity, tenant and owner
+scope, media type, length, content hash, classification, creation time,
+retention policy, storage version, and integrity metadata. A reference MUST say
+whether content is immutable, appendable, or externally owned.
+
+Content-addressed identity MAY deduplicate bytes, but deduplication MUST NOT
+reveal that another tenant or principal possesses the same content. A logical
+artifact identity remains distinct from its content hash and backend location.
+
+Backend keys, filesystem paths, signed URLs, credentials, and provider-native
+handles MUST NOT become portable artifact identity.
+
+An agent selects a logical artifact profile, and requests address a logical
+artifact directory within that profile. The immutable profile snapshot maps the
+directory to a backend as composition data. Backend keys are available to the
+composition root and artifact runtime only; they MUST NOT appear in portable
+write requests, references, session records, messages, or provider payloads.
+Changing a route creates a new profile version and MUST preserve resolution of
+references created under older versions.
+
+## Read and write lifecycle
+
+Writes MUST be bounded, cancellable, integrity checked, and use explicit
+prepare, finalize, and abort operations. Prepare returns only a typed staging
+receipt. Finalize atomically publishes the staged version and returns its first
+portable `ArtifactReference`; abort idempotently makes an unfinalized staging
+receipt ineligible for publication. A partially uploaded or merely prepared
+artifact is not readable as a committed artifact. Streaming reads and writes
+MUST document buffer ownership, maximum size, seek behavior, disposal, and
+whether cancellation leaves resumable state.
+
+The coordinator validates metadata and authority before selecting a backend. The
+backend revalidates the bounded grant immediately before reading, writing,
+publishing, or deleting content. Redirects and external downloads follow the
+network security boundary rather than bypassing it through artifact storage.
+
+## References in durable state
+
+Messages and session records store immutable artifact references, not incidental
+local paths or open streams. Provider adapters may dereference an artifact only
+through an authorized resolver and must record any upload or provider-file
+translation in request provenance.
+
+Tool-result normalization MAY externalize oversized content into an artifact and
+return a bounded reference. It MUST mark the transformation and preserve the
+original media type, length, hash, and security classification.
+
+## Consistency and orphan handling
+
+Artifact creation and a session or tool-result append commonly span different
+stores. Implementations MUST use an explicit prepare/finalize protocol, outbox,
+or compensating orphan policy; they MUST NOT pretend the writes are one atomic
+transaction when they are not.
+
+An artifact may be finalized before its durable reference is committed. Such an
+orphan remains inaccessible except to reconciliation and becomes eligible for
+bounded garbage collection. Deleting a reference does not delete shared bytes
+until retention, legal-hold, and reference-count policy permit it.
+
+## Retention, deletion, and external ownership
+
+Retention policy MUST distinguish ephemeral run output, session-owned content,
+durable memory sources, evaluation evidence, and externally owned resources.
+Deletion is idempotent and auditable. A tombstone prevents a stale reference
+from silently resolving to different bytes.
+
+The finalized reference MUST carry the resolved retention decision, integrity
+evidence, mutability mode, and ownership kind. Append-only content creates a new
+typed version; immutable content cannot be overwritten. External ownership MUST
+name a stable unsigned resource locator, the external owner, and whether delete
+authority was delegated. A signed URL or current backend route is never that
+stable locator.
+
+Externally owned URIs remain references to external content. AgentKit MUST NOT
+claim durability, immutability, or deletion of content it does not own.
+
+## Failure behavior
+
+Unsupported media, size overflow, hash mismatch, classification conflict,
+authorization failure, backend unavailability, partial upload, stale version,
+and deletion conflict are typed outcomes. Safe diagnostic metadata is retained;
+raw sensitive content is not copied into exceptions or telemetry.
+
+## Acceptance scenarios
+
+- An interrupted upload never resolves as a committed artifact.
+- A content hash match across tenants does not reveal existence or grant access.
+- A tool result can externalize large binary output without losing media type,
+  integrity, or causality.
+- A message replay resolves the same immutable artifact version or returns a
+  typed unavailable/tombstoned result.
+- Failure to append an artifact reference leaves a reconcilable orphan rather
+  than invisible permanent storage.
+- Deletion honors retention and legal hold and cannot replace old bytes under a
+  stale reference.
+
+## Related specifications
+
+- [Tool errors, retries, and results](tool-errors-retries-and-results.md)
+- [Sessions, persistence, and branching](sessions-persistence-and-branching.md)
+- [Memory, retrieval, and storage](memory-retrieval-and-storage.md)
+- [Testing and evaluation](testing-and-evaluation.md)
+- [Observability and audit](observability-and-audit.md)

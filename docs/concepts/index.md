@@ -57,6 +57,8 @@ stitching point; the filenames deliberately carry no sequence.
 - [Memory, retrieval, and storage](memory-retrieval-and-storage.md) keeps
   conversation history, durable memory, documents, embeddings, indexes, and
   retrieval as separate extension axes.
+- [Artifact and content storage](artifact-and-content-storage.md) owns durable
+  binary and generated content referenced by messages, tools, media, and evals.
 
 ### Models, configuration, and output
 
@@ -66,6 +68,8 @@ stitching point; the filenames deliberately carry no sequence.
   authentication, transport, stream parsing, and provider error normalization.
 - [Configuration and overrides](configuration-and-overrides.md) defines merge
   algebra, precedence, dynamic values, trust, and reload boundaries.
+- [Execution identity and tenancy](execution-identity-and-tenancy.md) defines
+  trusted ingress, subject propagation, delegation identity, and isolation.
 - [Structured output](structured-output.md) defines capability-negotiated output
   modes, validation, retries, and tool-output end strategies.
 
@@ -82,8 +86,9 @@ stitching point; the filenames deliberately carry no sequence.
   result normalization.
 - [Permissions, approvals, and trust](permissions-approvals-and-trust.md) is the
   fail-closed authority boundary for every operation.
-- [Deferred tools and human-in-the-loop](deferred-and-human-in-the-loop.md)
-  models approval, external execution, suspension, and later resolution.
+- [Deferred operations and human-in-the-loop](deferred-and-human-in-the-loop.md)
+  models approval, external execution, suspension, and later resolution for any
+  protected operation.
 - [MCP integration](mcp-integration.md) keeps MCP lifecycle, transport,
   primitives, correlation, and host policy in a leaf integration.
 
@@ -114,15 +119,17 @@ stitching point; the filenames deliberately carry no sequence.
 ## Dependency map
 
 ```text
-messages ───────┬─> history ─> context ─> provider request
-                ├─> streaming ────────────────┐
-admission ─> loop ─> tools ─> permissions ────┼─> settlement
-      │         │       └─> deferred           │
-      │         ├─> output                     │
-      │         └─> budgets/cancellation ──────┘
-      └─> sessions ─> compaction ─> durable execution
+trusted ingress ─> identity ─> admission ─> loop ─> settlement
+                                      │       ├─> budgets
+messages ───────┬─> history ─> context ──────> provider request
+                ├─> streaming ────────────────┤
+                └─> artifact references       ├─> output validation
+admission ──────┴─> sessions ─> compaction ───┤
+loop ─> protected operations ─> security ─────┘
+             ├─> deferred
+             └─> artifacts/file/network/process
 
-configuration + capabilities + middleware apply at documented boundaries;
+configuration + capabilities + typed hooks apply at documented boundaries;
 observability records them without becoming a control dependency.
 ```
 

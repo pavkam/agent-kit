@@ -50,11 +50,13 @@ first-class state.
 
 ## Tool cancellation
 
-On cancellation the scheduler stops starting calls, signals running calls, and
-waits a bounded drain period. Asynchronous cooperative tasks SHOULD settle.
-Synchronous, process, network, or remote tasks may continue despite local
-cancellation; after the drain deadline they are marked interrupted with unknown
-effect unless an external idempotency/status API proves otherwise.
+On cancellation the scheduler follows the
+[tool-result and retry contract](tool-errors-retries-and-results.md): it stops
+starting calls, signals running calls, and waits a bounded drain period.
+Asynchronous cooperative tasks SHOULD settle. Synchronous, process, network, or
+remote tasks may continue despite local cancellation; after the drain deadline
+they are marked interrupted with unknown effect unless an external
+idempotency/status API proves otherwise.
 
 Results arriving after terminal interruption are ignored for model context and
 recorded as late diagnostics or reconciliation input. They MUST NOT create a
@@ -62,8 +64,9 @@ second terminal tool result.
 
 ## Provider retry
 
-A provider resilience policy above the adapter classifies normalized errors and
-decides retry, fallback, or fail. Retry MUST consider:
+A provider resilience policy above the
+[single-attempt adapter](provider-request-pipeline.md) classifies normalized
+errors and decides retry, fallback, or fail. Retry MUST consider:
 
 - whether any output became visible or was committed;
 - provider idempotency and request status;

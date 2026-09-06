@@ -1,0 +1,6 @@
+interface:
+  display_name: "AgentKit Structured Output"
+  short_description: "Validate terminal model output safely"
+  default_prompt:
+    "Use $agentkit-structured-output to implement or debug AgentKit
+    structured-output processing."

@@ -9,6 +9,30 @@
 Configuration is layered immutable input to a run. Override behavior must be
 predictable enough that an operator can explain every effective value.
 
+## Configuration closure and defaults
+
+Every behaviorally meaningful choice MUST be represented at exactly one proper
+configuration boundary:
+
+- DI selects or replaces mechanisms and policy implementations;
+- typed options configure one implementation process-wide;
+- engine configuration selects shared catalogs, named services, and host policy;
+- an immutable agent definition selects that agent's models, tools,
+  contributors, output, limits, and strategy keys; and
+- run or next-turn options carry genuinely dynamic overrides.
+
+A hard-coded value is acceptable only when it is an invariant, not an
+undocumented policy choice. Each configurable member MUST document its default,
+merge operation, validation boundary, reload behavior, and whether it can be
+overridden at narrower scopes.
+
+First-party feature packages MUST provide sensible defaults for safe mechanical
+behavior such as ordering, bounded capacities, timeouts, selectors, and
+in-memory coordination. Security defaults fail closed. Values that describe the
+outside world—credentials, endpoints, deployment/model availability, durable
+storage targets, tenant principals, and granted authority—MUST be supplied
+explicitly and MUST NOT be guessed.
+
 ## Layers
 
 The default precedence, lowest to highest, SHOULD be:
@@ -50,7 +74,8 @@ and security policies use their own ordered-rule semantics.
 
 Dynamic configuration functions MAY run once per run or once per model request.
 They MUST declare frequency, receive the effective lower-precedence snapshot,
-and return only their layer's changes. Evaluation order follows layer order.
+and return only their layer's changes. Evaluation order follows layer order,
+before the [request context is assembled](context-assembly-and-instructions.md).
 
 A dynamic value MUST NOT mutate the shared agent definition. Failure is a typed
 configuration or context-preparation error. Results SHOULD be captured in the
@@ -63,8 +88,9 @@ explicit async-disposable override scope only when it is carried through the run
 invocation context and cannot leak to unrelated concurrent runs.
 
 A next-turn override expires after that request unless explicitly promoted to
-session configuration. Model, thinking, tool, and system-instruction overrides
-MUST apply at a turn boundary, never to an in-flight request.
+[session configuration](sessions-persistence-and-branching.md). Model, thinking,
+tool, and system-instruction overrides MUST apply at a turn boundary, never to
+an in-flight request.
 
 ## File discovery and trust
 

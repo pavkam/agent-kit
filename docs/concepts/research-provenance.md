@@ -6,6 +6,11 @@
 
 ## Scope
 
+The
+[architecture concept-coverage map](../architecture/index.md#concept-coverage)
+records where each synthesized behavior is owned. Evidence itself intentionally
+has no runtime package.
+
 These specifications synthesize observable designs from Pi, OpenCode, and
 Pydantic AI. Research focused on agent loops, message models, event streaming,
 input queues, overrides, history/context, tools, permissions, structured output,
@@ -92,39 +97,47 @@ under these decisions.
 
 OpenCode V2 provides the strongest model: acknowledge durable, idempotent
 admission first; promote at a captured event-sequence cutoff later. Pi and
-Pydantic AI supply the two useful priorities. AgentKit combines both.
+Pydantic AI supply the two useful priorities. AgentKit combines both in the
+[input admission and queue contract](input-admission-and-message-queues.md).
 
 ### Tool scheduling uses barriers
 
 Pi's simple rule serializes an entire batch when any tool is sequential.
 Pydantic AI's barrier segments retain safe parallelism before and after a
 sequential tool. AgentKit adopts barrier segments while using OpenCode's
-record-before-effect and serialized publication discipline.
+[record-before-effect](tool-call-lifecycle.md) and
+[serialized publication](tool-scheduling-and-concurrency.md) discipline.
 
 ### Settlement is a public boundary
 
 Pi's higher-level session distinguishes post-agent retry/compaction processing
-from the core agent end. AgentKit names this `RunSettled` and requires no later
-run-owned semantic mutation.
+from the core agent end. The
+[AgentKit settlement boundary](run-lifecycle-and-settlement.md) names this
+`RunSettled` and requires no later run-owned semantic mutation.
 
 ### Durable history and working context differ
 
 All three transform history for provider use. AgentKit makes the distinction
-normative: repairs, filtering, retrieval, and compaction alter the request view,
-not the canonical record.
+normative: repairs, filtering, retrieval, and compaction alter the
+[request view](context-assembly-and-instructions.md), not the
+[canonical session record](sessions-persistence-and-branching.md).
 
 ### Security is not generic middleware
 
 Upstreams expose useful hooks and approval flows. AgentKit promotes permission,
 approval, trust, audit, and sandbox derivation to narrow first-class contracts
-so extension order cannot accidentally decide authority.
+so [extension order](extensions-hooks-and-middleware.md) cannot accidentally
+decide [authority](permissions-approvals-and-trust.md).
 
 ### Some domains are AgentKit synthesis
 
 The complete goal/delegation, memory/storage, distributed lease/fencing, and DI
 models are not claimed as existing wholesale in any researched project. They
 apply the verified causality, state, queue, and durability lessons to AgentKit's
-stated extension axes.
+[goal](goals-and-multi-agent-delegation.md),
+[memory](memory-retrieval-and-storage.md),
+[recovery](durable-execution-and-recovery.md), and
+[composition](public-api-and-dependency-injection.md) extension axes.
 
 ## Evidence rules for implementers
 

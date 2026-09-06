@@ -1,0 +1,6 @@
+interface:
+  display_name: "AgentKit Identity and Tenancy"
+  short_description: "Propagate identity without authority"
+  default_prompt:
+    "Use $agentkit-identity-and-tenancy to design AgentKit identity propagation
+    and isolation."

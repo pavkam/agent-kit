@@ -1,0 +1,5 @@
+interface:
+  display_name: "AgentKit Artifacts"
+  short_description: "Design durable artifact storage"
+  default_prompt:
+    "Use $agentkit-artifacts to design or review AgentKit artifact storage."

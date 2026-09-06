@@ -54,6 +54,10 @@ are control-plane surfaces unless directly needed for inference policy.
 
 ## Three inference skins
 
+Each skin is a separate
+[API-family capability profile](../concepts/model-providers-and-capabilities.md)
+that enters the same provider-neutral request pipeline:
+
 ```mermaid
 flowchart LR
     App[AgentKit] --> Chat[Chat Completions adapter]
@@ -188,7 +192,8 @@ arrives on the terminal <code>message_stop</code> event.
 
 ## Embeddings
 
-<code>POST /embeddings</code> accepts:
+As a [separate semantic operation](semantic-operations.md), <code>POST
+/embeddings</code> accepts:
 
 <code>EmbeddingRequest = {model, input, dimensions?, encoding_format?,
 input_type?, provider?, user?}</code>
@@ -220,7 +225,8 @@ filtered catalog to guessing embedding support from a general text-model list.
 
 ## Rerank
 
-<code>POST /rerank</code> accepts:
+The independent [rerank capability](semantic-operations.md) maps <code>POST
+/rerank</code> as follows:
 
 <code>RerankRequest = {model, query, documents, top_n?, provider?}</code>
 
@@ -326,8 +332,9 @@ payload too large, 429 rate limit, 500 internal, 502 upstream failure, 503
 unavailable, and 529 provider overload.
 
 OpenRouter's canonical provider <code>error_type</code> is more stable than
-skin-specific converted codes. Preserve it along with <code>provider_code</code>
-when present.
+skin-specific converted codes. The
+[AgentKit error mapping](../concepts/error-taxonomy.md) preserves it along with
+<code>provider_code</code> when present.
 
 - Before streaming begins, errors use a non-2xx HTTP status and OpenRouter may
   try fallback endpoints.
@@ -345,8 +352,10 @@ when present.
 
 1. Implement Chat, Responses, Messages, embedding, and rerank as separate codecs
    behind explicit capabilities.
-2. Preserve requested model/router and actual model/provider/endpoint. Never
-   report OpenRouter as the only model provenance.
+2. Preserve requested model/router and actual model/provider/endpoint according
+   to the
+   [provider identity model](../concepts/model-providers-and-capabilities.md).
+   Never report OpenRouter as the only model provenance.
 3. Make routing, data collection, ZDR, BYOK, and regional requirements typed
    policy, not arbitrary headers hidden in configuration.
 4. Use <code>require_parameters:true</code> for semantic requirements and still

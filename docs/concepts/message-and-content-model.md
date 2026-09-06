@@ -5,22 +5,37 @@
 
 ## Purpose
 
-Messages are the durable, provider-neutral conversation record. They are
-immutable envelopes containing ordered typed parts, not role-plus-string DTOs.
+Messages are the durable, provider-neutral
+[session record](sessions-persistence-and-branching.md). They are immutable
+envelopes containing ordered typed parts, not role-plus-string DTOs.
+
+## Typed identities
+
+Every domain identity is a dedicated immutable value type. The canonical shared
+identity and `IIdentifierGenerator<TIdentifier>` shapes are defined once in the
+[composition architecture](../architecture/composition-and-configuration.md#typed-identity);
+each named type lives in its own matching source file.
+
+Other domains define the same kind of value for provider, model, approval, goal,
+delegation, durable-operation, and storage identities. Public contracts MUST NOT
+substitute the underlying string, GUID, integer, or provider-supplied
+identifier. The default value is invalid at public boundaries; construction,
+parsing, and deserialization validate the representation and preserve a stable
+canonical text form.
+
+Framework-created identities use an injected, thread-safe
+`IIdentifierGenerator<TIdentifier>`. First-party generators provide
+collision-resistant defaults; deterministic tests and replay replace them.
+Provider-supplied IDs remain typed external correlation values and never replace
+AgentKit identity.
 
 ## Envelope
 
-```csharp
-public abstract record AgentMessage(
-    MessageId Id,
-    SessionId SessionId,
-    RunId? RunId,
-    ConversationId? ConversationId,
-    DateTimeOffset CreatedAt,
-    MessageState State,
-    ImmutableArray<ContentPart> Parts,
-    ExtensionData Extensions);
-```
+The canonical public `AgentMessage` envelope and its concrete message variants
+are defined once in the
+[message architecture](../architecture/messages-and-history.md#normative-minimal-message-shape).
+This concept specifies their durable semantics rather than redeclaring a second
+API shape.
 
 Concrete message kinds MUST include user request, assistant response, tool
 result, system/context record, and synthetic runtime message. Compaction and
@@ -35,8 +50,9 @@ policy decides how other states are represented.
 
 Provider-neutral roles MUST represent system, developer, user, assistant, tool,
 and runtime/synthetic semantics without assuming every provider supports each
-role. Adapter capability profiles MUST define a loss-aware translation or reject
-an unsupported mapping before sending the request.
+role. [Adapter capability profiles](model-providers-and-capabilities.md) MUST
+define a loss-aware translation or reject an unsupported mapping before sending
+the request.
 
 Instructions are structured sources with provenance and precedence. The core
 MUST NOT flatten system, developer, retrieved, and user content into one string
@@ -81,7 +97,8 @@ data.
 ## Tool correlation
 
 Every tool call has a stable `ToolCallId`, tool identity/name, raw argument
-representation, and optional validated argument value. A result MUST carry the
+representation, and optional validated argument value. The
+[tool-call lifecycle](tool-call-lifecycle.md) requires a result to carry the
 same call ID and identify the resolved tool/version. There MUST be exactly one
 terminal result per accepted call.
 

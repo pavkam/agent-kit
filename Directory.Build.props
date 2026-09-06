@@ -31,7 +31,12 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(IsTestProject)' == 'true' Or '$(OutputType)' == 'Exe'">
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
-  </PropertyGroup>
+  <!-- GenerateDocumentationFile stays true for every project, including
+       test and executable projects: Roslyn's IDE0005 (remove unnecessary
+       usings) analyzer requires documentation-comment parsing to run during
+       build and fails the build outright if GenerateDocumentationFile is
+       false while IDE0005 is enabled (see
+       https://github.com/dotnet/roslyn/issues/41640). Test/executable
+       projects instead suppress CS1591 (missing XML comment) in
+       Directory.Build.targets, once IsTestProject/OutputType are known. -->
 </Project>
