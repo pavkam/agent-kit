@@ -1,0 +1,120 @@
+# Memory, retrieval, and storage
+
+**Status:** Normative boundaries  
+**Depends on:** [Context assembly](context-assembly-and-instructions.md),
+[architecture](architecture-and-dependency-boundaries.md)
+
+## Purpose
+
+“Memory” is not one interface. AgentKit distinguishes conversation history,
+working context, durable memory, source documents, embeddings, vector indexes,
+and retrieval so policy and storage can vary independently.
+
+## State categories
+
+| Category             | Meaning                                         | Canonical owner       |
+| -------------------- | ----------------------------------------------- | --------------------- |
+| Conversation history | Ordered record of a session branch              | Session store         |
+| Working context      | Bounded input for one model request             | Context assembler     |
+| Durable memory       | Selected facts/preferences retained across runs | Memory store + policy |
+| Document/object      | Source material and metadata                    | Document store        |
+| Embedding            | Vector derived from source/model                | Embedding provider    |
+| Vector index         | Search over one compatible vector space         | Vector index          |
+| Retrieval            | Authorized selection/ranking of candidates      | Retrieval pipeline    |
+
+These MUST NOT be collapsed into one `IMemory` service.
+
+## Scope and identity
+
+Every persisted item MUST carry tenant, owner/principal visibility, namespace,
+source identity/version, classification, timestamps, retention, and version.
+Keys SHOULD make cross-tenant or cross-user reads structurally difficult.
+
+Storage contracts define consistency, atomicity, optimistic concurrency,
+pagination, duplicate/idempotent writes, deletion, expiry, and failure behavior.
+Provider SDK and database query types stay in integration packages.
+
+## Durable memory lifecycle
+
+Memory writing is a policy decision with explicit states:
+
+```text
+Proposed -> Validated -> Accepted -> Active
+                          |            |
+                          v            v
+                       Rejected     Corrected | Deleted | Expired
+```
+
+A model may propose memory but cannot self-authorize retention. Validation
+checks provenance, scope, sensitivity, contradiction, and policy. Corrections
+append versions or tombstones; they do not rewrite unrelated history.
+
+Memory records distinguish verified fact, user preference, instruction,
+decision, summary, and uncertain claim. Unverified guesses MUST not be stored as
+facts.
+
+## Embeddings
+
+Each vector MUST store embedding provider, model, revision, dimensions,
+modality, normalization, distance metric compatibility, source hash, chunk ID,
+and creation time. The vector index MUST reject an incompatible query before
+search.
+
+Re-embedding is a versioned migration that builds a compatible index and swaps
+an alias/pointer atomically. Mixing vector spaces because dimensions happen to
+match is forbidden.
+
+## Retrieval pipeline
+
+Retrieval MUST separate:
+
+1. authorize query and candidate scope;
+2. optionally rewrite query;
+3. select sources/indexes;
+4. search with stable filters;
+5. rerank and deduplicate;
+6. authorize each result for model exposure;
+7. enforce item/token/byte budgets; and
+8. produce typed context candidates with provenance and trust class.
+
+Retrieved content is untrusted data, never host instruction. The context
+assembler delimits it and records which items were included or omitted.
+
+## Chunking and source integrity
+
+Chunk identity includes source version/hash and deterministic chunker version.
+Updates must not leave stale chunks active beside replacements. Deletion and
+authorization revocation propagate to documents, chunks, vectors, caches, and
+retrieval results under documented consistency.
+
+The original authorized source or immutable reference SHOULD remain available
+for citation. Generated summaries must not impersonate source text.
+
+## Privacy and deletion
+
+Data classification controls encryption, region, retention, logging, and model
+exposure. Stores MUST support scoped deletion and tombstones where eventual
+indexes/caches need propagation. Deletion jobs are auditable and must not leak
+the deleted content into diagnostics.
+
+## Acceptance scenarios
+
+- Cross-tenant lookup fails without revealing item existence.
+- Incompatible embedding revision is rejected before vector query.
+- Retrieved prompt injection remains data in the provider request.
+- Memory proposal requires policy acceptance before later retrieval.
+- Source update cannot return stale and current chunks as one version.
+- Deletion propagates through index/cache and remains auditable without content.
+
+## Upstream synthesis
+
+The researched agents provide strong history and context mechanics but do not
+collectively define AgentKit's full storage/RAG boundary. This spec combines
+their context separation with the repository's provider-neutral storage and
+retrieval requirements. See [research provenance](research-provenance.md).
+
+## Related specifications
+
+- [History validation and repair](history-validation-and-repair.md)
+- [Model providers and capabilities](model-providers-and-capabilities.md)
+- [Permissions, approvals, and trust](permissions-approvals-and-trust.md)

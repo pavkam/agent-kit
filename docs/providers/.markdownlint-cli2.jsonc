@@ -1,0 +1,10 @@
+{
+  "config": {
+    // API signatures, source URLs, and comparison tables are intentionally dense.
+    "MD013": false,
+    // HTML code spans keep pipes and generic type brackets safe inside tables.
+    "MD033": false,
+    // Compact separator rows keep the already-wide API tables readable in source.
+    "MD060": false,
+  },
+}
