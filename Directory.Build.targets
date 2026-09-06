@@ -10,8 +10,11 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
-    <!-- Test names intentionally use MethodName_WhenThis_ThatIsExpected. -->
-    <NoWarn>$(NoWarn);CA1707</NoWarn>
+    <!-- Test names intentionally use MethodName_WhenThis_ThatIsExpected
+         (CA1707 covers the underscores; IDE1006 would otherwise also
+         require every async test method to additionally end in "Async",
+         which conflicts with that mandated pattern). -->
+    <NoWarn>$(NoWarn);CA1707;IDE1006</NoWarn>
   </PropertyGroup>
 
   <Target Name="ValidateNuGetPackageMetadata"

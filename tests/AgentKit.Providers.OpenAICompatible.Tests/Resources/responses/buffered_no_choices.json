@@ -1,0 +1,7 @@
+{
+  "id": "chatcmpl-empty",
+  "object": "chat.completion",
+  "created": 1700000002,
+  "model": "gpt-4o-2024-08-06",
+  "choices": []
+}

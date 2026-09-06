@@ -2,8 +2,18 @@
   <Folder Name="/src/">
     <Project Path="src/AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
     <Project Path="src/AgentKit/AgentKit.csproj"/>
+    <Project Path="src/AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
+    <Project Path="src/AgentKit.Providers.OpenAICompatible/AgentKit.Providers.OpenAICompatible.csproj"/>
+    <Project Path="src/AgentKit.Session/AgentKit.Session.csproj"/>
+    <Project Path="src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
+    <Project Path="src/AgentKit.Context.Compaction/AgentKit.Context.Compaction.csproj"/>
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AgentKit.Abstractions.Tests/AgentKit.Abstractions.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Providers.OpenAI.Tests/AgentKit.Providers.OpenAI.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Providers.OpenAICompatible.Tests/AgentKit.Providers.OpenAICompatible.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Session.Tests/AgentKit.Session.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Session.InMemory.Tests/AgentKit.Session.InMemory.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Context.Compaction.Tests/AgentKit.Context.Compaction.Tests.csproj"/>
   </Folder>
 </Solution>

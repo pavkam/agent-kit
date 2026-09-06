@@ -1,0 +1,48 @@
+{
+  "model": "gpt-4o",
+  "messages": [
+    { "role": "system", "content": "You are a weather assistant." },
+    { "role": "user", "content": "What's the weather in Paris?" },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_abc123",
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "arguments": "{\"location\":\"Paris\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_abc123",
+      "content": "15 degrees and sunny"
+    }
+  ],
+  "stream": true,
+  "stream_options": { "include_usage": true },
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Gets the current weather for a location.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": { "type": "string" }
+          },
+          "required": ["location"]
+        }
+      }
+    }
+  ],
+  "tool_choice": "required",
+  "parallel_tool_calls": true,
+  "stop": ["STOP"],
+  "seed": 42
+}

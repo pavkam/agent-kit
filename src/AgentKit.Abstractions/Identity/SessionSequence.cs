@@ -27,7 +27,11 @@ using System.Globalization;
 /// <para>
 /// Unlike the GUID-based identities, zero is a legitimate
 /// <see cref="SessionSequence"/> (the position before any message has been
-/// appended); only negative values are rejected.
+/// appended); only negative values are rejected. First-party stores number
+/// entries within a branch starting at 1, so <c>new SessionSequence(0)</c>
+/// unambiguously means "before the first entry" without requiring a
+/// negative sentinel, and a branch's sequence count after N appended
+/// entries equals its <see cref="SessionVersion"/>.
 /// </para>
 /// </remarks>
 public readonly record struct SessionSequence

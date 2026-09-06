@@ -1,0 +1,1 @@
+data: {"id":"chatcmpl-3","object":"chat.completion.chunk","created":1700000030,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"role":"assistant","content":"Partial"},"finish_reason":null}]}

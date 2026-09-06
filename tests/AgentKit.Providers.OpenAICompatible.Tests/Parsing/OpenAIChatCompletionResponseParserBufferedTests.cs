@@ -1,0 +1,113 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Providers.OpenAICompatible.Tests.Parsing;
+
+using AgentKit.Providers.OpenAICompatible.Tests.Fakes;
+
+/// <summary>
+/// Verifies <see cref="OpenAIChatCompletionResponseParser.ParseBufferedAsync"/>
+/// against fixture non-streaming OpenAI-compatible response bodies.
+/// </summary>
+public sealed class OpenAIChatCompletionResponseParserBufferedTests
+{
+    private static OpenAIResponseParseContext CreateContext(ModelRequestId requestId) =>
+        new(
+            requestId,
+            new ProviderId("openai"),
+            new ApiFamilyId("openai-chat-completions"),
+            new ModelId("gpt-4o"),
+            deploymentId: null,
+            providerRequestId: null);
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenPlainTextResponse_EmitsTextPartAndCompletes()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_success.json"));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.Completed);
+        completed.Response.Parts.Length.ShouldBe(1);
+
+        var textPart = completed.Response.Parts[0].ShouldBeOfType<TextPart>();
+        textPart.Text.ShouldBe("Hello! How can I help you today?");
+
+        completed.Response.Usage.InputTokens.ShouldBe(20);
+        completed.Response.Usage.OutputTokens.ShouldBe(9);
+        completed.Response.Usage.CachedInputTokens.ShouldBe(0);
+        completed.Response.Usage.ReasoningTokens.ShouldBe(0);
+
+        completed.Response.Identity.ResolvedModelId.ShouldBe(new ModelId("gpt-4o-2024-08-06"));
+        completed.Response.Identity.ResponseId.ShouldBe(new ProviderResponseId("chatcmpl-abc123"));
+
+        _ = observer.Events[0].ShouldBeOfType<ModelResponseStarted>();
+        _ = observer.Events.OfType<ModelPartStarted>().ShouldHaveSingleItem();
+        _ = observer.Events.OfType<ModelPartCompleted>().ShouldHaveSingleItem();
+        _ = observer.Events.OfType<ModelUsageUpdated>().ShouldHaveSingleItem();
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseCompleted>();
+
+        // Sequence numbers must be contiguous and strictly increasing.
+        observer.Events.Select(e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(i => (long) i));
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenToolCallResponse_EmitsToolCallPartWithParsedArguments()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_tool_call.json"));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
+        completed.Response.Parts.Length.ShouldBe(1);
+
+        var toolCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
+        toolCall.Tool.Name.ShouldBe("get_weather");
+        toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_xyz789"));
+        toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
+
+        var deltaEvent = observer.Events.OfType<ModelPartDelta>().ShouldHaveSingleItem();
+        var argumentsDelta = deltaEvent.Delta.ShouldBeOfType<ToolArgumentsContentDelta>();
+        argumentsDelta.ToolCallId.ShouldBe(toolCall.CallId);
+        argumentsDelta.JsonFragment.ShouldBe(/*lang=json,strict*/ """{"location":"Paris"}""");
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenResponseHasNoChoices_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_no_choices.json"));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenBodyIsNotJson_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+
+        await using var body = new MemoryStream("not json"u8.ToArray());
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<JsonException>();
+    }
+}
