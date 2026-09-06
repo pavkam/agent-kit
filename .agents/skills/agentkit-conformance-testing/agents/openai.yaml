@@ -1,0 +1,5 @@
+interface:
+  display_name: "AgentKit Conformance Testing"
+  short_description: "Test interchangeable implementations"
+  default_prompt:
+    "Use $agentkit-conformance-testing to build or run AgentKit contract tests."

@@ -1,0 +1,6 @@
+interface:
+  display_name: "AgentKit Agent Loop"
+  short_description: "Build deterministic agent orchestration"
+  default_prompt:
+    "Use $agentkit-agent-loop to implement or debug an AgentKit orchestration
+    loop."

@@ -1,0 +1,21 @@
+* text=auto
+
+*.cs text eol=lf
+*.csproj text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.md text eol=lf
+*.props text eol=lf
+*.slnx text eol=lf
+*.targets text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+*.received.json text eol=lf working-tree-encoding=UTF-8
+*.received.txt text eol=lf working-tree-encoding=UTF-8
+*.received.xml text eol=lf working-tree-encoding=UTF-8
+*.verified.json text eol=lf working-tree-encoding=UTF-8
+*.verified.txt text eol=lf working-tree-encoding=UTF-8
+*.verified.xml text eol=lf working-tree-encoding=UTF-8
+*.verified.bin binary
+*.bin binary

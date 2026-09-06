@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+    <Project Path="src/AgentKit/AgentKit.csproj"/>
+  </Folder>
+</Solution>

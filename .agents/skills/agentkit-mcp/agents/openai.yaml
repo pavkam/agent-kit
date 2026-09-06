@@ -1,0 +1,5 @@
+interface:
+  display_name: "AgentKit MCP"
+  short_description: "Implement and debug MCP integration"
+  default_prompt:
+    "Use $agentkit-mcp to design, implement, or debug AgentKit MCP support."

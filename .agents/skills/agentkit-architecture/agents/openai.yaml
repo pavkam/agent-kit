@@ -1,0 +1,6 @@
+interface:
+  display_name: "AgentKit Architecture"
+  short_description: "Design composable AgentKit boundaries"
+  default_prompt:
+    "Use $agentkit-architecture to design or review an AgentKit component
+    boundary."

@@ -1,0 +1,18 @@
+{
+  "name": "agentkit-repository-tooling",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Documentation quality tooling for AgentKit.",
+  "scripts": {
+    "format": "prettier --write \"**/*.{md,yml,yaml,json,jsonc}\"",
+    "format:check": "prettier --check \"**/*.{md,yml,yaml,json,jsonc}\"",
+    "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#artifacts\" \"#node_modules\" \"#.worktrees\" \"#docs/superpowers\""
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "0.23.2",
+    "prettier": "3.9.5"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
