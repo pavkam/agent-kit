@@ -7,6 +7,11 @@ MCP is a leaf integration, not a synonym for tools. AgentKit separates host
 policy, protocol primitives, client or server lifecycle, request correlation,
 transport, and authorization.
 
+Client support belongs in AgentKit.Mcp.Client and server support in
+AgentKit.Mcp.Server. Both depend on AgentKit.Abstractions and the official
+protocol SDK or transport dependencies they require. Neither is referenced by
+the facade, loop, tool runtime, or context package.
+
 ## Roles and packages
 
 The AgentKit host coordinates models, consent, roots, and MCP clients. An MCP

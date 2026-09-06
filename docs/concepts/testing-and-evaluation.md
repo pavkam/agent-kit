@@ -81,6 +81,12 @@ cannot grant authority, and diagnostics redact seeded secrets.
 
 ## Evaluations
 
+`AgentKit.Evaluation` MAY provide the first-party dataset runner, evaluator
+composition, comparison, and report model. It MUST operate through public
+AgentEngine, event, session, and diagnostic contracts rather than friend access
+to runtime internals. External result stores and report exporters remain leaf
+integrations.
+
 Evaluation cases MUST version input, expected criteria, fixtures/tools, agent
 definition, model settings, and evaluator. Results record provider/model,
 configuration commit/version, usage/cost, latency, run trace, and evaluator

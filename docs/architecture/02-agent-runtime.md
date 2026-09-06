@@ -3,10 +3,14 @@
 **Role:** Coordinate one run without absorbing the responsibilities of its
 collaborators.
 
-The runtime is the default agentic loop and session execution coordinator. It
-owns control flow: when input is promoted, when context is prepared, when a
-model is called, when tools may run, whether another turn is required, and when
-the run is truly settled.
+AgentKit.Loop contains the first-party agentic loop. The loop contract and all
+provider-neutral run values live in AgentKit.Abstractions. AgentEngine resolves
+the configured loop; it does not contain privileged orchestration behavior.
+
+The loop owns control flow: when input is promoted, when context is prepared,
+when a model is called, when tools may run, whether another turn is required,
+and when the run is truly settled. Session coordination remains in
+AgentKit.Session.
 
 ## State and lifecycle
 
@@ -24,16 +28,18 @@ persistence, recovery, middleware, or event work is unfinished.
 
 For each turn, the runtime:
 
-1. promotes eligible input at a safe boundary;
+1. asks the I/O coordinator to promote eligible input at a safe boundary;
 2. asks the context component for an immutable provider-ready request;
-3. reserves budget and asks the provider component for one attempt;
+3. reserves budget and asks the provider runtime to select and execute one
+   concrete provider attempt;
 4. validates and commits the assistant response;
 5. passes accepted tool calls through the tool and permission components;
 6. commits terminal tool results in deterministic order; and
 7. applies continuation and stop policy.
 
-The runtime does not select history items, translate provider wire formats,
-authorize tools, or implement storage. It sequences the components that do.
+The runtime does not admit input, publish output, select history items, select a
+model, translate provider wire formats, authorize tools, or implement storage.
+It sequences the components that do.
 
 ## Limits and resilience
 
@@ -55,6 +61,11 @@ The loop is replaceable as a whole. A custom loop receives the same explicit
 collaborators and must preserve public lifecycle, correlation, ordering,
 cancellation, and terminal-result behavior. It cannot use the dependency
 container as a service locator or bypass permission and durability boundaries.
+
+AddAgentLoop registers the first-party implementation as a singular, replaceable
+service. A custom implementation may use the neutral registration surface
+without referencing AgentKit.Loop. Both run through the same loop conformance
+suite.
 
 ## Related concept specifications
 

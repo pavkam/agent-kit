@@ -8,6 +8,12 @@ indexes, and retrieval. Session history remains with sessions, working context
 remains with context assembly, and embedding generation remains a provider
 operation.
 
+AgentKit.Memory will contain the first-party memory lifecycle and retrieval
+pipeline when that subsystem is implemented. Stores and vector integrations
+remain leaf packages named for their backend. Their contracts live in
+AgentKit.Abstractions, so applications may replace the pipeline or any storage
+axis independently.
+
 ## Durable memory
 
 A model may propose a memory, but it cannot authorize retention. Memory policy

@@ -21,6 +21,10 @@ contract:
 
 Do not merge these into one `IMemory` interface.
 
+`AgentKit.IO` coordinates queued input, but durable admission and promotion are
+session facts. A session store must keep those facts consistent with the history
+version it exposes.
+
 1. Define ownership and isolation: tenant, user, agent, thread, run, namespace,
    and data classification. Keys must make accidental cross-scope reads hard.
 2. Define identity, ordering, version/concurrency token, atomicity, pagination,

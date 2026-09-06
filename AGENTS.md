@@ -21,12 +21,24 @@ code being changed and call out any unresolved conflict.
 
 - `src/AgentKit.Abstractions/` is the provider-neutral contract package. It must
   not reference `AgentKit` or any concrete provider SDK.
-- `src/AgentKit/` will contain the default runtime, orchestration, and
-  dependency-injection composition surface. It may reference
-  `AgentKit.Abstractions`.
-- Future integrations belong in focused `src/AgentKit.*` packages. Concrete
-  provider, storage, transport, and hosting packages are leaves; core packages
-  never reference them.
+- `src/AgentKit/` is the dependency-light facade. It contains `AgentEngine`,
+  `AgentEngineBuilder`, hosted registration, composition validation, and
+  lifecycle ownership. It references `AgentKit.Abstractions` but no concrete
+  engine component.
+- First-party implementations live in focused projects such as `AgentKit.Loop`,
+  `AgentKit.Context`, `AgentKit.IO`, `AgentKit.Session`, `AgentKit.Permissions`,
+  `AgentKit.Providers`, and `AgentKit.Tools`.
+- Tool features use `AgentKit.Tools.<ToolName>`. Provider integrations use
+  `AgentKit.Providers.<ProviderName>`. Session stores use
+  `AgentKit.Session.<ProviderName>`.
+- Concrete providers, storage, transports, filesystem implementations, and
+  hosting integrations are leaves; foundation and runtime packages never
+  reference them.
+- `AgentKit.Providers.OpenAICompatible` is shared protocol-family machinery.
+  Applications normally select concrete packages such as
+  `AgentKit.Providers.OpenAI`, `AgentKit.Providers.OpenRouter`, or
+  `AgentKit.Providers.ZAi` instead of treating compatibility as provider
+  identity.
 - Tests mirror source packages under `tests/`. Shared conformance suites may
   live in a dedicated non-packable test project.
 - Examples belong under `examples/` and compose packages through their public DI
@@ -46,8 +58,8 @@ code being changed and call out any unresolved conflict.
 - Keep contracts smaller than implementations. Split discovery, selection,
   execution, persistence, policy, and observation instead of building manager
   interfaces that own all of them.
-- The default runtime is one composition of abstractions, never privileged by
-  hidden access or static state.
+- `AgentEngine` is a facade over one composition of abstractions, never a hidden
+  default runtime or service locator.
 - Dependencies point inward: abstractions → nothing concrete; runtime →
   abstractions; integrations → abstractions and, only when necessary, runtime.
   Applications are the composition roots.
@@ -56,6 +68,14 @@ code being changed and call out any unresolved conflict.
 
 - Use `Microsoft.Extensions.DependencyInjection`, options, logging,
   configuration, and resilience conventions rather than a parallel container.
+- `AgentEngine.CreateBuilder()` returns a separate mutable `AgentEngineBuilder`;
+  `Build()` returns an immutable `AgentEngine`.
+- `AgentEngineBuilder.Services` is the feature composition surface. The same
+  service registrations must work with ASP.NET Core, worker hosts, and custom
+  service collections.
+- Support standalone and host-managed ownership through the same registration
+  path. A standalone engine owns the provider it builds; an externally hosted
+  engine never disposes the host's provider.
 - Registration extensions return `IServiceCollection`, do not build a service
   provider, and document duplicate-registration behavior.
 - Register defaults with replaceability in mind. Use additive registrations for
@@ -64,6 +84,11 @@ code being changed and call out any unresolved conflict.
   invalid models, or impossible limits until the middle of an agent run.
 - Do not use service locators, ambient containers, mutable global registries, or
   static "current agent" state.
+- Composition validation requires one loop, one input coordinator, one output
+  publisher, one session coordinator and store, one context assembler, one
+  permission policy, one model catalog, one model selector, one model request
+  executor, at least one conversational model, and a `TimeProvider`. Optional
+  capabilities must validate their own required collaborators when registered.
 
 ### Provider neutrality
 
@@ -75,6 +100,17 @@ code being changed and call out any unresolved conflict.
   provider lacks it.
 - OpenAI-compatible providers may share transports and base adapters, but
   compatibility is a tested capability set, not a brand label.
+- `AgentKit.Providers` owns the first-party catalog, selection, capability
+  validation, and model request execution. Branded provider packages own
+  endpoints, credentials, wire profiles, and concrete model registrations.
+- Concrete provider packages register each supported operation independently.
+  Conversation, embeddings, reranking, media, and provider-native tools do not
+  become one oversized provider interface merely because one vendor offers all
+  of them.
+- `AgentKit.Providers.OpenAI` registers OpenAI conversational and embedding
+  implementations. `AgentKit.Providers.OpenRouter` registers its conversational,
+  embedding, and reranking implementations. `AgentKit.Providers.ZAi` registers
+  only the operations supported by its verified API profile.
 - Keep embedding generation separate from conversational generation. Embedding
   model identity, dimensions, modality, and vector-space compatibility are part
   of the storage contract.
@@ -97,6 +133,18 @@ code being changed and call out any unresolved conflict.
   status transitions, attempts, and causality explicitly.
 - Define ordering, concurrency, backpressure, retries, and idempotency wherever
   more than one message or tool call can be in flight.
+
+### Input and output
+
+- `AgentKit.IO` owns the first-party admission coordinator, queued-input
+  promotion, live event fan-out, and final-result publication. It does not own
+  durable session truth or the agent state machine.
+- Input queues preserve admission identity, delivery class, capacity,
+  backpressure, ordering, and idempotency. Queue state is persisted through
+  session contracts when durability is required.
+- Channel adapters are leaves. HTTP, console, UI, or messaging integrations
+  translate their protocol into AgentKit input and output contracts without
+  bypassing admission, authorization, or settlement.
 
 ### Tools and permissions
 
@@ -136,6 +184,14 @@ code being changed and call out any unresolved conflict.
   only when streaming is real, and never block on async work.
 - Use `TimeProvider` and injectable randomness/identity sources for behavior
   that must be deterministic in tests.
+- Do not call ambient clocks or use wall-clock delays in framework behavior.
+  Register `TimeProvider.System` only as the replaceable default.
+- Every source project contains `GlobalUsings.cs`, `AssemblyInfo.cs`, and a
+  package-scoped `ServiceExtensions.cs`. The abstraction package must not add a
+  meaningless no-op registration merely to satisfy the file convention.
+- `AssemblyInfo.cs` grants `InternalsVisibleTo` only to deliberate test or
+  generated-proxy assemblies. Production packages do not use friend access to
+  bypass public contracts.
 - Validate public arguments before observable state changes. Document every
   public and internal type/member with useful XML documentation, including
   ownership, threading, cancellation, and exceptions.
@@ -148,6 +204,8 @@ code being changed and call out any unresolved conflict.
 ## Tests
 
 - Use xUnit v3, Shouldly, and Arrange/Act/Assert.
+- Mirror each source project with a .NET 10 executable, non-packable test
+  project under `tests/`, following the Sharp Vision test-project setup.
 - Name tests `MethodName_WhenThis_ThatIsExpected`.
 - Write reusable conformance suites for every swappable contract, then run the
   same suite against the default implementation and each adapter.
@@ -160,6 +218,9 @@ code being changed and call out any unresolved conflict.
   await boundary, provider error mapping, tool-call correlation, DI replacement,
   queue ordering, and permission denial.
 - Test observable contracts rather than private calls or implementation shape.
+- Keep common fakes and fixtures in `AgentKit.Test.Shared`, reusable behavioral
+  suites in `AgentKit.Conformance`, and public API snapshots in
+  `AgentKit.Compatibility.Tests`.
 
 ## Skill routing
 
@@ -167,7 +228,10 @@ code being changed and call out any unresolved conflict.
   package boundaries, interfaces, base classes, and DI composition.
 - Use
   [agentkit-provider-adapters](.agents/skills/agentkit-provider-adapters/SKILL.md)
-  for model and embedding providers.
+  for conversational, embedding, reranking, and other provider operations.
+- Use [agentkit-input-output](.agents/skills/agentkit-input-output/SKILL.md) for
+  input admission, work queues, live streams, structured output, and channel
+  adapters.
 - Use [agentkit-mcp](.agents/skills/agentkit-mcp/SKILL.md) for MCP clients,
   transports, primitives, and protocol lifecycle.
 - Use
@@ -183,6 +247,9 @@ code being changed and call out any unresolved conflict.
 - Use
   [agentkit-conformance-testing](.agents/skills/agentkit-conformance-testing/SKILL.md)
   for reusable contract suites and adapter verification.
+- Use [agentkit-evaluation](.agents/skills/agentkit-evaluation/SKILL.md) for
+  versioned agent-behavior datasets, evaluators, comparisons, and reports; use
+  conformance testing for component contract correctness.
 
 Read only the skills relevant to the task. For volatile provider or protocol
 behavior, verify current primary documentation before designing or changing the
@@ -196,6 +263,10 @@ adapter.
 4. Implement the smallest complete change through public abstractions.
 5. Update XML documentation, examples, and repository guidance that changed.
 6. Run focused checks, then the repository gates warranted by the change.
+
+Architecture changes are incomplete until `docs/architecture/`, the normative
+concept specifications, this file, and every affected repository skill agree on
+package ownership and dependency direction.
 
 Before declaring repository-wide work complete, run:
 

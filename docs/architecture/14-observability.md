@@ -7,6 +7,11 @@ Observability includes domain events, traces, metrics, structured logs, and a
 separate security audit stream. These signals may share exporters, but their
 schemas, retention, access, and delivery guarantees remain distinct.
 
+Event and audit contracts live in AgentKit.Abstractions. Runtime components emit
+through those contracts without depending on an exporter. A first-party
+OpenTelemetry bridge belongs in AgentKit.Observability.OpenTelemetry; other
+exporters remain independent leaf packages.
+
 ## Domain events
 
 Durable semantic events are sufficient to reconstruct stable session and run
@@ -56,9 +61,14 @@ Every interchangeable component is verified by a shared conformance suite.
 Diagnostics expose behavior for those tests, but testability does not create
 backdoors into private state.
 
+AgentKit.Evaluation consumes public engine results, events, and recorded
+manifests. It may export evaluation metrics through observability contracts, but
+an evaluator is not an observer with secret access to mutable runtime state.
+
 ## Related concept specifications
 
 - [Streaming and event protocol](../concepts/streaming-and-event-protocol.md)
 - [Observability and audit](../concepts/observability-and-audit.md)
 - [Error taxonomy](../concepts/error-taxonomy.md)
 - [Testing and evaluation](../concepts/testing-and-evaluation.md)
+- [Testing and evaluation architecture](17-testing-and-evaluation.md)

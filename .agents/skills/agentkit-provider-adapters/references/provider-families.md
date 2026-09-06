@@ -4,6 +4,29 @@ Use this reference to choose an adapter boundary, not as a frozen copy of a
 vendor API. Fetch the current official documentation before implementing
 payloads or declaring capabilities.
 
+## AgentKit package map
+
+`AgentKit.Providers` supplies provider-neutral runtime behavior: catalog,
+selection, capability validation, and model request execution.
+`AgentKit.Providers.OpenAICompatible` supplies reusable protocol-family building
+blocks. Neither package is a vendor identity.
+
+Concrete integrations use `AgentKit.Providers.ProviderName` and own their
+endpoint, credentials, options, compatibility profile, descriptor discovery, and
+service registration. The initial compatible family is:
+
+| Package                         | Shared family                                                                 | Independently registered operations                  |
+| ------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `AgentKit.Providers.OpenAI`     | OpenAI-compatible Responses, Chat Completions, and embeddings                 | Conversation and embeddings                          |
+| `AgentKit.Providers.OpenRouter` | OpenAI-compatible Chat Completions, Responses where supported, and embeddings | Conversation, embeddings, and reranking              |
+| `AgentKit.Providers.ZAi`        | OpenAI-compatible Chat Completions subset                                     | Conversation and verified provider-native operations |
+
+Native or cloud-broker packages use their own adapters when compatibility would
+discard semantics. Planned names follow the same rule, including
+`AgentKit.Providers.Anthropic`, `AgentKit.Providers.GoogleGemini`,
+`AgentKit.Providers.AzureOpenAI`, and `AgentKit.Providers.AmazonBedrock`.
+Research coverage does not itself commit AgentKit to shipping a package.
+
 ## OpenAI and OpenAI-compatible APIs
 
 OpenAI's Responses API models output as typed items and events; function calls
@@ -72,3 +95,6 @@ Embedding providers are not interchangeable at the vector level. A stored vector
 belongs to a provider/model/revision, dimensionality, modality, and
 normalization scheme. The embedding contract must make incompatibility
 detectable before query time and support explicit re-embedding migrations.
+
+Reranking is a separate semantic operation as well. Do not disguise a reranker
+as an embedding model or assume every embedding provider supplies reranking.

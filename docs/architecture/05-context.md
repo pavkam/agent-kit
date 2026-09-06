@@ -7,6 +7,11 @@ instructions, skills, tools, retrieval, goals, output requirements, and runtime
 facts. It is not the session record, and assembling it does not mutate durable
 history.
 
+AgentKit.Context contains the first-party context assembler and ordered
+contributor pipeline. The context contracts and candidate values live in
+AgentKit.Abstractions. AddAgentContext registers the assembler as a singular,
+replaceable service and contributors as an ordered additive collection.
+
 ## Context contributors
 
 Every contributor produces typed candidates with source, provenance, trust,
@@ -27,6 +32,10 @@ Skills are reusable context capabilities, not a privileged prompt paste. A skill
 may contribute instructions, references, and declared component requirements.
 Its content retains provenance and trust. Any tools it makes available still go
 through the normal tool and permission components.
+
+AgentKit.Tools.Skill owns the first-party skill contributor because the tool and
+its context representation must use one catalog and one source identity. Its
+registration adds both pieces atomically and remains idempotent.
 
 ## Assembly
 

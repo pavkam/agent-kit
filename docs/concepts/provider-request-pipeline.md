@@ -28,6 +28,13 @@ validate capabilities
 Each stage MUST accept cancellation. No stage after credential injection may log
 or expose raw secrets.
 
+The first-party catalog, selection, capability validation, and model request
+execution live in `AgentKit.Providers`. Translation, authentication, transport,
+parsing, and concrete errors live in the selected
+`AgentKit.Providers.<ProviderName>` package. Shared OpenAI-compatible machinery
+may live in `AgentKit.Providers.OpenAICompatible`, but the concrete package
+remains responsible for its compatibility profile and observable behavior.
+
 ## Request contract
 
 The provider-neutral request MUST include:

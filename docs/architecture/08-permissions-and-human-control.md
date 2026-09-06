@@ -6,6 +6,11 @@ Model output is a proposal, never permission. This component evaluates every
 operation that can expose data or cause effects, regardless of whether the tool
 is local, reflected, remote, built in, or MCP-backed.
 
+AgentKit.Permissions contains the first-party ordered policy evaluator, approval
+coordination, and human-control services. Their contracts and decision values
+live in AgentKit.Abstractions. AddAgentPermissions registers one effective
+policy and any additive rule, approval, and audit components.
+
 ## Policy decisions
 
 The policy engine receives the effective tenant, principal, agent, session, run,
@@ -57,6 +62,10 @@ to a model reveal only safe, policy-selected detail.
 Every decision, approval transition, consumption, expiry, denial, and revocation
 emits a redacted audit record. Required audit persistence is part of run
 settlement.
+
+An application may replace the complete policy or approval broker. A command-
+line approval handler and a hosted UI broker are two implementations of the same
+approval contract; neither is embedded in the loop or tool package.
 
 ## Related concept specifications
 

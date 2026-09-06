@@ -1,6 +1,6 @@
 interface:
   display_name: "AgentKit Provider Adapters"
-  short_description: "Build model and embedding adapters"
+  short_description: "Build model and semantic adapters"
   default_prompt:
     "Use $agentkit-provider-adapters to implement or debug an AgentKit model
     provider."

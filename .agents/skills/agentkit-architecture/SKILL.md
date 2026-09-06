@@ -18,10 +18,11 @@ plugin API.
 2. Identify at least the consumer and two plausible implementations. If only one
    implementation is credible, keep the code focused and postpone a public
    abstraction unless the user explicitly requires it.
-3. Place provider-neutral contracts in `AgentKit.Abstractions`. Put default
-   orchestration in `AgentKit`; put vendor, transport, and persistence
-   implementations in leaf packages. Reject any dependency from an abstraction
-   or runtime package toward a concrete integration.
+3. Place provider-neutral contracts in `AgentKit.Abstractions`. Keep `AgentKit`
+   as the dependency-light `AgentEngine` facade. Put first-party behavior in
+   focused runtime packages and vendor, transport, or persistence behavior in
+   leaf packages. Reject any dependency from a foundation or runtime package
+   toward a concrete integration.
 4. Give each extension point a narrow interface. Add an optional base class only
    when it supplies real reusable lifecycle, validation, streaming assembly, or
    error-mapping behavior. Keep direct interface implementation supported.
@@ -37,6 +38,9 @@ plugin API.
 8. Add conformance tests for the contract and DI tests proving defaults can be
    replaced. Review public API compatibility, XML documentation, and package
    dependencies before finishing.
+9. Keep the architecture index, project structure, affected component document,
+   normative concept specifications, `AGENTS.md`, and relevant skills in sync.
+   Do not leave a package name or ownership rule documented in only one place.
 
 The output of architecture work should make the dependency graph, extension
 contract, default behavior, and unsupported behavior unambiguous.

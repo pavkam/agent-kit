@@ -1,7 +1,7 @@
 # Embedding, rerank, and retrieval contracts
 
 **Contract snapshot:** 2026-09-06  
-**Scope:** provider-neutral semantic operations for Agent Framework
+**Scope:** provider-neutral semantic operations for AgentKit
 
 Embedding, reranking, and retrieval are three different operations. They may
 appear in one RAG pipeline, but they do not share a request model, score

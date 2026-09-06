@@ -56,7 +56,7 @@ are control-plane surfaces unless directly needed for inference policy.
 
 ```mermaid
 flowchart LR
-    App[Agent Framework] --> Chat[Chat Completions adapter]
+    App[AgentKit] --> Chat[Chat Completions adapter]
     App --> Resp[Responses adapter]
     App --> Msg[Anthropic Messages adapter]
     Chat & Resp & Msg --> Router[OpenRouter policy and routing]

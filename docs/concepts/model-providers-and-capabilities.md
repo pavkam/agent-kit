@@ -58,6 +58,25 @@ The adapter MUST NOT own agent retries, tool execution, permission policy,
 history selection, or compaction. It MAY expose a provider-specific request
 extension surface that is validated and isolated from other adapters.
 
+## Package ownership
+
+`AgentKit.Providers` owns the first-party catalog, selector, capability
+validation, and model request execution. It MUST NOT contain vendor protocol.
+Concrete integrations use `AgentKit.Providers.<ProviderName>` and own their
+endpoint, credentials, options, profiles, descriptors, wire behavior, and
+registration.
+
+`AgentKit.Providers.OpenAICompatible` is a reusable protocol-family package for
+Responses, Chat Completions, embeddings, HTTP, streaming, and common errors. It
+is not a provider identity. `AgentKit.Providers.OpenAI`,
+`AgentKit.Providers.OpenRouter`, and `AgentKit.Providers.ZAi` MUST retain their
+own profiles and tests even when they reuse that package.
+
+Provider packages register operations independently. OpenAI may provide
+conversation and embeddings; OpenRouter may provide conversation, embeddings,
+and reranking; Z.ai MUST expose only the operations in its verified profile.
+Applications MAY combine named operations from different providers.
+
 ## Capability negotiation
 
 Before I/O, request validation MUST compare the request with the effective
@@ -100,6 +119,10 @@ provider/model/revision, dimensions, modality, normalization, and limits.
 Conversational generation interfaces MUST NOT sprout optional embedding methods.
 Vector compatibility is enforced by storage and retrieval contracts.
 
+Reranking MUST use another separate contract and descriptor. Reranking scores,
+query/document asymmetry, model identity, usage, and limits MUST NOT be inferred
+from an embedding contract.
+
 ## Acceptance scenarios
 
 - A selected deployment reports capabilities narrower than its provider's
@@ -110,6 +133,8 @@ Vector compatibility is enforced by storage and retrieval contracts.
 - Fallback refuses to discard provider-bound continuation state silently.
 - Actual response model identity survives alias-based selection.
 - Embeddings from incompatible model revisions cannot share an index query.
+- Replacing an embedding or reranking registration does not replace the selected
+  conversational model.
 
 ## Upstream evidence
 

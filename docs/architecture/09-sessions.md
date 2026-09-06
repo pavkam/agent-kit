@@ -7,12 +7,22 @@ and context transitions, and optimistic concurrency state. It is not an
 in-memory agent instance. Even a standalone run uses an ephemeral session with
 the same ordering and correlation semantics.
 
+AgentKit.Session contains session coordination, active-run ownership, branching,
+and store usage. Session contracts and durable values live in
+AgentKit.Abstractions. AddAgentSession registers the coordinator but never
+chooses a storage medium.
+
 ## Canonical record
 
 The session record is append-oriented and versioned. It contains messages, input
 admission and promotion, lifecycle transitions, model and configuration changes,
 tool calls and results, permissions and approval references, compaction, goals,
 delegation, and recovery checkpoints.
+
+AgentKit.IO coordinates admission and promotion through these contracts. It does
+not keep a private queue beside the session. An in-memory store may keep the
+record in process, while a durable store must commit admission atomically with
+the session version used to accept it.
 
 Every entry has stable identity, monotonic sequence, causal linkage, timestamp,
 and schema version. Appends use an expected version and idempotency identity so
@@ -45,6 +55,12 @@ and preserves compatible unknown fields.
 Storage client types stay in leaf packages. The runtime interacts only with the
 session contract and does not keep session state forever in a shared singleton.
 
+AgentKit.Session.InMemory supplies deterministic ephemeral storage for tests,
+examples, and short-lived applications. AgentKit.Session.Sqlite supplies the
+first durable local implementation. Future stores follow
+AgentKit.Session.ProviderName. A store is registered separately and composition
+fails when none is present; there is no hidden production default.
+
 ## Active-run ownership
 
 The default coordinator permits one active mutating run per session. New work
@@ -56,6 +72,10 @@ Conversation history belongs here. Durable memory across sessions belongs to the
 memory component. The working provider context belongs to the context component.
 Combining them into one cheerful bucket called memory would destroy their policy
 and consistency boundaries.
+
+Both the in-memory and SQLite stores run through the same session-store
+conformance suite for ordering, idempotency, optimistic concurrency, branching,
+pagination, cancellation, and disposal.
 
 ## Related concept specifications
 

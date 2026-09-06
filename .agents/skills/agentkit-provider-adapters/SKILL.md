@@ -1,10 +1,10 @@
 ---
 name: agentkit-provider-adapters
 description:
-  "Implement or debug AgentKit chat, response, multimodal, and embedding
-  provider adapters, including OpenAI-compatible and native APIs. Use for
-  capability mapping, streaming, tool calls, usage, errors, authentication
-  seams, and provider conformance."
+  "Implement or debug AgentKit conversational, multimodal, embedding, and
+  reranking provider adapters, including OpenAI-compatible and native APIs. Use
+  for capability mapping, streaming, tools, usage, errors, authentication, and
+  provider conformance."
 ---
 
 # AgentKit Provider Adapters
@@ -41,12 +41,31 @@ shape or adding a new provider.
 7. For OpenAI-compatible providers, reuse a shared base only after contract
    tests prove the common wire shape. Endpoint compatibility never implies
    identical models, authentication, streaming, tools, JSON schema, or usage.
-8. Keep embedding adapters separate. Return and persist model identity,
-   dimensions, modality, and normalization metadata. Never mix vectors from
-   incompatible spaces in one index.
+8. Keep embedding and reranking adapters separate from conversation and from one
+   another. Return and persist model identity, dimensions, modality, and
+   normalization metadata. Never mix vectors from incompatible spaces in one
+   index or infer reranking score semantics from embeddings.
 9. Add request serialization, fragmented-stream parsing, cancellation, error
    mapping, usage, tool-call, and capability conformance tests. Live tests are
    opt-in and must tolerate missing credentials without weakening unit coverage.
+
+## Package model
+
+- `AgentKit.Providers` owns the first-party catalog, selection, capability
+  validation, and model request execution. It contains no vendor wire protocol.
+- `AgentKit.Providers.OpenAICompatible` exposes reusable Chat Completions,
+  Responses, embeddings, transport, and stream-parser building blocks. It is a
+  protocol-family package, not a selectable provider identity.
+- Branded packages such as `AgentKit.Providers.OpenAI`,
+  `AgentKit.Providers.OpenRouter`, and `AgentKit.Providers.ZAi` own endpoints,
+  authentication, compatibility profiles, provider options, descriptors, and
+  ASP.NET-style registration.
+- Register conversation, embeddings, reranking, media, and provider-native tools
+  as independent capabilities. A vendor package may supply several, but callers
+  can replace each one separately.
+- A concrete OpenAI-compatible package depends on the shared family package and
+  `AgentKit.Abstractions`; it must not copy translators or make the shared
+  package pretend all endpoints behave like OpenAI.
 
 Do not leak vendor SDK types into `AgentKit.Abstractions`. A consumer must be
 able to replace one adapter without importing another provider's package.

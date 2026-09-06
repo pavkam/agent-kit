@@ -7,6 +7,24 @@ The model may request a tool call. It never invokes application code directly.
 The tool component separates every stage so discovery, policy, execution, and
 recording remain independently replaceable.
 
+## Package model
+
+AgentKit.Tools contains the optional first-party tool runtime: catalog,
+resolution, validation, scheduling, invocation, normalization, and result
+coordination. The contracts live in AgentKit.Abstractions, so another runtime
+can replace it without referencing this package.
+
+Individual tools are feature packages named AgentKit.Tools.ToolName. The first
+set includes AgentKit.Tools.Read, AgentKit.Tools.Write, and
+AgentKit.Tools.Skill. Each package owns its descriptor, invoker, options,
+registration, and tests. AddReadTool, AddWriteTool, and AddSkillTool register
+their features through the service collection.
+
+AgentKit.Tools.Skill deliberately contributes two capabilities: the skill tool
+and the context contributor that describes available skills to the model. Both
+use the same source identity and are registered together. File-aware tools
+depend on file-system abstractions and never on AgentKit.FileSystem itself.
+
 ## Tool sources and identity
 
 Tool providers expose immutable descriptor and invoker snapshots from sources
@@ -57,6 +75,9 @@ exceptions and secret-bearing arguments never enter model-visible results.
 
 Provider-native tools remain distinct because their execution, permission,
 billing, and result lifecycles differ from application tools.
+
+Installing or registering a tool makes it discoverable; it does not authorize
+invocation. Permission remains a separate required policy boundary.
 
 ## Related concept specifications
 

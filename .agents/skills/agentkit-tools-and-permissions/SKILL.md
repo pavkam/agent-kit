@@ -50,3 +50,8 @@ discover → resolve → parse/bound → validate → authorize → invoke → r
 Reflection-based function tools may be a convenience adapter, never the core
 contract. Their schema generation and invocation must obey the same validation
 and permission pipeline.
+
+The first-party pipeline belongs to `AgentKit.Tools`; concrete features use
+`AgentKit.Tools.<ToolName>`. `AgentKit.Tools.Read` and `AgentKit.Tools.Write`
+consume file-system abstractions only. `AgentKit.Tools.Skill` registers its tool
+and context contributor together.

@@ -1,9 +1,14 @@
 # LLM provider API contracts
 
-This index is the protocol map for provider adapters in Agent Framework. It
-documents wire contracts, not marketing model lists. Model IDs, prices, quotas,
-and feature availability drift too quickly to hard-code here; query each
-provider's model-discovery API and capability metadata at runtime.
+This index is the protocol map for provider adapters in AgentKit. It documents
+wire contracts, not marketing model lists. Model IDs, prices, quotas, and
+feature availability drift too quickly to hard-code here; query each provider's
+model-discovery API and capability metadata at runtime.
+
+The [provider architecture](../architecture/06-model-and-embedding-providers.md)
+defines how this research maps into AgentKit.Providers,
+AgentKit.Providers.OpenAICompatible, and concrete provider packages. Researching
+an API does not by itself commit the project to shipping its adapter.
 
 **Last full verification:** 2026-09-06
 

@@ -8,6 +8,11 @@ defines recoverable operations and evidence; leaf adapters map them to workflow
 engines or durable task systems. The core does not depend on a particular
 backend SDK, and an in-memory run never pretends to provide crash recovery.
 
+Durability contracts live in AgentKit.Abstractions. Concrete integrations use
+AgentKit.Durability.BackendName, such as a future Temporal or Restate package.
+They register durable operation ownership without changing AgentEngine or the
+loop contract.
+
 ## Durable operations
 
 A recoverable operation has stable operation and idempotency identities, causal

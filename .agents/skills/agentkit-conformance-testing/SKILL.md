@@ -21,7 +21,9 @@ credible when the same observable contract is executable against all of them.
 3. Run the suite against the default implementation and each integration.
    Capability-based tests may skip only when the implementation explicitly
    reports the capability as unsupported; a thrown `NotSupportedException`
-   discovered mid-test is not capability negotiation.
+   discovered mid-test is not capability negotiation. OpenAI-compatible
+   implementations run both the shared wire-family suite and their branded
+   package's capability and DI-registration suite.
 4. Use deterministic fakes for clocks, IDs, randomness, transport, queues, and
    external services. Provider protocol tests use loopback HTTP/stream handlers
    or sanitized fixtures, never required live credentials.
@@ -36,7 +38,8 @@ credible when the same observable contract is executable against all of them.
    correlated.
 8. For DI, resolve through the public registration API and prove defaults can be
    replaced, multiple implementations compose as documented, scopes are valid,
-   and disposal happens once.
+   independent provider operations compose as documented, and disposal happens
+   once.
 9. Keep optional live integration tests separate, explicitly enabled, bounded by
    time/cost, and diagnostic. They supplement rather than replace protocol
    conformance tests.

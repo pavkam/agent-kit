@@ -8,6 +8,11 @@ context, and I/O components. The model is deliberately richer than a role and a
 string because real conversations contain media, reasoning, citations, tool
 calls, tool results, structured data, refusals, and provider extensions.
 
+Message, content-part, history-cursor, and correlation values live in
+AgentKit.Abstractions. There is no separate messages implementation package;
+components operate on the same neutral values and stores persist them through
+session contracts.
+
 ## Canonical message model
 
 Every message carries stable identity, session and causal correlation, creation

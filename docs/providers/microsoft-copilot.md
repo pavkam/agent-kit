@@ -19,7 +19,7 @@ bot-channel API.
 
 ```mermaid
 flowchart TD
-    App[Agent Framework] --> Need{Required capability}
+    App[AgentKit] --> Need{Required capability}
     Need -->|Grounded Microsoft 365 answer| MChat[Microsoft 365 Copilot Chat API]
     Need -->|Security-trimmed M365 extracts| MRet[Microsoft 365 Copilot Retrieval API]
     Need -->|Invoke a published custom agent| Studio[Copilot Studio via Agents SDK or Direct Line]

@@ -1,0 +1,6 @@
+interface:
+  display_name: "AgentKit Input and Output"
+  short_description: "Build reliable agent I/O boundaries"
+  default_prompt:
+    "Use $agentkit-input-output to implement or debug AgentKit admission,
+    queues, streams, or final results."

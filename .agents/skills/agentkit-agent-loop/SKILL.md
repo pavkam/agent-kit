@@ -21,9 +21,10 @@ state machine.
 3. Treat system/developer/user/assistant/tool semantics as provider-neutral
    roles or instructions with explicit downgrade behavior. Do not concatenate
    everything into a prompt string inside the core loop.
-4. Let injected strategies own provider selection, context assembly, goal
-   planning, tool selection/execution, memory, stopping, and observation. The
-   loop coordinates them; it does not rediscover them through a service locator.
+4. Let injected strategies own provider selection, context assembly, input and
+   output coordination, goal planning, tool selection/execution, memory,
+   stopping, and observation. The loop coordinates them; it does not rediscover
+   them through a service locator.
 5. Model goals with identity, status, parent/child causality, attempts, and
    outcome. Queues define ordering, lease/visibility, retries, poison handling,
    backpressure, and cancellation rather than behaving like `List<Message>`.
@@ -44,5 +45,6 @@ state machine.
     streams, cancellation at each state, limits, retries, queue redelivery,
     observer failure, and resume/replay when supported.
 
-Avoid a single concrete "while true" loop that owns every subsystem. AgentKit's
-default loop must be replaceable using the same abstractions it consumes.
+Avoid a single concrete "while true" loop that owns every subsystem.
+`AgentKit.Loop` must remain replaceable using the same abstractions it consumes;
+queued admission and stream fan-out belong to `AgentKit.IO`, not the loop.

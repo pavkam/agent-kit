@@ -8,6 +8,17 @@ Channel adapters such as HTTP, console, chat, UI, or background workers
 translate their own protocols at this boundary; they do not become part of the
 loop.
 
+Input, output, receipt, event, and stream contracts live in
+AgentKit.Abstractions. AgentKit.IO contains the first-party admission
+coordinator, queued-input promotion, bounded live event publication, and final
+result coordination. AddAgentIO registers it as a singular, replaceable runtime
+component.
+
+AgentKit.IO does not become a second durable store. It records admission,
+promotion, and settlement through AgentKit.Session contracts. Channel-specific
+adapters remain leaves and may use names such as AgentKit.IO.AspNetCore or
+AgentKit.IO.Console when their reusable behavior justifies a package.
+
 ## Input admission
 
 Input is authorized, bounded, validated, and durably admitted before the caller
@@ -23,7 +34,9 @@ call and its result.
 
 The queue defines capacity, ordering, leases where needed, retention, poison
 input behavior, and backpressure. Full queues fail with a typed outcome rather
-than silently dropping data or blocking forever.
+than silently dropping data or blocking forever. Durable queue state remains in
+the session record so recovery cannot observe one conversation history and a
+different input truth.
 
 ## Live output
 
@@ -56,6 +69,9 @@ Input adapters cannot append arbitrary history or bypass session authorization.
 Output adapters cannot infer state from display text or treat live deltas as
 durable facts. The runtime remains usable without any specific UI, transport, or
 hosting model.
+
+The loop owns state transitions. The I/O component owns how accepted work enters
+those transitions and how provisional and final activity reaches consumers.
 
 ## Related concept specifications
 

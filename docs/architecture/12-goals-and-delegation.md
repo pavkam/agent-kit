@@ -8,6 +8,11 @@ version, budget, attempts, and evidence. Their transitions are part of the
 session record and follow the same authorization, queueing, settlement, and
 recovery rules as the rest of AgentKit.
 
+AgentKit.Goals will contain the first-party goal coordinator and delegation
+policies. Goal values, stores, messages, leases, and join-policy contracts live
+in AgentKit.Abstractions. The package remains optional until an application
+registers goal behavior.
+
 ## Goal lifecycle
 
 A goal moves explicitly through proposed, ready, active, waiting, completed,

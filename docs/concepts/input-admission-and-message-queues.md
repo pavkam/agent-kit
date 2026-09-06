@@ -10,6 +10,10 @@ Input can arrive while an agent is streaming, executing tools, idle, or
 recovering. AgentKit separates durable acceptance from promotion into model
 context so no message is lost, duplicated, or injected at an unsafe boundary.
 
+The first-party implementation belongs to `AgentKit.IO`. It coordinates
+admission and promotion through `AgentKit.Session` contracts so queue state and
+conversation state cannot diverge into separate sources of truth.
+
 ## Input record
 
 An admitted input MUST contain:

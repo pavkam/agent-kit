@@ -7,6 +7,11 @@ AgentKit has no universal plugin interface. Plugin is a composition property: an
 implementation becomes a plugin by satisfying one or more narrow contracts and
 being registered through dependency injection.
 
+Extension contracts live beside the component boundaries in
+AgentKit.Abstractions. There is no required AgentKit.Extensions implementation
+package. Each feature package owns the middleware, hooks, contributors, or
+strategies it supplies and registers them through its ServiceExtensions.
+
 ## Extension forms
 
 The architecture distinguishes:
