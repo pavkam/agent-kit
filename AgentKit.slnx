@@ -56,6 +56,7 @@
     <Project Path="src/AgentKit.Tools.Skill/AgentKit.Tools.Skill.csproj"/>
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AgentKit.Test.Shared/AgentKit.Test.Shared.csproj"/>
     <Project Path="tests/AgentKit.Tests/AgentKit.Tests.csproj"/>
     <Project Path="tests/AgentKit.Observability.Tests/AgentKit.Observability.Tests.csproj"/>
     <Project Path="tests/AgentKit.Abstractions.Tests/AgentKit.Abstractions.Tests.csproj"/>
