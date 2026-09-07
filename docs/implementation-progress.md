@@ -44,30 +44,36 @@ owning spec.
 | Artifact tombstones and publication                    | `c8131ad`; full InMemory artifact suite: 18 passed                                                                                                                | Exact tenant/reference replay, immutable-version collision rejection and atomic publication winner                                         |
 | Authorization evidence and scope validation            | `33467ed`, `0c91ed8`; clean integrated solution: 3,503 passed; compatibility: 63 passed                                                                           | Six additive evidence types; constructor and record-copy validation; capture/selector runtime remains open                                 |
 | Artifact tenant partitions                             | `9a59a07`; full InMemory artifact suite: 29 passed                                                                                                                | Tenant-qualified lifecycle state, unknown-abort semantics, direct key validation and independent read/delete behavior                      |
+| Provider HTTP failures and cancellation                | `c765ee8`; isolated Anthropic: 80 passed; Gemini: 91 passed                                                                                                       | Stable failure categories, bounded safe messages, retained transport diagnostics, one terminal notification and caller cancellation        |
+| Complete artifact preparation binding                  | `1527997`; artifact contracts: 33 passed; coordinator: 12 passed; InMemory store: 39 passed; compatibility: 63 passed                                             | Complete staging authority, immutable options capture and stable replay without extending the original receipt lifetime                    |
+| Security publication and activation ownership          | `260bf5b`; architecture Markdown checks passed                                                                                                                    | Exact retained selections, fixed implementation bindings within a composition and operation-owned activation leases specified              |
 
 ## Latest integration evidence
 
-An isolated checkout matching committed `af1c26d` built all 124 solution
-projects with zero warnings or errors and passed all 3,503 tests, with no
-failures or skips. This includes the 60-package public API baseline, 63
-compatibility checks, 15 package-graph checks, 73 identity tests, and 29
-InMemory artifact store tests. The graph suite previously passed its 15 checks
-in Release.
+An isolated checkout of committed `1527997` built all 124 solution projects with
+zero warnings or errors and passed all 3,547 tests, with no failures or skips.
+This includes the 60-package public API baseline, 63 compatibility checks, 15
+package-graph checks, 73 identity tests, and 29 previously verified
+tenant-partition cases within the expanded 39-test InMemory artifact store
+suite. The graph suite previously passed its 15 checks in Release.
 
-Verification caught two test assertions formatted only in the earlier isolated
-authorization run; `0c91ed8` copies those tested corrections into the
-repository. It also identified the deliberate artifact test-assembly access as
-an API metadata change; `af1c26d` records that reviewed one-line snapshot
-update. The final full test run used that exact committed baseline. Future
-isolated overlays must compare every owned source and test file after formatting
-or repairs, not only the generated snapshots.
+The earlier `af1c26d` integration passed 3,503 tests. That verification caught
+two test assertions formatted only in the earlier isolated authorization run;
+`0c91ed8` copies those tested corrections into the repository. It also
+identified the deliberate artifact test-assembly access as an API metadata
+change; `af1c26d` records that reviewed one-line snapshot update. The final full
+test run used that exact committed baseline. Future isolated overlays must
+compare every owned source and test file after formatting or repairs, not only
+the generated snapshots.
 
 The earlier isolated `c8131ad` checkpoint passed 3,467 tests. The `438f974`
 baseline passed 3,352 before the compatibility harness and 3,415 after it. The
-Abstractions snapshot now includes the six additive authorization evidence
-types; the artifact-store snapshot includes only the approved test-assembly
-metadata change. External provider API changes remain outside these baseline
-approvals.
+Abstractions snapshot now includes the six additive authorization evidence types
+and the reviewed replacement of the incomplete four-argument artifact prepare
+fingerprint with its complete eleven-argument contract. The artifact-store
+snapshot includes the approved test-assembly metadata change. The conversational
+provider fixes change no public API. External embedding API changes remain
+outside these baseline approvals.
 
 This verifies checkout reproducibility after `83888cc` repaired the broad
 `artifacts/` ignore rule and captured the omitted artifact source and tests. The
@@ -97,22 +103,24 @@ and solution edits use narrow patches and explicit ownership coordination.
 
 ## Active corrections
 
-- Artifact prepare authority still needs complete binding of the reserved
-  version, selected profile, creator, and concrete staging lifetime. Stable
-  replay must compare version and relative lifetime while preserving the
-  original receipt across regenerated reservation IDs and timestamps. The
-  clarified contract is committed as `08c7bfc`; implementation and its API
-  update remain in progress.
-- Conversational Anthropic and Gemini error paths contain reachable
-  `NotImplementedException` branches for HTTP failures. Their error-body
-  handling also needs to keep untrusted text out of
-  `ProviderFailure.SafeMessage`. The provider checkpoint covers those paths
-  without editing the external embedding implementation.
+- The artifact preparation contract clarified in `08c7bfc` is implemented in
+  `1527997`. Reusable artifact-store conformance is the next checkpoint; durable
+  reference commitment, retention coordination, and recovery remain open.
+- Anthropic and Gemini HTTP failures and cancellation are corrected in
+  `c765ee8`. Broader provider capability and protocol conformance remain open;
+  the external embedding implementation has its own ownership and review.
 - Security capture values are implemented, but profile/policy/authority
   catalogs, selectors, retained snapshots, and downstream request/grant binding
   remain open. `6b0bb98` distinguishes pinned run configuration from exact
   per-operation authorization scope; possessing a context does not grant an
-  effect.
+  effect. `260bf5b` specifies publication and activation ownership. A default
+  selection reader depends on validated agent component selections and cannot be
+  replaced by an unchecked profile-key registry.
+- Structured output validation does not yet enforce the processor-wide issue
+  limit against a definition's larger diagnostic allowance. The bounded repair
+  is in progress. The default structural schema validator also accepts some
+  unsupported or malformed constructs; its supported vocabulary and fail-closed
+  composition behavior need a separate complete correction.
 
 ## Component coverage
 
