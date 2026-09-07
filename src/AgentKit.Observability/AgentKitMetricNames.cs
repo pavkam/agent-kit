@@ -7,6 +7,9 @@ namespace AgentKit.Observability;
 /// <remarks>Metric names use lowercase dotted namespaces and never embed identities.</remarks>
 public static class AgentKitMetricNames
 {
+    /// <summary>Gets the counter for terminal pinned-agent admission outcomes.</summary>
+    public const string AgentAdmissionCount = "agentkit.agent.admission.count";
+
     /// <summary>Gets the counter for terminal agent-run outcomes.</summary>
     public const string AgentRunCount = "agentkit.agent.run.count";
 

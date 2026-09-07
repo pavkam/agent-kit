@@ -22,19 +22,16 @@ owning spec.
 
 ## Checkpoints
 
-| Checkpoint                                             | Evidence                                                                                                                                       | Result                                                                                                   |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Authoritative architecture                             | `0c73575`; Markdown lint across 127 documentation/guidance files                                                                               | Committed                                                                                                |
-| Existing implementation baseline                       | `ef6582e`; solution build: zero warnings/errors; 2,821 existing tests run                                                                      | Committed; 2,820 pass, one session-store activity-correlation failure; architecture conformance unproven |
-| Budget accounting and batch admission                  | Focused budgets: 67 passed; abstractions: 1,403 passed; atomic hierarchy, started/unknown preservation, batch replay and revisioned correction | Verified checkpoint; ledger/profile and consumer integration remain open                                 |
-| Policy contribution validation and grant evidence      | Focused permissions suite: 23 passed; malformed policy contributions deny, cancellation propagates, replay/concurrency tested                  | Verified checkpoint; broader permissions work remains open                                               |
-| Observation-test isolation and shared test support     | Focused Session.InMemory suite: 49 passed; source/correlation isolation, duplicate tags and helper validation                                  | Verified checkpoint; shared support established                                                          |
-| Reusable grant-store conformance and solution coverage | Focused permissions suite: 31 passed, including eight inherited contract cases; all 120 current projects registered in the solution            | Verified checkpoint; other contract suites remain open                                                   |
-
-| Session tenant isolation and replay evidence | Focused Session.InMemory suite:
-61 passed; foreign-tenant masking, structural replay, changed-request conflicts,
-original branch receipts and deletion tombstones | Verified checkpoint; identity
-authentication, grants, durable retention and lane coordination remain open |
+| Checkpoint                                             | Evidence                                                                                                                                                          | Result                                                                                                             |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Authoritative architecture                             | `0c73575`; Markdown lint across 127 documentation/guidance files                                                                                                  | Committed                                                                                                          |
+| Existing implementation baseline                       | `ef6582e`; solution build: zero warnings/errors; 2,821 existing tests run                                                                                         | Committed; 2,820 pass, one session-store activity-correlation failure; architecture conformance unproven           |
+| Budget accounting and batch admission                  | Focused budgets: 67 passed; abstractions: 1,403 passed; atomic hierarchy, started/unknown preservation, batch replay and revisioned correction                    | Verified checkpoint; ledger/profile and consumer integration remain open                                           |
+| Policy contribution validation and grant evidence      | Focused permissions suite: 23 passed; malformed policy contributions deny, cancellation propagates, replay/concurrency tested                                     | Verified checkpoint; broader permissions work remains open                                                         |
+| Observation-test isolation and shared test support     | Focused Session.InMemory suite: 49 passed; source/correlation isolation, duplicate tags and helper validation                                                     | Verified checkpoint; shared support established                                                                    |
+| Reusable grant-store conformance and solution coverage | Focused permissions suite: 31 passed, including eight inherited contract cases; all 120 current projects registered in the solution                               | Verified checkpoint; other contract suites remain open                                                             |
+| Session tenant isolation and replay evidence           | Focused Session.InMemory suite: 61 passed; foreign-tenant masking, structural replay, changed-request conflicts, original branch receipts and deletion tombstones | Verified checkpoint; identity authentication, grants, durable retention and lane coordination remain open          |
+| Pinned-agent admission and retained-value integrity    | Focused facade suite: 59 passed; replacement/removal, reconstructed values, scope failure, schema ownership, one terminal admission and isolated diagnostics      | Verified checkpoint; keyed run-plan composition, retention/revocation catalogs and waiter cancellation remain open |
 
 ## Latest integration evidence
 
@@ -45,9 +42,9 @@ provider embedding changes present during that run; it is not evidence that the
 remaining architecture has been implemented.
 
 Active next checkpoints are the rich identity contracts and first-party identity
-runtime, followed by migration of the reduced identity test fixtures, and pinned
-agent-definition admission revalidation. Full keyed run-plan composition and
-caller-wait versus authoritative-run cancellation remain open.
+runtime, including migration of the reduced identity test fixtures. Pinned
+agent-definition admission revalidation is verified. Full keyed run-plan
+composition and caller-wait versus authoritative-run cancellation remain open.
 
 ## Concurrent ownership
 

@@ -10,6 +10,9 @@ namespace AgentKit.Observability;
 /// </remarks>
 public static class AgentKitTagNames
 {
+    /// <summary>Gets the current catalog snapshot version attribute for traces and structured logs.</summary>
+    public const string AgentCatalogVersion = "agentkit.agent.catalog.version";
+
     /// <summary>Gets the OpenTelemetry GenAI operation-name attribute.</summary>
     public const string GenAiOperationName = "gen_ai.operation.name";
 

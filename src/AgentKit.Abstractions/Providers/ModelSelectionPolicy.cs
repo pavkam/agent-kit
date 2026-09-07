@@ -126,6 +126,32 @@ public sealed record ModelSelectionPolicy
         }
     }
 
+    /// <summary>Determines whether this policy has the same ordered declarative content as <paramref name="other"/>.</summary>
+    /// <param name="other">The policy to compare, or <see langword="null"/>.</param>
+    /// <returns><see langword="true"/> when every policy field, including candidate order, is equal.</returns>
+    public bool Equals(ModelSelectionPolicy? other) =>
+        other is not null
+        && Candidates.SequenceEqual(other.Candidates)
+        && Fallback == other.Fallback
+        && Downgrade == other.Downgrade
+        && Extensions.Equals(other.Extensions);
+
+    /// <summary>Returns a hash code consistent with structural policy equality.</summary>
+    /// <returns>A hash code over each ordered candidate and every remaining policy field.</returns>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        foreach (var candidate in Candidates)
+        {
+            hash.Add(candidate);
+        }
+
+        hash.Add(Fallback);
+        hash.Add(Downgrade);
+        hash.Add(Extensions);
+        return hash.ToHashCode();
+    }
+
     private static void ThrowIfDuplicateCandidate(
         ImmutableArray<ModelAlias> candidates,
         string paramName)

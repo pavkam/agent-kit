@@ -20,9 +20,9 @@ namespace AgentKit;
 /// </para>
 /// <para>
 /// The handle captures the definition and catalog version it was resolved
-/// with. A later catalog reload does not retroactively change an existing
-/// handle's behavior; a caller that wants newer configuration resolves the
-/// agent again.
+/// with. New admissions revalidate that exact definition against one current
+/// catalog snapshot: unrelated updates remain admissible, while a removal or
+/// replacement is rejected rather than silently upgrading work.
 /// </para>
 /// </remarks>
 public sealed class Agent
@@ -92,6 +92,10 @@ public sealed class Agent
     /// </exception>
     /// <exception cref="ObjectDisposedException">
     /// The owning engine has been disposed.
+    /// </exception>
+    /// <exception cref="AgentAdmissionRejectedException">
+    /// The current catalog no longer enables this handle's exact pinned
+    /// definition, so no run identity, scope, or loop work is created.
     /// </exception>
     /// <exception cref="OperationCanceledException">
     /// <paramref name="cancellationToken"/> was signalled.

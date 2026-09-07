@@ -33,6 +33,7 @@ public sealed class AgentEngine: IAsyncDisposable
     private readonly IAsyncDisposable? _ownedProvider;
     private readonly IAgentDefinitionCatalog _catalog;
     private readonly IIdentifierGenerator<RunId> _runIds;
+    private readonly ILogger<AgentEngine> _logger;
     private Task? _disposeTask;
 
     /// <summary>
@@ -61,6 +62,7 @@ public sealed class AgentEngine: IAsyncDisposable
         TimeProvider = services.GetRequiredService<TimeProvider>();
         _catalog = services.GetRequiredService<IAgentDefinitionCatalog>();
         _runIds = services.GetRequiredService<IIdentifierGenerator<RunId>>();
+        _logger = services.GetService<ILogger<AgentEngine>>() ?? NullLogger<AgentEngine>.Instance;
     }
 
     /// <summary>
@@ -174,37 +176,78 @@ public sealed class AgentEngine: IAsyncDisposable
     /// An override in <paramref name="options"/> is wider than the
     /// definition's corresponding default.
     /// </exception>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="definition"/> or <paramref name="options"/> is
+    /// <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="AgentAdmissionRejectedException">
+    /// The current catalog does not enable <paramref name="definition"/>'s
+    /// exact pinned content and revision. The exception is raised before a
+    /// run identity or scope is created.
+    /// </exception>
     internal async Task<AgentLoopResult> RunAgentAsync(
         AgentDefinition definition,
         AgentRunOptions options,
         CancellationToken cancellationToken)
     {
-        Debug.Assert(definition is not null, "A validated definition is required to run an agent.");
-        Debug.Assert(options is not null, "Validated run options are required to run an agent.");
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(options);
+        var activity = AgentAdmissionObservability.Start(definition.Id);
+        var admissionCompleted = false;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var snapshot = await _catalog.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            _ = activity?.SetTag(AgentKitTagNames.AgentCatalogVersion, snapshot.Version.ToString());
+            var current = snapshot.FindDefinition(definition.Id);
+            if (current is null || current.Revision != definition.Revision || !current.Equals(definition))
+            {
+                var rejection = new AgentAdmissionRejectedException(new AgentAdmissionRejection(definition.Id, definition.Revision, snapshot.Version, current is null ? "The pinned agent definition is no longer enabled for new admission." : "The pinned agent definition was replaced and cannot be silently upgraded."));
+                AgentAdmissionObservability.Complete(activity, _logger, "rejected", rejection.GetType().Name);
+                activity = null;
+                admissionCompleted = true;
+                throw rejection;
+            }
 
-        var maxTurns = ResolveMaxTurns(definition, options);
-        var attemptTimeout = ResolveAttemptTimeout(definition, options);
+            var maxTurns = ResolveMaxTurns(definition, options);
+            var attemptTimeout = ResolveAttemptTimeout(definition, options);
 
-        await using var scope = _services.CreateAsyncScope();
-        var loop = scope.ServiceProvider.GetRequiredService<IAgentLoop>();
+            await using var scope = _services.CreateAsyncScope();
+            var loop = scope.ServiceProvider.GetRequiredService<IAgentLoop>();
 
-        var request = new AgentRunRequest(
-            definition.Id,
-            options.SessionId,
-            options.BranchId,
-            _runIds.Create(),
-            options.Identity,
-            definition.Models,
-            definition.ModelRequirements,
-            definition.Instructions,
-            definition.Tools,
-            definition.ToolChoice,
-            definition.Settings,
-            maxTurns,
-            attemptTimeout,
-            definition.Extensions);
+            var request = new AgentRunRequest(
+                definition.Id,
+                options.SessionId,
+                options.BranchId,
+                _runIds.Create(),
+                options.Identity,
+                definition.Models,
+                definition.ModelRequirements,
+                definition.Instructions,
+                definition.Tools,
+                definition.ToolChoice,
+                definition.Settings,
+                maxTurns,
+                attemptTimeout,
+                definition.Extensions);
 
-        return await loop.RunAsync(request, cancellationToken).ConfigureAwait(false);
+            AgentAdmissionObservability.Complete(activity, _logger, "admitted");
+            activity = null;
+            admissionCompleted = true;
+            return await loop.RunAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!admissionCompleted && cancellationToken.IsCancellationRequested)
+        {
+            AgentAdmissionObservability.Complete(activity, _logger, "cancelled", nameof(OperationCanceledException));
+            AgentAdmissionObservability.LogCancelled(_logger);
+            throw;
+        }
+        catch (Exception exception) when (!admissionCompleted)
+        {
+            AgentAdmissionObservability.Complete(activity, _logger, "failed", exception.GetType().Name);
+            AgentAdmissionObservability.LogFailed(_logger, exception.GetType().Name);
+            throw;
+        }
     }
 
     private static int ResolveMaxTurns(AgentDefinition definition, AgentRunOptions options) =>

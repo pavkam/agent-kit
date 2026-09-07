@@ -7,6 +7,9 @@ namespace AgentKit.Observability;
 /// <remarks>Names describe operations, never high-cardinality identities or content.</remarks>
 public static class AgentKitActivityNames
 {
+    /// <summary>Gets the name for validating a pinned definition before a new agent run is admitted.</summary>
+    public const string AgentAdmission = "agent.admission";
+
     /// <summary>Gets the OpenTelemetry GenAI-compatible agent invocation name.</summary>
     public const string InvokeAgent = "invoke_agent";
 

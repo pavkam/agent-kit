@@ -260,4 +260,64 @@ public sealed record AgentDefinition
             _extensions = value;
         }
     }
+
+    /// <summary>
+    /// Determines whether this definition has the same identity, revision,
+    /// and declarative content as <paramref name="other"/>.
+    /// </summary>
+    /// <param name="other">The definition to compare, or <see langword="null"/>.</param>
+    /// <returns>
+    /// <see langword="true"/> when every field is equal and the ordered
+    /// instruction and tool collections have equal contents.
+    /// </returns>
+    /// <remarks>
+    /// Catalog reloads may reconstruct immutable arrays, so reference equality
+    /// for those arrays is insufficient to establish that a pinned definition
+    /// remains available for admission.
+    /// </remarks>
+    public bool Equals(AgentDefinition? other) =>
+        other is not null
+        && Id.Equals(other.Id)
+        && Revision.Equals(other.Revision)
+        && string.Equals(DisplayName, other.DisplayName, StringComparison.Ordinal)
+        && Models.Equals(other.Models)
+        && ModelRequirements.Equals(other.ModelRequirements)
+        && Instructions.SequenceEqual(other.Instructions)
+        && Tools.SequenceEqual(other.Tools)
+        && ToolChoice.Equals(other.ToolChoice)
+        && Settings.Equals(other.Settings)
+        && RunDefaults.Equals(other.RunDefaults)
+        && Extensions.Equals(other.Extensions);
+
+    /// <summary>
+    /// Returns a hash code consistent with structural definition equality.
+    /// </summary>
+    /// <returns>
+    /// A hash code over every scalar field and every ordered instruction and
+    /// tool entry.
+    /// </returns>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Id);
+        hash.Add(Revision);
+        hash.Add(DisplayName, StringComparer.Ordinal);
+        hash.Add(Models);
+        hash.Add(ModelRequirements);
+        foreach (var instruction in Instructions)
+        {
+            hash.Add(instruction);
+        }
+
+        foreach (var tool in Tools)
+        {
+            hash.Add(tool);
+        }
+
+        hash.Add(ToolChoice);
+        hash.Add(Settings);
+        hash.Add(RunDefaults);
+        hash.Add(Extensions);
+        return hash.ToHashCode();
+    }
 }
