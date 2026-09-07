@@ -3,8 +3,37 @@
 
 namespace AgentKit.FileSystem.Tests;
 
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
 public sealed class ServiceExtensionsTests
 {
+    private static readonly Type[] _narrowCapabilityTypes =
+    [
+        typeof(IDirectoryReader),
+        typeof(IFileGlobber),
+        typeof(IFileContentSearcher),
+        typeof(IFileSnapshotReader),
+        typeof(IAtomicFileReplacer),
+        typeof(IWorkspacePatchApplier),
+    ];
+
+    /// <summary>Gets every narrow capability in both registration orders.</summary>
+    public static TheoryData<Type, bool> NarrowCapabilityReplacementCases { get; } = new()
+    {
+        { typeof(IDirectoryReader), false },
+        { typeof(IFileGlobber), false },
+        { typeof(IFileContentSearcher), false },
+        { typeof(IFileSnapshotReader), false },
+        { typeof(IAtomicFileReplacer), false },
+        { typeof(IWorkspacePatchApplier), false },
+        { typeof(IDirectoryReader), true },
+        { typeof(IFileGlobber), true },
+        { typeof(IFileContentSearcher), true },
+        { typeof(IFileSnapshotReader), true },
+        { typeof(IAtomicFileReplacer), true },
+        { typeof(IWorkspacePatchApplier), true },
+    };
+
     [Fact]
     public void AddSandboxedFileSystem_WhenCalled_RegistersFileSystemWithConfiguredRoot()
     {
@@ -37,6 +66,71 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         provider.GetServices<IFileSystem>().Count().ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AddSandboxedFileSystem_WhenFileSystemIsReplaced_PreservesReplacementAndDefaultNarrowCapabilities(
+        bool replaceAfterRegistration)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(TestSecurity.GrantStore());
+        var replacement = new ReplacementFileSystem();
+        if (!replaceAfterRegistration)
+        {
+            _ = services.AddSingleton<IFileSystem>(replacement);
+        }
+
+        _ = services.AddSandboxedFileSystem(Path.Combine(Path.GetTempPath(), "agentkit-fs-di-" + Guid.NewGuid().ToString("N")));
+        if (replaceAfterRegistration)
+        {
+            _ = services.Replace(ServiceDescriptor.Singleton<IFileSystem>(replacement));
+        }
+
+        using var provider = services.BuildServiceProvider();
+        var concrete = provider.GetRequiredService<SandboxedFileSystem>();
+
+        provider.GetRequiredService<IFileSystem>().ShouldBeSameAs(replacement);
+        _ = provider.GetServices<IFileSystem>().ShouldHaveSingleItem();
+        provider.GetRequiredService<IDirectoryReader>().ShouldBeSameAs(concrete);
+        provider.GetRequiredService<IFileGlobber>().ShouldBeSameAs(concrete);
+        provider.GetRequiredService<IFileContentSearcher>().ShouldBeSameAs(concrete);
+        provider.GetRequiredService<IFileSnapshotReader>().ShouldBeSameAs(concrete);
+        provider.GetRequiredService<IAtomicFileReplacer>().ShouldBeSameAs(concrete);
+        provider.GetRequiredService<IWorkspacePatchApplier>().ShouldBeSameAs(concrete);
+    }
+
+    [Theory]
+    [MemberData(nameof(NarrowCapabilityReplacementCases))]
+    public void AddSandboxedFileSystem_WhenNarrowCapabilityIsReplaced_PreservesIndependentReplacement(
+        Type capabilityType,
+        bool replaceAfterRegistration)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(TestSecurity.GrantStore());
+        var replacement = new ReplacementFileCapabilities();
+        if (!replaceAfterRegistration)
+        {
+            _ = services.AddSingleton(capabilityType, replacement);
+        }
+
+        _ = services.AddSandboxedFileSystem(Path.Combine(Path.GetTempPath(), "agentkit-fs-di-" + Guid.NewGuid().ToString("N")));
+        if (replaceAfterRegistration)
+        {
+            _ = services.Replace(ServiceDescriptor.Singleton(capabilityType, replacement));
+        }
+
+        using var provider = services.BuildServiceProvider();
+        var concrete = provider.GetRequiredService<SandboxedFileSystem>();
+
+        provider.GetRequiredService(capabilityType).ShouldBeSameAs(replacement);
+        _ = provider.GetServices(capabilityType).ShouldHaveSingleItem();
+        _ = provider.GetRequiredService<IFileSystem>().ShouldBeOfType<SandboxedFileSystem>();
+        foreach (var untouchedType in _narrowCapabilityTypes.Where(type => type != capabilityType))
+        {
+            provider.GetRequiredService(untouchedType).ShouldBeSameAs(concrete);
+        }
     }
 
     [Fact]

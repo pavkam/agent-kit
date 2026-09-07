@@ -19,10 +19,9 @@ public static class ServiceExtensions
         /// <param name="configure">Optional additional configuration for <see cref="SandboxedFileSystemOptions"/>.</param>
         /// <returns>The same service collection, for chaining.</returns>
         /// <remarks>
-        /// The <see cref="IFileSystem"/> service registration itself uses
-        /// <c>TryAdd</c> semantics, so calling this more than once keeps
-        /// the first-registered implementation type. Its options
-        /// configuration follows ordinary
+        /// The default concrete implementation is registered once and shared by every untouched filesystem capability.
+        /// The <see cref="IFileSystem"/> facade and each narrow capability use independent <c>TryAdd</c> registrations,
+        /// so a host may replace any one contract without changing the remaining defaults. Its options configuration follows ordinary
         /// <see cref="Microsoft.Extensions.Options"/> composition instead:
         /// each call adds another <c>Configure</c> delegate, so calling
         /// this more than once applies <paramref name="rootDirectory"/>
@@ -58,20 +57,22 @@ public static class ServiceExtensions
                 _ = optionsBuilder.Configure(configure);
             }
 
-            services.TryAddSingleton<IFileSystem, SandboxedFileSystem>();
+            services.TryAddSingleton<SandboxedFileSystem>();
+            services.TryAddSingleton<IFileSystem>(static provider =>
+                provider.GetRequiredService<SandboxedFileSystem>());
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IDirectoryReader>(static provider =>
-                (SandboxedFileSystem) provider.GetRequiredService<IFileSystem>());
+                provider.GetRequiredService<SandboxedFileSystem>());
             services.TryAddSingleton<IFileGlobber>(static provider =>
-                (SandboxedFileSystem) provider.GetRequiredService<IFileSystem>());
+                provider.GetRequiredService<SandboxedFileSystem>());
             services.TryAddSingleton<IFileContentSearcher>(static provider =>
-                (SandboxedFileSystem) provider.GetRequiredService<IFileSystem>());
+                provider.GetRequiredService<SandboxedFileSystem>());
             services.TryAddSingleton<IFileSnapshotReader>(static provider =>
-                (SandboxedFileSystem) provider.GetRequiredService<IFileSystem>());
+                provider.GetRequiredService<SandboxedFileSystem>());
             services.TryAddSingleton<IAtomicFileReplacer>(static provider =>
-                (SandboxedFileSystem) provider.GetRequiredService<IFileSystem>());
+                provider.GetRequiredService<SandboxedFileSystem>());
             services.TryAddSingleton<IWorkspacePatchApplier>(static provider =>
-                (SandboxedFileSystem) provider.GetRequiredService<IFileSystem>());
+                provider.GetRequiredService<SandboxedFileSystem>());
             return services;
         }
     }
