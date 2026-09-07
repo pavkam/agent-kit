@@ -106,8 +106,8 @@ public sealed class AuthorizationSnapshotContractsTests
         Should.Throw<ArgumentOutOfRangeException>(() => after with { CausalRunId = default }).ParamName.ShouldBe("causalRunId");
 
         scope.ShouldBe(Scope());
-        before.AdmissionId.ShouldNotBeNull();
-        during.TurnId.ShouldNotBeNull();
+        _ = before.AdmissionId.ShouldNotBeNull();
+        _ = during.TurnId.ShouldNotBeNull();
         after.CausalRunId.ShouldBe(RunId());
     }
 
