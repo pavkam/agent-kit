@@ -26,9 +26,20 @@ public sealed record AfterRunOperationCorrelation: OperationCorrelation
     /// </summary>
     /// <param name="operationId">The stable identity of the causal operation.</param>
     /// <param name="causalRunId">The already-settled run that caused this later operation.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="operationId"/> or <paramref name="causalRunId"/> is default.</exception>
     public AfterRunOperationCorrelation(OperationId operationId, RunId causalRunId)
         : base(operationId) => CausalRunId = causalRunId;
 
     /// <summary>Gets the already-settled run that caused this later operation.</summary>
-    public RunId CausalRunId { get; init; }
+    /// <value>The nondefault settled run identity.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An init assignment supplies a default value.</exception>
+    public RunId CausalRunId
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value.Value, Guid.Empty, "causalRunId");
+            field = value;
+        }
+    }
 }

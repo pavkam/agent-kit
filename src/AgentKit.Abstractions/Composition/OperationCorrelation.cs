@@ -40,11 +40,22 @@ public abstract record OperationCorrelation
     /// fourth correlation kind.
     /// </summary>
     /// <param name="operationId">The stable identity of the causal operation.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="operationId"/> is default.</exception>
     private protected OperationCorrelation(OperationId operationId) => OperationId = operationId;
 
     /// <summary>
     /// Gets the stable identity of the causal operation, unique across
     /// before-run, in-run, and after-run boundaries.
     /// </summary>
-    public OperationId OperationId { get; init; }
+    /// <value>The nondefault operation identity.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An init assignment supplies a default value.</exception>
+    public OperationId OperationId
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value.Value, Guid.Empty, "operationId");
+            field = value;
+        }
+    }
 }

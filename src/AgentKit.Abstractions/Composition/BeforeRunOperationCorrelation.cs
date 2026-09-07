@@ -29,6 +29,7 @@ public sealed record BeforeRunOperationCorrelation: OperationCorrelation
     /// resulted from input admission; <see langword="null"/> when it did
     /// not (for example, a standalone session-creation request).
     /// </param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="operationId"/> or a present <paramref name="admissionId"/> is default.</exception>
     public BeforeRunOperationCorrelation(OperationId operationId, AdmissionId? admissionId)
         : base(operationId) => AdmissionId = admissionId;
 
@@ -36,5 +37,19 @@ public sealed record BeforeRunOperationCorrelation: OperationCorrelation
     /// Gets the admission receipt that caused this operation, when the
     /// operation resulted from input admission.
     /// </summary>
-    public AdmissionId? AdmissionId { get; init; }
+    /// <value>The nondefault causing admission identity, or <see langword="null"/> when admission did not cause the operation.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An init assignment supplies a present default value.</exception>
+    public AdmissionId? AdmissionId
+    {
+        get;
+        init
+        {
+            if (value is { } admissionId)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(admissionId.Value, Guid.Empty, "admissionId");
+            }
+
+            field = value;
+        }
+    }
 }

@@ -233,7 +233,9 @@ public sealed class IdentityValueTypeConformanceTests
         || identityType == typeof(FencingToken)
         || identityType == typeof(IdentityVersion)
         || identityType == typeof(PlanRevision)
-        || identityType == typeof(ArtifactProfileVersion);
+        || identityType == typeof(ArtifactProfileVersion)
+        || identityType == typeof(SecurityProfileVersion)
+        || identityType == typeof(ConfigurationVersion);
 
     private static TheoryData<Type> ToTheoryData(IEnumerable<Type> types)
     {

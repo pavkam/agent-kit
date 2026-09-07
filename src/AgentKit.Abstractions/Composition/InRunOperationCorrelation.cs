@@ -29,6 +29,7 @@ public sealed record InRunOperationCorrelation: OperationCorrelation
     /// The turn during which the operation occurred, when the operation is
     /// scoped to a specific turn rather than the run as a whole.
     /// </param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="operationId"/>, <paramref name="runId"/>, or a present <paramref name="turnId"/> is default.</exception>
     public InRunOperationCorrelation(OperationId operationId, RunId runId, TurnId? turnId)
         : base(operationId)
     {
@@ -37,12 +38,36 @@ public sealed record InRunOperationCorrelation: OperationCorrelation
     }
 
     /// <summary>Gets the run during which the operation occurred.</summary>
-    public RunId RunId { get; init; }
+    /// <value>The nondefault active run identity.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An init assignment supplies a default value.</exception>
+    public RunId RunId
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value.Value, Guid.Empty, "runId");
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Gets the turn during which the operation occurred, when the
     /// operation is scoped to a specific turn rather than the run as a
     /// whole.
     /// </summary>
-    public TurnId? TurnId { get; init; }
+    /// <value>The nondefault active turn identity, or <see langword="null"/> for run-scoped work.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An init assignment supplies a present default value.</exception>
+    public TurnId? TurnId
+    {
+        get;
+        init
+        {
+            if (value is { } turnId)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(turnId.Value, Guid.Empty, "turnId");
+            }
+
+            field = value;
+        }
+    }
 }
