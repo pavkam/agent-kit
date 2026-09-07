@@ -764,6 +764,13 @@ credentials, or widen tool, filesystem, network, or model authority. Invalid
 reloads leave the last known-good snapshot active. In-flight work continues with
 its captured snapshot.
 
+Reload changes immutable definitions, profiles, and selections among registered
+components. It does not mutate the DI implementation behind a captured key in
+the built engine. Replacement implementations require a new composition with
+explicit ownership of old and new scopes. Security selection follows the
+[publication and activation contract](permissions-and-human-control.md#selection-publication-and-activation),
+including retained implementation bindings for delayed work.
+
 Credential profile selection is explicit provider composition, while secret
 material is resolved by the selected leaf integration for each send. Secrets
 never enter AgentEngineBuilder, agent definitions, options display, context

@@ -347,6 +347,40 @@ the resulting grant's exact context binding, uses, expiry, and live revocation
 immediately before acting. An unavailable validation path fails closed rather
 than substituting a newer policy or treating a cached allow as sufficient.
 
+### Selection publication and activation
+
+Security selection reads a previously validated immutable publication. That
+publication proves the binding between agent identity and definition revision,
+configuration revision, selected profile key/version, authority key, and policy
+snapshot reference. Matching a profile key alone is insufficient. Composition
+validates candidate publications against captured registration metadata before
+making them visible. Runtime capture depends on a read-only publication reader,
+not on the agent catalog's publication coordinator, a composition validator, or
+the run-plan compiler. Those components may share immutable evidence; they must
+not form a constructor cycle by asking one another to publish or validate the
+snapshot they are currently resolving.
+
+Persistable policy snapshots contain ordered, versioned policy descriptors and
+their configuration evidence. They never contain policy instances, delegates,
+service scopes, or container references. A typed activation boundary resolves
+the exact retained registrations for one authorization operation. The operation
+owns the resulting lifetime lease, keeps scoped collaborators alive through
+policy evaluation and settlement, and releases the lease after awaited work
+finishes. Releasing a lease disposes its owned scope; it does not directly
+dispose a shared singleton policy or authority. Activation failure returns a
+typed unsuccessful selection before any grant can be issued.
+
+DI implementation bindings are fixed for a built engine. Profile reload may
+select already registered keys and publish new immutable policy/configuration
+versions; it cannot replace the implementation behind a captured key in place.
+Replacing that implementation requires a new composition. Existing operations
+retain their original composition's bindings and scope ownership until they
+finish or are explicitly handed off. Delayed work in another composition must
+resolve and verify the retained configuration and implementation binding named
+by its captured evidence. If that binding cannot be reconstructed or retained,
+selection returns a typed stale or unavailable result. Resolving whichever
+service currently has the same key is not an equivalent recovery path.
+
 `HookDispatchContext` is an optional non-persisted invocation dependency. An
 in-run caller passes its active hook lease; before-run work and delayed approval
 resolution pass `null` and still execute the required fail-closed policy path.
