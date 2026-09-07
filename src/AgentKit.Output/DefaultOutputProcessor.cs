@@ -39,24 +39,27 @@ using System.Diagnostics;
 /// </remarks>
 internal sealed class DefaultOutputProcessor: IOutputProcessor
 {
-    private static readonly JsonSerializerOptions _deserializationOptions = new() { PropertyNameCaseInsensitive = true };
-
     private readonly ImmutableDictionary<string, IOutputValidator> _validatorsByName;
+    private readonly JsonSerializerOptions _deserializationOptions;
+    private readonly IOutputSchemaEngine _schemaEngine;
     private readonly AgentOutputOptionsSnapshot _options;
     private readonly ILogger<DefaultOutputProcessor> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="DefaultOutputProcessor"/> class.</summary>
     /// <param name="validators">Every additively registered validator, addressable by its stable name.</param>
+    /// <param name="schemaEngine">The selected local schema profile used for preflight and evaluation.</param>
     /// <param name="options">The validated processor options.</param>
     /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
     /// <exception cref="ArgumentNullException"><paramref name="validators"/> or <paramref name="options"/> is null.</exception>
     /// <exception cref="ArgumentException">Two or more validators share the same <see cref="IOutputValidator.Name"/>.</exception>
     public DefaultOutputProcessor(
         IEnumerable<IOutputValidator> validators,
+        IOutputSchemaEngine schemaEngine,
         AgentOutputOptionsSnapshot options,
         ILogger<DefaultOutputProcessor>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(validators);
+        ArgumentNullException.ThrowIfNull(schemaEngine);
         ArgumentNullException.ThrowIfNull(options);
 
         var builder = ImmutableDictionary.CreateBuilder<string, IOutputValidator>();
@@ -70,7 +73,13 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
         }
 
         _validatorsByName = builder.ToImmutable();
+        _schemaEngine = schemaEngine;
         _options = options;
+        _deserializationOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            MaxDepth = options.MaximumCandidateDepth,
+        };
         _logger = logger ?? NullLogger<DefaultOutputProcessor>.Instance;
     }
 
@@ -94,10 +103,11 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
             {
                 OutputAccepted => "accepted",
                 OutputRetryRequired => "retry_required",
+                OutputConfigurationRejected => "configuration_rejected",
                 _ => "rejected",
             };
 
-            if (result is OutputRejected)
+            if (result is OutputRejected or OutputConfigurationRejected)
             {
                 activity.SetFailed(outcome, result.GetType().Name);
             }
@@ -138,6 +148,12 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
         var definition = request.Definition;
         var attempt = request.ValidationAttempt;
 
+        var schemaPreflight = PreflightDefinition(definition, cancellationToken);
+        if (schemaPreflight.Failure is not null)
+        {
+            return new OutputConfigurationRejected(schemaPreflight.Failure);
+        }
+
         if (definition.Mode is OutputMode.SyntheticTool or OutputMode.Media or OutputMode.Union)
         {
             return Decide(
@@ -153,44 +169,61 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
 
         if (isStructuredMode && definition.Schema is null && _options.RequireSchemaForStructuredModes)
         {
-            return Decide(
-                definition,
-                attempt,
-                new OutputValidationFailure(
-                    OutputValidationFailureKind.MissingSchema,
-                    $"Output definition '{definition.Id}' requires a schema for mode '{definition.Mode}'.",
+            return new OutputConfigurationRejected(
+                new OutputSchemaConfigurationFailure(
+                    OutputSchemaConfigurationFailureKind.MalformedSchema,
+                    "The selected structured output mode requires a schema.",
                     []));
         }
+
+        var schemaManifest = schemaPreflight.Manifest;
 
         var extraction = ExtractCandidate(
             definition.Mode,
             request.Response,
             _options.MaximumCandidateBytes,
+            _options.MaximumCandidateDepth,
             cancellationToken);
         if (extraction.Failure is not null)
         {
             return Decide(definition, attempt, extraction.Failure);
         }
 
-        var candidateBytes = extraction.Utf8ByteCount
-            ?? Encoding.UTF8.GetByteCount(extraction.Json!.Value.GetRawText());
-
-        if (candidateBytes > _options.MaximumCandidateBytes)
+        if (extraction.Utf8ByteCount is null
+            && !FitsJsonUtf8Limit(extraction.Json!.Value, _options.MaximumCandidateBytes, cancellationToken))
         {
             return Decide(
                 definition,
                 attempt,
                 new OutputValidationFailure(
                     OutputValidationFailureKind.OversizedCandidate,
-                    $"The candidate is {candidateBytes} bytes, exceeding the maximum of " +
-                        $"{_options.MaximumCandidateBytes}.",
+                    $"The candidate exceeds the maximum of {_options.MaximumCandidateBytes} UTF-8 bytes.",
                     []));
+        }
+
+        if (extraction.Json is { } candidateJson
+            && TryFindCandidateStructuralFailure(candidateJson, cancellationToken) is { } structuralFailure)
+        {
+            return Decide(definition, attempt, structuralFailure);
         }
 
         if (isStructuredMode && definition.Schema is not null)
         {
-            var schemaIssues = StructuralJsonSchemaValidator.Validate(extraction.Json!.Value, definition.Schema.Schema);
-            if (!schemaIssues.IsEmpty)
+            var evaluation = _schemaEngine.Evaluate(
+                new OutputSchemaEvaluationRequest(
+                    definition.Schema,
+                    extraction.Json!.Value,
+                    schemaManifest!,
+                    CreateSchemaLimits(),
+                    CreateCandidateLimits(),
+                    Math.Min(definition.ValidationPolicy.MaximumIssues, _options.MaximumValidationIssues)),
+                cancellationToken);
+            if (evaluation is OutputSchemaEvaluationConfigurationRejected configurationRejected)
+            {
+                return new OutputConfigurationRejected(configurationRejected.Failure);
+            }
+
+            if (evaluation is OutputSchemaCandidateInvalid candidateInvalid)
             {
                 return Decide(
                     definition,
@@ -198,7 +231,7 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
                     new OutputValidationFailure(
                         OutputValidationFailureKind.SchemaValidationFailed,
                         "The candidate did not validate against the declared schema.",
-                        Bound(schemaIssues, _options.MaximumValidationIssues)));
+                        candidateInvalid.Issues));
             }
         }
 
@@ -304,6 +337,7 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
         OutputMode mode,
         ModelResponse response,
         int maximumCandidateBytes,
+        int maximumCandidateDepth,
         CancellationToken cancellationToken)
     {
         if (mode == OutputMode.Text)
@@ -338,7 +372,14 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
 
         try
         {
-            using var document = JsonDocument.Parse(rawText);
+            using var document = JsonDocument.Parse(
+                rawText,
+                new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = false,
+                    CommentHandling = JsonCommentHandling.Disallow,
+                    MaxDepth = maximumCandidateDepth,
+                });
             return new ExtractionOutcome(null, document.RootElement.Clone(), null, textExtraction.Utf8ByteCount);
         }
         catch (JsonException exception)
@@ -424,9 +465,129 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
     private static ImmutableArray<OutputValidationIssue> Bound(ImmutableArray<OutputValidationIssue> issues, int maximum) =>
         issues.Length > maximum ? issues[..maximum] : issues;
 
+    private OutputSchemaProcessingLimits CreateSchemaLimits() =>
+        new(_options.MaximumSchemaBytes, _options.MaximumSchemaDepth, _options.MaximumSchemaNodes);
+
+    private OutputSchemaProcessingLimits CreateCandidateLimits() =>
+        new(_options.MaximumCandidateBytes, _options.MaximumCandidateDepth, _options.MaximumCandidateNodes);
+
+    private OutputValidationFailure? TryFindCandidateStructuralFailure(
+        JsonElement root,
+        CancellationToken cancellationToken)
+    {
+        var nodes = 0;
+        var pending = new Stack<(JsonElement Value, int Depth)>();
+        pending.Push((root, 1));
+        while (pending.TryPop(out var entry))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            nodes++;
+            if (entry.Depth > _options.MaximumCandidateDepth || nodes > _options.MaximumCandidateNodes)
+            {
+                return new OutputValidationFailure(
+                    OutputValidationFailureKind.OversizedCandidate,
+                    "The candidate exceeds the configured structural processing limits.",
+                    []);
+            }
+
+            if (entry.Value.ValueKind == JsonValueKind.Object)
+            {
+                var names = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var property in entry.Value.EnumerateObject())
+                {
+                    if (!names.Add(property.Name))
+                    {
+                        return new OutputValidationFailure(
+                            OutputValidationFailureKind.MalformedJson,
+                            "The candidate contains a duplicate object member.",
+                            []);
+                    }
+
+                    pending.Push((property.Value, entry.Depth + 1));
+                }
+            }
+            else if (entry.Value.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in entry.Value.EnumerateArray())
+                {
+                    pending.Push((item, entry.Depth + 1));
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool FitsJsonUtf8Limit(
+        JsonElement value,
+        int maximumBytes,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(maximumBytes > 0, "Captured candidate limits are positive.");
+        using var stream = new BoundedHashStream(maximumBytes, cancellationToken);
+        try
+        {
+            using var writer = new Utf8JsonWriter(
+                stream,
+                new JsonWriterOptions { Indented = false, SkipValidation = false });
+            value.WriteTo(writer);
+            writer.Flush();
+            return true;
+        }
+        catch (OutputSchemaSizeLimitException)
+        {
+            return false;
+        }
+    }
+
+    private SchemaPreflightOutcome PreflightDefinition(OutputDefinition definition, CancellationToken cancellationToken)
+    {
+        Debug.Assert(definition is not null, "Processing requests contain a validated definition.");
+        if (definition.Mode == OutputMode.Text && definition.Schema is not null)
+        {
+            return new SchemaPreflightOutcome(
+                null,
+                new OutputSchemaConfigurationFailure(
+                    OutputSchemaConfigurationFailureKind.MalformedSchema,
+                    "A JSON schema cannot be applied to plain-text output.",
+                    []));
+        }
+
+        OutputSchemaPreflightManifest? primaryManifest = null;
+        if (definition.Schema is not null)
+        {
+            var result = _schemaEngine.Preflight(
+                new OutputSchemaPreflightRequest(definition.Schema, CreateSchemaLimits()),
+                cancellationToken);
+            if (result is OutputSchemaPreflightRejected rejected)
+            {
+                return new SchemaPreflightOutcome(null, rejected.Failure);
+            }
+
+            primaryManifest = ((OutputSchemaPreflightAccepted) result).Manifest;
+        }
+
+        foreach (var alternative in definition.Alternatives)
+        {
+            var result = _schemaEngine.Preflight(
+                new OutputSchemaPreflightRequest(alternative.Schema, CreateSchemaLimits()),
+                cancellationToken);
+            if (result is OutputSchemaPreflightRejected rejected)
+            {
+                return new SchemaPreflightOutcome(null, rejected.Failure);
+            }
+        }
+
+        return new SchemaPreflightOutcome(primaryManifest, null);
+    }
+
     private readonly record struct ExtractionOutcome(
         string? Text,
         JsonElement? Json,
         OutputValidationFailure? Failure,
         int? Utf8ByteCount);
+
+    private readonly record struct SchemaPreflightOutcome(
+        OutputSchemaPreflightManifest? Manifest,
+        OutputSchemaConfigurationFailure? Failure);
 }

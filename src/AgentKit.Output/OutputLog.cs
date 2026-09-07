@@ -61,4 +61,24 @@ internal static partial class OutputLog
         OutputDefinitionId outputDefinitionId,
         string? outputDefinitionVersion,
         string outcome);
+
+    /// <summary>Records one bounded schema operation without schema or candidate content.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="operation">The bounded operation name.</param>
+    /// <param name="outcome">The normalized terminal outcome.</param>
+    [LoggerMessage(10020, LogLevel.Debug, "Output schema operation {Operation} completed with outcome {Outcome}.")]
+    internal static partial void SchemaOperationCompleted(ILogger logger, string operation, string outcome);
+
+    /// <summary>Records caller cancellation of one bounded schema operation.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="operation">The bounded operation name.</param>
+    [LoggerMessage(10021, LogLevel.Debug, "Output schema operation {Operation} was cancelled.")]
+    internal static partial void SchemaOperationCancelled(ILogger logger, string operation);
+
+    /// <summary>Records an unexpected schema-engine exception without schema or candidate content.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="operation">The bounded operation name.</param>
+    /// <param name="errorType">The exception type.</param>
+    [LoggerMessage(10022, LogLevel.Error, "Output schema operation {Operation} failed with error type {ErrorType}.")]
+    internal static partial void SchemaOperationFailed(ILogger logger, string operation, string errorType);
 }

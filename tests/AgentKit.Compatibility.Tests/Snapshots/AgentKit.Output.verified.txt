@@ -3,24 +3,50 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Output
 {
+    public static class AgentOutputDefaults
+    {
+        public static AgentKit.ComponentKey<AgentKit.IOutputProcessor> ProcessorKey { get; }
+    }
     public sealed class AgentOutputOptions
     {
         public AgentOutputOptions() { }
         public bool AllowProviderModeDowngrade { get; set; }
         public int MaximumCandidateBytes { get; set; }
+        public int MaximumCandidateDepth { get; set; }
+        public int MaximumCandidateNodes { get; set; }
         public int MaximumRepairAttempts { get; set; }
+        public int MaximumSchemaBytes { get; set; }
+        public int MaximumSchemaDepth { get; set; }
+        public int MaximumSchemaNodes { get; set; }
         public int MaximumValidationIssues { get; set; }
         public bool RequireSchemaForStructuredModes { get; set; }
+    }
+    public sealed class OutputDefinitionConfigurationException : System.Exception
+    {
+        public OutputDefinitionConfigurationException(AgentKit.OutputDefinitionId definitionId, AgentKit.OutputDefinitionVersion definitionVersion, AgentKit.OutputSchemaConfigurationFailure failure) { }
+        public AgentKit.OutputDefinitionId DefinitionId { get; }
+        public AgentKit.OutputDefinitionVersion DefinitionVersion { get; }
+        public AgentKit.OutputSchemaConfigurationFailure Failure { get; }
     }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentOutput(System.Action<AgentKit.Output.AgentOutputOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentOutput(AgentKit.ComponentKey<AgentKit.IOutputProcessor> processorKey, System.Action<AgentKit.Output.AgentOutputOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOutputDefinition(AgentKit.OutputDefinition definition) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOutputDefinition(AgentKit.ComponentKey<AgentKit.IOutputProcessor> processorKey, AgentKit.OutputDefinition definition) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceOutputProcessor<TProcessor>()
                 where TProcessor :  class, AgentKit.IOutputProcessor { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceOutputProcessor<TProcessor>(AgentKit.ComponentKey<AgentKit.IOutputProcessor> processorKey)
+                where TProcessor :  class, AgentKit.IOutputProcessor { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceOutputSchemaEngine<TEngine>()
+                where TEngine :  class, AgentKit.IOutputSchemaEngine { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceOutputSchemaEngine<TEngine>(AgentKit.ComponentKey<AgentKit.IOutputProcessor> processorKey)
+                where TEngine :  class, AgentKit.IOutputSchemaEngine { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOutputValidator<TValidator>()
+                where TValidator :  class, AgentKit.IOutputValidator { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOutputValidator<TValidator>(AgentKit.ComponentKey<AgentKit.IOutputProcessor> processorKey)
                 where TValidator :  class, AgentKit.IOutputValidator { }
         }
     }

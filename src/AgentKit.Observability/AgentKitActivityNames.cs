@@ -40,6 +40,12 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for validating a terminal structured output.</summary>
     public const string OutputValidate = "output.validate";
 
+    /// <summary>Gets the name for bounded local output-schema preflight.</summary>
+    public const string OutputSchemaPreflight = "output.schema.preflight";
+
+    /// <summary>Gets the name for bounded local output-schema candidate evaluation.</summary>
+    public const string OutputSchemaEvaluate = "output.schema.evaluate";
+
     /// <summary>Gets the name for committing session state.</summary>
     public const string SessionCommit = "session.commit";
 

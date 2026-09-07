@@ -9,7 +9,7 @@ public sealed class DefaultOutputProcessorTests
     public void Constructor_WhenValidatorsIsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(
-            () => new DefaultOutputProcessor(null!, DefaultOptions()));
+            () => new DefaultOutputProcessor(null!, new StructuralOutputSchemaEngine(), DefaultOptions()));
 
         exception.ParamName.ShouldBe("validators");
     }
@@ -18,7 +18,7 @@ public sealed class DefaultOutputProcessorTests
     public void Constructor_WhenOptionsIsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(
-            () => new DefaultOutputProcessor([], null!));
+            () => new DefaultOutputProcessor([], new StructuralOutputSchemaEngine(), null!));
 
         exception.ParamName.ShouldBe("options");
     }
@@ -32,7 +32,7 @@ public sealed class DefaultOutputProcessorTests
             new FakeOutputValidator("dup", static _ => OutputValidationPassed.Instance),
         };
 
-        _ = Should.Throw<ArgumentException>(() => new DefaultOutputProcessor(validators, DefaultOptions()));
+        _ = Should.Throw<ArgumentException>(() => new DefaultOutputProcessor(validators, new StructuralOutputSchemaEngine(), DefaultOptions()));
     }
 
     [Fact]
@@ -82,7 +82,21 @@ public sealed class DefaultOutputProcessorTests
     }
 
     [Fact]
-    public async Task ProcessAsync_NativeSchemaMode_WhenSchemaMissingAndRequired_ReturnsRejectedWithMissingSchema()
+    public async Task ProcessAsync_WhenTextModeDeclaresSchema_ReturnsConfigurationRejectedBeforeExtraction()
+    {
+        var processor = CreateProcessor();
+        var definition = TestFactory.Definition(OutputMode.Text, schema: TestFactory.Schema("false"));
+        var request = TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("plain text"));
+
+        var result = await processor.ProcessAsync(request, TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<OutputConfigurationRejected>();
+        rejected.Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.MalformedSchema);
+        rejected.Failure.SafeMessage.ShouldBe("A JSON schema cannot be applied to plain-text output.");
+    }
+
+    [Fact]
+    public async Task ProcessAsync_NativeSchemaMode_WhenSchemaMissingAndRequired_ReturnsConfigurationRejected()
     {
         var processor = CreateProcessor();
         var definition = TestFactory.Definition(OutputMode.NativeSchema, schema: null);
@@ -90,8 +104,8 @@ public sealed class DefaultOutputProcessorTests
         var result = await processor.ProcessAsync(
             TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("{}")), TestContext.Current.CancellationToken);
 
-        var rejected = result.ShouldBeOfType<OutputRejected>();
-        rejected.Failure.Kind.ShouldBe(OutputValidationFailureKind.MissingSchema);
+        var rejected = result.ShouldBeOfType<OutputConfigurationRejected>();
+        rejected.Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.MalformedSchema);
     }
 
     [Fact]
@@ -106,6 +120,53 @@ public sealed class DefaultOutputProcessorTests
 
         var accepted = result.ShouldBeOfType<OutputAccepted>();
         _ = accepted.Output.Json.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenSchemaIsOptional_AppliesConfiguredCandidateDepth()
+    {
+        var processor = CreateProcessor(options =>
+        {
+            options.RequireSchemaForStructuredModes = false;
+            options.MaximumCandidateDepth = 2;
+        });
+        var definition = TestFactory.Definition(OutputMode.Prompted, schema: null, retryPolicy: OutputRetryPolicy.None);
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, TestFactory.TextResponse(/*lang=json,strict*/"""{"a":{"b":1}}""")),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputRejected>().Failure.Kind.ShouldBe(OutputValidationFailureKind.OversizedCandidate);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenSchemaIsOptional_AppliesCandidateNodeLimit()
+    {
+        var processor = CreateProcessor(options =>
+        {
+            options.RequireSchemaForStructuredModes = false;
+            options.MaximumCandidateNodes = 2;
+        });
+        var definition = TestFactory.Definition(OutputMode.NativeSchema, schema: null, retryPolicy: OutputRetryPolicy.None);
+        var response = TestFactory.StructuredResponse(TestFactory.ParseJson(/*lang=json,strict*/"""{"a":1,"b":2}"""));
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputRejected>().Failure.Kind.ShouldBe(OutputValidationFailureKind.OversizedCandidate);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenSchemaIsOptional_RejectsDuplicateCandidateMembers()
+    {
+        var processor = CreateProcessor(options => options.RequireSchemaForStructuredModes = false);
+        var definition = TestFactory.Definition(OutputMode.NativeSchema, schema: null, retryPolicy: OutputRetryPolicy.None);
+        var response = TestFactory.StructuredResponse(TestFactory.ParseJson(/*lang=json,strict*/"""{"same":1,"same":2}"""));
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputRejected>().Failure.Kind.ShouldBe(OutputValidationFailureKind.MalformedJson);
     }
 
     [Fact]
@@ -171,6 +232,46 @@ public sealed class DefaultOutputProcessorTests
     }
 
     [Fact]
+    public async Task ProcessAsync_WhenSchemaPreflightFails_ReturnsConfigurationRejectedBeforeSemanticValidation()
+    {
+        var validator = new FakeOutputValidator("semantic", static _ => OutputValidationPassed.Instance);
+        var processor = CreateProcessor(validators: [validator]);
+        var definition = TestFactory.Definition(
+            OutputMode.Prompted,
+            schema: TestFactory.Schema(/*lang=json,strict*/"""{"pattern":"unsupported"}"""),
+            validators: [new OutputValidatorReference("semantic")],
+            retryPolicy: new OutputRetryPolicy(2));
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("not json")),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputConfigurationRejected>().Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.UnsupportedVocabulary);
+        validator.ReceivedRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenUnsupportedModeHasInvalidAlternativeSchema_ReturnsConfigurationRejectedFirst()
+    {
+        var processor = CreateProcessor();
+        var definition = TestFactory.Definition(OutputMode.Union) with
+        {
+            Alternatives =
+            [
+                new OutputAlternative(
+                    "invalid",
+                    TestFactory.Schema(/*lang=json,strict*/"""{"pattern":"unsupported"}""")),
+            ],
+        };
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("anything")),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputConfigurationRejected>().Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.UnsupportedVocabulary);
+    }
+
+    [Fact]
     public async Task ProcessAsync_WhenSchemaFailureExceedsDefinitionLimit_BoundsResultAndRepair()
     {
         var processor = CreateProcessor(options => options.MaximumValidationIssues = 5);
@@ -187,9 +288,9 @@ public sealed class DefaultOutputProcessorTests
             TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
 
         var retry = result.ShouldBeOfType<OutputRetryRequired>();
-        retry.Failure.Issues.Count(issue => issue.SafeMessage.Contains("first", StringComparison.Ordinal)).ShouldBe(1);
         retry.Failure.Issues.Length.ShouldBe(1);
-        retry.Repair.SafeMessage.ShouldContain("first");
+        retry.Failure.Issues[0].Code.ShouldBe("required-property-missing");
+        retry.Repair.SafeMessage.ShouldNotContain("first");
         retry.Repair.SafeMessage.ShouldNotContain("second");
         retry.Repair.SafeMessage.ShouldNotContain("third");
     }
@@ -508,6 +609,11 @@ public sealed class DefaultOutputProcessorTests
         configure?.Invoke(options);
         return new AgentOutputOptionsSnapshot(
             options.MaximumCandidateBytes,
+            options.MaximumSchemaBytes,
+            options.MaximumSchemaDepth,
+            options.MaximumSchemaNodes,
+            options.MaximumCandidateDepth,
+            options.MaximumCandidateNodes,
             options.MaximumValidationIssues,
             options.MaximumRepairAttempts,
             options.RequireSchemaForStructuredModes,
@@ -516,5 +622,5 @@ public sealed class DefaultOutputProcessorTests
 
     private static DefaultOutputProcessor CreateProcessor(
         Action<AgentOutputOptions>? configure = null, IEnumerable<IOutputValidator>? validators = null) =>
-        new(validators ?? [], DefaultOptions(configure));
+        new(validators ?? [], new StructuralOutputSchemaEngine(), DefaultOptions(configure));
 }

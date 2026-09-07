@@ -64,6 +64,9 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal output-processing decisions.</summary>
     public const string OutputProcessingCount = "agentkit.output.processing.count";
 
+    /// <summary>Gets the count of bounded local output-schema operations.</summary>
+    public const string OutputSchemaOperationCount = "agentkit.output.schema.operation.count";
+
     /// <summary>Gets the counter for terminal file-system host operations.</summary>
     public const string FileSystemOperationCount = "agentkit.filesystem.operation.count";
 

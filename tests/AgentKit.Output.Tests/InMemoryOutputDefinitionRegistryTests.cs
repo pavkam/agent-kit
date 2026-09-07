@@ -8,7 +8,8 @@ public sealed class InMemoryOutputDefinitionRegistryTests
     [Fact]
     public void Constructor_WhenDefinitionsIsNull_ThrowsArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new InMemoryOutputDefinitionRegistry(null!));
+        var exception = Should.Throw<ArgumentNullException>(
+            () => new InMemoryOutputDefinitionRegistry(null!, new StructuralOutputSchemaEngine(), DefaultOptions()));
 
         exception.ParamName.ShouldBe("definitions");
     }
@@ -18,13 +19,13 @@ public sealed class InMemoryOutputDefinitionRegistryTests
     {
         var definition = TestFactory.Definition();
 
-        _ = Should.Throw<ArgumentException>(() => new InMemoryOutputDefinitionRegistry([definition, definition]));
+        _ = Should.Throw<ArgumentException>(() => CreateRegistry([definition, definition]));
     }
 
     [Fact]
     public async Task ResolveAsync_WhenRequestIsNull_ThrowsArgumentNullException()
     {
-        var registry = new InMemoryOutputDefinitionRegistry([]);
+        var registry = CreateRegistry([]);
 
         var exception = await Should.ThrowAsync<ArgumentNullException>(
             () => registry.ResolveAsync(null!, TestContext.Current.CancellationToken).AsTask());
@@ -35,7 +36,7 @@ public sealed class InMemoryOutputDefinitionRegistryTests
     [Fact]
     public async Task ResolveAsync_WhenIdIsUnregistered_ReturnsNotFound()
     {
-        var registry = new InMemoryOutputDefinitionRegistry([]);
+        var registry = CreateRegistry([]);
 
         var result = await registry.ResolveAsync(
             new OutputDefinitionRequest(new OutputDefinitionId("missing"), null), TestContext.Current.CancellationToken);
@@ -49,7 +50,7 @@ public sealed class InMemoryOutputDefinitionRegistryTests
         var id = "definition";
         var v1 = TestFactory.Definition(id: id) with { Version = new OutputDefinitionVersion("1.0") };
         var v2 = TestFactory.Definition(id: id) with { Version = new OutputDefinitionVersion("2.0") };
-        var registry = new InMemoryOutputDefinitionRegistry([v1, v2]);
+        var registry = CreateRegistry([v1, v2]);
 
         var result = await registry.ResolveAsync(
             new OutputDefinitionRequest(new OutputDefinitionId(id), null), TestContext.Current.CancellationToken);
@@ -64,7 +65,7 @@ public sealed class InMemoryOutputDefinitionRegistryTests
         var id = "definition";
         var v1 = TestFactory.Definition(id: id) with { Version = new OutputDefinitionVersion("1.0") };
         var v2 = TestFactory.Definition(id: id) with { Version = new OutputDefinitionVersion("2.0") };
-        var registry = new InMemoryOutputDefinitionRegistry([v1, v2]);
+        var registry = CreateRegistry([v1, v2]);
 
         var result = await registry.ResolveAsync(
             new OutputDefinitionRequest(new OutputDefinitionId(id), new OutputDefinitionVersion("1.0")),
@@ -79,7 +80,7 @@ public sealed class InMemoryOutputDefinitionRegistryTests
     {
         var id = "definition";
         var v1 = TestFactory.Definition(id: id) with { Version = new OutputDefinitionVersion("1.0") };
-        var registry = new InMemoryOutputDefinitionRegistry([v1]);
+        var registry = CreateRegistry([v1]);
 
         var result = await registry.ResolveAsync(
             new OutputDefinitionRequest(new OutputDefinitionId(id), new OutputDefinitionVersion("9.9")),
@@ -87,4 +88,82 @@ public sealed class InMemoryOutputDefinitionRegistryTests
 
         _ = result.ShouldBeOfType<OutputDefinitionNotFound>();
     }
+
+    [Fact]
+    public void Constructor_WhenRegisteredSchemaIsUnsupported_ThrowsTypedConfigurationException()
+    {
+        var definition = TestFactory.Definition(
+            OutputMode.Prompted,
+            schema: TestFactory.Schema(/*lang=json,strict*/"""{"pattern":"secret"}"""));
+
+        var exception = Should.Throw<OutputDefinitionConfigurationException>(() => CreateRegistry([definition]));
+
+        exception.DefinitionId.ShouldBe(definition.Id);
+        exception.DefinitionVersion.ShouldBe(definition.Version);
+        exception.Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.UnsupportedVocabulary);
+    }
+
+    [Fact]
+    public void ConfigurationException_WhenDefinitionIdIsDefault_ThrowsArgumentException()
+    {
+        var failure = SchemaFailure();
+
+        var exception = Should.Throw<ArgumentException>(
+            () => new OutputDefinitionConfigurationException(default, new OutputDefinitionVersion("1"), failure));
+
+        exception.ParamName.ShouldBe("definitionId");
+    }
+
+    [Fact]
+    public void ConfigurationException_WhenDefinitionVersionIsDefault_ThrowsArgumentException()
+    {
+        var failure = SchemaFailure();
+
+        var exception = Should.Throw<ArgumentException>(
+            () => new OutputDefinitionConfigurationException(new OutputDefinitionId("id"), default, failure));
+
+        exception.ParamName.ShouldBe("definitionVersion");
+    }
+
+    [Fact]
+    public void ConfigurationException_WhenFailureIsNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(
+            () => new OutputDefinitionConfigurationException(
+                new OutputDefinitionId("id"),
+                new OutputDefinitionVersion("1"),
+                null!));
+
+        exception.ParamName.ShouldBe("failure");
+    }
+
+    [Fact]
+    public void Constructor_WhenRequiredStructuredSchemaIsMissing_ThrowsTypedConfigurationException()
+    {
+        var definition = TestFactory.Definition(OutputMode.NativeSchema, schema: null);
+
+        var exception = Should.Throw<OutputDefinitionConfigurationException>(() => CreateRegistry([definition]));
+
+        exception.Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.MalformedSchema);
+    }
+
+    [Fact]
+    public void Constructor_WhenTextModeDeclaresSchema_ThrowsTypedConfigurationException()
+    {
+        var definition = TestFactory.Definition(OutputMode.Text, schema: TestFactory.Schema("false"));
+
+        var exception = Should.Throw<OutputDefinitionConfigurationException>(() => CreateRegistry([definition]));
+
+        exception.Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.MalformedSchema);
+        exception.Failure.SafeMessage.ShouldBe("A JSON schema cannot be applied to plain-text output.");
+    }
+
+    private static InMemoryOutputDefinitionRegistry CreateRegistry(IEnumerable<OutputDefinition> definitions) =>
+        new(definitions, new StructuralOutputSchemaEngine(), DefaultOptions());
+
+    private static AgentOutputOptionsSnapshot DefaultOptions() =>
+        new(1_048_576, 262_144, 64, 4_096, 64, 65_536, 64, 2, true, false);
+
+    private static OutputSchemaConfigurationFailure SchemaFailure() =>
+        new(OutputSchemaConfigurationFailureKind.MalformedSchema, "Invalid schema configuration.", []);
 }

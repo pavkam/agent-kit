@@ -126,6 +126,11 @@ implementation through the same contract without replacing candidate extraction,
 repair policy, or publication. No provider SDK or concrete schema library enters
 AgentKit.Abstractions.
 
+Plain `Text` definitions express text constraints through semantic validators. A
+JSON schema attached to `Text` is rejected as malformed schema configuration for
+that definition, both during registry preflight and direct processor calls. It
+never becomes an ignored constraint or a model-repair request.
+
 ```csharp
 namespace AgentKit;
 
@@ -193,12 +198,13 @@ The default engine profile is `agentkit-structural`, version `1`, with default
 and sole supported dialect `urn:agentkit:json-schema:structural:v1`. It makes no
 claim to implement an entire JSON Schema standard dialect.
 
-This profile fingerprints retained schema serialization with SHA-256 and
-lowercase hexadecimal output. Serialization is compact UTF-8, uses the standard
-JSON encoder, preserves property and array order and retained numeric spelling,
-and enables writer validation. It performs no property sorting or numerical
-canonicalization. A replacement engine claiming the same profile revision must
-reproduce these semantics and the profile's conformance fixtures.
+This profile fingerprints retained schema serialization with SHA-256 and a
+`sha256:` prefix followed by lowercase hexadecimal output. Serialization is
+compact UTF-8, uses the standard JSON encoder, preserves property and array
+order and retained numeric spelling, and enables writer validation. It performs
+no property sorting or numerical canonicalization. A replacement engine claiming
+the same profile revision must reproduce these semantics and the profile's
+conformance fixtures.
 
 | Construct              | Supported behavior                                                                                                                              |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |

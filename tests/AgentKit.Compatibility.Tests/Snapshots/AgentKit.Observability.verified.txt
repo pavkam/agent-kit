@@ -38,6 +38,8 @@ namespace AgentKit.Observability
         public const string ModelStream = "model.stream";
         public const string NetworkResolve = "network.resolve";
         public const string NetworkSend = "network.send";
+        public const string OutputSchemaEvaluate = "output.schema.evaluate";
+        public const string OutputSchemaPreflight = "output.schema.preflight";
         public const string OutputValidate = "output.validate";
         public const string ProcessResolve = "process.resolve";
         public const string ProcessRun = "process.run";
@@ -84,6 +86,7 @@ namespace AgentKit.Observability
         public const string ModelSelectionCount = "agentkit.model.selection.count";
         public const string NetworkOperationCount = "agentkit.network.operation.count";
         public const string OutputProcessingCount = "agentkit.output.processing.count";
+        public const string OutputSchemaOperationCount = "agentkit.output.schema.operation.count";
         public const string ProcessOperationCount = "agentkit.process.operation.count";
         public const string SecurityDecisionCount = "agentkit.security.decision.count";
         public const string SessionOperationCount = "agentkit.session.operation.count";
@@ -119,6 +122,7 @@ namespace AgentKit.Observability
         public const string Outcome = "agentkit.outcome";
         public const string OutputDefinitionId = "agentkit.output.definition.id";
         public const string OutputMode = "agentkit.output.mode";
+        public const string OutputSchemaOperation = "agentkit.output.schema.operation";
         public const string OutputValidationAttempt = "agentkit.output.validation.attempt";
         public const string PrincipalId = "agentkit.principal.id";
         public const string ProcessOperationId = "agentkit.process.operation.id";

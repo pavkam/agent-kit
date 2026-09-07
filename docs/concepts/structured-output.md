@@ -47,6 +47,11 @@ A declarative JSON schema without a CLR runtime type yields validated JSON, not
 a magically safe application object. Deserialization into a runtime type MUST
 occur after schema/protocol validation and follow configured serializer limits.
 
+Plain `Text` definitions use semantic output validators for text constraints.
+Attaching a JSON schema to `Text` is an incompatible definition and MUST fail
+configuration preflight before provider I/O. The processor must not silently
+ignore it or invent a JSON encoding of the text to make it applicable.
+
 The embedded schema owns its JSON storage. Constructing or copying a definition
 MUST detach caller-owned JSON so disposing the original document cannot change
 or invalidate a retained contract. Name, version, and body remain validated

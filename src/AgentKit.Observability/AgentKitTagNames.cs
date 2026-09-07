@@ -94,6 +94,9 @@ public static class AgentKitTagNames
     /// <summary>Gets the one-based output-validation attempt attribute.</summary>
     public const string OutputValidationAttempt = "agentkit.output.validation.attempt";
 
+    /// <summary>Gets the bounded local output-schema operation attribute.</summary>
+    public const string OutputSchemaOperation = "agentkit.output.schema.operation";
+
     /// <summary>Gets the normalized file-system operation attribute.</summary>
     public const string FileSystemOperation = "agentkit.filesystem.operation";
 
