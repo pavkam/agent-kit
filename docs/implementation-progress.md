@@ -22,13 +22,14 @@ owning spec.
 
 ## Checkpoints
 
-| Checkpoint                                         | Evidence                                                                                                                      | Result                                                                                                   |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Authoritative architecture                         | `0c73575`; Markdown lint across 127 documentation/guidance files                                                              | Committed                                                                                                |
-| Existing implementation baseline                   | `ef6582e`; solution build: zero warnings/errors; 2,821 existing tests run                                                     | Committed; 2,820 pass, one session-store activity-correlation failure; architecture conformance unproven |
-| Budget accounting and batch admission              | Sol owns budget contracts, implementation, and tests                                                                          | In progress                                                                                              |
-| Policy contribution validation and grant evidence  | Focused permissions suite: 23 passed; malformed policy contributions deny, cancellation propagates, replay/concurrency tested | Verified checkpoint; broader permissions work remains open                                               |
-| Observation-test isolation and shared test support | Focused Session.InMemory suite: 49 passed; source/correlation isolation, duplicate tags and helper validation                 | Verified checkpoint; shared support established                                                          |
+| Checkpoint                                             | Evidence                                                                                                                            | Result                                                                                                   |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Authoritative architecture                             | `0c73575`; Markdown lint across 127 documentation/guidance files                                                                    | Committed                                                                                                |
+| Existing implementation baseline                       | `ef6582e`; solution build: zero warnings/errors; 2,821 existing tests run                                                           | Committed; 2,820 pass, one session-store activity-correlation failure; architecture conformance unproven |
+| Budget accounting and batch admission                  | Sol owns budget contracts, implementation, and tests                                                                                | In progress                                                                                              |
+| Policy contribution validation and grant evidence      | Focused permissions suite: 23 passed; malformed policy contributions deny, cancellation propagates, replay/concurrency tested       | Verified checkpoint; broader permissions work remains open                                               |
+| Observation-test isolation and shared test support     | Focused Session.InMemory suite: 49 passed; source/correlation isolation, duplicate tags and helper validation                       | Verified checkpoint; shared support established                                                          |
+| Reusable grant-store conformance and solution coverage | Focused permissions suite: 31 passed, including eight inherited contract cases; all 120 current projects registered in the solution | Verified checkpoint; other contract suites remain open                                                   |
 
 ## Concurrent ownership
 
@@ -72,7 +73,7 @@ not make that component a mandatory dependency of every engine.
 | Network                       | DNS/send authority, connection reuse, redirects/retries, bounded streaming and egress evidence                       |
 | Processes                     | Executable identity, sandbox enforcement, termination certainty, child effects and deterministic backend conformance |
 | Artifacts                     | Reference-commit evidence, integrity/retention, finalize/abort races and fenced collection                           |
-| Testing and evaluation        | Missing reusable conformance, shared support, compatibility snapshots and evaluation owner                           |
+| Testing and evaluation        | Additional reusable contract suites, compatibility snapshots and missing evaluation owner                            |
 
 ## Dependency order
 

@@ -3,6 +3,7 @@
     <Project Path="src/AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
     <Project Path="src/AgentKit/AgentKit.csproj"/>
     <Project Path="src/AgentKit.Observability/AgentKit.Observability.csproj"/>
+    <Project Path="src/AgentKit.Providers/AgentKit.Providers.csproj"/>
     <Project Path="src/AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
     <Project Path="src/AgentKit.Providers.OpenAICompatible/AgentKit.Providers.OpenAICompatible.csproj"/>
     <Project Path="src/AgentKit.Providers.Anthropic/AgentKit.Providers.Anthropic.csproj"/>
@@ -19,12 +20,16 @@
     <Project Path="src/AgentKit.Providers.MoonshotKimi/AgentKit.Providers.MoonshotKimi.csproj"/>
     <Project Path="src/AgentKit.Providers.XAI/AgentKit.Providers.XAI.csproj"/>
     <Project Path="src/AgentKit.Providers.Ollama/AgentKit.Providers.Ollama.csproj"/>
+    <Project Path="src/AgentKit.Mcp/AgentKit.Mcp.csproj"/>
+    <Project Path="src/AgentKit.Mcp.Client/AgentKit.Mcp.Client.csproj"/>
+    <Project Path="src/AgentKit.Mcp.Server/AgentKit.Mcp.Server.csproj"/>
     <Project Path="src/AgentKit.Session/AgentKit.Session.csproj"/>
     <Project Path="src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
     <Project Path="src/AgentKit.Context/AgentKit.Context.csproj"/>
     <Project Path="src/AgentKit.Context.Compaction/AgentKit.Context.Compaction.csproj"/>
     <Project Path="src/AgentKit.Loop/AgentKit.Loop.csproj"/>
     <Project Path="src/AgentKit.Budgets/AgentKit.Budgets.csproj"/>
+    <Project Path="src/AgentKit.Permissions/AgentKit.Permissions.csproj"/>
     <Project Path="src/AgentKit.Output/AgentKit.Output.csproj"/>
     <Project Path="src/AgentKit.Hooks/AgentKit.Hooks.csproj"/>
     <Project Path="src/AgentKit.FileSystem/AgentKit.FileSystem.csproj"/>
@@ -57,9 +62,11 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AgentKit.Test.Shared/AgentKit.Test.Shared.csproj"/>
+    <Project Path="tests/AgentKit.Conformance/AgentKit.Conformance.csproj"/>
     <Project Path="tests/AgentKit.Tests/AgentKit.Tests.csproj"/>
     <Project Path="tests/AgentKit.Observability.Tests/AgentKit.Observability.Tests.csproj"/>
     <Project Path="tests/AgentKit.Abstractions.Tests/AgentKit.Abstractions.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Providers.Tests/AgentKit.Providers.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.OpenAI.Tests/AgentKit.Providers.OpenAI.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.OpenAICompatible.Tests/AgentKit.Providers.OpenAICompatible.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.Anthropic.Tests/AgentKit.Providers.Anthropic.Tests.csproj"/>
@@ -76,12 +83,16 @@
     <Project Path="tests/AgentKit.Providers.MoonshotKimi.Tests/AgentKit.Providers.MoonshotKimi.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.XAI.Tests/AgentKit.Providers.XAI.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.Ollama.Tests/AgentKit.Providers.Ollama.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Mcp.Tests/AgentKit.Mcp.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Mcp.Client.Tests/AgentKit.Mcp.Client.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Mcp.Server.Tests/AgentKit.Mcp.Server.Tests.csproj"/>
     <Project Path="tests/AgentKit.Session.Tests/AgentKit.Session.Tests.csproj"/>
     <Project Path="tests/AgentKit.Session.InMemory.Tests/AgentKit.Session.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Context.Tests/AgentKit.Context.Tests.csproj"/>
     <Project Path="tests/AgentKit.Context.Compaction.Tests/AgentKit.Context.Compaction.Tests.csproj"/>
     <Project Path="tests/AgentKit.Loop.Tests/AgentKit.Loop.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Tests/AgentKit.Budgets.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Permissions.Tests/AgentKit.Permissions.Tests.csproj"/>
     <Project Path="tests/AgentKit.Output.Tests/AgentKit.Output.Tests.csproj"/>
     <Project Path="tests/AgentKit.Hooks.Tests/AgentKit.Hooks.Tests.csproj"/>
     <Project Path="tests/AgentKit.FileSystem.Tests/AgentKit.FileSystem.Tests.csproj"/>
