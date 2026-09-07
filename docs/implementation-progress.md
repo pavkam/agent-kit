@@ -47,15 +47,34 @@ owning spec.
 | Provider HTTP failures and cancellation                | `c765ee8`; isolated Anthropic: 80 passed; Gemini: 91 passed                                                                                                       | Stable failure categories, bounded safe messages, retained transport diagnostics, one terminal notification and caller cancellation        |
 | Complete artifact preparation binding                  | `1527997`; artifact contracts: 33 passed; coordinator: 12 passed; InMemory store: 39 passed; compatibility: 63 passed                                             | Complete staging authority, immutable options capture and stable replay without extending the original receipt lifetime                    |
 | Security publication and activation ownership          | `260bf5b`; architecture Markdown checks passed                                                                                                                    | Exact retained selections, fixed implementation bindings within a composition and operation-owned activation leases specified              |
+| Output diagnostic bounds                               | `4737dcd`; Output: 58 passed; Abstractions: 1,573 passed                                                                                                          | Uniform effective limit in failure records and repair text; invalid policy copies rejected                                                 |
+| Reusable artifact-store conformance                    | `862f56d`; InMemory store: 39 passed, including eight shared cases                                                                                                | Lifecycle, replay, authority and tenant assertions preserved across adapter fixtures                                                       |
+| Output text bounds before parsing                      | `de4910b`; Output: 64 passed                                                                                                                                      | Exact UTF-8 bounds before aggregation/parse, including split surrogate pairs                                                               |
+| Owned schema values                                    | `ad7ce18`, `c4c4253`; 14 focused schema cases; clean integrated solution: 3,577 passed                                                                            | Detached DOM ownership, copy validation, structural equality and reviewed API baseline                                                     |
+| Independent filesystem capabilities                    | `c566dc5`; isolated filesystem suite: 82 passed                                                                                                                   | Replacing the facade or any narrow contract preserves remaining defaults and shared ownership                                              |
 
 ## Latest integration evidence
 
-An isolated checkout of committed `1527997` built all 124 solution projects with
-zero warnings or errors and passed all 3,547 tests, with no failures or skips.
-This includes the 60-package public API baseline, 63 compatibility checks, 15
-package-graph checks, 73 identity tests, and 29 previously verified
-tenant-partition cases within the expanded 39-test InMemory artifact store
-suite. The graph suite previously passed its 15 checks in Release.
+An isolated checkout matching committed `c4c4253` built all 124 solution
+projects with zero warnings or errors and passed all 3,577 tests, with no
+failures or skips. This includes the 60-package public API baseline, 63
+compatibility checks, 15 package-graph checks, 73 identity tests, 39 InMemory
+artifact-store tests and 64 output-processor tests. Eight artifact cases now run
+through the reusable store conformance suite. The graph suite previously passed
+its 15 checks in Release.
+
+The build used `ad7ce18`; its first test run found only the two authored
+schema-equality methods missing from the Abstractions snapshot. The final run
+included the exact approved two-line test-data update in `c4c4253`. Explicitly
+authored members can change the generated baseline even when corresponding
+compiler-generated methods already existed; surface inspection does not replace
+the compatibility check.
+
+The later filesystem DI checkpoint `c566dc5` independently passed its complete
+82-test suite in an isolated checkout with zero build warnings or errors. It is
+not included in the 3,577-test integration count above. All reviewed checkpoint
+overlays were compared byte-for-byte with the shared checkout before commit. The
+earlier clean `1527997` integration passed 3,547 tests.
 
 The earlier `af1c26d` integration passed 3,503 tests. That verification caught
 two test assertions formatted only in the earlier isolated authorization run;
@@ -104,7 +123,7 @@ and solution edits use narrow patches and explicit ownership coordination.
 ## Active corrections
 
 - The artifact preparation contract clarified in `08c7bfc` is implemented in
-  `1527997`. Reusable artifact-store conformance is the next checkpoint; durable
+  `1527997`; reusable store conformance is committed as `862f56d`. Durable
   reference commitment, retention coordination, and recovery remain open.
 - Anthropic and Gemini HTTP failures and cancellation are corrected in
   `c765ee8`. Broader provider capability and protocol conformance remain open;
@@ -116,11 +135,18 @@ and solution edits use narrow patches and explicit ownership coordination.
   effect. `260bf5b` specifies publication and activation ownership. A default
   selection reader depends on validated agent component selections and cannot be
   replaced by an unchecked profile-key registry.
-- Structured output validation does not yet enforce the processor-wide issue
-  limit against a definition's larger diagnostic allowance. The bounded repair
-  is in progress. The default structural schema validator also accepts some
-  unsupported or malformed constructs; its supported vocabulary and fail-closed
-  composition behavior need a separate complete correction.
+- Output diagnostic bounds are corrected in `4737dcd`, text is bounded before
+  parsing in `de4910b`, and schema values own detached JSON in `ad7ce18`. The
+  default structural schema validator still accepts some unsupported or
+  malformed constructs. Declared vocabulary/dialect capabilities, preflight, and
+  typed non-retriable configuration failures remain required. The active
+  engine/loop does not yet resolve output definitions or invoke the output
+  processor; complete run-plan selection must connect both before claiming
+  end-to-end structured output. Already-materialized structured-data candidate
+  sizing also still allocates its full raw JSON text.
+- Filesystem capabilities now remain independently replaceable in `c566dc5`.
+  Complete keyed profile composition, narrow read/write contracts and the
+  deterministic in-memory backend remain open.
 
 ## Component coverage
 
