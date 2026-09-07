@@ -10,10 +10,10 @@
 
 ## Purpose
 
-The loop coordinates one run inside a durably accepted execution-lane operation.
-Replaceable services decide how to build context, select a model, execute tools,
-enforce policy, persist state, and stop. Acceptance, host scheduling, and
-process-local drive ownership are outside the loop.
+The loop coordinates one run inside an execution-lane operation committed to the
+selected session store. Replaceable services decide how to build context, select
+a model, execute tools, enforce policy, persist state, and stop. Acceptance,
+host scheduling, and process-local drive ownership are outside the loop.
 
 ## States
 
@@ -38,8 +38,12 @@ Any active state -> Failing -> Settling
 `Settled` is terminal. A run MUST reach exactly one terminal outcome and emit
 exactly one settlement event.
 
-`Accepted` is already durable and may have no process-local driver. Every drive
-names the expected operation identity; a stale wake cannot advance a successor.
+`Accepted` is already committed and may have no process-local driver. Its
+process-loss guarantees are those of the selected session profile and store; an
+explicitly ephemeral profile does not promise durable recovery. A profile that
+promises durable admission must commit to a durable store before
+acknowledgement. Every drive names the expected operation identity; a stale wake
+cannot advance a successor.
 
 `WaitingRetry` and `SuspendedDeferred` are durable, nonterminal operation
 states. A drive pass MAY return a typed `Waiting` outcome and relinquish its

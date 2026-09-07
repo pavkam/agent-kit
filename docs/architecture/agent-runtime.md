@@ -313,13 +313,14 @@ or a successful result with a null output.
 
 Each await receives the token owned by that phase. An invocation token cancels
 admission before acceptance or that caller's wait after acceptance; it does not
-abort durably accepted work or another joiner's run. Operation-owned
-cancellation combines authorized aborts, deadlines, budget stops, and the host's
-explicit shutdown policy while preserving the reason. A separately named
-owning-run API may bind caller cancellation to an abort, and must document that
-ownership. Required terminal persistence and audit use a bounded independent
-settlement token. Cancellation stops new effects and follows drain policy; it
-never rewrites committed state or prevents recording why work stopped.
+abort accepted work or another joiner's run, including work in an explicitly
+ephemeral session. Operation-owned cancellation combines authorized aborts,
+deadlines, budget stops, and the host's explicit shutdown policy while
+preserving the reason. A separately named owning-run API may bind caller
+cancellation to an abort, and must document that ownership. Required terminal
+persistence and audit use a bounded independent settlement token. Cancellation
+stops new effects and follows drain policy; it never rewrites committed state or
+prevents recording why work stopped.
 
 One scoped loop instance executes one run. Different run scopes may execute in
 parallel, including runs for different agents that select the same stateless
