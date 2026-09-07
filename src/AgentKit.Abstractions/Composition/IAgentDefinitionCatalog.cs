@@ -28,14 +28,19 @@ namespace AgentKit;
 /// </remarks>
 public interface IAgentDefinitionCatalog
 {
+    /// <summary>Gets the synchronously materialized immutable snapshot, or <see langword="null"/> before trusted bootstrap publication.</summary>
+    /// <value>This property never performs source I/O and is safe for composition validation.</value>
+    public AgentCatalogSnapshot? CurrentSnapshot { get; }
+
     /// <summary>
     /// Gets whether this catalog can publish new snapshots after the engine
     /// is built.
     /// </summary>
     /// <value>
-    /// <see langword="false"/> for a fixed catalog composed once at startup.
-    /// A host uses this to decide whether it must re-resolve a definition
-    /// between runs or may cache it.
+    /// <see langword="true"/> when later publication is possible. New
+    /// admissions must re-resolve their pinned definition whenever this is
+    /// true; retained snapshots remain recovery evidence rather than authority
+    /// for new work.
     /// </value>
     public bool SupportsDynamicPublication { get; }
 

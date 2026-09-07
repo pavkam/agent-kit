@@ -55,19 +55,10 @@ internal static class AgentCompositionValidator
         IAgentDefinitionCatalog catalog,
         ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
     {
-        AgentCatalogSnapshot snapshot;
-        try
+        var snapshot = catalog.CurrentSnapshot;
+        if (snapshot is null)
         {
-            // Composition validation is a startup-time, synchronous gate. The
-            // first-party catalog and static sources complete synchronously;
-            // a custom source that blocks here is misusing the contract.
-            snapshot = catalog.GetSnapshotAsync().AsTask().GetAwaiter().GetResult();
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            diagnostics.Add(new CompositionDiagnostic(
-                "agentkit.catalog.unreadable",
-                $"The agent definition catalog could not be composed: {exception.Message}"));
+            diagnostics.Add(new CompositionDiagnostic("agentkit.catalog.not-ready", "The agent definition catalog has no materialized bootstrap snapshot."));
             return;
         }
 

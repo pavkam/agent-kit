@@ -25,6 +25,77 @@ public static class ArgumentExceptionExtensions
 {
     extension(ArgumentException)
     {
+        /// <summary>Throws when registered agent-definition sources reuse a source identity.</summary>
+        /// <param name="sources">The initialized, non-null source collection to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="sources"/> is default, contains <see langword="null"/>, contains an invalid source identity, or contains duplicate source identities.</exception>
+        public static void ThrowIfDuplicateAgentDefinitionSourceIds(
+            ImmutableArray<IAgentDefinitionSource> sources,
+            [CallerArgumentExpression(nameof(sources))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfContainsNull(sources, paramName);
+            var seen = new HashSet<AgentDefinitionSourceId>();
+            foreach (var source in sources)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(source.SourceId.Value, paramName);
+                if (!seen.Add(source.SourceId))
+                {
+                    throw new ArgumentException(
+                        $"Value must not contain duplicate definition source id '{source.SourceId}'.",
+                        paramName);
+                }
+            }
+        }
+
+        /// <summary>Throws when bootstrap snapshots reuse a definition-source identity.</summary>
+        /// <param name="snapshots">The initialized, non-null bootstrap snapshots to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="snapshots"/> is default, contains <see langword="null"/>, or contains duplicate source identities.</exception>
+        public static void ThrowIfDuplicateAgentDefinitionSnapshotSourceIds(
+            ImmutableArray<AgentDefinitionSourceSnapshot> snapshots,
+            [CallerArgumentExpression(nameof(snapshots))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfContainsNull(snapshots, paramName);
+            var seen = new HashSet<AgentDefinitionSourceId>();
+            foreach (var snapshot in snapshots)
+            {
+                if (!seen.Add(snapshot.SourceId))
+                {
+                    throw new ArgumentException(
+                        $"Value must not contain duplicate definition source id '{snapshot.SourceId}'.",
+                        paramName);
+                }
+            }
+        }
+
+        /// <summary>Throws when a bootstrap snapshot names no registered definition source.</summary>
+        /// <param name="snapshots">The initialized, non-null bootstrap snapshots to inspect.</param>
+        /// <param name="sources">The initialized, non-null registered sources that bound the bootstrap set.</param>
+        /// <param name="snapshotsParamName">The parameter name inferred from the snapshot expression when omitted.</param>
+        /// <param name="sourcesParamName">The parameter name inferred from the source expression when omitted.</param>
+        /// <exception cref="ArgumentException">Either collection is default or contains <see langword="null"/>, a source has an invalid identity, or a snapshot names an identity absent from <paramref name="sources"/>.</exception>
+        public static void ThrowIfUnknownAgentDefinitionSource(
+            ImmutableArray<AgentDefinitionSourceSnapshot> snapshots,
+            ImmutableArray<IAgentDefinitionSource> sources,
+            [CallerArgumentExpression(nameof(snapshots))] string? snapshotsParamName = null,
+            [CallerArgumentExpression(nameof(sources))] string? sourcesParamName = null)
+        {
+            ArgumentException.ThrowIfContainsNull(snapshots, snapshotsParamName);
+            ArgumentException.ThrowIfContainsNull(sources, sourcesParamName);
+            var sourceIds = sources.Select(static source => source.SourceId).ToHashSet();
+            foreach (var sourceId in sourceIds)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(sourceId.Value, sourcesParamName);
+            }
+
+            if (snapshots.Any(snapshot => !sourceIds.Contains(snapshot.SourceId)))
+            {
+                throw new ArgumentException(
+                    "A bootstrap snapshot names an unregistered definition source.",
+                    snapshotsParamName);
+            }
+        }
+
         /// <summary>
         /// Throws an <see cref="ArgumentException"/> if <paramref name="array"/>
         /// is a default, uninitialized <see cref="ImmutableArray{T}"/>.

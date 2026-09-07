@@ -52,6 +52,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSingleton<TimeProvider>(timeProvider);
 
         _ = services.AddAgentKit();
+        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddAgent(CompositionTestData.Definition());
         await using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<AgentEngine>().TimeProvider.ShouldBeSameAs(timeProvider);
@@ -63,6 +65,8 @@ public sealed class ServiceExtensionsTests
         var timeProvider = new TrackingTimeProvider();
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
+        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddAgent(CompositionTestData.Definition());
 
         _ = services.ReplaceTimeProvider(timeProvider);
         await using var provider = services.BuildServiceProvider();
@@ -103,6 +107,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSingleton<TimeProvider>(
             _ => timeProvider = new TrackingTimeProvider());
         _ = services.AddAgentKit();
+        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddAgent(CompositionTestData.Definition());
         var provider = services.BuildServiceProvider();
 
         try

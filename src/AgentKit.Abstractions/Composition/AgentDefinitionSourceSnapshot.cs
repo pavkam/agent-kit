@@ -20,8 +20,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record AgentDefinitionSourceSnapshot
 {
-    private readonly ImmutableArray<AgentDefinition> _definitions;
-
     /// <summary>
     /// Initializes a new instance of the
     /// <see cref="AgentDefinitionSourceSnapshot"/> record.
@@ -30,8 +28,8 @@ public sealed record AgentDefinitionSourceSnapshot
     /// <param name="version">The revision of this contribution.</param>
     /// <param name="precedence">
     /// The source's precedence when two sources publish the same
-    /// <see cref="AgentId"/>. Higher wins; equal precedence is a conflict
-    /// rather than an arbitrary choice.
+    /// <see cref="AgentId"/>. Higher wins; equal precedence is permitted only
+    /// when the definitions are structurally identical.
     /// </param>
     /// <param name="definitions">
     /// The definitions this source publishes. An empty set is valid.
@@ -47,42 +45,56 @@ public sealed record AgentDefinitionSourceSnapshot
         int precedence,
         ImmutableArray<AgentDefinition> definitions)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceId.Value, nameof(sourceId));
         ArgumentException.ThrowIfContainsNull(definitions);
         ThrowIfDuplicateAgentId(definitions, nameof(definitions));
 
         SourceId = sourceId;
         Version = version;
         Precedence = precedence;
-        _definitions = definitions;
+        Definitions = definitions;
     }
 
     /// <summary>Gets the contributing source's identity.</summary>
-    public AgentDefinitionSourceId SourceId { get; init; }
+    public AgentDefinitionSourceId SourceId { get; }
 
     /// <summary>Gets the revision of this contribution.</summary>
-    public AgentDefinitionSourceVersion Version { get; init; }
+    public AgentDefinitionSourceVersion Version { get; }
 
     /// <summary>Gets this source's precedence in conflicts.</summary>
     /// <value>
     /// Higher wins. A negative precedence is meaningful and lets a baseline
     /// source sit deliberately below application overrides.
     /// </value>
-    public int Precedence { get; init; }
+    public int Precedence { get; }
 
-    /// <summary>Gets the definitions this source publishes.</summary>
-    /// <exception cref="ArgumentException">
-    /// An initializer attempts to set an uninitialized array, one containing
-    /// <see langword="null"/>, or one with a duplicate agent identity.
-    /// </exception>
-    public ImmutableArray<AgentDefinition> Definitions
+    /// <summary>Gets the validated immutable definitions this source publishes.</summary>
+    /// <value>An initialized array with no null definitions or duplicate agent identities.</value>
+    public ImmutableArray<AgentDefinition> Definitions { get; }
+
+    /// <summary>Determines whether another snapshot has the same complete structural content.</summary>
+    /// <param name="other">The snapshot to compare, or <see langword="null"/>.</param>
+    /// <returns><see langword="true"/> when source identity, version, precedence, and ordered definitions are equal; otherwise <see langword="false"/>.</returns>
+    public bool Equals(AgentDefinitionSourceSnapshot? other) =>
+        other is not null
+        && SourceId.Equals(other.SourceId)
+        && Version.Equals(other.Version)
+        && Precedence == other.Precedence
+        && Definitions.SequenceEqual(other.Definitions);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
     {
-        get => _definitions;
-        init
+        var hash = new HashCode();
+        hash.Add(SourceId);
+        hash.Add(Version);
+        hash.Add(Precedence);
+        foreach (var definition in Definitions)
         {
-            ArgumentException.ThrowIfContainsNull(value, nameof(Definitions));
-            ThrowIfDuplicateAgentId(value, nameof(Definitions));
-            _definitions = value;
+            hash.Add(definition);
         }
+
+        return hash.ToHashCode();
     }
 
     private static void ThrowIfDuplicateAgentId(

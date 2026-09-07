@@ -207,12 +207,16 @@ public sealed record InvalidAgentDefinition(
 
 public interface IAgentDefinitionSource
 {
+    AgentDefinitionSourceId SourceId { get; }
+
     ValueTask<AgentDefinitionSourceSnapshot> ReadAsync(
         CancellationToken cancellationToken = default);
 }
 
 public interface IAgentDefinitionCatalog
 {
+    AgentCatalogSnapshot? CurrentSnapshot { get; }
+
     bool SupportsDynamicPublication { get; }
 
     ValueTask<AgentCatalogSnapshot> GetSnapshotAsync(
@@ -230,6 +234,23 @@ under the rules below, and publishes a new snapshot only after complete
 validation. Invalid reloads leave the previous snapshot active. A custom catalog
 may load definitions remotely, but it must preserve the same snapshot,
 validation, cancellation, and concurrency semantics.
+
+`CurrentSnapshot` is a synchronous, memory-only view of the last completely
+validated publication. It returns `null` when no initial publication is ready;
+it never invokes a source, starts a refresh, blocks on a task, or resolves a
+secret. Build and host readiness consume this property. Async reads and refresh
+remain separate operations and cannot satisfy readiness by being synchronously
+waited inside build, even when a particular source usually completes inline.
+
+The first-party catalog composes explicit bootstrap source snapshots before
+exposing a runnable engine. Code registrations provide their immutable snapshot
+alongside their source. A host loads remote sources asynchronously through its
+trusted bootstrap boundary, then registers their `AgentDefinitionSourceSnapshot`
+values before build. Bootstrap must cover every configured source identity;
+missing coverage is not-ready, while duplicate or mismatched source identities
+fail composition. Bootstrap and refresh apply the same publication validation
+and precedence rules. A fixed catalog still participates in admission
+revalidation; its capability flag never grants permanent execution permission.
 
 For each `AgentId`, the highest declared source precedence wins.
 Equal-precedence sources must supply identical revision and canonical content or
@@ -499,12 +520,13 @@ collaborators or typed execution contexts; none receives `IServiceProvider`,
 
 ## Package boundary
 
-AgentKit references AgentKit.Abstractions plus the required Microsoft.Extensions
+AgentKit references AgentKit.Abstractions, the shared exporter-free
+AgentKit.Observability infrastructure, and the required Microsoft.Extensions
 dependency-injection, options, configuration, and logging abstractions. It does
-not reference implementation packages. Applications add AgentKit.Loop,
-AgentKit.Budgets, AgentKit.Context, AgentKit.Output, AgentKit.Hooks,
-AgentKit.Session, a session store, the security implementation, the provider
-runtime, the I/O coordinator, and one or more providers explicitly.
+not reference behavioral runtime or integration packages. Applications add
+AgentKit.Loop, AgentKit.Budgets, AgentKit.Context, AgentKit.Output,
+AgentKit.Hooks, AgentKit.Session, a session store, the security implementation,
+the provider runtime, the I/O coordinator, and one or more providers explicitly.
 
 Feature packages expose service collection extensions such as AddAgentLoop,
 AddAgentBudgets, AddAgentHooks, AddAgentOutput, AddAgentPermissions, AddAgentIO,
@@ -695,6 +717,10 @@ public static class ServiceExtensions
         public IServiceCollection AddAgentDefinitionSource<TSource>()
             where TSource : class, IAgentDefinitionSource =>
             AgentKitRegistration.AddDefinitionSource<TSource>(services);
+
+        public IServiceCollection AddAgentDefinitionSnapshot(
+            AgentDefinitionSourceSnapshot snapshot) =>
+            AgentKitRegistration.AddDefinitionSnapshot(services, snapshot);
 
         public IServiceCollection ReplaceAgentDefinitionCatalog<TCatalog>()
             where TCatalog : class, IAgentDefinitionCatalog =>

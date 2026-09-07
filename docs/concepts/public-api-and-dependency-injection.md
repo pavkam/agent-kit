@@ -190,7 +190,7 @@ additional contributors are optional. When one is registered, validation MUST
 include its required collaborators.
 
 Concrete provider packages MUST expose one package-level entry point such as
-`AddOpenAI`, `AddOpenRouter`, or `AddZAi`, then register named conversational,
+`AddOpenAI`, `AddOpenRouter`, or `AddZAI`, then register named conversational,
 embedding, reranking, or other operations independently. One vendor package MAY
 supply several operations without merging their contracts or replacement paths.
 Each operation registration binds one immutable descriptor to explicit keyed,
@@ -239,8 +239,10 @@ Credentials use dedicated providers or platform credential abstractions. They
 MUST NOT appear in option display, validation messages, or configuration
 snapshots.
 
-Synchronous build consumes a materialized initial catalog and checks declared
-capabilities without network or secret access. Hosts materialize remote initial
+Synchronous build consumes the catalog's memory-only `CurrentSnapshot` and
+checks declared capabilities without network or secret access. An absent initial
+snapshot fails readiness; build MUST NOT call or synchronously wait on an
+asynchronous catalog read to obtain it. Hosts materialize remote initial
 configuration asynchronously before readiness. Publication, admission, and each
 effect revalidate their own evidence under the
 [staged validation contract](../architecture/composition-and-configuration.md#build-validation).

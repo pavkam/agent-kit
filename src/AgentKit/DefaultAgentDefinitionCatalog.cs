@@ -17,9 +17,9 @@ namespace AgentKit;
 /// <para>
 /// When two sources publish the same <see cref="AgentId"/>, the higher
 /// <see cref="AgentDefinitionSourceSnapshot.Precedence"/> wins. Equal
-/// precedence is a composition error rather than an arbitrary choice, because
-/// silently preferring whichever source loaded first would make an agent's
-/// behavior depend on registration order.
+/// precedence permits structurally identical definitions but rejects different
+/// content, because silently preferring whichever source loaded first would
+/// make an agent's behavior depend on registration order.
 /// </para>
 /// <para>
 /// A failed composition leaves the previously published snapshot active, so a
@@ -30,6 +30,7 @@ internal sealed class DefaultAgentDefinitionCatalog: IAgentDefinitionCatalog, ID
 {
     private readonly ImmutableArray<IAgentDefinitionSource> _sources;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly Dictionary<(AgentId, AgentDefinitionRevision), AgentDefinition> _publishedBindings = [];
     private AgentCatalogSnapshot? _snapshot;
     private long _version;
 
@@ -48,35 +49,76 @@ internal sealed class DefaultAgentDefinitionCatalog: IAgentDefinitionCatalog, ID
     /// <see cref="IAgentDefinitionSource.SourceId"/>.
     /// </exception>
     public DefaultAgentDefinitionCatalog(IEnumerable<IAgentDefinitionSource> sources)
+        : this(sources, [])
+    {
+    }
+
+    /// <summary>
+    /// Initializes the catalog and synchronously publishes a bootstrap catalog
+    /// only when every registered source has a trusted materialized snapshot.
+    /// </summary>
+    /// <param name="sources">The unique registered definition sources.</param>
+    /// <param name="bootstrapSnapshots">
+    /// The unique materialized snapshots supplied by the trusted host
+    /// bootstrap boundary. Every snapshot must name a registered source.
+    /// </param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="sources"/> or <paramref name="bootstrapSnapshots"/> is
+    /// <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// Either collection contains <see langword="null"/>, source identities
+    /// are duplicated, or a bootstrap snapshot names an unregistered source.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// Fully covered bootstrap snapshots contain conflicting definitions at
+    /// equal precedence.
+    /// </exception>
+    public DefaultAgentDefinitionCatalog(
+        IEnumerable<IAgentDefinitionSource> sources,
+        IEnumerable<AgentDefinitionSourceSnapshot> bootstrapSnapshots)
     {
         ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(bootstrapSnapshots);
 
         _sources = [.. sources];
         ArgumentException.ThrowIfContainsNull(_sources, nameof(sources));
 
-        var seen = new HashSet<AgentDefinitionSourceId>();
-        foreach (var source in _sources)
+        ArgumentException.ThrowIfDuplicateAgentDefinitionSourceIds(_sources, nameof(sources));
+
+        var snapshots = bootstrapSnapshots.ToImmutableArray();
+        ArgumentException.ThrowIfContainsNull(snapshots, nameof(bootstrapSnapshots));
+        ArgumentException.ThrowIfDuplicateAgentDefinitionSnapshotSourceIds(snapshots, nameof(bootstrapSnapshots));
+        ArgumentException.ThrowIfUnknownAgentDefinitionSource(
+            snapshots,
+            _sources,
+            nameof(bootstrapSnapshots),
+            nameof(sources));
+
+        if (snapshots.Length == _sources.Length)
         {
-            if (!seen.Add(source.SourceId))
-            {
-                throw new ArgumentException(
-                    $"Value must not contain duplicate definition source id '{source.SourceId}'.",
-                    nameof(sources));
-            }
+            var snapshot = Compose(snapshots, Interlocked.Increment(ref _version));
+            RememberBindings(snapshot);
+            Volatile.Write(ref _snapshot, snapshot);
         }
     }
 
     /// <inheritdoc/>
     /// <value>
-    /// Always <see langword="false"/>. This catalog composes once and then
-    /// republishes only when a caller explicitly refreshes it.
+    /// Always <see langword="true"/>. Explicit refreshes can publish a new
+    /// snapshot, so every new admission must revalidate its pinned definition.
     /// </value>
-    public bool SupportsDynamicPublication => false;
+    public bool SupportsDynamicPublication => true;
+
+    /// <inheritdoc/>
+    public AgentCatalogSnapshot? CurrentSnapshot => Volatile.Read(ref _snapshot);
 
     /// <inheritdoc/>
     public async ValueTask<AgentCatalogSnapshot> GetSnapshotAsync(
         CancellationToken cancellationToken = default) =>
-        Volatile.Read(ref _snapshot)
+        cancellationToken.IsCancellationRequested
+            ? await ValueTask.FromCanceled<AgentCatalogSnapshot>(cancellationToken)
+            : Volatile.Read(ref _snapshot)
         ?? await RefreshAsync(cancellationToken).ConfigureAwait(false);
 
     /// <inheritdoc/>
@@ -98,7 +140,9 @@ internal sealed class DefaultAgentDefinitionCatalog: IAgentDefinitionCatalog, ID
     /// <param name="cancellationToken">A token that cancels composition.</param>
     /// <returns>The newly published snapshot.</returns>
     /// <exception cref="InvalidOperationException">
-    /// Two sources of equal precedence publish the same agent identity.
+    /// Two sources of equal precedence publish different content for the same
+    /// agent identity, a source returns a malformed contribution, or a
+    /// previously published revision is rebound to different content.
     /// </exception>
     /// <exception cref="OperationCanceledException">
     /// <paramref name="cancellationToken"/> was signalled.
@@ -109,54 +153,74 @@ internal sealed class DefaultAgentDefinitionCatalog: IAgentDefinitionCatalog, ID
         await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var winners = new Dictionary<AgentId, (AgentDefinition Definition, int Precedence, AgentDefinitionSourceId Source)>();
-            var order = new List<AgentId>();
+            var snapshots = ImmutableArray.CreateBuilder<AgentDefinitionSourceSnapshot>(_sources.Length);
 
             foreach (var source in _sources)
             {
                 var contribution = await source.ReadAsync(cancellationToken).ConfigureAwait(false);
-
-                foreach (var definition in contribution.Definitions)
+                if (contribution is null || contribution.SourceId != source.SourceId)
                 {
-                    if (!winners.TryGetValue(definition.Id, out var existing))
-                    {
-                        winners[definition.Id] = (definition, contribution.Precedence, contribution.SourceId);
-                        order.Add(definition.Id);
-                        continue;
-                    }
-
-                    if (contribution.Precedence == existing.Precedence)
-                    {
-                        throw new InvalidOperationException(
-                            $"Agent id '{definition.Id}' is published by source '{existing.Source}' and "
-                            + $"source '{contribution.SourceId}' at the same precedence "
-                            + $"{contribution.Precedence}. Give one source a higher precedence or remove "
-                            + "the duplicate definition.");
-                    }
-
-                    if (contribution.Precedence > existing.Precedence)
-                    {
-                        winners[definition.Id] = (definition, contribution.Precedence, contribution.SourceId);
-                    }
+                    throw new InvalidOperationException("A definition source returned a malformed contribution.");
                 }
+
+                snapshots.Add(contribution);
             }
 
-            var definitions = ImmutableArray.CreateBuilder<AgentDefinition>(order.Count);
-            foreach (var id in order)
-            {
-                definitions.Add(winners[id].Definition);
-            }
-
+            cancellationToken.ThrowIfCancellationRequested();
+            var candidate = Compose(snapshots.ToImmutable(), _version);
+            ValidateBindings(candidate);
             var next = new AgentCatalogSnapshot(
                 new AgentCatalogVersion(Interlocked.Increment(ref _version)),
-                definitions.ToImmutable());
+                candidate.Definitions);
 
+            RememberBindings(next);
             Volatile.Write(ref _snapshot, next);
             return next;
         }
         finally
         {
             _ = _refreshGate.Release();
+        }
+    }
+
+    private static AgentCatalogSnapshot Compose(ImmutableArray<AgentDefinitionSourceSnapshot> snapshots, long version)
+    {
+        var winners = new Dictionary<AgentId, (AgentDefinition Definition, int Precedence, AgentDefinitionSourceId Source)>();
+        foreach (var contribution in snapshots)
+        {
+            foreach (var definition in contribution.Definitions)
+            {
+                if (!winners.TryGetValue(definition.Id, out var existing)
+                    || contribution.Precedence > existing.Precedence)
+                {
+                    winners[definition.Id] = (definition, contribution.Precedence, contribution.SourceId);
+                }
+                else if (contribution.Precedence == existing.Precedence && existing.Definition != definition)
+                {
+                    throw new InvalidOperationException("Equal-precedence agent definitions must be structurally identical.");
+                }
+            }
+        }
+
+        return new AgentCatalogSnapshot(new AgentCatalogVersion(version), [.. winners.Values.Select(static winner => winner.Definition)]);
+    }
+
+    private void ValidateBindings(AgentCatalogSnapshot candidate)
+    {
+        foreach (var definition in candidate.Definitions)
+        {
+            if (_publishedBindings.TryGetValue((definition.Id, definition.Revision), out var existing) && !existing.Equals(definition))
+            {
+                throw new InvalidOperationException("A published agent revision cannot change content.");
+            }
+        }
+    }
+
+    private void RememberBindings(AgentCatalogSnapshot snapshot)
+    {
+        foreach (var definition in snapshot.Definitions)
+        {
+            _ = _publishedBindings.TryAdd((definition.Id, definition.Revision), definition);
         }
     }
 

@@ -47,7 +47,11 @@ public static class ServiceExtensions
                 new DelegateIdentifierGenerator<RunId>(static () => new RunId(Guid.NewGuid())));
             services.TryAddSingleton<IAgentDefinitionCatalog, DefaultAgentDefinitionCatalog>();
             services.TryAddSingleton(
-                static provider => new AgentEngine(provider, ownedProvider: null));
+                static provider =>
+                {
+                    AgentCompositionValidator.Validate(provider);
+                    return new AgentEngine(provider, ownedProvider: null);
+                });
 
             return services;
         }
@@ -76,12 +80,67 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
             ArgumentNullException.ThrowIfNull(definition);
 
-            _ = services.AddSingleton<IAgentDefinitionSource>(
-                new StaticAgentDefinitionSource(
-                    new AgentDefinitionSourceId($"agent:{definition.Id}"),
-                    [definition],
-                    precedence));
+            var snapshot = new AgentDefinitionSourceSnapshot(
+                new AgentDefinitionSourceId($"agent:{definition.Id}"),
+                new AgentDefinitionSourceVersion(0),
+                precedence,
+                [definition]);
+            var hasSnapshot = services.Any(descriptor =>
+                descriptor.ServiceType == typeof(AgentDefinitionSourceSnapshot)
+                && descriptor.ImplementationInstance is AgentDefinitionSourceSnapshot existing
+                && existing.SourceId == snapshot.SourceId
+                && existing.Equals(snapshot));
+            var hasSource = services.Any(descriptor =>
+                descriptor.ServiceType == typeof(IAgentDefinitionSource)
+                && descriptor.ImplementationInstance is IAgentDefinitionSource existing
+                && existing.SourceId == snapshot.SourceId);
+            if (hasSnapshot && hasSource)
+            {
+                return services;
+            }
 
+            if (!hasSnapshot)
+            {
+                _ = services.AddAgentDefinitionSnapshot(snapshot);
+            }
+
+            if (!hasSource)
+            {
+                _ = services.AddSingleton<IAgentDefinitionSource>(
+                    new StaticAgentDefinitionSource(
+                        snapshot.SourceId,
+                        [definition],
+                        precedence));
+            }
+
+            return services;
+        }
+
+        /// <summary>Registers one trusted, already materialized source contribution for startup composition.</summary>
+        /// <param name="snapshot">The immutable contribution captured by the host before building the engine.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="snapshot"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">A different bootstrap contribution already uses the same source identity.</exception>
+        /// <remarks>No provider is built and no source is read. Repeating the exact contribution is idempotent.</remarks>
+        public IServiceCollection AddAgentDefinitionSnapshot(AgentDefinitionSourceSnapshot snapshot)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(snapshot);
+
+            foreach (var descriptor in services.Where(static descriptor => descriptor.ServiceType == typeof(AgentDefinitionSourceSnapshot)))
+            {
+                if (descriptor.ImplementationInstance is not AgentDefinitionSourceSnapshot existing || existing.SourceId != snapshot.SourceId)
+                {
+                    continue;
+                }
+
+                return existing.Equals(snapshot)
+                    ? services
+                    : throw new InvalidOperationException(
+                        $"Bootstrap source '{snapshot.SourceId}' is already registered with different content.");
+            }
+
+            _ = services.AddSingleton(snapshot);
             return services;
         }
 
