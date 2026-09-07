@@ -7,41 +7,6 @@ public sealed class InMemoryArtifactStoreTests
 {
     private static readonly DateTimeOffset _now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
-    [Fact]
-    public async Task FinalizeAsync_WhenPreparationExists_PublishesImmutableReference()
-    {
-        var fixture = new StoreFixture();
-        var prepare = fixture.CreatePrepare("output"u8.ToArray());
-        await fixture.RegisterPrepareGrantAsync(prepare);
-        var prepared = (await fixture.Store.PrepareAsync(prepare, TestContext.Current.CancellationToken))
-            .ShouldBeOfType<ArtifactPrepared>();
-        var finalize = fixture.CreateFinalize(prepared.PreparationId, prepare.Identity);
-        await fixture.RegisterFinalizeGrantAsync(finalize);
-
-        var result = await fixture.Store.FinalizeAsync(finalize, TestContext.Current.CancellationToken);
-
-        var reference = result.ShouldBeOfType<ArtifactFinalized>().Reference;
-        reference.Id.ShouldBe(prepared.ArtifactId);
-        reference.Integrity.ContentHash.ShouldBe(prepare.Metadata.DeclaredContentHash);
-        reference.TenantId.ShouldBe(prepare.TenantId);
-    }
-
-    [Fact]
-    public async Task PrepareAsync_WhenGrantFingerprintDiffers_DeniesBeforeStaging()
-    {
-        var fixture = new StoreFixture();
-        var wrong = fixture.CreatePrepare("output"u8.ToArray(), grantFingerprint: new InputFingerprint("wrong"));
-        await fixture.Grants.RegisterAsync(wrong.Grant, TestContext.Current.CancellationToken);
-
-        var rejected = await fixture.Store.PrepareAsync(wrong, TestContext.Current.CancellationToken);
-        var request = fixture.CreatePrepare("output"u8.ToArray());
-        await fixture.RegisterPrepareGrantAsync(request);
-        var accepted = await fixture.Store.PrepareAsync(request, TestContext.Current.CancellationToken);
-
-        rejected.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
-        _ = accepted.ShouldBeOfType<ArtifactPrepared>();
-    }
-
     [Theory]
     [InlineData("version")]
     [InlineData("profile-key")]
@@ -73,7 +38,7 @@ public sealed class InMemoryArtifactStoreTests
         var prepare = fixture.CreatePrepare("output"u8.ToArray());
         await fixture.RegisterPrepareGrantAsync(prepare);
         _ = await fixture.Store.PrepareAsync(prepare, TestContext.Current.CancellationToken);
-        var otherIdentity = AgentKit.TestSupport.TestExecutionIdentity.Create(
+        var otherIdentity = TestSupport.TestExecutionIdentity.Create(
             new TenantId("other"), new PrincipalId("other-principal"), ExecutionSubjectKind.Human);
         var foreignFinalize = fixture.CreateFinalize(prepare.PreparationId, otherIdentity);
         await fixture.RegisterFinalizeGrantAsync(foreignFinalize);
@@ -85,74 +50,6 @@ public sealed class InMemoryArtifactStoreTests
 
         foreign.ShouldBeOfType<ArtifactFinalizeRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.NotFound);
         _ = owner.ShouldBeOfType<ArtifactFinalized>();
-    }
-
-    [Fact]
-    public async Task PrepareAsync_WhenIdempotencyKeyReplaysEquivalentContent_ReturnsOriginalReceipt()
-    {
-        var fixture = new StoreFixture();
-        var first = fixture.CreatePrepare("output"u8.ToArray(), idempotencyKey: "same");
-        await fixture.RegisterPrepareGrantAsync(first);
-        var original = (await fixture.Store.PrepareAsync(first, TestContext.Current.CancellationToken))
-            .ShouldBeOfType<ArtifactPrepared>();
-        var retry = fixture.CreatePrepare("output"u8.ToArray(), idempotencyKey: "same");
-        await fixture.RegisterPrepareGrantAsync(retry);
-
-        var replay = await fixture.Store.PrepareAsync(retry, TestContext.Current.CancellationToken);
-
-        replay.ShouldBe(original);
-    }
-
-    [Fact]
-    public async Task PrepareAsync_WhenIdempotencyKeyChangesMeaning_RejectsConflict()
-    {
-        var fixture = new StoreFixture();
-        var first = fixture.CreatePrepare("first"u8.ToArray(), idempotencyKey: "same");
-        await fixture.RegisterPrepareGrantAsync(first);
-        _ = await fixture.Store.PrepareAsync(first, TestContext.Current.CancellationToken);
-        var conflicting = fixture.CreatePrepare("second"u8.ToArray(), idempotencyKey: "same");
-        await fixture.RegisterPrepareGrantAsync(conflicting);
-
-        var result = await fixture.Store.PrepareAsync(conflicting, TestContext.Current.CancellationToken);
-
-        result.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Conflict);
-    }
-
-    [Theory]
-    [InlineData("version")]
-    [InlineData("lifetime")]
-    public async Task PrepareAsync_WhenReplayChangesStableIntent_RejectsConflict(string changedField)
-    {
-        var fixture = new StoreFixture();
-        var first = fixture.CreatePrepare("content"u8.ToArray(), idempotencyKey: "same");
-        await fixture.RegisterPrepareGrantAsync(first);
-        _ = await fixture.Store.PrepareAsync(first, TestContext.Current.CancellationToken);
-        var retry = changedField == "version"
-            ? fixture.CreatePrepare("content"u8.ToArray(), idempotencyKey: "same", version: new ArtifactVersion("2"))
-            : fixture.CreatePrepare("content"u8.ToArray(), idempotencyKey: "same", expiresAt: _now.AddMinutes(6));
-        await fixture.RegisterPrepareGrantAsync(retry);
-
-        var result = await fixture.Store.PrepareAsync(retry, TestContext.Current.CancellationToken);
-
-        result.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Conflict);
-    }
-
-    [Fact]
-    public async Task PrepareAsync_WhenReplayRegeneratesIdsAtLaterEquivalentInstants_ReturnsOriginalReceipt()
-    {
-        var fixture = new StoreFixture();
-        var first = fixture.CreatePrepare("content"u8.ToArray(), idempotencyKey: "same");
-        await fixture.RegisterPrepareGrantAsync(first);
-        var original = (await fixture.Store.PrepareAsync(first, TestContext.Current.CancellationToken))
-            .ShouldBeOfType<ArtifactPrepared>();
-        var retry = fixture.CreatePrepare(
-            "content"u8.ToArray(), idempotencyKey: "same", createdAt: _now.AddMinutes(1),
-            expiresAt: _now.AddMinutes(6));
-        await fixture.RegisterPrepareGrantAsync(retry);
-
-        var replay = await fixture.Store.PrepareAsync(retry, TestContext.Current.CancellationToken);
-
-        replay.ShouldBe(original);
     }
 
     [Theory]
@@ -289,7 +186,7 @@ public sealed class InMemoryArtifactStoreTests
         var delete = fixture.CreateDelete(reference, fixture.Identity);
         await fixture.RegisterDeleteGrantAsync(delete);
         _ = await fixture.Store.DeleteAsync(delete, TestContext.Current.CancellationToken);
-        var otherIdentity = AgentKit.TestSupport.TestExecutionIdentity.Create(
+        var otherIdentity = TestSupport.TestExecutionIdentity.Create(
             new TenantId("other"), new PrincipalId("other-principal"), ExecutionSubjectKind.Human);
         var foreignReference = new ArtifactReference(
             reference.Id, reference.Version, reference.DirectoryId, reference.ProfileKey,
@@ -345,7 +242,7 @@ public sealed class InMemoryArtifactStoreTests
         var delete = fixture.CreateDelete(reference, fixture.Identity);
         await fixture.RegisterDeleteGrantAsync(delete);
         _ = await fixture.Store.DeleteAsync(delete, TestContext.Current.CancellationToken);
-        var otherIdentity = AgentKit.TestSupport.TestExecutionIdentity.Create(
+        var otherIdentity = TestSupport.TestExecutionIdentity.Create(
             new TenantId("other"), new PrincipalId("other-principal"), ExecutionSubjectKind.Human);
         var foreignAbort = fixture.CreateAbort(prepare.PreparationId, otherIdentity);
         await fixture.RegisterAbortGrantAsync(foreignAbort);
@@ -565,66 +462,6 @@ public sealed class InMemoryArtifactStoreTests
     }
 
     [Fact]
-    public async Task FinalizeAsync_WhenTenantsUseSameArtifactIdAndVersion_CommitsBothPartitions()
-    {
-        var fixture = new StoreFixture();
-        var artifactId = new ArtifactId(Guid.Parse("10000000-0000-0000-0000-000000000097"));
-        var version = new ArtifactVersion("shared");
-        var tenantA = StoreFixture.CreateIdentity("tenant-a", "principal-a");
-        var tenantB = StoreFixture.CreateIdentity("tenant-b", "principal-b");
-        var prepareA = fixture.CreatePrepare(
-            "tenant a"u8.ToArray(), idempotencyKey: "tenant-a", artifactId: artifactId, version: version, identity: tenantA);
-        var prepareB = fixture.CreatePrepare(
-            "tenant b"u8.ToArray(), idempotencyKey: "tenant-b", artifactId: artifactId, version: version, identity: tenantB);
-        await fixture.RegisterPrepareGrantAsync(prepareA);
-        await fixture.RegisterPrepareGrantAsync(prepareB);
-        _ = await fixture.Store.PrepareAsync(prepareA, TestContext.Current.CancellationToken);
-        _ = await fixture.Store.PrepareAsync(prepareB, TestContext.Current.CancellationToken);
-        var finalizeA = fixture.CreateFinalize(prepareA.PreparationId, tenantA);
-        var finalizeB = fixture.CreateFinalize(prepareB.PreparationId, tenantB);
-        await fixture.RegisterFinalizeGrantAsync(finalizeA);
-        await fixture.RegisterFinalizeGrantAsync(finalizeB);
-
-        var referenceA = (await fixture.Store.FinalizeAsync(finalizeA, TestContext.Current.CancellationToken))
-            .ShouldBeOfType<ArtifactFinalized>().Reference;
-        var referenceB = (await fixture.Store.FinalizeAsync(finalizeB, TestContext.Current.CancellationToken))
-            .ShouldBeOfType<ArtifactFinalized>().Reference;
-
-        var readA = fixture.CreateRead(referenceA, tenantA);
-        var readB = fixture.CreateRead(referenceB, tenantB);
-        await fixture.RegisterReadGrantAsync(readA);
-        await fixture.RegisterReadGrantAsync(readB);
-        await using var openedA = (await fixture.Store.ReadAsync(readA, TestContext.Current.CancellationToken))
-            .ShouldBeOfType<ArtifactReadOpened>();
-        await using var openedB = (await fixture.Store.ReadAsync(readB, TestContext.Current.CancellationToken))
-            .ShouldBeOfType<ArtifactReadOpened>();
-        using var readerA = new StreamReader(openedA.Content);
-        using var readerB = new StreamReader(openedB.Content);
-        var contentA = await readerA.ReadToEndAsync(TestContext.Current.CancellationToken);
-        var contentB = await readerB.ReadToEndAsync(TestContext.Current.CancellationToken);
-        var deleteA = fixture.CreateDelete(referenceA, tenantA);
-        await fixture.RegisterDeleteGrantAsync(deleteA);
-        var deletedA = await fixture.Store.DeleteAsync(deleteA, TestContext.Current.CancellationToken);
-        var rereadA = fixture.CreateRead(referenceA, tenantA);
-        await fixture.RegisterReadGrantAsync(rereadA);
-        var missingA = await fixture.Store.ReadAsync(rereadA, TestContext.Current.CancellationToken);
-        var rereadB = fixture.CreateRead(referenceB, tenantB);
-        await fixture.RegisterReadGrantAsync(rereadB);
-        await using var retainedB = (await fixture.Store.ReadAsync(rereadB, TestContext.Current.CancellationToken))
-            .ShouldBeOfType<ArtifactReadOpened>();
-        using var retainedReaderB = new StreamReader(retainedB.Content);
-
-        referenceA.Id.ShouldBe(referenceB.Id);
-        referenceA.Version.ShouldBe(referenceB.Version);
-        referenceA.TenantId.ShouldNotBe(referenceB.TenantId);
-        contentA.ShouldBe("tenant a");
-        contentB.ShouldBe("tenant b");
-        deletedA.ShouldBe(new ArtifactDeleted(false));
-        missingA.ShouldBeOfType<ArtifactReadRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.NotFound);
-        (await retainedReaderB.ReadToEndAsync(TestContext.Current.CancellationToken)).ShouldBe("tenant b");
-    }
-
-    [Fact]
     public async Task DeleteAsync_WhenStoredReferenceHasLegalHold_RejectsAtBackend()
     {
         var fixture = new StoreFixture();
@@ -776,7 +613,7 @@ public sealed class InMemoryArtifactStoreTests
             new AgentId(NextGuid()), new SessionId(NextGuid()),
             new InRunOperationCorrelation(new OperationId(NextGuid()), new RunId(NextGuid()), null));
 
-        internal static ExecutionIdentity CreateIdentity(string tenant, string principal) => AgentKit.TestSupport.TestExecutionIdentity.Create(
+        internal static ExecutionIdentity CreateIdentity(string tenant, string principal) => TestSupport.TestExecutionIdentity.Create(
             new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human);
 
         private Guid NextGuid()

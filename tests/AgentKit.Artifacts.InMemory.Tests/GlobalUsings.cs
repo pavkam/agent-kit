@@ -5,8 +5,10 @@ global using System.Collections.Immutable;
 
 global using AgentKit;
 global using AgentKit.Artifacts.InMemory;
+global using AgentKit.Conformance;
 global using AgentKit.Permissions;
 
+global using Microsoft.Extensions.DependencyInjection;
 global using Microsoft.Extensions.Time.Testing;
 
 global using Shouldly;

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Shouldly" />
@@ -11,6 +12,7 @@
     <ProjectReference Include="../../src/AgentKit.Permissions/AgentKit.Permissions.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../AgentKit.Conformance/AgentKit.Conformance.csproj" />
     <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj" />
   </ItemGroup>
 </Project>
