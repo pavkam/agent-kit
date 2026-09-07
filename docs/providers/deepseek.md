@@ -10,8 +10,8 @@ before entering the
 **OpenAI-style base URL:** <code>https://api.deepseek.com</code>  
 **Anthropic-style base URL:** <code>https://api.deepseek.com/anthropic</code>  
 **FIM beta base URL:** <code>https://api.deepseek.com/beta</code>  
-**Preferred primitive:** Responses for Codex-style tools; Anthropic Messages for
-Claude-style agents; Chat Completions for broad clients  
+**Preferred primitive:** Responses for hosted tool workflows; Anthropic Messages
+for Claude-based agents; Chat Completions for broad clients\
 **Transport:** JSON/HTTPS and SSE
 
 DeepSeek supports three protocol dialects plus two distinct Files shapes. Its
