@@ -41,6 +41,41 @@ public sealed class InMemorySecurityGrantStoreTests
     }
 
     [Fact]
+    public async Task ValidateAndConsumeAsync_WhenPresentedGrantEvidenceDiffers_DoesNotConsumeUse()
+    {
+        var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
+        var grant = CreateGrant();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+        var tampered = grant with { Effect = SecurityEffect.Delete };
+
+        var rejected = await store.ValidateAndConsumeAsync(
+            tampered,
+            CreateEnforcement(grant),
+            TestContext.Current.CancellationToken);
+        var valid = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
+
+        rejected.Status.ShouldBe(GrantConsumptionStatus.Tampered);
+        rejected.RemainingUses.ShouldBe(1);
+        valid.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+    }
+
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenTamperedEvidenceIsPresentedConcurrently_DoesNotConsumeUse()
+    {
+        var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
+        var grant = CreateGrant();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+        var tampered = grant with { Effect = SecurityEffect.Delete };
+
+        var results = await ConsumeConcurrentlyAsync(store, tampered, CreateEnforcement(grant));
+        var valid = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
+
+        results.ShouldAllBe(static result => result.Status == GrantConsumptionStatus.Tampered);
+        results.ShouldAllBe(static result => result.RemainingUses == 1);
+        valid.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+    }
+
+    [Fact]
     public async Task ValidateAndConsumeAsync_WhenGrantExpired_DeniesWithoutConsumption()
     {
         var clock = new FakeTimeProvider(_now);
@@ -76,8 +111,7 @@ public sealed class InMemorySecurityGrantStoreTests
         await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
         var enforcement = CreateEnforcement(grant);
 
-        var results = await Task.WhenAll(Enumerable.Range(0, 32).Select(
-            async _ => await store.ValidateAndConsumeAsync(grant, enforcement, TestContext.Current.CancellationToken)));
+        var results = await ConsumeConcurrentlyAsync(store, grant, enforcement);
 
         results.Count(static result => result.Status == GrantConsumptionStatus.Consumed).ShouldBe(1);
         results.Count(static result => result.Status == GrantConsumptionStatus.Exhausted).ShouldBe(31);
@@ -97,7 +131,52 @@ public sealed class InMemorySecurityGrantStoreTests
         result.Status.ShouldBe(GrantConsumptionStatus.Revoked);
     }
 
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenRevokedBeforeConcurrentConsumers_AllAreRevoked()
+    {
+        var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
+        var grant = CreateGrant();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+        _ = await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken);
+
+        var results = await ConsumeConcurrentlyAsync(store, grant, CreateEnforcement(grant));
+
+        results.ShouldAllBe(static result => result.Status == GrantConsumptionStatus.Revoked);
+        results.ShouldAllBe(static result => result.RemainingUses == 1);
+    }
+
     internal static SecurityGrant CreateGrantForTests(int allowedUses = 1) => CreateGrant(allowedUses);
+
+    /// <summary>Releases a fixed worker set together so every call contends for the grant store's synchronization boundary.</summary>
+    /// <param name="store">The store whose atomic consumption behavior is under test.</param>
+    /// <param name="grant">The grant evidence each worker presents.</param>
+    /// <param name="enforcement">The exact enforcement evidence each worker presents.</param>
+    /// <returns>The terminal result for every concurrently released worker.</returns>
+    private static async Task<GrantConsumptionResult[]> ConsumeConcurrentlyAsync(
+        InMemorySecurityGrantStore store,
+        SecurityGrant grant,
+        SecurityEnforcementRequest enforcement)
+    {
+        const int workerCount = 32;
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var arrivals = 0;
+        var workers = Enumerable.Range(0, workerCount).Select(_ => Task.Run(async () =>
+        {
+            if (Interlocked.Increment(ref arrivals) == workerCount)
+            {
+                start.SetResult();
+            }
+
+            await start.Task;
+            return await store.ValidateAndConsumeAsync(
+                grant,
+                enforcement,
+                cancellationToken);
+        }));
+
+        return await Task.WhenAll(workers);
+    }
 
     private static SecurityGrant CreateGrant(int allowedUses = 1)
     {

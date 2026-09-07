@@ -140,8 +140,25 @@ public sealed class SecurityAuthority: ISecurityAuthority
         var allowed = false;
         foreach (var policy in _policies)
         {
-            var result = await policy.EvaluateAsync(request, cancellationToken).ConfigureAwait(false);
-            ArgumentNullException.ThrowIfNull(result);
+            SecurityPolicyResult result;
+            try
+            {
+                result = await policy.EvaluateAsync(request, cancellationToken).ConfigureAwait(false);
+                ValidatePolicyResult(result);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                return Denied(
+                    request,
+                    policyVersion,
+                    "security.policy_evaluation_failed",
+                    "Security policy evaluation failed.");
+            }
+
             if (result.Kind == SecurityPolicyResultKind.Deny)
             {
                 return Denied(request, policyVersion, result.Code!, result.SafeMessage!);
@@ -180,4 +197,22 @@ public sealed class SecurityAuthority: ISecurityAuthority
         SecurityPolicyVersion policyVersion,
         string code,
         string message) => new(request.Id, policyVersion, new SecurityDenial(code, message));
+
+    /// <summary>Validates that a policy contribution still satisfies its immutable result contract.</summary>
+    /// <param name="result">The contribution returned by the evaluated policy.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="result"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The contribution kind is undefined.</exception>
+    /// <exception cref="ArgumentException">A non-abstaining contribution omits its safe evidence.</exception>
+    private static void ValidatePolicyResult(SecurityPolicyResult? result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentOutOfRangeException.ThrowIfUndefined(result.Kind);
+        if (result.Kind == SecurityPolicyResultKind.Abstain)
+        {
+            return;
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(result.Code);
+        ArgumentException.ThrowIfNullOrWhiteSpace(result.SafeMessage);
+    }
 }

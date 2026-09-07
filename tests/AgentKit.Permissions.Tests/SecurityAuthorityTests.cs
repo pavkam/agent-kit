@@ -60,6 +60,89 @@ public sealed class SecurityAuthorityTests
     }
 
     [Fact]
+    public async Task AuthorizeAsync_WhenHardDenyPrecedesAllow_DeniesWithoutRegisteringGrant()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var authority = CreateAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.Deny), new StubPolicy(SecurityPolicyResultKind.Allow)],
+            store,
+            clock);
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("test.deny");
+        store.RegisterCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenAllowAndAbstainPoliciesMatch_IssuesGrant()
+    {
+        var authority = CreateAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.Abstain), new StubPolicy(SecurityPolicyResultKind.Allow)]);
+
+        var request = CreateRequest();
+        var decision = await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<SecurityAllowed>().Grant.RequestId.ShouldBe(request.Id);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenAllPoliciesAbstain_DeniesFailClosed()
+    {
+        var authority = CreateAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.Abstain), new StubPolicy(SecurityPolicyResultKind.Abstain)]);
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("security.no_policy");
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenPolicyEvaluationFails_DeniesWithoutRegisteringGrant()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var authority = CreateAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.Allow), new ThrowingPolicy()],
+            store,
+            clock);
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        var denied = decision.ShouldBeOfType<SecurityDenied>();
+        denied.Denial.Code.ShouldBe("security.policy_evaluation_failed");
+        denied.Denial.SafeMessage.ShouldNotContain("policy failure");
+        store.RegisterCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenPolicyReturnsInvalidContribution_DeniesWithoutRegisteringGrant()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var authority = CreateAuthority([new InvalidPolicy()], store, clock);
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("security.policy_evaluation_failed");
+        store.RegisterCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenPolicyCancels_PropagatesCancellationWithoutRegisteringGrant()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var authority = CreateAuthority([new CancellingPolicy()], store, clock);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            async () => await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken));
+
+        store.RegisterCount.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task AuthorizeAsync_WhenDeadlineExpired_DoesNotEvaluatePolicy()
     {
         var policy = new StubPolicy(SecurityPolicyResultKind.Allow);
@@ -163,5 +246,53 @@ public sealed class SecurityAuthorityTests
     private sealed class StubGrantIdGenerator: IIdentifierGenerator<GrantId>
     {
         public GrantId Create() => new(Guid.Parse("70000000-0000-0000-0000-000000000007"));
+    }
+
+    private sealed class ThrowingPolicy: ISecurityPolicy
+    {
+        public ValueTask<SecurityPolicyResult> EvaluateAsync(
+            SecurityRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("policy failure containing protected content");
+    }
+
+    private sealed class InvalidPolicy: ISecurityPolicy
+    {
+        public ValueTask<SecurityPolicyResult> EvaluateAsync(
+            SecurityRequest request,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(
+                new SecurityPolicyResult(SecurityPolicyResultKind.Allow, "test.allow", "Allowed by test policy.")
+                {
+                    Kind = (SecurityPolicyResultKind) int.MaxValue,
+                });
+    }
+
+    private sealed class CancellingPolicy: ISecurityPolicy
+    {
+        public ValueTask<SecurityPolicyResult> EvaluateAsync(
+            SecurityRequest request,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromCanceled<SecurityPolicyResult>(new CancellationToken(canceled: true));
+    }
+
+    private sealed class RecordingGrantStore(ISecurityGrantStore inner): ISecurityGrantStore
+    {
+        public int RegisterCount { get; private set; }
+
+        public async ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default)
+        {
+            RegisterCount++;
+            await inner.RegisterAsync(grant, cancellationToken);
+        }
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+            SecurityGrant grant,
+            SecurityEnforcementRequest enforcement,
+            CancellationToken cancellationToken = default) =>
+            inner.ValidateAndConsumeAsync(grant, enforcement, cancellationToken);
+
+        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
+            inner.RevokeAsync(grantId, cancellationToken);
     }
 }

@@ -22,13 +22,13 @@ owning spec.
 
 ## Checkpoints
 
-| Checkpoint                                         | Evidence                                                                  | Result                                                                                                   |
-| -------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Authoritative architecture                         | `0c73575`; Markdown lint across 127 documentation/guidance files          | Committed                                                                                                |
-| Existing implementation baseline                   | `ef6582e`; solution build: zero warnings/errors; 2,821 existing tests run | Committed; 2,820 pass, one session-store activity-correlation failure; architecture conformance unproven |
-| Budget accounting and batch admission              | Sol owns budget contracts, implementation, and tests                      | In progress                                                                                              |
-| Policy contribution validation and grant evidence  | Terra owns permission implementation and tests                            | In progress                                                                                              |
-| Observation-test isolation and shared test support | Terra owns session-store observation tests and shared collector           | In progress                                                                                              |
+| Checkpoint                                         | Evidence                                                                                                                      | Result                                                                                                   |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Authoritative architecture                         | `0c73575`; Markdown lint across 127 documentation/guidance files                                                              | Committed                                                                                                |
+| Existing implementation baseline                   | `ef6582e`; solution build: zero warnings/errors; 2,821 existing tests run                                                     | Committed; 2,820 pass, one session-store activity-correlation failure; architecture conformance unproven |
+| Budget accounting and batch admission              | Sol owns budget contracts, implementation, and tests                                                                          | In progress                                                                                              |
+| Policy contribution validation and grant evidence  | Focused permissions suite: 23 passed; malformed policy contributions deny, cancellation propagates, replay/concurrency tested | Verified checkpoint; broader permissions work remains open                                               |
+| Observation-test isolation and shared test support | Terra owns session-store observation tests and shared collector                                                               | In progress                                                                                              |
 
 ## Concurrent ownership
 
