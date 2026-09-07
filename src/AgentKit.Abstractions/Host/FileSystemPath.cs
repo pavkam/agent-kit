@@ -51,7 +51,8 @@ public readonly record struct FileSystemPath
             throw new ArgumentException("Path must not contain a '..' traversal segment.", nameof(value));
         }
 
-        Value = value;
+        Value = string.Join('/', segments.Where(static segment => segment != "."));
+        ArgumentException.ThrowIfNullOrWhiteSpace(Value, nameof(value));
     }
 
     /// <summary>Gets the relative path text.</summary>

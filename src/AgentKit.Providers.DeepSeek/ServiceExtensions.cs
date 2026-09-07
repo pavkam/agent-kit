@@ -19,7 +19,7 @@ using Microsoft.Extensions.Options;
 /// shared endpoint and wire-behavior options, exactly one of
 /// <c>AddDeepSeekApiKeyCredential</c> or
 /// <c>AddDeepSeekOAuthCredential</c> configures authentication, and
-/// <c>AddDeepSeekChatModel</c> is called once per named model an
+/// <c>AddDeepSeekLlmModel</c> is called once per named model an
 /// application wants to use. No default fabricates an API key, endpoint, or
 /// model an account may not actually have.
 /// </remarks>
@@ -46,7 +46,7 @@ public static class ServiceExtensions
         /// are independent calls documented on
         /// <c>AddDeepSeekApiKeyCredential</c>,
         /// <c>AddDeepSeekOAuthCredential</c>, and
-        /// <c>AddDeepSeekChatModel</c>.
+        /// <c>AddDeepSeekLlmModel</c>.
         /// </remarks>
         public IServiceCollection AddDeepSeek(Action<DeepSeekProviderOptions>? configureOptions = null)
         {
@@ -136,7 +136,7 @@ public static class ServiceExtensions
 
         /// <summary>
         /// Registers one named DeepSeek chat model as an additional
-        /// <see cref="IChatModel"/> implementation.
+        /// <see cref="ILlmModel"/> implementation.
         /// </summary>
         /// <param name="alias">The application-facing selection key for this model.</param>
         /// <param name="modelId">DeepSeek's own model identifier, such as <c>"deepseek-chat"</c>.</param>
@@ -156,10 +156,10 @@ public static class ServiceExtensions
         /// This registration is additive: calling it more than once with a
         /// distinct <paramref name="alias"/> registers additional models
         /// alongside one another, resolvable together as
-        /// <c>IEnumerable&lt;IChatModel&gt;</c>. <see cref="AddDeepSeek"/>
+        /// <c>IEnumerable&lt;ILlmModel&gt;</c>. <see cref="AddDeepSeek"/>
         /// must be called first.
         /// </remarks>
-        public IServiceCollection AddDeepSeekChatModel(
+        public IServiceCollection AddDeepSeekLlmModel(
             ModelAlias alias,
             ModelId modelId,
             ModelCapabilities? capabilities = null,
@@ -167,7 +167,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            _ = services.AddSingleton<IChatModel>(provider =>
+            _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<DeepSeekProviderOptions>>().Value;
 
@@ -182,7 +182,7 @@ public static class ServiceExtensions
                     pricing: null,
                     ExtensionData.Empty);
 
-                return new DeepSeekChatModel(
+                return new DeepSeekLlmModel(
                     descriptor,
                     DeepSeekProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),

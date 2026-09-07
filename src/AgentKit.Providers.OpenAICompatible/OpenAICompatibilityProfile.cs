@@ -6,7 +6,7 @@ namespace AgentKit.Providers.OpenAICompatible;
 /// <summary>
 /// The tested, explicit wire-behavior configuration one concrete
 /// OpenAI-compatible provider package supplies to
-/// <see cref="OpenAICompatibleChatModelBase"/>.
+/// <see cref="OpenAICompatibleLlmModelBase"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -50,14 +50,23 @@ public sealed record OpenAICompatibilityProfile
     /// Additional headers to send with every request, beyond authentication
     /// headers.
     /// </param>
+    /// <param name="embeddingsPath">
+    /// The path, relative to <paramref name="baseAddress"/>, of the
+    /// embeddings operation, or <see langword="null"/> when this profile's
+    /// endpoint does not expose one. Optional and defaulted so every
+    /// existing chat-only caller of this constructor keeps compiling
+    /// unchanged.
+    /// </param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="baseAddress"/>, <paramref name="chatCompletionsPath"/>,
     /// or <paramref name="defaultRequestHeaders"/> is null.
     /// </exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="baseAddress"/> is not an absolute URI, or
+    /// <paramref name="baseAddress"/> is not an absolute URI,
     /// <paramref name="chatCompletionsPath"/> is empty, whitespace, rooted,
-    /// authority-relative, or absolute.
+    /// authority-relative, or absolute, or <paramref name="embeddingsPath"/>
+    /// is non-null and empty, whitespace, rooted, authority-relative, or
+    /// absolute.
     /// </exception>
     public OpenAICompatibilityProfile(
         Uri baseAddress,
@@ -66,11 +75,16 @@ public sealed record OpenAICompatibilityProfile
         bool preferStreaming,
         bool includeStreamUsage,
         bool useMaxCompletionTokensField,
-        ImmutableDictionary<string, string> defaultRequestHeaders)
+        ImmutableDictionary<string, string> defaultRequestHeaders,
+        string? embeddingsPath = null)
     {
         ArgumentException.ThrowIfNotAbsoluteUri(baseAddress);
         ArgumentException.ThrowIfNotRelativeUriPath(chatCompletionsPath);
         ArgumentNullException.ThrowIfNull(defaultRequestHeaders);
+        if (embeddingsPath is not null)
+        {
+            ArgumentException.ThrowIfNotRelativeUriPath(embeddingsPath);
+        }
 
         BaseAddress = baseAddress;
         ChatCompletionsPath = chatCompletionsPath;
@@ -79,6 +93,7 @@ public sealed record OpenAICompatibilityProfile
         IncludeStreamUsage = includeStreamUsage;
         UseMaxCompletionTokensField = useMaxCompletionTokensField;
         DefaultRequestHeaders = defaultRequestHeaders;
+        EmbeddingsPath = embeddingsPath;
     }
 
     /// <summary>Gets the absolute base address of the provider's OpenAI-compatible endpoint.</summary>
@@ -119,4 +134,18 @@ public sealed record OpenAICompatibilityProfile
 
     /// <summary>Gets the absolute URI of the chat completions operation.</summary>
     public Uri ChatCompletionsUri => new(BaseAddress, ChatCompletionsPath);
+
+    /// <summary>
+    /// Gets the path, relative to <see cref="BaseAddress"/>, of the
+    /// embeddings operation, or <see langword="null"/> when this profile's
+    /// endpoint does not expose one.
+    /// </summary>
+    public string? EmbeddingsPath { get; }
+
+    /// <summary>
+    /// Gets the absolute URI of the embeddings operation, or
+    /// <see langword="null"/> when <see cref="EmbeddingsPath"/> is not
+    /// configured.
+    /// </summary>
+    public Uri? EmbeddingsUri => EmbeddingsPath is null ? null : new Uri(BaseAddress, EmbeddingsPath);
 }

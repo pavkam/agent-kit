@@ -1,0 +1,27 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "Let me consider this carefully...",
+            "thought": true,
+            "thoughtSignature": "sig_abc123"
+          },
+          { "text": "The answer is 42." }
+        ]
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 15,
+    "candidatesTokenCount": 25,
+    "thoughtsTokenCount": 18,
+    "totalTokenCount": 58
+  },
+  "modelVersion": "gemini-2.5-flash-001",
+  "responseId": "resp_03abc"
+}

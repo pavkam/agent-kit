@@ -3,6 +3,9 @@
 
 namespace AgentKit;
 
+using System.Globalization;
+using System.Net;
+
 /// <summary>
 /// A DNS hostname or IP-address literal canonicalized to lowercase,
 /// trimmed text.
@@ -37,8 +40,11 @@ public readonly record struct NormalizedHost
     /// </exception>
     public NormalizedHost(string value)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value);
-        Value = value.Trim().ToLowerInvariant();
+        ArgumentException.ThrowIfInvalidNetworkHost(value);
+        var candidate = value.Trim().TrimEnd('.');
+        Value = IPAddress.TryParse(candidate, out var address)
+            ? address.ToString().ToLowerInvariant()
+            : new IdnMapping().GetAscii(candidate).ToLowerInvariant();
     }
 
     /// <summary>Gets the canonicalized, lowercase host text.</summary>

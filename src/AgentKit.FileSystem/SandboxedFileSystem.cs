@@ -22,7 +22,14 @@ using Microsoft.Win32.SafeHandles;
 /// authorization decision that already ran, which is the low-level
 /// boundary re-enforcing the same effect a higher-level allow cannot widen.
 /// </remarks>
-public sealed partial class SandboxedFileSystem: IFileSystem
+public sealed partial class SandboxedFileSystem:
+    IFileSystem,
+    IDirectoryReader,
+    IFileGlobber,
+    IFileContentSearcher,
+    IFileSnapshotReader,
+    IAtomicFileReplacer,
+    IWorkspacePatchApplier
 {
     private const int _errorAccessDenied = 13;
     private const int _errorAlreadyExists = 17;
@@ -42,14 +49,38 @@ public sealed partial class SandboxedFileSystem: IFileSystem
     private readonly string _root;
     private readonly long _maximumReadBytes;
     private readonly long _maximumWriteBytes;
+    private readonly int _maximumDirectorySnapshotEntries;
+    private readonly int _maximumSearchDepth;
+    private readonly int _maximumSearchFiles;
+    private readonly long _maximumSearchBytes;
+    private readonly int _maximumSearchMatches;
+    private readonly int _maximumSearchLineBytes;
+    private readonly TimeSpan _maximumSearchDuration;
+    private readonly int _maximumPatchEntries;
+    private readonly long _maximumPatchBytes;
+    private readonly ISecurityGrantStore _grantStore;
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger<SandboxedFileSystem> _logger;
+
+    /// <inheritdoc/>
+    public ComponentId SecurityAudience { get; } = new("agentkit.filesystem.sandboxed");
 
     /// <summary>Initializes a new instance of the <see cref="SandboxedFileSystem"/> class.</summary>
     /// <param name="options">The validated sandbox configuration.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <param name="grantStore">The authoritative grant store used immediately before host observations and mutations.</param>
+    /// <param name="timeProvider">The monotonic time source used for elapsed search bounds.</param>
+    /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
+    /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
     /// <exception cref="ArgumentException"><see cref="SandboxedFileSystemOptions.RootDirectory"/> is not an absolute path.</exception>
-    public SandboxedFileSystem(IOptions<SandboxedFileSystemOptions> options)
+    public SandboxedFileSystem(
+        IOptions<SandboxedFileSystemOptions> options,
+        ISecurityGrantStore grantStore,
+        TimeProvider timeProvider,
+        ILogger<SandboxedFileSystem>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(grantStore);
+        ArgumentNullException.ThrowIfNull(timeProvider);
 
         var root = options.Value.RootDirectory;
         if (string.IsNullOrWhiteSpace(root) || !Path.IsPathRooted(root))
@@ -61,13 +92,42 @@ public sealed partial class SandboxedFileSystem: IFileSystem
         _root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
         _maximumReadBytes = options.Value.MaximumReadBytes;
         _maximumWriteBytes = options.Value.MaximumWriteBytes;
+        _maximumDirectorySnapshotEntries = options.Value.MaximumDirectorySnapshotEntries;
+        _maximumSearchDepth = options.Value.MaximumSearchDepth;
+        _maximumSearchFiles = options.Value.MaximumSearchFiles;
+        _maximumSearchBytes = options.Value.MaximumSearchBytes;
+        _maximumSearchMatches = options.Value.MaximumSearchMatches;
+        _maximumSearchLineBytes = options.Value.MaximumSearchLineBytes;
+        _maximumSearchDuration = options.Value.MaximumSearchDuration;
+        _maximumPatchEntries = options.Value.MaximumPatchEntries;
+        _maximumPatchBytes = options.Value.MaximumPatchBytes;
+        _grantStore = grantStore;
+        _timeProvider = timeProvider;
+        _logger = logger ?? NullLogger<SandboxedFileSystem>.Instance;
     }
 
     /// <inheritdoc/>
-    public async Task<FileReadResult> ReadAsync(FileReadRequest request, CancellationToken cancellationToken = default)
+    private async Task<FileReadResult> ReadCoreAsync(FileReadRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
+
+        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            request.Grant,
+            new SecurityEnforcementRequest(
+                request.Grant.Scope,
+                request.Grant.Identity,
+                SecurityAudience,
+                SecurityOperationKind.FileRead,
+                SecurityEffect.Observe,
+                [FileSecurityBinding.Resource(request.Path)],
+                FileSecurityBinding.ReadFingerprint(request.Path),
+                request.Grant.RevocationVersion),
+            cancellationToken).ConfigureAwait(false);
+        if (grantResult.Status != GrantConsumptionStatus.Consumed)
+        {
+            return new FileReadDenied(grantResult.SafeMessage);
+        }
 
         if (!IsSecureTraversalSupported)
         {
@@ -139,7 +199,7 @@ public sealed partial class SandboxedFileSystem: IFileSystem
     }
 
     /// <inheritdoc/>
-    public async Task<FileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default)
+    private async Task<FileWriteResult> WriteCoreAsync(FileWriteRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentOutOfRangeException.ThrowIfUndefined(request.Mode);
@@ -157,14 +217,29 @@ public sealed partial class SandboxedFileSystem: IFileSystem
                 $"Content is {contentBytes} bytes, exceeding the configured maximum of {_maximumWriteBytes}.");
         }
 
+        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            request.Grant,
+            new SecurityEnforcementRequest(
+                request.Grant.Scope,
+                request.Grant.Identity,
+                SecurityAudience,
+                SecurityOperationKind.FileWrite,
+                FileSecurityBinding.WriteEffect(request.Mode),
+                [FileSecurityBinding.Resource(request.Path)],
+                FileSecurityBinding.WriteFingerprint(request.Path, request.Content, request.Mode),
+                request.Grant.RevocationVersion),
+            cancellationToken).ConfigureAwait(false);
+        if (grantResult.Status != GrantConsumptionStatus.Consumed)
+        {
+            return new FileWriteDenied(grantResult.SafeMessage);
+        }
+
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            _ = Directory.CreateDirectory(_root);
-
             if (!TryOpenParentDirectory(
                     request.Path,
-                    createMissingDirectories: true,
+                    createMissingDirectories: false,
                     cancellationToken,
                     out var parent,
                     out var fileName,
@@ -211,6 +286,417 @@ public sealed partial class SandboxedFileSystem: IFileSystem
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return new FileWriteFailed("The file could not be written.");
+        }
+    }
+
+    /// <inheritdoc/>
+    private async ValueTask<DirectoryEnumerationResult> EnumerateCoreAsync(
+        DirectoryEnumerationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(request.MaximumEntries);
+        ArgumentNullException.ThrowIfNull(request.Grant);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            request.Grant,
+            new SecurityEnforcementRequest(
+                request.Grant.Scope,
+                request.Grant.Identity,
+                SecurityAudience,
+                SecurityOperationKind.DirectoryRead,
+                SecurityEffect.Observe,
+                [DirectorySecurityBinding.Resource(request.Path)],
+                DirectorySecurityBinding.Fingerprint(request.Path, request.MaximumEntries, request.Continuation),
+                request.Grant.RevocationVersion),
+            cancellationToken).ConfigureAwait(false);
+        if (grantResult.Status != GrantConsumptionStatus.Consumed)
+        {
+            return DirectoryFailure(DirectoryEnumerationStatus.Denied, grantResult.SafeMessage);
+        }
+
+        if (!IsSecureTraversalSupported)
+        {
+            return DirectoryFailure(
+                DirectoryEnumerationStatus.Denied,
+                "Secure no-follow directory traversal is unavailable on this platform.");
+        }
+
+        if (!TryOpenDirectory(request.Path, cancellationToken, out var directory, out var openError))
+        {
+            return openError == _errorNotFound
+                ? DirectoryFailure(DirectoryEnumerationStatus.NotFound, "The directory does not exist.")
+                : DirectoryFailure(
+                    IsBoundaryViolation(openError) ? DirectoryEnumerationStatus.Denied : DirectoryEnumerationStatus.Failed,
+                    IsBoundaryViolation(openError)
+                        ? "The directory crosses a symbolic link or inaccessible boundary."
+                        : "The directory could not be enumerated.");
+        }
+
+        using (directory)
+        {
+            try
+            {
+                if (!TryReadDirectoryNames(directory, cancellationToken, out var childNames, out _))
+                {
+                    return DirectoryFailure(DirectoryEnumerationStatus.Failed, "The directory could not be enumerated.");
+                }
+
+                var childPaths = new List<string>();
+                foreach (var name in childNames)
+                {
+                    if (childPaths.Count == _maximumDirectorySnapshotEntries)
+                    {
+                        return DirectoryFailure(
+                            DirectoryEnumerationStatus.LimitExceeded,
+                            $"The directory exceeds the configured snapshot limit of {_maximumDirectorySnapshotEntries} entries.");
+                    }
+
+                    if (name.Contains('\\', StringComparison.Ordinal))
+                    {
+                        return DirectoryFailure(
+                            DirectoryEnumerationStatus.Failed,
+                            "The directory contains a name that cannot be represented by this path profile.");
+                    }
+
+                    childPaths.Add(request.Path is null ? name : $"{request.Path.Value.Value}/{name}");
+                }
+
+                childPaths.Sort(StringComparer.Ordinal);
+                var snapshot = SnapshotFingerprint(childPaths);
+                var start = request.Continuation?.NextIndex ?? 0;
+                if (request.Continuation is not null
+                    && (request.Continuation.SnapshotFingerprint != snapshot || start > childPaths.Count))
+                {
+                    return DirectoryFailure(
+                        DirectoryEnumerationStatus.SnapshotChanged,
+                        "The directory changed after the supplied continuation was issued.");
+                }
+
+                var retained = childPaths.Skip(start).Take(request.MaximumEntries)
+                    .Select(static path => new DirectoryEntry(new FileSystemPath(path)))
+                    .ToImmutableArray();
+                var next = start + retained.Length;
+                var continuation = next < childPaths.Count
+                    ? new DirectoryEnumerationCursor(snapshot, next)
+                    : null;
+                return new DirectoryEnumerationResult(
+                    DirectoryEnumerationStatus.Success,
+                    retained,
+                    snapshot,
+                    continuation,
+                    null);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return DirectoryFailure(DirectoryEnumerationStatus.Failed, "The directory could not be enumerated.");
+            }
+        }
+    }
+
+    /// <inheritdoc/>
+    private async ValueTask<GlobResult> GlobCoreAsync(GlobRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Pattern.Value, "request.Pattern");
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(request.MaximumDepth);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(request.MaximumVisitedEntries);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(request.MaximumResults);
+        ArgumentNullException.ThrowIfNull(request.Grant);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            request.Grant,
+            new SecurityEnforcementRequest(
+                request.Grant.Scope,
+                request.Grant.Identity,
+                SecurityAudience,
+                SecurityOperationKind.DirectoryRead,
+                SecurityEffect.Observe,
+                [GlobSecurityBinding.Resource(request.BasePath)],
+                GlobSecurityBinding.Fingerprint(
+                    request.BasePath,
+                    request.Pattern,
+                    request.CaseSensitive,
+                    request.IncludeHidden,
+                    request.MaximumDepth,
+                    request.MaximumVisitedEntries,
+                    request.MaximumResults),
+                request.Grant.RevocationVersion),
+            cancellationToken).ConfigureAwait(false);
+        if (grantResult.Status != GrantConsumptionStatus.Consumed)
+        {
+            return new GlobResult(GlobStatus.Denied, [], 0, false, grantResult.SafeMessage);
+        }
+
+        if (!IsSecureTraversalSupported)
+        {
+            return new GlobResult(
+                GlobStatus.Denied, [], 0, false, "Secure no-follow traversal is unavailable on this platform.");
+        }
+
+        if (!TryOpenDirectory(request.BasePath, cancellationToken, out var root, out var openError))
+        {
+            return openError == _errorNotFound
+                ? new GlobResult(GlobStatus.NotFound, [], 0, true, "The glob base directory does not exist.")
+                : new GlobResult(
+                    IsBoundaryViolation(openError) ? GlobStatus.Denied : GlobStatus.Failed,
+                    [],
+                    0,
+                    false,
+                    IsBoundaryViolation(openError)
+                        ? "The glob base crosses a symbolic link or inaccessible boundary."
+                        : "The glob base could not be traversed.");
+        }
+
+        using (root)
+        {
+            var state = new GlobTraversalState(request);
+            TraverseGlobDirectory(root, "", 1, state, cancellationToken);
+            state.Matches.Sort(StringComparer.Ordinal);
+            var matches = state.Matches.Select(static value => new FileSystemPath(value)).ToImmutableArray();
+            return state.TerminalStatus is { } terminal
+                ? new GlobResult(terminal, matches, state.VisitedEntries, false, state.SafeMessage)
+                : matches.IsEmpty
+                    ? new GlobResult(GlobStatus.NoMatches, [], state.VisitedEntries, true, "The glob completed with no matches.")
+                    : new GlobResult(GlobStatus.Success, matches, state.VisitedEntries, true, null);
+        }
+    }
+
+    private static void TraverseGlobDirectory(
+        SafeFileHandle directory,
+        string relativeParent,
+        int depth,
+        GlobTraversalState state,
+        CancellationToken cancellationToken)
+    {
+        if (state.TerminalStatus is not null)
+        {
+            return;
+        }
+
+        if (!TryReadDirectoryNames(directory, cancellationToken, out var names, out _))
+        {
+            state.Fail(GlobStatus.Failed, "A directory could not be enumerated.");
+            return;
+        }
+
+        names.Sort(StringComparer.Ordinal);
+        foreach (var name in names)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!state.Request.IncludeHidden && name.StartsWith('.'))
+            {
+                continue;
+            }
+
+            state.VisitedEntries++;
+            if (state.VisitedEntries > state.Request.MaximumVisitedEntries)
+            {
+                state.Fail(GlobStatus.LimitExceeded, "The glob visited-entry limit was exceeded.");
+                return;
+            }
+
+            var relative = relativeParent.Length == 0 ? name : $"{relativeParent}/{name}";
+            var workspacePath = state.Request.BasePath is null
+                ? relative
+                : $"{state.Request.BasePath.Value.Value}/{relative}";
+            if (GlobMatches(state.Request.Pattern.Value, relative, state.Request.CaseSensitive))
+            {
+                if (state.Matches.Count == state.Request.MaximumResults)
+                {
+                    state.Fail(GlobStatus.LimitExceeded, "The glob retained-result limit was exceeded.");
+                    return;
+                }
+
+                state.Matches.Add(workspacePath);
+            }
+
+            var descriptor = OpenAt(
+                directory.DangerousGetHandle().ToInt32(),
+                name,
+                _openReadOnly | DirectoryFlag | NoFollowFlag | CloseOnExecFlag,
+                0);
+            if (descriptor < 0)
+            {
+                var error = Marshal.GetLastPInvokeError();
+                if (error is _errorNotDirectory || error == (OperatingSystem.IsMacOS()
+                        ? _macOsErrorTooManyLinks
+                        : _linuxErrorTooManyLinks))
+                {
+                    continue;
+                }
+
+                if (IsBoundaryViolation(error))
+                {
+                    state.Fail(GlobStatus.Denied, "A directory entry crossed an inaccessible boundary.");
+                    return;
+                }
+
+                continue;
+            }
+
+            using var child = new SafeFileHandle(new IntPtr(descriptor), ownsHandle: true);
+            if (depth < state.Request.MaximumDepth)
+            {
+                TraverseGlobDirectory(child, relative, depth + 1, state, cancellationToken);
+                if (state.TerminalStatus is not null)
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    private static bool GlobMatches(string pattern, string path, bool caseSensitive)
+    {
+        var patternSegments = pattern.Split('/');
+        var pathSegments = path.Split('/');
+        return MatchGlobSegments(patternSegments, 0, pathSegments, 0, caseSensitive);
+    }
+
+    private static bool MatchGlobSegments(
+        string[] pattern,
+        int patternIndex,
+        string[] path,
+        int pathIndex,
+        bool caseSensitive)
+    {
+        return patternIndex == pattern.Length
+            ? pathIndex == path.Length
+            : pattern[patternIndex] == "**"
+                ? MatchGlobSegments(pattern, patternIndex + 1, path, pathIndex, caseSensitive)
+                    || (pathIndex < path.Length
+                        && MatchGlobSegments(pattern, patternIndex, path, pathIndex + 1, caseSensitive))
+                : pathIndex < path.Length
+                    && System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(
+                        pattern[patternIndex], path[pathIndex], ignoreCase: !caseSensitive)
+                    && MatchGlobSegments(pattern, patternIndex + 1, path, pathIndex + 1, caseSensitive);
+    }
+
+    private sealed class GlobTraversalState(GlobRequest request)
+    {
+        public GlobRequest Request { get; } = request;
+        public List<string> Matches { get; } = [];
+        public int VisitedEntries { get; set; }
+        public GlobStatus? TerminalStatus { get; private set; }
+        public string? SafeMessage { get; private set; }
+
+        public void Fail(GlobStatus status, string message)
+        {
+            TerminalStatus = status;
+            SafeMessage = message;
+        }
+    }
+
+    private static bool TryReadDirectoryNames(
+        SafeFileHandle directory,
+        CancellationToken cancellationToken,
+        out List<string> names,
+        out int error)
+    {
+        names = [];
+        var duplicate = DuplicateDescriptor(directory.DangerousGetHandle().ToInt32());
+        if (duplicate < 0)
+        {
+            error = Marshal.GetLastPInvokeError();
+            return false;
+        }
+
+        var stream = OpenDirectoryStream(duplicate);
+        if (stream == IntPtr.Zero)
+        {
+            error = Marshal.GetLastPInvokeError();
+            _ = CloseDescriptor(duplicate);
+            return false;
+        }
+
+        try
+        {
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Marshal.SetLastPInvokeError(0);
+                var entry = ReadDirectoryEntry(stream);
+                if (entry == IntPtr.Zero)
+                {
+                    error = Marshal.GetLastPInvokeError();
+                    return error == 0;
+                }
+
+                var nameOffset = OperatingSystem.IsMacOS() ? 21 : 19;
+                var name = Marshal.PtrToStringUTF8(IntPtr.Add(entry, nameOffset));
+                if (name is null)
+                {
+                    error = _errorInvalidArgument;
+                    return false;
+                }
+
+                if (name is not "." and not "..")
+                {
+                    names.Add(name);
+                }
+            }
+        }
+        finally
+        {
+            _ = CloseDirectoryStream(stream);
+        }
+    }
+
+    private static DirectoryEnumerationResult DirectoryFailure(DirectoryEnumerationStatus status, string message) =>
+        new(status, [], null, null, message);
+
+    private static ContentHash SnapshotFingerprint(IEnumerable<string> paths)
+    {
+        using var hash = System.Security.Cryptography.IncrementalHash.CreateHash(
+            System.Security.Cryptography.HashAlgorithmName.SHA256);
+        foreach (var path in paths)
+        {
+            var bytes = Encoding.UTF8.GetBytes(path);
+            hash.AppendData(BitConverter.GetBytes(bytes.Length));
+            hash.AppendData(bytes);
+        }
+
+        return new ContentHash($"sha256:{Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant()}");
+    }
+
+    private bool TryOpenDirectory(
+        FileSystemPath? path,
+        CancellationToken cancellationToken,
+        out SafeFileHandle directory,
+        out int error)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (path is null)
+        {
+            var rootDescriptor = Open(_root, _openReadOnly | DirectoryFlag | NoFollowFlag | CloseOnExecFlag, 0);
+            directory = rootDescriptor >= 0
+                ? new SafeFileHandle(new IntPtr(rootDescriptor), ownsHandle: true)
+                : new SafeFileHandle(IntPtr.Zero, ownsHandle: false);
+            error = rootDescriptor >= 0 ? 0 : Marshal.GetLastPInvokeError();
+            return rootDescriptor >= 0;
+        }
+
+        if (!TryOpenParentDirectory(path.Value, false, cancellationToken, out var parent, out var name, out error))
+        {
+            directory = new SafeFileHandle(IntPtr.Zero, ownsHandle: false);
+            return false;
+        }
+
+        using (parent)
+        {
+            var descriptor = OpenAt(
+                parent.DangerousGetHandle().ToInt32(),
+                name,
+                _openReadOnly | DirectoryFlag | NoFollowFlag | CloseOnExecFlag,
+                0);
+            directory = descriptor >= 0
+                ? new SafeFileHandle(new IntPtr(descriptor), ownsHandle: true)
+                : new SafeFileHandle(IntPtr.Zero, ownsHandle: false);
+            error = descriptor >= 0 ? 0 : Marshal.GetLastPInvokeError();
+            return descriptor >= 0;
         }
     }
 
@@ -385,7 +871,7 @@ public sealed partial class SandboxedFileSystem: IFileSystem
         FileWriteMode.CreateNew => _openWriteOnly | CreateFlag | ExclusiveFlag | NoFollowFlag | CloseOnExecFlag,
         FileWriteMode.Append =>
             _openWriteOnly | CreateFlag | ExclusiveFlag | _openAppend | NoFollowFlag | CloseOnExecFlag,
-        _ => throw new System.Diagnostics.UnreachableException()
+        _ => throw new UnreachableException()
     };
 
     private static int ExistingFileOpenFlags(FileWriteMode mode) => mode switch
@@ -393,17 +879,32 @@ public sealed partial class SandboxedFileSystem: IFileSystem
         FileWriteMode.CreateOrOverwrite => _openWriteOnly | TruncateFlag | NoFollowFlag | CloseOnExecFlag,
         FileWriteMode.Append => _openWriteOnly | _openAppend | NoFollowFlag | CloseOnExecFlag,
         FileWriteMode.CreateNew => throw new NotImplementedException(),
-        _ => throw new System.Diagnostics.UnreachableException()
+        _ => throw new UnreachableException()
     };
 
     [LibraryImport("libc", EntryPoint = "fchmod", SetLastError = true)]
     private static partial int ChangeMode(int descriptor, int mode);
+
+    [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
+    private static partial int CloseDescriptor(int descriptor);
+
+    [LibraryImport("libc", EntryPoint = "closedir", SetLastError = true)]
+    private static partial int CloseDirectoryStream(IntPtr stream);
+
+    [LibraryImport("libc", EntryPoint = "dup", SetLastError = true)]
+    private static partial int DuplicateDescriptor(int descriptor);
+
+    [LibraryImport("libc", EntryPoint = "fdopendir", SetLastError = true)]
+    private static partial IntPtr OpenDirectoryStream(int descriptor);
 
     [LibraryImport("libc", EntryPoint = "open", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
     private static partial int Open(string path, int flags, int mode);
 
     [LibraryImport("libc", EntryPoint = "openat", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
     private static partial int OpenAt(int directoryDescriptor, string path, int flags, int mode);
+
+    [LibraryImport("libc", EntryPoint = "readdir", SetLastError = true)]
+    private static partial IntPtr ReadDirectoryEntry(IntPtr stream);
 
     [LibraryImport("libc", EntryPoint = "mkdirat", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
     private static partial int MakeDirectoryAt(int directoryDescriptor, string path, int mode);

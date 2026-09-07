@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "401",
+    "message": "Access denied due to invalid subscription key or wrong API endpoint.",
+    "type": "invalid_request_error"
+  }
+}

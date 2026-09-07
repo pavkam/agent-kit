@@ -18,7 +18,7 @@ using Microsoft.Extensions.Options;
 /// deliberately separate calls: <see cref="AddOpenAI"/> configures the
 /// shared endpoint and wire-behavior options, exactly one of
 /// <c>AddOpenAIApiKeyCredential</c> or <c>AddOpenAIOAuthCredential</c>
-/// configures authentication, and <c>AddOpenAIChatModel</c> is called once
+/// configures authentication, and <c>AddOpenAILlmModel</c> is called once
 /// per named model an application wants to use. No default fabricates an
 /// API key, endpoint, or model an account may not actually have.
 /// </remarks>
@@ -44,7 +44,7 @@ public static class ServiceExtensions
         /// configuration pipeline. Authentication and model registrations
         /// are independent calls documented on
         /// <c>AddOpenAIApiKeyCredential</c>, <c>AddOpenAIOAuthCredential</c>,
-        /// and <c>AddOpenAIChatModel</c>.
+        /// and <c>AddOpenAILlmModel</c>.
         /// </remarks>
         public IServiceCollection AddOpenAI(Action<OpenAIProviderOptions>? configureOptions = null)
         {
@@ -134,7 +134,7 @@ public static class ServiceExtensions
 
         /// <summary>
         /// Registers one named OpenAI chat model as an additional
-        /// <see cref="IChatModel"/> implementation.
+        /// <see cref="ILlmModel"/> implementation.
         /// </summary>
         /// <param name="alias">The application-facing selection key for this model.</param>
         /// <param name="modelId">OpenAI's own model identifier, such as <c>"gpt-4o"</c>.</param>
@@ -154,10 +154,10 @@ public static class ServiceExtensions
         /// This registration is additive: calling it more than once with a
         /// distinct <paramref name="alias"/> registers additional models
         /// alongside one another, resolvable together as
-        /// <c>IEnumerable&lt;IChatModel&gt;</c>. <see cref="AddOpenAI"/>
+        /// <c>IEnumerable&lt;ILlmModel&gt;</c>. <see cref="AddOpenAI"/>
         /// must be called first.
         /// </remarks>
-        public IServiceCollection AddOpenAIChatModel(
+        public IServiceCollection AddOpenAILlmModel(
             ModelAlias alias,
             ModelId modelId,
             ModelCapabilities? capabilities = null,
@@ -165,7 +165,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            _ = services.AddSingleton<IChatModel>(provider =>
+            _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<OpenAIProviderOptions>>().Value;
 
@@ -180,11 +180,76 @@ public static class ServiceExtensions
                     pricing: null,
                     ExtensionData.Empty);
 
-                return new OpenAIChatModel(
+                return new OpenAILlmModel(
                     descriptor,
                     OpenAIProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>());
+            });
+
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one named OpenAI embedding model as an additional
+        /// <see cref="IEmbeddingModel"/> implementation.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">OpenAI's own model identifier, such as <c>"text-embedding-3-small"</c>.</param>
+        /// <param name="capabilities">
+        /// The model's capabilities, or <see langword="null"/> to use
+        /// <see cref="OpenAIProviderDefaults.DefaultEmbeddingCapabilities"/>.
+        /// </param>
+        /// <param name="limits">
+        /// The model's input/output limits, or <see langword="null"/> to use
+        /// <see cref="OpenAIProviderDefaults.DefaultEmbeddingLimits"/>.
+        /// </param>
+        /// <returns>
+        /// The same <paramref name="services"/> instance, so calls can be
+        /// chained with other registration methods.
+        /// </returns>
+        /// <remarks>
+        /// This registration is additive: calling it more than once with a
+        /// distinct <paramref name="alias"/> registers additional models
+        /// alongside one another, resolvable together as
+        /// <c>IEnumerable&lt;IEmbeddingModel&gt;</c>. <see cref="AddOpenAI"/>
+        /// must be called first. Embedding models use the same credential
+        /// registered through <c>AddOpenAIApiKeyCredential</c> or
+        /// <c>AddOpenAIOAuthCredential</c> as conversational models; the two
+        /// operation kinds remain independently selectable aliases over the
+        /// same OpenAI account.
+        /// </remarks>
+        public IServiceCollection AddOpenAIEmbeddingModel(
+            EmbeddingModelAlias alias,
+            ModelId modelId,
+            EmbeddingCapabilities? capabilities = null,
+            EmbeddingLimits? limits = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            _ = services.AddSingleton<IEmbeddingModel>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<OpenAIProviderOptions>>().Value;
+
+                var descriptor = new EmbeddingModelDescriptor(
+                    alias,
+                    OpenAIProviderDefaults.ProviderId,
+                    OpenAIProviderDefaults.EmbeddingApiFamily,
+                    modelId,
+                    deploymentId: null,
+                    capabilities ?? OpenAIProviderDefaults.DefaultEmbeddingCapabilities,
+                    limits ?? OpenAIProviderDefaults.DefaultEmbeddingLimits,
+                    pricing: null,
+                    ExtensionData.Empty);
+
+                return new OpenAIEmbeddingModel(
+                    descriptor,
+                    OpenAIProviderDefaults.CreateProfile(options),
+                    provider.GetRequiredService<IOpenAIEmbeddingRequestTranslator>(),
+                    provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<TimeProvider>());

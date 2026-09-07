@@ -18,7 +18,7 @@ using Microsoft.Extensions.Options;
 /// deliberately separate calls: <see cref="AddMoonshotKimi"/> configures the shared
 /// endpoint and wire-behavior options, exactly one of
 /// <c>AddMoonshotKimiApiKeyCredential</c> or <c>AddMoonshotKimiOAuthCredential</c> configures
-/// authentication, and <c>AddMoonshotKimiChatModel</c> is called once per named
+/// authentication, and <c>AddMoonshotKimiLlmModel</c> is called once per named
 /// model an application wants to use. No default fabricates an API key,
 /// endpoint, or model an account may not actually have.
 /// </remarks>
@@ -44,7 +44,7 @@ public static class ServiceExtensions
         /// configuration pipeline. Authentication and model registrations
         /// are independent calls documented on
         /// <c>AddMoonshotKimiApiKeyCredential</c>, <c>AddMoonshotKimiOAuthCredential</c>,
-        /// and <c>AddMoonshotKimiChatModel</c>.
+        /// and <c>AddMoonshotKimiLlmModel</c>.
         /// </remarks>
         public IServiceCollection AddMoonshotKimi(Action<MoonshotKimiProviderOptions>? configureOptions = null)
         {
@@ -134,7 +134,7 @@ public static class ServiceExtensions
 
         /// <summary>
         /// Registers one named Moonshot Kimi chat model as an additional
-        /// <see cref="IChatModel"/> implementation.
+        /// <see cref="ILlmModel"/> implementation.
         /// </summary>
         /// <param name="alias">The application-facing selection key for this model.</param>
         /// <param name="modelId">Moonshot Kimi's own model identifier, such as <c>"kimi-k2-0711-preview"</c>.</param>
@@ -154,10 +154,10 @@ public static class ServiceExtensions
         /// This registration is additive: calling it more than once with a
         /// distinct <paramref name="alias"/> registers additional models
         /// alongside one another, resolvable together as
-        /// <c>IEnumerable&lt;IChatModel&gt;</c>. <see cref="AddMoonshotKimi"/> must
+        /// <c>IEnumerable&lt;ILlmModel&gt;</c>. <see cref="AddMoonshotKimi"/> must
         /// be called first.
         /// </remarks>
-        public IServiceCollection AddMoonshotKimiChatModel(
+        public IServiceCollection AddMoonshotKimiLlmModel(
             ModelAlias alias,
             ModelId modelId,
             ModelCapabilities? capabilities = null,
@@ -165,7 +165,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            _ = services.AddSingleton<IChatModel>(provider =>
+            _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<MoonshotKimiProviderOptions>>().Value;
 
@@ -180,7 +180,7 @@ public static class ServiceExtensions
                     pricing: null,
                     ExtensionData.Empty);
 
-                return new MoonshotKimiChatModel(
+                return new MoonshotKimiLlmModel(
                     descriptor,
                     MoonshotKimiProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),

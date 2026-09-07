@@ -1,0 +1,19 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [{ "text": "Hello from Vertex AI!" }]
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 10,
+    "candidatesTokenCount": 6,
+    "totalTokenCount": 16
+  },
+  "modelVersion": "gemini-2.5-flash-001",
+  "responseId": "resp_vertex_01"
+}

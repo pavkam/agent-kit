@@ -15,12 +15,13 @@ using Microsoft.Extensions.Options;
 /// <remarks>
 /// <para>
 /// See <see cref="IAgentLoop"/> for the reduced-scope rationale shared by
-/// every implementation of this contract: this loop resolves its model by
-/// matching <see cref="AgentRunRequest.Model"/>'s
-/// <see cref="ModelDescriptor.Alias"/> against the additively registered
-/// <see cref="IChatModel"/> set, performs no queued-input admission, no
-/// budget reservation, and no hook dispatch, and always executes exactly
-/// one attempt per turn (same-model retry and fallback are out of scope).
+/// every implementation of this contract: this loop delegates model choice
+/// to the configured <see cref="IModelSelector"/> over the engine-wide
+/// <see cref="IModelCatalog"/> and resolves the chosen descriptor to its
+/// adapter through <see cref="ILlmModelResolver"/>. It performs no
+/// queued-input admission, no budget reservation, and no hook dispatch, and
+/// always executes exactly one attempt per turn (same-model retry and
+/// cross-model fallback after a failed attempt are out of scope).
 /// </para>
 /// <para>
 /// Every message this loop commits is appended through
@@ -38,20 +39,25 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private readonly ISessionCoordinator _sessionCoordinator;
     private readonly IContextAssembler _contextAssembler;
     private readonly IToolInvoker _toolInvoker;
-    private readonly Dictionary<ModelAlias, IChatModel> _models;
+    private readonly IModelCatalog _modelCatalog;
+    private readonly IModelSelector _modelSelector;
+    private readonly ILlmModelResolver _llmModelResolver;
     private readonly IIdentifierGenerator<OperationId> _operationIds;
     private readonly IIdentifierGenerator<TurnId> _turnIds;
     private readonly IIdentifierGenerator<ModelRequestId> _modelRequestIds;
     private readonly IIdentifierGenerator<MessageId> _messageIds;
     private readonly IIdentifierGenerator<SessionEntryId> _entryIds;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<DefaultAgentLoop> _logger;
     private readonly int _historyReadPageSize;
 
     /// <summary>Initializes a new instance of the <see cref="DefaultAgentLoop"/> class.</summary>
     /// <param name="sessionCoordinator">Loads eligible history and commits every produced message.</param>
     /// <param name="contextAssembler">Assembles the provider-ready request for each turn.</param>
     /// <param name="toolInvoker">Resolves, authorizes, and invokes every requested tool call.</param>
-    /// <param name="chatModels">The additively registered chat models this loop may select from.</param>
+    /// <param name="modelCatalog">Supplies the engine-wide versioned view of configured models.</param>
+    /// <param name="modelSelector">Chooses one configured model for each run.</param>
+    /// <param name="llmModelResolver">Resolves the chosen descriptor to its provider adapter.</param>
     /// <param name="operationIds">Generates the run's causal operation identity.</param>
     /// <param name="turnIds">Generates each turn's identity.</param>
     /// <param name="modelRequestIds">Generates each model request's identity.</param>
@@ -59,28 +65,33 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="entryIds">Generates each appended session entry's identity.</param>
     /// <param name="timeProvider">The clock used to timestamp committed messages and attempt deadlines.</param>
     /// <param name="options">The validated loop options.</param>
+    /// <param name="logger">
+    /// The optional logger that receives safe run-lifecycle diagnostics; a
+    /// Microsoft null logger is used when omitted.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
-    /// <exception cref="ArgumentException">
-    /// <paramref name="chatModels"/> contains more than one <see cref="IChatModel"/> registered for the same
-    /// <see cref="ModelAlias"/>.
-    /// </exception>
     public DefaultAgentLoop(
         ISessionCoordinator sessionCoordinator,
         IContextAssembler contextAssembler,
         IToolInvoker toolInvoker,
-        IEnumerable<IChatModel> chatModels,
+        IModelCatalog modelCatalog,
+        IModelSelector modelSelector,
+        ILlmModelResolver llmModelResolver,
         IIdentifierGenerator<OperationId> operationIds,
         IIdentifierGenerator<TurnId> turnIds,
         IIdentifierGenerator<ModelRequestId> modelRequestIds,
         IIdentifierGenerator<MessageId> messageIds,
         IIdentifierGenerator<SessionEntryId> entryIds,
         TimeProvider timeProvider,
-        IOptions<AgentLoopOptions> options)
+        IOptions<AgentLoopOptions> options,
+        ILogger<DefaultAgentLoop>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(sessionCoordinator);
         ArgumentNullException.ThrowIfNull(contextAssembler);
         ArgumentNullException.ThrowIfNull(toolInvoker);
-        ArgumentNullException.ThrowIfNull(chatModels);
+        ArgumentNullException.ThrowIfNull(modelCatalog);
+        ArgumentNullException.ThrowIfNull(modelSelector);
+        ArgumentNullException.ThrowIfNull(llmModelResolver);
         ArgumentNullException.ThrowIfNull(operationIds);
         ArgumentNullException.ThrowIfNull(turnIds);
         ArgumentNullException.ThrowIfNull(modelRequestIds);
@@ -89,27 +100,19 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
 
-        var models = new Dictionary<ModelAlias, IChatModel>();
-        foreach (var model in chatModels)
-        {
-            if (!models.TryAdd(model.Alias, model))
-            {
-                throw new ArgumentException(
-                    $"More than one {nameof(IChatModel)} is registered for alias '{model.Alias}'.",
-                    nameof(chatModels));
-            }
-        }
-
         _sessionCoordinator = sessionCoordinator;
         _contextAssembler = contextAssembler;
         _toolInvoker = toolInvoker;
-        _models = models;
+        _modelCatalog = modelCatalog;
+        _modelSelector = modelSelector;
+        _llmModelResolver = llmModelResolver;
         _operationIds = operationIds;
         _turnIds = turnIds;
         _modelRequestIds = modelRequestIds;
         _messageIds = messageIds;
         _entryIds = entryIds;
         _timeProvider = timeProvider;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultAgentLoop>.Instance;
         _historyReadPageSize = options.Value.HistoryReadPageSize;
     }
 
@@ -119,6 +122,62 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ArgumentNullException.ThrowIfNull(request);
 
         var operationId = _operationIds.Create();
+        var startedTimestamp = _timeProvider.GetTimestamp();
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(
+            AgentKitActivityNames.InvokeAgent,
+            ActivityKind.Internal,
+            parentContext: Activity.Current?.Context ?? default,
+            tags: new ActivityTagsCollection
+            {
+                { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.InvokeAgent },
+                { AgentKitTagNames.AgentId, request.AgentId.ToString() },
+                { AgentKitTagNames.SessionId, request.SessionId.ToString() },
+                { AgentKitTagNames.RunId, request.RunId.ToString() },
+                { AgentKitTagNames.OperationId, operationId.ToString() },
+            });
+        LoopLog.RunStarted(_logger, request.RunId, request.AgentId, request.SessionId);
+
+        try
+        {
+            var result = await RunCoreAsync(request, operationId, cancellationToken).ConfigureAwait(false);
+            var outcome = result.Outcome.GetType().Name;
+            if (result.Outcome is AgentRunCompleted)
+            {
+                activity.SetSuccessful(outcome);
+                LoopLog.RunCompleted(_logger, request.RunId, result.NewMessages.Length);
+            }
+            else
+            {
+                activity.SetFailed(outcome, outcome);
+                LoopLog.RunEndedWithoutSuccess(_logger, request.RunId, outcome);
+            }
+
+            RecordRunMetrics(outcome, startedTimestamp);
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            activity.SetFailed("cancelled", "cancellation");
+            RecordRunMetrics("cancelled", startedTimestamp);
+            LoopLog.RunCancelled(_logger, request.RunId);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var errorType = exception.GetType().FullName ?? exception.GetType().Name;
+            activity.SetFailed("faulted", errorType);
+            RecordRunMetrics("faulted", startedTimestamp);
+            LoopLog.RunFaulted(_logger, request.RunId, exception.GetType().FullName ?? exception.GetType().Name);
+            throw;
+        }
+    }
+
+    private async Task<AgentLoopResult> RunCoreAsync(
+        AgentRunRequest request,
+        OperationId operationId,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "A validated run request is required by the loop core.");
         var runCorrelation = new InRunOperationCorrelation(operationId, request.RunId, turnId: null);
         var sessionContext = new SessionOperationContext(request.AgentId, request.SessionId, runCorrelation, request.Identity);
 
@@ -134,21 +193,18 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         var currentVersion = loadedVersion;
 
-        if (!_models.TryGetValue(request.Model.Alias, out var chatModel))
-        {
-            var failure = new ProviderFailure(
-                ProviderFailureKind.InvalidRequest,
-                request.Model.ProviderId,
-                requestId: null,
-                statusCode: null,
-                providerCode: null,
-                retryAfter: null,
-                $"No chat model is registered for model alias '{request.Model.Alias}'.",
-                diagnosticCause: null,
-                ExtensionData.Empty);
+        var modelResolution = await ResolveModelAsync(request, operationId, cancellationToken)
+            .ConfigureAwait(false);
 
-            return BuildResult(request, new AgentRunFailed(failure), [], currentVersion);
+        if (modelResolution.Outcome is { } selectionFailure)
+        {
+            return BuildResult(request, selectionFailure, [], currentVersion);
         }
+
+        var model = modelResolution.Model!;
+        var llmModel = modelResolution.Adapter!;
+        _ = Activity.Current?.SetTag(AgentKitTagNames.RequestModel, model.ModelId.ToString());
+        _ = Activity.Current?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
 
         var committedMessages = ImmutableArray.CreateBuilder<AgentMessage>();
         var history = ToMessages(initialEntries);
@@ -157,7 +213,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             var result = await RunTurnAsync(
                 request,
-                chatModel,
+                model,
+                llmModel,
                 operationId,
                 turn,
                 history,
@@ -177,9 +234,82 @@ public sealed class DefaultAgentLoop: IAgentLoop
         return BuildResult(request, new AgentRunTurnLimitReached(request.MaxTurns), committedMessages.ToImmutable(), currentVersion);
     }
 
+    /// <summary>
+    /// Chooses this run's model and resolves it to an executable adapter.
+    /// </summary>
+    /// <remarks>
+    /// Selection happens once per run rather than once per turn, so every
+    /// turn of a run talks to the same model and the same catalog version. A
+    /// mid-run catalog reload therefore cannot silently move a conversation
+    /// to a different provider.
+    /// </remarks>
+    private async Task<ModelResolution> ResolveModelAsync(
+        AgentRunRequest request,
+        OperationId operationId,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "A validated run request is required to resolve a model.");
+
+        var catalog = await _modelCatalog.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var scope = new SecurityAuthorizationScope(
+            request.AgentId,
+            request.SessionId,
+            new InRunOperationCorrelation(operationId, request.RunId, turnId: null));
+
+        var selectionRequest = new ModelSelectionRequest(
+            scope,
+            _modelRequestIds.Create(),
+            request.ModelPolicy,
+            request.ModelRequirements,
+            catalog);
+
+        var selection = await _modelSelector
+            .SelectAsync(selectionRequest, cancellationToken)
+            .ConfigureAwait(false);
+
+        switch (selection)
+        {
+            case InvalidModelPolicy invalid:
+                LoopLog.ModelSelectionFailed(_logger, request.RunId, invalid.Reason);
+                return ModelResolution.Failed(
+                    new AgentRunModelSelectionFailed(invalid.Reason, []));
+
+            case NoCompatibleModel none:
+                LoopLog.ModelSelectionFailed(
+                    _logger,
+                    request.RunId,
+                    "no compatible model");
+                return ModelResolution.Failed(new AgentRunModelSelectionFailed(
+                    "No configured model satisfies this run's requirements.",
+                    none.Diagnostics));
+
+            case ModelSelected selected:
+                var descriptor = selected.Decision.Model;
+                var adapter = _llmModelResolver.Resolve(descriptor);
+                if (adapter is null)
+                {
+                    LoopLog.ModelSelectionFailed(
+                        _logger,
+                        request.RunId,
+                        "no adapter registered for the selected model");
+                    return ModelResolution.Failed(new AgentRunModelSelectionFailed(
+                        $"Model alias '{descriptor.Alias}' is configured in the catalog but no "
+                        + "LLM model adapter is registered to execute it.",
+                        selected.Decision.Diagnostics));
+                }
+
+                return ModelResolution.Resolved(descriptor, adapter);
+
+            default:
+                throw new InvalidOperationException(
+                    $"Unrecognized {nameof(ModelSelectionResult)} kind '{selection.GetType()}'.");
+        }
+    }
+
     private async Task<TurnOutcome> RunTurnAsync(
         AgentRunRequest request,
-        IChatModel chatModel,
+        ModelDescriptor model,
+        ILlmModel llmModel,
         OperationId operationId,
         int turn,
         ImmutableArray<AgentMessage> history,
@@ -191,6 +321,21 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var turnCorrelation = new InRunOperationCorrelation(operationId, request.RunId, turnId);
         var turnSessionContext = new SessionOperationContext(request.AgentId, request.SessionId, turnCorrelation, request.Identity);
         var modelRequestId = _modelRequestIds.Create();
+        using var turnActivity = AgentKitDiagnostics.Activities.StartActivity(
+            AgentKitActivityNames.AgentTurn,
+            ActivityKind.Internal,
+            parentContext: Activity.Current?.Context ?? default,
+            tags: new ActivityTagsCollection
+            {
+                { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.AgentTurn },
+                { AgentKitTagNames.AgentId, request.AgentId.ToString() },
+                { AgentKitTagNames.SessionId, request.SessionId.ToString() },
+                { AgentKitTagNames.RunId, request.RunId.ToString() },
+                { AgentKitTagNames.TurnId, turnId.ToString() },
+                { AgentKitTagNames.TurnNumber, turn },
+                { AgentKitTagNames.ModelRequestId, modelRequestId.ToString() },
+            });
+        LoopLog.TurnStarted(_logger, request.RunId, turnId, turn);
 
         var assembleRequest = new ContextAssemblyRequest(
             request.AgentId,
@@ -199,7 +344,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             request.RunId,
             turnId,
             modelRequestId,
-            request.Model,
+            model,
             request.Instructions,
             history,
             request.Tools,
@@ -211,26 +356,66 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         if (assembleResult is ContextPreparationFailed prepFailed)
         {
+            turnActivity.SetFailed("context_preparation_failed", prepFailed.Failure.Kind.ToString());
+            LoopLog.TurnFailed(_logger, request.RunId, turnId, "context_preparation_failed");
             return TurnOutcome.Settled(new AgentRunContextPreparationFailed(prepFailed.Failure), currentVersion);
         }
 
         var context = ((ContextReady) assembleResult).Context;
         var deadline = _timeProvider.GetUtcNow() + request.AttemptTimeout;
-        var chatRequest = new ChatModelRequest(context, attempt: 1, deadline, ProviderRequestOptions.Empty);
+        var chatRequest = new LlmModelRequest(context, attempt: 1, deadline, ProviderRequestOptions.Empty);
 
-        var attemptResult = await chatModel.ExecuteAsync(chatRequest, NoOpModelResponseObserver.Instance, cancellationToken)
-            .ConfigureAwait(false);
+        ModelAttemptResult attemptResult;
+        using (var modelActivity = AgentKitDiagnostics.Activities.StartActivity(
+            AgentKitActivityNames.Chat,
+            ActivityKind.Client,
+            parentContext: Activity.Current?.Context ?? default,
+            tags: new ActivityTagsCollection
+            {
+                { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.Chat },
+                { AgentKitTagNames.ModelRequestId, modelRequestId.ToString() },
+                { AgentKitTagNames.RequestModel, model.ModelId.ToString() },
+                { AgentKitTagNames.ProviderName, model.ProviderId.ToString() },
+            }))
+        {
+            LoopLog.ModelRequestStarted(_logger, request.RunId, turnId, modelRequestId, model.Alias);
+            try
+            {
+                attemptResult = await llmModel.ExecuteAsync(
+                    chatRequest,
+                    NoOpModelResponseObserver.Instance,
+                    cancellationToken).ConfigureAwait(false);
+                if (attemptResult is ModelAttemptCompleted)
+                {
+                    modelActivity.SetSuccessful("completed");
+                }
+                else
+                {
+                    modelActivity.SetFailed(attemptResult.GetType().Name, attemptResult.GetType().Name);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                modelActivity.SetFailed("cancelled", "cancellation");
+                throw;
+            }
+            catch (Exception exception)
+            {
+                modelActivity.SetFailed("faulted", exception.GetType().FullName ?? exception.GetType().Name);
+                throw;
+            }
+        }
 
-        return attemptResult switch
+        var turnOutcome = attemptResult switch
         {
             ModelAttemptFailed failed => await SettleInterruptedAsync(
-                request, turnSessionContext, turnCorrelation, turnId, modelRequestId,
+                request, model, turnSessionContext, turnCorrelation, turnId, modelRequestId,
                 failed.PartialParts, failed.Usage, NormalizedStopReason.Error, failed.Failure.RequestId,
                 new AgentRunFailed(failed.Failure), committedMessages, currentVersion, cancellationToken)
                 .ConfigureAwait(false),
 
             ModelAttemptCancelled cancelled => await SettleInterruptedAsync(
-                request, turnSessionContext, turnCorrelation, turnId, modelRequestId,
+                request, model, turnSessionContext, turnCorrelation, turnId, modelRequestId,
                 cancelled.PartialParts, cancelled.Usage, NormalizedStopReason.Cancelled,
                 cancelled.Cancellation.RequestId, new AgentRunCancelled(cancelled.Cancellation.SafeMessage),
                 committedMessages, currentVersion, cancellationToken)
@@ -244,6 +429,20 @@ public sealed class DefaultAgentLoop: IAgentLoop
             _ => throw new InvalidOperationException(
                 $"Unrecognized {nameof(ModelAttemptResult)} kind '{attemptResult.GetType()}'."),
         };
+
+        if (turnOutcome.Outcome is null or AgentRunCompleted)
+        {
+            turnActivity.SetSuccessful(turnOutcome.Outcome?.GetType().Name ?? "continue");
+            LoopLog.TurnCompleted(_logger, request.RunId, turnId, turnOutcome.Outcome?.GetType().Name ?? "continue");
+        }
+        else
+        {
+            var outcome = turnOutcome.Outcome.GetType().Name;
+            turnActivity.SetFailed(outcome, outcome);
+            LoopLog.TurnFailed(_logger, request.RunId, turnId, outcome);
+        }
+
+        return turnOutcome;
     }
 
     private async Task<TurnOutcome> SettleCompletedAsync(
@@ -285,7 +484,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             new SchemaVersion("1.0"),
             assistantMessage);
 
-        var appendResult = await _sessionCoordinator.AppendAsync(
+        var appendResult = await AppendWithDiagnosticsAsync(
             new SessionAppendRequest(
                 turnSessionContext,
                 request.BranchId,
@@ -329,6 +528,20 @@ public sealed class DefaultAgentLoop: IAgentLoop
         SessionVersion currentVersion,
         CancellationToken cancellationToken)
     {
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(
+            AgentKitActivityNames.ToolBatch,
+            ActivityKind.Internal,
+            parentContext: Activity.Current?.Context ?? default,
+            tags: new ActivityTagsCollection
+            {
+                { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.ToolBatch },
+                { AgentKitTagNames.AgentId, request.AgentId.ToString() },
+                { AgentKitTagNames.SessionId, request.SessionId.ToString() },
+                { AgentKitTagNames.RunId, request.RunId.ToString() },
+                { AgentKitTagNames.TurnId, turnId.ToString() },
+                { "agentkit.tool.count", toolCalls.Length },
+            });
+        LoopLog.ToolBatchStarted(_logger, request.RunId, turnId, toolCalls.Length);
         var resultParts = ImmutableArray.CreateBuilder<ContentPart>(toolCalls.Length);
         foreach (var toolCall in toolCalls)
         {
@@ -368,7 +581,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             new SchemaVersion("1.0"),
             toolMessage);
 
-        var appendResult = await _sessionCoordinator.AppendAsync(
+        var appendResult = await AppendWithDiagnosticsAsync(
             new SessionAppendRequest(
                 turnSessionContext,
                 request.BranchId,
@@ -379,16 +592,52 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         if (appendResult is not SessionAppended appended)
         {
+            activity.SetFailed("session_append_failed", appendResult.GetType().Name);
+            LoopLog.ToolBatchFailed(_logger, request.RunId, turnId, appendResult.GetType().Name);
             return TurnOutcome.Settled(
                 new AgentRunSessionOperationFailed(DescribeAppendFailure(appendResult)), currentVersion);
         }
 
         committedMessages.Add(toolMessage);
+        activity.SetSuccessful("completed");
+        LoopLog.ToolBatchCompleted(_logger, request.RunId, turnId, toolCalls.Length);
         return TurnOutcome.Continue(appended.NewVersion, [assistantMessage, toolMessage]);
+    }
+
+    private async ValueTask<SessionAppendResult> AppendWithDiagnosticsAsync(
+        SessionAppendRequest request,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "A validated append request is required for session diagnostics.");
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(
+            AgentKitActivityNames.SessionCommit,
+            ActivityKind.Internal,
+            parentContext: Activity.Current?.Context ?? default,
+            tags: new ActivityTagsCollection
+            {
+                { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.SessionCommit },
+                { AgentKitTagNames.AgentId, request.Context.AgentId.ToString() },
+                { AgentKitTagNames.SessionId, request.Context.SessionId.ToString() },
+                { AgentKitTagNames.OperationId, request.Context.Correlation.OperationId.ToString() },
+            });
+
+        var result = await _sessionCoordinator.AppendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (result is SessionAppended)
+        {
+            activity.SetSuccessful("committed");
+        }
+        else
+        {
+            activity.SetFailed("failed", result.GetType().Name);
+            LoopLog.SessionCommitFailed(_logger, request.Context.SessionId, result.GetType().Name);
+        }
+
+        return result;
     }
 
     private async Task<TurnOutcome> SettleInterruptedAsync(
         AgentRunRequest request,
+        ModelDescriptor model,
         SessionOperationContext turnSessionContext,
         InRunOperationCorrelation turnCorrelation,
         TurnId turnId,
@@ -409,12 +658,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         var now = _timeProvider.GetUtcNow();
         var identity = new ProviderResponseIdentity(
-            request.Model.ProviderId,
+            model.ProviderId,
             upstreamProviderId: null,
-            request.Model.ApiFamily,
-            request.Model.ModelId,
-            request.Model.ModelId,
-            request.Model.DeploymentId,
+            model.ApiFamily,
+            model.ModelId,
+            model.ModelId,
+            model.DeploymentId,
             providerRequestId,
             responseId: null);
 
@@ -444,7 +693,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             new SchemaVersion("1.0"),
             interruptedMessage);
 
-        var appendResult = await _sessionCoordinator.AppendAsync(
+        var appendResult = await AppendWithDiagnosticsAsync(
             new SessionAppendRequest(
                 turnSessionContext,
                 request.BranchId,
@@ -492,6 +741,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
         return (entries.ToImmutable(), new SessionVersion(cursor.Value));
     }
 
+    private void RecordRunMetrics(string outcome, long startedTimestamp)
+    {
+        Debug.Assert(!string.IsNullOrWhiteSpace(outcome), "A normalized outcome is required for run metrics.");
+        var tags = new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome);
+        LoopMetrics.Runs.Add(1, tags);
+        LoopMetrics.RunDuration.Record(_timeProvider.GetElapsedTime(startedTimestamp).TotalSeconds, tags);
+    }
+
     private static ImmutableArray<AgentMessage> ToMessages(ImmutableArray<SessionEntry> entries)
     {
         var builder = ImmutableArray.CreateBuilder<AgentMessage>();
@@ -519,6 +776,37 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private static AgentLoopResult BuildResult(
         AgentRunRequest request, AgentRunOutcome outcome, ImmutableArray<AgentMessage> newMessages, SessionVersion finalVersion) =>
         new(request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome, newMessages, finalVersion);
+
+    /// <summary>
+    /// The result of choosing this run's model: either a terminal outcome
+    /// that settles the run before any turn starts, or the chosen descriptor
+    /// paired with the adapter that executes it.
+    /// </summary>
+    private readonly struct ModelResolution
+    {
+        private ModelResolution(AgentRunOutcome? outcome, ModelDescriptor? model, ILlmModel? adapter)
+        {
+            Outcome = outcome;
+            Model = model;
+            Adapter = adapter;
+        }
+
+        /// <summary>Gets the terminal outcome, when no model could be used.</summary>
+        public AgentRunOutcome? Outcome { get; }
+
+        /// <summary>Gets the chosen descriptor, when resolution succeeded.</summary>
+        public ModelDescriptor? Model { get; }
+
+        /// <summary>Gets the adapter that executes the chosen model, when resolution succeeded.</summary>
+        public ILlmModel? Adapter { get; }
+
+        /// <summary>Creates a successful resolution.</summary>
+        public static ModelResolution Resolved(ModelDescriptor model, ILlmModel adapter) =>
+            new(null, model, adapter);
+
+        /// <summary>Creates a resolution that settles the run before it starts.</summary>
+        public static ModelResolution Failed(AgentRunOutcome outcome) => new(outcome, null, null);
+    }
 
     /// <summary>The result of running one turn: either it settled the run, or it should continue to another turn.</summary>
     private readonly struct TurnOutcome

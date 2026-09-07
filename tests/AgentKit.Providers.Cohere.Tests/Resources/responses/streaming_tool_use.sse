@@ -1,0 +1,12 @@
+data: {"type": "message-start", "id": "c14c80c3-stream-02", "delta": {"message": {"role": "assistant"}}}
+
+data: {"type": "tool-call-start", "index": 0, "delta": {"message": {"tool_calls": {"id": "get_weather_nsz5zm3w56q3", "type": "function", "function": {"name": "get_weather", "arguments": ""}}}}}
+
+data: {"type": "tool-call-delta", "index": 0, "delta": {"message": {"tool_calls": {"function": {"arguments": "{\"location\":"}}}}}
+
+data: {"type": "tool-call-delta", "index": 0, "delta": {"message": {"tool_calls": {"function": {"arguments": "\"Paris\"}"}}}}}
+
+data: {"type": "tool-call-end", "index": 0}
+
+data: {"type": "message-end", "delta": {"finish_reason": "TOOL_CALL", "usage": {"tokens": {"input_tokens": 8, "output_tokens": 5}}}}
+

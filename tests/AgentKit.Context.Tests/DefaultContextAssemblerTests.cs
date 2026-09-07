@@ -128,4 +128,30 @@ public sealed class DefaultContextAssemblerTests
         var ready = result.ShouldBeOfType<ContextReady>();
         ready.Context.Messages.ShouldBe([complete]);
     }
+
+    [Fact]
+    public async Task AssembleAsync_WhenObserved_EmitsCorrelatedContentFreeActivity()
+    {
+        const string protectedContent = "do-not-export-this-content";
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = activity => stopped = activity,
+        };
+        ActivitySource.AddActivityListener(listener);
+        var request = TestFactory.AssemblyRequest([TestFactory.UserMessage(protectedContent)]);
+
+        _ = await _assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
+
+        var activity = stopped.ShouldNotBeNull();
+        activity.OperationName.ShouldBe(AgentKitActivityNames.ContextPrepare);
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.GetTagItem(AgentKitTagNames.ModelRequestId).ShouldBe(request.ModelRequestId.ToString());
+        activity.TagObjects.Select(static tag => tag.Value?.ToString()).ShouldNotContain(protectedContent);
+    }
+
+    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
+        ActivitySamplingResult.AllDataAndRecorded;
 }

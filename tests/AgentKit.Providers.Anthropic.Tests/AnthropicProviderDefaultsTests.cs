@@ -1,0 +1,35 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Providers.Anthropic.Tests;
+
+/// <summary>
+/// Verifies <see cref="AnthropicProviderDefaults.BuildMessagesUri"/> and the
+/// shared provider identity/capability defaults.
+/// </summary>
+public sealed class AnthropicProviderDefaultsTests
+{
+    [Fact]
+    public void BuildMessagesUri_WhenGivenOptions_CombinesBaseAddressAndPath()
+    {
+        var options = new AnthropicProviderOptions
+        {
+            BaseAddress = new Uri("https://example.test/"),
+            MessagesPath = "v2/messages",
+        };
+
+        AnthropicProviderDefaults.BuildMessagesUri(options).ShouldBe(new Uri("https://example.test/v2/messages"));
+    }
+
+    [Fact]
+    public void ProviderId_IsStableAnthropicIdentity() =>
+        AnthropicProviderDefaults.ProviderId.ShouldBe(new ProviderId("anthropic"));
+
+    [Fact]
+    public void DefaultCapabilities_SupportsReasoningButNotVisionOrStructuredOutput()
+    {
+        AnthropicProviderDefaults.DefaultCapabilities.SupportsReasoning.ShouldBeTrue();
+        AnthropicProviderDefaults.DefaultCapabilities.SupportsVisionInput.ShouldBeFalse();
+        AnthropicProviderDefaults.DefaultCapabilities.SupportsStructuredOutput.ShouldBeFalse();
+    }
+}

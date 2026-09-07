@@ -35,6 +35,7 @@ public static class ServiceExtensions
         /// </remarks>
         public IServiceCollection AddContextCompaction(Action<CompactionOptions>? configure = null)
         {
+            _ = services.AddAgentKitObservability();
             var optionsBuilder = services.AddOptions<CompactionOptions>()
                 .Validate(o => o.CharactersPerToken > 0, "CharactersPerToken must be positive.")
                 .Validate(o => o.MaximumSourceEntries > 0, "MaximumSourceEntries must be positive.")

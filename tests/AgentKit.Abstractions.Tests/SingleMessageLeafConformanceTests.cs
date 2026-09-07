@@ -97,10 +97,21 @@ public sealed class SingleMessageLeafConformanceTests
     // fragment, since a real streaming increment can legitimately be
     // empty; they use ArgumentNullException.ThrowIfNull rather than the
     // "safe message" ThrowIfNullOrWhiteSpace contract this suite checks.
+    //
+    // StaticApiKeyCredentialSource is a credential-holding service adapter,
+    // not a message value type: its single-string constructor happens to
+    // match this suite's discovery shape, but it deliberately never
+    // exposes the secret through a public string property (so
+    // GetMessageProperty would fail to find one) and deliberately uses
+    // reference identity rather than record-style structural equality (so
+    // two instances constructed with the same key are intentionally not
+    // "equal"), because secret material must never be casually comparable
+    // or reflectively enumerable the way an ordinary safe message is.
     private static readonly HashSet<string> _excludedTypeNames =
     [
         nameof(TextContentDelta),
-        nameof(StructuredDataContentDelta)
+        nameof(StructuredDataContentDelta),
+        nameof(StaticApiKeyCredentialSource)
     ];
 
     private static bool HasSingleStringConstructor(Type type) =>

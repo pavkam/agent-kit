@@ -3,6 +3,8 @@
 
 namespace AgentKit.Session;
 
+using AgentKit.Observability;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -36,6 +38,7 @@ public static class ServiceExtensions
         /// </remarks>
         public IServiceCollection AddAgentSession(Action<AgentSessionOptions>? configure = null)
         {
+            _ = services.AddAgentKitObservability();
             var optionsBuilder = services.AddOptions<AgentSessionOptions>()
                 .Validate(o => o.MaximumAppendEntries > 0, "MaximumAppendEntries must be positive.")
                 .Validate(o => o.MaximumPageSize > 0, "MaximumPageSize must be positive.")

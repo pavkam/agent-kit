@@ -1,0 +1,72 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Observability;
+
+/// <summary>Defines stable names for bounded metric instruments emitted by AgentKit.</summary>
+/// <remarks>Metric names use lowercase dotted namespaces and never embed identities.</remarks>
+public static class AgentKitMetricNames
+{
+    /// <summary>Gets the counter for terminal agent-run outcomes.</summary>
+    public const string AgentRunCount = "agentkit.agent.run.count";
+
+    /// <summary>Gets the histogram for settled agent-run duration in seconds.</summary>
+    public const string AgentRunDuration = "agentkit.agent.run.duration";
+
+    /// <summary>Gets the counter for terminal context-preparation outcomes.</summary>
+    public const string ContextPreparationCount = "agentkit.context.prepare.count";
+
+    /// <summary>Gets the histogram for context-preparation duration in seconds.</summary>
+    public const string ContextPreparationDuration = "agentkit.context.prepare.duration";
+
+    /// <summary>Gets the counter for terminal tool-call outcomes.</summary>
+    public const string ToolCallCount = "agentkit.tool.call.count";
+
+    /// <summary>Gets the histogram for tool-call duration in seconds.</summary>
+    public const string ToolCallDuration = "agentkit.tool.call.duration";
+
+    /// <summary>Gets the counter for terminal security authorization decisions.</summary>
+    public const string SecurityDecisionCount = "agentkit.security.decision.count";
+
+    /// <summary>Gets the counter for terminal session coordination outcomes.</summary>
+    public const string SessionOperationCount = "agentkit.session.operation.count";
+
+    /// <summary>Gets the counter for terminal concrete session-store outcomes.</summary>
+    public const string SessionStoreOperationCount = "agentkit.session.store.operation.count";
+
+    /// <summary>Gets the counter for terminal budget reservation outcomes.</summary>
+    public const string BudgetReservationCount = "agentkit.budget.reservation.count";
+
+    /// <summary>Gets the counter for terminal budget settlement outcomes.</summary>
+    public const string BudgetSettlementCount = "agentkit.budget.settlement.count";
+
+    /// <summary>Gets the counter for terminal hook dispatch outcomes.</summary>
+    public const string HookDispatchCount = "agentkit.hook.dispatch.count";
+
+    /// <summary>Gets the counter for terminal context-compaction outcomes.</summary>
+    public const string ContextCompactionCount = "agentkit.context.compaction.count";
+
+    /// <summary>Gets the counter for terminal output-processing decisions.</summary>
+    public const string OutputProcessingCount = "agentkit.output.processing.count";
+
+    /// <summary>Gets the counter for terminal file-system host operations.</summary>
+    public const string FileSystemOperationCount = "agentkit.filesystem.operation.count";
+
+    /// <summary>Gets the counter for terminal process-stage outcomes.</summary>
+    public const string ProcessOperationCount = "agentkit.process.operation.count";
+
+    /// <summary>Gets the counter for terminal MCP client-operation outcomes.</summary>
+    public const string McpClientOperationCount = "agentkit.mcp.client.operation.count";
+
+    /// <summary>Gets the counter for terminal model-catalog refresh outcomes.</summary>
+    public const string ModelCatalogRefreshCount = "agentkit.model.catalog.refresh.count";
+
+    /// <summary>Gets the counter for terminal model-selection outcomes.</summary>
+    public const string ModelSelectionCount = "agentkit.model.selection.count";
+
+    /// <summary>Gets the counter for terminal language-query outcomes.</summary>
+    public const string LanguageQueryCount = "agentkit.language.query.count";
+
+    /// <summary>Gets the counter for terminal network boundary outcomes.</summary>
+    public const string NetworkOperationCount = "agentkit.network.operation.count";
+}

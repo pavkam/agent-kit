@@ -12,7 +12,7 @@ public sealed class FileReadResultsTests
     {
         var path = new FileSystemPath("a.txt");
 
-        var request = new FileReadRequest(path);
+        var request = new FileReadRequest(path, SecurityTestData.Grant());
 
         request.Path.ShouldBe(path);
     }
@@ -22,7 +22,8 @@ public sealed class FileReadResultsTests
     {
         var path = new FileSystemPath("a.txt");
 
-        new FileReadRequest(path).ShouldBe(new FileReadRequest(path));
+        new FileReadRequest(path, SecurityTestData.Grant()).ShouldBe(
+            new FileReadRequest(path, SecurityTestData.Grant()));
     }
 
     [Fact]

@@ -19,7 +19,7 @@ using Microsoft.Extensions.Options;
 /// shared endpoint and wire-behavior options, exactly one of
 /// <c>AddOpenRouterApiKeyCredential</c> or
 /// <c>AddOpenRouterOAuthCredential</c> configures authentication, and
-/// <c>AddOpenRouterChatModel</c> is called once per named model an
+/// <c>AddOpenRouterLlmModel</c> is called once per named model an
 /// application wants to route through OpenRouter. No default fabricates an
 /// API key, endpoint, or model an account may not actually have.
 /// </remarks>
@@ -46,7 +46,7 @@ public static class ServiceExtensions
         /// are independent calls documented on
         /// <c>AddOpenRouterApiKeyCredential</c>,
         /// <c>AddOpenRouterOAuthCredential</c>, and
-        /// <c>AddOpenRouterChatModel</c>.
+        /// <c>AddOpenRouterLlmModel</c>.
         /// </remarks>
         public IServiceCollection AddOpenRouter(Action<OpenRouterProviderOptions>? configureOptions = null)
         {
@@ -136,7 +136,7 @@ public static class ServiceExtensions
 
         /// <summary>
         /// Registers one named, OpenRouter-routed chat model as an
-        /// additional <see cref="IChatModel"/> implementation.
+        /// additional <see cref="ILlmModel"/> implementation.
         /// </summary>
         /// <param name="alias">The application-facing selection key for this model.</param>
         /// <param name="modelId">
@@ -159,10 +159,10 @@ public static class ServiceExtensions
         /// This registration is additive: calling it more than once with a
         /// distinct <paramref name="alias"/> registers additional models
         /// alongside one another, resolvable together as
-        /// <c>IEnumerable&lt;IChatModel&gt;</c>. <see cref="AddOpenRouter"/>
+        /// <c>IEnumerable&lt;ILlmModel&gt;</c>. <see cref="AddOpenRouter"/>
         /// must be called first.
         /// </remarks>
-        public IServiceCollection AddOpenRouterChatModel(
+        public IServiceCollection AddOpenRouterLlmModel(
             ModelAlias alias,
             ModelId modelId,
             ModelCapabilities? capabilities = null,
@@ -170,7 +170,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            _ = services.AddSingleton<IChatModel>(provider =>
+            _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<OpenRouterProviderOptions>>().Value;
 
@@ -185,7 +185,7 @@ public static class ServiceExtensions
                     pricing: null,
                     ExtensionData.Empty);
 
-                return new OpenRouterChatModel(
+                return new OpenRouterLlmModel(
                     descriptor,
                     OpenRouterProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),

@@ -21,29 +21,21 @@ public sealed class IdentityValueTypeConformanceTests
 {
     private static readonly Assembly _abstractionsAssembly = typeof(AgentId).Assembly;
 
-    /// <summary>
-    /// Names of string-backed value types that are structurally excluded
-    /// from this generic identity conformance suite because they legitimately
-    /// diverge from the shared identity contract: <see cref="NetworkMethod"/>
-    /// canonicalizes to uppercase (mirroring HTTP method conventions) rather
-    /// than round-tripping arbitrary text unchanged, <see cref="NetworkRoute"/>
-    /// requires a rooted ("/"-prefixed) path rather than accepting any
-    /// non-empty string, and <see cref="OutputValidatorReference"/> exposes
-    /// its underlying text through a <c>Name</c> property (mirroring
-    /// <see cref="IOutputValidator.Name"/>'s existing convention) rather than
-    /// a <c>Value</c> property.
-    /// </summary>
+    // NetworkMethod canonicalizes to uppercase and NetworkRoute requires a
+    // leading '/', so neither round-trips an arbitrary non-whitespace
+    // string unchanged the way every other string-backed identity in this
+    // suite does. OutputValidatorReference deliberately exposes its
+    // underlying text as "Name" rather than "Value" to stay symmetric with
+    // the "Name" property IOutputValidator itself already declares for the
+    // same concept, rather than mixing both conventions for one idea. All
+    // three still have their own focused, type-specific tests.
     private static readonly HashSet<string> _excludedStringBackedTypeNames =
-    [
-        nameof(NetworkMethod),
-        nameof(NetworkRoute),
-        nameof(OutputValidatorReference),
-    ];
+        [nameof(NetworkMethod), nameof(NetworkRoute), nameof(OutputValidatorReference)];
 
     public static TheoryData<Type> GuidBackedIdentityTypes => ToTheoryData(GetIdentityTypes(typeof(Guid)));
 
-    public static TheoryData<Type> StringBackedIdentityTypes => ToTheoryData(
-        GetIdentityTypes(typeof(string)).Where(type => !_excludedStringBackedTypeNames.Contains(type.Name)));
+    public static TheoryData<Type> StringBackedIdentityTypes =>
+        ToTheoryData(GetIdentityTypes(typeof(string)).Where(type => !_excludedStringBackedTypeNames.Contains(type.Name)));
 
     public static TheoryData<Type> LongBackedOrderingTypes => ToTheoryData(GetIdentityTypes(typeof(long)));
 
@@ -130,13 +122,21 @@ public sealed class IdentityValueTypeConformanceTests
 
     [Theory]
     [MemberData(nameof(LongBackedOrderingTypes))]
-    public void Constructor_WhenLongIsZeroOrPositive_RoundTripsThroughValue(Type identityType)
+    public void Constructor_WhenLongIsWithinDeclaredDomain_RoundTripsOrRejectsZero(Type identityType)
     {
         foreach (var value in new[] { 0L, 42L })
         {
-            var instance = Activator.CreateInstance(identityType, value);
-
-            GetValueProperty(identityType).GetValue(instance).ShouldBe(value);
+            if (value == 0 && RequiresPositiveValue(identityType))
+            {
+                var exception = Should.Throw<TargetInvocationException>(
+                    () => Activator.CreateInstance(identityType, value));
+                _ = exception.InnerException.ShouldBeOfType<ArgumentOutOfRangeException>();
+            }
+            else
+            {
+                var instance = Activator.CreateInstance(identityType, value);
+                GetValueProperty(identityType).GetValue(instance).ShouldBe(value);
+            }
         }
     }
 
@@ -226,6 +226,13 @@ public sealed class IdentityValueTypeConformanceTests
             .Any(constructor =>
                 constructor.GetParameters() is [{ ParameterType: var actual }]
                 && actual == parameterType);
+
+    private static bool RequiresPositiveValue(Type identityType) =>
+        identityType == typeof(SecurityPolicyVersion)
+        || identityType == typeof(SecurityRevocationVersion)
+        || identityType == typeof(FencingToken)
+        || identityType == typeof(PlanRevision)
+        || identityType == typeof(ArtifactProfileVersion);
 
     private static TheoryData<Type> ToTheoryData(IEnumerable<Type> types)
     {

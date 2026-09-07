@@ -41,7 +41,8 @@ public sealed class ArgumentOutOfRangeExceptionExtensionsTests
             () => new FileWriteRequest(
                 new FileSystemPath("notes.txt"),
                 "content",
-                (FileWriteMode) int.MaxValue));
+                (FileWriteMode) int.MaxValue,
+                SecurityTestData.Grant()));
 
         exception.ParamName.ShouldBe("mode");
     }

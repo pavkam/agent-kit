@@ -1,0 +1,384 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Providers.GoogleGemini;
+
+/// <summary>
+/// The default <see cref="IGoogleGeminiContentTranslator"/>, covering the
+/// content roles, parts, tool declarations, tool configuration, and
+/// generation settings supported by the Gemini GenerateContent wire format.
+/// </summary>
+public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslator
+{
+    /// <inheritdoc/>
+    public JsonObject Translate(LlmModelRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var context = request.Context;
+        var providerCallIds = CollectProviderCallIds(context.Messages);
+        var system = new StringBuilder();
+
+        var body = new JsonObject
+        {
+            ["contents"] = TranslateMessages(context.Messages, providerCallIds, system),
+        };
+
+        if (system.Length > 0)
+        {
+            body["systemInstruction"] = new JsonObject
+            {
+                ["parts"] = new JsonArray(new JsonObject { ["text"] = system.ToString() }),
+            };
+        }
+
+        if (context.Tools.Length > 0)
+        {
+            body["tools"] = new JsonArray(new JsonObject { ["functionDeclarations"] = TranslateTools(context.Tools) });
+            body["toolConfig"] = TranslateToolChoice(context.ToolChoice);
+        }
+
+        if (context.Settings.ParallelToolCalls is not null)
+        {
+            throw new NotSupportedException(
+                "The Gemini GenerateContent API does not expose a parallel-tool-call control.");
+        }
+
+        var generationConfig = TranslateGenerationConfig(context.Settings);
+        if (generationConfig.Count > 0)
+        {
+            body["generationConfig"] = generationConfig;
+        }
+
+        ApplyExtensions(body, context.Settings.Extensions);
+        ApplyExtensions(body, request.Options.Extensions);
+
+        return body;
+    }
+
+    private static JsonObject TranslateGenerationConfig(LlmRequestSettings settings)
+    {
+        var generationConfig = new JsonObject();
+
+        if (settings.Temperature is { } temperature)
+        {
+            generationConfig["temperature"] = temperature;
+        }
+
+        if (settings.TopP is { } topP)
+        {
+            generationConfig["topP"] = topP;
+        }
+
+        if (settings.MaxOutputTokens is { } maxOutputTokens)
+        {
+            generationConfig["maxOutputTokens"] = maxOutputTokens;
+        }
+
+        if (settings.StopSequences.Length > 0)
+        {
+            var stop = new JsonArray();
+            foreach (var stopSequence in settings.StopSequences)
+            {
+                stop.Add(JsonValue.Create(stopSequence));
+            }
+
+            generationConfig["stopSequences"] = stop;
+        }
+
+        if (settings.Seed is { } seed)
+        {
+            generationConfig["seed"] = seed;
+        }
+
+        return generationConfig;
+    }
+
+    private static void ApplyExtensions(JsonObject body, ExtensionData extensions)
+    {
+        foreach (var (key, value) in extensions.Values)
+        {
+            // Extension data never overrides a field the translator itself
+            // owns; a protected core field cannot be reshaped by a
+            // passthrough option.
+            if (body.ContainsKey(key))
+            {
+                continue;
+            }
+
+            body[key] = JsonNode.Parse(value.CanonicalJson.AsSpan());
+        }
+    }
+
+    private static Dictionary<ToolCallId, string> CollectProviderCallIds(ImmutableArray<AgentMessage> messages)
+    {
+        var map = new Dictionary<ToolCallId, string>();
+
+        foreach (var message in messages)
+        {
+            foreach (var part in message.Parts)
+            {
+                if (part is ToolCallPart toolCall)
+                {
+                    map[toolCall.CallId] = toolCall.ProviderCallId?.Value ?? toolCall.CallId.ToString();
+                }
+            }
+        }
+
+        return map;
+    }
+
+    private static JsonArray TranslateMessages(
+        ImmutableArray<AgentMessage> messages,
+        Dictionary<ToolCallId, string> providerCallIds,
+        StringBuilder system)
+    {
+        var result = new JsonArray();
+
+        foreach (var message in messages)
+        {
+            if (message.State != MessageState.Complete)
+            {
+                continue;
+            }
+
+            switch (message)
+            {
+                case SystemMessage:
+                case DeveloperMessage:
+                    AppendSystemText(system, message.Parts);
+                    break;
+
+                case UserMessage:
+                    result.Add(CreateContent("user", TranslateUserParts(message.Parts)));
+                    break;
+
+                case RuntimeMessage:
+                    result.Add(CreateContent("user", TranslateUserParts(message.Parts)));
+                    break;
+
+                case AssistantMessage:
+                    result.Add(CreateContent("model", TranslateAssistantParts(message.Parts, providerCallIds)));
+                    break;
+
+                case ToolMessage:
+                    result.Add(CreateContent("user", TranslateToolResultParts(message.Parts, providerCallIds)));
+                    break;
+
+                default:
+                    throw new NotSupportedException(
+                        $"Message kind '{message.GetType().Name}' is not supported by the Gemini " +
+                        "GenerateContent request translator.");
+            }
+        }
+
+        return result;
+    }
+
+    private static void AppendSystemText(StringBuilder system, ImmutableArray<ContentPart> parts)
+    {
+        foreach (var part in parts)
+        {
+            if (part is not TextPart text)
+            {
+                throw new NotSupportedException(
+                    $"Content part kind '{part.GetType().Name}' is not supported in a system or developer " +
+                    "message by the Gemini GenerateContent request translator.");
+            }
+
+            if (system.Length > 0)
+            {
+                _ = system.Append("\n\n");
+            }
+
+            _ = system.Append(text.Text);
+        }
+    }
+
+    private static JsonObject CreateContent(string role, JsonArray parts) =>
+        new()
+        {
+            ["role"] = role,
+            ["parts"] = parts,
+        };
+
+    private static JsonArray TranslateUserParts(ImmutableArray<ContentPart> parts)
+    {
+        var result = new JsonArray();
+
+        foreach (var part in parts)
+        {
+            switch (part)
+            {
+                case TextPart text:
+                    result.Add(new JsonObject { ["text"] = text.Text });
+                    break;
+
+                case MediaReferencePart:
+                    throw new NotSupportedException(
+                        "Image and file input is not yet supported by the Gemini GenerateContent request " +
+                        "translator.");
+
+                default:
+                    throw new NotSupportedException(
+                        $"Content part kind '{part.GetType().Name}' is not supported in a user message " +
+                        "by the Gemini GenerateContent request translator.");
+            }
+        }
+
+        return result;
+    }
+
+    private static JsonArray TranslateAssistantParts(
+        ImmutableArray<ContentPart> parts,
+        Dictionary<ToolCallId, string> providerCallIds)
+    {
+        var result = new JsonArray();
+
+        foreach (var part in parts)
+        {
+            switch (part)
+            {
+                case TextPart text:
+                    result.Add(new JsonObject { ["text"] = text.Text });
+                    break;
+
+                case ToolCallPart toolCall:
+                    result.Add(new JsonObject
+                    {
+                        ["functionCall"] = new JsonObject
+                        {
+                            ["id"] = providerCallIds.GetValueOrDefault(toolCall.CallId, toolCall.CallId.ToString()),
+                            ["name"] = toolCall.Tool.Name,
+                            ["args"] = JsonNode.Parse(toolCall.Arguments.GetRawText()),
+                        },
+                    });
+                    break;
+
+                case ReasoningPart reasoning when reasoning.Content.Visibility == ReasoningVisibility.Visible:
+                    result.Add(new JsonObject
+                    {
+                        ["text"] = reasoning.Content.Text ?? string.Empty,
+                        ["thought"] = true,
+                        ["thoughtSignature"] = reasoning.Content.SignatureToken,
+                    });
+                    break;
+
+                case ReasoningPart reasoning:
+                    throw new NotSupportedException(
+                        $"Reasoning visibility '{reasoning.Content.Visibility}' has no Gemini part " +
+                        "equivalent.");
+
+                default:
+                    throw new NotSupportedException(
+                        $"Content part kind '{part.GetType().Name}' is not supported in a model message " +
+                        "by the Gemini GenerateContent request translator.");
+            }
+        }
+
+        return result;
+    }
+
+    private static JsonArray TranslateToolResultParts(
+        ImmutableArray<ContentPart> parts,
+        Dictionary<ToolCallId, string> providerCallIds)
+    {
+        var result = new JsonArray();
+
+        foreach (var part in parts)
+        {
+            if (part is not ToolResultPart toolResult)
+            {
+                throw new NotSupportedException(
+                    $"Content part kind '{part.GetType().Name}' is not supported in a tool message by " +
+                    "the Gemini GenerateContent request translator.");
+            }
+
+            result.Add(new JsonObject
+            {
+                ["functionResponse"] = new JsonObject
+                {
+                    ["id"] = providerCallIds.GetValueOrDefault(toolResult.CallId, toolResult.CallId.ToString()),
+                    ["name"] = toolResult.Tool.Name,
+                    ["response"] = BuildFunctionResponsePayload(toolResult),
+                },
+            });
+        }
+
+        return result;
+    }
+
+    private static JsonObject BuildFunctionResponsePayload(ToolResultPart toolResult)
+    {
+        if (toolResult.Outcome.Kind != ToolCallOutcomeKind.Success)
+        {
+            return new JsonObject { ["error"] = toolResult.Outcome.FailureReason ?? "The tool call failed." };
+        }
+
+        foreach (var contentPart in toolResult.Content)
+        {
+            if (contentPart is StructuredDataPart structuredData)
+            {
+                return new JsonObject { ["result"] = JsonNode.Parse(structuredData.Value.GetRawText()) };
+            }
+        }
+
+        var text = new StringBuilder();
+        foreach (var contentPart in toolResult.Content)
+        {
+            if (contentPart is not TextPart textPart)
+            {
+                throw new NotSupportedException(
+                    $"Tool result content part kind '{contentPart.GetType().Name}' is not supported by " +
+                    "the Gemini GenerateContent request translator.");
+            }
+
+            _ = text.Append(textPart.Text);
+        }
+
+        return new JsonObject { ["result"] = text.ToString() };
+    }
+
+    private static JsonArray TranslateTools(ImmutableArray<LlmToolDefinition> tools)
+    {
+        var result = new JsonArray();
+
+        foreach (var tool in tools)
+        {
+            var declaration = new JsonObject
+            {
+                ["name"] = tool.Name,
+                ["parameters"] = JsonNode.Parse(tool.ParametersSchema.GetRawText()),
+            };
+
+            if (tool.Description is { } description)
+            {
+                declaration["description"] = description;
+            }
+
+            result.Add(declaration);
+        }
+
+        return result;
+    }
+
+    private static JsonObject TranslateToolChoice(LlmToolChoice toolChoice)
+    {
+        var functionCallingConfig = toolChoice.Mode switch
+        {
+            LlmToolChoiceMode.Auto => new JsonObject { ["mode"] = "AUTO" },
+            LlmToolChoiceMode.None => new JsonObject { ["mode"] = "NONE" },
+            LlmToolChoiceMode.Required => new JsonObject { ["mode"] = "ANY" },
+            LlmToolChoiceMode.Named => new JsonObject
+            {
+                ["mode"] = "ANY",
+                ["allowedFunctionNames"] = new JsonArray(JsonValue.Create(toolChoice.ForcedToolName)),
+            },
+            _ => throw new NotSupportedException(
+                $"Tool choice mode '{toolChoice.Mode}' is not supported by the Gemini GenerateContent " +
+                "request translator."),
+        };
+
+        return new JsonObject { ["functionCallingConfig"] = functionCallingConfig };
+    }
+}

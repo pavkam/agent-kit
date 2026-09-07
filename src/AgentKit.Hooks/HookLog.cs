@@ -1,0 +1,41 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Hooks;
+
+/// <summary>Defines allocation-efficient, content-free hook dispatch log events.</summary>
+internal static partial class HookLog
+{
+    /// <summary>Records successful completion of one typed dispatch without hook argument values.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="hookPoint">The stable typed lifecycle point.</param>
+    /// <param name="hookInvocationId">The dispatch identity supplied by the hook arguments.</param>
+    [LoggerMessage(8000, LogLevel.Debug, "Hook point {HookPoint} dispatch {HookInvocationId} completed.")]
+    internal static partial void DispatchCompleted(ILogger logger, HookPointId hookPoint, HookInvocationId hookInvocationId);
+
+    /// <summary>Records caller cancellation of one typed hook dispatch.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="hookPoint">The stable typed lifecycle point.</param>
+    /// <param name="hookInvocationId">The dispatch identity supplied by the hook arguments.</param>
+    [LoggerMessage(8001, LogLevel.Debug, "Hook point {HookPoint} dispatch {HookInvocationId} was cancelled.")]
+    internal static partial void DispatchCancelled(ILogger logger, HookPointId hookPoint, HookInvocationId hookInvocationId);
+
+    /// <summary>Records a dispatch failure that propagates to the owning operation.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="hookPoint">The stable typed lifecycle point.</param>
+    /// <param name="hookInvocationId">The dispatch identity supplied by the hook arguments.</param>
+    /// <param name="errorType">The propagating dispatch exception type.</param>
+    [LoggerMessage(8002, LogLevel.Error, "Hook point {HookPoint} dispatch {HookInvocationId} failed with error type {ErrorType}.")]
+    internal static partial void DispatchFailed(
+        ILogger logger, HookPointId hookPoint, HookInvocationId hookInvocationId, string errorType);
+
+    /// <summary>Records an isolated observer failure while preserving the owning dispatch outcome.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="hookPoint">The stable typed lifecycle point.</param>
+    /// <param name="hookId">The configured hook identity whose failure was isolated.</param>
+    /// <param name="hookInvocationId">The dispatch identity supplied by the hook arguments.</param>
+    /// <param name="errorType">The isolated hook exception type.</param>
+    [LoggerMessage(8003, LogLevel.Warning, "Hook {HookId} error type {ErrorType} was isolated in point {HookPoint} dispatch {HookInvocationId}.")]
+    internal static partial void InvocationIsolated(
+        ILogger logger, HookPointId hookPoint, HookId hookId, HookInvocationId hookInvocationId, string errorType);
+}

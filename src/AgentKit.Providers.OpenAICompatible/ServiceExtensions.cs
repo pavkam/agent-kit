@@ -23,8 +23,10 @@ public static class ServiceExtensions
     {
         /// <summary>
         /// Registers the default <see cref="IOpenAIRequestTranslator"/>,
-        /// <see cref="IOpenAIStreamParser"/>, and
-        /// <see cref="IIdentifierGenerator{ToolCallId}"/> implementations,
+        /// <see cref="IOpenAIStreamParser"/>,
+        /// <see cref="IIdentifierGenerator{ToolCallId}"/>,
+        /// <see cref="IOpenAIEmbeddingRequestTranslator"/>, and
+        /// <see cref="IOpenAIEmbeddingResponseParser"/> implementations,
         /// unless a registration for any of them already exists.
         /// </summary>
         /// <returns>
@@ -44,6 +46,8 @@ public static class ServiceExtensions
             services.TryAddSingleton<IOpenAIRequestTranslator, OpenAIRequestTranslator>();
             services.TryAddSingleton<IOpenAIStreamParser, OpenAIChatCompletionResponseParser>();
             services.TryAddSingleton<IIdentifierGenerator<ToolCallId>, DefaultToolCallIdGenerator>();
+            services.TryAddSingleton<IOpenAIEmbeddingRequestTranslator, OpenAIEmbeddingRequestTranslator>();
+            services.TryAddSingleton<IOpenAIEmbeddingResponseParser, OpenAIEmbeddingResponseParser>();
 
             return services;
         }

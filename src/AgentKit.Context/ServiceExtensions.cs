@@ -3,6 +3,8 @@
 
 namespace AgentKit.Context;
 
+using AgentKit.Observability;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -22,6 +24,7 @@ public static class ServiceExtensions
         /// </remarks>
         public IServiceCollection AddAgentContext()
         {
+            _ = services.AddAgentKitObservability();
             services.TryAddSingleton<IContextAssembler, DefaultContextAssembler>();
             return services;
         }

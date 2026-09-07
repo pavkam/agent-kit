@@ -67,31 +67,31 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddDeepSeekChatModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    public void AddDeepSeekLlmModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
     {
         var services = new ServiceCollection();
         _ = services.AddDeepSeek();
         _ = services.AddDeepSeekApiKeyCredential("ds-test-key");
-        _ = services.AddDeepSeekChatModel(new ModelAlias("chat"), new ModelId("deepseek-chat"));
-        _ = services.AddDeepSeekChatModel(new ModelAlias("reasoner"), new ModelId("deepseek-reasoner"));
+        _ = services.AddDeepSeekLlmModel(new ModelAlias("chat"), new ModelId("deepseek-chat"));
+        _ = services.AddDeepSeekLlmModel(new ModelAlias("reasoner"), new ModelId("deepseek-reasoner"));
 
         using var provider = services.BuildServiceProvider();
-        var models = provider.GetServices<IChatModel>().ToArray();
+        var models = provider.GetServices<ILlmModel>().ToArray();
 
         models.Length.ShouldBe(2);
         models.Select(m => m.Alias.Value).ShouldBe(["chat", "reasoner"], ignoreOrder: true);
     }
 
     [Fact]
-    public void AddDeepSeekChatModel_WhenResolved_UsesDeepSeekProviderIdentity()
+    public void AddDeepSeekLlmModel_WhenResolved_UsesDeepSeekProviderIdentity()
     {
         var services = new ServiceCollection();
         _ = services.AddDeepSeek();
         _ = services.AddDeepSeekApiKeyCredential("ds-test-key");
-        _ = services.AddDeepSeekChatModel(new ModelAlias("chat"), new ModelId("deepseek-chat"));
+        _ = services.AddDeepSeekLlmModel(new ModelAlias("chat"), new ModelId("deepseek-chat"));
 
         using var provider = services.BuildServiceProvider();
-        var model = provider.GetRequiredService<IChatModel>().ShouldBeOfType<DeepSeekChatModel>();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<DeepSeekLlmModel>();
 
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }

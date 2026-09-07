@@ -36,7 +36,7 @@ public sealed class ProviderCredentialCoexistenceTests
 
         await using var provider = services.BuildServiceProvider();
 
-        var models = provider.GetServices<IChatModel>().ToArray();
+        var models = provider.GetServices<ILlmModel>().ToArray();
         models.Select(model => model.Alias.Value).ShouldBe(
             ["deepseek-chat", "groq-chat"],
             ignoreOrder: true);
@@ -58,7 +58,7 @@ public sealed class ProviderCredentialCoexistenceTests
 
         _ = services.AddDeepSeek();
         _ = services.AddDeepSeekApiKeyCredential("deepseek-key");
-        _ = services.AddDeepSeekChatModel(
+        _ = services.AddDeepSeekLlmModel(
             new ModelAlias("deepseek-chat"),
             new ModelId("deepseek-chat"));
     }
@@ -69,7 +69,7 @@ public sealed class ProviderCredentialCoexistenceTests
 
         _ = services.AddGroq();
         _ = services.AddGroqApiKeyCredential("groq-key");
-        _ = services.AddGroqChatModel(
+        _ = services.AddGroqLlmModel(
             new ModelAlias("groq-chat"),
             new ModelId("llama-3.3-70b-versatile"));
     }

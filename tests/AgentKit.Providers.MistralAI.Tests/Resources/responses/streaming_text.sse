@@ -1,0 +1,6 @@
+data: {"id": "cmpl-s01", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hello"}, "finish_reason": null}]}
+
+data: {"id": "cmpl-s01", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"content": "!"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}}
+
+data: [DONE]
+

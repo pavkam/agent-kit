@@ -1,0 +1,32 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Providers.OpenAICompatible.Tests.Fakes;
+
+/// <summary>
+/// The minimal concrete <see cref="OpenAICompatibleEmbeddingModelBase"/>
+/// subclass used to test the shared base pipeline directly, standing in
+/// for a real branded provider package such as AgentKit.Providers.OpenAI.
+/// </summary>
+internal sealed class TestEmbeddingModel: OpenAICompatibleEmbeddingModelBase
+{
+    /// <summary>Initializes a new instance of the <see cref="TestEmbeddingModel"/> class.</summary>
+    /// <param name="descriptor">The descriptor of the model this instance serves.</param>
+    /// <param name="profile">The tested wire-behavior configuration for the target endpoint.</param>
+    /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
+    /// <param name="responseParser">Parses OpenAI-compatible embeddings responses into normalized results.</param>
+    /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
+    /// <param name="httpClient">The HTTP client used to send requests.</param>
+    /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    public TestEmbeddingModel(
+        EmbeddingModelDescriptor descriptor,
+        OpenAICompatibilityProfile profile,
+        IOpenAIEmbeddingRequestTranslator translator,
+        IOpenAIEmbeddingResponseParser responseParser,
+        IProviderCredentialSource credentials,
+        HttpClient httpClient,
+        TimeProvider timeProvider)
+        : base(descriptor, profile, translator, responseParser, credentials, httpClient, timeProvider)
+    {
+    }
+}

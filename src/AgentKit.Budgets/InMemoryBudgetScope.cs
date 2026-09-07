@@ -24,6 +24,7 @@ internal sealed class InMemoryBudgetScope: IBudgetScope, IRunBudget
     private readonly IIdentifierGenerator<BudgetReservationId> _reservationIds;
     private readonly TimeProvider _timeProvider;
     private readonly AgentBudgetOptionsSnapshot _options;
+    private readonly ILogger<InMemoryBudgetScope> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="InMemoryBudgetScope"/> class.</summary>
     /// <param name="id">The identity of this scope.</param>
@@ -33,6 +34,7 @@ internal sealed class InMemoryBudgetScope: IBudgetScope, IRunBudget
     /// <param name="reservationIds">Generates identities for reservations created against this scope.</param>
     /// <param name="timeProvider">The clock used to timestamp and expire reservations.</param>
     /// <param name="options">The validated authority options.</param>
+    /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
     public InMemoryBudgetScope(
         BudgetScopeId id,
         BudgetScopeAddress address,
@@ -40,7 +42,8 @@ internal sealed class InMemoryBudgetScope: IBudgetScope, IRunBudget
         ImmutableArray<BudgetLimit> limits,
         IIdentifierGenerator<BudgetReservationId> reservationIds,
         TimeProvider timeProvider,
-        AgentBudgetOptionsSnapshot options)
+        AgentBudgetOptionsSnapshot options,
+        ILogger<InMemoryBudgetScope>? logger = null)
     {
         Id = id;
         Address = address;
@@ -50,6 +53,7 @@ internal sealed class InMemoryBudgetScope: IBudgetScope, IRunBudget
         _reservationIds = reservationIds;
         _timeProvider = timeProvider;
         _options = options;
+        _logger = logger ?? NullLogger<InMemoryBudgetScope>.Instance;
 
         foreach (var limit in limits)
         {
@@ -77,49 +81,92 @@ internal sealed class InMemoryBudgetScope: IBudgetScope, IRunBudget
         BudgetReservationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        cancellationToken.ThrowIfCancellationRequested();
 
-        if (request.ScopeId != Id)
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.BudgetReserve);
+        _ = activity?.SetTag(AgentKitTagNames.BudgetScopeId, Id.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.BudgetDimension, request.Dimension.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.OperationId, request.OperationId.ToString());
+
+        try
         {
-            throw new ArgumentException("The request's ScopeId does not match this scope's Id.", nameof(request));
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (request.ScopeId != Id)
+            {
+                throw new ArgumentException("The request's ScopeId does not match this scope's Id.", nameof(request));
+            }
+
+            if (Limits.TryGetValue(request.Dimension, out var configuredLimit) && configuredLimit.Unit != request.Unit)
+            {
+                throw new ArgumentException(
+                    $"Dimension '{request.Dimension}' is configured with unit '{configuredLimit.Unit}', not '{request.Unit}'.",
+                    nameof(request));
+            }
+
+            await SweepExpiredAsync(request.Dimension).ConfigureAwait(false);
+
+            var (reservation, failure) = TryReserveLocal(request, configuredLimit);
+            if (failure is not null)
+            {
+                return Complete(new BudgetRejected(failure), "rejected", failure.GetType().Name);
+            }
+
+            var ownReservation = reservation!;
+
+            if (Parent is null)
+            {
+                return Complete(new BudgetReserved(ownReservation), "reserved");
+            }
+
+            var parentRequest = new BudgetReservationRequest(
+                Parent.Id, request.Dimension, request.Amount, request.Unit, request.OperationId,
+                request.ExpiresAt, request.IdempotencyKey);
+
+            var parentResult = await Parent.ReserveAsync(parentRequest, cancellationToken).ConfigureAwait(false);
+
+            if (parentResult is BudgetRejected parentRejected)
+            {
+                await ownReservation.DisposeAsync().ConfigureAwait(false);
+                return Complete(new BudgetRejected(parentRejected.Failure), "rejected", parentRejected.Failure.GetType().Name);
+            }
+
+            ownReservation.AttachParent(((BudgetReserved) parentResult).Reservation);
+            return Complete(new BudgetReserved(ownReservation), "reserved");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            activity.SetFailed("cancelled", nameof(OperationCanceledException));
+            BudgetLog.ReservationCancelled(_logger, Id, request.Dimension);
+            BudgetMetrics.RecordReservation("cancelled", request.Dimension);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
+            BudgetLog.ReservationFailed(
+                _logger,
+                Id,
+                request.Dimension,
+                exception.GetType().FullName ?? exception.GetType().Name);
+            BudgetMetrics.RecordReservation("failed", request.Dimension);
+            throw;
         }
 
-        if (Limits.TryGetValue(request.Dimension, out var configuredLimit) && configuredLimit.Unit != request.Unit)
+        BudgetReservationResult Complete(BudgetReservationResult result, string outcome, string? errorType = null)
         {
-            throw new ArgumentException(
-                $"Dimension '{request.Dimension}' is configured with unit '{configuredLimit.Unit}', not '{request.Unit}'.",
-                nameof(request));
+            if (errorType is null)
+            {
+                activity.SetSuccessful(outcome);
+            }
+            else
+            {
+                activity.SetFailed(outcome, errorType);
+            }
+
+            BudgetLog.ReservationCompleted(_logger, Id, request.Dimension, outcome);
+            BudgetMetrics.RecordReservation(outcome, request.Dimension);
+            return result;
         }
-
-        await SweepExpiredAsync(request.Dimension).ConfigureAwait(false);
-
-        var (reservation, failure) = TryReserveLocal(request, configuredLimit);
-        if (failure is not null)
-        {
-            return new BudgetRejected(failure);
-        }
-
-        var ownReservation = reservation!;
-
-        if (Parent is null)
-        {
-            return new BudgetReserved(ownReservation);
-        }
-
-        var parentRequest = new BudgetReservationRequest(
-            Parent.Id, request.Dimension, request.Amount, request.Unit, request.OperationId,
-            request.ExpiresAt, request.IdempotencyKey);
-
-        var parentResult = await Parent.ReserveAsync(parentRequest, cancellationToken).ConfigureAwait(false);
-
-        if (parentResult is BudgetRejected parentRejected)
-        {
-            await ownReservation.DisposeAsync().ConfigureAwait(false);
-            return new BudgetRejected(parentRejected.Failure);
-        }
-
-        ownReservation.AttachParent(((BudgetReserved) parentResult).Reservation);
-        return new BudgetReserved(ownReservation);
     }
 
     /// <inheritdoc/>
@@ -236,7 +283,7 @@ internal sealed class InMemoryBudgetScope: IBudgetScope, IRunBudget
 
             var expiresAt = request.ExpiresAt ?? (_timeProvider.GetUtcNow() + _options.DefaultReservationLifetime);
             var reservation = new InMemoryBudgetReservation(
-                _reservationIds.Create(), this, request.Dimension, request.Amount, expiresAt, request.IdempotencyKey);
+                _reservationIds.Create(), this, request.Dimension, request.Amount, expiresAt, request.IdempotencyKey, _logger);
 
             state.Reserved += request.Amount;
             state.Open.Add(reservation);

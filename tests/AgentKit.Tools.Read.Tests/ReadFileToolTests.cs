@@ -8,19 +8,20 @@ public sealed class ReadFileToolTests
     [Fact]
     public void Constructor_WhenFileSystemNull_ThrowsArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(null!));
+        var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(
+            null!, null!, null!, null!));
 
         exception.ParamName.ShouldBe("fileSystem");
     }
 
     [Fact]
     public void Descriptor_WhenAccessed_DeclaresReadOnlyEffect() =>
-        new ReadFileTool(new FakeFileSystem()).Descriptor.Effect.ShouldBe(ToolEffect.ReadOnly);
+        TestFactory.Tool().Descriptor.Effect.ShouldBe(ToolEffect.ReadOnly);
 
     [Fact]
     public async Task InvokeAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
-        var tool = new ReadFileTool(new FakeFileSystem());
+        var tool = TestFactory.Tool();
 
         var exception = await Should.ThrowAsync<ArgumentNullException>(
             () => tool.InvokeAsync(null!, TestContext.Current.CancellationToken));
@@ -31,7 +32,7 @@ public sealed class ReadFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenPathMissing_ReturnsFailed()
     {
-        var tool = new ReadFileTool(new FakeFileSystem());
+        var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request("{}"), TestContext.Current.CancellationToken);
 
@@ -41,7 +42,7 @@ public sealed class ReadFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsFailed()
     {
-        var tool = new ReadFileTool(new FakeFileSystem());
+        var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request("[]"), TestContext.Current.CancellationToken);
 
@@ -51,7 +52,7 @@ public sealed class ReadFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenPathWhitespace_ReturnsFailed()
     {
-        var tool = new ReadFileTool(new FakeFileSystem());
+        var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "   "}"""), TestContext.Current.CancellationToken);
 
@@ -62,7 +63,7 @@ public sealed class ReadFileToolTests
     public async Task InvokeAsync_WhenOffsetExplicitlyNull_ReadsFullContent()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2", 5) };
-        var tool = new ReadFileTool(fileSystem);
+        var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": null}"""), TestContext.Current.CancellationToken);
@@ -74,7 +75,7 @@ public sealed class ReadFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsFailed()
     {
-        var tool = new ReadFileTool(new FakeFileSystem());
+        var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "../escape.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -84,7 +85,7 @@ public sealed class ReadFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenOffsetNotAnInteger_ReturnsFailed()
     {
-        var tool = new ReadFileTool(new FakeFileSystem());
+        var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": "two"}"""), TestContext.Current.CancellationToken);
@@ -95,7 +96,7 @@ public sealed class ReadFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenOffsetNotPositive_ReturnsFailed()
     {
-        var tool = new ReadFileTool(new FakeFileSystem());
+        var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": 0}"""), TestContext.Current.CancellationToken);
 
@@ -105,7 +106,7 @@ public sealed class ReadFileToolTests
     [Fact]
     public async Task InvokeAsync_WhenLimitNotAnInteger_ReturnsFailed()
     {
-        var tool = new ReadFileTool(new FakeFileSystem());
+        var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "limit": "two"}"""), TestContext.Current.CancellationToken);
 
@@ -116,7 +117,7 @@ public sealed class ReadFileToolTests
     public async Task InvokeAsync_WhenFileFound_ReturnsFullContent()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("line1\nline2\nline3", 17) };
-        var tool = new ReadFileTool(fileSystem);
+        var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -128,7 +129,7 @@ public sealed class ReadFileToolTests
     public async Task InvokeAsync_WhenOffsetAndLimitProvided_ReturnsRequestedLineRange()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
-        var tool = new ReadFileTool(fileSystem);
+        var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": 2, "limit": 2}"""), TestContext.Current.CancellationToken);
@@ -140,7 +141,7 @@ public sealed class ReadFileToolTests
     public async Task InvokeAsync_WhenLimitExceedsAvailableLines_ReturnsRemainingLines()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3", 8) };
-        var tool = new ReadFileTool(fileSystem);
+        var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": 2, "limit": 10}"""), TestContext.Current.CancellationToken);
@@ -152,7 +153,7 @@ public sealed class ReadFileToolTests
     public async Task InvokeAsync_WhenFileNotFound_ReturnsFailed()
     {
         var fileSystem = new FakeFileSystem { OnRead = static r => new FileNotFound(r.Path) };
-        var tool = new ReadFileTool(fileSystem);
+        var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "missing.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -163,7 +164,7 @@ public sealed class ReadFileToolTests
     public async Task InvokeAsync_WhenFileSystemDenies_ReturnsFailed()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileReadDenied("outside sandbox") };
-        var tool = new ReadFileTool(fileSystem);
+        var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -172,10 +173,25 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
+    public async Task InvokeAsync_WhenSecurityAuthorityDenies_DoesNotObserveFileSystem()
+    {
+        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("secret", 6) };
+        var tool = TestFactory.Tool(fileSystem, TestFactory.DenyingAuthority());
+
+        var result = await tool.InvokeAsync(
+            TestFactory.Request(/*lang=json,strict*/ """{"path": "missing-or-secret.txt"}"""),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.FailureReason.ShouldBe("Denied by test policy.");
+        fileSystem.ReceivedReads.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenFileSystemFails_ReturnsFailed()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileReadFailed("disk error") };
-        var tool = new ReadFileTool(fileSystem);
+        var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
@@ -190,8 +206,11 @@ public sealed class ReadFileToolTests
         try
         {
             File.WriteAllText(Path.Combine(root, "doc.txt"), "real content");
-            var fileSystem = new SandboxedFileSystem(Options.Create(new SandboxedFileSystemOptions { RootDirectory = root }));
-            var tool = new ReadFileTool(fileSystem);
+            var fileSystem = new SandboxedFileSystem(
+                Options.Create(new SandboxedFileSystemOptions { RootDirectory = root }),
+                TestFactory.GrantStore(),
+                TimeProvider.System);
+            var tool = TestFactory.Tool(fileSystem);
 
             var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "doc.txt"}"""), TestContext.Current.CancellationToken);
 

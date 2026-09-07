@@ -32,14 +32,30 @@ public sealed class ReadFileTool: ITool
         """).RootElement;
 
     private readonly IFileSystem _fileSystem;
+    private readonly ISecurityAuthority _securityAuthority;
+    private readonly IIdentifierGenerator<SecurityRequestId> _requestIds;
+    private readonly TimeProvider _timeProvider;
 
     /// <summary>Initializes a new instance of the <see cref="ReadFileTool"/> class.</summary>
     /// <param name="fileSystem">The file system this tool reads through.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="fileSystem"/> is null.</exception>
-    public ReadFileTool(IFileSystem fileSystem)
+    /// <param name="securityAuthority">The system-wide authority used after path and argument normalization.</param>
+    /// <param name="requestIds">The security-request identity generator.</param>
+    /// <param name="timeProvider">The deterministic clock used to bound authorization.</param>
+    /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
+    public ReadFileTool(
+        IFileSystem fileSystem,
+        ISecurityAuthority securityAuthority,
+        IIdentifierGenerator<SecurityRequestId> requestIds,
+        TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(fileSystem);
+        ArgumentNullException.ThrowIfNull(securityAuthority);
+        ArgumentNullException.ThrowIfNull(requestIds);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         _fileSystem = fileSystem;
+        _securityAuthority = securityAuthority;
+        _requestIds = requestIds;
+        _timeProvider = timeProvider;
     }
 
     /// <inheritdoc/>
@@ -87,7 +103,30 @@ public sealed class ReadFileTool: ITool
             return Failed("'offset' and 'limit' must be positive integers when provided.");
         }
 
-        var result = await _fileSystem.ReadAsync(new FileReadRequest(path), cancellationToken).ConfigureAwait(false);
+        var context = request.Context;
+        var securityRequest = new SecurityRequest(
+            _requestIds.Create(),
+            new SecurityAuthorizationScope(context.AgentId, context.SessionId, context.Correlation),
+            context.ToolCallId,
+            context.Identity,
+            _fileSystem.SecurityAudience,
+            SecurityOperationKind.FileRead,
+            SecurityEffect.Observe,
+            [FileSecurityBinding.Resource(path)],
+            FileSecurityBinding.ReadFingerprint(path),
+            _timeProvider.GetUtcNow().AddMinutes(1));
+        var decision = await _securityAuthority.AuthorizeAsync(securityRequest, cancellationToken).ConfigureAwait(false);
+        if (decision is SecurityDenied authorizationDenied)
+        {
+            return Failed(authorizationDenied.Denial.SafeMessage);
+        }
+
+        if (decision is not SecurityAllowed allowed)
+        {
+            return Failed("The security authority returned an unsupported decision.");
+        }
+
+        var result = await _fileSystem.ReadAsync(new FileReadRequest(path, allowed.Grant), cancellationToken).ConfigureAwait(false);
 
         return result switch
         {

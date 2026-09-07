@@ -104,31 +104,31 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddXAIChatModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    public void AddXAILlmModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
     {
         var services = new ServiceCollection();
         _ = services.AddXAI();
         _ = services.AddXAIApiKeyCredential("test-key");
-        _ = services.AddXAIChatModel(new ModelAlias("primary"), new ModelId("grok-4"));
-        _ = services.AddXAIChatModel(new ModelAlias("secondary"), new ModelId("grok-4-fast"));
+        _ = services.AddXAILlmModel(new ModelAlias("primary"), new ModelId("grok-4"));
+        _ = services.AddXAILlmModel(new ModelAlias("secondary"), new ModelId("grok-4-fast"));
 
         using var provider = services.BuildServiceProvider();
-        var models = provider.GetServices<IChatModel>().ToArray();
+        var models = provider.GetServices<ILlmModel>().ToArray();
 
         models.Length.ShouldBe(2);
         models.Select(m => m.Alias.Value).ShouldBe(["primary", "secondary"], ignoreOrder: true);
     }
 
     [Fact]
-    public void AddXAIChatModel_WhenResolved_UsesXAIProviderIdentity()
+    public void AddXAILlmModel_WhenResolved_UsesXAIProviderIdentity()
     {
         var services = new ServiceCollection();
         _ = services.AddXAI();
         _ = services.AddXAIApiKeyCredential("test-key");
-        _ = services.AddXAIChatModel(new ModelAlias("chat"), new ModelId("grok-4"));
+        _ = services.AddXAILlmModel(new ModelAlias("chat"), new ModelId("grok-4"));
 
         using var provider = services.BuildServiceProvider();
-        var model = provider.GetRequiredService<IChatModel>().ShouldBeOfType<XAIChatModel>();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<XAILlmModel>();
 
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }

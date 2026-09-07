@@ -1,0 +1,2 @@
+data: {"id": "cmpl-s04", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hello"}, "finish_reason": null}]}
+

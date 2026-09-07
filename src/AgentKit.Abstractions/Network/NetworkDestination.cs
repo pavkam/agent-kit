@@ -3,6 +3,8 @@
 
 namespace AgentKit;
 
+using System.Net;
+
 /// <summary>The canonical scheme, host, port, and route of one network destination.</summary>
 /// <remarks>
 /// This type is an immutable value object with structural equality over its
@@ -20,7 +22,7 @@ public sealed record NetworkDestination
     /// <param name="port">The destination port.</param>
     /// <param name="route">The path and optional query component.</param>
     /// <exception cref="ArgumentException">
-    /// <paramref name="scheme"/> is null, empty, or consists only of whitespace.
+    /// <paramref name="scheme"/> is blank, or <paramref name="host"/> or <paramref name="route"/> is default.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="port"/> is not between 1 and 65535 inclusive.
@@ -28,6 +30,8 @@ public sealed record NetworkDestination
     public NetworkDestination(string scheme, NormalizedHost host, int port, NetworkRoute route)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(scheme);
+        ArgumentException.ThrowIfNullOrWhiteSpace(host.Value, nameof(host));
+        ArgumentException.ThrowIfNullOrWhiteSpace(route.Value, nameof(route));
         ArgumentOutOfRangeException.ThrowIfLessThan(port, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(port, 65535);
 
@@ -53,5 +57,10 @@ public sealed record NetworkDestination
     /// Returns the canonical absolute URI text for this destination,
     /// suitable for logging and diagnostic messages.
     /// </summary>
-    public override string ToString() => $"{Scheme}://{Host}:{Port}{Route}";
+    public override string ToString() => $"{Scheme}://{AuthorityHost(Host)}:{Port}{Route}";
+
+    private static string AuthorityHost(NormalizedHost host) =>
+        IPAddress.TryParse(host.Value, out var address) && address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+            ? $"[{host}]"
+            : host.ToString();
 }

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <DebugType>portable</DebugType>
+    <PackageId>AgentKit.Providers</PackageId>
+    <Title>AgentKit.Providers</Title>
+    <Description>Provider-neutral model catalog, selection, and capability validation for AgentKit. Contains no vendor protocol.</Description>
+    <PackageTags>agents;ai;llm;providers;dependency-injection</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+    <ProjectReference Include="../AgentKit.Observability/AgentKit.Observability.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" Link="README.md"/>
+  </ItemGroup>
+</Project>

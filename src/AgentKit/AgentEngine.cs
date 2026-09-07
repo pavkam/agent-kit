@@ -4,41 +4,63 @@
 namespace AgentKit;
 
 /// <summary>
-/// Represents an immutable process-level AgentKit composition.
+/// Represents an immutable process-level AgentKit composition that hosts a
+/// versioned catalog of agent definitions and runs them concurrently.
 /// </summary>
 /// <remarks>
-/// An engine created by <see cref="AgentEngineBuilder.Build"/> owns the service
-/// provider captured by that build and disposes it exactly once. An engine
-/// resolved from a host-owned service provider does not own or dispose that
-/// provider. Runnable agent operations will be added when their neutral
-/// catalog and run-scope contracts are available; this facade does not expose
-/// the dependency-injection container as a service locator.
+/// <para>
+/// The engine is not an agent. It carries no agent's mutable state and never
+/// makes a process-wide singleton out of a run scope. Each invocation creates
+/// an isolated dependency-injection scope and a fresh <see cref="RunId"/>.
+/// </para>
+/// <para>
+/// An engine created by <see cref="AgentEngineBuilder.Build"/> owns the
+/// service provider captured by that build and disposes it exactly once. An
+/// engine resolved from a host-owned provider does not own or dispose that
+/// provider.
+/// </para>
+/// <para>
+/// The container is never exposed. Callers resolve agents by
+/// <see cref="AgentId"/> and run them through the returned
+/// <see cref="Agent"/> handle, so no caller can bypass definition resolution
+/// or substitute a component the composition did not validate.
+/// </para>
 /// </remarks>
 public sealed class AgentEngine: IAsyncDisposable
 {
     private readonly Lock _disposeLock = new();
+    private readonly IServiceProvider _services;
     private readonly IAsyncDisposable? _ownedProvider;
+    private readonly IAgentDefinitionCatalog _catalog;
+    private readonly IIdentifierGenerator<RunId> _runIds;
     private Task? _disposeTask;
 
     /// <summary>
-    /// Initializes an engine over one captured foundation composition.
+    /// Initializes an engine over one captured composition.
     /// </summary>
-    /// <param name="timeProvider">
-    /// The engine-wide time provider captured when the engine is created.
+    /// <param name="services">
+    /// The composition the engine resolves scoped run services from.
     /// </param>
     /// <param name="ownedProvider">
     /// The standalone provider owned by this engine, or <see langword="null"/>
     /// when an external host owns the provider.
     /// </param>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="timeProvider"/> is <see langword="null"/>.
+    /// <paramref name="services"/> is <see langword="null"/>.
     /// </exception>
-    internal AgentEngine(TimeProvider timeProvider, IAsyncDisposable? ownedProvider)
+    /// <exception cref="InvalidOperationException">
+    /// The composition does not contain the engine-wide services the facade
+    /// requires.
+    /// </exception>
+    internal AgentEngine(IServiceProvider services, IAsyncDisposable? ownedProvider)
     {
-        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(services);
 
-        TimeProvider = timeProvider;
+        _services = services;
         _ownedProvider = ownedProvider;
+        TimeProvider = services.GetRequiredService<TimeProvider>();
+        _catalog = services.GetRequiredService<IAgentDefinitionCatalog>();
+        _runIds = services.GetRequiredService<IIdentifierGenerator<RunId>>();
     }
 
     /// <summary>
@@ -61,6 +83,65 @@ public sealed class AgentEngine: IAsyncDisposable
     public static AgentEngineBuilder CreateBuilder() => new();
 
     /// <summary>
+    /// Lists every agent this engine currently hosts.
+    /// </summary>
+    /// <param name="cancellationToken">A token that cancels the read.</param>
+    /// <returns>
+    /// The immutable definitions in the current catalog snapshot, in
+    /// composition order.
+    /// </returns>
+    /// <exception cref="OperationCanceledException">
+    /// <paramref name="cancellationToken"/> was signalled.
+    /// </exception>
+    public async ValueTask<ImmutableArray<AgentDefinition>> GetAgentsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var snapshot = await _catalog.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        return snapshot.Definitions;
+    }
+
+    /// <summary>
+    /// Resolves one hosted agent to a runnable handle.
+    /// </summary>
+    /// <param name="agentId">The agent identity to resolve.</param>
+    /// <param name="cancellationToken">A token that cancels the read.</param>
+    /// <returns>
+    /// A handle over the resolved definition, or <see langword="null"/> when
+    /// this engine hosts no such agent.
+    /// </returns>
+    /// <remarks>
+    /// An unknown identity returns <see langword="null"/> rather than
+    /// throwing, because agent identities routinely arrive from outside the
+    /// process and a host should be able to answer "no such agent" without
+    /// catching.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// The agent exists but its definition cannot be used with this
+    /// composition.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">
+    /// <paramref name="cancellationToken"/> was signalled.
+    /// </exception>
+    public async ValueTask<Agent?> GetAgentAsync(
+        AgentId agentId,
+        CancellationToken cancellationToken = default)
+    {
+        var resolution = await _catalog.ResolveAsync(agentId, cancellationToken).ConfigureAwait(false);
+
+        return resolution switch
+        {
+            ResolvedAgentDefinition resolved =>
+                new Agent(this, resolved.Definition, resolved.CatalogVersion),
+            AgentDefinitionNotFound => null,
+            InvalidAgentDefinition invalid => throw new InvalidOperationException(
+                $"Agent '{agentId}' is hosted but its definition is unusable: "
+                + string.Join("; ", invalid.Diagnostics)),
+            _ => throw new InvalidOperationException(
+                $"Unrecognized {nameof(AgentDefinitionResolution)} kind '{resolution.GetType()}'."),
+        };
+    }
+
+    /// <summary>
     /// Releases the standalone service provider owned by this engine.
     /// </summary>
     /// <returns>
@@ -81,6 +162,74 @@ public sealed class AgentEngine: IAsyncDisposable
             return new ValueTask(_disposeTask);
         }
     }
+
+    /// <summary>
+    /// Runs one agent in a fresh, isolated run scope.
+    /// </summary>
+    /// <param name="definition">The immutable definition to run.</param>
+    /// <param name="options">The per-invocation facts and bounded overrides.</param>
+    /// <param name="cancellationToken">A token that cancels the run.</param>
+    /// <returns>The loop's terminal result.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// An override in <paramref name="options"/> is wider than the
+    /// definition's corresponding default.
+    /// </exception>
+    internal async Task<AgentLoopResult> RunAgentAsync(
+        AgentDefinition definition,
+        AgentRunOptions options,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(definition is not null, "A validated definition is required to run an agent.");
+        Debug.Assert(options is not null, "Validated run options are required to run an agent.");
+
+        var maxTurns = ResolveMaxTurns(definition, options);
+        var attemptTimeout = ResolveAttemptTimeout(definition, options);
+
+        await using var scope = _services.CreateAsyncScope();
+        var loop = scope.ServiceProvider.GetRequiredService<IAgentLoop>();
+
+        var request = new AgentRunRequest(
+            definition.Id,
+            options.SessionId,
+            options.BranchId,
+            _runIds.Create(),
+            options.Identity,
+            definition.Models,
+            definition.ModelRequirements,
+            definition.Instructions,
+            definition.Tools,
+            definition.ToolChoice,
+            definition.Settings,
+            maxTurns,
+            attemptTimeout,
+            definition.Extensions);
+
+        return await loop.RunAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static int ResolveMaxTurns(AgentDefinition definition, AgentRunOptions options) =>
+        options.MaxTurns is not { } requested
+            ? definition.RunDefaults.MaxTurns
+            : requested <= definition.RunDefaults.MaxTurns
+                ? requested
+                : throw new ArgumentOutOfRangeException(
+                    nameof(options),
+                    requested,
+                    "A run override may only narrow the definition's turn limit of "
+                    + $"{definition.RunDefaults.MaxTurns}.");
+
+    private static TimeSpan ResolveAttemptTimeout(
+        AgentDefinition definition,
+        AgentRunOptions options) =>
+        options.AttemptTimeout is not { } requested
+            ? definition.RunDefaults.AttemptTimeout
+            : requested <= definition.RunDefaults.AttemptTimeout
+                ? requested
+                : throw new ArgumentOutOfRangeException(
+                    nameof(options),
+                    requested,
+                    "A run override may only narrow the definition's attempt timeout of "
+                    + $"{definition.RunDefaults.AttemptTimeout}.");
 
     private static async Task DisposeOwnedProviderAsync(IAsyncDisposable? ownedProvider)
     {

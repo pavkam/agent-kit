@@ -5,7 +5,7 @@ namespace AgentKit;
 
 /// <summary>
 /// Receives the ordered <see cref="ModelResponseEvent"/> sequence produced
-/// by one <see cref="IChatModel"/> attempt.
+/// by one <see cref="ILlmModel"/> attempt.
 /// </summary>
 /// <remarks>
 /// The adapter awaits every call to <see cref="OnEventAsync"/> before

@@ -27,6 +27,7 @@ public static class ServiceExtensions
         /// </remarks>
         public IServiceCollection AddAgentBudgets(Action<AgentBudgetOptions>? configure = null)
         {
+            _ = services.AddAgentKitObservability();
             var optionsBuilder = services.AddOptions<AgentBudgetOptions>()
                 .Validate(static o => o.MaximumScopeDepth > 0, "MaximumScopeDepth must be positive.")
                 .Validate(

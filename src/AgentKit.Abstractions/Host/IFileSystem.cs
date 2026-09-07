@@ -4,21 +4,14 @@
 namespace AgentKit;
 
 /// <summary>
-/// Reads and writes text files within a boundary a concrete implementation
-/// enforces on every call.
+/// Reads and writes text files through a security-enforcing host boundary.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is a deliberately reduced stand-in for the fuller host-access
-/// boundary described by the architecture, which additionally integrates a
-/// <c>SecurityGrant</c> issued by a general security authority, structured
-/// directory listing, byte-level (non-text) content, and audit recording.
-/// Until that exists, a caller obtains authorization separately (for
-/// example, through <see cref="IToolAuthorizer"/>) and this contract only
-/// re-enforces the structural sandbox boundary — never a substitute for
-/// that authorization decision, only a second, independent check that a
-/// higher-level allow cannot be used to reach a path outside the
-/// implementation's configured root.
+/// Every request carries a bounded <see cref="SecurityGrant"/>. The concrete
+/// implementation recomputes canonical resource and input evidence and
+/// atomically validates and consumes that grant immediately before any
+/// existence check, metadata observation, content read, or mutation.
 /// </para>
 /// <para>
 /// Implementations must be safe to call concurrently for independent
@@ -29,6 +22,9 @@ namespace AgentKit;
 /// </remarks>
 public interface IFileSystem
 {
+    /// <summary>Gets the component identity to which file-operation grants must be addressed.</summary>
+    public ComponentId SecurityAudience { get; }
+
     /// <summary>Reads one file.</summary>
     /// <param name="request">The read request.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>

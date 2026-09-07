@@ -24,6 +24,7 @@ public static class ServiceExtensions
         /// </remarks>
         public IServiceCollection AddAgentOutput(Action<AgentOutputOptions>? configure = null)
         {
+            _ = services.AddAgentKitObservability();
             var optionsBuilder = services.AddOptions<AgentOutputOptions>()
                 .Validate(static o => o.MaximumCandidateBytes > 0, "MaximumCandidateBytes must be positive.")
                 .Validate(static o => o.MaximumValidationIssues > 0, "MaximumValidationIssues must be positive.")

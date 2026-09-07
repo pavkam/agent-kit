@@ -3,76 +3,101 @@
 
 namespace AgentKit.Network;
 
-/// <summary>A read-only stream wrapper that enforces a maximum total byte count while reading, not after buffering.</summary>
-/// <remarks>
-/// Exceeding the configured maximum throws <see cref="NetworkResponseTooLargeException"/>
-/// from the read call that would cross the bound; bytes already delivered
-/// to the caller in prior reads are never retracted, and no further bytes
-/// are read from the inner stream afterward.
-/// </remarks>
+/// <summary>Stops response consumption when actual bytes or the response deadline exceed fixed boundaries.</summary>
 internal sealed class BoundedReadStream: Stream
 {
     private readonly Stream _inner;
     private readonly long _maximumBytes;
-    private long _bytesRead;
+    private readonly CancellationToken _timeoutToken;
+    private long _observedBytes;
 
-    /// <summary>Initializes a new instance of the <see cref="BoundedReadStream"/> class.</summary>
-    /// <param name="inner">The stream to read from.</param>
-    /// <param name="maximumBytes">The maximum total number of bytes this stream allows reading.</param>
+    /// <summary>Initializes one bounded view over an owned response stream.</summary>
+    /// <param name="inner">The readable stream owned by the response handle.</param>
+    /// <param name="maximumBytes">The positive maximum bytes that may be observed.</param>
+    /// <param name="timeoutToken">The transport-owned response deadline token.</param>
     /// <exception cref="ArgumentNullException"><paramref name="inner"/> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maximumBytes"/> is negative.</exception>
-    public BoundedReadStream(Stream inner, long maximumBytes)
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maximumBytes"/> is not positive.</exception>
+    internal BoundedReadStream(Stream inner, long maximumBytes, CancellationToken timeoutToken)
     {
         ArgumentNullException.ThrowIfNull(inner);
-        ArgumentOutOfRangeException.ThrowIfNegative(maximumBytes);
-
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumBytes);
         _inner = inner;
         _maximumBytes = maximumBytes;
+        _timeoutToken = timeoutToken;
     }
 
     /// <inheritdoc/>
-    public override bool CanRead => true;
-
+    public override bool CanRead => _inner.CanRead;
     /// <inheritdoc/>
     public override bool CanSeek => false;
-
     /// <inheritdoc/>
     public override bool CanWrite => false;
-
     /// <inheritdoc/>
     public override long Length => throw new NotSupportedException();
-
     /// <inheritdoc/>
     public override long Position
     {
-        get => throw new NotSupportedException();
+        get => _observedBytes;
         set => throw new NotSupportedException();
     }
 
     /// <inheritdoc/>
-    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    public override int Read(byte[] buffer, int offset, int count)
     {
-        var read = await _inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-        _bytesRead += read;
-
-        return _bytesRead > _maximumBytes
-            ? throw new NetworkResponseTooLargeException(_bytesRead, _maximumBytes)
-            : read;
+        ThrowIfTimedOut();
+        var read = _inner.Read(buffer, offset, count);
+        ThrowIfTimedOut();
+        Observe(read);
+        return read;
     }
 
     /// <inheritdoc/>
-    public override int Read(byte[] buffer, int offset, int count) =>
-        ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+    public override int Read(Span<byte> buffer)
+    {
+        ThrowIfTimedOut();
+        var read = _inner.Read(buffer);
+        ThrowIfTimedOut();
+        Observe(read);
+        return read;
+    }
 
     /// <inheritdoc/>
-    public override void Flush() => throw new NotSupportedException();
+    public override async ValueTask<int> ReadAsync(
+        Memory<byte> buffer,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfTimedOut();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _timeoutToken);
+        try
+        {
+            var read = await _inner.ReadAsync(buffer, linked.Token).ConfigureAwait(false);
+            Observe(read);
+            return read;
+        }
+        catch (OperationCanceledException exception)
+            when (_timeoutToken.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new NetworkResponseTimedOutException(exception);
+        }
+    }
+
+    /// <inheritdoc/>
+    public override Task<int> ReadAsync(
+        byte[] buffer,
+        int offset,
+        int count,
+        CancellationToken cancellationToken) =>
+        ReadArrayAsync(buffer, offset, count, cancellationToken);
+
+    /// <inheritdoc/>
+    public override void Flush()
+    {
+    }
 
     /// <inheritdoc/>
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-
     /// <inheritdoc/>
     public override void SetLength(long value) => throw new NotSupportedException();
-
     /// <inheritdoc/>
     public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 
@@ -92,5 +117,30 @@ internal sealed class BoundedReadStream: Stream
     {
         await _inner.DisposeAsync().ConfigureAwait(false);
         await base.DisposeAsync().ConfigureAwait(false);
+        GC.SuppressFinalize(this);
+    }
+
+    private Task<int> ReadArrayAsync(
+        byte[] buffer,
+        int offset,
+        int count,
+        CancellationToken cancellationToken) =>
+        ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+    private void Observe(int read)
+    {
+        _observedBytes += read;
+        if (_observedBytes > _maximumBytes)
+        {
+            throw new NetworkResponseTooLargeException(_maximumBytes, _observedBytes);
+        }
+    }
+
+    private void ThrowIfTimedOut()
+    {
+        if (_timeoutToken.IsCancellationRequested)
+        {
+            throw new NetworkResponseTimedOutException();
+        }
     }
 }

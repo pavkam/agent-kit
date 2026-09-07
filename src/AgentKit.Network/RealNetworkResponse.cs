@@ -3,19 +3,30 @@
 
 namespace AgentKit.Network;
 
-/// <summary>An <see cref="INetworkResponse"/> backed by a real <see cref="HttpResponseMessage"/> and its bounded content stream.</summary>
+/// <summary>Owns one real HTTP response and its bounded body stream.</summary>
 internal sealed class RealNetworkResponse: INetworkResponse
 {
     private readonly HttpResponseMessage _response;
-    private int _disposed;
+    private readonly CancellationTokenSource _responseDeadline;
 
-    /// <summary>Initializes a new instance of the <see cref="RealNetworkResponse"/> class.</summary>
-    /// <param name="response">The owned underlying HTTP response.</param>
-    /// <param name="content">The bounded response body stream.</param>
-    /// <param name="metadata">The response metadata.</param>
-    public RealNetworkResponse(HttpResponseMessage response, Stream content, NetworkResponseMetadata metadata)
+    /// <summary>Initializes an owned response, body stream, and live response deadline.</summary>
+    /// <param name="response">The underlying response that owns connection resources.</param>
+    /// <param name="content">The already bounded body stream.</param>
+    /// <param name="metadata">The immutable response metadata.</param>
+    /// <param name="responseDeadline">The live transport-owned response deadline.</param>
+    /// <exception cref="ArgumentNullException">A dependency is null.</exception>
+    internal RealNetworkResponse(
+        HttpResponseMessage response,
+        Stream content,
+        NetworkResponseMetadata metadata,
+        CancellationTokenSource responseDeadline)
     {
+        ArgumentNullException.ThrowIfNull(response);
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(metadata);
+        ArgumentNullException.ThrowIfNull(responseDeadline);
         _response = response;
+        _responseDeadline = responseDeadline;
         Content = content;
         Metadata = metadata;
     }
@@ -29,10 +40,9 @@ internal sealed class RealNetworkResponse: INetworkResponse
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 0)
-        {
-            await Content.DisposeAsync().ConfigureAwait(false);
-            _response.Dispose();
-        }
+        await Content.DisposeAsync().ConfigureAwait(false);
+        _response.Dispose();
+        _responseDeadline.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

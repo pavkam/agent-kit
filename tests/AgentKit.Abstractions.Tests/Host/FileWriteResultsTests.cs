@@ -11,7 +11,8 @@ public sealed class FileWriteResultsTests
     public void FileWriteRequest_Constructor_WhenContentNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(
-            () => new FileWriteRequest(new FileSystemPath("a.txt"), null!, FileWriteMode.CreateOrOverwrite));
+            () => new FileWriteRequest(
+                new FileSystemPath("a.txt"), null!, FileWriteMode.CreateOrOverwrite, SecurityTestData.Grant()));
 
         exception.ParamName.ShouldBe("content");
     }
@@ -21,7 +22,7 @@ public sealed class FileWriteResultsTests
     {
         var path = new FileSystemPath("a.txt");
 
-        var request = new FileWriteRequest(path, "hello", FileWriteMode.Append);
+        var request = new FileWriteRequest(path, "hello", FileWriteMode.Append, SecurityTestData.Grant());
 
         request.Path.ShouldBe(path);
         request.Content.ShouldBe("hello");
@@ -33,8 +34,8 @@ public sealed class FileWriteResultsTests
     {
         var path = new FileSystemPath("a.txt");
 
-        new FileWriteRequest(path, "hi", FileWriteMode.CreateNew).ShouldBe(
-            new FileWriteRequest(path, "hi", FileWriteMode.CreateNew));
+        new FileWriteRequest(path, "hi", FileWriteMode.CreateNew, SecurityTestData.Grant()).ShouldBe(
+            new FileWriteRequest(path, "hi", FileWriteMode.CreateNew, SecurityTestData.Grant()));
     }
 
     [Fact]

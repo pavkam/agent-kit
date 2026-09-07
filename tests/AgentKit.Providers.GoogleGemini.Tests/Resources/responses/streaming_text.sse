@@ -1,0 +1,4 @@
+data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "Hello"}]}, "index": 0}]}
+
+data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "!"}]}, "finishReason": "STOP", "index": 0}], "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 2, "totalTokenCount": 12}, "modelVersion": "gemini-2.5-flash-001", "responseId": "resp_stream_01"}
+

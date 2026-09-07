@@ -67,31 +67,31 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddGroqChatModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    public void AddGroqLlmModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
     {
         var services = new ServiceCollection();
         _ = services.AddGroq();
         _ = services.AddGroqApiKeyCredential("test-key");
-        _ = services.AddGroqChatModel(new ModelAlias("primary"), new ModelId("llama-3.3-70b-versatile"));
-        _ = services.AddGroqChatModel(new ModelAlias("secondary"), new ModelId("openai/gpt-oss-120b"));
+        _ = services.AddGroqLlmModel(new ModelAlias("primary"), new ModelId("llama-3.3-70b-versatile"));
+        _ = services.AddGroqLlmModel(new ModelAlias("secondary"), new ModelId("openai/gpt-oss-120b"));
 
         using var provider = services.BuildServiceProvider();
-        var models = provider.GetServices<IChatModel>().ToArray();
+        var models = provider.GetServices<ILlmModel>().ToArray();
 
         models.Length.ShouldBe(2);
         models.Select(m => m.Alias.Value).ShouldBe(["primary", "secondary"], ignoreOrder: true);
     }
 
     [Fact]
-    public void AddGroqChatModel_WhenResolved_UsesGroqProviderIdentity()
+    public void AddGroqLlmModel_WhenResolved_UsesGroqProviderIdentity()
     {
         var services = new ServiceCollection();
         _ = services.AddGroq();
         _ = services.AddGroqApiKeyCredential("test-key");
-        _ = services.AddGroqChatModel(new ModelAlias("chat"), new ModelId("llama-3.3-70b-versatile"));
+        _ = services.AddGroqLlmModel(new ModelAlias("chat"), new ModelId("llama-3.3-70b-versatile"));
 
         using var provider = services.BuildServiceProvider();
-        var model = provider.GetRequiredService<IChatModel>().ShouldBeOfType<GroqChatModel>();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<GroqLlmModel>();
 
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }

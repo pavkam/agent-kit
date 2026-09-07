@@ -6,42 +6,37 @@ namespace AgentKit.Network;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-/// <summary>Dependency-injection registration for the built-in, real network implementation.</summary>
+/// <summary>Registers the security-enforcing real network leaf.</summary>
 public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
-        /// <summary>
-        /// Registers <see cref="DefaultNetworkNameResolver"/> and
-        /// <see cref="DefaultNetworkTransport"/> as the singular
-        /// <see cref="INetworkNameResolver"/> and
-        /// <see cref="INetworkTransport"/>.
-        /// </summary>
-        /// <param name="configure">Optional configuration for <see cref="AgentNetworkOptions"/>.</param>
-        /// <returns>The same service collection, for chaining.</returns>
-        /// <remarks>
-        /// Idempotent: every registration here uses <c>TryAdd</c> semantics,
-        /// so calling this more than once, or alongside the in-memory
-        /// package that already claimed these services, keeps whichever
-        /// registration happened first.
-        /// </remarks>
+        /// <summary>Registers the resolver, transport, and operation identity source additively.</summary>
+        /// <param name="configure">Optional structural policy configuration.</param>
+        /// <returns>The same service collection.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         public IServiceCollection AddAgentNetwork(Action<AgentNetworkOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
-            var optionsBuilder = services.AddOptions<AgentNetworkOptions>()
-                .Validate(static o => o.AddressResolutionLifetime > TimeSpan.Zero, "AddressResolutionLifetime must be positive.");
-
+            _ = services.AddAgentKitObservability();
+            var options = services.AddOptions<AgentNetworkOptions>()
+                .Validate(static value => value.DestinationPolicy is not null, "DestinationPolicy is required.")
+                .Validate(
+                    static value => value.AddressResolutionLifetime > TimeSpan.Zero,
+                    "AddressResolutionLifetime must be positive.")
+                .Validate(
+                    static value => value.MaximumResponseHeaderKilobytes > 0,
+                    "MaximumResponseHeaderKilobytes must be positive.")
+                .ValidateOnStart();
             if (configure is not null)
             {
-                _ = optionsBuilder.Configure(configure);
+                _ = options.Configure(configure);
             }
 
             services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IIdentifierGenerator<NetworkOperationId>>(
-                static _ => new GuidIdentifierGenerator<NetworkOperationId>(static value => new NetworkOperationId(value)));
+            services.TryAddSingleton<IIdentifierGenerator<NetworkOperationId>, GuidNetworkOperationIdGenerator>();
             services.TryAddSingleton<INetworkNameResolver, DefaultNetworkNameResolver>();
             services.TryAddSingleton<INetworkTransport, DefaultNetworkTransport>();
-
             return services;
         }
     }

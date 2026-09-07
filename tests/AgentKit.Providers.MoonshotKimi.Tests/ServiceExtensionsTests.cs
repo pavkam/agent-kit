@@ -104,31 +104,31 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddMoonshotKimiChatModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    public void AddMoonshotKimiLlmModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
     {
         var services = new ServiceCollection();
         _ = services.AddMoonshotKimi();
         _ = services.AddMoonshotKimiApiKeyCredential("test-key");
-        _ = services.AddMoonshotKimiChatModel(new ModelAlias("primary"), new ModelId("kimi-k2-0711-preview"));
-        _ = services.AddMoonshotKimiChatModel(new ModelAlias("secondary"), new ModelId("kimi-k1.5"));
+        _ = services.AddMoonshotKimiLlmModel(new ModelAlias("primary"), new ModelId("kimi-k2-0711-preview"));
+        _ = services.AddMoonshotKimiLlmModel(new ModelAlias("secondary"), new ModelId("kimi-k1.5"));
 
         using var provider = services.BuildServiceProvider();
-        var models = provider.GetServices<IChatModel>().ToArray();
+        var models = provider.GetServices<ILlmModel>().ToArray();
 
         models.Length.ShouldBe(2);
         models.Select(m => m.Alias.Value).ShouldBe(["primary", "secondary"], ignoreOrder: true);
     }
 
     [Fact]
-    public void AddMoonshotKimiChatModel_WhenResolved_UsesMoonshotKimiProviderIdentity()
+    public void AddMoonshotKimiLlmModel_WhenResolved_UsesMoonshotKimiProviderIdentity()
     {
         var services = new ServiceCollection();
         _ = services.AddMoonshotKimi();
         _ = services.AddMoonshotKimiApiKeyCredential("test-key");
-        _ = services.AddMoonshotKimiChatModel(new ModelAlias("chat"), new ModelId("kimi-k2-0711-preview"));
+        _ = services.AddMoonshotKimiLlmModel(new ModelAlias("chat"), new ModelId("kimi-k2-0711-preview"));
 
         using var provider = services.BuildServiceProvider();
-        var model = provider.GetRequiredService<IChatModel>().ShouldBeOfType<MoonshotKimiChatModel>();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<MoonshotKimiLlmModel>();
 
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }

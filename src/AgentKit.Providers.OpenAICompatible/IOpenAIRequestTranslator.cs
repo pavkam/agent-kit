@@ -4,7 +4,7 @@
 namespace AgentKit.Providers.OpenAICompatible;
 
 /// <summary>
-/// Translates a provider-neutral <see cref="ChatModelRequest"/> into an
+/// Translates a provider-neutral <see cref="LlmModelRequest"/> into an
 /// OpenAI-compatible chat completions request body.
 /// </summary>
 /// <remarks>
@@ -29,5 +29,5 @@ public interface IOpenAIRequestTranslator
     /// <paramref name="request"/> contains message content this translator
     /// cannot represent in the OpenAI-compatible wire format.
     /// </exception>
-    public JsonObject Translate(ChatModelRequest request, OpenAICompatibilityProfile profile, bool useStreaming);
+    public JsonObject Translate(LlmModelRequest request, OpenAICompatibilityProfile profile, bool useStreaming);
 }

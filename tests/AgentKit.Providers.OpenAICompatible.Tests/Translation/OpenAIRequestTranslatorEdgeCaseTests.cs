@@ -21,27 +21,27 @@ public sealed class OpenAIRequestTranslatorEdgeCaseTests
         useMaxCompletionTokensField: true,
         []);
 
-    private static readonly ChatToolDefinition SampleTool = new(
+    private static readonly LlmToolDefinition SampleTool = new(
         new ToolId("noop"), "noop", null, JsonDocument.Parse("{}").RootElement);
 
     private static JsonObject Translate(
         ImmutableArray<AgentMessage> messages,
-        ChatToolChoice? toolChoice = null,
-        ImmutableArray<ChatToolDefinition> tools = default,
-        ChatRequestSettings? settings = null,
+        LlmToolChoice? toolChoice = null,
+        ImmutableArray<LlmToolDefinition> tools = default,
+        LlmRequestSettings? settings = null,
         ProviderRequestOptions? options = null,
         OpenAICompatibilityProfile? profile = null)
     {
-        var context = new ChatRequestContext(
+        var context = new LlmRequestContext(
             new ModelRequestId(Guid.NewGuid()),
             TestModels.Gpt4O,
             messages,
             tools.IsDefault ? [] : tools,
-            toolChoice ?? ChatToolChoice.Auto,
-            settings ?? ChatRequestSettings.Default,
+            toolChoice ?? LlmToolChoice.Auto,
+            settings ?? LlmRequestSettings.Default,
             ExtensionData.Empty);
 
-        var request = new ChatModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), options ?? ProviderRequestOptions.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), options ?? ProviderRequestOptions.Empty);
 
         return new OpenAIRequestTranslator().Translate(request, profile ?? NonStreamingProfile, useStreaming: false);
     }
@@ -49,7 +49,7 @@ public sealed class OpenAIRequestTranslatorEdgeCaseTests
     [Fact]
     public void Translate_WhenToolChoiceIsNone_SerializesNoneString()
     {
-        var body = Translate([TestMessages.User("hi")], ChatToolChoice.None, [SampleTool]);
+        var body = Translate([TestMessages.User("hi")], LlmToolChoice.None, [SampleTool]);
 
         body["tool_choice"]!.GetValue<string>().ShouldBe("none");
     }
@@ -171,7 +171,7 @@ public sealed class OpenAIRequestTranslatorEdgeCaseTests
     {
         var extensionValue = new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes("end-user-123")]);
         var extensions = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("user", extensionValue));
-        var settings = ChatRequestSettings.Default with { Extensions = extensions };
+        var settings = LlmRequestSettings.Default with { Extensions = extensions };
 
         var body = Translate([TestMessages.User("hi")], settings: settings);
 
@@ -193,7 +193,7 @@ public sealed class OpenAIRequestTranslatorEdgeCaseTests
     [Fact]
     public void Translate_WhenParallelToolCallsSettingIsFalse_SerializesFalse()
     {
-        var settings = ChatRequestSettings.Default with { ParallelToolCalls = false };
+        var settings = LlmRequestSettings.Default with { ParallelToolCalls = false };
 
         var body = Translate([TestMessages.User("hi")], tools: [SampleTool], settings: settings);
 
@@ -203,7 +203,7 @@ public sealed class OpenAIRequestTranslatorEdgeCaseTests
     [Fact]
     public void Translate_WhenUseMaxCompletionTokensFieldIsFalse_UsesLegacyMaxTokensField()
     {
-        var settings = ChatRequestSettings.Default with { MaxOutputTokens = 256 };
+        var settings = LlmRequestSettings.Default with { MaxOutputTokens = 256 };
         var legacyProfile = new OpenAICompatibilityProfile(
             NonStreamingProfile.BaseAddress,
             NonStreamingProfile.ChatCompletionsPath,

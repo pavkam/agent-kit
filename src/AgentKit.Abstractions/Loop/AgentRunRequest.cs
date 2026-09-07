@@ -31,7 +31,8 @@ public sealed record AgentRunRequest
     /// <param name="branchId">The branch this run reads from and commits to.</param>
     /// <param name="runId">The stable identity of this run.</param>
     /// <param name="identity">The identity on whose behalf this run is performed.</param>
-    /// <param name="model">The selected model descriptor.</param>
+    /// <param name="modelPolicy">The candidate and fallback policy used to choose this run's model.</param>
+    /// <param name="modelRequirements">The portable behaviors this run's requests need.</param>
     /// <param name="instructions">The system and developer instructions to place first in every request.</param>
     /// <param name="tools">The tools available for the model to call during this run.</param>
     /// <param name="toolChoice">The tool-call selection policy.</param>
@@ -40,9 +41,9 @@ public sealed record AgentRunRequest
     /// <param name="attemptTimeout">The maximum duration allowed for a single model attempt.</param>
     /// <param name="extensions">Caller-specific or forward-compatible request data.</param>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="identity"/>, <paramref name="model"/>,
-    /// <paramref name="toolChoice"/>, <paramref name="settings"/>, or
-    /// <paramref name="extensions"/> is null.
+    /// <paramref name="identity"/>, <paramref name="modelPolicy"/>,
+    /// <paramref name="modelRequirements"/>, <paramref name="toolChoice"/>,
+    /// <paramref name="settings"/>, or <paramref name="extensions"/> is null.
     /// </exception>
     /// <exception cref="ArgumentException">
     /// <paramref name="instructions"/> or <paramref name="tools"/> is a
@@ -58,17 +59,19 @@ public sealed record AgentRunRequest
         BranchId branchId,
         RunId runId,
         ExecutionIdentity identity,
-        ModelDescriptor model,
+        ModelSelectionPolicy modelPolicy,
+        ModelRequirements modelRequirements,
         ImmutableArray<AgentMessage> instructions,
-        ImmutableArray<ChatToolDefinition> tools,
-        ChatToolChoice toolChoice,
-        ChatRequestSettings settings,
+        ImmutableArray<LlmToolDefinition> tools,
+        LlmToolChoice toolChoice,
+        LlmRequestSettings settings,
         int maxTurns,
         TimeSpan attemptTimeout,
         ExtensionData extensions)
     {
         ArgumentNullException.ThrowIfNull(identity);
-        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(modelPolicy);
+        ArgumentNullException.ThrowIfNull(modelRequirements);
         ArgumentException.ThrowIfDefault(instructions);
         ArgumentException.ThrowIfDefault(tools);
         ArgumentNullException.ThrowIfNull(toolChoice);
@@ -82,7 +85,8 @@ public sealed record AgentRunRequest
         BranchId = branchId;
         RunId = runId;
         Identity = identity;
-        Model = model;
+        ModelPolicy = modelPolicy;
+        ModelRequirements = modelRequirements;
         Instructions = instructions;
         Tools = tools;
         ToolChoice = toolChoice;
@@ -107,20 +111,32 @@ public sealed record AgentRunRequest
     /// <summary>Gets the identity on whose behalf this run is performed.</summary>
     public ExecutionIdentity Identity { get; init; }
 
-    /// <summary>Gets the selected model descriptor.</summary>
-    public ModelDescriptor Model { get; init; }
+    /// <summary>Gets the candidate and fallback policy used to choose this run's model.</summary>
+    /// <value>
+    /// The run states which models it may use; the configured selector
+    /// resolves that policy against the engine-wide catalog. The run does not
+    /// name a concrete provider adapter.
+    /// </value>
+    public ModelSelectionPolicy ModelPolicy { get; init; }
+
+    /// <summary>Gets the portable behaviors this run's requests need.</summary>
+    /// <value>
+    /// Used to reject or downgrade an incompatible model before any provider
+    /// request is sent.
+    /// </value>
+    public ModelRequirements ModelRequirements { get; init; }
 
     /// <summary>Gets the system and developer instructions to place first in every request.</summary>
     public ImmutableArray<AgentMessage> Instructions { get; init; }
 
     /// <summary>Gets the tools available for the model to call during this run.</summary>
-    public ImmutableArray<ChatToolDefinition> Tools { get; init; }
+    public ImmutableArray<LlmToolDefinition> Tools { get; init; }
 
     /// <summary>Gets the tool-call selection policy.</summary>
-    public ChatToolChoice ToolChoice { get; init; }
+    public LlmToolChoice ToolChoice { get; init; }
 
     /// <summary>Gets the effective sampling and output settings.</summary>
-    public ChatRequestSettings Settings { get; init; }
+    public LlmRequestSettings Settings { get; init; }
 
     /// <summary>Gets the maximum number of turns this run may take before it is halted.</summary>
     public int MaxTurns { get; init; }
@@ -139,7 +155,8 @@ public sealed record AgentRunRequest
         && BranchId.Equals(other.BranchId)
         && RunId.Equals(other.RunId)
         && Identity.Equals(other.Identity)
-        && Model.Equals(other.Model)
+        && ModelPolicy.Equals(other.ModelPolicy)
+        && ModelRequirements.Equals(other.ModelRequirements)
         && Instructions.SequenceEqual(other.Instructions)
         && Tools.SequenceEqual(other.Tools)
         && ToolChoice.Equals(other.ToolChoice)
@@ -157,7 +174,8 @@ public sealed record AgentRunRequest
         hash.Add(BranchId);
         hash.Add(RunId);
         hash.Add(Identity);
-        hash.Add(Model);
+        hash.Add(ModelPolicy);
+        hash.Add(ModelRequirements);
         foreach (var message in Instructions)
         {
             hash.Add(message);

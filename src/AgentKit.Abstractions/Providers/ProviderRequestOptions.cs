@@ -5,13 +5,13 @@ namespace AgentKit;
 
 /// <summary>
 /// A bounded, provider-specific option bag scoped to one
-/// <see cref="ChatModelRequest"/> attempt.
+/// <see cref="LlmModelRequest"/> attempt.
 /// </summary>
 /// <remarks>
 /// This type is an immutable value object with structural equality over its
 /// fields. It carries no mutable state and is safe to share across threads
 /// without synchronization. Core request settings remain typed on
-/// <see cref="ChatRequestSettings"/>; this type exists only for options a
+/// <see cref="LlmRequestSettings"/>; this type exists only for options a
 /// specific concrete adapter defines and validates itself, such as a
 /// vendor-specific beta feature flag.
 /// </remarks>

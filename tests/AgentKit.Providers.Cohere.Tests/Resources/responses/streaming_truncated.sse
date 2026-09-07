@@ -1,0 +1,6 @@
+data: {"type": "message-start", "id": "c14c80c3-stream-06", "delta": {"message": {"role": "assistant"}}}
+
+data: {"type": "content-start", "index": 0, "delta": {"message": {"content": {"type": "text", "text": ""}}}}
+
+data: {"type": "content-delta", "index": 0, "delta": {"message": {"content": {"text": "Hello"}}}}
+

@@ -101,31 +101,31 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddOpenRouterChatModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    public void AddOpenRouterLlmModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
     {
         var services = new ServiceCollection();
         _ = services.AddOpenRouter();
         _ = services.AddOpenRouterApiKeyCredential("sk-or-test-key");
-        _ = services.AddOpenRouterChatModel(new ModelAlias("fast"), new ModelId("openai/gpt-4o-mini"));
-        _ = services.AddOpenRouterChatModel(new ModelAlias("claude"), new ModelId("anthropic/claude-3.5-sonnet"));
+        _ = services.AddOpenRouterLlmModel(new ModelAlias("fast"), new ModelId("openai/gpt-4o-mini"));
+        _ = services.AddOpenRouterLlmModel(new ModelAlias("claude"), new ModelId("anthropic/claude-3.5-sonnet"));
 
         using var provider = services.BuildServiceProvider();
-        var models = provider.GetServices<IChatModel>().ToArray();
+        var models = provider.GetServices<ILlmModel>().ToArray();
 
         models.Length.ShouldBe(2);
         models.Select(m => m.Alias.Value).ShouldBe(["fast", "claude"], ignoreOrder: true);
     }
 
     [Fact]
-    public void AddOpenRouterChatModel_WhenResolved_UsesOpenRouterProviderIdentity()
+    public void AddOpenRouterLlmModel_WhenResolved_UsesOpenRouterProviderIdentity()
     {
         var services = new ServiceCollection();
         _ = services.AddOpenRouter();
         _ = services.AddOpenRouterApiKeyCredential("sk-or-test-key");
-        _ = services.AddOpenRouterChatModel(new ModelAlias("chat"), new ModelId("openai/gpt-4o"));
+        _ = services.AddOpenRouterLlmModel(new ModelAlias("chat"), new ModelId("openai/gpt-4o"));
 
         using var provider = services.BuildServiceProvider();
-        var model = provider.GetRequiredService<IChatModel>().ShouldBeOfType<OpenRouterChatModel>();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OpenRouterLlmModel>();
 
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }

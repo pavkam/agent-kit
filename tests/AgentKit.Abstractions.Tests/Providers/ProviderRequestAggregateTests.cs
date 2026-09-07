@@ -7,7 +7,7 @@ using AgentKit;
 
 public sealed class ProviderRequestAggregateTests
 {
-    private static ChatModelRequest CreateRequest()
+    private static LlmModelRequest CreateRequest()
     {
         var capabilities = new ModelCapabilities(
             supportsSystemInstructions: true,
@@ -30,16 +30,16 @@ public sealed class ProviderRequestAggregateTests
             pricing: null,
             ExtensionData.Empty);
 
-        var context = new ChatRequestContext(
+        var context = new LlmRequestContext(
             new ModelRequestId(new Guid("dc591d0d-5ae3-47ee-8255-e1357764fc0e")),
             model,
             messages: [],
             tools: [],
-            ChatToolChoice.Auto,
-            ChatRequestSettings.Default,
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
             ExtensionData.Empty);
 
-        return new ChatModelRequest(
+        return new LlmModelRequest(
             context,
             attempt: 1,
             DateTimeOffset.UnixEpoch.AddMinutes(1),
@@ -151,7 +151,7 @@ public sealed class ProviderRequestAggregateTests
     [Fact]
     public void WithExpression_WhenMaxOutputTokensIsNegative_ThrowsArgumentOutOfRangeException()
     {
-        var settings = ChatRequestSettings.Default;
+        var settings = LlmRequestSettings.Default;
 
         var exception = Should.Throw<ArgumentOutOfRangeException>(
             () => _ = settings with { MaxOutputTokens = -1 });
@@ -163,7 +163,7 @@ public sealed class ProviderRequestAggregateTests
     [Fact]
     public void WithExpression_WhenStopSequencesIsDefault_ThrowsArgumentException()
     {
-        var settings = ChatRequestSettings.Default;
+        var settings = LlmRequestSettings.Default;
 
         var exception = Should.Throw<ArgumentException>(
             () => _ = settings with { StopSequences = default });
@@ -174,7 +174,7 @@ public sealed class ProviderRequestAggregateTests
     [Fact]
     public void WithExpression_WhenSettingsExtensionsIsNull_ThrowsArgumentNullException()
     {
-        var settings = ChatRequestSettings.Default;
+        var settings = LlmRequestSettings.Default;
 
         var exception = Should.Throw<ArgumentNullException>(
             () => _ = settings with { Extensions = null! });
@@ -183,26 +183,26 @@ public sealed class ProviderRequestAggregateTests
     }
 
     [Fact]
-    public void ChatRequestSettings_Equality_WhenSameValues_InstancesAreEqual()
+    public void LlmRequestSettings_Equality_WhenSameValues_InstancesAreEqual()
     {
-        var first = ChatRequestSettings.Default with { Temperature = 0.5, StopSequences = ["a"] };
-        var second = ChatRequestSettings.Default with { Temperature = 0.5, StopSequences = ["a"] };
+        var first = LlmRequestSettings.Default with { Temperature = 0.5, StopSequences = ["a"] };
+        var second = LlmRequestSettings.Default with { Temperature = 0.5, StopSequences = ["a"] };
 
         first.ShouldBe(second);
         first.GetHashCode().ShouldBe(second.GetHashCode());
     }
 
     [Fact]
-    public void ChatRequestSettings_Equality_WhenDifferentStopSequences_InstancesAreNotEqual()
+    public void LlmRequestSettings_Equality_WhenDifferentStopSequences_InstancesAreNotEqual()
     {
-        var first = ChatRequestSettings.Default with { StopSequences = ["a"] };
-        var second = ChatRequestSettings.Default with { StopSequences = ["b"] };
+        var first = LlmRequestSettings.Default with { StopSequences = ["a"] };
+        var second = LlmRequestSettings.Default with { StopSequences = ["b"] };
 
         first.ShouldNotBe(second);
     }
 
     [Fact]
-    public void ChatRequestContext_Equality_WhenSameValues_InstancesAreEqual()
+    public void LlmRequestContext_Equality_WhenSameValues_InstancesAreEqual()
     {
         var first = CreateRequest().Context;
         var second = CreateRequest().Context;
@@ -244,6 +244,6 @@ public sealed class ProviderRequestAggregateTests
         updated.Context.Settings.StopSequences.ShouldBe(["done"]);
         updated.Context.Settings.Temperature.ShouldBe(0.25);
         original.Attempt.ShouldBe(1);
-        original.Context.Settings.ShouldBeSameAs(ChatRequestSettings.Default);
+        original.Context.Settings.ShouldBeSameAs(LlmRequestSettings.Default);
     }
 }

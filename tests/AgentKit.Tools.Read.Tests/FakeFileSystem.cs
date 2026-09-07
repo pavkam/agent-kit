@@ -6,6 +6,8 @@ namespace AgentKit.Tools.Read.Tests;
 /// <summary>A scripted <see cref="IFileSystem"/> test double for exercising read outcomes.</summary>
 internal sealed class FakeFileSystem: IFileSystem
 {
+    public ComponentId SecurityAudience { get; } = new("test.filesystem");
+
     public Func<FileReadRequest, FileReadResult>? OnRead { get; set; }
 
     public Func<FileWriteRequest, FileWriteResult>? OnWrite { get; set; }

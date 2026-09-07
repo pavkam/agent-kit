@@ -1,0 +1,47 @@
+{
+  "model": "claude-sonnet-4-5",
+  "max_tokens": 200,
+  "messages": [
+    {
+      "role": "user",
+      "content": [{ "type": "text", "text": "What's the weather in Paris?" }]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "call_abc123",
+          "name": "get_weather",
+          "input": { "location": "Paris" }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "call_abc123",
+          "content": [{ "type": "text", "text": "15 degrees and sunny" }],
+          "is_error": false
+        }
+      ]
+    }
+  ],
+  "system": "You are a weather assistant.",
+  "stream": true,
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Gets the current weather for a location.",
+      "input_schema": {
+        "type": "object",
+        "properties": { "location": { "type": "string" } },
+        "required": ["location"]
+      }
+    }
+  ],
+  "tool_choice": { "type": "any", "disable_parallel_tool_use": true },
+  "stop_sequences": ["STOP"]
+}

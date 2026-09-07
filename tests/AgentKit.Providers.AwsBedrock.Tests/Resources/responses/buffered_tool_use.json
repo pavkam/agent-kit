@@ -1,0 +1,22 @@
+{
+  "output": {
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "toolUse": {
+            "toolUseId": "tooluse_01xyz",
+            "name": "get_weather",
+            "input": { "location": "Paris" }
+          }
+        }
+      ]
+    }
+  },
+  "stopReason": "tool_use",
+  "usage": {
+    "inputTokens": 45,
+    "outputTokens": 22,
+    "totalTokens": 67
+  }
+}

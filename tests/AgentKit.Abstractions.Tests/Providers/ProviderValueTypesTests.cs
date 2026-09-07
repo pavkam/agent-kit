@@ -51,33 +51,33 @@ public sealed class ProviderValueTypesTests
         new ModelLimits(1000, 500).ShouldBe(new ModelLimits(1000, 500));
 
     [Fact]
-    public void ChatToolChoice_Constructor_WhenNamedWithoutToolName_ThrowsArgumentException() => _ = Should.Throw<ArgumentException>(() => new ChatToolChoice(ChatToolChoiceMode.Named, null));
+    public void LlmToolChoice_Constructor_WhenNamedWithoutToolName_ThrowsArgumentException() => _ = Should.Throw<ArgumentException>(() => new LlmToolChoice(LlmToolChoiceMode.Named, null));
 
     [Fact]
-    public void ChatToolChoice_Constructor_WhenNotNamedWithToolName_ThrowsArgumentException() => _ = Should.Throw<ArgumentException>(() => new ChatToolChoice(ChatToolChoiceMode.Auto, "tool"));
+    public void LlmToolChoice_Constructor_WhenNotNamedWithToolName_ThrowsArgumentException() => _ = Should.Throw<ArgumentException>(() => new LlmToolChoice(LlmToolChoiceMode.Auto, "tool"));
 
     [Fact]
-    public void ChatToolChoice_Named_WhenToolNameInvalid_ThrowsArgumentException() => _ = Should.Throw<ArgumentException>(() => ChatToolChoice.Named(" "));
+    public void LlmToolChoice_Named_WhenToolNameInvalid_ThrowsArgumentException() => _ = Should.Throw<ArgumentException>(() => LlmToolChoice.Named(" "));
 
     [Fact]
-    public void ChatToolChoice_Named_WhenValid_ProducesNamedChoice()
+    public void LlmToolChoice_Named_WhenValid_ProducesNamedChoice()
     {
-        var choice = ChatToolChoice.Named("my-tool");
+        var choice = LlmToolChoice.Named("my-tool");
 
-        choice.Mode.ShouldBe(ChatToolChoiceMode.Named);
+        choice.Mode.ShouldBe(LlmToolChoiceMode.Named);
         choice.ForcedToolName.ShouldBe("my-tool");
     }
 
     [Fact]
-    public void ChatToolChoice_Equality_WhenSameValues_InstancesAreEqual() =>
-        ChatToolChoice.Named("tool").ShouldBe(ChatToolChoice.Named("tool"));
+    public void LlmToolChoice_Equality_WhenSameValues_InstancesAreEqual() =>
+        LlmToolChoice.Named("tool").ShouldBe(LlmToolChoice.Named("tool"));
 
     [Fact]
-    public void ChatToolChoice_SharedInstances_HaveExpectedModes()
+    public void LlmToolChoice_SharedInstances_HaveExpectedModes()
     {
-        ChatToolChoice.Auto.Mode.ShouldBe(ChatToolChoiceMode.Auto);
-        ChatToolChoice.None.Mode.ShouldBe(ChatToolChoiceMode.None);
-        ChatToolChoice.Required.Mode.ShouldBe(ChatToolChoiceMode.Required);
+        LlmToolChoice.Auto.Mode.ShouldBe(LlmToolChoiceMode.Auto);
+        LlmToolChoice.None.Mode.ShouldBe(LlmToolChoiceMode.None);
+        LlmToolChoice.Required.Mode.ShouldBe(LlmToolChoiceMode.Required);
     }
 
     [Fact]
@@ -133,12 +133,12 @@ public sealed class ProviderValueTypesTests
         new ProviderRequestOptions(ExtensionData.Empty).ShouldBe(new ProviderRequestOptions(ExtensionData.Empty));
 
     [Fact]
-    public void ChatToolDefinition_Constructor_WhenNameInvalid_ThrowsArgumentException() => _ = Should.Throw<ArgumentException>(() => new ChatToolDefinition(new ToolId("t"), " ", null, default));
+    public void LlmToolDefinition_Constructor_WhenNameInvalid_ThrowsArgumentException() => _ = Should.Throw<ArgumentException>(() => new LlmToolDefinition(new ToolId("t"), " ", null, default));
 
     [Fact]
-    public void ChatToolDefinition_Equality_WhenSameValues_InstancesAreEqual() =>
-        new ChatToolDefinition(new ToolId("t"), "tool", null, default).ShouldBe(
-            new ChatToolDefinition(new ToolId("t"), "tool", null, default));
+    public void LlmToolDefinition_Equality_WhenSameValues_InstancesAreEqual() =>
+        new LlmToolDefinition(new ToolId("t"), "tool", null, default).ShouldBe(
+            new LlmToolDefinition(new ToolId("t"), "tool", null, default));
 
     [Fact]
     public void ModelAttemptCompleted_Constructor_WhenResponseNull_ThrowsArgumentNullException()

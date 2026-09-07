@@ -53,11 +53,48 @@ public sealed class OpenAICompatibilityProfileTests
     [InlineData(nameof(OpenAICompatibilityProfile.IncludeStreamUsage))]
     [InlineData(nameof(OpenAICompatibilityProfile.UseMaxCompletionTokensField))]
     [InlineData(nameof(OpenAICompatibilityProfile.DefaultRequestHeaders))]
+    [InlineData(nameof(OpenAICompatibilityProfile.EmbeddingsPath))]
     public void Properties_WhenInspected_AreConstructionOnly(string propertyName)
     {
         var property = typeof(OpenAICompatibilityProfile).GetProperty(propertyName).ShouldNotBeNull();
 
         property.SetMethod.ShouldBeNull();
+    }
+
+    [Fact]
+    public void EmbeddingsUri_WhenEmbeddingsPathNotConfigured_IsNull() =>
+        CreateProfile("chat/completions").EmbeddingsUri.ShouldBeNull();
+
+    [Fact]
+    public void EmbeddingsUri_WhenEmbeddingsPathConfigured_CombinesWithBaseAddress()
+    {
+        var profile = new OpenAICompatibilityProfile(
+            new Uri("https://api.example.test/v1/"),
+            "chat/completions",
+            sendDeveloperRoleAsSystem: false,
+            preferStreaming: true,
+            includeStreamUsage: true,
+            useMaxCompletionTokensField: true,
+            [],
+            embeddingsPath: "embeddings");
+
+        profile.EmbeddingsUri.ShouldBe(new Uri("https://api.example.test/v1/embeddings"));
+    }
+
+    [Fact]
+    public void Constructor_WhenEmbeddingsPathIsAbsolute_ThrowsArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new OpenAICompatibilityProfile(
+            new Uri("https://api.example.test/v1/"),
+            "chat/completions",
+            sendDeveloperRoleAsSystem: false,
+            preferStreaming: true,
+            includeStreamUsage: true,
+            useMaxCompletionTokensField: true,
+            [],
+            embeddingsPath: "https://evil.example.test/embeddings"));
+
+        exception.ParamName.ShouldBe("embeddingsPath");
     }
 
     private static OpenAICompatibilityProfile CreateProfile(string chatCompletionsPath) =>

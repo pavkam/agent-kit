@@ -10,7 +10,7 @@ namespace AgentKit.Loop;
 /// <remarks>
 /// <see cref="DefaultAgentLoop"/> uses this observer because there is no
 /// not-yet-implemented AgentKit.IO/AgentKit.Output live event fan-out to
-/// forward streamed events to. It exists so <see cref="IChatModel.ExecuteAsync"/>
+/// forward streamed events to. It exists so <see cref="ILlmModel.ExecuteAsync"/>
 /// always has a valid observer to deliver its ordered event sequence to,
 /// even though this reduced loop only consumes the attempt's terminal
 /// <see cref="ModelAttemptResult"/>.

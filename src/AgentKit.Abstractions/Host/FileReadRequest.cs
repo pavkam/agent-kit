@@ -12,8 +12,18 @@ public sealed record FileReadRequest
 {
     /// <summary>Initializes a new instance of the <see cref="FileReadRequest"/> record.</summary>
     /// <param name="path">The path to read, relative to the file system's configured root.</param>
-    public FileReadRequest(FileSystemPath path) => Path = path;
+    /// <param name="grant">The bounded authority the file-system implementation must validate and consume before observation.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="grant"/> is null.</exception>
+    public FileReadRequest(FileSystemPath path, SecurityGrant grant)
+    {
+        ArgumentNullException.ThrowIfNull(grant);
+        Path = path;
+        Grant = grant;
+    }
 
     /// <summary>Gets the path to read, relative to the file system's configured root.</summary>
     public FileSystemPath Path { get; init; }
+
+    /// <summary>Gets the bounded authority to validate and consume before observation.</summary>
+    public SecurityGrant Grant { get; init; }
 }

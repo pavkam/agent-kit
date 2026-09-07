@@ -1,0 +1,12 @@
+data: {"type": "message-start", "id": "c14c80c3-stream-01", "delta": {"message": {"role": "assistant"}}}
+
+data: {"type": "content-start", "index": 0, "delta": {"message": {"content": {"type": "text", "text": ""}}}}
+
+data: {"type": "content-delta", "index": 0, "delta": {"message": {"content": {"text": "Hello"}}}}
+
+data: {"type": "content-delta", "index": 0, "delta": {"message": {"content": {"text": "!"}}}}
+
+data: {"type": "content-end", "index": 0}
+
+data: {"type": "message-end", "delta": {"finish_reason": "COMPLETE", "usage": {"tokens": {"input_tokens": 10, "output_tokens": 2}}}}
+

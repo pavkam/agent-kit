@@ -99,8 +99,8 @@ internal static class TestFactory
         instructions ?? [],
         history,
         [],
-        ChatToolChoice.Auto,
-        ChatRequestSettings.Default,
+        LlmToolChoice.Auto,
+        LlmRequestSettings.Default,
         ExtensionData.Empty);
 
     private static AssistantResponseMetadata ResponseMetadata() => new(

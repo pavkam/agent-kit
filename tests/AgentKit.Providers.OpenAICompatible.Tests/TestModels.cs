@@ -39,4 +39,22 @@ internal static class TestModels
             supportsVisionInput: false,
             ExtensionData.Empty),
     };
+
+    /// <summary>Gets a representative descriptor for OpenAI's <c>text-embedding-3-small</c> model.</summary>
+    public static EmbeddingModelDescriptor TextEmbedding3Small { get; } = new(
+        new EmbeddingModelAlias("embed"),
+        new ProviderId("openai"),
+        new ApiFamilyId("openai-embeddings"),
+        new ModelId("text-embedding-3-small"),
+        deploymentId: null,
+        new EmbeddingCapabilities(
+            supportsBatchInput: true,
+            supportsDimensions: true,
+            supportsPurpose: false,
+            supportsEncodingSelection: true,
+            supportsTruncationControl: false,
+            ExtensionData.Empty),
+        new EmbeddingLimits(maxInputsPerRequest: 2048, maxInputTokensPerInput: 8192, defaultDimensions: 1536, maxDimensions: 1536),
+        pricing: null,
+        ExtensionData.Empty);
 }

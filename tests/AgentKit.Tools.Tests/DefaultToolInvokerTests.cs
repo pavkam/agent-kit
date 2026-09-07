@@ -127,6 +127,32 @@ public sealed class DefaultToolInvokerTests
         result.Outcome.FailureReason.ShouldNotBeNull().ShouldContain("cancels-itself");
     }
 
+    [Fact]
+    public async Task InvokeAsync_WhenObserved_EmitsCorrelatedContentFreeActivity()
+    {
+        const string protectedArguments = "do-not-export-this-argument";
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = activity => stopped = activity,
+        };
+        ActivitySource.AddActivityListener(listener);
+        var tool = new FakeTool { Descriptor = TestFactory.Descriptor("observed") };
+        var invoker = CreateInvoker([tool], allowed: "observed");
+        using var arguments = JsonDocument.Parse($$"""{"secret":"{{protectedArguments}}"}""");
+        var request = TestFactory.CallRequest(new ToolId("observed"), arguments.RootElement);
+
+        _ = await invoker.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        var activity = stopped.ShouldNotBeNull();
+        activity.OperationName.ShouldBe(AgentKitActivityNames.ExecuteTool);
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.GetTagItem(AgentKitTagNames.ToolCallId).ShouldBe(request.Context.ToolCallId.ToString());
+        activity.TagObjects.Select(static tag => tag.Value?.ToString()).ShouldNotContain(protectedArguments);
+    }
+
     private static DefaultToolInvoker CreateInvoker(IEnumerable<ITool> tools, params string[] allowed)
     {
         var options = new AgentToolsOptions();
@@ -137,4 +163,7 @@ public sealed class DefaultToolInvokerTests
 
         return new DefaultToolInvoker(new ToolCatalog(tools), new AllowListToolAuthorizer(Options.Create(options)));
     }
+
+    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
+        ActivitySamplingResult.AllDataAndRecorded;
 }

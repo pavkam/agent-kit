@@ -5,7 +5,7 @@ namespace AgentKit;
 
 /// <summary>
 /// The immutable base for one ordered event in the stream produced by an
-/// <see cref="IChatModel"/> attempt, delivered to an
+/// <see cref="ILlmModel"/> attempt, delivered to an
 /// <see cref="IModelResponseObserver"/>.
 /// </summary>
 /// <remarks>

@@ -1,0 +1,14 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          { "inlineData": { "mimeType": "image/png", "data": "base64==" } }
+        ]
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ]
+}

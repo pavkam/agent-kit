@@ -25,6 +25,7 @@ public static class ServiceExtensions
         /// </remarks>
         public IServiceCollection AddAgentHooks()
         {
+            _ = services.AddAgentKitObservability();
             services.TryAddSingleton<IHookDispatcher, DefaultHookDispatcher>();
             return services;
         }

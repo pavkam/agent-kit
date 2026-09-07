@@ -18,7 +18,7 @@ namespace AgentKit;
 /// richer implementation must also perform: repairing history so only
 /// complete, causally intact content ever reaches a provider, and
 /// combining instructions, history, tools, and settings into one immutable
-/// <see cref="ChatRequestContext"/>.
+/// <see cref="LlmRequestContext"/>.
 /// </para>
 /// <para>
 /// Assembling context never mutates durable session history; it only reads

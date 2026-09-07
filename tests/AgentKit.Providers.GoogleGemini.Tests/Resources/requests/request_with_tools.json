@@ -1,0 +1,54 @@
+{
+  "contents": [
+    { "role": "user", "parts": [{ "text": "What's the weather in Paris?" }] },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "functionCall": {
+            "id": "call_abc123",
+            "name": "get_weather",
+            "args": { "location": "Paris" }
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "functionResponse": {
+            "id": "call_abc123",
+            "name": "get_weather",
+            "response": { "result": "15 degrees and sunny" }
+          }
+        }
+      ]
+    }
+  ],
+  "systemInstruction": {
+    "parts": [{ "text": "You are a weather assistant." }]
+  },
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "name": "get_weather",
+          "description": "Gets the current weather for a location.",
+          "parameters": {
+            "type": "object",
+            "properties": { "location": { "type": "string" } },
+            "required": ["location"]
+          }
+        }
+      ]
+    }
+  ],
+  "toolConfig": {
+    "functionCallingConfig": { "mode": "ANY" }
+  },
+  "generationConfig": {
+    "maxOutputTokens": 200,
+    "stopSequences": ["STOP"]
+  }
+}

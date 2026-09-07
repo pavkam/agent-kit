@@ -27,13 +27,13 @@ public sealed class OpenAIRequestTranslatorTests
             TestMessages.System("You are a helpful assistant."),
             TestMessages.User("Hello!"));
 
-        var context = new ChatRequestContext(
+        var context = new LlmRequestContext(
             new ModelRequestId(Guid.NewGuid()),
             TestModels.Gpt4O,
             messages,
             [],
-            ChatToolChoice.Auto,
-            new ChatRequestSettings(
+            LlmToolChoice.Auto,
+            new LlmRequestSettings(
                 temperature: 0.2,
                 topP: null,
                 maxOutputTokens: 100,
@@ -43,7 +43,7 @@ public sealed class OpenAIRequestTranslatorTests
                 ExtensionData.Empty),
             ExtensionData.Empty);
 
-        var request = new ChatModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
 
         var actual = new OpenAIRequestTranslator().Translate(request, Profile, useStreaming: false);
         var expected = JsonNode.Parse(TestResources.ReadAllText("requests/simple_chat_request.json"));
@@ -80,7 +80,7 @@ public sealed class OpenAIRequestTranslatorTests
             toolMessage);
 
         var tools = ImmutableArray.Create(
-            new ChatToolDefinition(
+            new LlmToolDefinition(
                 new ToolId("get_weather"),
                 "get_weather",
                 "Gets the current weather for a location.",
@@ -93,7 +93,7 @@ public sealed class OpenAIRequestTranslatorTests
                     }
                     """).RootElement));
 
-        var settings = new ChatRequestSettings(
+        var settings = new LlmRequestSettings(
             temperature: null,
             topP: null,
             maxOutputTokens: null,
@@ -102,16 +102,16 @@ public sealed class OpenAIRequestTranslatorTests
             seed: 42,
             ExtensionData.Empty);
 
-        var context = new ChatRequestContext(
+        var context = new LlmRequestContext(
             new ModelRequestId(Guid.NewGuid()),
             TestModels.Gpt4O,
             messages,
             tools,
-            ChatToolChoice.Required,
+            LlmToolChoice.Required,
             settings,
             ExtensionData.Empty);
 
-        var request = new ChatModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
 
         var actual = new OpenAIRequestTranslator().Translate(request, Profile, useStreaming: true);
         var expected = JsonNode.Parse(TestResources.ReadAllText("requests/chat_request_with_tools.json"));
@@ -137,16 +137,16 @@ public sealed class OpenAIRequestTranslatorTests
 
         var message = TestMessages.User(mediaPart);
 
-        var context = new ChatRequestContext(
+        var context = new LlmRequestContext(
             new ModelRequestId(Guid.NewGuid()),
             TestModels.Gpt4O,
             [message],
             [],
-            ChatToolChoice.Auto,
-            ChatRequestSettings.Default,
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
             ExtensionData.Empty);
 
-        var request = new ChatModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
 
         _ = Should.Throw<NotSupportedException>(() => new OpenAIRequestTranslator().Translate(request, Profile, useStreaming: false));
     }
@@ -157,16 +157,16 @@ public sealed class OpenAIRequestTranslatorTests
         var incomplete = TestMessages.User("Draft, still streaming...", state: MessageState.Incomplete);
         var complete = TestMessages.User("Final question.");
 
-        var context = new ChatRequestContext(
+        var context = new LlmRequestContext(
             new ModelRequestId(Guid.NewGuid()),
             TestModels.Gpt4O,
             [incomplete, complete],
             [],
-            ChatToolChoice.Auto,
-            ChatRequestSettings.Default,
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
             ExtensionData.Empty);
 
-        var request = new ChatModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
 
         var actual = new OpenAIRequestTranslator().Translate(request, Profile, useStreaming: false);
         var messages = actual["messages"]!.AsArray();

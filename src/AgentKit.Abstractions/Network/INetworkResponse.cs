@@ -18,5 +18,10 @@ public interface INetworkResponse: IAsyncDisposable
     public NetworkResponseMetadata Metadata { get; }
 
     /// <summary>Gets the bounded, readable response body stream.</summary>
+    /// <remarks>
+    /// Reads throw <see cref="NetworkResponseTooLargeException"/> when actual bytes exceed the configured limit and
+    /// <see cref="NetworkResponseTimedOutException"/> when the response deadline expires.
+    /// Caller-supplied read cancellation remains <see cref="OperationCanceledException"/>.
+    /// </remarks>
     public Stream Content { get; }
 }

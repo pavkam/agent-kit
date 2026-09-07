@@ -10,6 +10,7 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
+        _ = TestFactory.AddSecurityDependencies(services);
 
         _ = services.AddWriteTool();
         using var provider = services.BuildServiceProvider();
@@ -22,6 +23,7 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
+        _ = TestFactory.AddSecurityDependencies(services);
 
         _ = services.AddWriteTool();
         _ = services.AddWriteTool();
@@ -35,6 +37,7 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
+        _ = TestFactory.AddSecurityDependencies(services);
         _ = services.AddSingleton<ITool, StubTool>();
 
         _ = services.AddWriteTool();
@@ -50,6 +53,7 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
+        _ = TestFactory.AddSecurityDependencies(services);
         _ = services.AddAgentTools(o => _ = o.AllowedToolIds.Add(WriteFileTool.Id));
         _ = services.AddWriteTool();
         using var provider = services.BuildServiceProvider();

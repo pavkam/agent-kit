@@ -15,25 +15,35 @@ public sealed record NetworkResolutionRequest
     /// <param name="id">The identity of this resolution operation.</param>
     /// <param name="destination">The destination to resolve.</param>
     /// <param name="bounds">The bounds this resolution must respect.</param>
+    /// <param name="grant">The exact single-use authority consumed before DNS observation.</param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="destination"/> or <paramref name="bounds"/> is null.
     /// </exception>
-    public NetworkResolutionRequest(NetworkOperationId id, NetworkDestination destination, NetworkBounds bounds)
+    public NetworkResolutionRequest(
+        NetworkOperationId id,
+        NetworkDestination destination,
+        NetworkBounds bounds,
+        SecurityGrant grant)
     {
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(bounds);
+        ArgumentNullException.ThrowIfNull(grant);
 
         Id = id;
         Destination = destination;
         Bounds = bounds;
+        Grant = grant;
     }
 
     /// <summary>Gets the identity of this resolution operation.</summary>
-    public NetworkOperationId Id { get; init; }
+    public NetworkOperationId Id { get; }
 
     /// <summary>Gets the destination to resolve.</summary>
-    public NetworkDestination Destination { get; init; }
+    public NetworkDestination Destination { get; }
 
     /// <summary>Gets the bounds this resolution must respect.</summary>
-    public NetworkBounds Bounds { get; init; }
+    public NetworkBounds Bounds { get; }
+
+    /// <summary>Gets the exact single-use resolution authority.</summary>
+    public SecurityGrant Grant { get; }
 }

@@ -100,16 +100,16 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public async Task AddOpenAIChatModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    public async Task AddOpenAILlmModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
     {
         var services = new ServiceCollection();
         _ = services.AddOpenAI();
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
-        _ = services.AddOpenAIChatModel(new ModelAlias("fast"), new ModelId("gpt-4o-mini"));
-        _ = services.AddOpenAIChatModel(new ModelAlias("smart"), new ModelId("gpt-4o"));
+        _ = services.AddOpenAILlmModel(new ModelAlias("fast"), new ModelId("gpt-4o-mini"));
+        _ = services.AddOpenAILlmModel(new ModelAlias("smart"), new ModelId("gpt-4o"));
 
         using var provider = services.BuildServiceProvider();
-        var models = provider.GetServices<IChatModel>().ToArray();
+        var models = provider.GetServices<ILlmModel>().ToArray();
 
         models.Length.ShouldBe(2);
         models.Select(m => m.Alias.Value).ShouldBe(["fast", "smart"], ignoreOrder: true);
@@ -146,15 +146,15 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddOpenAIChatModel_WhenNoCapabilitiesSupplied_UsesDefaultCapabilities()
+    public void AddOpenAILlmModel_WhenNoCapabilitiesSupplied_UsesDefaultCapabilities()
     {
         var services = new ServiceCollection();
         _ = services.AddOpenAI();
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
-        _ = services.AddOpenAIChatModel(new ModelAlias("chat"), new ModelId("gpt-4o"));
+        _ = services.AddOpenAILlmModel(new ModelAlias("chat"), new ModelId("gpt-4o"));
 
         using var provider = services.BuildServiceProvider();
-        var model = provider.GetRequiredService<IChatModel>().ShouldBeOfType<OpenAIChatModel>();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OpenAILlmModel>();
 
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }

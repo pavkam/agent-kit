@@ -1,0 +1,16 @@
+data: {"type": "message-start", "id": "c14c80c3-stream-04", "delta": {"message": {"role": "assistant"}}}
+
+data: {"type": "content-start", "index": 0, "delta": {"message": {"content": {"type": "thinking", "thinking": ""}}}}
+
+data: {"type": "content-delta", "index": 0, "delta": {"message": {"content": {"thinking": "Let me consider..."}}}}
+
+data: {"type": "content-end", "index": 0}
+
+data: {"type": "content-start", "index": 1, "delta": {"message": {"content": {"type": "text", "text": ""}}}}
+
+data: {"type": "content-delta", "index": 1, "delta": {"message": {"content": {"text": "The answer is 42."}}}}
+
+data: {"type": "content-end", "index": 1}
+
+data: {"type": "message-end", "delta": {"finish_reason": "COMPLETE", "usage": {"tokens": {"input_tokens": 12, "output_tokens": 30}}}}
+

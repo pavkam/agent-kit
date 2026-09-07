@@ -14,7 +14,7 @@ using AgentKit.Providers.OpenAICompatible;
 /// "extended OpenAI Chat Completions" skin documented for
 /// <c>POST /chat/completions</c>). OpenRouter's Responses and Anthropic
 /// Messages skins, embeddings, and reranking are separate wire contracts
-/// and separate <see cref="IChatModel"/>/semantic-operation
+/// and separate <see cref="ILlmModel"/>/semantic-operation
 /// implementations not covered by this package.
 /// </remarks>
 public static class OpenRouterProviderDefaults

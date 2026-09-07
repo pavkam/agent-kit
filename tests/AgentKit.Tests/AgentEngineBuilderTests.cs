@@ -21,18 +21,53 @@ public sealed class AgentEngineBuilderTests
     [Fact]
     public void Build_WhenRequiredTimeProviderWasRemoved_ThrowsBeforeReturningEngine()
     {
-        var builder = AgentEngine.CreateBuilder();
+        var builder = CompositionTestData.RunnableBuilder();
         _ = builder.Services.RemoveAll<TimeProvider>();
 
-        var exception = Should.Throw<InvalidOperationException>(builder.Build);
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
 
-        exception.Message.ShouldContain(nameof(TimeProvider));
+        exception.Diagnostics.ShouldContain(
+            diagnostic => diagnostic.Code == "agentkit.time.missing");
+    }
+
+    [Fact]
+    public void Build_WhenNoAgentIsPublished_ThrowsWithAnEmptyCatalogDiagnostic()
+    {
+        var builder = AgentEngine.CreateBuilder();
+        _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(
+            diagnostic => diagnostic.Code == "agentkit.catalog.empty");
+    }
+
+    [Fact]
+    public void Build_WhenNoLoopIsRegistered_ThrowsWithAnUnresolvableLoopDiagnostic()
+    {
+        var builder = AgentEngine.CreateBuilder();
+        _ = builder.Services.AddAgent(CompositionTestData.Definition());
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(
+            diagnostic => diagnostic.Code == "agentkit.loop.unresolvable");
+    }
+
+    [Fact]
+    public void Build_WhenSeveralProblemsExist_ReportsAllOfThem()
+    {
+        var builder = AgentEngine.CreateBuilder();
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.Length.ShouldBeGreaterThanOrEqualTo(2);
     }
 
     [Fact]
     public void Build_WhenSingletonCapturesScopedService_ThrowsBeforeReturningEngine()
     {
-        var builder = AgentEngine.CreateBuilder();
+        var builder = CompositionTestData.RunnableBuilder();
         _ = builder.Services.AddScoped<ScopedDependency>();
         _ = builder.Services.AddSingleton<SingletonCapturingScoped>();
 
@@ -45,7 +80,7 @@ public sealed class AgentEngineBuilderTests
     public async Task Build_WhenEngineIsDisposed_DisposesOwnedProviderExactlyOnce()
     {
         TrackingTimeProvider? timeProvider = null;
-        var builder = AgentEngine.CreateBuilder();
+        var builder = CompositionTestData.RunnableBuilder();
         _ = builder.Services.RemoveAll<TimeProvider>();
         _ = builder.Services.AddSingleton<TimeProvider>(
             _ => timeProvider = new TrackingTimeProvider());
@@ -66,7 +101,7 @@ public sealed class AgentEngineBuilderTests
     {
         var firstTimeProvider = new TrackingTimeProvider();
         var secondTimeProvider = new TrackingTimeProvider();
-        var builder = AgentEngine.CreateBuilder();
+        var builder = CompositionTestData.RunnableBuilder();
         _ = builder.Services.ReplaceTimeProvider(firstTimeProvider);
         var engine = builder.Build();
 

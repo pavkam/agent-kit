@@ -3,20 +3,18 @@
 
 namespace AgentKit;
 
-/// <summary>Resolves a network destination to a bounded set of addresses, enforcing a configured destination policy.</summary>
-/// <remarks>
-/// See <see cref="NetworkDestinationPolicy"/> for the reduced-scope
-/// rationale shared by every implementation of this contract: this
-/// resolver enforces its own structural policy directly rather than
-/// consulting a separate security authority and grant.
-/// </remarks>
+/// <summary>Resolves one canonical destination under exact single-use network authority.</summary>
 public interface INetworkNameResolver
 {
-    /// <summary>Resolves one destination.</summary>
-    /// <param name="request">The resolution request.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
-    /// <returns>A task producing the terminal resolution outcome.</returns>
+    /// <summary>Gets the enforcement audience that resolution grants must name.</summary>
+    public ComponentId SecurityAudience { get; }
+
+    /// <summary>Resolves one bounded destination without opening a connection.</summary>
+    /// <param name="request">The exact authorized resolution request.</param>
+    /// <param name="cancellationToken">A token used to cancel pending resolution.</param>
+    /// <returns>The terminal resolution result.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     public ValueTask<NetworkResolutionResult> ResolveAsync(
-        NetworkResolutionRequest request, CancellationToken cancellationToken = default);
+        NetworkResolutionRequest request,
+        CancellationToken cancellationToken = default);
 }

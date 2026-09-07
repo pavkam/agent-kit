@@ -27,6 +27,7 @@ public sealed class DefaultToolInvoker: IToolInvoker
 {
     private readonly IToolCatalog _catalog;
     private readonly IToolAuthorizer _authorizer;
+    private readonly ILogger<DefaultToolInvoker> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="DefaultToolInvoker"/> class.</summary>
     /// <param name="catalog">The catalog used to resolve a call's tool identity.</param>
@@ -35,12 +36,27 @@ public sealed class DefaultToolInvoker: IToolInvoker
     /// <paramref name="catalog"/> or <paramref name="authorizer"/> is null.
     /// </exception>
     public DefaultToolInvoker(IToolCatalog catalog, IToolAuthorizer authorizer)
+        : this(catalog, authorizer, Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultToolInvoker>.Instance)
+    {
+    }
+
+    /// <summary>Initializes an invoker with its type-specific structured logger.</summary>
+    /// <param name="catalog">The catalog used to resolve a call's tool identity.</param>
+    /// <param name="authorizer">The authorizer used to decide whether a resolved call may proceed.</param>
+    /// <param name="logger">The logger that receives safe tool-lifecycle diagnostics.</param>
+    /// <exception cref="ArgumentNullException">Any dependency is null.</exception>
+    public DefaultToolInvoker(
+        IToolCatalog catalog,
+        IToolAuthorizer authorizer,
+        ILogger<DefaultToolInvoker> logger)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(authorizer);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _catalog = catalog;
         _authorizer = authorizer;
+        _logger = logger;
     }
 
     /// <inheritdoc/>
@@ -48,8 +64,19 @@ public sealed class DefaultToolInvoker: IToolInvoker
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        var context = request.Context;
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(
+            AgentKitActivityNames.ExecuteTool,
+            ActivityKind.Internal,
+            parentContext: Activity.Current?.Context ?? default,
+            tags: CreateActivityTags(request));
+        ToolLog.Started(_logger, context.ToolCallId, request.ToolId);
+
         if (!_catalog.TryResolve(request.ToolId, out var tool))
         {
+            activity.SetFailed("unknown_tool", "unknown_tool");
+            ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "unknown_tool"));
+            ToolLog.Unknown(_logger, context.ToolCallId, request.ToolId);
             return Rejected($"Tool '{request.ToolId}' is not registered.");
         }
 
@@ -58,6 +85,9 @@ public sealed class DefaultToolInvoker: IToolInvoker
 
         if (authorization is ToolAuthorizationDenied denied)
         {
+            activity.SetFailed("denied", "permission_denied");
+            ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "denied"));
+            ToolLog.Denied(_logger, context.ToolCallId, request.ToolId);
             return Rejected(denied.SafeMessage);
         }
 
@@ -65,16 +95,61 @@ public sealed class DefaultToolInvoker: IToolInvoker
 
         try
         {
-            return await tool.InvokeAsync(invocationRequest, cancellationToken).ConfigureAwait(false);
+            var result = await tool.InvokeAsync(invocationRequest, cancellationToken).ConfigureAwait(false);
+            var outcome = result.Outcome.Kind.ToString();
+            if (result.Outcome.Kind == ToolCallOutcomeKind.Success)
+            {
+                activity.SetSuccessful(outcome);
+            }
+            else
+            {
+                activity.SetFailed(outcome, outcome);
+            }
+
+            ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+            ToolLog.Completed(_logger, context.ToolCallId, request.ToolId, result.Outcome.Kind);
+            return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            activity.SetFailed("cancelled", "cancellation");
+            ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "cancelled"));
+            ToolLog.Cancelled(_logger, context.ToolCallId, request.ToolId);
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
+            ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "failed"));
+            ToolLog.Failed(
+                _logger,
+                context.ToolCallId,
+                request.ToolId,
+                exception.GetType().FullName ?? exception.GetType().Name);
             return Failed($"Tool '{request.ToolId}' threw an unhandled exception during invocation.");
         }
+    }
+
+    private static ActivityTagsCollection CreateActivityTags(ToolCallRequest request)
+    {
+        Debug.Assert(request is not null, "A validated request is required to create tool activity tags.");
+        var tags = new ActivityTagsCollection
+        {
+            { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.ExecuteTool },
+            { AgentKitTagNames.AgentId, request.Context.AgentId.ToString() },
+            { AgentKitTagNames.SessionId, request.Context.SessionId?.ToString() },
+            { AgentKitTagNames.ToolCallId, request.Context.ToolCallId.ToString() },
+            { AgentKitTagNames.ToolName, request.ToolId.ToString() },
+            { AgentKitTagNames.OperationId, request.Context.Correlation.OperationId.ToString() },
+        };
+
+        if (request.Context.Correlation is InRunOperationCorrelation runCorrelation)
+        {
+            tags.Add(AgentKitTagNames.RunId, runCorrelation.RunId.ToString());
+            tags.Add(AgentKitTagNames.TurnId, runCorrelation.TurnId?.ToString());
+        }
+
+        return tags;
     }
 
     private static ToolInvocationResult Rejected(string safeMessage) => new(

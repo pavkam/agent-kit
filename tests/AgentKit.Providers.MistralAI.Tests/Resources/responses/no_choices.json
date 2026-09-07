@@ -1,0 +1,12 @@
+{
+  "id": "cmpl-05abc",
+  "object": "chat.completion",
+  "created": 1702256700,
+  "model": "mistral-large-latest-2412",
+  "choices": [],
+  "usage": {
+    "prompt_tokens": 5,
+    "completion_tokens": 0,
+    "total_tokens": 5
+  }
+}

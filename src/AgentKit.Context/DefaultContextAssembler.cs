@@ -8,7 +8,7 @@ namespace AgentKit.Context;
 /// history to complete messages only, validates that every tool call and
 /// tool result in the repaired history causally match, and combines
 /// instructions, history, tools, and settings into one
-/// <see cref="ChatRequestContext"/>.
+/// <see cref="LlmRequestContext"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -33,6 +33,29 @@ namespace AgentKit.Context;
 /// </remarks>
 public sealed class DefaultContextAssembler: IContextAssembler
 {
+    private readonly ILogger<DefaultContextAssembler> _logger;
+
+    /// <summary>
+    /// Initializes an assembler that emits no logs unless constructed by dependency injection.
+    /// </summary>
+    /// <remarks>
+    /// This compatibility constructor uses Microsoft's null logger. Applications
+    /// should normally resolve the assembler after calling <c>AddAgentContext</c>.
+    /// </remarks>
+    public DefaultContextAssembler()
+        : this(Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultContextAssembler>.Instance)
+    {
+    }
+
+    /// <summary>Initializes an assembler with its type-specific structured logger.</summary>
+    /// <param name="logger">The logger that receives safe context-preparation diagnostics.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="logger"/> is null.</exception>
+    public DefaultContextAssembler(ILogger<DefaultContextAssembler> logger)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        _logger = logger;
+    }
+
     /// <inheritdoc/>
     public Task<ContextAssemblyResult> AssembleAsync(
         ContextAssemblyRequest request, CancellationToken cancellationToken = default)
@@ -40,10 +63,30 @@ public sealed class DefaultContextAssembler: IContextAssembler
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(
+            AgentKitActivityNames.ContextPrepare,
+            ActivityKind.Internal,
+            parentContext: Activity.Current?.Context ?? default,
+            tags: new ActivityTagsCollection
+            {
+                { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.ContextPrepare },
+                { AgentKitTagNames.AgentId, request.AgentId.ToString() },
+                { AgentKitTagNames.SessionId, request.SessionId.ToString() },
+                { AgentKitTagNames.RunId, request.RunId.ToString() },
+                { AgentKitTagNames.TurnId, request.TurnId.ToString() },
+                { AgentKitTagNames.ModelRequestId, request.ModelRequestId.ToString() },
+                { AgentKitTagNames.RequestModel, request.Model.ModelId.ToString() },
+            });
+        ContextLog.Preparing(_logger, request.ModelRequestId, request.History.Length);
+
         var repairedHistory = RepairHistory(request.History);
 
         if (repairedHistory.IsEmpty)
         {
+            const string outcome = "empty_history";
+            activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.EmptyHistory));
+            ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+            ContextLog.Rejected(_logger, request.ModelRequestId, ContextPreparationFailureKind.EmptyHistory);
             return Task.FromResult<ContextAssemblyResult>(
                 new ContextPreparationFailed(
                     new ContextPreparationFailure(
@@ -55,12 +98,16 @@ public sealed class DefaultContextAssembler: IContextAssembler
         var causalityFailure = ValidateToolCallCausality(repairedHistory);
         if (causalityFailure is not null)
         {
+            const string outcome = "broken_tool_call_causality";
+            activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.BrokenToolCallCausality));
+            ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+            ContextLog.Rejected(_logger, request.ModelRequestId, causalityFailure.Kind);
             return Task.FromResult<ContextAssemblyResult>(new ContextPreparationFailed(causalityFailure));
         }
 
         var messages = request.Instructions.AddRange(repairedHistory);
 
-        var context = new ChatRequestContext(
+        var context = new LlmRequestContext(
             request.ModelRequestId,
             request.Model,
             messages,
@@ -69,6 +116,9 @@ public sealed class DefaultContextAssembler: IContextAssembler
             request.Settings,
             request.Extensions);
 
+        activity.SetSuccessful("ready");
+        ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "ready"));
+        ContextLog.Prepared(_logger, request.ModelRequestId, messages.Length);
         return Task.FromResult<ContextAssemblyResult>(new ContextReady(context));
     }
 

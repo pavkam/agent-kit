@@ -3,37 +3,28 @@
 
 namespace AgentKit.Network.InMemory;
 
-/// <summary>An <see cref="INetworkResponse"/> backed by an in-memory scripted body.</summary>
+/// <summary>Owns a deterministic immutable response body.</summary>
 public sealed class ScriptedNetworkResponse: INetworkResponse
 {
-    private readonly MemoryStream _content;
-    private int _disposed;
-
-    /// <summary>Initializes a new instance of the <see cref="ScriptedNetworkResponse"/> class.</summary>
-    /// <param name="metadata">The scripted response metadata.</param>
-    /// <param name="body">The scripted response body bytes.</param>
+    /// <summary>Initializes one scripted response.</summary>
+    /// <param name="metadata">The immutable response metadata.</param>
+    /// <param name="content">The exact body bytes copied into owned storage.</param>
     /// <exception cref="ArgumentNullException"><paramref name="metadata"/> is null.</exception>
-    public ScriptedNetworkResponse(NetworkResponseMetadata metadata, ReadOnlyMemory<byte> body)
+    public ScriptedNetworkResponse(NetworkResponseMetadata metadata, ReadOnlyMemory<byte> content)
     {
         ArgumentNullException.ThrowIfNull(metadata);
         Metadata = metadata;
-        _content = new MemoryStream(body.ToArray(), writable: false);
+        Content = new MemoryStream(content.ToArray(), writable: false);
     }
 
     /// <inheritdoc/>
     public NetworkResponseMetadata Metadata { get; }
-
     /// <inheritdoc/>
-    public Stream Content => _content;
-
+    public Stream Content { get; }
     /// <inheritdoc/>
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 0)
-        {
-            _content.Dispose();
-        }
-
-        return ValueTask.CompletedTask;
+        await Content.DisposeAsync().ConfigureAwait(false);
+        GC.SuppressFinalize(this);
     }
 }

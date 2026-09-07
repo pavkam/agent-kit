@@ -1,0 +1,4 @@
+data: {"id": "cmpl-s03", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "content": [{"type": "image_url", "image_url": "https://example.com/generated.png"}]}, "finish_reason": "stop"}]}
+
+data: [DONE]
+

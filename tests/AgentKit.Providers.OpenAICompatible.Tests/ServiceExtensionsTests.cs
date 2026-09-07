@@ -23,6 +23,8 @@ public sealed class ServiceExtensionsTests
         _ = provider.GetRequiredService<IOpenAIRequestTranslator>().ShouldBeOfType<OpenAIRequestTranslator>();
         _ = provider.GetRequiredService<IOpenAIStreamParser>().ShouldBeOfType<OpenAIChatCompletionResponseParser>();
         _ = provider.GetRequiredService<IIdentifierGenerator<ToolCallId>>().ShouldBeOfType<DefaultToolCallIdGenerator>();
+        _ = provider.GetRequiredService<IOpenAIEmbeddingRequestTranslator>().ShouldBeOfType<OpenAIEmbeddingRequestTranslator>();
+        _ = provider.GetRequiredService<IOpenAIEmbeddingResponseParser>().ShouldBeOfType<OpenAIEmbeddingResponseParser>();
     }
 
     [Fact]
@@ -51,6 +53,6 @@ public sealed class ServiceExtensionsTests
 
     private sealed class CustomTranslator: IOpenAIRequestTranslator
     {
-        public JsonObject Translate(ChatModelRequest request, OpenAICompatibilityProfile profile, bool useStreaming) => [];
+        public JsonObject Translate(LlmModelRequest request, OpenAICompatibilityProfile profile, bool useStreaming) => [];
     }
 }

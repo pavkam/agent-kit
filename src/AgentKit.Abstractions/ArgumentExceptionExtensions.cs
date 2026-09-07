@@ -64,6 +64,76 @@ public static class ArgumentExceptionExtensions
         }
 
         /// <summary>
+        /// Throws an <see cref="ArgumentException"/> if <paramref name="array"/>
+        /// is default or contains no elements.
+        /// </summary>
+        /// <typeparam name="T">The array element type.</typeparam>
+        /// <param name="array">The candidate array that must contain at least one element.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="array"/> is default or empty.</exception>
+        public static void ThrowIfDefaultOrEmpty<T>(
+            ImmutableArray<T> array,
+            [CallerArgumentExpression(nameof(array))] string? paramName = null)
+        {
+            if (array.IsDefaultOrEmpty)
+            {
+                throw new ArgumentException("Value must contain at least one element.", paramName);
+            }
+        }
+
+        /// <summary>Throws an <see cref="ArgumentException"/> if an immutable reference array is default or contains null.</summary>
+        /// <typeparam name="T">The non-null reference element type.</typeparam>
+        /// <param name="array">The candidate array.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="array"/> is default or contains a null element.</exception>
+        public static void ThrowIfContainsNull<T>(
+            ImmutableArray<T> array,
+            [CallerArgumentExpression(nameof(array))] string? paramName = null)
+            where T : class
+        {
+            ArgumentException.ThrowIfDefault(array, paramName);
+            if (array.Any(static value => value is null))
+            {
+                throw new ArgumentException("Value must not contain null elements.", paramName);
+            }
+        }
+
+        /// <summary>Throws an <see cref="ArgumentException"/> if a string contains the NUL character.</summary>
+        /// <param name="value">The non-null candidate string.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="value"/> contains a NUL character.</exception>
+        public static void ThrowIfContainsNul(
+            string value,
+            [CallerArgumentExpression(nameof(value))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(value, paramName);
+            if (value.Contains('\0', StringComparison.Ordinal))
+            {
+                throw new ArgumentException("Value must not contain NUL characters.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a host is not a canonicalizable DNS name or unscoped IP literal.</summary>
+        /// <param name="value">The candidate host text.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="value"/> is blank, contains a scoped-address marker, or is not a DNS/IP host.
+        /// </exception>
+        public static void ThrowIfInvalidNetworkHost(
+            string value,
+            [CallerArgumentExpression(nameof(value))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value, paramName);
+            var candidate = value.Trim().TrimEnd('.');
+            if (candidate.Contains('%', StringComparison.Ordinal)
+                || Uri.CheckHostName(candidate) == UriHostNameType.Unknown)
+            {
+                throw new ArgumentException("Value must be a DNS name or an unscoped IP-address literal.", paramName);
+            }
+        }
+
+        /// <summary>
         /// Throws an <see cref="ArgumentException"/> if <paramref name="uri"/>
         /// is not an absolute URI.
         /// </summary>
@@ -83,6 +153,43 @@ public static class ArgumentExceptionExtensions
             if (!uri.IsAbsoluteUri)
             {
                 throw new ArgumentException("Value must be an absolute URI.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a web-search result URL is not credential-free absolute HTTP(S).</summary>
+        /// <param name="uri">The absolute URI to validate.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="uri"/> is null.</exception>
+        /// <exception cref="ArgumentException">The scheme is not HTTP(S), the host is missing, or user information is present.</exception>
+        public static void ThrowIfInvalidWebResultUri(
+            Uri uri,
+            [CallerArgumentExpression(nameof(uri))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(uri, paramName);
+            if (!uri.IsAbsoluteUri
+                || uri.Scheme is not ("http" or "https")
+                || string.IsNullOrWhiteSpace(uri.Host)
+                || !string.IsNullOrEmpty(uri.UserInfo))
+            {
+                throw new ArgumentException(
+                    "Value must be an absolute credential-free HTTP(S) URI with a host.",
+                    paramName);
+            }
+        }
+
+        /// <summary>Throws when a configured web-search destination is not a network endpoint resource.</summary>
+        /// <param name="resource">The resource to validate.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="resource"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="resource"/> is not a network endpoint.</exception>
+        public static void ThrowIfNotNetworkEndpointResource(
+            ProtectedResource resource,
+            [CallerArgumentExpression(nameof(resource))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(resource, paramName);
+            if (resource.Kind != ProtectedResourceKind.NetworkEndpoint)
+            {
+                throw new ArgumentException("Value must identify a network endpoint.", paramName);
             }
         }
 
@@ -114,6 +221,67 @@ public static class ArgumentExceptionExtensions
             if (!Uri.TryCreate(path, UriKind.Relative, out _) || path[0] is '/' or '\\')
             {
                 throw new ArgumentException("Value must be a non-rooted relative URI path.", paramName);
+            }
+        }
+
+        /// <summary>Throws when human-question options contain duplicate identities.</summary>
+        /// <param name="options">The initialized option array to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="options"/> is default or contains duplicate identities.</exception>
+        public static void ThrowIfDuplicateQuestionOptionIds(
+            ImmutableArray<HumanQuestionOption> options,
+            [CallerArgumentExpression(nameof(options))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfDefault(options, paramName);
+            if (options.Select(static option => option.Id).Distinct().Count() != options.Length)
+            {
+                throw new ArgumentException("Question option identities must be unique.", paramName);
+            }
+        }
+
+        /// <summary>Throws when work-plan items contain duplicate stable identities.</summary>
+        /// <param name="items">The initialized item array to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="items"/> is default or contains duplicate identities.</exception>
+        public static void ThrowIfDuplicatePlanItemIds(
+            ImmutableArray<WorkPlanItem> items,
+            [CallerArgumentExpression(nameof(items))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfDefault(items, paramName);
+            if (items.Select(static item => item.Id).Distinct().Count() != items.Length)
+            {
+                throw new ArgumentException("Plan item identities must be unique.", paramName);
+            }
+        }
+
+        /// <summary>Throws when more than one work-plan item is in progress.</summary>
+        /// <param name="items">The initialized item array to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="items"/> is default or contains multiple in-progress items.</exception>
+        public static void ThrowIfMultipleInProgressPlanItems(
+            ImmutableArray<WorkPlanItem> items,
+            [CallerArgumentExpression(nameof(items))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfDefault(items, paramName);
+            if (items.Count(static item => item.Status == PlanItemStatus.InProgress) > 1)
+            {
+                throw new ArgumentException("At most one plan item may be in progress.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a stream cannot supply artifact content.</summary>
+        /// <param name="stream">The non-null stream to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="stream"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="stream"/> is not readable.</exception>
+        public static void ThrowIfNotReadable(
+            Stream stream,
+            [CallerArgumentExpression(nameof(stream))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(stream, paramName);
+            if (!stream.CanRead)
+            {
+                throw new ArgumentException("Stream must be readable.", paramName);
             }
         }
     }

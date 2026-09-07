@@ -1,0 +1,21 @@
+{
+  "id": "cmpl-04abc",
+  "object": "chat.completion",
+  "created": 1702256600,
+  "model": "mistral-large-latest-2412",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "image_url",
+            "image_url": "https://example.com/generated.png"
+          }
+        ]
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

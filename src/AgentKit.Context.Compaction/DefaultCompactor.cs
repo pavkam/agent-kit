@@ -34,6 +34,7 @@ public sealed class DefaultCompactor: ICompactor
     private readonly IIdentifierGenerator<SessionEntryId> _entryIds;
     private readonly TimeProvider _timeProvider;
     private readonly int _sourceReadPageSize;
+    private readonly ILogger<DefaultCompactor> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="DefaultCompactor"/> class.</summary>
     /// <param name="coordinator">The session coordinator used to load source entries and activate a candidate.</param>
@@ -45,7 +46,8 @@ public sealed class DefaultCompactor: ICompactor
     /// <param name="entryIds">Generates identities for the appended compaction entry.</param>
     /// <param name="timeProvider">The clock used to timestamp produced manifests and records.</param>
     /// <param name="options">The validated compaction options carrying the source read page size.</param>
-    /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
+    /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
+    /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
     public DefaultCompactor(
         ISessionCoordinator coordinator,
         ICompactionCutSelector cutSelector,
@@ -55,7 +57,8 @@ public sealed class DefaultCompactor: ICompactor
         IIdentifierGenerator<CompactionManifestId> manifestIds,
         IIdentifierGenerator<SessionEntryId> entryIds,
         TimeProvider timeProvider,
-        IOptions<CompactionOptions> options)
+        IOptions<CompactionOptions> options,
+        ILogger<DefaultCompactor>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(coordinator);
         ArgumentNullException.ThrowIfNull(cutSelector);
@@ -76,6 +79,7 @@ public sealed class DefaultCompactor: ICompactor
         _entryIds = entryIds;
         _timeProvider = timeProvider;
         _sourceReadPageSize = options.Value.SourceReadPageSize;
+        _logger = logger ?? NullLogger<DefaultCompactor>.Instance;
     }
 
     /// <inheritdoc/>
@@ -83,6 +87,64 @@ public sealed class DefaultCompactor: ICompactor
         CompactionRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        var context = request.Context;
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.ContextCompact);
+        _ = activity?.SetTag(AgentKitTagNames.CompactionId, context.CompactionId.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.AgentId, context.AgentId.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.SessionId, context.SessionId.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.OperationId, context.Correlation.OperationId.ToString());
+
+        try
+        {
+            CompactionLog.Started(_logger, context.CompactionId, context.SessionId);
+            var result = await CompactCoreAsync(request, cancellationToken).ConfigureAwait(false);
+            var outcome = result switch
+            {
+                CompactionSucceeded => "succeeded",
+                CompactionConflict => "conflict",
+                CompactionCancelled => "cancelled",
+                CompactionRejected => "rejected",
+                CompactionNotReducing => "not_reducing",
+                _ => "failed",
+            };
+
+            if (result is CompactionSucceeded)
+            {
+                activity.SetSuccessful(outcome);
+            }
+            else
+            {
+                activity.SetFailed(outcome, result.GetType().Name);
+            }
+
+            CompactionLog.Completed(_logger, context.CompactionId, context.SessionId, outcome);
+            CompactionMetrics.Record(outcome);
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            activity.SetFailed("cancelled", nameof(OperationCanceledException));
+            CompactionLog.Cancelled(_logger, context.CompactionId, context.SessionId);
+            CompactionMetrics.Record("cancelled");
+            throw;
+        }
+        catch (Exception exception)
+        {
+            activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
+            CompactionLog.Failed(
+                _logger,
+                context.CompactionId,
+                context.SessionId,
+                exception.GetType().FullName ?? exception.GetType().Name);
+            CompactionMetrics.Record("failed");
+            throw;
+        }
+    }
+
+    private async Task<CompactionResult> CompactCoreAsync(
+        CompactionRequest request, CancellationToken cancellationToken)
+    {
 
         var context = request.Context;
         var sessionContext = new SessionOperationContext(

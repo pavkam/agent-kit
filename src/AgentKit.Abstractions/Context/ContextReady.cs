@@ -13,12 +13,12 @@ public sealed record ContextReady: ContextAssemblyResult
     /// <summary>Initializes a new instance of the <see cref="ContextReady"/> record.</summary>
     /// <param name="context">The assembled, provider-ready request content.</param>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is null.</exception>
-    public ContextReady(ChatRequestContext context)
+    public ContextReady(LlmRequestContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         Context = context;
     }
 
     /// <summary>Gets the assembled, provider-ready request content.</summary>
-    public ChatRequestContext Context { get; init; }
+    public LlmRequestContext Context { get; init; }
 }

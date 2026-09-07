@@ -4,7 +4,7 @@
 namespace AgentKit;
 
 /// <summary>
-/// The committed, terminal result of one successful <see cref="IChatModel"/>
+/// The committed, terminal result of one successful <see cref="ILlmModel"/>
 /// attempt, carried by <see cref="ModelResponseCompleted"/>.
 /// </summary>
 /// <remarks>

@@ -41,13 +41,18 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
 
     private readonly ImmutableDictionary<string, IOutputValidator> _validatorsByName;
     private readonly AgentOutputOptionsSnapshot _options;
+    private readonly ILogger<DefaultOutputProcessor> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="DefaultOutputProcessor"/> class.</summary>
     /// <param name="validators">Every additively registered validator, addressable by its stable name.</param>
     /// <param name="options">The validated processor options.</param>
+    /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
     /// <exception cref="ArgumentNullException"><paramref name="validators"/> or <paramref name="options"/> is null.</exception>
     /// <exception cref="ArgumentException">Two or more validators share the same <see cref="IOutputValidator.Name"/>.</exception>
-    public DefaultOutputProcessor(IEnumerable<IOutputValidator> validators, AgentOutputOptionsSnapshot options)
+    public DefaultOutputProcessor(
+        IEnumerable<IOutputValidator> validators,
+        AgentOutputOptionsSnapshot options,
+        ILogger<DefaultOutputProcessor>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(validators);
         ArgumentNullException.ThrowIfNull(options);
@@ -64,6 +69,7 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
 
         _validatorsByName = builder.ToImmutable();
         _options = options;
+        _logger = logger ?? NullLogger<DefaultOutputProcessor>.Instance;
     }
 
     /// <inheritdoc/>
@@ -71,7 +77,61 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
         OutputProcessingRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        cancellationToken.ThrowIfCancellationRequested();
+
+        var definition = request.Definition;
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.OutputValidate);
+        _ = activity?.SetTag(AgentKitTagNames.OutputDefinitionId, definition.Id.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.OutputMode, definition.Mode.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.OutputValidationAttempt, request.ValidationAttempt);
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await ProcessCoreAsync(request, cancellationToken).ConfigureAwait(false);
+            var outcome = result switch
+            {
+                OutputAccepted => "accepted",
+                OutputRetryRequired => "retry_required",
+                _ => "rejected",
+            };
+
+            if (result is OutputRejected)
+            {
+                activity.SetFailed(outcome, result.GetType().Name);
+            }
+            else
+            {
+                activity.SetSuccessful(outcome);
+            }
+
+            OutputLog.Completed(_logger, definition.Id, definition.Mode, request.ValidationAttempt, outcome);
+            OutputMetrics.Record(outcome, definition.Mode);
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            activity.SetFailed("cancelled", nameof(OperationCanceledException));
+            OutputLog.Cancelled(_logger, definition.Id, definition.Mode, request.ValidationAttempt);
+            OutputMetrics.Record("cancelled", definition.Mode);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
+            OutputLog.Failed(
+                _logger,
+                definition.Id,
+                definition.Mode,
+                request.ValidationAttempt,
+                exception.GetType().FullName ?? exception.GetType().Name);
+            OutputMetrics.Record("failed", definition.Mode);
+            throw;
+        }
+    }
+
+    private async ValueTask<OutputProcessingResult> ProcessCoreAsync(
+        OutputProcessingRequest request, CancellationToken cancellationToken)
+    {
 
         var definition = request.Definition;
         var attempt = request.ValidationAttempt;

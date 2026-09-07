@@ -14,18 +14,21 @@ public sealed record FileWriteRequest
     /// <param name="path">The path to write, relative to the file system's configured root.</param>
     /// <param name="content">The text content to write.</param>
     /// <param name="mode">How to treat an existing file at <paramref name="path"/>.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="content"/> is null.</exception>
+    /// <param name="grant">The bounded authority the file-system implementation must validate and consume before mutation.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="content"/> or <paramref name="grant"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="mode"/> is not a defined <see cref="FileWriteMode"/> value.
     /// </exception>
-    public FileWriteRequest(FileSystemPath path, string content, FileWriteMode mode)
+    public FileWriteRequest(FileSystemPath path, string content, FileWriteMode mode, SecurityGrant grant)
     {
         ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(grant);
         ArgumentOutOfRangeException.ThrowIfUndefined(mode);
 
         Path = path;
         Content = content;
         Mode = mode;
+        Grant = grant;
     }
 
     /// <summary>Gets the path to write, relative to the file system's configured root.</summary>
@@ -36,4 +39,7 @@ public sealed record FileWriteRequest
 
     /// <summary>Gets how to treat an existing file at <see cref="Path"/>.</summary>
     public FileWriteMode Mode { get; init; }
+
+    /// <summary>Gets the bounded authority to validate and consume before mutation.</summary>
+    public SecurityGrant Grant { get; init; }
 }

@@ -16,6 +16,9 @@ namespace AgentKit;
 /// </remarks>
 public interface INetworkTransport
 {
+    /// <summary>Gets the exact component audience that consumes send grants before connection.</summary>
+    public ComponentId SecurityAudience { get; }
+
     /// <summary>Sends one request.</summary>
     /// <param name="request">The request to send.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>

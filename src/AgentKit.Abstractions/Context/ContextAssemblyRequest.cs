@@ -5,7 +5,7 @@ namespace AgentKit;
 
 /// <summary>
 /// One complete, immutable request to assemble a bounded, provider-ready
-/// <see cref="ChatRequestContext"/> for a single model request.
+/// <see cref="LlmRequestContext"/> for a single model request.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -36,7 +36,7 @@ public sealed record ContextAssemblyRequest
     /// <param name="turnId">The turn this request is being assembled for.</param>
     /// <param name="modelRequestId">
     /// The identity allocated by the loop for this model request, flowing
-    /// through the resulting <see cref="ChatRequestContext"/> and every
+    /// through the resulting <see cref="LlmRequestContext"/> and every
     /// subsequent event and committed message it produces.
     /// </param>
     /// <param name="model">The selected model descriptor.</param>
@@ -68,9 +68,9 @@ public sealed record ContextAssemblyRequest
         ModelDescriptor model,
         ImmutableArray<AgentMessage> instructions,
         ImmutableArray<AgentMessage> history,
-        ImmutableArray<ChatToolDefinition> tools,
-        ChatToolChoice toolChoice,
-        ChatRequestSettings settings,
+        ImmutableArray<LlmToolDefinition> tools,
+        LlmToolChoice toolChoice,
+        LlmRequestSettings settings,
         ExtensionData extensions)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -126,13 +126,13 @@ public sealed record ContextAssemblyRequest
     public ImmutableArray<AgentMessage> History { get; init; }
 
     /// <summary>Gets the tools available for the model to call.</summary>
-    public ImmutableArray<ChatToolDefinition> Tools { get; init; }
+    public ImmutableArray<LlmToolDefinition> Tools { get; init; }
 
     /// <summary>Gets the tool-call selection policy.</summary>
-    public ChatToolChoice ToolChoice { get; init; }
+    public LlmToolChoice ToolChoice { get; init; }
 
     /// <summary>Gets the effective sampling and output settings.</summary>
-    public ChatRequestSettings Settings { get; init; }
+    public LlmRequestSettings Settings { get; init; }
 
     /// <summary>Gets caller-specific or forward-compatible request data.</summary>
     public ExtensionData Extensions { get; init; }

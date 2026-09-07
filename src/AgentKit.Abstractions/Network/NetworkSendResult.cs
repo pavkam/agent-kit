@@ -6,13 +6,14 @@ namespace AgentKit;
 /// <summary>The immutable base for the terminal outcome of one <see cref="NetworkRequest"/>.</summary>
 /// <remarks>
 /// This is a closed discriminated hierarchy. The concrete kinds are
-/// <see cref="NetworkResponseReceived"/>, <see cref="NetworkRedirectReceived"/>,
-/// <see cref="NetworkDenied"/>, <see cref="NetworkRequestFailed"/>,
+/// <see cref="NetworkResponseReceived"/>, <see cref="NetworkDenied"/>,
+/// <see cref="NetworkRequestFailed"/>,
 /// <see cref="NetworkResponseLimitExceeded"/>,
-/// <see cref="NetworkRedirectLimitExceeded"/>, and
+/// <see cref="NetworkRedirectLimitExceeded"/>,
+/// <see cref="NetworkRedirectReceived"/>, and
 /// <see cref="NetworkCancelled"/>. Its constructor is
 /// <see langword="private protected"/>, so no assembly outside
-/// AgentKit.Abstractions can add an eighth kind.
+/// AgentKit.Abstractions can add a seventh kind.
 /// </remarks>
 public abstract record NetworkSendResult
 {

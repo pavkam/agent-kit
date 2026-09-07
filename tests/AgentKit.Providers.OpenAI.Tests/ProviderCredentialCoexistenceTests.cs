@@ -20,17 +20,17 @@ public sealed class ProviderCredentialCoexistenceTests
         var services = new ServiceCollection();
         _ = services.AddOpenAI();
         _ = services.AddOpenAIApiKeyCredential("openai-key");
-        _ = services.AddOpenAIChatModel(new ModelAlias("openai-chat"), new ModelId("gpt-test"));
+        _ = services.AddOpenAILlmModel(new ModelAlias("openai-chat"), new ModelId("gpt-test"));
         _ = services.AddOpenRouter();
         _ = services.AddOpenRouterApiKeyCredential("openrouter-key");
-        _ = services.AddOpenRouterChatModel(new ModelAlias("openrouter-chat"), new ModelId("provider/model-test"));
+        _ = services.AddOpenRouterLlmModel(new ModelAlias("openrouter-chat"), new ModelId("provider/model-test"));
         _ = services.AddZAi();
         _ = services.AddZAiApiKeyCredential("zai-key");
-        _ = services.AddZAiChatModel(new ModelAlias("zai-chat"), new ModelId("glm-test"));
+        _ = services.AddZAiLlmModel(new ModelAlias("zai-chat"), new ModelId("glm-test"));
 
         await using var provider = services.BuildServiceProvider();
 
-        var models = provider.GetServices<IChatModel>().ToArray();
+        var models = provider.GetServices<ILlmModel>().ToArray();
         models.Select(model => model.Alias.Value).ShouldBe(
             ["openai-chat", "openrouter-chat", "zai-chat"],
             ignoreOrder: true);

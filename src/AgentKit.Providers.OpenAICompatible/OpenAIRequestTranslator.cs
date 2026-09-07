@@ -11,7 +11,7 @@ namespace AgentKit.Providers.OpenAICompatible;
 public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
 {
     /// <inheritdoc/>
-    public JsonObject Translate(ChatModelRequest request, OpenAICompatibilityProfile profile, bool useStreaming)
+    public JsonObject Translate(LlmModelRequest request, OpenAICompatibilityProfile profile, bool useStreaming)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(profile);
@@ -309,7 +309,7 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
         }
     }
 
-    private static JsonArray TranslateTools(ImmutableArray<ChatToolDefinition> tools)
+    private static JsonArray TranslateTools(ImmutableArray<LlmToolDefinition> tools)
     {
         var result = new JsonArray();
 
@@ -334,13 +334,13 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
         return result;
     }
 
-    private static JsonNode TranslateToolChoice(ChatToolChoice toolChoice) =>
+    private static JsonNode TranslateToolChoice(LlmToolChoice toolChoice) =>
         toolChoice.Mode switch
         {
-            ChatToolChoiceMode.Auto => JsonValue.Create("auto"),
-            ChatToolChoiceMode.None => JsonValue.Create("none"),
-            ChatToolChoiceMode.Required => JsonValue.Create("required"),
-            ChatToolChoiceMode.Named => new JsonObject
+            LlmToolChoiceMode.Auto => JsonValue.Create("auto"),
+            LlmToolChoiceMode.None => JsonValue.Create("none"),
+            LlmToolChoiceMode.Required => JsonValue.Create("required"),
+            LlmToolChoiceMode.Named => new JsonObject
             {
                 ["type"] = "function",
                 ["function"] = new JsonObject { ["name"] = toolChoice.ForcedToolName },

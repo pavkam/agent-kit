@@ -3,6 +3,8 @@
 
 namespace AgentKit.Tools;
 
+using AgentKit.Observability;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -26,6 +28,7 @@ public static class ServiceExtensions
         /// </remarks>
         public IServiceCollection AddAgentTools(Action<AgentToolsOptions>? configure = null)
         {
+            _ = services.AddAgentKitObservability();
             var optionsBuilder = services.AddOptions<AgentToolsOptions>();
             if (configure is not null)
             {

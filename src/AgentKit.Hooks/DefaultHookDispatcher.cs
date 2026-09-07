@@ -16,8 +16,11 @@ namespace AgentKit.Hooks;
 /// from the <c>hooks</c> sequence it is given, so it is safe to register as
 /// a singleton and share across every run and hook point in a process.
 /// </remarks>
-public sealed class DefaultHookDispatcher: IHookDispatcher
+/// <param name="logger">The optional structured logger; a null value disables log publication.</param>
+public sealed class DefaultHookDispatcher(ILogger<DefaultHookDispatcher>? logger = null): IHookDispatcher
 {
+    private readonly ILogger<DefaultHookDispatcher> _logger = logger ?? NullLogger<DefaultHookDispatcher>.Instance;
+
     /// <inheritdoc/>
     public async Task DispatchAsync<THook, TArgs>(
         HookPointId point,
@@ -35,6 +38,56 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(invoke);
         ArgumentNullException.ThrowIfNull(scope);
+
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.HookDispatch);
+        _ = activity?.SetTag(AgentKitTagNames.HookPoint, point.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.HookInvocationId, args.InvocationId.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.AgentId, args.AgentId.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.SessionId, args.SessionId?.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.OperationId, args.Correlation.OperationId.ToString());
+
+        try
+        {
+            await DispatchCoreAsync(
+                point, hooks, args, invoke, scope, failureMode, maxReentrantDepth, activity, cancellationToken)
+                .ConfigureAwait(false);
+            activity.SetSuccessful(args is IShortCircuitingHookArgs { IsShortCircuited: true } ? "short_circuited" : "completed");
+            HookLog.DispatchCompleted(_logger, point, args.InvocationId);
+            HookMetrics.RecordDispatch("completed");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            activity.SetFailed("cancelled", nameof(OperationCanceledException));
+            HookLog.DispatchCancelled(_logger, point, args.InvocationId);
+            HookMetrics.RecordDispatch("cancelled");
+            throw;
+        }
+        catch (Exception exception)
+        {
+            activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
+            HookLog.DispatchFailed(
+                _logger,
+                point,
+                args.InvocationId,
+                exception.GetType().FullName ?? exception.GetType().Name);
+            HookMetrics.RecordDispatch("failed");
+            throw;
+        }
+    }
+
+    private async Task DispatchCoreAsync<THook, TArgs>(
+        HookPointId point,
+        IEnumerable<THook> hooks,
+        TArgs args,
+        Func<THook, TArgs, HookDispatchScope, CancellationToken, Task> invoke,
+        HookDispatchScope scope,
+        HookFailureMode failureMode,
+        int maxReentrantDepth,
+        Activity? activity,
+        CancellationToken cancellationToken)
+        where THook : IHook
+        where TArgs : AgentHookEventArgs
+    {
 
         var activeDepth = scope.DepthOf(point);
         if (activeDepth >= maxReentrantDepth)
@@ -61,8 +114,21 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
                 {
                     throw;
                 }
-                catch (Exception)
+                catch (Exception exception)
                 {
+                    HookLog.InvocationIsolated(
+                        _logger,
+                        point,
+                        hook.Id,
+                        args.InvocationId,
+                        exception.GetType().FullName ?? exception.GetType().Name);
+                    _ = activity?.AddEvent(new ActivityEvent(
+                        "hook.failure.isolated",
+                        tags: new ActivityTagsCollection
+                        {
+                            { AgentKitTagNames.Outcome, "isolated" },
+                            { AgentKitTagNames.ErrorType, exception.GetType().FullName ?? exception.GetType().Name },
+                        }));
                     args.Validate();
                     continue;
                 }

@@ -104,31 +104,31 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddOllamaChatModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    public void AddOllamaLlmModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
     {
         var services = new ServiceCollection();
         _ = services.AddOllama();
         _ = services.AddOllamaApiKeyCredential("test-key");
-        _ = services.AddOllamaChatModel(new ModelAlias("primary"), new ModelId("llama3.3"));
-        _ = services.AddOllamaChatModel(new ModelAlias("secondary"), new ModelId("qwen2.5"));
+        _ = services.AddOllamaLlmModel(new ModelAlias("primary"), new ModelId("llama3.3"));
+        _ = services.AddOllamaLlmModel(new ModelAlias("secondary"), new ModelId("qwen2.5"));
 
         using var provider = services.BuildServiceProvider();
-        var models = provider.GetServices<IChatModel>().ToArray();
+        var models = provider.GetServices<ILlmModel>().ToArray();
 
         models.Length.ShouldBe(2);
         models.Select(m => m.Alias.Value).ShouldBe(["primary", "secondary"], ignoreOrder: true);
     }
 
     [Fact]
-    public void AddOllamaChatModel_WhenResolved_UsesOllamaProviderIdentity()
+    public void AddOllamaLlmModel_WhenResolved_UsesOllamaProviderIdentity()
     {
         var services = new ServiceCollection();
         _ = services.AddOllama();
         _ = services.AddOllamaApiKeyCredential("test-key");
-        _ = services.AddOllamaChatModel(new ModelAlias("chat"), new ModelId("llama3.3"));
+        _ = services.AddOllamaLlmModel(new ModelAlias("chat"), new ModelId("llama3.3"));
 
         using var provider = services.BuildServiceProvider();
-        var model = provider.GetRequiredService<IChatModel>().ShouldBeOfType<OllamaChatModel>();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OllamaLlmModel>();
 
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }

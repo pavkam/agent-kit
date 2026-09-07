@@ -1,0 +1,465 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Processes.Tests;
+
+public sealed class OperatingSystemProcessTests: IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), $"agentkit-process-{Guid.NewGuid():N}");
+
+    public OperatingSystemProcessTests() => _ = Directory.CreateDirectory(_root);
+
+    [Fact]
+    public async Task ResolveAsync_WhenExecutableAndWorkingDirectoryAllowed_ReturnsCanonicalFingerprintedIntent()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        _ = Directory.CreateDirectory(Path.Combine(_root, "src"));
+        var resolver = CreateResolver("/bin/sh");
+        var request = Request("/bin/sh", ["-c", "printf ok"], new FileSystemPath("src"));
+
+        var result = await resolver.ResolveAsync(request, TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessResolutionStatus.Resolved);
+        var intent = result.Intent.ShouldNotBeNull();
+        Path.IsPathRooted(intent.AbsoluteExecutablePath).ShouldBeTrue();
+        intent.AbsoluteWorkingDirectory.ShouldBe(Path.Combine(intent.AbsoluteWorkspaceRoot, "src"));
+        intent.ExecutableFingerprint.Value.ShouldStartWith("sha256:");
+        intent.StandardInputFingerprint.ShouldBe(ProcessSecurityBinding.FingerprintBytes([]));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenWorkingDirectoryTraversesSymlink_RejectsOutsideWorkspace()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var outside = Path.Combine(Path.GetTempPath(), $"agentkit-process-outside-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(outside);
+        try
+        {
+            _ = Directory.CreateSymbolicLink(Path.Combine(_root, "outside"), outside);
+            var resolver = CreateResolver("/bin/sh");
+
+            var result = await resolver.ResolveAsync(
+                Request("/bin/sh", [], new FileSystemPath("outside")),
+                TestContext.Current.CancellationToken);
+
+            result.Status.ShouldBe(ProcessResolutionStatus.WorkingDirectoryRejected);
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenReadOnlyEffectRequestsWritableWorkspace_RejectsIntent()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var result = await CreateResolver("/bin/sh").ResolveAsync(
+            Request(
+                "/bin/sh",
+                [],
+                workspaceAccess: ProcessWorkspaceAccess.ReadWrite,
+                sideEffectClass: ProcessSideEffectClass.ReadOnly),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenEnvironmentExceedsByteBound_RejectsBeforeFingerprinting()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var options = OptionsFor("/bin/sh", 1024);
+        options.MaximumEnvironmentBytes = 3;
+        options.AllowedEnvironmentVariableNames.Add("A");
+        var resolver = new OperatingSystemProcessIntentResolver(Options.Create(options));
+        var request = Request(
+            "/bin/sh",
+            [],
+            environment: [new ProcessEnvironmentVariable("A", "123")]);
+
+        var result = await resolver.ResolveAsync(request, TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenGrantDenied_StartsNothingAndUsesExactEnforcement()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/sh", ["-c", "touch denied.txt"]),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var store = new TestGrantStore { Status = GrantConsumptionStatus.Unknown };
+        using var runner = CreateRunner(resolver, store);
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Denied);
+        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        File.Exists(Path.Combine(_root, "denied.txt")).ShouldBeFalse();
+        var enforcement = store.Enforcements.ShouldHaveSingleItem();
+        enforcement.Kind.ShouldBe(SecurityOperationKind.Process);
+        enforcement.Effect.ShouldBe(SecurityEffect.Execute);
+        enforcement.Resources.ShouldBe(ProcessSecurityBinding.Resources(intent));
+        enforcement.InputFingerprint.ShouldBe(ProcessSecurityBinding.Fingerprint(intent));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenArgumentsContainShellSyntax_PassesThemLiterallyWithoutInterpretation()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/echo");
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/echo", ["$(touch hacked.txt)"], workspaceAccess: ProcessWorkspaceAccess.ReadWrite),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore());
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        result.ExitCode.ShouldBe(0);
+        Encoding.UTF8.GetString(result.StandardOutputTail.AsSpan()).ShouldBe("$(touch hacked.txt)\n");
+        File.Exists(Path.Combine(_root, "hacked.txt")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenSandboxProfileIsMissing_DoesNotConsumeGrantOrStart()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var unresolved = Request("/bin/sh", [], sandboxProfile: new SandboxProfileId("missing"));
+        var intent = (await resolver.ResolveAsync(unresolved, TestContext.Current.CancellationToken))
+            .Intent.ShouldNotBeNull();
+        var store = new TestGrantStore();
+        using var runner = CreateRunner(resolver, store);
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.SandboxUnavailable);
+        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        store.Enforcements.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenExecutableBytesChangeAfterAuthorization_RejectsBeforeGrantConsumption()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var executable = Path.Combine(_root, "fixture.sh");
+        await File.WriteAllTextAsync(executable, "#!/bin/sh\nprintf first\n", TestContext.Current.CancellationToken);
+        File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var resolver = CreateResolver(executable);
+        var intent = (await resolver.ResolveAsync(
+            Request(executable, []), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        await File.WriteAllTextAsync(executable, "#!/bin/sh\nprintf changed\n", TestContext.Current.CancellationToken);
+        var store = new TestGrantStore();
+        using var runner = CreateRunner(resolver, store);
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.ResolutionFailed);
+        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        store.Enforcements.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOutputExceedsBound_RetainsExactTailPerStream()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh", maximumOutputBytes: 4);
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/sh", ["-c", "printf 0123456789"], maximumOutputBytes: 4),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore(), maximumOutputBytes: 4);
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        result.TotalStandardOutputBytes.ShouldBe(10);
+        result.StandardOutputTruncated.ShouldBeTrue();
+        Encoding.UTF8.GetString(result.StandardOutputTail.AsSpan()).ShouldBe("6789");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOutputTailTruncates_PreservesCompleteStreamAsArtifact()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh", maximumOutputBytes: 4);
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/sh", ["-c", "printf 0123456789"], maximumOutputBytes: 4),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var artifacts = new RecordingProcessOutputArtifactSink();
+        using var runner = CreateRunner(resolver, new TestGrantStore(), maximumOutputBytes: 4, outputArtifacts: artifacts);
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.StandardOutputArtifact.ShouldBeSameAs(artifacts.Reference);
+        var stored = artifacts.Requests.ShouldHaveSingleItem();
+        stored.Kind.ShouldBe(ProcessOutputKind.StandardOutput);
+        Encoding.UTF8.GetString(stored.Content.AsSpan()).ShouldBe("0123456789");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCompleteOutputExceedsArtifactBound_ReportsLossWithoutCallingSink()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh", maximumOutputBytes: 4);
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/sh", ["-c", "printf 0123456789"], maximumOutputBytes: 4),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var artifacts = new RecordingProcessOutputArtifactSink();
+        using var runner = CreateRunner(
+            resolver, new TestGrantStore(), maximumOutputBytes: 4,
+            maximumArtifactOutputBytes: 5, outputArtifacts: artifacts);
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        result.StandardOutputArtifact.ShouldBeNull();
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("could not be preserved completely");
+        artifacts.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenBothStreamsProduceOutput_PreservesTheirIdentity()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/sh", ["-c", "printf out; printf err >&2"]),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore());
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        Encoding.UTF8.GetString(result.StandardOutputTail.AsSpan()).ShouldBe("out");
+        Encoding.UTF8.GetString(result.StandardErrorTail.AsSpan()).ShouldBe("err");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenWorkspaceIsReadOnly_SandboxPreventsMutation()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request(
+                "/bin/sh",
+                ["-c", "printf blocked > should-not-exist.txt"],
+                workspaceAccess: ProcessWorkspaceAccess.ReadOnly,
+                sideEffectClass: ProcessSideEffectClass.ReadOnly),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore());
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        result.ExitCode.ShouldNotBe(0);
+        File.Exists(Path.Combine(_root, "should-not-exist.txt")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenChildProcessesDenied_EnforcesOrFailsClosedBeforeGrant()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request(
+                "/bin/sh",
+                ["-c", "/usr/bin/touch child-created.txt"],
+                childPolicy: ProcessChildPolicy.Deny),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var store = new TestGrantStore();
+        using var runner = CreateRunner(resolver, store);
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        File.Exists(Path.Combine(_root, "child-created.txt")).ShouldBeFalse();
+        if (OperatingSystem.IsLinux())
+        {
+            result.Status.ShouldBe(ProcessRunStatus.SandboxUnavailable);
+            store.Enforcements.ShouldBeEmpty();
+        }
+        else
+        {
+            result.Status.ShouldBe(ProcessRunStatus.Exited);
+            result.ExitCode.ShouldNotBe(0);
+            _ = store.Enforcements.ShouldHaveSingleItem();
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTimeoutElapses_TerminatesOwnedProcessAndReportsPossibleEffects()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request(
+                "/bin/sh",
+                ["-c", "sleep 5"],
+                timeout: TimeSpan.FromMilliseconds(100),
+                grace: TimeSpan.FromMilliseconds(50)),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore());
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.TimedOut);
+        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.MayHaveOccurred);
+    }
+
+    public void Dispose()
+    {
+        Directory.Delete(_root, recursive: true);
+        GC.SuppressFinalize(this);
+    }
+
+    private OperatingSystemProcessIntentResolver CreateResolver(
+        string executable,
+        long maximumOutputBytes = 1024) => new(Options.Create(OptionsFor(executable, maximumOutputBytes)));
+
+    private OperatingSystemProcessRunner CreateRunner(
+        IProcessIntentResolver resolver,
+        ISecurityGrantStore store,
+        long maximumOutputBytes = 1024,
+        long maximumArtifactOutputBytes = 64 * 1024 * 1024,
+        IProcessOutputArtifactSink? outputArtifacts = null) => new(
+            resolver,
+            [new PlatformProcessSandboxProvider()],
+            store,
+            TimeProvider.System,
+            Options.Create(OptionsFor("/bin/sh", maximumOutputBytes, maximumArtifactOutputBytes)),
+            outputArtifacts: outputArtifacts);
+
+    private OperatingSystemProcessOptions OptionsFor(
+        string executable,
+        long maximumOutputBytes,
+        long maximumArtifactOutputBytes = 64 * 1024 * 1024)
+    {
+        var options = new OperatingSystemProcessOptions
+        {
+            RootDirectory = _root,
+            MaximumOutputBytes = maximumOutputBytes,
+            MaximumArtifactOutputBytes = maximumArtifactOutputBytes,
+            MaximumTimeout = TimeSpan.FromSeconds(10),
+        };
+        options.AllowedExecutablePaths.Add(executable);
+        return options;
+    }
+
+    private static ProcessResolveRequest Request(
+        string executable,
+        ImmutableArray<string> arguments,
+        FileSystemPath? workingDirectory = null,
+        ProcessWorkspaceAccess workspaceAccess = ProcessWorkspaceAccess.ReadWrite,
+        ProcessSideEffectClass sideEffectClass = ProcessSideEffectClass.WorkspaceMutation,
+        long maximumOutputBytes = 1024,
+        TimeSpan? timeout = null,
+        TimeSpan? grace = null,
+        ImmutableArray<ProcessEnvironmentVariable> environment = default,
+        SandboxProfileId? sandboxProfile = null,
+        ProcessChildPolicy childPolicy = ProcessChildPolicy.AllowSandboxed) => new(
+            new ProcessOperationId(Guid.NewGuid()),
+            executable,
+            arguments,
+            workingDirectory,
+            environment.IsDefault ? [] : environment,
+            [],
+            sandboxProfile ?? PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile,
+            workspaceAccess,
+            sideEffectClass,
+            childPolicy,
+            new ProcessResourceLimits(
+                timeout ?? TimeSpan.FromSeconds(2),
+                maximumOutputBytes,
+                grace ?? TimeSpan.FromMilliseconds(250)));
+
+    private static bool IsSupported() => OperatingSystem.IsLinux() || OperatingSystem.IsMacOS();
+
+    private static bool SandboxAvailable() => OperatingSystem.IsMacOS()
+        ? File.Exists("/usr/bin/sandbox-exec")
+        : File.Exists("/usr/bin/bwrap");
+}

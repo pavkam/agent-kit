@@ -4,8 +4,8 @@
 namespace AgentKit;
 
 /// <summary>
-/// The immutable base for the terminal outcome of one <see cref="IChatModel"/>
-/// attempt, returned from <see cref="IChatModel.ExecuteAsync"/>.
+/// The immutable base for the terminal outcome of one <see cref="ILlmModel"/>
+/// attempt, returned from <see cref="ILlmModel.ExecuteAsync"/>.
 /// </summary>
 /// <remarks>
 /// This is a closed discriminated hierarchy. The concrete kinds are

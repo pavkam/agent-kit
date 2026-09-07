@@ -41,13 +41,27 @@ public sealed class AgentEngineBuilder
     /// An immutable engine that owns the service provider created for this
     /// build. The caller must asynchronously dispose the engine.
     /// </returns>
+    /// <remarks>
+    /// <para>
+    /// Validation happens before the engine is returned and before any agent
+    /// runs. It checks that the engine-wide singular services exist, that at
+    /// least one runnable agent definition is published, and that every
+    /// definition resolves the collaborators a run needs. Missing behavior is
+    /// a composition error, never a cue to instantiate a hidden default.
+    /// </para>
+    /// <para>
+    /// When validation fails, the partially built provider is disposed before
+    /// the exception propagates, so a failed build leaks nothing.
+    /// </para>
+    /// </remarks>
     /// <exception cref="AggregateException">
     /// One or more service registrations form an invalid constructor or scope
     /// graph.
     /// </exception>
-    /// <exception cref="InvalidOperationException">
-    /// A required facade service cannot be resolved from the completed
-    /// composition.
+    /// <exception cref="AgentCompositionException">
+    /// The composition is missing a required engine-wide service, publishes no
+    /// runnable agent definition, or contains a definition whose collaborators
+    /// cannot be resolved.
     /// </exception>
     public AgentEngine Build()
     {
@@ -62,8 +76,8 @@ public sealed class AgentEngineBuilder
                     ValidateScopes = true,
                 });
 
-            var timeProvider = provider.GetRequiredService<TimeProvider>();
-            return new AgentEngine(timeProvider, provider);
+            AgentCompositionValidator.Validate(provider);
+            return new AgentEngine(provider, provider);
         }
         catch
         {

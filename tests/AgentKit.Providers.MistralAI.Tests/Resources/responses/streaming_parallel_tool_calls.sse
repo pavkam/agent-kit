@@ -1,0 +1,10 @@
+data: {"id": "cmpl-s05", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [{"index": 0, "id": "call_a", "type": "function", "function": {"name": "get_weather", "arguments": ""}}]}, "finish_reason": null}]}
+
+data: {"id": "cmpl-s05", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 1, "id": "call_b", "type": "function", "function": {"name": "get_time", "arguments": ""}}]}, "finish_reason": null}]}
+
+data: {"id": "cmpl-s05", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\"location\":\"Paris\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "cmpl-s05", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 1, "function": {"arguments": "{\"zone\":\"UTC\"}"}}]}, "finish_reason": "tool_calls"}], "usage": {"prompt_tokens": 14, "completion_tokens": 9, "total_tokens": 23}}
+
+data: [DONE]
+

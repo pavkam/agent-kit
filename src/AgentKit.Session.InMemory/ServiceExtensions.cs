@@ -28,6 +28,8 @@ public static class ServiceExtensions
         /// </remarks>
         public IServiceCollection AddInMemorySessionStore()
         {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IIdentifierGenerator<SessionId>>(
                 _ => new GuidIdentifierGenerator<SessionId>(static value => new SessionId(value)));

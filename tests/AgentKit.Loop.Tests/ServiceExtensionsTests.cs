@@ -45,7 +45,16 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSingleton<ISessionCoordinator>(new FakeSessionCoordinator(new BranchId(Guid.NewGuid())));
         _ = services.AddSingleton<IContextAssembler, DefaultContextAssembler>();
         _ = services.AddSingleton<IToolInvoker>(new FakeToolInvoker(_ => TestFactory.SuccessResult()));
-        _ = services.AddSingleton<IChatModel>(new FakeChatModel(new ModelAlias("chat")));
+
+        // The loop no longer owns model selection, so a composable graph must
+        // supply the provider-runtime collaborators separately. AddAgentLoop
+        // deliberately does not register them.
+        var descriptor = TestFactory.Model();
+        _ = services.AddSingleton<IModelCatalog>(
+            new FakeModelCatalog(TestFactory.Catalog(descriptor)));
+        _ = services.AddSingleton<IModelSelector>(FakeModelSelector.Selecting(descriptor));
+        _ = services.AddSingleton<ILlmModelResolver>(
+            new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))));
         return services;
     }
 }

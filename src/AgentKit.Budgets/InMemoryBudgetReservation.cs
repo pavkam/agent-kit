@@ -23,6 +23,7 @@ internal sealed class InMemoryBudgetReservation: IBudgetReservation
 
     private int _state;
     private IBudgetReservation? _parentReservation;
+    private readonly ILogger<InMemoryBudgetScope> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="InMemoryBudgetReservation"/> class.</summary>
     /// <param name="id">The identity of this reservation.</param>
@@ -31,20 +32,25 @@ internal sealed class InMemoryBudgetReservation: IBudgetReservation
     /// <param name="reserved">The originally reserved amount.</param>
     /// <param name="expiresAt">The instant after which this reservation is treated as released if never settled.</param>
     /// <param name="idempotencyKey">The idempotency key this reservation was created for.</param>
+    /// <param name="logger">The structured logger inherited from the owning scope.</param>
     public InMemoryBudgetReservation(
         BudgetReservationId id,
         InMemoryBudgetScope scope,
         BudgetDimension dimension,
         decimal reserved,
         DateTimeOffset expiresAt,
-        IdempotencyKey idempotencyKey)
+        IdempotencyKey idempotencyKey,
+        ILogger<InMemoryBudgetScope> logger)
     {
+        ArgumentNullException.ThrowIfNull(logger);
+
         Id = id;
         Scope = scope;
         Dimension = dimension;
         Reserved = reserved;
         ExpiresAt = expiresAt;
         IdempotencyKey = idempotencyKey;
+        _logger = logger;
     }
 
     /// <inheritdoc/>
@@ -84,21 +90,51 @@ internal sealed class InMemoryBudgetReservation: IBudgetReservation
     public async ValueTask<BudgetCommitResult> CommitAsync(decimal actual, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(actual);
-        cancellationToken.ThrowIfCancellationRequested();
 
-        if (Interlocked.CompareExchange(ref _state, _stateCommitted, _stateOpen) != _stateOpen)
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.BudgetCommit);
+        _ = activity?.SetTag(AgentKitTagNames.BudgetScopeId, ScopeId.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.BudgetDimension, Dimension.ToString());
+
+        try
         {
-            throw new InvalidOperationException("This reservation was already committed or disposed.");
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (Interlocked.CompareExchange(ref _state, _stateCommitted, _stateOpen) != _stateOpen)
+            {
+                throw new InvalidOperationException("This reservation was already committed or disposed.");
+            }
+
+            var result = Scope.SettleCommit(this, actual);
+
+            if (_parentReservation is not null)
+            {
+                _ = await _parentReservation.CommitAsync(actual, cancellationToken).ConfigureAwait(false);
+            }
+
+            var outcome = result.Overrun > 0 ? "committed_overrun" : "committed";
+            activity.SetSuccessful(outcome);
+            BudgetLog.SettlementCompleted(_logger, ScopeId, Dimension, outcome);
+            BudgetMetrics.RecordSettlement(outcome, Dimension);
+            return result;
         }
-
-        var result = Scope.SettleCommit(this, actual);
-
-        if (_parentReservation is not null)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _ = await _parentReservation.CommitAsync(actual, cancellationToken).ConfigureAwait(false);
+            activity.SetFailed("cancelled", nameof(OperationCanceledException));
+            BudgetLog.SettlementCompleted(_logger, ScopeId, Dimension, "cancelled");
+            BudgetMetrics.RecordSettlement("cancelled", Dimension);
+            throw;
         }
-
-        return result;
+        catch (Exception exception)
+        {
+            activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
+            BudgetLog.SettlementFailed(
+                _logger,
+                ScopeId,
+                Dimension,
+                exception.GetType().FullName ?? exception.GetType().Name);
+            BudgetMetrics.RecordSettlement("failed", Dimension);
+            throw;
+        }
     }
 
     /// <inheritdoc/>
@@ -109,11 +145,33 @@ internal sealed class InMemoryBudgetReservation: IBudgetReservation
             return;
         }
 
-        Scope.SettleRelease(this);
+        using var activity = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.BudgetCommit);
+        _ = activity?.SetTag(AgentKitTagNames.BudgetScopeId, ScopeId.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.BudgetDimension, Dimension.ToString());
 
-        if (_parentReservation is not null)
+        try
         {
-            await _parentReservation.DisposeAsync().ConfigureAwait(false);
+            Scope.SettleRelease(this);
+
+            if (_parentReservation is not null)
+            {
+                await _parentReservation.DisposeAsync().ConfigureAwait(false);
+            }
+
+            activity.SetSuccessful("released");
+            BudgetLog.SettlementCompleted(_logger, ScopeId, Dimension, "released");
+            BudgetMetrics.RecordSettlement("released", Dimension);
+        }
+        catch (Exception exception)
+        {
+            activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
+            BudgetLog.SettlementFailed(
+                _logger,
+                ScopeId,
+                Dimension,
+                exception.GetType().FullName ?? exception.GetType().Name);
+            BudgetMetrics.RecordSettlement("failed", Dimension);
+            throw;
         }
     }
 }

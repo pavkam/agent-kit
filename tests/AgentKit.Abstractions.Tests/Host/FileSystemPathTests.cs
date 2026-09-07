@@ -25,6 +25,22 @@ public sealed class FileSystemPathTests
         exception.ParamName.ShouldBe("value");
     }
 
+    [Fact]
+    public void Constructor_WhenValueContainsOnlyCurrentDirectorySegments_ThrowsArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new FileSystemPath("./."));
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void Constructor_WhenValueUsesMixedSeparatorsAndCurrentSegments_NormalizesValue()
+    {
+        var path = new FileSystemPath("./sub\\dir/./file.txt");
+
+        path.Value.ShouldBe("sub/dir/file.txt");
+    }
+
     [Theory]
     [InlineData("/etc/passwd")]
     [InlineData("/tmp/file.txt")]

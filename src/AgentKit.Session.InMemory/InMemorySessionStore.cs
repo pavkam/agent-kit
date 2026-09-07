@@ -25,7 +25,7 @@ namespace AgentKit.Session.InMemory;
 /// list, so appends to either branch afterward never affect the other.
 /// </para>
 /// </remarks>
-public sealed class InMemorySessionStore: ISessionStore
+public sealed partial class InMemorySessionStore: ISessionStore
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<SessionAddress, SessionRecord> _sessions = [];
@@ -33,16 +33,19 @@ public sealed class InMemorySessionStore: ISessionStore
     private readonly IIdentifierGenerator<SessionId> _sessionIds;
     private readonly IIdentifierGenerator<BranchId> _branchIds;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<InMemorySessionStore> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="InMemorySessionStore"/> class.</summary>
     /// <param name="sessionIds">Generates the identity of each newly created session.</param>
     /// <param name="branchIds">Generates the identity of each newly created branch.</param>
     /// <param name="timeProvider">The clock used to timestamp created and updated sessions.</param>
+    /// <param name="logger">The optional content-free diagnostic logger.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public InMemorySessionStore(
         IIdentifierGenerator<SessionId> sessionIds,
         IIdentifierGenerator<BranchId> branchIds,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ILogger<InMemorySessionStore>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(sessionIds);
         ArgumentNullException.ThrowIfNull(branchIds);
@@ -51,13 +54,14 @@ public sealed class InMemorySessionStore: ISessionStore
         _sessionIds = sessionIds;
         _branchIds = branchIds;
         _timeProvider = timeProvider;
+        _logger = logger ?? NullLogger<InMemorySessionStore>.Instance;
     }
 
     /// <inheritdoc/>
     public SessionStoreDescriptor Descriptor { get; } = new(new SessionStoreKey("agentkit.in-memory"), durable: false);
 
     /// <inheritdoc/>
-    public ValueTask<SessionCreateResult> CreateAsync(
+    private ValueTask<SessionCreateResult> CreateCoreAsync(
         SessionCreateRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -93,7 +97,7 @@ public sealed class InMemorySessionStore: ISessionStore
     }
 
     /// <inheritdoc/>
-    public ValueTask<SessionLoadResult> LoadAsync(
+    private ValueTask<SessionLoadResult> LoadCoreAsync(
         SessionOperationContext context,
         CancellationToken cancellationToken = default)
     {
@@ -110,7 +114,7 @@ public sealed class InMemorySessionStore: ISessionStore
     }
 
     /// <inheritdoc/>
-    public ValueTask<SessionAppendResult> AppendAsync(
+    private ValueTask<SessionAppendResult> AppendCoreAsync(
         SessionAppendRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -164,7 +168,7 @@ public sealed class InMemorySessionStore: ISessionStore
     }
 
     /// <inheritdoc/>
-    public ValueTask<SessionPageResult> ReadAsync(
+    private ValueTask<SessionPageResult> ReadCoreAsync(
         SessionReadRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -195,7 +199,7 @@ public sealed class InMemorySessionStore: ISessionStore
     }
 
     /// <inheritdoc/>
-    public ValueTask<SessionBranchResult> CreateBranchAsync(
+    private ValueTask<SessionBranchResult> CreateBranchCoreAsync(
         SessionBranchRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -237,7 +241,7 @@ public sealed class InMemorySessionStore: ISessionStore
     }
 
     /// <inheritdoc/>
-    public ValueTask<SessionDeleteResult> DeleteAsync(
+    private ValueTask<SessionDeleteResult> DeleteCoreAsync(
         SessionDeleteRequest request,
         CancellationToken cancellationToken = default)
     {

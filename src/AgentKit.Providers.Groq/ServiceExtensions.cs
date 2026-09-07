@@ -18,7 +18,7 @@ using Microsoft.Extensions.Options;
 /// deliberately separate calls: <see cref="AddGroq"/> configures the shared
 /// endpoint and wire-behavior options, exactly one of
 /// <c>AddGroqApiKeyCredential</c> or <c>AddGroqOAuthCredential</c> configures
-/// authentication, and <c>AddGroqChatModel</c> is called once per named
+/// authentication, and <c>AddGroqLlmModel</c> is called once per named
 /// model an application wants to use. No default fabricates an API key,
 /// endpoint, or model an account may not actually have.
 /// </remarks>
@@ -44,7 +44,7 @@ public static class ServiceExtensions
         /// configuration pipeline. Authentication and model registrations
         /// are independent calls documented on
         /// <c>AddGroqApiKeyCredential</c>, <c>AddGroqOAuthCredential</c>,
-        /// and <c>AddGroqChatModel</c>.
+        /// and <c>AddGroqLlmModel</c>.
         /// </remarks>
         public IServiceCollection AddGroq(Action<GroqProviderOptions>? configureOptions = null)
         {
@@ -134,7 +134,7 @@ public static class ServiceExtensions
 
         /// <summary>
         /// Registers one named Groq chat model as an additional
-        /// <see cref="IChatModel"/> implementation.
+        /// <see cref="ILlmModel"/> implementation.
         /// </summary>
         /// <param name="alias">The application-facing selection key for this model.</param>
         /// <param name="modelId">Groq's own model identifier, such as <c>"llama-3.3-70b-versatile"</c>.</param>
@@ -154,10 +154,10 @@ public static class ServiceExtensions
         /// This registration is additive: calling it more than once with a
         /// distinct <paramref name="alias"/> registers additional models
         /// alongside one another, resolvable together as
-        /// <c>IEnumerable&lt;IChatModel&gt;</c>. <see cref="AddGroq"/> must
+        /// <c>IEnumerable&lt;ILlmModel&gt;</c>. <see cref="AddGroq"/> must
         /// be called first.
         /// </remarks>
-        public IServiceCollection AddGroqChatModel(
+        public IServiceCollection AddGroqLlmModel(
             ModelAlias alias,
             ModelId modelId,
             ModelCapabilities? capabilities = null,
@@ -165,7 +165,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            _ = services.AddSingleton<IChatModel>(provider =>
+            _ = services.AddSingleton<ILlmModel>(provider =>
             {
                 var options = provider.GetRequiredService<IOptions<GroqProviderOptions>>().Value;
 
@@ -180,7 +180,7 @@ public static class ServiceExtensions
                     pricing: null,
                     ExtensionData.Empty);
 
-                return new GroqChatModel(
+                return new GroqLlmModel(
                     descriptor,
                     GroqProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),

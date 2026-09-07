@@ -1,0 +1,8 @@
+data: {"id": "cmpl-s02", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [{"index": 0, "id": "call_stream01", "type": "function", "function": {"name": "get_weather", "arguments": ""}}]}, "finish_reason": null}]}
+
+data: {"id": "cmpl-s02", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\"location\":"}}]}, "finish_reason": null}]}
+
+data: {"id": "cmpl-s02", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "\"Paris\"}"}}]}, "finish_reason": "tool_calls"}], "usage": {"prompt_tokens": 8, "completion_tokens": 5, "total_tokens": 13}}
+
+data: [DONE]
+

@@ -1,0 +1,14 @@
+{
+  "detail": [
+    {
+      "loc": ["body", "messages", 0, "role"],
+      "msg": "Input should be 'system', 'user', 'assistant' or 'tool'",
+      "type": "enum"
+    },
+    {
+      "loc": ["body", "temperature"],
+      "msg": "Input should be less than or equal to 1.5",
+      "type": "less_than_equal"
+    }
+  ]
+}

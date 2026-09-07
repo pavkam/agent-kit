@@ -51,6 +51,49 @@ public sealed class ArgumentExceptionExtensionsTests
     }
 
     [Fact]
+    public void ThrowIfDefaultOrEmpty_WhenArrayIsDefault_ThrowsWithInferredParamName()
+    {
+        ImmutableArray<int> values = default;
+
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDefaultOrEmpty(values));
+
+        exception.ParamName.ShouldBe("values");
+    }
+
+    [Fact]
+    public void ThrowIfDefaultOrEmpty_WhenArrayIsEmpty_ThrowsArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(
+            () => ArgumentException.ThrowIfDefaultOrEmpty(ImmutableArray<int>.Empty, "items"));
+
+        exception.ParamName.ShouldBe("items");
+    }
+
+    [Fact]
+    public void ThrowIfDefaultOrEmpty_WhenArrayIsPopulated_DoesNotThrow() =>
+        Should.NotThrow(() => ArgumentException.ThrowIfDefaultOrEmpty(ImmutableArray.Create(1)));
+
+    [Fact]
+    public void ThrowIfDefaultOrEmpty_WhenUsedBySecurityRequest_CoversProductionCallSite()
+    {
+        var grant = SecurityTestData.Grant();
+
+        var exception = Should.Throw<ArgumentException>(() => new SecurityRequest(
+            grant.RequestId,
+            grant.Scope,
+            null,
+            grant.Identity,
+            grant.Audience,
+            grant.Kind,
+            grant.Effect,
+            [],
+            grant.InputFingerprint,
+            grant.ExpiresAt));
+
+        exception.ParamName.ShouldBe("resources");
+    }
+
+    [Fact]
     public void ThrowIfNotAbsoluteUri_WhenUriIsAbsolute_DoesNotThrow()
     {
         var uri = new Uri("https://api.example.test/v1/");
@@ -108,5 +151,45 @@ public sealed class ArgumentExceptionExtensionsTests
         const string path = "v1/chat/completions";
 
         Should.NotThrow(() => ArgumentException.ThrowIfNotRelativeUriPath(path));
+    }
+
+    [Fact]
+    public void ThrowIfContainsNull_WhenArrayContainsNull_ThrowsWithInferredParameter()
+    {
+        ImmutableArray<string> values = ["one", null!];
+
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfContainsNull(values));
+
+        exception.ParamName.ShouldBe("values");
+    }
+
+    [Fact]
+    public void ThrowIfContainsNull_WhenArrayContainsOnlyValues_DoesNotThrow()
+    {
+        ImmutableArray<string> values = ["one", "two"];
+
+        Should.NotThrow(() => ArgumentException.ThrowIfContainsNull(values));
+    }
+
+    [Fact]
+    public void ThrowIfContainsNul_WhenValueContainsNul_ThrowsWithInferredParameter()
+    {
+        const string value = "before\0after";
+
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfContainsNul(value));
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void ThrowIfContainsNul_WhenValueContainsNoNul_DoesNotThrow() =>
+        Should.NotThrow(() => ArgumentException.ThrowIfContainsNul("safe"));
+
+    [Fact]
+    public void ThrowIfContainsNul_WhenUsedByProcessEnvironment_CoversProductionCallSite()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new ProcessEnvironmentVariable("NAME", "bad\0value"));
+
+        exception.ParamName.ShouldBe("value");
     }
 }

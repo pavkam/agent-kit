@@ -1,0 +1,27 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "functionCall": {
+              "id": "call_xyz789",
+              "name": "get_weather",
+              "args": { "location": "Paris" }
+            }
+          }
+        ]
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 30,
+    "candidatesTokenCount": 12,
+    "totalTokenCount": 42
+  },
+  "modelVersion": "gemini-2.5-flash-001",
+  "responseId": "resp_02abc"
+}

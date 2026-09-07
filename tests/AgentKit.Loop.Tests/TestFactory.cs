@@ -32,23 +32,33 @@ internal static class TestFactory
             ExtensionData.Empty);
     }
 
+    /// <summary>Builds a policy naming one candidate alias.</summary>
+    public static ModelSelectionPolicy Policy(string alias = "chat") =>
+        new([new ModelAlias(alias)]);
+
+    /// <summary>Builds a catalog snapshot publishing the supplied descriptors.</summary>
+    public static ModelCatalogSnapshot Catalog(params ModelDescriptor[] models) =>
+        new(new ModelCatalogVersion(1), [.. models]);
+
     public static AgentRunRequest RunRequest(
         AgentId agentId,
         SessionId sessionId,
         BranchId branchId,
         RunId? runId = null,
-        ModelDescriptor? model = null,
+        ModelSelectionPolicy? policy = null,
+        ModelRequirements? requirements = null,
         int maxTurns = 8) => new(
         agentId,
         sessionId,
         branchId,
         runId ?? new RunId(Guid.NewGuid()),
         Identity(),
-        model ?? Model(),
+        policy ?? Policy(),
+        requirements ?? ModelRequirements.None,
         instructions: [],
         tools: [],
-        ChatToolChoice.Auto,
-        ChatRequestSettings.Default,
+        LlmToolChoice.Auto,
+        LlmRequestSettings.Default,
         maxTurns,
         TimeSpan.FromMinutes(1),
         ExtensionData.Empty);

@@ -158,6 +158,31 @@ public sealed class DefaultSessionCoordinatorTests
     }
 
     [Fact]
+    public async Task LoadAsync_WhenObserved_EmitsCorrelatedSuccessfulActivity()
+    {
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = activity => stopped = activity,
+        };
+        ActivitySource.AddActivityListener(listener);
+        var descriptor = TestFactory.Descriptor();
+        var store = new FakeSessionStore { OnLoad = _ => new SessionLoaded(descriptor) };
+        var coordinator = CreateCoordinator(store);
+
+        _ = await coordinator.LoadAsync(
+            TestFactory.OperationContext(descriptor.Address),
+            TestContext.Current.CancellationToken);
+
+        var activity = stopped.ShouldNotBeNull();
+        activity.OperationName.ShouldBe(AgentKitActivityNames.SessionLoad);
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.GetTagItem(AgentKitTagNames.SessionId).ShouldBe(descriptor.Address.SessionId.ToString());
+    }
+
+    [Fact]
     public async Task BranchAsync_WhenStoreReturnsBranched_PublishesSessionBranchedEvent()
     {
         var newBranchId = new BranchId(Guid.NewGuid());
@@ -282,4 +307,7 @@ public sealed class DefaultSessionCoordinatorTests
             CancellationToken.None);
         page.ShouldBeOfType<SessionPage>().Entries.ShouldHaveSingleItem().ShouldBe(entry);
     }
+
+    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
+        ActivitySamplingResult.AllDataAndRecorded;
 }

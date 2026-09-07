@@ -3,6 +3,8 @@
 
 namespace AgentKit.Loop;
 
+using AgentKit.Observability;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -13,7 +15,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 /// <remarks>
 /// Composition requires an <see cref="ISessionCoordinator"/>, an
 /// <see cref="IContextAssembler"/>, an <see cref="IToolInvoker"/>, and at
-/// least one <see cref="IChatModel"/> to already be registered; this method
+/// least one <see cref="ILlmModel"/> to already be registered; this method
 /// does not register any of them itself.
 /// </remarks>
 public static class ServiceExtensions
@@ -29,6 +31,7 @@ public static class ServiceExtensions
         /// </remarks>
         public IServiceCollection AddAgentLoop(Action<AgentLoopOptions>? configure = null)
         {
+            _ = services.AddAgentKitObservability();
             var optionsBuilder = services.AddOptions<AgentLoopOptions>()
                 .Validate(o => o.HistoryReadPageSize > 0, "HistoryReadPageSize must be positive.");
 

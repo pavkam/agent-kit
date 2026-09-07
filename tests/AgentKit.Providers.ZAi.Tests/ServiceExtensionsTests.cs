@@ -91,31 +91,31 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddZAiChatModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    public void AddZAiLlmModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
     {
         var services = new ServiceCollection();
         _ = services.AddZAi();
         _ = services.AddZAiApiKeyCredential("zai-test-key");
-        _ = services.AddZAiChatModel(new ModelAlias("fast"), new ModelId("glm-4.6-flash"));
-        _ = services.AddZAiChatModel(new ModelAlias("smart"), new ModelId("glm-4.6"));
+        _ = services.AddZAiLlmModel(new ModelAlias("fast"), new ModelId("glm-4.6-flash"));
+        _ = services.AddZAiLlmModel(new ModelAlias("smart"), new ModelId("glm-4.6"));
 
         using var provider = services.BuildServiceProvider();
-        var models = provider.GetServices<IChatModel>().ToArray();
+        var models = provider.GetServices<ILlmModel>().ToArray();
 
         models.Length.ShouldBe(2);
         models.Select(m => m.Alias.Value).ShouldBe(["fast", "smart"], ignoreOrder: true);
     }
 
     [Fact]
-    public void AddZAiChatModel_WhenResolved_UsesZAiProviderIdentity()
+    public void AddZAiLlmModel_WhenResolved_UsesZAiProviderIdentity()
     {
         var services = new ServiceCollection();
         _ = services.AddZAi();
         _ = services.AddZAiApiKeyCredential("zai-test-key");
-        _ = services.AddZAiChatModel(new ModelAlias("chat"), new ModelId("glm-4.6"));
+        _ = services.AddZAiLlmModel(new ModelAlias("chat"), new ModelId("glm-4.6"));
 
         using var provider = services.BuildServiceProvider();
-        var model = provider.GetRequiredService<IChatModel>().ShouldBeOfType<ZAiChatModel>();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<ZAiLlmModel>();
 
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }

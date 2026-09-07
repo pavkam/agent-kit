@@ -16,7 +16,9 @@ public sealed class DefaultAgentLoopTests
             null!,
             new DefaultContextAssembler(),
             new FakeToolInvoker(_ => TestFactory.SuccessResult()),
-            [],
+            new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
+            FakeModelSelector.Selecting(TestFactory.Model()),
+            new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))),
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
@@ -29,17 +31,15 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
-    public void Constructor_WhenChatModelsShareAlias_ThrowsArgumentException()
+    public void Constructor_WhenModelSelectorIsNull_ThrowsArgumentNullException()
     {
-        var alias = new ModelAlias("dup");
-        var modelA = new FakeChatModel(alias);
-        var modelB = new FakeChatModel(alias);
-
-        var exception = Should.Throw<ArgumentException>(() => new DefaultAgentLoop(
+        var exception = Should.Throw<ArgumentNullException>(() => new DefaultAgentLoop(
             new FakeSessionCoordinator(_branchId),
             new DefaultContextAssembler(),
             new FakeToolInvoker(_ => TestFactory.SuccessResult()),
-            [modelA, modelB],
+            new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
+            null!,
+            new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))),
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
@@ -48,7 +48,7 @@ public sealed class DefaultAgentLoopTests
             TimeProvider.System,
             Options.Create(new AgentLoopOptions())));
 
-        exception.ParamName.ShouldBe("chatModels");
+        exception.ParamName.ShouldBe("modelSelector");
     }
 
     [Fact]
@@ -76,29 +76,100 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenNoModelRegisteredForAlias_ReturnsAgentRunFailed()
+    public async Task RunAsync_WhenSelectedModelHasNoRegisteredAdapter_ReturnsModelSelectionFailed()
+    {
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var descriptor = TestFactory.Model();
+
+        var loop = CreateLoopWith(
+            coordinator,
+            new FakeModelCatalog(TestFactory.Catalog(descriptor)),
+            FakeModelSelector.Selecting(descriptor),
+            new FakeLlmModelResolver(null));
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId),
+            TestContext.Current.CancellationToken);
+
+        var failed = result.Outcome.ShouldBeOfType<AgentRunModelSelectionFailed>();
+        failed.SafeReason.ShouldContain("no LLM model adapter is registered");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoCompatibleModel_ReturnsModelSelectionFailedWithDiagnostics()
+    {
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var diagnostic = new ModelSelectionDiagnostic(
+            new ModelAlias("chat"),
+            ModelCandidateOutcome.MissingRequiredCapability,
+            "no tools");
+
+        var loop = CreateLoopWith(
+            coordinator,
+            new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
+            new FakeModelSelector(new NoCompatibleModel(ModelRequirements.None, [diagnostic])),
+            new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))));
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId),
+            TestContext.Current.CancellationToken);
+
+        var failed = result.Outcome.ShouldBeOfType<AgentRunModelSelectionFailed>();
+        failed.Diagnostics.ShouldHaveSingleItem().Alias.Value.ShouldBe("chat");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenModelPolicyIsInvalid_ReturnsModelSelectionFailed()
     {
         var coordinator = new FakeSessionCoordinator(_branchId);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var loop = new DefaultAgentLoop(
+        var loop = CreateLoopWith(
             coordinator,
-            new DefaultContextAssembler(),
-            new FakeToolInvoker(_ => TestFactory.SuccessResult()),
-            [],
-            IdGenerator(static v => new OperationId(v)),
-            IdGenerator(static v => new TurnId(v)),
-            IdGenerator(static v => new ModelRequestId(v)),
-            IdGenerator(static v => new MessageId(v)),
-            IdGenerator(static v => new SessionEntryId(v)),
-            TimeProvider.System,
-            Options.Create(new AgentLoopOptions()));
+            new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
+            new FakeModelSelector(new InvalidModelPolicy("policy names no usable candidate")),
+            new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))));
 
-        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId),
+            TestContext.Current.CancellationToken);
 
-        var failed = result.Outcome.ShouldBeOfType<AgentRunFailed>();
-        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        result.Outcome.ShouldBeOfType<AgentRunModelSelectionFailed>()
+            .SafeReason.ShouldBe("policy names no usable candidate");
+    }
+
+    [Fact]
+    public async Task RunAsync_SelectsTheModelOncePerRunRatherThanPerTurn()
+    {
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var descriptor = TestFactory.Model();
+        var selector = FakeModelSelector.Selecting(descriptor);
+        var callCount = 0;
+        var adapter = new RespondingLlmModel(new ModelAlias("chat"), _ =>
+        {
+            callCount++;
+            return callCount == 1
+                ? TestFactory.CompletedWithToolCall(
+                    new ModelRequestId(Guid.NewGuid()),
+                    new ToolCallId(Guid.NewGuid()))
+                : TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid()));
+        });
+
+        var loop = CreateLoopWith(
+            coordinator,
+            new FakeModelCatalog(TestFactory.Catalog(descriptor)),
+            selector,
+            new FakeLlmModelResolver(adapter));
+
+        _ = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId),
+            TestContext.Current.CancellationToken);
+
+        callCount.ShouldBe(2);
+        selector.SelectCount.ShouldBe(1);
     }
 
     [Fact]
@@ -135,6 +206,43 @@ public sealed class DefaultAgentLoopTests
         result.FinalVersion.ShouldBe(new SessionVersion(2));
         coordinator.Entries.Count.ShouldBe(2);
         toolInvoker.ReceivedRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenObserved_EmitsParentedContentFreeRunTrace()
+    {
+        const string protectedOutput = "do-not-export-model-output";
+        var stopped = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = stopped.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(
+            out var coordinator,
+            out _,
+            _ => TestFactory.CompletedWithText(requestId, protectedOutput));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        _ = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+
+        var run = stopped.Single(activity => activity.OperationName == AgentKitActivityNames.InvokeAgent);
+        var turn = stopped.Single(activity => activity.OperationName == AgentKitActivityNames.AgentTurn);
+        var context = stopped.Single(activity => activity.OperationName == AgentKitActivityNames.ContextPrepare);
+        var model = stopped.Single(activity => activity.OperationName == AgentKitActivityNames.Chat);
+        var commit = stopped.Single(activity => activity.OperationName == AgentKitActivityNames.SessionCommit);
+        run.Status.ShouldBe(ActivityStatusCode.Ok);
+        turn.ParentSpanId.ShouldBe(run.SpanId);
+        context.ParentSpanId.ShouldBe(turn.SpanId);
+        model.ParentSpanId.ShouldBe(turn.SpanId);
+        commit.ParentSpanId.ShouldBe(turn.SpanId);
+        stopped.SelectMany(static activity => activity.TagObjects)
+            .Select(static tag => tag.Value?.ToString())
+            .ShouldNotContain(protectedOutput);
     }
 
     [Fact]
@@ -288,19 +396,22 @@ public sealed class DefaultAgentLoopTests
     private DefaultAgentLoop CreateLoop(
         out FakeSessionCoordinator coordinator,
         out FakeToolInvoker toolInvoker,
-        Func<ChatModelRequest, ModelAttemptResult> respond,
+        Func<LlmModelRequest, ModelAttemptResult> respond,
         int maxTurns = 8)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
         toolInvoker = new FakeToolInvoker(_ => TestFactory.SuccessResult());
-        var model = new RespondingChatModel(new ModelAlias("chat"), respond);
+        var adapter = new RespondingLlmModel(new ModelAlias("chat"), respond);
+        var descriptor = TestFactory.Model();
 
         return new DefaultAgentLoop(
             coordinator,
             new DefaultContextAssembler(),
             toolInvoker,
-            [model],
+            new FakeModelCatalog(TestFactory.Catalog(descriptor)),
+            FakeModelSelector.Selecting(descriptor),
+            new FakeLlmModelResolver(adapter),
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
@@ -310,15 +421,38 @@ public sealed class DefaultAgentLoopTests
             Options.Create(new AgentLoopOptions()));
     }
 
+    private static DefaultAgentLoop CreateLoopWith(
+        FakeSessionCoordinator coordinator,
+        IModelCatalog catalog,
+        IModelSelector selector,
+        ILlmModelResolver resolver) =>
+        new(
+            coordinator,
+            new DefaultContextAssembler(),
+            new FakeToolInvoker(_ => TestFactory.SuccessResult()),
+            catalog,
+            selector,
+            resolver,
+            IdGenerator(static v => new OperationId(v)),
+            IdGenerator(static v => new TurnId(v)),
+            IdGenerator(static v => new ModelRequestId(v)),
+            IdGenerator(static v => new MessageId(v)),
+            IdGenerator(static v => new SessionEntryId(v)),
+            TimeProvider.System,
+            Options.Create(new AgentLoopOptions()));
+
     private static GuidIdentifierGenerator<T> IdGenerator<T>(Func<Guid, T> factory)
         where T : struct =>
         new(factory);
 
-    private sealed class RespondingChatModel: IChatModel
-    {
-        private readonly Func<ChatModelRequest, ModelAttemptResult> _respond;
+    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
+        ActivitySamplingResult.AllDataAndRecorded;
 
-        public RespondingChatModel(ModelAlias alias, Func<ChatModelRequest, ModelAttemptResult> respond)
+    private sealed class RespondingLlmModel: ILlmModel
+    {
+        private readonly Func<LlmModelRequest, ModelAttemptResult> _respond;
+
+        public RespondingLlmModel(ModelAlias alias, Func<LlmModelRequest, ModelAttemptResult> respond)
         {
             Alias = alias;
             _respond = respond;
@@ -327,7 +461,7 @@ public sealed class DefaultAgentLoopTests
         public ModelAlias Alias { get; }
 
         public Task<ModelAttemptResult> ExecuteAsync(
-            ChatModelRequest request, IModelResponseObserver observer, CancellationToken cancellationToken = default) =>
+            LlmModelRequest request, IModelResponseObserver observer, CancellationToken cancellationToken = default) =>
             Task.FromResult(_respond(request));
     }
 }
