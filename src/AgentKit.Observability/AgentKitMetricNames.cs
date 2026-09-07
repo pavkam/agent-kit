@@ -10,6 +10,12 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal pinned-agent admission outcomes.</summary>
     public const string AgentAdmissionCount = "agentkit.agent.admission.count";
 
+    /// <summary>Gets the counter for terminal identity-resolution outcomes.</summary>
+    public const string IdentityResolutionCount = "agentkit.identity.resolution.count";
+
+    /// <summary>Gets the counter for terminal identity-derivation outcomes.</summary>
+    public const string IdentityDerivationCount = "agentkit.identity.derivation.count";
+
     /// <summary>Gets the counter for terminal agent-run outcomes.</summary>
     public const string AgentRunCount = "agentkit.agent.run.count";
 

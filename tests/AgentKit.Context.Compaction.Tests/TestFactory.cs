@@ -7,7 +7,7 @@ namespace AgentKit.Context.Compaction.Tests;
 internal static class TestFactory
 {
     public static ExecutionIdentity Identity(string tenant = "tenant-1", string principal = "user-1") =>
-        new(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human, ExtensionData.Empty);
+        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human);
 
     public static OperationCorrelation Correlation(RunId? runId = null) =>
         new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), runId ?? new RunId(Guid.NewGuid()), null);

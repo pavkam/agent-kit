@@ -13,4 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Tools.Plan/AgentKit.Tools.Plan.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj" />
+  </ItemGroup>
 </Project>

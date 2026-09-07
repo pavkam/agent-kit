@@ -7,4 +7,7 @@
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
   <ItemGroup><ProjectReference Include="../../src/AgentKit.Artifacts/AgentKit.Artifacts.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj" />
+  </ItemGroup>
 </Project>

@@ -13,6 +13,15 @@ public static class AgentKitTagNames
     /// <summary>Gets the current catalog snapshot version attribute for traces and structured logs.</summary>
     public const string AgentCatalogVersion = "agentkit.agent.catalog.version";
 
+    /// <summary>Gets the tenant identity attribute for traces and structured logs.</summary>
+    public const string TenantId = "agentkit.tenant.id";
+
+    /// <summary>Gets the principal identity attribute for traces and structured logs.</summary>
+    public const string PrincipalId = "agentkit.principal.id";
+
+    /// <summary>Gets the trusted identity-issuer attribute for traces and structured logs.</summary>
+    public const string IdentityIssuer = "agentkit.identity.issuer";
+
     /// <summary>Gets the OpenTelemetry GenAI operation-name attribute.</summary>
     public const string GenAiOperationName = "gen_ai.operation.name";
 

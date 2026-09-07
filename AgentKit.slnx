@@ -29,6 +29,7 @@
     <Project Path="src/AgentKit.Context.Compaction/AgentKit.Context.Compaction.csproj"/>
     <Project Path="src/AgentKit.Loop/AgentKit.Loop.csproj"/>
     <Project Path="src/AgentKit.Budgets/AgentKit.Budgets.csproj"/>
+    <Project Path="src/AgentKit.Identity/AgentKit.Identity.csproj"/>
     <Project Path="src/AgentKit.Permissions/AgentKit.Permissions.csproj"/>
     <Project Path="src/AgentKit.Output/AgentKit.Output.csproj"/>
     <Project Path="src/AgentKit.Hooks/AgentKit.Hooks.csproj"/>
@@ -92,6 +93,7 @@
     <Project Path="tests/AgentKit.Context.Compaction.Tests/AgentKit.Context.Compaction.Tests.csproj"/>
     <Project Path="tests/AgentKit.Loop.Tests/AgentKit.Loop.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Tests/AgentKit.Budgets.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Identity.Tests/AgentKit.Identity.Tests.csproj"/>
     <Project Path="tests/AgentKit.Permissions.Tests/AgentKit.Permissions.Tests.csproj"/>
     <Project Path="tests/AgentKit.Output.Tests/AgentKit.Output.Tests.csproj"/>
     <Project Path="tests/AgentKit.Hooks.Tests/AgentKit.Hooks.Tests.csproj"/>

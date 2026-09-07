@@ -36,11 +36,10 @@ internal static class TestSecurity
             new BeforeRunOperationCorrelation(
                 new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
                 null)),
-        new ExecutionIdentity(
+        AgentKit.TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
-            ExecutionSubjectKind.Human,
-            ExtensionData.Empty),
+            ExecutionSubjectKind.Human),
         new ComponentId("test.network"),
         SecurityOperationKind.Network,
         SecurityEffect.Egress,

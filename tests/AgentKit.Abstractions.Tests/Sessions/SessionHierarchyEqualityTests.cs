@@ -292,7 +292,7 @@ public sealed class SessionHierarchyEqualityTests
     private static BranchId BranchId => new(_branchGuid);
 
     private static ExecutionIdentity Identity() =>
-        new(new TenantId("t"), new PrincipalId("p"), ExecutionSubjectKind.Human, ExtensionData.Empty);
+        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId("t"), new PrincipalId("p"), ExecutionSubjectKind.Human);
 
     private static InRunOperationCorrelation Correlation() =>
         new(new OperationId(_operationGuid), new RunId(_runGuid), null);

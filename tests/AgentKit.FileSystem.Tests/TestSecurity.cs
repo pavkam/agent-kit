@@ -14,7 +14,7 @@ internal static class TestSecurity
             new AgentId(Guid.NewGuid()),
             null,
             new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null)),
-        new ExecutionIdentity(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human, ExtensionData.Empty),
+        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human),
         new ComponentId("agentkit.filesystem.sandboxed"),
         SecurityOperationKind.FileRead,
         SecurityEffect.Observe,

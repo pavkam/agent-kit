@@ -89,7 +89,7 @@ public sealed class DefaultTaskDelegationBrokerTests
                 new OperationId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
                 new RunId(Guid.Parse("40000000-0000-0000-0000-000000000004")), null),
             new ToolCallId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
-            new ExecutionIdentity(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human, ExtensionData.Empty),
+            AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human),
             new AgentId(Guid.Parse("70000000-0000-0000-0000-000000000007")),
             "Implement the parser.",
             ["Tests pass."],

@@ -187,11 +187,10 @@ public sealed class InMemorySecurityGrantStoreTests
                 new OperationId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
                 new RunId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
                 null));
-        var identity = new ExecutionIdentity(
+        var identity = AgentKit.TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
-            ExecutionSubjectKind.Human,
-            ExtensionData.Empty);
+            ExecutionSubjectKind.Human);
 
         return new SecurityGrant(
             new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000005")),

@@ -140,7 +140,7 @@ public sealed class ToolContextsTests
         new(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null);
 
     private static ExecutionIdentity Identity() =>
-        new(new TenantId("t"), new PrincipalId("p"), ExecutionSubjectKind.Human, ExtensionData.Empty);
+        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId("t"), new PrincipalId("p"), ExecutionSubjectKind.Human);
 
     private static ToolExecutionContext ExecutionContext() =>
         new(AgentId(), SessionId(), ToolCallId(), Correlation(), Identity());

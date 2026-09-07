@@ -90,11 +90,10 @@ public sealed class DefaultHumanQuestionBrokerTests
             new OperationId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
             new RunId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
             null);
-        var identity = new ExecutionIdentity(
+        var identity = AgentKit.TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
-            ExecutionSubjectKind.Human,
-            ExtensionData.Empty);
+            ExecutionSubjectKind.Human);
         ImmutableArray<HumanQuestionOption> options =
         [
             new(new QuestionOptionId("one"), "One", "First option."),

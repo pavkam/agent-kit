@@ -49,8 +49,8 @@ public sealed class InMemoryArtifactStoreTests
         var prepare = fixture.CreatePrepare("output"u8.ToArray());
         await fixture.RegisterPrepareGrantAsync(prepare);
         _ = await fixture.Store.PrepareAsync(prepare, TestContext.Current.CancellationToken);
-        var otherIdentity = new ExecutionIdentity(
-            new TenantId("other"), new PrincipalId("other-principal"), ExecutionSubjectKind.Human, ExtensionData.Empty);
+        var otherIdentity = AgentKit.TestSupport.TestExecutionIdentity.Create(
+            new TenantId("other"), new PrincipalId("other-principal"), ExecutionSubjectKind.Human);
         var foreignFinalize = fixture.CreateFinalize(prepare.PreparationId, otherIdentity);
         await fixture.RegisterFinalizeGrantAsync(foreignFinalize);
 
@@ -332,8 +332,8 @@ public sealed class InMemoryArtifactStoreTests
             new AgentId(NextGuid()), new SessionId(NextGuid()),
             new InRunOperationCorrelation(new OperationId(NextGuid()), new RunId(NextGuid()), null));
 
-        private static ExecutionIdentity CreateIdentity(string tenant, string principal) => new(
-            new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human, ExtensionData.Empty);
+        private static ExecutionIdentity CreateIdentity(string tenant, string principal) => AgentKit.TestSupport.TestExecutionIdentity.Create(
+            new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human);
 
         private Guid NextGuid()
         {

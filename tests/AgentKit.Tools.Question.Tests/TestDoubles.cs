@@ -101,9 +101,8 @@ internal static class TestData
 {
     internal static QuestionId QuestionId { get; } = new(Guid.Parse("30000000-0000-0000-0000-000000000003"));
 
-    internal static ExecutionIdentity Identity { get; } = new(
+    internal static ExecutionIdentity Identity { get; } = AgentKit.TestSupport.TestExecutionIdentity.Create(
         new TenantId("tenant"),
         new PrincipalId("principal"),
-        ExecutionSubjectKind.Human,
-        ExtensionData.Empty);
+        ExecutionSubjectKind.Human);
 }

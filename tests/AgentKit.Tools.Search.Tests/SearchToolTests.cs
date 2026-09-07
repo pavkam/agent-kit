@@ -146,8 +146,8 @@ public sealed class SearchToolTests
                 new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
                 new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")),
                 null),
-            new ExecutionIdentity(
-                new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human, ExtensionData.Empty)),
+            AgentKit.TestSupport.TestExecutionIdentity.Create(
+                new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
         DateTimeOffset.UnixEpoch);
 }

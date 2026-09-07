@@ -19,4 +19,7 @@
     <ProjectReference Include="../../src/AgentKit.Tools/AgentKit.Tools.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Tools.Read/AgentKit.Tools.Read.csproj"/>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj" />
+  </ItemGroup>
 </Project>

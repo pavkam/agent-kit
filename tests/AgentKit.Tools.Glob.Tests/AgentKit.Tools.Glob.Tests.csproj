@@ -13,4 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Tools.Glob/AgentKit.Tools.Glob.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj" />
+  </ItemGroup>
 </Project>

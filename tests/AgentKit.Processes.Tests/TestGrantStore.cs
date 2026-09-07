@@ -33,11 +33,10 @@ internal sealed class TestGrantStore: ISecurityGrantStore
             new AgentId(Guid.NewGuid()),
             null,
             new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null)),
-        new ExecutionIdentity(
+        AgentKit.TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
-            ExecutionSubjectKind.Human,
-            ExtensionData.Empty),
+            ExecutionSubjectKind.Human),
         new ComponentId("agentkit.processes.operating-system"),
         SecurityOperationKind.Process,
         SecurityEffect.Execute,

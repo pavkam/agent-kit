@@ -234,11 +234,10 @@ public sealed class SkillToolTests
                 new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
                 new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")),
                 null),
-            new ExecutionIdentity(
+            AgentKit.TestSupport.TestExecutionIdentity.Create(
                 new TenantId("tenant"),
                 new PrincipalId("principal"),
-                ExecutionSubjectKind.Human,
-                ExtensionData.Empty)),
+                ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
         DateTimeOffset.UnixEpoch);
 }

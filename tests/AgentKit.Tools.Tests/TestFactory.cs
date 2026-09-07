@@ -7,7 +7,7 @@ namespace AgentKit.Tools.Tests;
 internal static class TestFactory
 {
     public static ExecutionIdentity Identity(string tenant = "tenant-1", string principal = "user-1") =>
-        new(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human, ExtensionData.Empty);
+        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human);
 
     public static OperationCorrelation Correlation() =>
         new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null);
@@ -25,8 +25,7 @@ internal static class TestFactory
         id,
         "A test tool.",
         JsonDocument.Parse("{}").RootElement,
-        effect,
-        ExtensionData.Empty);
+        effect, ExtensionData.Empty);
 
     public static ToolCallRequest CallRequest(ToolId toolId, JsonElement? arguments = null) => new(
         toolId,

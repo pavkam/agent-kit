@@ -20,4 +20,7 @@
     <ProjectReference Include="../../src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Session/AgentKit.Session.csproj"/>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj" />
+  </ItemGroup>
 </Project>

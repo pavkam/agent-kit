@@ -150,11 +150,10 @@ internal static class TestData
         new OperationId(Guid.Parse("80000000-0000-0000-0000-000000000008")),
         new RunId(Guid.Parse("90000000-0000-0000-0000-000000000009")),
         null);
-    internal static ExecutionIdentity Identity { get; } = new(
+    internal static ExecutionIdentity Identity { get; } = AgentKit.TestSupport.TestExecutionIdentity.Create(
         new TenantId("tenant"),
         new PrincipalId("principal"),
-        ExecutionSubjectKind.Human,
-        ExtensionData.Empty);
+        ExecutionSubjectKind.Human);
     internal static SessionOperationContext Context { get; } = new(AgentId, SessionId, Correlation, Identity);
 
     internal static ImmutableArray<WorkPlanItem> Items(PlanItemStatus first = PlanItemStatus.Pending) =>

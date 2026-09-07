@@ -98,6 +98,59 @@ public static class ArgumentExceptionExtensions
             }
         }
 
+        /// <summary>Throws when authentication evidence names an issuer different from its containing assertion.</summary>
+        /// <param name="evidence">The non-null authentication evidence to inspect.</param>
+        /// <param name="issuer">The assertion issuer that the evidence must match.</param>
+        /// <param name="paramName">The parameter name attributed to the invalid evidence.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="evidence"/> is null.</exception>
+        /// <exception cref="ArgumentException">The evidence and assertion issuer identities differ.</exception>
+        public static void ThrowIfIssuerMismatch(
+            AuthenticationEvidence evidence,
+            IdentityIssuerId issuer,
+            [CallerArgumentExpression(nameof(evidence))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(evidence, paramName);
+            if (evidence.Issuer != issuer)
+            {
+                throw new ArgumentException("Authentication evidence must be issued by the assertion issuer.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a delegation chain crosses the child identity's tenant boundary.</summary>
+        /// <param name="chain">The initialized, non-null delegation links to inspect.</param>
+        /// <param name="tenantId">The child tenant every ancestor link must retain.</param>
+        /// <param name="paramName">The parameter name attributed to the invalid chain.</param>
+        /// <exception cref="ArgumentException"><paramref name="chain"/> is default, contains null, or contains a link for another tenant.</exception>
+        public static void ThrowIfCrossesTenant(
+            ImmutableArray<DelegationIdentityLink> chain,
+            TenantId tenantId,
+            [CallerArgumentExpression(nameof(chain))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfContainsNull(chain, paramName);
+            if (chain.Any(link => link.TenantId != tenantId))
+            {
+                throw new ArgumentException("Every delegation ancestor must remain within the child identity's tenant.", paramName);
+            }
+        }
+
+        /// <summary>Throws when requested delegated claims are not a subset of the parent's normalized claims.</summary>
+        /// <param name="claims">The initialized, non-null requested claims.</param>
+        /// <param name="parentClaims">The initialized parent claim set that bounds delegation.</param>
+        /// <param name="paramName">The parameter name attributed to an invalid requested claim.</param>
+        /// <exception cref="ArgumentException">Either array is default, contains null, or a requested claim is absent from the parent.</exception>
+        public static void ThrowIfNotSubsetOf(
+            ImmutableArray<IdentityClaim> claims,
+            ImmutableArray<IdentityClaim> parentClaims,
+            [CallerArgumentExpression(nameof(claims))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfContainsNull(claims, paramName);
+            ArgumentException.ThrowIfContainsNull(parentClaims, nameof(parentClaims));
+            if (claims.Any(claim => !parentClaims.Contains(claim)))
+            {
+                throw new ArgumentException("Every delegated claim must be present in the parent identity.", paramName);
+            }
+        }
+
         /// <summary>Throws an <see cref="ArgumentException"/> if a string contains the NUL character.</summary>
         /// <param name="value">The non-null candidate string.</param>
         /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>

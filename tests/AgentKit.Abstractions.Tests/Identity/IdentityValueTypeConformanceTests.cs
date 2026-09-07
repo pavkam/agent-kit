@@ -231,6 +231,7 @@ public sealed class IdentityValueTypeConformanceTests
         identityType == typeof(SecurityPolicyVersion)
         || identityType == typeof(SecurityRevocationVersion)
         || identityType == typeof(FencingToken)
+        || identityType == typeof(IdentityVersion)
         || identityType == typeof(PlanRevision)
         || identityType == typeof(ArtifactProfileVersion);
 

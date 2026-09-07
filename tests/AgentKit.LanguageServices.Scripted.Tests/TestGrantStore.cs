@@ -35,11 +35,10 @@ internal sealed class TestGrantStore: ISecurityGrantStore
             new BeforeRunOperationCorrelation(
                 new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
                 null)),
-        new ExecutionIdentity(
+        AgentKit.TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
-            ExecutionSubjectKind.Human,
-            ExtensionData.Empty),
+            ExecutionSubjectKind.Human),
         new ComponentId("agentkit.language.scripted"),
         SecurityOperationKind.FileRead,
         SecurityEffect.Observe,

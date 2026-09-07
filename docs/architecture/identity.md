@@ -94,6 +94,55 @@ these records.
 values from [composition and configuration](composition-and-configuration.md);
 the identity subsystem does not redeclare or weaken them.
 
+## Evidence validation and delegation
+
+The issuer maps a trusted assertion and validates the resulting authentication
+evidence. These are separate operations on the issuer contract. The validation
+operation accepts `AuthenticationEvidence`, an explicit `DateTimeOffset`
+evaluation instant, and cancellation, and returns `IdentityValidationResult`.
+The first-party validator requires this operation; missing issuer validation
+never means that evidence is valid. Raw credentials remain outside both calls.
+
+Evidence validity is exclusive at its effective end. With an explicit expiry,
+clock skew may tolerate the issuer clock difference only until
+`ExpiresAt + MaximumClockSkew`; equality is expired. Evidence without an expiry
+is bounded by `AuthenticatedAt + MaximumEvidenceLifetime`; equality is expired.
+The configured maximum lifetime also bounds explicitly expiring evidence.
+Implementations compare time differences safely instead of overflowing timestamp
+addition at the representable extremes.
+
+Every normalization stage preserves the captured issuer, authentication
+evidence, and mapping version. A missing, unsupported, or malformed collaborator
+outcome rejects resolution. The host versions the issuer mapping together with
+the configured normalization rules; changing those rules requires a new identity
+version. Admission captures the resulting immutable identity. Later protected
+work uses the applicable live revocation or reauthentication policy rather than
+assuming an earlier validation is permanent authority.
+
+The default delegated-identity deriver revalidates parent evidence, preserves
+tenant and principal, retains issuer-provenanced claim subsets, and never raises
+assurance. It preserves the complete parent chain and rejects repeated
+delegation identities, malformed ancestry, or excessive depth. The identity
+value can retain a different historical parent principal from an explicitly
+authenticated host impersonation mechanism; the default deriver does not create
+that transition. Any required impersonation or delegation authorization remains
+a separate security decision.
+
+## Migrating the reduced identity contract
+
+The former four-argument `ExecutionIdentity` constructor carried tenant,
+principal, subject kind, and opaque extensions without authentication evidence.
+It is intentionally removed. Callers resolve an `IdentityAssertion` through a
+trusted ingress or supply every field of the normative identity shape from
+already verified host authentication. There is no compatibility constructor that
+invents an issuer, evidence, assurance, or version.
+
+Opaque extension data does not automatically become authenticated claims.
+Applications retain unrelated metadata separately and map claims only through
+trusted, versioned issuer policies. Test fixtures use explicit synthetic test
+evidence in the non-packable shared test support project; that helper is never
+part of production composition.
+
 ## Implementation and DI
 
 ```csharp
@@ -167,13 +216,15 @@ identity is fabricated as a default.
 
 `AddAgentIdentity` is idempotent and `TryAdd`s the singular resolver, delegated
 identity deriver, issuer catalog, and validation policy. Normalization policies
-are additive and deterministically ordered. The mutable binding options are
-validated and copied into one immutable `AgentIdentityOptionsSnapshot`; the
-scoped resolver never reads an options monitor mid-resolution. Anonymous
-identity is disabled by default, no issuer or credential is invented, and a
-missing issuer returns a typed rejection. Non-positive depth or lifetime,
-negative clock skew, duplicate issuer keys, policy-order cycles, and invalid
-singleton-to-scoped captures fail composition.
+are additive, ordered by ascending integer order and then by unique stable name
+using ordinal comparison. Registration order never breaks a tie; relative
+before/after constraints are not part of this contract. The mutable binding
+options are validated and copied into one immutable
+`AgentIdentityOptionsSnapshot`; the scoped resolver never reads an options
+monitor mid-resolution. Anonymous identity is disabled by default, no issuer or
+credential is invented, and a missing issuer returns a typed rejection.
+Non-positive depth or lifetime, negative clock skew, duplicate issuer keys or
+policy names, and invalid singleton-to-scoped captures fail composition.
 
 ## Dependency direction and cycle prevention
 

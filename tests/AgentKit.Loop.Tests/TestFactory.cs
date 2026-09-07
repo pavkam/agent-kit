@@ -6,7 +6,7 @@ namespace AgentKit.Loop.Tests;
 internal static class TestFactory
 {
     public static ExecutionIdentity Identity() =>
-        new(new TenantId("tenant-1"), new PrincipalId("user-1"), ExecutionSubjectKind.Human, ExtensionData.Empty);
+        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId("tenant-1"), new PrincipalId("user-1"), ExecutionSubjectKind.Human);
 
     public static ModelDescriptor Model(string alias = "chat")
     {
@@ -155,8 +155,7 @@ internal static class TestFactory
             providerCode: null,
             retryAfter: null,
             safeMessage,
-            diagnosticCause: null,
-            ExtensionData.Empty);
+            diagnosticCause: null, ExtensionData.Empty);
 
     public static ProviderFailure Cancellation(string safeMessage = "cancelled") =>
         new(
@@ -167,8 +166,7 @@ internal static class TestFactory
             providerCode: null,
             retryAfter: null,
             safeMessage,
-            diagnosticCause: null,
-            ExtensionData.Empty);
+            diagnosticCause: null, ExtensionData.Empty);
 
     public static ToolInvocationResult SuccessResult(string text = "ok") =>
         new(

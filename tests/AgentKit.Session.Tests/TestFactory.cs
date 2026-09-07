@@ -6,14 +6,13 @@ namespace AgentKit.Session.Tests;
 internal static class TestFactory
 {
     public static ExecutionIdentity Identity(string tenant = "tenant-1", string principal = "user-1") =>
-        new(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human, ExtensionData.Empty);
+        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human);
 
     public static SessionCreateRequest CreateRequest(AgentId? agentId = null, IdempotencyKey? idempotencyKey = null) => new(
         agentId ?? new AgentId(Guid.NewGuid()),
         Identity(),
         null,
-        idempotencyKey ?? new IdempotencyKey(Guid.NewGuid().ToString()),
-        ExtensionData.Empty);
+        idempotencyKey ?? new IdempotencyKey(Guid.NewGuid().ToString()), ExtensionData.Empty);
 
     public static SessionDescriptor Descriptor(SessionAddress? address = null, BranchId? branchId = null, long version = 0) => new(
         address ?? new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid())),

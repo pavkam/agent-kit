@@ -12,7 +12,7 @@ internal static class TestFactory
         timeProvider ?? TimeProvider.System);
 
     public static ExecutionIdentity Identity(string tenant = "tenant-1", string principal = "user-1") =>
-        new(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human, ExtensionData.Empty);
+        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human);
 
     public static SessionCreateRequest CreateRequest(
         AgentId? agentId = null,
@@ -21,8 +21,7 @@ internal static class TestFactory
         agentId ?? new AgentId(Guid.NewGuid()),
         Identity(),
         conversationId,
-        idempotencyKey ?? new IdempotencyKey(Guid.NewGuid().ToString()),
-        ExtensionData.Empty);
+        idempotencyKey ?? new IdempotencyKey(Guid.NewGuid().ToString()), ExtensionData.Empty);
 
     public static OperationCorrelation Correlation(RunId? runId = null) =>
         new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), runId ?? new RunId(Guid.NewGuid()), null);

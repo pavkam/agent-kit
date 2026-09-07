@@ -11,8 +11,8 @@ internal static class ArtifactTestData
     internal static RunId RunId { get; } = new(Guid.Parse("30000000-0000-0000-0000-000000000003"));
     internal static OperationCorrelation Correlation { get; } = new InRunOperationCorrelation(
         new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000004")), RunId, null);
-    internal static ExecutionIdentity Identity { get; } = new(
-        new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human, ExtensionData.Empty);
+    internal static ExecutionIdentity Identity { get; } = AgentKit.TestSupport.TestExecutionIdentity.Create(
+        new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
     internal static ArtifactId ArtifactId { get; } = new(Guid.Parse("50000000-0000-0000-0000-000000000005"));
     internal static ArtifactPreparationId PreparationId { get; } = new(Guid.Parse("60000000-0000-0000-0000-000000000006"));
     internal static SecurityRequestId SecurityRequestId { get; } = new(Guid.Parse("70000000-0000-0000-0000-000000000007"));

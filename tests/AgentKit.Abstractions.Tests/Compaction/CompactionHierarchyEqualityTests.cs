@@ -316,7 +316,7 @@ public sealed class CompactionHierarchyEqualityTests
         new(new OperationId(_fixedOperationGuid), new RunId(_fixedRunGuid), null);
 
     private static ExecutionIdentity Identity() =>
-        new(new TenantId("t"), new PrincipalId("p"), ExecutionSubjectKind.Human, ExtensionData.Empty);
+        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId("t"), new PrincipalId("p"), ExecutionSubjectKind.Human);
 
     // Fixed GUIDs make the "same values" equality assertions above
     // deterministic without threading a shared instance through every
@@ -411,6 +411,5 @@ public sealed class CompactionHierarchyEqualityTests
         Checkpoint(),
         null,
         null,
-        DateTimeOffset.UnixEpoch,
-        ExtensionData.Empty);
+        DateTimeOffset.UnixEpoch, ExtensionData.Empty);
 }

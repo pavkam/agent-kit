@@ -3,67 +3,91 @@
 
 namespace AgentKit;
 
-/// <summary>
-/// The immutable identity of who is acting for one operation, normalized at
-/// a trusted ingress and propagated through session, security, and
-/// compaction operations.
-/// </summary>
-/// <remarks>
-/// <para>
-/// This type is an immutable value object with structural equality over its
-/// fields. It carries no mutable state and is safe to share across threads
-/// without synchronization.
-/// </para>
-/// <para>
-/// This is a deliberately reduced stand-in for the fuller
-/// <c>ExecutionIdentity</c> described by the execution-identity-and-tenancy
-/// architecture, which additionally carries authentication evidence, claims,
-/// a delegation chain, and an assurance level produced by the
-/// not-yet-implemented <c>AgentKit.Identity</c> package. Once that package
-/// exists, session and security components will consume its richer identity
-/// type instead; this type exists so <see cref="SessionOperationContext"/>
-/// and compaction operations have a stable, self-contained identity shape to
-/// depend on in the meantime. It preserves the two pieces of identity every
-/// downstream consumer already depends on — <see cref="TenantId"/> and
-/// <see cref="PrincipalId"/> — so authorization and audit remain meaningful.
-/// </para>
-/// <para>
-/// Identity never grants authority by itself: every protected operation
-/// still evaluates this identity against the configured security policy
-/// before proceeding.
-/// </para>
-/// </remarks>
+/// <summary>Identifies the authenticated subject and tenant captured at a trusted ingress for one operation.</summary>
+/// <remarks>Identity is immutable authentication evidence and never grants authority. Raw credentials must never enter this value.</remarks>
 public sealed record ExecutionIdentity
 {
-    /// <summary>Initializes a new instance of the <see cref="ExecutionIdentity"/> record.</summary>
-    /// <param name="tenantId">The tenant on whose behalf the operation is performed.</param>
-    /// <param name="principalId">The authenticated principal performing the operation.</param>
-    /// <param name="subjectKind">The kind of subject this identity represents.</param>
-    /// <param name="extensions">Ingress-specific or forward-compatible identity data.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="extensions"/> is null.</exception>
-    public ExecutionIdentity(
-        TenantId tenantId,
-        PrincipalId principalId,
-        ExecutionSubjectKind subjectKind,
-        ExtensionData extensions)
+    /// <summary>Initializes an execution identity from evidence supplied by a trusted ingress.</summary>
+    /// <param name="tenantId">The stable tenant isolation boundary.</param>
+    /// <param name="principalId">The stable normalized principal.</param>
+    /// <param name="subjectKind">The normalized subject kind.</param>
+    /// <param name="evidence">The safe authentication evidence captured by trusted ingress.</param>
+    /// <param name="claims">The ordered normalized claims with issuer provenance.</param>
+    /// <param name="delegationChain">The ordered same-tenant delegation ancestry; ancestor principals may differ only when a host separately authenticated an impersonation transition.</param>
+    /// <param name="assurance">The normalized authentication assurance.</param>
+    /// <param name="version">The version of issuer mapping and normalization used.</param>
+    /// <exception cref="ArgumentException">A nested identifier is default, either array is default or contains null, or a delegation link crosses the tenant boundary.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="evidence"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">An enum value is undefined, the version is not positive, or this identity's assurance exceeds an ancestor link's assurance.</exception>
+    public ExecutionIdentity(TenantId tenantId, PrincipalId principalId, ExecutionSubjectKind subjectKind, AuthenticationEvidence evidence, ImmutableArray<IdentityClaim> claims, ImmutableArray<DelegationIdentityLink> delegationChain, IdentityAssuranceLevel assurance, IdentityVersion version)
     {
-        ArgumentNullException.ThrowIfNull(extensions);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId.Value, nameof(tenantId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(principalId.Value, nameof(principalId));
+        ArgumentOutOfRangeException.ThrowIfNegative(
+            (int) subjectKind, nameof(subjectKind));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(
+            (int) subjectKind, (int) ExecutionSubjectKind.Anonymous, nameof(subjectKind));
+        ArgumentNullException.ThrowIfNull(evidence);
+        ArgumentException.ThrowIfContainsNull(claims);
+        ArgumentException.ThrowIfCrossesTenant(delegationChain, tenantId);
+        ArgumentOutOfRangeException.ThrowIfNegative(
+            (int) assurance, nameof(assurance));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(
+            (int) assurance, (int) IdentityAssuranceLevel.HardwareBacked, nameof(assurance));
+        ArgumentOutOfRangeException.ThrowIfLessThan(version.Value, 1, nameof(version));
+        foreach (var link in delegationChain)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(
+                (int) assurance, (int) link.Assurance, nameof(assurance));
+        }
 
         TenantId = tenantId;
         PrincipalId = principalId;
         SubjectKind = subjectKind;
-        Extensions = extensions;
+        Evidence = evidence;
+        Claims = claims;
+        DelegationChain = delegationChain;
+        Assurance = assurance;
+        Version = version;
     }
 
-    /// <summary>Gets the tenant on whose behalf the operation is performed.</summary>
-    public TenantId TenantId { get; init; }
+    /// <summary>Gets the tenant isolation boundary.</summary>
+    public TenantId TenantId { get; }
+    /// <summary>Gets the normalized principal.</summary>
+    public PrincipalId PrincipalId { get; }
+    /// <summary>Gets the subject kind.</summary>
+    public ExecutionSubjectKind SubjectKind { get; }
+    /// <summary>Gets the safe evidence supplied by the trusted ingress.</summary>
+    public AuthenticationEvidence Evidence { get; }
+    /// <summary>Gets the ordered issuer-provenanced normalized claims.</summary>
+    public ImmutableArray<IdentityClaim> Claims { get; }
+    /// <summary>Gets the ordered delegation ancestry.</summary>
+    public ImmutableArray<DelegationIdentityLink> DelegationChain { get; }
+    /// <summary>Gets the normalized assurance.</summary>
+    public IdentityAssuranceLevel Assurance { get; }
+    /// <summary>Gets the captured mapping and normalization version.</summary>
+    public IdentityVersion Version { get; }
 
-    /// <summary>Gets the authenticated principal performing the operation.</summary>
-    public PrincipalId PrincipalId { get; init; }
+    /// <summary>Compares identities using ordered claim and delegation contents rather than immutable-array storage identity.</summary>
+    /// <param name="other">The identity to compare.</param>
+    /// <returns><see langword="true"/> when every field and ordered collection matches.</returns>
+    public bool Equals(ExecutionIdentity? other) => other is not null && TenantId == other.TenantId && PrincipalId == other.PrincipalId && SubjectKind == other.SubjectKind && Evidence == other.Evidence && Claims.AsSpan().SequenceEqual(other.Claims.AsSpan()) && DelegationChain.AsSpan().SequenceEqual(other.DelegationChain.AsSpan()) && Assurance == other.Assurance && Version == other.Version;
 
-    /// <summary>Gets the kind of subject this identity represents.</summary>
-    public ExecutionSubjectKind SubjectKind { get; init; }
-
-    /// <summary>Gets ingress-specific or forward-compatible identity data.</summary>
-    public ExtensionData Extensions { get; init; }
+    /// <summary>Returns a content-based hash code consistent with <see cref="Equals(ExecutionIdentity?)"/>.</summary>
+    /// <returns>A hash derived from every scalar and ordered collection element.</returns>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(TenantId); hash.Add(PrincipalId); hash.Add(SubjectKind); hash.Add(Evidence);
+        foreach (var claim in Claims)
+        {
+            hash.Add(claim);
+        }
+        foreach (var link in DelegationChain)
+        {
+            hash.Add(link);
+        }
+        hash.Add(Assurance); hash.Add(Version);
+        return hash.ToHashCode();
+    }
 }

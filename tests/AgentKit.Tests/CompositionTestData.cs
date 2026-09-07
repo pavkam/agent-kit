@@ -18,7 +18,7 @@ internal static class CompositionTestData
         new(Guid.Parse("c0000000-0000-0000-0000-000000000003"));
 
     public static ExecutionIdentity Identity() =>
-        new(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human, ExtensionData.Empty);
+        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
 
     public static AgentDefinition Definition(
         AgentId? id = null,

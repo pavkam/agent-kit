@@ -32,19 +32,22 @@ owning spec.
 | Reusable grant-store conformance and solution coverage | Focused permissions suite: 31 passed, including eight inherited contract cases; all 120 current projects registered in the solution                               | Verified checkpoint; other contract suites remain open                                                             |
 | Session tenant isolation and replay evidence           | Focused Session.InMemory suite: 61 passed; foreign-tenant masking, structural replay, changed-request conflicts, original branch receipts and deletion tombstones | Verified checkpoint; identity authentication, grants, durable retention and lane coordination remain open          |
 | Pinned-agent admission and retained-value integrity    | Focused facade suite: 59 passed; replacement/removal, reconstructed values, scope failure, schema ownership, one terminal admission and isolated diagnostics      | Verified checkpoint; keyed run-plan composition, retention/revocation catalogs and waiter cancellation remain open |
+| Trusted execution identity and delegation              | Focused identity runtime: 58 passed; rich contracts and migration included in full 3,440-test integration pass                                                    | Verified checkpoint; downstream admission/revalidation and reusable identity conformance remain open               |
 
 ## Latest integration evidence
 
-At checkpoint `41f43f2`, the current shared worktree built all 120 registered
-projects with zero warnings or errors. The complete solution test run passed
-3,197 tests with no failures or skips. This includes the concurrent, uncommitted
-provider embedding changes present during that run; it is not evidence that the
-remaining architecture has been implemented.
+The shared worktree built all 122 registered projects with zero warnings or
+errors after the identity and catalog changes. The complete solution test run
+passed 3,440 tests with no failures or skips. This includes the concurrent,
+uncommitted provider embedding changes present during that run. The separate
+public API compatibility harness is being added and is not included in this
+solution result.
 
-Active next checkpoints are the rich identity contracts and first-party identity
-runtime, including migration of the reduced identity test fixtures. Pinned
-agent-definition admission revalidation is verified. Full keyed run-plan
-composition and caller-wait versus authoritative-run cancellation remain open.
+Rich identity contracts, the first-party identity runtime, reduced test-fixture
+migration, and pinned agent admission have verified checkpoints. The catalog
+bootstrap/publication checkpoint is being recorded separately. Full keyed
+run-plan composition, downstream identity revalidation, and caller-wait versus
+authoritative-run cancellation remain open.
 
 ## Concurrent ownership
 
@@ -73,7 +76,7 @@ not make that component a mandatory dependency of every engine.
 | Structured output             | Complete candidate extraction, validation, repair decisions and conversion conformance                               |
 | Context                       | Instruction precedence, contributor trust/order, bounded assembly and request manifests                              |
 | Context compaction            | Safe cuts, trustworthy activation evidence, cancellation, cursor/manifest reconciliation                             |
-| Identity                      | Missing `AgentKit.Identity`; trusted ingress, tenant isolation and delegation lineage                                |
+| Identity                      | Verified normalization/derivation baseline; downstream revalidation, ingress integration and reusable conformance    |
 | Model and embedding providers | All advertised operation/capability mappings, endpoint/account bindings, terminal/error/usage semantics              |
 | Tools                         | Authoritative terminal records, rejection projections, scheduling, retries and focused feature contracts             |
 | Permissions and human control | Policy algebra, grants, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap  |

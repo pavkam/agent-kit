@@ -10,6 +10,12 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for validating a pinned definition before a new agent run is admitted.</summary>
     public const string AgentAdmission = "agent.admission";
 
+    /// <summary>Gets the name for resolving a trusted identity assertion.</summary>
+    public const string IdentityResolve = "identity.resolve";
+
+    /// <summary>Gets the name for deriving a narrower delegated identity.</summary>
+    public const string IdentityDerive = "identity.derive";
+
     /// <summary>Gets the OpenTelemetry GenAI-compatible agent invocation name.</summary>
     public const string InvokeAgent = "invoke_agent";
 
