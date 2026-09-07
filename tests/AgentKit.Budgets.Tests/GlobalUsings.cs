@@ -3,6 +3,7 @@
 
 global using System.Collections.Immutable;
 global using System.Diagnostics;
+global using System.Diagnostics.Metrics;
 
 global using AgentKit;
 global using AgentKit.Budgets;

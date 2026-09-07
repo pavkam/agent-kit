@@ -40,6 +40,12 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal budget settlement outcomes.</summary>
     public const string BudgetSettlementCount = "agentkit.budget.settlement.count";
 
+    /// <summary>Gets the counter for terminal budget start-accounting outcomes.</summary>
+    public const string BudgetStartCount = "agentkit.budget.start.count";
+
+    /// <summary>Gets the counter for terminal budget correction outcomes.</summary>
+    public const string BudgetCorrectionCount = "agentkit.budget.correction.count";
+
     /// <summary>Gets the counter for terminal hook dispatch outcomes.</summary>
     public const string HookDispatchCount = "agentkit.hook.dispatch.count";
 

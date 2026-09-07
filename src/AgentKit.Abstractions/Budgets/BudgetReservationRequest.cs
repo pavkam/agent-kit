@@ -11,9 +11,11 @@ namespace AgentKit;
 /// This type is an immutable value object with structural equality over its
 /// fields. It carries no mutable state and is safe to share across threads
 /// without synchronization. Submitting a request with the same
-/// <see cref="IdempotencyKey"/> against a still-open reservation on the same
-/// scope and dimension returns that same reservation rather than reserving
-/// twice.
+/// <see cref="IdempotencyKey"/> against the same authority returns the original
+/// reservation receipt rather than reserving twice, including after release or
+/// expiry. The first-party in-memory authority retains that binding only for
+/// its process lifetime; persistence across process loss requires a durable
+/// ledger implementation.
 /// </remarks>
 public sealed record BudgetReservationRequest
 {

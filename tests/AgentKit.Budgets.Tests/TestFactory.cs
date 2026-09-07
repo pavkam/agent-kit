@@ -32,24 +32,26 @@ internal static class TestFactory
         decimal amount = 1m,
         BudgetUnit? unit = null,
         DateTimeOffset? expiresAt = null,
-        string? idempotencyKey = null) =>
+        string? idempotencyKey = null,
+        OperationId? operationId = null) =>
         new(
             scopeId,
             dimension,
             amount,
             unit ?? Count,
-            new OperationId(Guid.NewGuid()),
+            operationId ?? new OperationId(Guid.NewGuid()),
             expiresAt,
             new IdempotencyKey(idempotencyKey ?? Guid.NewGuid().ToString()));
 
     public static InMemoryBudgetAuthority Authority(
         AgentBudgetOptionsSnapshot? options = null,
         TimeProvider? timeProvider = null,
-        IBudgetDimensionCatalog? dimensions = null) =>
+        IBudgetDimensionCatalog? dimensions = null,
+        IIdentifierGenerator<BudgetReservationId>? reservationIds = null) =>
         new(
             dimensions ?? DefaultCatalog(),
             new GuidIdentifierGenerator<BudgetScopeId>(static v => new BudgetScopeId(v)),
-            new GuidIdentifierGenerator<BudgetReservationId>(static v => new BudgetReservationId(v)),
+            reservationIds ?? new GuidIdentifierGenerator<BudgetReservationId>(static v => new BudgetReservationId(v)),
             timeProvider ?? TimeProvider.System,
             options ?? DefaultOptions());
 

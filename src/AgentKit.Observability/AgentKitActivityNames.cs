@@ -73,6 +73,12 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for settling reserved capacity.</summary>
     public const string BudgetCommit = "budget.commit";
 
+    /// <summary>Gets the name for moving reserved capacity into started accounting.</summary>
+    public const string BudgetStart = "budget.start";
+
+    /// <summary>Gets the name for replacing provisional budget accounting with a correction.</summary>
+    public const string BudgetCorrection = "budget.correction";
+
     /// <summary>Gets the name for dispatching one typed hook point.</summary>
     public const string HookDispatch = "hook.dispatch";
 

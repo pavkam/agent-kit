@@ -269,6 +269,45 @@ public static class ArgumentExceptionExtensions
             }
         }
 
+        /// <summary>Throws when requests do not form one valid atomic budget reservation batch.</summary>
+        /// <param name="requests">The initialized, non-empty ordered requests to validate.</param>
+        /// <param name="scopeId">The budget scope that must own every request.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="requests"/> is default or empty, contains a null
+        /// request, targets another scope or operation, contains duplicate item
+        /// idempotency keys, or expresses one dimension in incompatible units.
+        /// </exception>
+        public static void ThrowIfInvalidBudgetReservationBatch(
+            ImmutableArray<BudgetReservationRequest> requests,
+            BudgetScopeId scopeId,
+            [CallerArgumentExpression(nameof(requests))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfDefaultOrEmpty(requests, paramName);
+            ArgumentException.ThrowIfContainsNull(requests, paramName);
+            var operationId = requests[0].OperationId;
+            if (requests.Any(request => request.ScopeId != scopeId))
+            {
+                throw new ArgumentException("Every request must target the receiving budget scope.", paramName);
+            }
+
+            if (requests.Any(request => request.OperationId != operationId))
+            {
+                throw new ArgumentException("Every request must name the same logical operation.", paramName);
+            }
+
+            if (requests.Select(static request => request.IdempotencyKey).Distinct().Count() != requests.Length)
+            {
+                throw new ArgumentException("Batch item idempotency keys must be unique.", paramName);
+            }
+
+            if (requests.GroupBy(static request => request.Dimension)
+                .Any(static group => group.Select(static request => request.Unit).Distinct().Skip(1).Any()))
+            {
+                throw new ArgumentException("Every dimension in the batch must use one compatible unit.", paramName);
+            }
+        }
+
         /// <summary>Throws when a stream cannot supply artifact content.</summary>
         /// <param name="stream">The non-null stream to inspect.</param>
         /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>

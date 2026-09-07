@@ -3,77 +3,62 @@
 
 namespace AgentKit.Budgets;
 
-/// <summary>
-/// The in-memory <see cref="IBudgetScope"/>/<see cref="IRunBudget"/>
-/// implementation created by <see cref="InMemoryBudgetAuthority"/>.
-/// </summary>
-/// <remarks>
-/// A scope enforces its own configured limits and, when it has a parent,
-/// atomically cascades the same reservation to that parent before
-/// succeeding, so effective capacity is always the tightest applicable
-/// constraint across the whole hierarchy. Every mutation to this scope's
-/// per-dimension bookkeeping happens under one scope-wide lock; this is a
-/// simple, correct, non-lock-free implementation appropriate for a
-/// first-party in-memory process authority.
-/// </remarks>
+/// <summary>The in-memory hierarchical budget scope created by <see cref="InMemoryBudgetAuthority"/>.</summary>
+/// <remarks>All related scopes share one mutation gate, making hierarchy and batch admission atomic.</remarks>
 internal sealed class InMemoryBudgetScope: IBudgetScope, IRunBudget
 {
-    private readonly Lock _gate = new();
-    private readonly Dictionary<BudgetDimension, DimensionState> _states = [];
-    private readonly Dictionary<(BudgetDimension Dimension, IdempotencyKey Key), InMemoryBudgetReservation> _byIdempotencyKey = [];
+    private readonly Lock _hierarchyGate;
+    private readonly Dictionary<BudgetDimension, InMemoryBudgetDimensionState> _states = [];
+    private readonly Dictionary<IdempotencyKey, InMemoryBudgetBatchRecord> _batchesByItemKey = [];
     private readonly IIdentifierGenerator<BudgetReservationId> _reservationIds;
     private readonly TimeProvider _timeProvider;
     private readonly AgentBudgetOptionsSnapshot _options;
     private readonly ILogger<InMemoryBudgetScope> _logger;
 
-    /// <summary>Initializes a new instance of the <see cref="InMemoryBudgetScope"/> class.</summary>
-    /// <param name="id">The identity of this scope.</param>
-    /// <param name="address">The hierarchical address this scope occupies.</param>
-    /// <param name="parent">The parent scope, when this scope is not a root scope.</param>
-    /// <param name="limits">The limits configured directly on this scope.</param>
-    /// <param name="reservationIds">Generates identities for reservations created against this scope.</param>
-    /// <param name="timeProvider">The clock used to timestamp and expire reservations.</param>
-    /// <param name="options">The validated authority options.</param>
-    /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
+    /// <summary>Initializes a scope participating in its authority's atomic hierarchy.</summary>
+    /// <param name="id">The scope identity.</param><param name="address">The hierarchical address.</param>
+    /// <param name="parent">The parent scope, when present.</param><param name="limits">The local limits.</param>
+    /// <param name="hierarchyGate">The authority-owned hierarchy gate.</param>
+    /// <param name="reservationIds">The reservation identity generator.</param>
+    /// <param name="timeProvider">The deterministic clock.</param><param name="options">The validated options.</param>
+    /// <param name="logger">The optional structured logger.</param>
+    /// <exception cref="ArgumentNullException">A required reference is null.</exception>
     public InMemoryBudgetScope(
-        BudgetScopeId id,
-        BudgetScopeAddress address,
-        InMemoryBudgetScope? parent,
-        ImmutableArray<BudgetLimit> limits,
-        IIdentifierGenerator<BudgetReservationId> reservationIds,
-        TimeProvider timeProvider,
-        AgentBudgetOptionsSnapshot options,
-        ILogger<InMemoryBudgetScope>? logger = null)
+        BudgetScopeId id, BudgetScopeAddress address, InMemoryBudgetScope? parent,
+        ImmutableArray<BudgetLimit> limits, Lock hierarchyGate,
+        IIdentifierGenerator<BudgetReservationId> reservationIds, TimeProvider timeProvider,
+        AgentBudgetOptionsSnapshot options, ILogger<InMemoryBudgetScope>? logger = null)
     {
+        ArgumentNullException.ThrowIfNull(address);
+        ArgumentNullException.ThrowIfNullLock(hierarchyGate);
+        ArgumentNullException.ThrowIfNull(reservationIds);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(options);
         Id = id;
         Address = address;
         Parent = parent;
         Depth = (parent?.Depth ?? -1) + 1;
         Limits = limits.ToImmutableDictionary(static limit => limit.Dimension);
+        _hierarchyGate = hierarchyGate;
         _reservationIds = reservationIds;
         _timeProvider = timeProvider;
         _options = options;
         _logger = logger ?? NullLogger<InMemoryBudgetScope>.Instance;
-
         foreach (var limit in limits)
         {
-            _states[limit.Dimension] = new DimensionState(limit.Unit);
+            _states[limit.Dimension] = new InMemoryBudgetDimensionState(limit.Unit);
         }
     }
 
     /// <inheritdoc/>
     public BudgetScopeId Id { get; }
-
     /// <inheritdoc/>
     public BudgetScopeAddress Address { get; }
-
-    /// <summary>Gets the parent scope, when this scope is not a root scope.</summary>
+    /// <summary>Gets the parent scope, when present.</summary>
     public InMemoryBudgetScope? Parent { get; }
-
-    /// <summary>Gets this scope's depth in the hierarchy; a root scope has depth zero.</summary>
+    /// <summary>Gets the zero-based hierarchy depth.</summary>
     public int Depth { get; }
-
-    /// <summary>Gets the limits configured directly on this scope, keyed by dimension.</summary>
+    /// <summary>Gets the local limits by dimension.</summary>
     public ImmutableDictionary<BudgetDimension, BudgetLimit> Limits { get; }
 
     /// <inheritdoc/>
@@ -81,91 +66,74 @@ internal sealed class InMemoryBudgetScope: IBudgetScope, IRunBudget
         BudgetReservationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var result = await ReserveBatchAsync([request], cancellationToken).ConfigureAwait(false);
+        return result switch
+        {
+            BudgetBatchReserved reserved => new BudgetReserved(reserved.Reservations[0]),
+            BudgetBatchRejected rejected => new BudgetRejected(rejected.Failure),
+            _ => throw new UnreachableException(),
+        };
+    }
 
+    /// <inheritdoc/>
+    public ValueTask<BudgetBatchReservationResult> ReserveBatchAsync(
+        ImmutableArray<BudgetReservationRequest> requests, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfInvalidBudgetReservationBatch(requests, Id);
         using var activity = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.BudgetReserve);
         _ = activity?.SetTag(AgentKitTagNames.BudgetScopeId, Id.ToString());
-        _ = activity?.SetTag(AgentKitTagNames.BudgetDimension, request.Dimension.ToString());
-        _ = activity?.SetTag(AgentKitTagNames.OperationId, request.OperationId.ToString());
-
+        _ = activity?.SetTag(AgentKitTagNames.BudgetDimension, requests[0].Dimension.ToString());
+        _ = activity?.SetTag(AgentKitTagNames.OperationId, requests[0].OperationId.ToString());
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            if (request.ScopeId != Id)
+            BudgetBatchReservationResult result;
+            lock (_hierarchyGate)
             {
-                throw new ArgumentException("The request's ScopeId does not match this scope's Id.", nameof(request));
+                cancellationToken.ThrowIfCancellationRequested();
+                ValidateUnitsLocked(requests);
+                SweepExpiredLocked();
+                if (TryGetReplayLocked(requests, out var replay))
+                {
+                    result = new BudgetBatchReserved(replay);
+                }
+                else
+                {
+                    var scopes = GetHierarchy();
+                    var failure = ValidateAdmissionLocked(scopes, requests);
+                    result = failure is null
+                        ? new BudgetBatchReserved(CreateReservationsLocked(scopes, requests))
+                        : new BudgetBatchRejected(failure);
+                }
             }
 
-            if (Limits.TryGetValue(request.Dimension, out var configuredLimit) && configuredLimit.Unit != request.Unit)
-            {
-                throw new ArgumentException(
-                    $"Dimension '{request.Dimension}' is configured with unit '{configuredLimit.Unit}', not '{request.Unit}'.",
-                    nameof(request));
-            }
-
-            await SweepExpiredAsync(request.Dimension).ConfigureAwait(false);
-
-            var (reservation, failure) = TryReserveLocal(request, configuredLimit);
-            if (failure is not null)
-            {
-                return Complete(new BudgetRejected(failure), "rejected", failure.GetType().Name);
-            }
-
-            var ownReservation = reservation!;
-
-            if (Parent is null)
-            {
-                return Complete(new BudgetReserved(ownReservation), "reserved");
-            }
-
-            var parentRequest = new BudgetReservationRequest(
-                Parent.Id, request.Dimension, request.Amount, request.Unit, request.OperationId,
-                request.ExpiresAt, request.IdempotencyKey);
-
-            var parentResult = await Parent.ReserveAsync(parentRequest, cancellationToken).ConfigureAwait(false);
-
-            if (parentResult is BudgetRejected parentRejected)
-            {
-                await ownReservation.DisposeAsync().ConfigureAwait(false);
-                return Complete(new BudgetRejected(parentRejected.Failure), "rejected", parentRejected.Failure.GetType().Name);
-            }
-
-            ownReservation.AttachParent(((BudgetReserved) parentResult).Reservation);
-            return Complete(new BudgetReserved(ownReservation), "reserved");
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            activity.SetFailed("cancelled", nameof(OperationCanceledException));
-            BudgetLog.ReservationCancelled(_logger, Id, request.Dimension);
-            BudgetMetrics.RecordReservation("cancelled", request.Dimension);
-            throw;
-        }
-        catch (Exception exception)
-        {
-            activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
-            BudgetLog.ReservationFailed(
-                _logger,
-                Id,
-                request.Dimension,
-                exception.GetType().FullName ?? exception.GetType().Name);
-            BudgetMetrics.RecordReservation("failed", request.Dimension);
-            throw;
-        }
-
-        BudgetReservationResult Complete(BudgetReservationResult result, string outcome, string? errorType = null)
-        {
-            if (errorType is null)
+            var outcome = result is BudgetBatchReserved ? "reserved" : "rejected";
+            if (result is BudgetBatchReserved)
             {
                 activity.SetSuccessful(outcome);
             }
             else
             {
-                activity.SetFailed(outcome, errorType);
+                activity.SetFailed(outcome, nameof(BudgetLimitFailure));
             }
 
-            BudgetLog.ReservationCompleted(_logger, Id, request.Dimension, outcome);
-            BudgetMetrics.RecordReservation(outcome, request.Dimension);
-            return result;
+            foreach (var dimension in requests.Select(static item => item.Dimension).Distinct())
+            {
+                BudgetLog.ReservationCompleted(_logger, Id, dimension, outcome);
+                BudgetMetrics.RecordReservation(outcome, dimension);
+            }
+
+            return ValueTask.FromResult(result);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            activity.SetFailed("cancelled", nameof(OperationCanceledException));
+            throw;
+        }
+        catch (Exception exception)
+        {
+            activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
+            throw;
         }
     }
 
@@ -173,176 +141,289 @@ internal sealed class InMemoryBudgetScope: IBudgetScope, IRunBudget
     public ValueTask<BudgetSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-
-        lock (_gate)
+        lock (_hierarchyGate)
         {
-            var now = _timeProvider.GetUtcNow();
-            var usages = _states
-                .Select(pair =>
+            SweepExpiredLocked();
+            var usages = _states.Select(pair =>
+            {
+                _ = Limits.TryGetValue(pair.Key, out var limit);
+                return new BudgetDimensionUsage(pair.Key, pair.Value.Unit, pair.Value.Reserved, pair.Value.Committed, limit);
+            }).ToImmutableArray();
+            return ValueTask.FromResult(new BudgetSnapshot(Id, _timeProvider.GetUtcNow(), usages));
+        }
+    }
+
+    /// <summary>Marks the reservation hierarchy started atomically.</summary>
+    /// <param name="reservation">The caller-visible reservation.</param><returns>The start result.</returns>
+    /// <param name="cancellationToken">Cancels the transition before any accounting changes.</param>
+    internal BudgetStartResult MarkStarted(
+        InMemoryBudgetReservation reservation,
+        CancellationToken cancellationToken)
+    {
+        lock (_hierarchyGate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SweepExpiredLocked();
+            return reservation.MarkHierarchyStartedLocked();
+        }
+    }
+
+    /// <summary>Commits the reservation hierarchy atomically.</summary>
+    /// <param name="reservation">The caller-visible reservation.</param><param name="actual">The actual usage.</param>
+    /// <param name="cancellationToken">Cancels settlement before any accounting changes.</param>
+    /// <returns>The caller-visible settlement.</returns>
+    internal BudgetCommitResult Commit(
+        InMemoryBudgetReservation reservation,
+        decimal actual,
+        CancellationToken cancellationToken)
+    {
+        lock (_hierarchyGate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return reservation.CommitHierarchyLocked(actual);
+        }
+    }
+
+    /// <summary>Corrects the reservation hierarchy atomically.</summary>
+    /// <param name="reservation">The original reservation.</param><param name="correctedActual">The replacement actual.</param>
+    /// <param name="revision">The monotonic revision.</param>
+    /// <param name="cancellationToken">Cancels correction before any accounting changes.</param>
+    /// <returns>The correction result.</returns>
+    internal BudgetCorrectionResult Correct(
+        InMemoryBudgetReservation reservation,
+        decimal correctedActual,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        lock (_hierarchyGate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return reservation.CorrectHierarchyLocked(correctedActual, revision);
+        }
+    }
+
+    /// <summary>Releases the reservation hierarchy only if it is unstarted.</summary>
+    /// <param name="reservation">The caller-visible reservation.</param>
+    internal void Release(InMemoryBudgetReservation reservation)
+    {
+        lock (_hierarchyGate)
+        {
+            reservation.ReleaseHierarchyLocked();
+        }
+    }
+
+    /// <summary>Applies one local commit while the hierarchy gate is held.</summary>
+    /// <param name="reservation">The local reservation.</param><param name="actual">The actual usage.</param>
+    /// <returns>The local settlement.</returns>
+    internal BudgetCommitResult CommitLocalLocked(InMemoryBudgetReservation reservation, decimal actual)
+    {
+        var state = _states[reservation.Dimension];
+        state.Reserved -= reservation.Reserved;
+        state.Committed += actual;
+        _ = state.Open.Remove(reservation);
+        state.CommittedReservations.Add(reservation);
+        RecomputeBlocked(reservation.Dimension, state);
+        return new BudgetCommitResult(reservation.Id, reservation.Reserved, actual,
+            Math.Max(0m, reservation.Reserved - actual), Math.Max(0m, actual - reservation.Reserved));
+    }
+
+    /// <summary>Applies one local correction while the hierarchy gate is held.</summary>
+    /// <param name="reservation">The local reservation.</param><param name="correctedActual">The replacement actual.</param>
+    internal void CorrectLocalLocked(InMemoryBudgetReservation reservation, decimal correctedActual)
+    {
+        var state = _states[reservation.Dimension];
+        state.Committed += correctedActual - reservation.Actual;
+        RecomputeBlocked(reservation.Dimension, state, reservation, correctedActual);
+    }
+
+    /// <summary>Releases one local unstarted reservation while the hierarchy gate is held.</summary>
+    /// <param name="reservation">The local reservation.</param>
+    internal void ReleaseLocalLocked(InMemoryBudgetReservation reservation)
+    {
+        var state = _states[reservation.Dimension];
+        state.Reserved -= reservation.Reserved;
+        _ = state.Open.Remove(reservation);
+    }
+
+    private bool TryGetReplayLocked(ImmutableArray<BudgetReservationRequest> requests, out ImmutableArray<IBudgetReservation> reservations)
+    {
+        InMemoryBudgetBatchRecord? found = null;
+        var missing = false;
+        foreach (var request in requests)
+        {
+            if (!_batchesByItemKey.TryGetValue(request.IdempotencyKey, out var batch))
+            {
+                missing = true;
+                continue;
+            }
+            if (found is not null && !ReferenceEquals(found, batch))
+            {
+                throw new InvalidOperationException("The item keys belong to different prior batches.");
+            }
+
+            found = batch;
+        }
+        if (found is null)
+        {
+            reservations = default;
+            return false;
+        }
+        if (missing || found.TargetScopeId != Id || !found.Requests.SequenceEqual(requests))
+        {
+            throw new InvalidOperationException("An idempotency key was reused with different batch content or membership.");
+        }
+
+        reservations = [.. found.TargetReservations.Cast<IBudgetReservation>()];
+        return true;
+    }
+
+    private ImmutableArray<InMemoryBudgetScope> GetHierarchy()
+    {
+        var builder = ImmutableArray.CreateBuilder<InMemoryBudgetScope>();
+        for (var scope = this; scope is not null; scope = scope.Parent)
+        {
+            builder.Add(scope);
+        }
+
+        return builder.ToImmutable();
+    }
+
+    private static BudgetLimitFailure? ValidateAdmissionLocked(
+        ImmutableArray<InMemoryBudgetScope> scopes, ImmutableArray<BudgetReservationRequest> requests)
+    {
+        foreach (var scope in scopes)
+        {
+            foreach (var request in requests)
+            {
+                if (scope._batchesByItemKey.ContainsKey(request.IdempotencyKey))
                 {
-                    _ = Limits.TryGetValue(pair.Key, out var limit);
-                    return new BudgetDimensionUsage(pair.Key, pair.Value.Unit, pair.Value.Reserved, pair.Value.Committed, limit);
-                })
-                .ToImmutableArray();
+                    throw new InvalidOperationException("An idempotency key is already bound to another reservation or batch.");
+                }
 
-            return ValueTask.FromResult(new BudgetSnapshot(Id, now, usages));
-        }
-    }
-
-    /// <summary>Settles a committed reservation's bookkeeping and returns its settlement outcome.</summary>
-    /// <param name="reservation">The reservation being committed.</param>
-    /// <param name="actual">The actual amount consumed.</param>
-    /// <returns>The settlement outcome for this scope's level.</returns>
-    internal BudgetCommitResult SettleCommit(InMemoryBudgetReservation reservation, decimal actual)
-    {
-        lock (_gate)
-        {
-            var state = _states[reservation.Dimension];
-            state.Reserved -= reservation.Reserved;
-            state.Committed += actual;
-            _ = state.Open.Remove(reservation);
-            RemoveIdempotencyEntryLocked(reservation);
-
-            var released = Math.Max(0m, reservation.Reserved - actual);
-            var overrun = Math.Max(0m, actual - reservation.Reserved);
-
-            if (overrun > 0m && Limits.TryGetValue(reservation.Dimension, out var limit) && limit.Kind == BudgetLimitKind.Hard)
-            {
-                state.Blocked = true;
             }
-
-            return new BudgetCommitResult(reservation.Id, reservation.Reserved, actual, released, overrun);
-        }
-    }
-
-    /// <summary>Releases an uncommitted reservation's bookkeeping.</summary>
-    /// <param name="reservation">The reservation being released.</param>
-    internal void SettleRelease(InMemoryBudgetReservation reservation)
-    {
-        lock (_gate)
-        {
-            if (_states.TryGetValue(reservation.Dimension, out var state))
+            var openCount = scope._states.Values.Sum(static state => state.Open.Count);
+            if (openCount + requests.Length > scope._options.MaximumOpenReservationsPerScope)
             {
-                state.Reserved -= reservation.Reserved;
-                _ = state.Open.Remove(reservation);
+                var first = requests[0];
+                return new BudgetLimitFailure(scope.Id, first.Dimension, BudgetLimitKind.Hard,
+                    scope._options.MaximumOpenReservationsPerScope, openCount, requests.Length,
+                    new BudgetUnit("reservations"), "The batch would exceed the maximum number of open reservations.");
             }
-
-            RemoveIdempotencyEntryLocked(reservation);
-        }
-    }
-
-    private (InMemoryBudgetReservation? Reservation, BudgetLimitFailure? Failure) TryReserveLocal(
-        BudgetReservationRequest request, BudgetLimit? configuredLimit)
-    {
-        lock (_gate)
-        {
-            var key = (request.Dimension, request.IdempotencyKey);
-            if (_byIdempotencyKey.TryGetValue(key, out var existing) && existing.IsOpen)
+            foreach (var group in requests.GroupBy(static item => (item.Dimension, item.Unit)))
             {
-                return existing.Reserved != request.Amount
-                    ? throw new InvalidOperationException(
-                        $"Idempotency key '{request.IdempotencyKey}' was already used for a reservation of a different amount.")
-                    : (existing, null);
-            }
-
-            if (!_states.TryGetValue(request.Dimension, out var state))
-            {
-                state = new DimensionState(request.Unit);
-                _states[request.Dimension] = state;
-            }
-
-            var openCount = _states.Values.Sum(static s => s.Open.Count);
-            var observed = state.Reserved + state.Committed;
-
-            var failure = state switch
-            {
-                { Blocked: true } => new BudgetLimitFailure(
-                    Id, request.Dimension, BudgetLimitKind.Hard, configuredLimit?.Value ?? 0m, observed,
-                    request.Amount, request.Unit,
-                    $"Dimension '{request.Dimension}' is blocked from further reservations after a prior overrun."),
-
-                _ when openCount >= _options.MaximumOpenReservationsPerScope => new BudgetLimitFailure(
-                    Id, request.Dimension, BudgetLimitKind.Hard, _options.MaximumOpenReservationsPerScope,
-                    openCount, 1, new BudgetUnit("reservations"),
-                    "The scope already holds the maximum number of open reservations."),
-
-                _ when configuredLimit is { Kind: BudgetLimitKind.Hard } && observed + request.Amount > configuredLimit.Value =>
-                    new BudgetLimitFailure(
-                        Id, request.Dimension, BudgetLimitKind.Hard, configuredLimit.Value, observed,
-                        request.Amount, request.Unit,
-                        $"Reserving {request.Amount} {request.Unit} for '{request.Dimension}' would exceed the " +
-                            $"hard limit of {configuredLimit.Value}."),
-
-                _ => null,
-            };
-
-            if (failure is not null)
-            {
-                return (null, failure);
-            }
-
-            var expiresAt = request.ExpiresAt ?? (_timeProvider.GetUtcNow() + _options.DefaultReservationLifetime);
-            var reservation = new InMemoryBudgetReservation(
-                _reservationIds.Create(), this, request.Dimension, request.Amount, expiresAt, request.IdempotencyKey, _logger);
-
-            state.Reserved += request.Amount;
-            state.Open.Add(reservation);
-            _byIdempotencyKey[key] = reservation;
-
-            return (reservation, null);
-        }
-    }
-
-    private void RemoveIdempotencyEntryLocked(InMemoryBudgetReservation reservation)
-    {
-        var key = (reservation.Dimension, reservation.IdempotencyKey);
-        if (_byIdempotencyKey.TryGetValue(key, out var current) && ReferenceEquals(current, reservation))
-        {
-            _ = _byIdempotencyKey.Remove(key);
-        }
-    }
-
-    private async ValueTask SweepExpiredAsync(BudgetDimension dimension)
-    {
-        List<InMemoryBudgetReservation>? expired = null;
-
-        lock (_gate)
-        {
-            if (_states.TryGetValue(dimension, out var state))
-            {
-                var now = _timeProvider.GetUtcNow();
-                foreach (var candidate in state.Open)
+                var first = group.First();
+                var amount = group.Sum(static item => item.Amount);
+                _ = scope._states.TryGetValue(first.Dimension, out var state);
+                var observed = (state?.Reserved ?? 0m) + (state?.Committed ?? 0m);
+                _ = scope.Limits.TryGetValue(first.Dimension, out var limit);
+                if (state?.Blocked == true)
                 {
-                    if (candidate.IsOpen && candidate.ExpiresAt <= now)
-                    {
-                        expired ??= [];
-                        expired.Add(candidate);
-                    }
+                    return new BudgetLimitFailure(scope.Id, first.Dimension, BudgetLimitKind.Hard, limit?.Value ?? 0m,
+                        observed, amount, first.Unit, $"Dimension '{first.Dimension}' is blocked after a recorded overrun.");
+                }
+
+                if (limit is { Kind: BudgetLimitKind.Hard } && observed + amount > limit.Value)
+                {
+                    return new BudgetLimitFailure(scope.Id, first.Dimension, BudgetLimitKind.Hard, limit.Value,
+                        observed, amount, first.Unit, $"The batch would exceed the hard limit of {limit.Value} for '{first.Dimension}'.");
                 }
             }
         }
-
-        if (expired is null)
-        {
-            return;
-        }
-
-        foreach (var candidate in expired)
-        {
-            await candidate.DisposeAsync().ConfigureAwait(false);
-        }
+        return null;
     }
 
-    private sealed class DimensionState(BudgetUnit unit)
+    private void ValidateUnitsLocked(ImmutableArray<BudgetReservationRequest> requests)
     {
-        public BudgetUnit Unit { get; } = unit;
+        foreach (var scope in GetHierarchy())
+        {
+            foreach (var request in requests)
+            {
+                if (scope.Limits.TryGetValue(request.Dimension, out var limit))
+                {
+                    ArgumentOutOfRangeException.ThrowIfNotEqual(request.Unit, limit.Unit, nameof(requests));
+                }
 
-        public decimal Reserved { get; set; }
-
-        public decimal Committed { get; set; }
-
-        public bool Blocked { get; set; }
-
-        public List<InMemoryBudgetReservation> Open { get; } = [];
+                if (scope._states.TryGetValue(request.Dimension, out var state))
+                {
+                    ArgumentOutOfRangeException.ThrowIfNotEqual(request.Unit, state.Unit, nameof(requests));
+                }
+            }
+        }
     }
+
+    private ImmutableArray<IBudgetReservation> CreateReservationsLocked(
+        ImmutableArray<InMemoryBudgetScope> scopes, ImmutableArray<BudgetReservationRequest> requests)
+    {
+        var batch = new InMemoryBudgetBatchRecord(Id, requests);
+        var plans = new List<(InMemoryBudgetReservation Reservation, BudgetUnit Unit)>(scopes.Length * requests.Length);
+        var targets = ImmutableArray.CreateBuilder<InMemoryBudgetReservation>(requests.Length);
+        foreach (var request in requests)
+        {
+            InMemoryBudgetReservation? target = null;
+            InMemoryBudgetReservation? child = null;
+            foreach (var scope in scopes)
+            {
+                var expiresAt = request.ExpiresAt
+                    ?? (scope._timeProvider.GetUtcNow() + scope._options.DefaultReservationLifetime);
+                var reservation = new InMemoryBudgetReservation(scope._reservationIds.Create(), scope,
+                    request.Dimension, request.Amount, request.Unit,
+                    expiresAt,
+                    request.IdempotencyKey, batch, scope._logger);
+                child?.AttachParent(reservation);
+                target ??= reservation;
+                child = reservation;
+                plans.Add((reservation, request.Unit));
+            }
+            targets.Add(target!);
+        }
+        batch.TargetReservations = targets.MoveToImmutable();
+        foreach (var (reservation, unit) in plans)
+        {
+            reservation.Scope.AddLocalLocked(reservation, unit);
+        }
+
+        return [.. batch.TargetReservations.Cast<IBudgetReservation>()];
+    }
+
+    private void AddLocalLocked(InMemoryBudgetReservation reservation, BudgetUnit unit)
+    {
+        var state = GetOrCreateState(reservation.Dimension, unit);
+        state.Reserved += reservation.Reserved;
+        state.Open.Add(reservation);
+        _batchesByItemKey[reservation.IdempotencyKey] = reservation.Batch;
+    }
+
+    private InMemoryBudgetDimensionState GetOrCreateState(BudgetDimension dimension, BudgetUnit unit)
+    {
+        if (_states.TryGetValue(dimension, out var state))
+        {
+            Debug.Assert(state.Unit == unit, "Caller validation must preserve one unit for each budget dimension.");
+            return state;
+        }
+        state = new InMemoryBudgetDimensionState(unit);
+        _states.Add(dimension, state);
+        return state;
+    }
+
+    private void SweepExpiredLocked()
+    {
+        var now = _timeProvider.GetUtcNow();
+        foreach (var reservation in _states.Values.SelectMany(static state => state.Open).ToArray())
+        {
+            if (reservation.IsOpen && reservation.ExpiresAt <= now)
+            {
+                reservation.ReleaseHierarchyLocked();
+            }
+        }
+    }
+
+    private void RecomputeBlocked(BudgetDimension dimension, InMemoryBudgetDimensionState state,
+        InMemoryBudgetReservation? correcting = null, decimal correctedActual = 0m)
+    {
+        var overrun = state.CommittedReservations.Any(item =>
+            (ReferenceEquals(item, correcting) ? correctedActual : item.Actual) > item.Reserved);
+        state.Blocked = overrun || (Limits.TryGetValue(dimension, out var limit)
+            && limit.Kind == BudgetLimitKind.Hard && state.Committed > limit.Value);
+    }
+
 }

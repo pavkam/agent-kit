@@ -35,6 +35,140 @@ public sealed class ObservabilityTests
         activity.GetTagItem(AgentKitTagNames.BudgetDimension).ShouldBe(TestFactory.TestDimension.ToString());
     }
 
+    [Fact]
+    public async Task StartAndCorrection_WhenObserved_EmitTruthfulBoundedTerminalActivities()
+    {
+        var authority = TestFactory.Authority();
+        var scope = await TestFactory.CreateRootScopeAsync(authority);
+        var outcomes = new List<(string Name, string Outcome)>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = activity =>
+            {
+                if ((activity.OperationName is AgentKitActivityNames.BudgetStart
+                    or AgentKitActivityNames.BudgetCommit
+                    or AgentKitActivityNames.BudgetCorrection)
+                    && Equals(activity.GetTagItem(AgentKitTagNames.BudgetScopeId), scope.Id.ToString()))
+                {
+                    outcomes.Add((activity.OperationName, (string) activity.GetTagItem(AgentKitTagNames.Outcome)!));
+                    activity.GetTagItem(AgentKitTagNames.BudgetDimension).ShouldBe(TestFactory.TestDimension.ToString());
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var reservation = ((BudgetReserved) await scope.ReserveAsync(
+            TestFactory.ReservationRequest(scope.Id, TestFactory.TestDimension, 2m),
+            TestContext.Current.CancellationToken)).Reservation;
+
+        _ = await reservation.MarkStartedAsync(TestContext.Current.CancellationToken);
+        _ = await reservation.CommitAsync(2m, TestContext.Current.CancellationToken);
+        _ = await reservation.CorrectAsync(1m, 1, TestContext.Current.CancellationToken);
+
+        outcomes.ShouldBe(
+        [
+            (AgentKitActivityNames.BudgetStart, "started"),
+            (AgentKitActivityNames.BudgetCommit, "committed"),
+            (AgentKitActivityNames.BudgetCorrection, "corrected"),
+        ]);
+    }
+
+    [Fact]
+    public async Task StartAndCorrection_WhenCancelled_EmitTruthfulCancelledActivities()
+    {
+        var authority = TestFactory.Authority();
+        var scope = await TestFactory.CreateRootScopeAsync(authority);
+        var activities = new List<(string Name, string Outcome)>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName is AgentKitActivityNames.BudgetStart or AgentKitActivityNames.BudgetCorrection)
+                {
+                    activities.Add((activity.OperationName, (string) activity.GetTagItem(AgentKitTagNames.Outcome)!));
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var startReservation = ((BudgetReserved) await scope.ReserveAsync(
+            TestFactory.ReservationRequest(scope.Id, TestFactory.TestDimension),
+            TestContext.Current.CancellationToken)).Reservation;
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => startReservation.MarkStartedAsync(cancelled.Token).AsTask());
+
+        var correctionReservation = ((BudgetReserved) await scope.ReserveAsync(
+            TestFactory.ReservationRequest(scope.Id, TestFactory.TestDimension),
+            TestContext.Current.CancellationToken)).Reservation;
+        _ = await correctionReservation.MarkStartedAsync(TestContext.Current.CancellationToken);
+        _ = await correctionReservation.CommitAsync(1m, TestContext.Current.CancellationToken);
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => correctionReservation.CorrectAsync(1m, 1, cancelled.Token).AsTask());
+
+        activities.ShouldContain((AgentKitActivityNames.BudgetStart, "cancelled"));
+        activities.ShouldContain((AgentKitActivityNames.BudgetCorrection, "cancelled"));
+    }
+
+    [Fact]
+    public async Task StartAndCorrection_WhenMeasured_UseDistinctCountersWithOnlyBoundedTags()
+    {
+        var measurements = new List<(string Name, string Outcome, string Dimension, bool HasScope)>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName)
+                {
+                    meterListener.EnableMeasurementEvents(instrument);
+                }
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, _, tags, _) =>
+        {
+            string? outcome = null;
+            string? dimension = null;
+            var hasScope = false;
+            foreach (var tag in tags)
+            {
+                if (tag.Key == AgentKitTagNames.Outcome)
+                {
+                    outcome = (string?) tag.Value;
+                }
+                else if (tag.Key == AgentKitTagNames.BudgetDimension)
+                {
+                    dimension = (string?) tag.Value;
+                }
+                else if (tag.Key == AgentKitTagNames.BudgetScopeId)
+                {
+                    hasScope = true;
+                }
+            }
+
+            if (instrument.Name is AgentKitMetricNames.BudgetStartCount or AgentKitMetricNames.BudgetCorrectionCount)
+            {
+                measurements.Add((instrument.Name, outcome!, dimension!, hasScope));
+            }
+        });
+        listener.Start();
+        var authority = TestFactory.Authority();
+        var scope = await TestFactory.CreateRootScopeAsync(authority);
+        var reservation = ((BudgetReserved) await scope.ReserveAsync(
+            TestFactory.ReservationRequest(scope.Id, TestFactory.TestDimension),
+            TestContext.Current.CancellationToken)).Reservation;
+
+        _ = await reservation.MarkStartedAsync(TestContext.Current.CancellationToken);
+        _ = await reservation.CommitAsync(1m, TestContext.Current.CancellationToken);
+        _ = await reservation.CorrectAsync(1m, 1, TestContext.Current.CancellationToken);
+
+        measurements.ShouldContain((AgentKitMetricNames.BudgetStartCount, "started", TestFactory.TestDimension.Value, false));
+        measurements.ShouldContain((AgentKitMetricNames.BudgetCorrectionCount, "corrected", TestFactory.TestDimension.Value, false));
+    }
+
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
         ActivitySamplingResult.AllDataAndRecorded;
 }

@@ -31,6 +31,25 @@ public interface IBudgetScope
     public ValueTask<BudgetReservationResult> ReserveAsync(
         BudgetReservationRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Atomically reserves every requested dimension against this scope and
+    /// every enforced ancestor, or reserves none of them.
+    /// </summary>
+    /// <param name="requests">
+    /// The non-empty ordered batch of non-null requests whose members share
+    /// this scope, one logical operation, and one compatible unit per dimension.
+    /// </param>
+    /// <param name="cancellationToken">A token used to cancel the operation before admission.</param>
+    /// <returns>A task producing the terminal batch reservation outcome.</returns>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="requests"/> is default or empty, contains a null member
+    /// or duplicate item key, names another scope or operation, or expresses
+    /// one dimension in incompatible units.
+    /// </exception>
+    public ValueTask<BudgetBatchReservationResult> ReserveBatchAsync(
+        ImmutableArray<BudgetReservationRequest> requests,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Captures a point-in-time observation of this scope's usage.</summary>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A task producing the current snapshot.</returns>

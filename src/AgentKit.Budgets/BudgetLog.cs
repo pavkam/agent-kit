@@ -73,4 +73,40 @@ internal static partial class BudgetLog
     [LoggerMessage(7021, LogLevel.Error, "Budget settlement for scope {BudgetScopeId} dimension {BudgetDimension} failed with error type {ErrorType}.")]
     internal static partial void SettlementFailed(
         ILogger logger, BudgetScopeId budgetScopeId, BudgetDimension budgetDimension, string errorType);
+
+    /// <summary>Records a terminal start-accounting outcome without capacity or idempotency data.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="budgetScopeId">The scope owning the reservation.</param>
+    /// <param name="budgetDimension">The reservation's registered dimension.</param>
+    /// <param name="outcome">The bounded start-accounting outcome.</param>
+    [LoggerMessage(7030, LogLevel.Debug, "Budget start for scope {BudgetScopeId} dimension {BudgetDimension} completed with outcome {Outcome}.")]
+    internal static partial void StartCompleted(
+        ILogger logger, BudgetScopeId budgetScopeId, BudgetDimension budgetDimension, string outcome);
+
+    /// <summary>Records a failed start-accounting operation without content or capacity data.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="budgetScopeId">The scope owning the reservation.</param>
+    /// <param name="budgetDimension">The reservation's registered dimension.</param>
+    /// <param name="errorType">The normalized exception type.</param>
+    [LoggerMessage(7031, LogLevel.Error, "Budget start for scope {BudgetScopeId} dimension {BudgetDimension} failed with error type {ErrorType}.")]
+    internal static partial void StartFailed(
+        ILogger logger, BudgetScopeId budgetScopeId, BudgetDimension budgetDimension, string errorType);
+
+    /// <summary>Records a terminal correction outcome without revision, amount, or content data.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="budgetScopeId">The scope whose accounting was corrected.</param>
+    /// <param name="budgetDimension">The corrected registered dimension.</param>
+    /// <param name="outcome">The bounded correction outcome.</param>
+    [LoggerMessage(7040, LogLevel.Debug, "Budget correction for scope {BudgetScopeId} dimension {BudgetDimension} completed with outcome {Outcome}.")]
+    internal static partial void CorrectionCompleted(
+        ILogger logger, BudgetScopeId budgetScopeId, BudgetDimension budgetDimension, string outcome);
+
+    /// <summary>Records a failed correction operation without revision, amount, or content data.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="budgetScopeId">The scope whose accounting was being corrected.</param>
+    /// <param name="budgetDimension">The corrected registered dimension.</param>
+    /// <param name="errorType">The normalized exception type.</param>
+    [LoggerMessage(7041, LogLevel.Error, "Budget correction for scope {BudgetScopeId} dimension {BudgetDimension} failed with error type {ErrorType}.")]
+    internal static partial void CorrectionFailed(
+        ILogger logger, BudgetScopeId budgetScopeId, BudgetDimension budgetDimension, string errorType);
 }

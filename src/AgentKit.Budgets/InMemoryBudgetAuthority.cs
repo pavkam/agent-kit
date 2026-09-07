@@ -118,7 +118,7 @@ internal sealed class InMemoryBudgetAuthority: IBudgetAuthority
                 }
 
                 var scope = new InMemoryBudgetScope(
-                    _scopeIds.Create(), request.Address, parent, request.Limits, _reservationIds, _timeProvider, _options,
+                    _scopeIds.Create(), request.Address, parent, request.Limits, _gate, _reservationIds, _timeProvider, _options,
                     _loggerFactory.CreateLogger<InMemoryBudgetScope>());
 
                 _scopesById[scope.Id] = scope;
