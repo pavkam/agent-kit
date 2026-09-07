@@ -20,6 +20,8 @@
     <Project Path="src/AgentKit.Output/AgentKit.Output.csproj"/>
     <Project Path="src/AgentKit.Hooks/AgentKit.Hooks.csproj"/>
     <Project Path="src/AgentKit.FileSystem/AgentKit.FileSystem.csproj"/>
+    <Project Path="src/AgentKit.Network/AgentKit.Network.csproj"/>
+    <Project Path="src/AgentKit.Network.InMemory/AgentKit.Network.InMemory.csproj"/>
     <Project Path="src/AgentKit.Tools/AgentKit.Tools.csproj"/>
     <Project Path="src/AgentKit.Tools.Read/AgentKit.Tools.Read.csproj"/>
     <Project Path="src/AgentKit.Tools.Write/AgentKit.Tools.Write.csproj"/>
@@ -45,6 +47,8 @@
     <Project Path="tests/AgentKit.Output.Tests/AgentKit.Output.Tests.csproj"/>
     <Project Path="tests/AgentKit.Hooks.Tests/AgentKit.Hooks.Tests.csproj"/>
     <Project Path="tests/AgentKit.FileSystem.Tests/AgentKit.FileSystem.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Network.Tests/AgentKit.Network.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Network.InMemory.Tests/AgentKit.Network.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Tools.Tests/AgentKit.Tools.Tests.csproj"/>
     <Project Path="tests/AgentKit.Tools.Read.Tests/AgentKit.Tools.Read.Tests.csproj"/>
     <Project Path="tests/AgentKit.Tools.Write.Tests/AgentKit.Tools.Write.Tests.csproj"/>

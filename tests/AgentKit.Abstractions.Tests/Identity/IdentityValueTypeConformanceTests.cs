@@ -21,9 +21,29 @@ public sealed class IdentityValueTypeConformanceTests
 {
     private static readonly Assembly _abstractionsAssembly = typeof(AgentId).Assembly;
 
+    /// <summary>
+    /// Names of string-backed value types that are structurally excluded
+    /// from this generic identity conformance suite because they legitimately
+    /// diverge from the shared identity contract: <see cref="NetworkMethod"/>
+    /// canonicalizes to uppercase (mirroring HTTP method conventions) rather
+    /// than round-tripping arbitrary text unchanged, <see cref="NetworkRoute"/>
+    /// requires a rooted ("/"-prefixed) path rather than accepting any
+    /// non-empty string, and <see cref="OutputValidatorReference"/> exposes
+    /// its underlying text through a <c>Name</c> property (mirroring
+    /// <see cref="IOutputValidator.Name"/>'s existing convention) rather than
+    /// a <c>Value</c> property.
+    /// </summary>
+    private static readonly HashSet<string> _excludedStringBackedTypeNames =
+    [
+        nameof(NetworkMethod),
+        nameof(NetworkRoute),
+        nameof(OutputValidatorReference),
+    ];
+
     public static TheoryData<Type> GuidBackedIdentityTypes => ToTheoryData(GetIdentityTypes(typeof(Guid)));
 
-    public static TheoryData<Type> StringBackedIdentityTypes => ToTheoryData(GetIdentityTypes(typeof(string)));
+    public static TheoryData<Type> StringBackedIdentityTypes => ToTheoryData(
+        GetIdentityTypes(typeof(string)).Where(type => !_excludedStringBackedTypeNames.Contains(type.Name)));
 
     public static TheoryData<Type> LongBackedOrderingTypes => ToTheoryData(GetIdentityTypes(typeof(long)));
 
