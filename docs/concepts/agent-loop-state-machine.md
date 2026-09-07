@@ -98,6 +98,78 @@ Another model request is required when at least one of these holds:
 The loop MUST NOT infer continuation merely because a provider used an unusual
 raw finish reason. Provider adapters normalize terminal semantics first.
 
+### Continuation evaluation boundary
+
+`IRunContinuationPolicy` receives an immutable `RunContinuationContext` at a
+safe decision boundary. Its decision is a proposal until the session coordinator
+accepts the corresponding state transition. The policy does not admit input,
+reserve budget, authorize effects, repair output, or commit session records.
+
+The context identifies the accepted operation, run, execution lane, relevant
+operation-state revision, selected branch cursor, input-promotion cutoff, and
+captured configuration and policy versions. It carries the typed observations
+produced by the owning components and enough causal identity to revalidate them.
+A session-wide append version may support a store compare-and-swap, but an
+unrelated lane's append does not by itself invalidate a continuation decision.
+Revalidation compares the state and inputs the decision actually depends on; a
+failed store compare-and-swap retries that comparison.
+
+The boundary distinguishes a committed turn from a retryable request or a
+resolved deferred operation. A committed-turn boundary includes the complete
+assistant response, committed tool-result evidence, and the output processor's
+decision when output processing applies. A retry or deferred boundary may have
+no completed assistant response. It preserves its existing request, turn, and
+operation identities rather than inventing a completed turn. Constructors
+validate the shape and correlation of these values; only the session owner can
+establish that their referenced records actually committed.
+
+Multiple continuation causes may coexist. `ContinuationReason` preserves the
+selected cause and its evidence: committed tool results, promoted admission
+identities, an output-repair decision, an activated compaction checkpoint with a
+retryable request, a resolved deferred operation, or an explicit policy request.
+Raw prompt text, provider finish strings, and the presence of an unpromoted
+queue entry are not continuation evidence. Eligibility and promotion remain I/O
+decisions. Budget and deadline observations are not reservations or grants.
+
+The first-party policy applies these rules in order:
+
+1. An operation already cancelling, failing, settling, or settled is handled by
+   its state-machine path. It is not offered to continuation as ordinary work.
+2. A required stop or exhausted hard limit prevents another request. The loop
+   preserves the canonical typed stop cause; a policy cannot turn it into idle
+   completion or widen the limit. If several stop requests compete, the session
+   coordinator's committed ordering determines the primary cause and retains the
+   other observations as evidence.
+3. Eligible input already promoted at the boundary is considered before an
+   internally proposed follow-up. Required interpretation of committed tool
+   results, output repair, deferred completion, and retryable compaction then
+   take precedence over optional policy continuation. Choosing one reason does
+   not discard other pending causes from the next request's context.
+4. Without a continuation cause, accepted output permits successful completion.
+   Idle completion requires that no output decision or promoted work remains
+   pending. Missing required output validation is invalid state, never success.
+
+`CompleteRun` proposes only successful or idle completion supported by those
+observations. `HaltRun` proposes the supported non-success terminal outcome.
+Neither decision commits an outcome, publishes output, or proves settlement.
+Unsupported or internally inconsistent decisions fail closed as invalid state.
+
+After an asynchronous policy or hook returns, the loop reacquires the session
+mutation boundary and rechecks operation identity and state, relevant revision,
+branch cursor, input cutoff, planned admission identities, and any changed stop
+condition. A stale proposal is discarded and reevaluated from a fresh snapshot;
+it is never applied to a successor operation. Accepting the decision and
+recording its next state are one coordinated transition. Each re-evaluation must
+observe changed evidence, yield to its documented owner, or reach a typed
+failure; a stale proposal cannot cause a busy loop.
+
+The policy receives cancellation for its operation-owned evaluation, not a
+detached caller's wait. Cancellation discards an unaccepted decision and returns
+control to the operation's cancellation or recovery path. The first-party policy
+reads no ambient clock or mutable queue state: time observations come from the
+injected `TimeProvider` before evaluation, and repeated evaluation of the same
+immutable context produces the same decision.
+
 ## Stop conditions
 
 The loop terminates with a typed outcome for successful output, idle completion,
@@ -142,12 +214,20 @@ semantics to pass conformance.
 - Input arriving after a steering cutoff waits until the next boundary.
 - An interrupted stream never emits a successful assistant completion.
 - Restoring after a crash does not re-admit input or lose a recorded tool call.
-- Acceptance survives process loss before the first driver or effect starts.
+- A durable admission profile preserves acceptance across process loss before
+  the first driver or effect starts; an ephemeral profile advertises no such
+  guarantee.
 - A completed later parallel tool does not replay while waiting for an earlier
   source-position result to materialize.
 - Every persisted operation-state leaf has a tested recovery dispatch and none
   can hot-loop without a durable transition.
 - A custom loop passes the same externally observable lifecycle suite.
+- A compaction retry or deferred completion without a complete assistant
+  response can reach its next valid request without fabricating turn evidence.
+- Input admitted during asynchronous continuation invalidates an affected
+  proposal; an unrelated lane's append alone does not.
+- A continuation proposal cannot bypass a hard limit, required output
+  validation, cancellation, or settlement.
 
 ## Related specifications
 

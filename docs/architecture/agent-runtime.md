@@ -206,6 +206,15 @@ settlement. The continuation policy uses `ValueTask` because deterministic
 policies commonly complete synchronously. Progress and results are immutable
 snapshots; mutable state-machine internals stay inside the run scope.
 
+The
+[continuation evaluation contract](../concepts/agent-loop-state-machine.md#continuation-evaluation-boundary)
+defines the evidence in `RunContinuationContext`, the permitted meanings of each
+decision, stop precedence, and revalidation before a decision is accepted. The
+context supports committed-turn, retry, and deferred-operation boundaries; it
+never requires a fabricated assistant response merely to evaluate a retry.
+`RunContinuationDecision` is a proposal until its expected operation state and
+input boundary have been rechecked and the transition commits.
+
 `RunId` is created once by the injected `IIdentifierGenerator<RunId>` before the
 first durable run event. Each turn gets one `TurnId` from
 `IIdentifierGenerator<TurnId>` and a separate monotonic turn number. Resume
