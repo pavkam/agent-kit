@@ -26,5 +26,5 @@ internal sealed class BranchRecord
     /// Gets the cache of previously accepted append results, keyed by
     /// idempotency key, so a retried append never duplicates entries.
     /// </summary>
-    public Dictionary<IdempotencyKey, SessionAppended> AppendIdempotency { get; } = [];
+    public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionAppendRequest, SessionAppended>> AppendIdempotency { get; } = [];
 }

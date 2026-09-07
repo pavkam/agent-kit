@@ -4,17 +4,17 @@
 namespace AgentKit;
 
 /// <summary>
-/// The session was created, or an identical prior request with the same
-/// idempotency key already created it.
+/// The session was created and its immutable creation receipt was recorded.
+/// An identical retry returns that original receipt without changing it.
 /// </summary>
 public sealed record SessionCreated: SessionCreateResult
 {
     /// <summary>Initializes a new instance of the <see cref="SessionCreated"/> record.</summary>
-    /// <param name="descriptor">The created (or previously created) session's descriptor.</param>
+    /// <param name="descriptor">The descriptor captured when creation first succeeded.</param>
     /// <param name="existing">
-    /// <see langword="true"/> when this result reflects a prior creation
-    /// found through the supplied idempotency key rather than a brand-new
-    /// session.
+    /// Whether the original creation receipt represented an already-existing
+    /// session. An idempotency replay preserves this original value; it does
+    /// not describe the retry that retrieved the receipt.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="descriptor"/> is null.</exception>
     public SessionCreated(SessionDescriptor descriptor, bool existing)
@@ -24,12 +24,12 @@ public sealed record SessionCreated: SessionCreateResult
         Existing = existing;
     }
 
-    /// <summary>Gets the created (or previously created) session's descriptor.</summary>
+    /// <summary>Gets the descriptor captured when the original creation receipt was recorded.</summary>
     public SessionDescriptor Descriptor { get; init; }
 
     /// <summary>
-    /// Gets a value indicating whether this result reflects a prior
-    /// creation found through the supplied idempotency key.
+    /// Gets whether the original creation receipt represented an existing
+    /// session. A replay does not change this value.
     /// </summary>
     public bool Existing { get; init; }
 }

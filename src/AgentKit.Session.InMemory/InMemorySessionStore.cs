@@ -29,7 +29,9 @@ public sealed partial class InMemorySessionStore: ISessionStore
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<SessionAddress, SessionRecord> _sessions = [];
-    private readonly Dictionary<(AgentId AgentId, IdempotencyKey Key), SessionAddress> _createIdempotency = [];
+    private readonly Dictionary<(TenantId TenantId, AgentId AgentId, IdempotencyKey Key), IdempotencyReceipt<SessionCreateRequest, SessionCreated>> _createIdempotency = [];
+    private readonly Dictionary<(TenantId TenantId, AgentId AgentId, IdempotencyKey Key), SessionCreateRequest> _deletedCreateIdempotency = [];
+    private readonly Dictionary<(TenantId TenantId, SessionAddress Address, IdempotencyKey Key), IdempotencyReceipt<SessionDeleteRequest, SessionDeleted>> _deleteIdempotency = [];
     private readonly IIdentifierGenerator<SessionId> _sessionIds;
     private readonly IIdentifierGenerator<BranchId> _branchIds;
     private readonly TimeProvider _timeProvider;
@@ -70,11 +72,21 @@ public sealed partial class InMemorySessionStore: ISessionStore
 
         using (_gate.EnterScope())
         {
-            var idempotencyEntry = (request.AgentId, request.IdempotencyKey);
-            if (_createIdempotency.TryGetValue(idempotencyEntry, out var existingAddress))
+            var idempotencyEntry = (request.Identity.TenantId, request.AgentId, request.IdempotencyKey);
+            if (_deletedCreateIdempotency.TryGetValue(idempotencyEntry, out var deletedRequest))
             {
                 return ValueTask.FromResult<SessionCreateResult>(
-                    new SessionCreated(ToDescriptor(_sessions[existingAddress]), existing: true));
+                    deletedRequest.Equals(request)
+                        ? new SessionCreateFailed("The session created by this idempotency key was deleted.")
+                        : new SessionCreateFailed("The idempotency key was previously used with different request evidence."));
+            }
+
+            if (_createIdempotency.TryGetValue(idempotencyEntry, out var existingReceipt))
+            {
+                return ValueTask.FromResult<SessionCreateResult>(
+                    existingReceipt.Request.Equals(request)
+                        ? existingReceipt.Result
+                        : new SessionCreateFailed("The idempotency key was previously used with different request evidence."));
             }
 
             var now = _timeProvider.GetUtcNow();
@@ -90,9 +102,10 @@ public sealed partial class InMemorySessionStore: ISessionStore
             record.Branches[branchId] = new BranchRecord();
 
             _sessions[address] = record;
-            _createIdempotency[idempotencyEntry] = address;
+            var created = new SessionCreated(ToDescriptor(record), existing: false);
+            _createIdempotency[idempotencyEntry] = new IdempotencyReceipt<SessionCreateRequest, SessionCreated>(request, created);
 
-            return ValueTask.FromResult<SessionCreateResult>(new SessionCreated(ToDescriptor(record), existing: false));
+            return ValueTask.FromResult<SessionCreateResult>(created);
         }
     }
 
@@ -109,7 +122,9 @@ public sealed partial class InMemorySessionStore: ISessionStore
             var address = context.ToAddress();
             return !_sessions.TryGetValue(address, out var record)
                 ? ValueTask.FromResult<SessionLoadResult>(new SessionNotFound(address))
-                : ValueTask.FromResult<SessionLoadResult>(new SessionLoaded(ToDescriptor(record)));
+                : record.TenantId != context.Identity.TenantId
+                    ? ValueTask.FromResult<SessionLoadResult>(new SessionNotFound(address))
+                    : ValueTask.FromResult<SessionLoadResult>(new SessionLoaded(ToDescriptor(record)));
         }
     }
 
@@ -129,6 +144,11 @@ public sealed partial class InMemorySessionStore: ISessionStore
                 return ValueTask.FromResult<SessionAppendResult>(new SessionAppendNotFound(address));
             }
 
+            if (record.TenantId != request.Context.Identity.TenantId)
+            {
+                return ValueTask.FromResult<SessionAppendResult>(new SessionAppendNotFound(address));
+            }
+
             if (!record.Branches.TryGetValue(request.BranchId, out var branch))
             {
                 return ValueTask.FromResult<SessionAppendResult>(new SessionAppendNotFound(address));
@@ -136,7 +156,10 @@ public sealed partial class InMemorySessionStore: ISessionStore
 
             if (branch.AppendIdempotency.TryGetValue(request.IdempotencyKey, out var cached))
             {
-                return ValueTask.FromResult<SessionAppendResult>(cached);
+                return ValueTask.FromResult<SessionAppendResult>(
+                    cached.Request.Equals(request)
+                        ? cached.Result
+                        : new SessionAppendFailed("The idempotency key was previously used with different request evidence."));
             }
 
             var currentVersion = new SessionVersion(branch.Entries.Count);
@@ -161,7 +184,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
 
             var newVersion = new SessionVersion(branch.Entries.Count);
             var appended = new SessionAppended(newVersion, request.Entries);
-            branch.AppendIdempotency[request.IdempotencyKey] = appended;
+            branch.AppendIdempotency[request.IdempotencyKey] = new IdempotencyReceipt<SessionAppendRequest, SessionAppended>(request, appended);
 
             return ValueTask.FromResult<SessionAppendResult>(appended);
         }
@@ -179,6 +202,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
         {
             var address = request.Context.ToAddress();
             if (!_sessions.TryGetValue(address, out var record)
+                || record.TenantId != request.Context.Identity.TenantId
                 || !record.Branches.TryGetValue(request.BranchId, out var branch))
             {
                 return ValueTask.FromResult<SessionPageResult>(new SessionReadNotFound(address));
@@ -210,16 +234,19 @@ public sealed partial class InMemorySessionStore: ISessionStore
         {
             var address = request.Context.ToAddress();
             if (!_sessions.TryGetValue(address, out var record)
+                || record.TenantId != request.Context.Identity.TenantId
                 || !record.Branches.TryGetValue(request.ParentBranchId, out var parentBranch))
             {
                 return ValueTask.FromResult<SessionBranchResult>(
                     new SessionBranchParentNotFound(request.ParentBranchId, request.AtSequence));
             }
 
-            if (record.BranchIdempotency.TryGetValue(request.IdempotencyKey, out var existingBranchId))
+            if (record.BranchIdempotency.TryGetValue(request.IdempotencyKey, out var existingReceipt))
             {
                 return ValueTask.FromResult<SessionBranchResult>(
-                    new SessionBranched(existingBranchId, request.AtSequence));
+                    existingReceipt.Request.Equals(request)
+                        ? existingReceipt.Result
+                        : new SessionBranchFailed("The idempotency key was previously used with different request evidence."));
             }
 
             if (request.AtSequence.Value > parentBranch.Entries.Count)
@@ -233,10 +260,11 @@ public sealed partial class InMemorySessionStore: ISessionStore
             newBranch.Entries.AddRange(parentBranch.Entries.Take((int) request.AtSequence.Value));
 
             record.Branches[newBranchId] = newBranch;
-            record.BranchIdempotency[request.IdempotencyKey] = newBranchId;
+            var branched = new SessionBranched(newBranchId, request.AtSequence);
+            record.BranchIdempotency[request.IdempotencyKey] = new IdempotencyReceipt<SessionBranchRequest, SessionBranched>(request, branched);
             record.UpdatedAt = _timeProvider.GetUtcNow();
 
-            return ValueTask.FromResult<SessionBranchResult>(new SessionBranched(newBranchId, request.AtSequence));
+            return ValueTask.FromResult<SessionBranchResult>(branched);
         }
     }
 
@@ -251,8 +279,35 @@ public sealed partial class InMemorySessionStore: ISessionStore
         using (_gate.EnterScope())
         {
             var address = request.Context.ToAddress();
-            _ = _sessions.Remove(address);
-            return ValueTask.FromResult<SessionDeleteResult>(new SessionDeleted(address));
+            var idempotencyEntry = (request.Context.Identity.TenantId, address, request.IdempotencyKey);
+            if (_deleteIdempotency.TryGetValue(idempotencyEntry, out var existingReceipt))
+            {
+                return ValueTask.FromResult<SessionDeleteResult>(
+                    existingReceipt.Request.Equals(request)
+                        ? existingReceipt.Result
+                        : new SessionDeleteFailed("The idempotency key was previously used with different request evidence."));
+            }
+
+            if (_sessions.TryGetValue(address, out var record)
+                && record.TenantId != request.Context.Identity.TenantId)
+            {
+                return ValueTask.FromResult<SessionDeleteResult>(new SessionDeleted(address));
+            }
+
+            if (_sessions.Remove(address))
+            {
+                var createReceipt = _createIdempotency
+                    .FirstOrDefault(pair => pair.Value.Result.Descriptor.Address == address);
+                if (createReceipt.Value is not null)
+                {
+                    _ = _createIdempotency.Remove(createReceipt.Key);
+                    _deletedCreateIdempotency[createReceipt.Key] = createReceipt.Value.Request;
+                }
+            }
+
+            var deleted = new SessionDeleted(address);
+            _deleteIdempotency[idempotencyEntry] = new IdempotencyReceipt<SessionDeleteRequest, SessionDeleted>(request, deleted);
+            return ValueTask.FromResult<SessionDeleteResult>(deleted);
         }
     }
 

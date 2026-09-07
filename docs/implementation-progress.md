@@ -31,6 +31,11 @@ owning spec.
 | Observation-test isolation and shared test support     | Focused Session.InMemory suite: 49 passed; source/correlation isolation, duplicate tags and helper validation                                  | Verified checkpoint; shared support established                                                          |
 | Reusable grant-store conformance and solution coverage | Focused permissions suite: 31 passed, including eight inherited contract cases; all 120 current projects registered in the solution            | Verified checkpoint; other contract suites remain open                                                   |
 
+| Session tenant isolation and replay evidence | Focused Session.InMemory suite:
+61 passed; foreign-tenant masking, structural replay, changed-request conflicts,
+original branch receipts and deletion tombstones | Verified checkpoint; identity
+authentication, grants, durable retention and lane coordination remain open |
+
 ## Concurrent ownership
 
 Two external agents own tool-feature completion and provider embedding support.

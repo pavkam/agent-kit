@@ -30,7 +30,7 @@ public sealed class CreateAsyncTests
         var second = (SessionCreated) await store.CreateAsync(
             TestFactory.CreateRequest(agentId, key), TestContext.Current.CancellationToken);
 
-        second.Existing.ShouldBeTrue();
+        second.Existing.ShouldBeFalse();
         second.Descriptor.Address.ShouldBe(first.Descriptor.Address);
     }
 

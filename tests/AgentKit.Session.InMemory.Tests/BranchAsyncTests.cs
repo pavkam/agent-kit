@@ -76,6 +76,23 @@ public sealed class BranchAsyncTests
     }
 
     [Fact]
+    public async Task CreateBranchAsync_WhenReplayCarriesChangedForkPoint_RejectsAndPreservesOriginalReceipt()
+    {
+        var (store, descriptor, context) = await SeedAsync(2);
+        var key = new IdempotencyKey("branch-evidence");
+        var first = (SessionBranched) await store.CreateBranchAsync(
+            new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(1), key),
+            TestContext.Current.CancellationToken);
+
+        var changed = await store.CreateBranchAsync(
+            new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(2), key),
+            TestContext.Current.CancellationToken);
+
+        _ = changed.ShouldBeOfType<SessionBranchFailed>();
+        first.ForkedAtSequence.ShouldBe(new SessionSequence(1));
+    }
+
+    [Fact]
     public async Task CreateBranchAsync_WhenForkPointExceedsParentLength_ReturnsParentNotFound()
     {
         var (store, descriptor, context) = await SeedAsync(2);

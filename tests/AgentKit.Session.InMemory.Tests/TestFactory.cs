@@ -27,8 +27,12 @@ internal static class TestFactory
     public static OperationCorrelation Correlation(RunId? runId = null) =>
         new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), runId ?? new RunId(Guid.NewGuid()), null);
 
-    public static SessionOperationContext OperationContext(SessionAddress address, RunId? runId = null) =>
-        new(address.AgentId, address.SessionId, Correlation(runId), Identity());
+    public static SessionOperationContext OperationContext(
+        SessionAddress address,
+        RunId? runId = null,
+        string tenant = "tenant-1",
+        string principal = "user-1") =>
+        new(address.AgentId, address.SessionId, Correlation(runId), Identity(tenant, principal));
 
     public static MessageSessionEntry MessageEntry(SessionAddress address, BranchId branchId, long sequence, string text = "hello") =>
         new(

@@ -70,5 +70,5 @@ internal sealed class SessionRecord
     /// Gets the cache of previously accepted branch-creation results, keyed
     /// by idempotency key.
     /// </summary>
-    public Dictionary<IdempotencyKey, BranchId> BranchIdempotency { get; } = [];
+    public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionBranchRequest, SessionBranched>> BranchIdempotency { get; } = [];
 }
