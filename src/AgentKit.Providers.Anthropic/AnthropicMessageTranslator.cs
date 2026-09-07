@@ -266,7 +266,8 @@ public sealed class AnthropicMessageTranslator: IAnthropicMessageTranslator
                     ?? throw new NotSupportedException(
                         "A redacted thinking block requires its opaque signature token to echo back to Anthropic."),
             },
-            ReasoningVisibility.EncryptedSignature => throw new NotImplementedException(),
+            ReasoningVisibility.EncryptedSignature => throw new NotSupportedException(
+                "Encrypted reasoning signatures cannot be represented by the Anthropic Messages wire format."),
             _ => throw new NotSupportedException(
                             $"Reasoning visibility '{reasoning.Content.Visibility}' has no Anthropic content-block " +
                             "equivalent."),

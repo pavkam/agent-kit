@@ -5,6 +5,7 @@ namespace AgentKit.Providers.Anthropic.Tests;
 
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 
 using AgentKit.Providers.Anthropic.Tests.Fakes;
 
@@ -134,7 +135,7 @@ public sealed class AnthropicLlmModelEndToEndTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
         failed.Failure.StatusCode.ShouldBe(401);
-        failed.Failure.SafeMessage.ShouldBe("invalid x-api-key");
+        failed.Failure.SafeMessage.ShouldBe("The Anthropic request failed with HTTP status 401.");
         failed.Failure.ProviderCode.ShouldBe("authentication_error");
     }
 
@@ -167,6 +168,149 @@ public sealed class AnthropicLlmModelEndToEndTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
         failed.Failure.StatusCode.ShouldBe(529);
+    }
+
+    /// <summary>Verifies non-success status families always produce a typed failure without following redirects.</summary>
+    [Theory]
+    [InlineData(302, ProviderFailureKind.InvalidRequest)]
+    [InlineData(408, ProviderFailureKind.Timeout)]
+    [InlineData(409, ProviderFailureKind.InvalidRequest)]
+    [InlineData(503, ProviderFailureKind.Unavailable)]
+    [InlineData(599, ProviderFailureKind.Unavailable)]
+    [InlineData(600, ProviderFailureKind.Unknown)]
+    public async Task ExecuteAsync_WhenErrorStatusHasNoUsableBody_UsesHttpFallback(int statusCode, ProviderFailureKind expected)
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage((HttpStatusCode) statusCode) { Content = new StringContent("not-json") });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-test")), options: new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/"), PreferStreaming = false });
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(expected);
+        failure.StatusCode.ShouldBe(statusCode);
+        _ = failure.DiagnosticCause.ShouldBeOfType<JsonException>();
+        handler.Requests.Count.ShouldBe(1);
+    }
+
+    /// <summary>Verifies caller cancellation while reading an error body returns one cancellation outcome.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenCallerCancelsDuringErrorBodyRead_ReturnsCancelled()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StreamContent(body) };
+            response.Headers.Add("request-id", "req_cancelled");
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(17));
+            return response;
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-test")));
+        using var cancellation = new CancellationTokenSource();
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), new RecordingModelResponseObserver(), cancellation.Token);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        await body.Entered;
+
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var failure = result.ShouldBeOfType<ModelAttemptCancelled>().Cancellation;
+        failure.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        failure.StatusCode.ShouldBe(400);
+        failure.RequestId.ShouldBe(new ProviderRequestId("req_cancelled"));
+        failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(17));
+    }
+
+    /// <summary>Verifies the injected deadline cancels a blocked error-body read without wall-clock waiting.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineExpiresDuringErrorBodyRead_ReturnsTimeout()
+    {
+        var clock = new FakeTimeProvider(Now);
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StreamContent(body) };
+            response.Headers.Add("request-id", "req_timeout");
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(23));
+            return response;
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-test")), timeProvider: clock);
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddSeconds(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        await body.Entered;
+
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var failure = (await pending).ShouldBeOfType<ModelAttemptFailed>().Failure;
+
+        failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failure.StatusCode.ShouldBe(400);
+        failure.RequestId.ShouldBe(new ProviderRequestId("req_timeout"));
+        failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(23));
+    }
+
+    /// <summary>Verifies observer cancellation during failure publication cannot trigger a second terminal event.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenFailureObserverThrowsCancellation_DoesNotPublishSecondTerminalEvent()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest));
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-test")));
+        using var cancellation = new CancellationTokenSource();
+        var observer = new CancellingFailureObserver(cancellation);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, cancellation.Token));
+
+        observer.TerminalEventCount.ShouldBe(1);
+        cancellation.IsCancellationRequested.ShouldBeTrue();
+    }
+
+    /// <summary>Verifies a missing error body still produces a bounded typed failure.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyIsAbsent_ReturnsTypedFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Conflict));
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-test")));
+
+        var failure = (await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken)).ShouldBeOfType<ModelAttemptFailed>().Failure;
+
+        failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failure.SafeMessage.ShouldBe("The Anthropic request failed with HTTP status 409.");
+    }
+
+    /// <summary>Verifies an unknown body code retains diagnostics while HTTP supplies classification and body text stays unsafe.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenBodyCodeIsUnknown_UsesHttpFallbackWithoutLeakingMessage()
+    {
+        const string secret = "credential=do-not-leak";
+        var handler = new StubHttpMessageHandler(_request =>
+        {
+            var body = JsonSerializer.Serialize(new { error = new { type = "future_error", message = secret } });
+            var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { Content = new StringContent(body) };
+            _ = response.Headers.TryAddWithoutValidation("request-id", "req_test");
+            return response;
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-test")), options: new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/"), PreferStreaming = false });
+
+        var failure = (await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken)).ShouldBeOfType<ModelAttemptFailed>().Failure;
+
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.ProviderCode.ShouldBe("future_error");
+        failure.RequestId.ShouldBe(new ProviderRequestId("req_test"));
+        failure.SafeMessage.ShouldNotContain(secret);
+    }
+
+    /// <summary>Verifies unsupported encrypted reasoning is rejected by translation before HTTP egress.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenReasoningUsesEncryptedSignature_FailsBeforeHttpCall()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var reasoning = new ReasoningPart(new ReasoningContent(null, ReasoningVisibility.EncryptedSignature, "opaque", ExtensionData.Empty), ExtensionData.Empty);
+        var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), TestModels.ClaudeSonnet, [TestMessages.Assistant(reasoning)], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
+        var request = new LlmModelRequest(context, 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-test")));
+
+        var failure = (await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken)).ShouldBeOfType<ModelAttemptFailed>().Failure;
+
+        failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        handler.Requests.ShouldBeEmpty();
     }
 
     [Fact]

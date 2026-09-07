@@ -5,6 +5,7 @@ namespace AgentKit.Providers.GoogleGemini.Tests;
 
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 
 using AgentKit.Providers.GoogleGemini.Tests.Fakes;
 
@@ -134,7 +135,7 @@ public sealed class GoogleGeminiLlmModelEndToEndTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
         failed.Failure.StatusCode.ShouldBe(401);
-        failed.Failure.SafeMessage.ShouldBe("Request had invalid authentication credentials.");
+        failed.Failure.SafeMessage.ShouldBe("The Google Gemini request failed with HTTP status 401.");
         failed.Failure.ProviderCode.ShouldBe("UNAUTHENTICATED");
     }
 
@@ -167,6 +168,125 @@ public sealed class GoogleGeminiLlmModelEndToEndTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
         failed.Failure.StatusCode.ShouldBe(500);
+    }
+
+    /// <summary>Verifies non-success status families always produce typed failures without redirect or retry effects.</summary>
+    [Theory]
+    [InlineData(307, ProviderFailureKind.InvalidRequest)]
+    [InlineData(408, ProviderFailureKind.Timeout)]
+    [InlineData(409, ProviderFailureKind.InvalidRequest)]
+    [InlineData(502, ProviderFailureKind.Unavailable)]
+    [InlineData(599, ProviderFailureKind.Unavailable)]
+    [InlineData(600, ProviderFailureKind.Unknown)]
+    public async Task ExecuteAsync_WhenErrorStatusHasMalformedBody_UsesHttpFallback(int statusCode, ProviderFailureKind expected)
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage((HttpStatusCode) statusCode) { Content = new StringContent("not-json") });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")), options: new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/"), PreferStreaming = false });
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(expected);
+        failure.StatusCode.ShouldBe(statusCode);
+        _ = failure.DiagnosticCause.ShouldBeOfType<JsonException>();
+        handler.Requests.Count.ShouldBe(1);
+    }
+
+    /// <summary>Verifies caller cancellation while reading an error body returns one cancellation outcome.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenCallerCancelsDuringErrorBodyRead_ReturnsCancelled()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StreamContent(body) };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(17));
+            return response;
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")));
+        using var cancellation = new CancellationTokenSource();
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1)), new RecordingModelResponseObserver(), cancellation.Token);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        await body.Entered;
+
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var failure = result.ShouldBeOfType<ModelAttemptCancelled>().Cancellation;
+        failure.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        failure.StatusCode.ShouldBe(400);
+        failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(17));
+    }
+
+    /// <summary>Verifies the injected deadline cancels a blocked error-body read without wall-clock waiting.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineExpiresDuringErrorBodyRead_ReturnsTimeout()
+    {
+        var clock = new FakeTimeProvider(Now);
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StreamContent(body) };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(23));
+            return response;
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")), timeProvider: clock);
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddSeconds(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        await body.Entered;
+
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var failure = (await pending).ShouldBeOfType<ModelAttemptFailed>().Failure;
+
+        failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failure.StatusCode.ShouldBe(400);
+        failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(23));
+    }
+
+    /// <summary>Verifies observer cancellation during failure publication cannot trigger a second terminal event.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenFailureObserverThrowsCancellation_DoesNotPublishSecondTerminalEvent()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest));
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")));
+        using var cancellation = new CancellationTokenSource();
+        var observer = new CancellingFailureObserver(cancellation);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1)), observer, cancellation.Token));
+
+        observer.TerminalEventCount.ShouldBe(1);
+        cancellation.IsCancellationRequested.ShouldBeTrue();
+    }
+
+    /// <summary>Verifies a missing error body still produces a bounded typed failure.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyIsAbsent_ReturnsTypedFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Conflict));
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")));
+
+        var failure = (await model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken)).ShouldBeOfType<ModelAttemptFailed>().Failure;
+
+        failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failure.SafeMessage.ShouldBe("The Google Gemini request failed with HTTP status 409.");
+    }
+
+    /// <summary>Verifies unknown Google status text retains its code while HTTP classifies it and body text remains unsafe.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenBodyStatusIsUnknown_UsesHttpFallbackWithoutLeakingMessage()
+    {
+        const string secret = "token=do-not-leak";
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new { error = new { code = 400, status = "FUTURE_STATUS", message = secret } })),
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")), options: new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/"), PreferStreaming = false });
+
+        var failure = (await model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken)).ShouldBeOfType<ModelAttemptFailed>().Failure;
+
+        failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failure.ProviderCode.ShouldBe("FUTURE_STATUS");
+        failure.SafeMessage.ShouldNotContain(secret);
     }
 
     [Fact]
