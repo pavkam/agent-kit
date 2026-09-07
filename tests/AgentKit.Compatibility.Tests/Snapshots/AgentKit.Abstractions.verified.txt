@@ -527,7 +527,7 @@ namespace AgentKit
         public static AgentKit.InputFingerprint DeleteFingerprint(AgentKit.ArtifactReference reference) { }
         public static AgentKit.InputFingerprint FinalizeFingerprint(AgentKit.ArtifactPreparationId preparationId) { }
         public static AgentKit.ProtectedResource PreparationResource(AgentKit.ArtifactPreparationId id) { }
-        public static AgentKit.InputFingerprint PrepareFingerprint(AgentKit.ArtifactId artifactId, AgentKit.ArtifactPreparationId preparationId, AgentKit.ArtifactDirectoryId directoryId, AgentKit.ArtifactMetadata metadata) { }
+        public static AgentKit.InputFingerprint PrepareFingerprint(AgentKit.ArtifactId artifactId, AgentKit.ArtifactPreparationId preparationId, AgentKit.ArtifactVersion version, AgentKit.ArtifactProfileKey profileKey, AgentKit.ArtifactProfileVersion profileVersion, AgentKit.TenantId tenantId, AgentKit.PrincipalId createdBy, AgentKit.ArtifactDirectoryId directoryId, AgentKit.ArtifactMetadata metadata, System.DateTimeOffset createdAt, System.DateTimeOffset expiresAt) { }
         public static AgentKit.InputFingerprint ReadFingerprint(AgentKit.ArtifactReference reference) { }
     }
     public sealed class ArtifactStoreAbortRequest : System.IEquatable<AgentKit.ArtifactStoreAbortRequest>

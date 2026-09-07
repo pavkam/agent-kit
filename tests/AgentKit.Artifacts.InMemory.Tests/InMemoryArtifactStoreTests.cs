@@ -42,6 +42,30 @@ public sealed class InMemoryArtifactStoreTests
         _ = accepted.ShouldBeOfType<ArtifactPrepared>();
     }
 
+    [Theory]
+    [InlineData("version")]
+    [InlineData("profile-key")]
+    [InlineData("profile-version")]
+    [InlineData("created-at")]
+    [InlineData("expires-at")]
+    public async Task PrepareAsync_WhenBoundAttemptFieldChanges_CannotUseExistingGrant(string field)
+    {
+        var fixture = new StoreFixture();
+        var authorized = fixture.CreatePrepare("content"u8.ToArray());
+        var changed = ChangeAttemptField(authorized, field);
+        await fixture.RegisterPrepareGrantAsync(changed);
+
+        var rejected = await fixture.Store.PrepareAsync(changed, TestContext.Current.CancellationToken);
+        var valid = fixture.CreatePrepare(
+            "content"u8.ToArray(), artifactId: authorized.ArtifactId, version: authorized.Version,
+            preparationId: authorized.PreparationId, createdAt: authorized.CreatedAt, expiresAt: authorized.ExpiresAt);
+        await fixture.RegisterPrepareGrantAsync(valid);
+        var accepted = await fixture.Store.PrepareAsync(valid, TestContext.Current.CancellationToken);
+
+        rejected.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
+        _ = accepted.ShouldBeOfType<ArtifactPrepared>();
+    }
+
     [Fact]
     public async Task FinalizeAsync_WhenTenantDiffers_DoesNotRemoveOwnersPreparation()
     {
@@ -92,6 +116,64 @@ public sealed class InMemoryArtifactStoreTests
         var result = await fixture.Store.PrepareAsync(conflicting, TestContext.Current.CancellationToken);
 
         result.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Conflict);
+    }
+
+    [Theory]
+    [InlineData("version")]
+    [InlineData("lifetime")]
+    public async Task PrepareAsync_WhenReplayChangesStableIntent_RejectsConflict(string changedField)
+    {
+        var fixture = new StoreFixture();
+        var first = fixture.CreatePrepare("content"u8.ToArray(), idempotencyKey: "same");
+        await fixture.RegisterPrepareGrantAsync(first);
+        _ = await fixture.Store.PrepareAsync(first, TestContext.Current.CancellationToken);
+        var retry = changedField == "version"
+            ? fixture.CreatePrepare("content"u8.ToArray(), idempotencyKey: "same", version: new ArtifactVersion("2"))
+            : fixture.CreatePrepare("content"u8.ToArray(), idempotencyKey: "same", expiresAt: _now.AddMinutes(6));
+        await fixture.RegisterPrepareGrantAsync(retry);
+
+        var result = await fixture.Store.PrepareAsync(retry, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Conflict);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenReplayRegeneratesIdsAtLaterEquivalentInstants_ReturnsOriginalReceipt()
+    {
+        var fixture = new StoreFixture();
+        var first = fixture.CreatePrepare("content"u8.ToArray(), idempotencyKey: "same");
+        await fixture.RegisterPrepareGrantAsync(first);
+        var original = (await fixture.Store.PrepareAsync(first, TestContext.Current.CancellationToken))
+            .ShouldBeOfType<ArtifactPrepared>();
+        var retry = fixture.CreatePrepare(
+            "content"u8.ToArray(), idempotencyKey: "same", createdAt: _now.AddMinutes(1),
+            expiresAt: _now.AddMinutes(6));
+        await fixture.RegisterPrepareGrantAsync(retry);
+
+        var replay = await fixture.Store.PrepareAsync(retry, TestContext.Current.CancellationToken);
+
+        replay.ShouldBe(original);
+    }
+
+    [Theory]
+    [InlineData("tenant")]
+    [InlineData("creator")]
+    public async Task PrepareAsync_WhenPartitionIdentityDiffersFromAuthenticatedIdentity_DeniesBeforeState(string field)
+    {
+        var fixture = new StoreFixture();
+        var request = field == "tenant"
+            ? fixture.CreatePrepare("content"u8.ToArray(), tenantId: new TenantId("other"))
+            : fixture.CreatePrepare("content"u8.ToArray(), createdBy: new PrincipalId("other"));
+        await fixture.RegisterPrepareGrantAsync(request);
+
+        var rejected = await fixture.Store.PrepareAsync(request, TestContext.Current.CancellationToken);
+        var valid = fixture.CreatePrepare(
+            "content"u8.ToArray(), artifactId: request.ArtifactId, preparationId: request.PreparationId);
+        await fixture.RegisterPrepareGrantAsync(valid);
+        var accepted = await fixture.Store.PrepareAsync(valid, TestContext.Current.CancellationToken);
+
+        rejected.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
+        _ = accepted.ShouldBeOfType<ArtifactPrepared>();
     }
 
     [Fact]
@@ -591,11 +673,18 @@ public sealed class InMemoryArtifactStoreTests
             ArtifactId? artifactId = null,
             ArtifactVersion? version = null,
             ArtifactPreparationId? preparationId = null,
-            ExecutionIdentity? identity = null)
+            ExecutionIdentity? identity = null,
+            TenantId? tenantId = null,
+            PrincipalId? createdBy = null,
+            DateTimeOffset? createdAt = null)
         {
             var selectedArtifactId = artifactId ?? new ArtifactId(NextGuid());
             var selectedPreparationId = preparationId ?? new ArtifactPreparationId(NextGuid());
             var selectedIdentity = identity ?? Identity;
+            var selectedTenantId = tenantId ?? selectedIdentity.TenantId;
+            var selectedCreatedBy = createdBy ?? selectedIdentity.PrincipalId;
+            var selectedCreatedAt = createdAt ?? _now;
+            var selectedExpiresAt = expiresAt ?? selectedCreatedAt.AddMinutes(5);
             var scope = CreateScope();
             var metadata = new ArtifactMetadata(
                 new ArtifactOwnerId("session:owner"), "text/plain", bytes.LongLength,
@@ -606,11 +695,14 @@ public sealed class InMemoryArtifactStoreTests
                 scope, selectedIdentity, SecurityEffect.Create,
                 [ArtifactSecurityBinding.ArtifactResource(selectedArtifactId), ArtifactSecurityBinding.PreparationResource(selectedPreparationId)],
                 grantFingerprint ?? ArtifactSecurityBinding.PrepareFingerprint(
-                    selectedArtifactId, selectedPreparationId, new ArtifactDirectoryId("tool-output"), metadata));
+                    selectedArtifactId, selectedPreparationId, version ?? new ArtifactVersion("1"),
+                    new ArtifactProfileKey("test"), new ArtifactProfileVersion(1), selectedTenantId,
+                    selectedCreatedBy, new ArtifactDirectoryId("tool-output"), metadata,
+                    selectedCreatedAt, selectedExpiresAt));
             return new ArtifactStorePrepareRequest(
                 selectedArtifactId, selectedPreparationId, version ?? new ArtifactVersion("1"), new ArtifactProfileKey("test"),
-                new ArtifactProfileVersion(1), selectedIdentity.TenantId, selectedIdentity.PrincipalId,
-                new ArtifactDirectoryId("tool-output"), metadata, [.. bytes], _now, expiresAt ?? _now.AddMinutes(5),
+                new ArtifactProfileVersion(1), selectedTenantId, selectedCreatedBy,
+                new ArtifactDirectoryId("tool-output"), metadata, [.. bytes], selectedCreatedAt, selectedExpiresAt,
                 scope, selectedIdentity, grant, new IdempotencyKey(idempotencyKey));
         }
 
@@ -695,4 +787,22 @@ public sealed class InMemoryArtifactStoreTests
             return new Guid(bytes);
         }
     }
+
+    private static ArtifactStorePrepareRequest ChangeAttemptField(ArtifactStorePrepareRequest request, string field) => new(
+        request.ArtifactId,
+        request.PreparationId,
+        field == "version" ? new ArtifactVersion("2") : request.Version,
+        field == "profile-key" ? new ArtifactProfileKey("other") : request.ProfileKey,
+        field == "profile-version" ? new ArtifactProfileVersion(2) : request.ProfileVersion,
+        request.TenantId,
+        request.CreatedBy,
+        request.DirectoryId,
+        request.Metadata,
+        request.Content,
+        field == "created-at" ? request.CreatedAt.AddSeconds(1) : request.CreatedAt,
+        field == "expires-at" ? request.ExpiresAt.AddSeconds(1) : request.ExpiresAt,
+        request.Scope,
+        request.Identity,
+        request.Grant,
+        request.IdempotencyKey);
 }

@@ -25,7 +25,7 @@ public sealed record ArtifactStorePrepareRequest
     /// <param name="idempotencyKey">The replay key.</param>
     /// <exception cref="ArgumentNullException">A reference value is null.</exception>
     /// <exception cref="ArgumentException">Bytes are default or a value is blank.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">An identity is empty.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">An identity is empty or <paramref name="expiresAt"/> is not after <paramref name="createdAt"/>.</exception>
     public ArtifactStorePrepareRequest(
         ArtifactId artifactId, ArtifactPreparationId preparationId, ArtifactVersion version,
         ArtifactProfileKey profileKey, ArtifactProfileVersion profileVersion,
@@ -49,6 +49,7 @@ public sealed record ArtifactStorePrepareRequest
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey.Value, nameof(idempotencyKey));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(expiresAt, createdAt);
         ArtifactId = artifactId; PreparationId = preparationId; Version = version;
         ProfileKey = profileKey; ProfileVersion = profileVersion; TenantId = tenantId;
         CreatedBy = createdBy; DirectoryId = directoryId; Metadata = metadata; Content = content;

@@ -40,7 +40,10 @@ public sealed class InMemoryArtifactStore: IArtifactStore
         var consumed = await ConsumeAsync(
             request.Grant, request.Scope, request.Identity, SecurityEffect.Create,
             [ArtifactSecurityBinding.ArtifactResource(request.ArtifactId), ArtifactSecurityBinding.PreparationResource(request.PreparationId)],
-            ArtifactSecurityBinding.PrepareFingerprint(request.ArtifactId, request.PreparationId, request.DirectoryId, request.Metadata), cancellationToken).ConfigureAwait(false);
+            ArtifactSecurityBinding.PrepareFingerprint(
+                request.ArtifactId, request.PreparationId, request.Version, request.ProfileKey,
+                request.ProfileVersion, request.TenantId, request.CreatedBy, request.DirectoryId,
+                request.Metadata, request.CreatedAt, request.ExpiresAt), cancellationToken).ConfigureAwait(false);
         if (consumed is not null)
         {
             return new ArtifactPrepareRejected(consumed);
@@ -49,6 +52,16 @@ public sealed class InMemoryArtifactStore: IArtifactStore
         if (request.TenantId != request.Identity.TenantId)
         {
             return RejectPrepare(ArtifactFailureKind.Denied, "The declared tenant does not match the authenticated identity.");
+        }
+
+        if (request.CreatedBy != request.Identity.PrincipalId)
+        {
+            return RejectPrepare(ArtifactFailureKind.Denied, "The declared creator does not match the authenticated identity.");
+        }
+
+        if (request.ExpiresAt <= request.CreatedAt)
+        {
+            return RejectPrepare(ArtifactFailureKind.Conflict, "The staging lifetime must be positive.");
         }
 
         var observedHash = FileSecurityBinding.ContentFingerprint(request.Content.AsSpan());
@@ -291,8 +304,9 @@ public sealed class InMemoryArtifactStore: IArtifactStore
 
     private static bool Equivalent(PreparedSnapshot left, ArtifactStorePrepareRequest right) =>
         left.DirectoryId == right.DirectoryId && left.Metadata == right.Metadata && left.Content.SequenceEqual(right.Content)
-        && left.ProfileKey == right.ProfileKey && left.ProfileVersion == right.ProfileVersion
-        && left.TenantId == right.TenantId && left.CreatedBy == right.CreatedBy;
+        && left.Version == right.Version && left.ProfileKey == right.ProfileKey && left.ProfileVersion == right.ProfileVersion
+        && left.TenantId == right.Identity.TenantId && left.CreatedBy == right.Identity.PrincipalId
+        && left.ExpiresAt - left.CreatedAt == right.ExpiresAt - right.CreatedAt;
 
     private static ArtifactPrepareRejected RejectPrepare(ArtifactFailureKind kind, string message) => new(new ArtifactFailure(kind, message));
     private static ArtifactFinalizeRejected RejectFinalize(ArtifactFailureKind kind, string message) => new(new ArtifactFailure(kind, message));

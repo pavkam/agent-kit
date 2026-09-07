@@ -19,15 +19,31 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
     /// <param name="securityIds">The security request identity source.</param><param name="artifactIds">The artifact identity source.</param>
     /// <param name="preparationIds">The staging identity source.</param><param name="time">The deterministic clock.</param>
     /// <param name="options">The captured mechanics and profile.</param>
-    /// <exception cref="ArgumentNullException">A dependency is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">A configured bound is invalid.</exception>
+    /// <exception cref="ArgumentNullException">A dependency is null or the selected profile key has a null value.</exception>
+    /// <exception cref="ArgumentException">The selected profile key is empty or whitespace.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A configured bound or profile version is invalid.</exception>
     public DefaultArtifactCoordinator(IArtifactStore store, ISecurityAuthority authority, IIdentifierGenerator<SecurityRequestId> securityIds, IIdentifierGenerator<ArtifactId> artifactIds, IIdentifierGenerator<ArtifactPreparationId> preparationIds, TimeProvider time, IOptions<AgentArtifactOptions> options)
     {
         ArgumentNullException.ThrowIfNull(store); ArgumentNullException.ThrowIfNull(authority); ArgumentNullException.ThrowIfNull(securityIds);
         ArgumentNullException.ThrowIfNull(artifactIds); ArgumentNullException.ThrowIfNull(preparationIds); ArgumentNullException.ThrowIfNull(time); ArgumentNullException.ThrowIfNull(options);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumArtifactBytes); ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.CopyBufferBytes);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.Value.PreparationLifetime, TimeSpan.Zero);
-        _store = store; _authority = authority; _securityIds = securityIds; _artifactIds = artifactIds; _preparationIds = preparationIds; _time = time; _options = options.Value;
+        var configured = options.Value;
+        var snapshot = new AgentArtifactOptions
+        {
+            MaximumArtifactBytes = configured.MaximumArtifactBytes,
+            CopyBufferBytes = configured.CopyBufferBytes,
+            PreparationLifetime = configured.PreparationLifetime,
+            ProfileKey = configured.ProfileKey,
+            ProfileVersion = configured.ProfileVersion,
+            ProcessOutputDirectory = configured.ProcessOutputDirectory,
+            ProcessOutputRetentionPolicy = configured.ProcessOutputRetentionPolicy,
+            ProcessOutputClassification = configured.ProcessOutputClassification,
+        };
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(snapshot.MaximumArtifactBytes, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(snapshot.CopyBufferBytes, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(snapshot.PreparationLifetime, TimeSpan.Zero, nameof(options));
+        ArgumentException.ThrowIfNullOrWhiteSpace(snapshot.ProfileKey.Value, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(snapshot.ProfileVersion.Value, nameof(options));
+        _store = store; _authority = authority; _securityIds = securityIds; _artifactIds = artifactIds; _preparationIds = preparationIds; _time = time; _options = snapshot;
     }
 
     /// <inheritdoc/>
@@ -55,19 +71,26 @@ public sealed class DefaultArtifactCoordinator: IArtifactCoordinator
         var artifactId = _artifactIds.Create();
         var preparationId = _preparationIds.Create();
         var version = new ArtifactVersion("1");
+        var profileKey = _options.ProfileKey;
+        var profileVersion = _options.ProfileVersion;
+        var preparationLifetime = _options.PreparationLifetime;
         var now = _time.GetUtcNow();
+        var expiresAt = now.Add(preparationLifetime);
         var scope = new SecurityAuthorizationScope(request.AgentId, request.SessionId, request.Correlation);
         var decision = await _authority.AuthorizeAsync(new SecurityRequest(
             _securityIds.Create(), scope, request.ToolCallId, request.Identity, _store.SecurityAudience,
             SecurityOperationKind.Artifact, SecurityEffect.Create,
             [ArtifactSecurityBinding.ArtifactResource(artifactId), ArtifactSecurityBinding.PreparationResource(preparationId)],
-            ArtifactSecurityBinding.PrepareFingerprint(artifactId, preparationId, request.DirectoryId, request.Metadata), now.AddMinutes(1)), cancellationToken).ConfigureAwait(false);
+            ArtifactSecurityBinding.PrepareFingerprint(
+                artifactId, preparationId, version, profileKey, profileVersion,
+                request.Identity.TenantId, request.Identity.PrincipalId, request.DirectoryId,
+                request.Metadata, now, expiresAt), now.AddMinutes(1)), cancellationToken).ConfigureAwait(false);
         return decision is not SecurityAllowed allowed
             ? RejectPrepare(ArtifactFailureKind.Denied, decision is SecurityDenied denied ? denied.Denial.SafeMessage : "Artifact staging was not authorized.")
             : await _store.PrepareAsync(new ArtifactStorePrepareRequest(
-            artifactId, preparationId, version, _options.ProfileKey, _options.ProfileVersion,
+            artifactId, preparationId, version, profileKey, profileVersion,
             request.Identity.TenantId, request.Identity.PrincipalId, request.DirectoryId, request.Metadata, bytes,
-            now, now.Add(_options.PreparationLifetime), scope, request.Identity, allowed.Grant, request.IdempotencyKey), cancellationToken).ConfigureAwait(false);
+            now, expiresAt, scope, request.Identity, allowed.Grant, request.IdempotencyKey), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>

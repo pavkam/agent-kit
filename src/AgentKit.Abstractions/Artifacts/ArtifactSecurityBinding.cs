@@ -15,6 +15,7 @@ using System.Security.Cryptography;
 public static class ArtifactSecurityBinding
 {
     private const string _fingerprintSchema = "agentkit.artifact-security-binding/v2";
+    private const string _prepareFingerprintSchema = "agentkit.artifact-prepare-security-binding/v1";
 
     /// <summary>Names one logical artifact.</summary>
     /// <param name="id">The artifact identity.</param>
@@ -39,24 +40,56 @@ public static class ArtifactSecurityBinding
     /// <summary>Fingerprints staging intent including declared integrity and lifecycle policy.</summary>
     /// <param name="artifactId">The reserved artifact identity.</param>
     /// <param name="preparationId">The staging identity.</param>
+    /// <param name="version">The reserved immutable artifact version.</param>
+    /// <param name="profileKey">The selected logical profile.</param>
+    /// <param name="profileVersion">The selected positive profile revision.</param>
+    /// <param name="tenantId">The authenticated tenant partition.</param>
+    /// <param name="createdBy">The authenticated creating principal.</param>
     /// <param name="directoryId">The logical directory.</param>
     /// <param name="metadata">The exact declared metadata.</param>
+    /// <param name="createdAt">The concrete staging creation instant.</param>
+    /// <param name="expiresAt">The concrete staging expiry after <paramref name="createdAt"/>.</param>
     /// <returns>A deterministic SHA-256 fingerprint.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="artifactId"/> or <paramref name="preparationId"/> is empty.</exception>
-    /// <exception cref="ArgumentException"><paramref name="directoryId"/> is blank.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="metadata"/> is null.</exception>
-    public static InputFingerprint PrepareFingerprint(ArtifactId artifactId, ArtifactPreparationId preparationId, ArtifactDirectoryId directoryId, ArtifactMetadata metadata)
+    /// <exception cref="ArgumentOutOfRangeException">An identity is empty, the profile version is not positive, or the expiry is not after creation.</exception>
+    /// <exception cref="ArgumentException">A string-backed identity, version, profile, or directory is blank.</exception>
+    /// <exception cref="ArgumentNullException">
+    /// A string-backed identity or version value is default, or <paramref name="metadata"/> is null.
+    /// </exception>
+    /// <remarks>This prepare-specific schema has no fallback to the earlier incomplete prepare fingerprint.</remarks>
+    public static InputFingerprint PrepareFingerprint(
+        ArtifactId artifactId,
+        ArtifactPreparationId preparationId,
+        ArtifactVersion version,
+        ArtifactProfileKey profileKey,
+        ArtifactProfileVersion profileVersion,
+        TenantId tenantId,
+        PrincipalId createdBy,
+        ArtifactDirectoryId directoryId,
+        ArtifactMetadata metadata,
+        DateTimeOffset createdAt,
+        DateTimeOffset expiresAt)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(artifactId, default);
         ArgumentOutOfRangeException.ThrowIfEqual(preparationId, default);
+        ArgumentException.ThrowIfNullOrWhiteSpace(version.Value, nameof(version));
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileKey.Value, nameof(profileKey));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(profileVersion.Value, nameof(profileVersion));
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId.Value, nameof(tenantId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(createdBy.Value, nameof(createdBy));
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryId.Value, nameof(directoryId));
         ArgumentNullException.ThrowIfNull(metadata);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(expiresAt, createdAt);
         return Hash(new
         {
-            schema = _fingerprintSchema,
+            schema = _prepareFingerprintSchema,
             action = "prepare",
             artifactId = artifactId.ToString(),
             preparationId = preparationId.ToString(),
+            version = version.Value,
+            profileKey = profileKey.Value,
+            profileVersion = profileVersion.Value,
+            tenantId = tenantId.Value,
+            createdBy = createdBy.Value,
             directoryId = directoryId.Value,
             ownerId = metadata.OwnerId.Value,
             metadata.MediaType,
@@ -68,6 +101,8 @@ public static class ArtifactSecurityBinding
             retentionPolicy = metadata.Retention.Policy.Value,
             expiresAt = metadata.Retention.ExpiresAt?.ToUniversalTime().ToString("O"),
             metadata.Retention.LegalHold,
+            createdAt = createdAt.ToUniversalTime().ToString("O"),
+            stagingExpiresAt = expiresAt.ToUniversalTime().ToString("O"),
         });
     }
 

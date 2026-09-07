@@ -5,6 +5,34 @@ namespace AgentKit.Artifacts.Tests;
 
 public sealed class DefaultArtifactCoordinatorTests
 {
+    [Theory]
+    [InlineData("profile-key", typeof(ArgumentNullException))]
+    [InlineData("profile-version", typeof(ArgumentOutOfRangeException))]
+    public void Constructor_WhenSelectedProfileIsInvalid_ThrowsExactParameter(
+        string field, Type expectedExceptionType)
+    {
+        var options = new AgentArtifactOptions();
+        if (field == "profile-key")
+        {
+            options.ProfileKey = default;
+        }
+        else
+        {
+            options.ProfileVersion = default;
+        }
+
+        void Construct() => _ = new DefaultArtifactCoordinator(
+                new RecordingArtifactStore(), new RecordingSecurityAuthority(),
+                new FixedIdentifierGenerator<SecurityRequestId>(ArtifactTestData.SecurityRequestId),
+                new FixedIdentifierGenerator<ArtifactId>(ArtifactTestData.ArtifactId),
+                new FixedIdentifierGenerator<ArtifactPreparationId>(ArtifactTestData.PreparationId),
+                new FixedTimeProvider(), Options.Create(options));
+
+        var exception = Should.Throw<ArgumentException>(Construct);
+        exception.GetType().ShouldBe(expectedExceptionType);
+        exception.ParamName.ShouldBe("options");
+    }
+
     [Fact]
     public async Task PrepareAsync_WhenContentIsValid_AuthorizesExactEffectAndDispatchesGrant()
     {
@@ -83,6 +111,44 @@ public sealed class DefaultArtifactCoordinatorTests
         _ = await coordinator.PrepareAsync(request, TestContext.Current.CancellationToken);
 
         request.Content.CanRead.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenOptionsMutateAcrossAuthorization_UsesCapturedAttempt()
+    {
+        var store = new RecordingArtifactStore();
+        var authority = new GatedSecurityAuthority();
+        var options = new AgentArtifactOptions
+        {
+            MaximumArtifactBytes = 1_024,
+            CopyBufferBytes = 2,
+            PreparationLifetime = TimeSpan.FromMinutes(5),
+            ProfileKey = new ArtifactProfileKey("captured"),
+            ProfileVersion = new ArtifactProfileVersion(7),
+        };
+        var coordinator = new DefaultArtifactCoordinator(
+            store, authority, new FixedIdentifierGenerator<SecurityRequestId>(ArtifactTestData.SecurityRequestId),
+            new FixedIdentifierGenerator<ArtifactId>(ArtifactTestData.ArtifactId),
+            new FixedIdentifierGenerator<ArtifactPreparationId>(ArtifactTestData.PreparationId),
+            new FixedTimeProvider(), Options.Create(options));
+        var request = ArtifactTestData.CreatePrepare("content"u8.ToArray());
+
+        var pending = coordinator.PrepareAsync(request, TestContext.Current.CancellationToken);
+        var security = await authority.Observed.WaitAsync(TestContext.Current.CancellationToken);
+        options.PreparationLifetime = TimeSpan.FromHours(9);
+        options.ProfileKey = new ArtifactProfileKey("mutated");
+        options.ProfileVersion = new ArtifactProfileVersion(99);
+        authority.Release();
+        _ = await pending;
+
+        var dispatched = store.PrepareRequests.ShouldHaveSingleItem();
+        dispatched.ProfileKey.ShouldBe(new ArtifactProfileKey("captured"));
+        dispatched.ProfileVersion.ShouldBe(new ArtifactProfileVersion(7));
+        dispatched.ExpiresAt.ShouldBe(ArtifactTestData.Now.AddMinutes(5));
+        security.InputFingerprint.ShouldBe(ArtifactSecurityBinding.PrepareFingerprint(
+            dispatched.ArtifactId, dispatched.PreparationId, dispatched.Version, dispatched.ProfileKey,
+            dispatched.ProfileVersion, dispatched.TenantId, dispatched.CreatedBy, dispatched.DirectoryId,
+            dispatched.Metadata, dispatched.CreatedAt, dispatched.ExpiresAt));
     }
 
     [Fact]
