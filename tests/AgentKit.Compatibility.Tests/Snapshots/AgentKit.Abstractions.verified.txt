@@ -2815,6 +2815,8 @@ namespace AgentKit
         public string Name { get; init; }
         public System.Text.Json.JsonElement Schema { get; init; }
         public AgentKit.SchemaVersion Version { get; init; }
+        public bool Equals(AgentKit.JsonSchemaDocument? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class JsonSchemaReference : System.IEquatable<AgentKit.JsonSchemaReference>
     {
