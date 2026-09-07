@@ -1,0 +1,19 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.IO.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.IO
+{
+    public sealed class DefaultHumanQuestionBroker : AgentKit.IHumanQuestionBroker
+    {
+        public DefaultHumanQuestionBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.IHumanQuestionChannel channel) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.HumanQuestionResult> AskAsync(AgentKit.HumanQuestionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddHumanQuestionBroker() { }
+        }
+    }
+}

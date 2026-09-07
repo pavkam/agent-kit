@@ -1,0 +1,36 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Tools.Search.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools.Search
+{
+    public sealed class SearchTool : AgentKit.ITool
+    {
+        public static readonly AgentKit.ToolId Id;
+        public SearchTool(AgentKit.IFileContentSearcher searcher, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Search.SearchToolOptions> options) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SearchToolOptions
+    {
+        public SearchToolOptions() { }
+        public long DefaultMaximumBytes { get; set; }
+        public int DefaultMaximumDepth { get; set; }
+        public System.TimeSpan DefaultMaximumDuration { get; set; }
+        public int DefaultMaximumFiles { get; set; }
+        public int DefaultMaximumLineBytes { get; set; }
+        public int DefaultMaximumMatches { get; set; }
+        public long MaximumBytes { get; set; }
+        public int MaximumDepth { get; set; }
+        public System.TimeSpan MaximumDuration { get; set; }
+        public int MaximumFiles { get; set; }
+        public int MaximumLineBytes { get; set; }
+        public int MaximumMatches { get; set; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSearchTool(System.Action<AgentKit.Tools.Search.SearchToolOptions>? configure = null) { }
+        }
+    }
+}

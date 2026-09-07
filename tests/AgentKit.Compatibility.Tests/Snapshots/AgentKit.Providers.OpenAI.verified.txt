@@ -1,0 +1,55 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.OpenAI.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.OpenAI
+{
+    public sealed class OpenAIEmbeddingModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleEmbeddingModelBase
+    {
+        public OpenAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+    }
+    public sealed class OpenAILlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
+    {
+        public OpenAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+    }
+    public static class OpenAIProviderDefaults
+    {
+        public const string DefaultChatCompletionsPath = "v1/chat/completions";
+        public const string DefaultEmbeddingsPath = "v1/embeddings";
+        public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static System.Uri DefaultBaseAddress { get; }
+        public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
+        public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
+        public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
+        public static AgentKit.ProviderId ProviderId { get; }
+        public static AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile CreateProfile(AgentKit.Providers.OpenAI.OpenAIProviderOptions options) { }
+    }
+    public sealed class OpenAIProviderOptions
+    {
+        public OpenAIProviderOptions() { }
+        public System.Uri BaseAddress { get; set; }
+        public string ChatCompletionsPath { get; set; }
+        public string EmbeddingsPath { get; set; }
+        public bool IncludeStreamUsage { get; set; }
+        public bool PreferStreaming { get; set; }
+        public bool UseMaxCompletionTokensField { get; set; }
+    }
+    public sealed class OpenAIProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.OpenAI.OpenAIProviderOptions>
+    {
+        public OpenAIProviderOptionsValidator() { }
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.OpenAI.OpenAIProviderOptions options) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenAI(System.Action<AgentKit.Providers.OpenAI.OpenAIProviderOptions>? configureOptions = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenAIApiKeyCredential(string apiKey) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenAIOAuthCredential<TProvider>()
+                where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenAILlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenAIEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
+        }
+    }
+}

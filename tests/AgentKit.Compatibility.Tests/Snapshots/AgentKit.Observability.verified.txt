@@ -1,0 +1,147 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Observability.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Observability
+{
+    public static class ActivityExtensions
+    {
+        extension(System.Diagnostics.Activity activity)
+        {
+            public void SetSuccessful(string outcome) { }
+            public void SetFailed(string outcome, string errorType) { }
+        }
+    }
+    public static class AgentKitActivityNames
+    {
+        public const string AgentAdmission = "agent.admission";
+        public const string AgentTurn = "agent.turn";
+        public const string BudgetCommit = "budget.commit";
+        public const string BudgetCorrection = "budget.correction";
+        public const string BudgetReserve = "budget.reserve";
+        public const string BudgetScopeCreate = "budget.scope.create";
+        public const string BudgetStart = "budget.start";
+        public const string Chat = "chat";
+        public const string ContextCompact = "context.compact";
+        public const string ContextPrepare = "context.prepare";
+        public const string ExecuteTool = "execute_tool";
+        public const string FileSystemOperation = "filesystem.operation";
+        public const string HookDispatch = "hook.dispatch";
+        public const string IdentityDerive = "identity.derive";
+        public const string IdentityResolve = "identity.resolve";
+        public const string InvokeAgent = "invoke_agent";
+        public const string LanguageQuery = "language.query";
+        public const string McpCatalogRefresh = "mcp.catalog.refresh";
+        public const string McpConnect = "mcp.connect";
+        public const string McpToolCall = "mcp.tool.call";
+        public const string ModelCatalogRefresh = "model.catalog.refresh";
+        public const string ModelSelect = "model.select";
+        public const string ModelStream = "model.stream";
+        public const string NetworkResolve = "network.resolve";
+        public const string NetworkSend = "network.send";
+        public const string OutputValidate = "output.validate";
+        public const string ProcessResolve = "process.resolve";
+        public const string ProcessRun = "process.run";
+        public const string ProcessSandboxPrepare = "process.sandbox.prepare";
+        public const string RunSettle = "run.settle";
+        public const string SecurityAuthorize = "security.authorize";
+        public const string SessionBranch = "session.branch";
+        public const string SessionCommit = "session.commit";
+        public const string SessionCreate = "session.create";
+        public const string SessionDelete = "session.delete";
+        public const string SessionEventPublish = "session.event.publish";
+        public const string SessionLeaseAcquire = "session.lease.acquire";
+        public const string SessionLoad = "session.load";
+        public const string SessionRead = "session.read";
+        public const string SessionStoreOperation = "session.store.operation";
+        public const string ToolBatch = "tool.batch";
+    }
+    public static class AgentKitDiagnostics
+    {
+        public const string ActivitySourceName = "AgentKit";
+        public const string MeterName = "AgentKit";
+        public static System.Diagnostics.ActivitySource Activities { get; }
+        public static System.Diagnostics.Metrics.Meter Metrics { get; }
+    }
+    public static class AgentKitMetricNames
+    {
+        public const string AgentAdmissionCount = "agentkit.agent.admission.count";
+        public const string AgentRunCount = "agentkit.agent.run.count";
+        public const string AgentRunDuration = "agentkit.agent.run.duration";
+        public const string BudgetCorrectionCount = "agentkit.budget.correction.count";
+        public const string BudgetReservationCount = "agentkit.budget.reservation.count";
+        public const string BudgetSettlementCount = "agentkit.budget.settlement.count";
+        public const string BudgetStartCount = "agentkit.budget.start.count";
+        public const string ContextCompactionCount = "agentkit.context.compaction.count";
+        public const string ContextPreparationCount = "agentkit.context.prepare.count";
+        public const string ContextPreparationDuration = "agentkit.context.prepare.duration";
+        public const string FileSystemOperationCount = "agentkit.filesystem.operation.count";
+        public const string HookDispatchCount = "agentkit.hook.dispatch.count";
+        public const string IdentityDerivationCount = "agentkit.identity.derivation.count";
+        public const string IdentityResolutionCount = "agentkit.identity.resolution.count";
+        public const string LanguageQueryCount = "agentkit.language.query.count";
+        public const string McpClientOperationCount = "agentkit.mcp.client.operation.count";
+        public const string ModelCatalogRefreshCount = "agentkit.model.catalog.refresh.count";
+        public const string ModelSelectionCount = "agentkit.model.selection.count";
+        public const string NetworkOperationCount = "agentkit.network.operation.count";
+        public const string OutputProcessingCount = "agentkit.output.processing.count";
+        public const string ProcessOperationCount = "agentkit.process.operation.count";
+        public const string SecurityDecisionCount = "agentkit.security.decision.count";
+        public const string SessionOperationCount = "agentkit.session.operation.count";
+        public const string SessionStoreOperationCount = "agentkit.session.store.operation.count";
+        public const string ToolCallCount = "agentkit.tool.call.count";
+        public const string ToolCallDuration = "agentkit.tool.call.duration";
+    }
+    public static class AgentKitTagNames
+    {
+        public const string AgentCatalogVersion = "agentkit.agent.catalog.version";
+        public const string AgentId = "gen_ai.agent.id";
+        public const string BudgetDimension = "agentkit.budget.dimension";
+        public const string BudgetScopeId = "agentkit.budget.scope.id";
+        public const string CompactionId = "agentkit.compaction.id";
+        public const string ConversationId = "gen_ai.conversation.id";
+        public const string ErrorType = "error.type";
+        public const string FileSystemOperation = "agentkit.filesystem.operation";
+        public const string GenAiOperationName = "gen_ai.operation.name";
+        public const string HookInvocationId = "agentkit.hook.invocation.id";
+        public const string HookPoint = "agentkit.hook.point";
+        public const string IdentityIssuer = "agentkit.identity.issuer";
+        public const string LanguageQueryId = "agentkit.language.query.id";
+        public const string LanguageQueryKind = "agentkit.language.query.kind";
+        public const string McpCatalogVersion = "agentkit.mcp.catalog.version";
+        public const string McpOperation = "agentkit.mcp.operation";
+        public const string McpProtocolVersion = "agentkit.mcp.protocol.version";
+        public const string ModelCatalogVersion = "agentkit.model.catalog.version";
+        public const string ModelRequestId = "agentkit.model_request.id";
+        public const string NetworkOperationId = "agentkit.network.operation.id";
+        public const string NetworkStage = "agentkit.network.stage";
+        public const string ObserverName = "agentkit.observer.name";
+        public const string OperationId = "agentkit.operation.id";
+        public const string Outcome = "agentkit.outcome";
+        public const string OutputDefinitionId = "agentkit.output.definition.id";
+        public const string OutputMode = "agentkit.output.mode";
+        public const string OutputValidationAttempt = "agentkit.output.validation.attempt";
+        public const string PrincipalId = "agentkit.principal.id";
+        public const string ProcessOperationId = "agentkit.process.operation.id";
+        public const string ProcessStage = "agentkit.process.stage";
+        public const string ProviderName = "gen_ai.provider.name";
+        public const string RequestModel = "gen_ai.request.model";
+        public const string RunId = "agentkit.run.id";
+        public const string SecurityEffect = "agentkit.security.effect";
+        public const string SecurityOperationKind = "agentkit.security.operation.kind";
+        public const string SecurityRequestId = "agentkit.security_request.id";
+        public const string SessionId = "agentkit.session.id";
+        public const string SessionOperation = "agentkit.session.operation";
+        public const string TenantId = "agentkit.tenant.id";
+        public const string ToolCallId = "agentkit.tool_call.id";
+        public const string ToolName = "gen_ai.tool.name";
+        public const string TurnId = "agentkit.turn.id";
+        public const string TurnNumber = "agentkit.turn.number";
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentKitObservability() { }
+        }
+    }
+}

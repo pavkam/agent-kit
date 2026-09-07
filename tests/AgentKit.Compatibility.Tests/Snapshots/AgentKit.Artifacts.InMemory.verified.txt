@@ -1,0 +1,23 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Artifacts.InMemory
+{
+    public sealed class InMemoryArtifactStore : AgentKit.IArtifactStore
+    {
+        public InMemoryArtifactStore(AgentKit.ISecurityGrantStore grants, System.TimeProvider time) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactAbortResult> AbortAsync(AgentKit.ArtifactStoreAbortRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactDeleteResult> DeleteAsync(AgentKit.ArtifactStoreDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactFinalizeResult> FinalizeAsync(AgentKit.ArtifactStoreFinalizeRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactPrepareResult> PrepareAsync(AgentKit.ArtifactStorePrepareRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactReadResult> ReadAsync(AgentKit.ArtifactStoreReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryArtifactStore() { }
+        }
+    }
+}

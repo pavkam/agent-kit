@@ -1,0 +1,39 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Permissions.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Permissions
+{
+    public sealed class AgentPermissionOptions
+    {
+        public AgentPermissionOptions() { }
+        public System.TimeSpan MaximumGrantLifetime { get; set; }
+        public int MaximumGrantUses { get; set; }
+        public long PolicyVersion { get; set; }
+        public long RevocationVersion { get; set; }
+    }
+    public sealed class DenyAllSecurityAuthority : AgentKit.ISecurityAuthority
+    {
+        public DenyAllSecurityAuthority() { }
+        public DenyAllSecurityAuthority(Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.DenyAllSecurityAuthority> logger) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class InMemorySecurityGrantStore : AgentKit.ISecurityGrantStore
+    {
+        public InMemorySecurityGrantStore(System.TimeProvider timeProvider) { }
+        public System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<bool> RevokeAsync(AgentKit.GrantId grantId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SecurityAuthority : AgentKit.ISecurityAuthority
+    {
+        public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentPermissions(System.Action<AgentKit.Permissions.AgentPermissionOptions>? configure = null) { }
+        }
+    }
+}

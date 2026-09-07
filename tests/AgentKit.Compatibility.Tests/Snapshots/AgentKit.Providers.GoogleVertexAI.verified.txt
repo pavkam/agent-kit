@@ -1,0 +1,63 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.GoogleVertexAI.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.GoogleVertexAI
+{
+    public sealed class GoogleVertexAIAuthorizationDenied : AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationResult, System.IEquatable<AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationDenied>
+    {
+        public GoogleVertexAIAuthorizationDenied(AgentKit.ProviderFailure failure) { }
+        public AgentKit.ProviderFailure Failure { get; init; }
+    }
+    public sealed class GoogleVertexAIAuthorizationGranted : AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationResult, System.IEquatable<AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationGranted>
+    {
+        public GoogleVertexAIAuthorizationGranted(string headerName, string headerValue) { }
+        public string HeaderName { get; init; }
+        public string HeaderValue { get; init; }
+    }
+    public static class GoogleVertexAIAuthorizationHeaderFactory
+    {
+        public static AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
+    }
+    public abstract class GoogleVertexAIAuthorizationResult : System.IEquatable<AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationResult> { }
+    public sealed class GoogleVertexAILlmModel : AgentKit.ILlmModel
+    {
+        public GoogleVertexAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.ModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class GoogleVertexAIProviderDefaults
+    {
+        public const string DefaultApiVersion = "v1";
+        public const string DefaultPublisher = "google";
+        public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ProviderId ProviderId { get; }
+        public static System.Uri BuildGenerateContentUri(AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId, bool useStreaming) { }
+        public static System.Uri BuildRegionalBaseAddress(string location) { }
+    }
+    public sealed class GoogleVertexAIProviderOptions
+    {
+        public GoogleVertexAIProviderOptions() { }
+        public string ApiVersion { get; set; }
+        public string? Location { get; set; }
+        public bool PreferStreaming { get; set; }
+        public string? ProjectId { get; set; }
+        public string Publisher { get; set; }
+    }
+    public sealed class GoogleVertexAIProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions>
+    {
+        public GoogleVertexAIProviderOptionsValidator() { }
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleVertexAI(System.Action<AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions> configureOptions) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleVertexAIOAuthCredential<TProvider>()
+                where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleVertexAILlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId = default, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+        }
+    }
+}

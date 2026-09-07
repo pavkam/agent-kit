@@ -1,0 +1,26 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Mcp.Server
+{
+    public static class McpServerBuilderExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IMcpServerBuilder builder)
+        {
+            public Microsoft.Extensions.DependencyInjection.IMcpServerBuilder WithAgentKitTools<TTools>(System.Text.Json.JsonSerializerOptions? serializerOptions = null)
+                where TTools :  class { }
+        }
+    }
+    public sealed class McpServerVersionPolicy : System.IEquatable<AgentKit.Mcp.Server.McpServerVersionPolicy>
+    {
+        public AgentKit.Mcp.McpProtocolVersion? RequiredVersion { get; }
+        public static AgentKit.Mcp.Server.McpServerVersionPolicy Compatible { get; }
+        public static AgentKit.Mcp.Server.McpServerVersionPolicy Require(AgentKit.Mcp.McpProtocolVersion version) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IMcpServerBuilder AddAgentKitMcpServer(AgentKit.Mcp.Server.McpServerVersionPolicy? versionPolicy = null) { }
+        }
+    }
+}

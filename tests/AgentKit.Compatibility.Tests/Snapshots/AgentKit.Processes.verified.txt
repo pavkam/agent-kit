@@ -1,0 +1,49 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Processes.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Processes
+{
+    public sealed class OperatingSystemProcessIntentResolver : AgentKit.IProcessIntentResolver
+    {
+        public OperatingSystemProcessIntentResolver(Microsoft.Extensions.Options.IOptions<AgentKit.Processes.OperatingSystemProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.OperatingSystemProcessIntentResolver>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProcessResolutionResult> ResolveAsync(AgentKit.ProcessResolveRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class OperatingSystemProcessOptions
+    {
+        public OperatingSystemProcessOptions() { }
+        public System.Collections.Generic.List<string> AllowedEnvironmentVariableNames { get; }
+        public System.Collections.Generic.List<string> AllowedExecutablePaths { get; }
+        public System.TimeSpan ForcedTerminationWait { get; set; }
+        public long MaximumArgumentBytes { get; set; }
+        public int MaximumArgumentCount { get; set; }
+        public long MaximumArtifactOutputBytes { get; set; }
+        public int MaximumConcurrentProcesses { get; set; }
+        public long MaximumEnvironmentBytes { get; set; }
+        public long MaximumExecutableBytes { get; set; }
+        public long MaximumInputBytes { get; set; }
+        public long MaximumOutputBytes { get; set; }
+        public System.TimeSpan MaximumTimeout { get; set; }
+        public string RootDirectory { get; set; }
+    }
+    public sealed class OperatingSystemProcessRunner : AgentKit.IProcessRunner, System.IDisposable
+    {
+        public OperatingSystemProcessRunner(AgentKit.IProcessIntentResolver resolver, System.Collections.Generic.IEnumerable<AgentKit.IProcessSandboxProvider> sandboxes, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Processes.OperatingSystemProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.OperatingSystemProcessRunner>? logger = null, AgentKit.IProcessOutputArtifactSink? outputArtifacts = null) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProcessRunResult> RunAsync(AgentKit.ProcessRunRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class PlatformProcessSandboxProvider : AgentKit.IProcessSandboxProvider
+    {
+        public static readonly AgentKit.SandboxProfileId WorkspaceNoNetworkProfile;
+        public PlatformProcessSandboxProvider(Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.PlatformProcessSandboxProvider>? logger = null) { }
+        public AgentKit.SandboxProfileId ProfileId { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProcessSandboxResult> PrepareAsync(AgentKit.ResolvedProcessIntent intent, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOperatingSystemProcesses(string rootDirectory, System.Action<AgentKit.Processes.OperatingSystemProcessOptions> configure) { }
+        }
+    }
+}

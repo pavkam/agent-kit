@@ -1,0 +1,46 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Processes.Scripted.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Processes.Scripted
+{
+    public sealed class ScriptedExecutable : System.IEquatable<AgentKit.Processes.Scripted.ScriptedExecutable>
+    {
+        public ScriptedExecutable(string reference, string absolutePath, AgentKit.ContentHash fingerprint) { }
+        public string AbsolutePath { get; }
+        public AgentKit.ContentHash Fingerprint { get; }
+        public string Reference { get; }
+    }
+    public sealed class ScriptedProcessIntentResolver : AgentKit.IProcessIntentResolver
+    {
+        public ScriptedProcessIntentResolver(Microsoft.Extensions.Options.IOptions<AgentKit.Processes.Scripted.ScriptedProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.Scripted.ScriptedProcessIntentResolver>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProcessResolutionResult> ResolveAsync(AgentKit.ProcessResolveRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ScriptedProcessOptions
+    {
+        public ScriptedProcessOptions() { }
+        public System.Collections.Generic.List<string> AllowedEnvironmentVariableNames { get; }
+        public System.Collections.Generic.List<AgentKit.Processes.Scripted.ScriptedExecutable> Executables { get; }
+        public System.Collections.Generic.List<AgentKit.Processes.Scripted.ScriptedProcessScenario> Scenarios { get; }
+        public string WorkspaceRoot { get; set; }
+    }
+    public sealed class ScriptedProcessRunner : AgentKit.IProcessRunner
+    {
+        public ScriptedProcessRunner(AgentKit.IProcessIntentResolver resolver, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Processes.Scripted.ScriptedProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.Scripted.ScriptedProcessRunner>? logger = null) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ProcessRunResult> RunAsync(AgentKit.ProcessRunRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ScriptedProcessScenario : System.IEquatable<AgentKit.Processes.Scripted.ScriptedProcessScenario>
+    {
+        public ScriptedProcessScenario(AgentKit.ProcessOperationId operationId, AgentKit.ProcessRunResult result, System.TimeSpan delayAfterStart) { }
+        public System.TimeSpan DelayAfterStart { get; }
+        public AgentKit.ProcessOperationId OperationId { get; }
+        public AgentKit.ProcessRunResult Result { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddScriptedProcesses(System.Action<AgentKit.Processes.Scripted.ScriptedProcessOptions> configure) { }
+        }
+    }
+}

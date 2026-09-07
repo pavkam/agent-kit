@@ -1,0 +1,27 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Tools.Patch.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools.Patch
+{
+    public sealed class PatchTool : AgentKit.ITool
+    {
+        public static readonly AgentKit.ToolId Id;
+        public PatchTool(AgentKit.IFileSnapshotReader snapshotReader, AgentKit.IWorkspacePatchApplier applier, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, AgentKit.IIdentifierGenerator<AgentKit.WorkspaceMutationId> mutationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Patch.PatchToolOptions> options) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class PatchToolOptions
+    {
+        public PatchToolOptions() { }
+        public int MaximumEntries { get; set; }
+        public long MaximumFileBytes { get; set; }
+        public int MaximumPatchBytes { get; set; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddPatchTool(System.Action<AgentKit.Tools.Patch.PatchToolOptions>? configure = null) { }
+        }
+    }
+}

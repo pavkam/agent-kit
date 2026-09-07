@@ -39,21 +39,25 @@ owning spec.
 
 ## Latest integration evidence
 
-The shared worktree built all 122 registered projects with zero warnings or
-errors after the identity and catalog changes. The complete solution test run
-passed 3,440 tests with no failures or skips. This includes the concurrent,
-uncommitted provider embedding changes present during that run. The separate
-public API compatibility harness is being added and is not included in this
-solution result.
+An isolated archive of committed `438f974` built with zero warnings or errors
+and passed all 3,352 tests. Adding the public API compatibility harness to that
+archive produced a clean 123-project solution build and 3,415 passing tests,
+with no failures or skips. The harness captures all 60 packable source
+assemblies and passes 63 focused checks. Those exact snapshots were copied back
+and compared with the isolated baseline.
 
-A subsequent clean archive check found that the unanchored `artifacts/` ignore
-rule also excluded the source `Artifacts` directories on the development
-filesystem. The earlier shared-worktree result included those files, while a
-fresh checkout could not compile the process-output contracts that use them. The
-ignore rule now targets only root build output and the omitted artifact
-contracts and tests are captured. A complete clean-checkout verification and
-public API baseline are pending after that repair; the earlier integration run
-must not be cited as proof of checkout reproducibility.
+This verifies checkout reproducibility after `83888cc` repaired the broad
+`artifacts/` ignore rule and captured the omitted artifact source and tests. The
+earlier 3,440-test result came from the shared workspace and included
+uncommitted provider embedding changes. Those changes are intentionally absent
+from this committed API baseline and may produce expected API differences in the
+shared workspace until their own checkpoint is reviewed.
+
+The compatibility suite checks emitted public and protected API shape, not
+behavior or internal XML documentation. It rejects missing, stale, or duplicate
+assembly snapshots and requires explicit snapshot updates. Its extractor's
+unsupported generic nullable extension-receiver shape is documented and fails
+closed; current supported C# 14 extension shapes have a dedicated fixture.
 
 Rich identity contracts, the first-party identity runtime, reduced test-fixture
 migration, and pinned agent admission have verified checkpoints. Catalog
@@ -78,7 +82,7 @@ not make that component a mandatory dependency of every engine.
 | Owner                         | Outstanding implementation or proof                                                                                                                                    |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Architecture index            | End-to-end source-of-truth conformance and complete coverage ledger                                                                                                    |
-| Foundation contracts          | Validated values, compatibility snapshots, versioning and deterministic primitives                                                                                     |
+| Foundation contracts          | Validated values, behavioral compatibility, versioning and deterministic primitives; emitted API baseline established                                                  |
 | Project structure             | Missing owners, both dependency graphs, required project/test topology                                                                                                 |
 | Composition and configuration | Full closed runnable graph, catalog publication/reload, keyed selection, scope ownership, readiness                                                                    |
 | Agent runtime                 | Explicit state transitions, waiter cancellation, recovery identity, settlement outcomes                                                                                |

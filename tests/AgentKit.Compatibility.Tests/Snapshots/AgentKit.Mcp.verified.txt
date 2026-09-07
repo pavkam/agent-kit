@@ -1,0 +1,89 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Mcp
+{
+    public readonly struct McpCatalogVersion : System.IEquatable<AgentKit.Mcp.McpCatalogVersion>
+    {
+        public McpCatalogVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public static class McpMetadataKeys
+    {
+        public const string ToolContractVersion = "com.agentkit/toolContractVersion";
+    }
+    public enum McpProtocolEra
+    {
+        Legacy = 0,
+        Modern = 1,
+    }
+    public readonly struct McpProtocolVersion : System.IComparable<AgentKit.Mcp.McpProtocolVersion>, System.IEquatable<AgentKit.Mcp.McpProtocolVersion>
+    {
+        public McpProtocolVersion(System.DateOnly value) { }
+        public AgentKit.Mcp.McpProtocolEra Era { get; }
+        public System.DateOnly Value { get; }
+        public int CompareTo(AgentKit.Mcp.McpProtocolVersion other) { }
+        public override string ToString() { }
+        public static AgentKit.Mcp.McpProtocolVersion Parse(string value) { }
+        public static bool operator <(AgentKit.Mcp.McpProtocolVersion left, AgentKit.Mcp.McpProtocolVersion right) { }
+        public static bool operator <=(AgentKit.Mcp.McpProtocolVersion left, AgentKit.Mcp.McpProtocolVersion right) { }
+        public static bool operator >(AgentKit.Mcp.McpProtocolVersion left, AgentKit.Mcp.McpProtocolVersion right) { }
+        public static bool operator >=(AgentKit.Mcp.McpProtocolVersion left, AgentKit.Mcp.McpProtocolVersion right) { }
+    }
+    public static class McpProtocolVersions
+    {
+        public static AgentKit.Mcp.McpProtocolVersion July2026 { get; }
+        public static AgentKit.Mcp.McpProtocolVersion June2025 { get; }
+        public static AgentKit.Mcp.McpProtocolVersion March2025 { get; }
+        public static AgentKit.Mcp.McpProtocolVersion November2024 { get; }
+        public static AgentKit.Mcp.McpProtocolVersion November2025 { get; }
+        public static System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.McpProtocolVersion> SupportedBySdk { get; }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Method, AllowMultiple=false, Inherited=true)]
+    public sealed class McpToolAttribute : System.Attribute
+    {
+        public McpToolAttribute(string name, string version) { }
+        public bool Destructive { get; set; }
+        public bool Idempotent { get; set; }
+        public AgentKit.Mcp.McpToolName Name { get; }
+        public bool OpenWorld { get; set; }
+        public bool ReadOnly { get; set; }
+        public AgentKit.ToolVersion Version { get; }
+    }
+    public sealed class McpToolContract<TTools>
+        where TTools :  class
+    {
+        public McpToolContract() { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.McpToolMethodDescriptor> Methods { get; }
+        public AgentKit.Mcp.McpToolMethodDescriptor Resolve(System.Reflection.MethodInfo method) { }
+    }
+    public sealed class McpToolMethodDescriptor : System.IEquatable<AgentKit.Mcp.McpToolMethodDescriptor>
+    {
+        public McpToolMethodDescriptor(AgentKit.Mcp.McpToolName name, AgentKit.ToolVersion version, string description, System.Reflection.MethodInfo method, string requestParameterName, System.Type requestType, System.Type responseType, bool readOnly, bool idempotent, bool openWorld, bool destructive) { }
+        public string Description { get; }
+        public bool Destructive { get; }
+        public bool Idempotent { get; }
+        public System.Reflection.MethodInfo Method { get; }
+        public AgentKit.Mcp.McpToolName Name { get; }
+        public bool OpenWorld { get; }
+        public bool ReadOnly { get; }
+        public string RequestParameterName { get; }
+        public System.Type RequestType { get; }
+        public System.Type ResponseType { get; }
+        public AgentKit.ToolVersion Version { get; }
+    }
+    public readonly struct McpToolName : System.IEquatable<AgentKit.Mcp.McpToolName>
+    {
+        public McpToolName(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMcpToolContract<TTools>()
+                where TTools :  class { }
+        }
+    }
+}

@@ -1,0 +1,91 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.MistralAI.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.MistralAI
+{
+    public interface IMistralAIRequestTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, bool useStreaming);
+    }
+    public interface IMistralAIResponseParser
+    {
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.MistralAI.MistralAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.MistralAI.MistralAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public sealed class MistralAIAuthorizationDenied : AgentKit.Providers.MistralAI.MistralAIAuthorizationResult, System.IEquatable<AgentKit.Providers.MistralAI.MistralAIAuthorizationDenied>
+    {
+        public MistralAIAuthorizationDenied(AgentKit.ProviderFailure failure) { }
+        public AgentKit.ProviderFailure Failure { get; init; }
+    }
+    public sealed class MistralAIAuthorizationGranted : AgentKit.Providers.MistralAI.MistralAIAuthorizationResult, System.IEquatable<AgentKit.Providers.MistralAI.MistralAIAuthorizationGranted>
+    {
+        public MistralAIAuthorizationGranted(string headerName, string headerValue) { }
+        public string HeaderName { get; init; }
+        public string HeaderValue { get; init; }
+    }
+    public static class MistralAIAuthorizationHeaderFactory
+    {
+        public static AgentKit.Providers.MistralAI.MistralAIAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
+    }
+    public abstract class MistralAIAuthorizationResult : System.IEquatable<AgentKit.Providers.MistralAI.MistralAIAuthorizationResult> { }
+    public sealed class MistralAILlmModel : AgentKit.ILlmModel
+    {
+        public MistralAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.MistralAI.MistralAIProviderOptions options, AgentKit.Providers.MistralAI.IMistralAIRequestTranslator translator, AgentKit.Providers.MistralAI.IMistralAIResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.ModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class MistralAIProviderDefaults
+    {
+        public const string DefaultChatCompletionsPath = "chat/completions";
+        public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static System.Uri DefaultBaseAddress { get; }
+        public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ProviderId ProviderId { get; }
+        public static System.Uri BuildChatCompletionsUri(AgentKit.Providers.MistralAI.MistralAIProviderOptions options) { }
+    }
+    public sealed class MistralAIProviderOptions
+    {
+        public MistralAIProviderOptions() { }
+        public System.Uri BaseAddress { get; set; }
+        public string ChatCompletionsPath { get; set; }
+        public bool PreferStreaming { get; set; }
+    }
+    public sealed class MistralAIProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.MistralAI.MistralAIProviderOptions>
+    {
+        public MistralAIProviderOptionsValidator() { }
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.MistralAI.MistralAIProviderOptions options) { }
+    }
+    public sealed class MistralAIRequestTranslator : AgentKit.Providers.MistralAI.IMistralAIRequestTranslator
+    {
+        public MistralAIRequestTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, bool useStreaming) { }
+    }
+    public sealed class MistralAIResponseParseContext : System.IEquatable<AgentKit.Providers.MistralAI.MistralAIResponseParseContext>
+    {
+        public MistralAIResponseParseContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ModelRequestId ModelRequestId { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+    }
+    public sealed class MistralAIResponseParser : AgentKit.Providers.MistralAI.IMistralAIResponseParser
+    {
+        public MistralAIResponseParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.MistralAI.MistralAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.MistralAI.MistralAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAI(System.Action<AgentKit.Providers.MistralAI.MistralAIProviderOptions>? configureOptions = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAIApiKeyCredential(string apiKey) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAIOAuthCredential<TProvider>()
+                where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAILlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+        }
+    }
+}

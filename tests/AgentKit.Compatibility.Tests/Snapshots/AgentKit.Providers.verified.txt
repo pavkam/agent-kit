@@ -1,0 +1,22 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentProviders() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelDescriptors(AgentKit.ModelDescriptorSourceId sourceId, System.Collections.Immutable.ImmutableArray<AgentKit.ModelDescriptor> conversationModels) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelDescriptorSource<TSource>()
+                where TSource :  class, AgentKit.IModelDescriptorSource { }
+        }
+    }
+    public sealed class StaticModelDescriptorSource : AgentKit.IModelDescriptorSource
+    {
+        public StaticModelDescriptorSource(AgentKit.ModelDescriptorSourceId sourceId, System.Collections.Immutable.ImmutableArray<AgentKit.ModelDescriptor> conversationModels) { }
+        public AgentKit.ModelDescriptorSourceId SourceId { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ModelDescriptorSourceSnapshot> ReadAsync(System.Threading.CancellationToken cancellationToken = default) { }
+    }
+}

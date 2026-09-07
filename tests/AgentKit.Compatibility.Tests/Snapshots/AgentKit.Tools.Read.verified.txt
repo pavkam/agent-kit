@@ -1,0 +1,20 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Tools.Read.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools.Read
+{
+    public sealed class ReadFileTool : AgentKit.ITool
+    {
+        public static readonly AgentKit.ToolId Id;
+        public ReadFileTool(AgentKit.IFileSystem fileSystem, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddReadTool() { }
+        }
+    }
+}

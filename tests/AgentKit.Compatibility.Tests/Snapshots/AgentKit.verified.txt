@@ -1,0 +1,66 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit
+{
+    public sealed class Agent
+    {
+        public AgentKit.AgentCatalogVersion CatalogVersion { get; }
+        public AgentKit.AgentDefinition Definition { get; }
+        public AgentKit.AgentId Id { get; }
+        public System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.AgentRunOptions options, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class AgentAdmissionRejectedException : System.InvalidOperationException
+    {
+        public AgentAdmissionRejectedException(AgentKit.AgentAdmissionRejection rejection) { }
+        public AgentKit.AgentAdmissionRejection Rejection { get; }
+    }
+    public sealed class AgentCompositionException : System.Exception
+    {
+        public AgentCompositionException() { }
+        public AgentCompositionException(System.Collections.Immutable.ImmutableArray<AgentKit.CompositionDiagnostic> diagnostics) { }
+        public AgentCompositionException(string message) { }
+        public AgentCompositionException(string message, System.Exception innerException) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.CompositionDiagnostic> Diagnostics { get; }
+    }
+    public sealed class AgentEngine : System.IAsyncDisposable
+    {
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Agent?> GetAgentAsync(AgentKit.AgentId agentId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<System.Collections.Immutable.ImmutableArray<AgentKit.AgentDefinition>> GetAgentsAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public static AgentKit.AgentEngineBuilder CreateBuilder() { }
+    }
+    public sealed class AgentEngineBuilder
+    {
+        public AgentEngineBuilder() { }
+        public Microsoft.Extensions.DependencyInjection.IServiceCollection Services { get; }
+        public AgentKit.AgentEngine Build() { }
+    }
+    public sealed class AgentRunOptions : System.IEquatable<AgentKit.AgentRunOptions>
+    {
+        public AgentRunOptions(AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.ExecutionIdentity identity, int? maxTurns = default, System.TimeSpan? attemptTimeout = default) { }
+        public System.TimeSpan? AttemptTimeout { get; init; }
+        public AgentKit.BranchId BranchId { get; init; }
+        public AgentKit.ExecutionIdentity Identity { get; init; }
+        public int? MaxTurns { get; init; }
+        public AgentKit.SessionId SessionId { get; init; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentKit() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgent(AgentKit.AgentDefinition definition, int precedence = 0) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentDefinitionSnapshot(AgentKit.AgentDefinitionSourceSnapshot snapshot) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentDefinitionSource<TSource>()
+                where TSource :  class, AgentKit.IAgentDefinitionSource { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceTimeProvider(System.TimeProvider timeProvider) { }
+        }
+    }
+    public sealed class StaticAgentDefinitionSource : AgentKit.IAgentDefinitionSource
+    {
+        public StaticAgentDefinitionSource(AgentKit.AgentDefinitionSourceId sourceId, System.Collections.Immutable.ImmutableArray<AgentKit.AgentDefinition> definitions, int precedence = 0) { }
+        public AgentKit.AgentDefinitionSourceId SourceId { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.AgentDefinitionSourceSnapshot> ReadAsync(System.Threading.CancellationToken cancellationToken = default) { }
+    }
+}

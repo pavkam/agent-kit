@@ -1,0 +1,37 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Tools.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools
+{
+    public sealed class AgentToolsOptions
+    {
+        public AgentToolsOptions() { }
+        public System.Collections.Generic.HashSet<AgentKit.ToolId> AllowedToolIds { get; }
+    }
+    public sealed class AllowListToolAuthorizer : AgentKit.IToolAuthorizer
+    {
+        public AllowListToolAuthorizer(Microsoft.Extensions.Options.IOptions<AgentKit.Tools.AgentToolsOptions> options) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolAuthorizationDecision> AuthorizeAsync(AgentKit.ToolAuthorizationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class DefaultToolInvoker : AgentKit.IToolInvoker
+    {
+        public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer) { }
+        public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolInvoker> logger) { }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolCallRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentTools(System.Action<AgentKit.Tools.AgentToolsOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddTool<TTool>()
+                where TTool :  class, AgentKit.ITool { }
+        }
+    }
+    public sealed class ToolCatalog : AgentKit.IToolCatalog
+    {
+        public ToolCatalog(System.Collections.Generic.IEnumerable<AgentKit.ITool> tools) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> Descriptors { get; }
+        public bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool) { }
+    }
+}

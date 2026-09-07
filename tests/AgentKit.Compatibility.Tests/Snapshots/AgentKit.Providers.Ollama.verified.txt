@@ -1,0 +1,44 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.Ollama.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.Ollama
+{
+    public sealed class OllamaLlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
+    {
+        public OllamaLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+    }
+    public static class OllamaProviderDefaults
+    {
+        public const string DefaultChatCompletionsPath = "chat/completions";
+        public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static System.Uri DefaultBaseAddress { get; }
+        public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ProviderId ProviderId { get; }
+        public static AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile CreateProfile(AgentKit.Providers.Ollama.OllamaProviderOptions options) { }
+    }
+    public sealed class OllamaProviderOptions
+    {
+        public OllamaProviderOptions() { }
+        public System.Uri BaseAddress { get; set; }
+        public string ChatCompletionsPath { get; set; }
+        public bool IncludeStreamUsage { get; set; }
+        public bool PreferStreaming { get; set; }
+    }
+    public sealed class OllamaProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.Ollama.OllamaProviderOptions>
+    {
+        public OllamaProviderOptionsValidator() { }
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.Ollama.OllamaProviderOptions options) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOllama(System.Action<AgentKit.Providers.Ollama.OllamaProviderOptions>? configureOptions = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOllamaApiKeyCredential(string apiKey) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOllamaOAuthCredential<TProvider>()
+                where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOllamaLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+        }
+    }
+}

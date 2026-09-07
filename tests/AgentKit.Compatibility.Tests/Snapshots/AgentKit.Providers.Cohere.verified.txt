@@ -1,0 +1,92 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.Cohere.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.Cohere
+{
+    public sealed class CohereAuthorizationDenied : AgentKit.Providers.Cohere.CohereAuthorizationResult, System.IEquatable<AgentKit.Providers.Cohere.CohereAuthorizationDenied>
+    {
+        public CohereAuthorizationDenied(AgentKit.ProviderFailure failure) { }
+        public AgentKit.ProviderFailure Failure { get; init; }
+    }
+    public sealed class CohereAuthorizationGranted : AgentKit.Providers.Cohere.CohereAuthorizationResult, System.IEquatable<AgentKit.Providers.Cohere.CohereAuthorizationGranted>
+    {
+        public CohereAuthorizationGranted(string headerName, string headerValue) { }
+        public string HeaderName { get; init; }
+        public string HeaderValue { get; init; }
+    }
+    public static class CohereAuthorizationHeaderFactory
+    {
+        public static AgentKit.Providers.Cohere.CohereAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
+    }
+    public abstract class CohereAuthorizationResult : System.IEquatable<AgentKit.Providers.Cohere.CohereAuthorizationResult> { }
+    public sealed class CohereLlmModel : AgentKit.ILlmModel
+    {
+        public CohereLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereRequestTranslator translator, AgentKit.Providers.Cohere.ICohereResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.ModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class CohereProviderDefaults
+    {
+        public const string DefaultChatPath = "v2/chat";
+        public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static System.Uri DefaultBaseAddress { get; }
+        public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ProviderId ProviderId { get; }
+        public static System.Uri BuildChatUri(AgentKit.Providers.Cohere.CohereProviderOptions options) { }
+    }
+    public sealed class CohereProviderOptions
+    {
+        public CohereProviderOptions() { }
+        public System.Uri BaseAddress { get; set; }
+        public string ChatPath { get; set; }
+        public string? ClientName { get; set; }
+        public bool PreferStreaming { get; set; }
+    }
+    public sealed class CohereProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.Cohere.CohereProviderOptions>
+    {
+        public CohereProviderOptionsValidator() { }
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.Cohere.CohereProviderOptions options) { }
+    }
+    public sealed class CohereRequestTranslator : AgentKit.Providers.Cohere.ICohereRequestTranslator
+    {
+        public CohereRequestTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, bool useStreaming) { }
+    }
+    public sealed class CohereResponseParseContext : System.IEquatable<AgentKit.Providers.Cohere.CohereResponseParseContext>
+    {
+        public CohereResponseParseContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ModelRequestId ModelRequestId { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+    }
+    public sealed class CohereResponseParser : AgentKit.Providers.Cohere.ICohereResponseParser
+    {
+        public CohereResponseParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public interface ICohereRequestTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, bool useStreaming);
+    }
+    public interface ICohereResponseParser
+    {
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCohere(System.Action<AgentKit.Providers.Cohere.CohereProviderOptions>? configureOptions = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCohereApiKeyCredential(string apiKey) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCohereOAuthCredential<TProvider>()
+                where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCohereLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+        }
+    }
+}

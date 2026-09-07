@@ -1,0 +1,91 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.GoogleGemini.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.GoogleGemini
+{
+    public sealed class GoogleGeminiAuthorizationDenied : AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationResult, System.IEquatable<AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationDenied>
+    {
+        public GoogleGeminiAuthorizationDenied(AgentKit.ProviderFailure failure) { }
+        public AgentKit.ProviderFailure Failure { get; init; }
+    }
+    public sealed class GoogleGeminiAuthorizationGranted : AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationResult, System.IEquatable<AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationGranted>
+    {
+        public GoogleGeminiAuthorizationGranted(string headerName, string headerValue) { }
+        public string HeaderName { get; init; }
+        public string HeaderValue { get; init; }
+    }
+    public static class GoogleGeminiAuthorizationHeaderFactory
+    {
+        public static AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
+    }
+    public abstract class GoogleGeminiAuthorizationResult : System.IEquatable<AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationResult> { }
+    public sealed class GoogleGeminiContentTranslator : AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator
+    {
+        public GoogleGeminiContentTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request) { }
+    }
+    public sealed class GoogleGeminiLlmModel : AgentKit.ILlmModel
+    {
+        public GoogleGeminiLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.ModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class GoogleGeminiProviderDefaults
+    {
+        public const string DefaultApiVersion = "v1beta";
+        public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static System.Uri DefaultBaseAddress { get; }
+        public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ProviderId ProviderId { get; }
+        public static System.Uri BuildGenerateContentUri(AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.ModelId modelId, bool useStreaming) { }
+    }
+    public sealed class GoogleGeminiProviderOptions
+    {
+        public GoogleGeminiProviderOptions() { }
+        public string ApiVersion { get; set; }
+        public System.Uri BaseAddress { get; set; }
+        public bool PreferStreaming { get; set; }
+    }
+    public sealed class GoogleGeminiProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions>
+    {
+        public GoogleGeminiProviderOptionsValidator() { }
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options) { }
+    }
+    public sealed class GoogleGeminiResponseParseContext : System.IEquatable<AgentKit.Providers.GoogleGemini.GoogleGeminiResponseParseContext>
+    {
+        public GoogleGeminiResponseParseContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ModelRequestId ModelRequestId { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+    }
+    public sealed class GoogleGeminiResponseParser : AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser
+    {
+        public GoogleGeminiResponseParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public interface IGoogleGeminiContentTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request);
+    }
+    public interface IGoogleGeminiResponseParser
+    {
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleGemini(System.Action<AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions>? configureOptions = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleGeminiApiKeyCredential(string apiKey) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleGeminiOAuthCredential<TProvider>()
+                where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleGeminiLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+        }
+    }
+}

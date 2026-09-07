@@ -1,0 +1,34 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Tools.Web.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools.Web
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddWebFetchTool(System.Action<AgentKit.Tools.Web.WebFetchToolOptions>? configure = null) { }
+        }
+    }
+    public sealed class WebFetchTool : AgentKit.ITool
+    {
+        public static readonly AgentKit.ToolId Id;
+        public WebFetchTool(AgentKit.INetworkNameResolver resolver, AgentKit.INetworkTransport transport, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.NetworkOperationId> operationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Web.WebFetchToolOptions> options) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class WebFetchToolOptions
+    {
+        public WebFetchToolOptions() { }
+        public System.TimeSpan ConnectTimeout { get; set; }
+        public int DefaultMaximumCharacters { get; set; }
+        public System.TimeSpan DefaultTimeout { get; set; }
+        public int MaximumCharacters { get; set; }
+        public int MaximumHeaderCharacters { get; set; }
+        public int MaximumHeaderCount { get; set; }
+        public int MaximumRedirects { get; set; }
+        public long MaximumResponseBytes { get; set; }
+        public System.TimeSpan MaximumTimeout { get; set; }
+        public int MaximumUrlCharacters { get; set; }
+    }
+}

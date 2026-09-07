@@ -1,0 +1,33 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Network.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Network
+{
+    public sealed class AgentNetworkOptions
+    {
+        public AgentNetworkOptions() { }
+        public System.TimeSpan AddressResolutionLifetime { get; set; }
+        public AgentKit.NetworkDestinationPolicy DestinationPolicy { get; set; }
+        public int MaximumResponseHeaderKilobytes { get; set; }
+    }
+    public sealed class DefaultNetworkNameResolver : AgentKit.INetworkNameResolver
+    {
+        public DefaultNetworkNameResolver(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Network.AgentNetworkOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Network.DefaultNetworkNameResolver>? logger = null) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.NetworkResolutionResult> ResolveAsync(AgentKit.NetworkResolutionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class DefaultNetworkTransport : AgentKit.INetworkTransport, System.IDisposable
+    {
+        public DefaultNetworkTransport(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Network.AgentNetworkOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Network.DefaultNetworkTransport>? logger = null) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.NetworkSendResult> SendAsync(AgentKit.NetworkRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentNetwork(System.Action<AgentKit.Network.AgentNetworkOptions>? configure = null) { }
+        }
+    }
+}

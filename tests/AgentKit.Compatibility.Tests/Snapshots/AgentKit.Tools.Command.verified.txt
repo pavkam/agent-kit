@@ -1,0 +1,33 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Tools.Command.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools.Command
+{
+    public sealed class CommandTool : AgentKit.ITool
+    {
+        public static readonly AgentKit.ToolId Id;
+        public CommandTool(AgentKit.IProcessIntentResolver resolver, AgentKit.IProcessRunner runner, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.ProcessOperationId> processOperationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Command.CommandToolOptions> options) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class CommandToolOptions
+    {
+        public CommandToolOptions() { }
+        public long DefaultMaximumOutputBytes { get; set; }
+        public System.TimeSpan DefaultTimeout { get; set; }
+        public long MaximumCommandBytes { get; set; }
+        public long MaximumOutputBytes { get; set; }
+        public System.TimeSpan MaximumTimeout { get; set; }
+        public AgentKit.SandboxProfileId SandboxProfile { get; set; }
+        public System.Collections.Generic.List<string> ShellArguments { get; }
+        public string ShellExecutable { get; set; }
+        public System.TimeSpan TerminationGracePeriod { get; set; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCommandTool(System.Action<AgentKit.Tools.Command.CommandToolOptions>? configure = null) { }
+        }
+    }
+}

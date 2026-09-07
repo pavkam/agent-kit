@@ -1,0 +1,30 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Tools.Question.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools.Question
+{
+    public sealed class QuestionTool : AgentKit.ITool
+    {
+        public static readonly AgentKit.ToolId Id;
+        public QuestionTool(AgentKit.IHumanQuestionBroker broker, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.QuestionId> questionIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Question.QuestionToolOptions> options) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class QuestionToolOptions
+    {
+        public QuestionToolOptions() { }
+        public System.TimeSpan DefaultTimeout { get; set; }
+        public int MaximumAnswerCharacters { get; set; }
+        public int MaximumDescriptionCharacters { get; set; }
+        public int MaximumLabelCharacters { get; set; }
+        public int MaximumPromptCharacters { get; set; }
+        public System.TimeSpan MaximumTimeout { get; set; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddQuestionTool(System.Action<AgentKit.Tools.Question.QuestionToolOptions>? configure = null) { }
+        }
+    }
+}

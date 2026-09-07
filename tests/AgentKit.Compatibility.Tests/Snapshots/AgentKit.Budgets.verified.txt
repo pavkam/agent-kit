@@ -1,0 +1,36 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Budgets.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Budgets
+{
+    public sealed class AgentBudgetOptions
+    {
+        public AgentBudgetOptions() { }
+        public System.TimeSpan DefaultReservationLifetime { get; set; }
+        public int MaximumOpenReservationsPerScope { get; set; }
+        public int MaximumScopeDepth { get; set; }
+        public AgentKit.Budgets.BudgetOverrunBehavior OverrunBehavior { get; set; }
+        public AgentKit.Budgets.BudgetUnknownCostBehavior UnknownCostBehavior { get; set; }
+    }
+    public enum BudgetOverrunBehavior
+    {
+        RecordAndBlockFurtherReservations = 0,
+        RequireOperatorReconciliation = 1,
+    }
+    public enum BudgetUnknownCostBehavior
+    {
+        AllowOnlyWithoutCostLimit = 0,
+        Reject = 1,
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentBudgets(System.Action<AgentKit.Budgets.AgentBudgetOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddBudgetDimension(AgentKit.BudgetDimensionDescriptor descriptor) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceBudgetDimension(AgentKit.BudgetDimensionDescriptor descriptor) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceBudgetAuthority<TAuthority>()
+                where TAuthority :  class, AgentKit.IBudgetAuthority { }
+        }
+    }
+}

@@ -1,0 +1,81 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools.Skill
+{
+    public static class ArgumentExceptionExtensions
+    {
+        extension(System.ArgumentException)
+        {
+            public static void ThrowIfDuplicateSkillIds(System.Collections.Immutable.ImmutableArray<AgentKit.Tools.Skill.SkillDefinition> skills, [System.Runtime.CompilerServices.CallerArgumentExpression("skills")] string? paramName = null) { }
+        }
+    }
+    public sealed class ConfiguredSkillCatalog : AgentKit.Tools.Skill.ISkillCatalog, AgentKit.Tools.Skill.ISkillCatalogContextSource
+    {
+        public ConfiguredSkillCatalog(Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Skill.SkillToolOptions> options) { }
+        public string CatalogVersion { get; }
+        public AgentKit.Tools.Skill.SkillCatalogSnapshot Snapshot { get; }
+        public string RenderInventory() { }
+    }
+    public interface ISkillCatalog : AgentKit.Tools.Skill.ISkillCatalogContextSource
+    {
+        AgentKit.Tools.Skill.SkillCatalogSnapshot Snapshot { get; }
+    }
+    public interface ISkillCatalogContextSource
+    {
+        string CatalogVersion { get; }
+        string RenderInventory();
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSkillTool(System.Action<AgentKit.Tools.Skill.SkillToolOptions>? configure = null) { }
+        }
+    }
+    public sealed class SkillCatalogSnapshot : System.IEquatable<AgentKit.Tools.Skill.SkillCatalogSnapshot>
+    {
+        public SkillCatalogSnapshot(string version, System.Collections.Immutable.ImmutableArray<AgentKit.Tools.Skill.SkillDefinition> skills) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Tools.Skill.SkillDefinition> Skills { get; }
+        public string Version { get; }
+    }
+    public sealed class SkillDefinition : System.IEquatable<AgentKit.Tools.Skill.SkillDefinition>
+    {
+        public SkillDefinition(AgentKit.Tools.Skill.SkillId id, string name, string description, AgentKit.Tools.Skill.SkillTrust trust, AgentKit.FileSystemPath path, AgentKit.ContentHash? expectedContentHash = default) { }
+        public string Description { get; }
+        public AgentKit.ContentHash? ExpectedContentHash { get; }
+        public AgentKit.Tools.Skill.SkillId Id { get; }
+        public string Name { get; }
+        public AgentKit.FileSystemPath Path { get; }
+        public AgentKit.Tools.Skill.SkillTrust Trust { get; }
+    }
+    public readonly struct SkillId : System.IEquatable<AgentKit.Tools.Skill.SkillId>
+    {
+        public SkillId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SkillTool : AgentKit.ITool
+    {
+        public static readonly AgentKit.ToolId Id;
+        public SkillTool(AgentKit.IFileSnapshotReader reader, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, AgentKit.Tools.Skill.ISkillCatalog catalog, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Skill.SkillToolOptions> options) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SkillToolOptions
+    {
+        public SkillToolOptions() { }
+        public long MaximumBytes { get; set; }
+        public int MaximumCharacters { get; set; }
+        public int MaximumDescriptionCharacters { get; set; }
+        public int MaximumNameCharacters { get; set; }
+        public System.Collections.Generic.IList<AgentKit.Tools.Skill.SkillDefinition> Skills { get; }
+    }
+    public enum SkillTrust
+    {
+        Managed = 0,
+        User = 1,
+        Package = 2,
+        Workspace = 3,
+    }
+}

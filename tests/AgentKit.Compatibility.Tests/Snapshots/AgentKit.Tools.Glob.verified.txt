@@ -1,0 +1,30 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Tools.Glob.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools.Glob
+{
+    public sealed class GlobTool : AgentKit.ITool
+    {
+        public static readonly AgentKit.ToolId Id;
+        public GlobTool(AgentKit.IFileGlobber globber, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Glob.GlobToolOptions> options) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class GlobToolOptions
+    {
+        public GlobToolOptions() { }
+        public int DefaultMaximumDepth { get; set; }
+        public int DefaultMaximumResults { get; set; }
+        public int DefaultMaximumVisitedEntries { get; set; }
+        public int MaximumDepth { get; set; }
+        public int MaximumResults { get; set; }
+        public int MaximumVisitedEntries { get; set; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGlobTool(System.Action<AgentKit.Tools.Glob.GlobToolOptions>? configure = null) { }
+        }
+    }
+}

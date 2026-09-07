@@ -1,0 +1,95 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.Anthropic.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.Anthropic
+{
+    public sealed class AnthropicAuthorizationDenied : AgentKit.Providers.Anthropic.AnthropicAuthorizationResult, System.IEquatable<AgentKit.Providers.Anthropic.AnthropicAuthorizationDenied>
+    {
+        public AnthropicAuthorizationDenied(AgentKit.ProviderFailure failure) { }
+        public AgentKit.ProviderFailure Failure { get; init; }
+    }
+    public sealed class AnthropicAuthorizationGranted : AgentKit.Providers.Anthropic.AnthropicAuthorizationResult, System.IEquatable<AgentKit.Providers.Anthropic.AnthropicAuthorizationGranted>
+    {
+        public AnthropicAuthorizationGranted(string headerName, string headerValue) { }
+        public string HeaderName { get; init; }
+        public string HeaderValue { get; init; }
+    }
+    public static class AnthropicAuthorizationHeaderFactory
+    {
+        public static AgentKit.Providers.Anthropic.AnthropicAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
+    }
+    public abstract class AnthropicAuthorizationResult : System.IEquatable<AgentKit.Providers.Anthropic.AnthropicAuthorizationResult> { }
+    public sealed class AnthropicLlmModel : AgentKit.ILlmModel
+    {
+        public AnthropicLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Anthropic.AnthropicProviderOptions options, AgentKit.Providers.Anthropic.IAnthropicMessageTranslator translator, AgentKit.Providers.Anthropic.IAnthropicMessageStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.ModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class AnthropicMessageStreamParser : AgentKit.Providers.Anthropic.IAnthropicMessageStreamParser
+    {
+        public AnthropicMessageStreamParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.Anthropic.AnthropicResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.Anthropic.AnthropicResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class AnthropicMessageTranslator : AgentKit.Providers.Anthropic.IAnthropicMessageTranslator
+    {
+        public AnthropicMessageTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, AgentKit.Providers.Anthropic.AnthropicProviderOptions options, bool useStreaming) { }
+    }
+    public static class AnthropicProviderDefaults
+    {
+        public const string DefaultAnthropicVersion = "2023-06-01";
+        public const long DefaultMaxOutputTokensFallback = 4096;
+        public const string DefaultMessagesPath = "v1/messages";
+        public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static System.Uri DefaultBaseAddress { get; }
+        public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ProviderId ProviderId { get; }
+        public static System.Uri BuildMessagesUri(AgentKit.Providers.Anthropic.AnthropicProviderOptions options) { }
+    }
+    public sealed class AnthropicProviderOptions
+    {
+        public AnthropicProviderOptions() { }
+        public string AnthropicVersion { get; set; }
+        public System.Uri BaseAddress { get; set; }
+        public long DefaultMaxOutputTokens { get; set; }
+        public string MessagesPath { get; set; }
+        public bool PreferStreaming { get; set; }
+    }
+    public sealed class AnthropicProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.Anthropic.AnthropicProviderOptions>
+    {
+        public AnthropicProviderOptionsValidator() { }
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.Anthropic.AnthropicProviderOptions options) { }
+    }
+    public sealed class AnthropicResponseParseContext : System.IEquatable<AgentKit.Providers.Anthropic.AnthropicResponseParseContext>
+    {
+        public AnthropicResponseParseContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ModelRequestId ModelRequestId { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+    }
+    public interface IAnthropicMessageStreamParser
+    {
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.Anthropic.AnthropicResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.Anthropic.AnthropicResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IAnthropicMessageTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, AgentKit.Providers.Anthropic.AnthropicProviderOptions options, bool useStreaming);
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAnthropic(System.Action<AgentKit.Providers.Anthropic.AnthropicProviderOptions>? configureOptions = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAnthropicApiKeyCredential(string apiKey) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAnthropicOAuthCredential<TProvider>()
+                where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAnthropicLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+        }
+    }
+}

@@ -1,0 +1,44 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.MoonshotKimi.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.MoonshotKimi
+{
+    public sealed class MoonshotKimiLlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
+    {
+        public MoonshotKimiLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+    }
+    public static class MoonshotKimiProviderDefaults
+    {
+        public const string DefaultChatCompletionsPath = "chat/completions";
+        public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static System.Uri DefaultBaseAddress { get; }
+        public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ProviderId ProviderId { get; }
+        public static AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile CreateProfile(AgentKit.Providers.MoonshotKimi.MoonshotKimiProviderOptions options) { }
+    }
+    public sealed class MoonshotKimiProviderOptions
+    {
+        public MoonshotKimiProviderOptions() { }
+        public System.Uri BaseAddress { get; set; }
+        public string ChatCompletionsPath { get; set; }
+        public bool IncludeStreamUsage { get; set; }
+        public bool PreferStreaming { get; set; }
+    }
+    public sealed class MoonshotKimiProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.MoonshotKimi.MoonshotKimiProviderOptions>
+    {
+        public MoonshotKimiProviderOptionsValidator() { }
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.MoonshotKimi.MoonshotKimiProviderOptions options) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMoonshotKimi(System.Action<AgentKit.Providers.MoonshotKimi.MoonshotKimiProviderOptions>? configureOptions = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMoonshotKimiApiKeyCredential(string apiKey) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMoonshotKimiOAuthCredential<TProvider>()
+                where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMoonshotKimiLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+        }
+    }
+}

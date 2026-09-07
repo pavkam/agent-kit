@@ -1,0 +1,26 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Tools.Edit.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools.Edit
+{
+    public sealed class EditTool : AgentKit.ITool
+    {
+        public static readonly AgentKit.ToolId Id;
+        public EditTool(AgentKit.IFileSnapshotReader snapshotReader, AgentKit.IAtomicFileReplacer replacer, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, AgentKit.IIdentifierGenerator<AgentKit.WorkspaceMutationId> mutationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Edit.EditToolOptions> options) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class EditToolOptions
+    {
+        public EditToolOptions() { }
+        public long DefaultMaximumBytes { get; set; }
+        public long MaximumBytes { get; set; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddEditTool(System.Action<AgentKit.Tools.Edit.EditToolOptions>? configure = null) { }
+        }
+    }
+}

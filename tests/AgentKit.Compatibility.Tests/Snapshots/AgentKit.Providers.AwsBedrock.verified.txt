@@ -1,0 +1,91 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.AwsBedrock.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.AwsBedrock
+{
+    public sealed class AwsBedrockLlmModel : AgentKit.ILlmModel
+    {
+        public AwsBedrockLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.AwsBedrock.AwsBedrockProviderOptions options, AgentKit.Providers.AwsBedrock.IAwsBedrockRequestTranslator translator, AgentKit.Providers.AwsBedrock.IAwsBedrockResponseParser responseParser, AgentKit.Providers.AwsBedrock.IAwsCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.ModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class AwsBedrockProviderDefaults
+    {
+        public const string SigningServiceName = "bedrock";
+        public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ProviderId ProviderId { get; }
+        public static System.Uri BuildBaseAddress(string? region) { }
+        public static System.Uri BuildConverseStreamUri(AgentKit.Providers.AwsBedrock.AwsBedrockProviderOptions options, string modelId) { }
+        public static System.Uri BuildConverseUri(AgentKit.Providers.AwsBedrock.AwsBedrockProviderOptions options, string modelId) { }
+    }
+    public sealed class AwsBedrockProviderOptions
+    {
+        public AwsBedrockProviderOptions() { }
+        public bool PreferStreaming { get; set; }
+        public string? Region { get; set; }
+    }
+    public sealed class AwsBedrockProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.AwsBedrock.AwsBedrockProviderOptions>
+    {
+        public AwsBedrockProviderOptionsValidator() { }
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.AwsBedrock.AwsBedrockProviderOptions options) { }
+    }
+    public sealed class AwsBedrockRequestTranslator : AgentKit.Providers.AwsBedrock.IAwsBedrockRequestTranslator
+    {
+        public AwsBedrockRequestTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request) { }
+    }
+    public sealed class AwsBedrockResponseParseContext : System.IEquatable<AgentKit.Providers.AwsBedrock.AwsBedrockResponseParseContext>
+    {
+        public AwsBedrockResponseParseContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ModelRequestId ModelRequestId { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+    }
+    public sealed class AwsBedrockResponseParser : AgentKit.Providers.AwsBedrock.IAwsBedrockResponseParser
+    {
+        public AwsBedrockResponseParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.AwsBedrock.AwsBedrockResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.AwsBedrock.AwsBedrockResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class AwsSigV4Credential : System.IEquatable<AgentKit.Providers.AwsBedrock.AwsSigV4Credential>
+    {
+        public AwsSigV4Credential(string accessKeyId, string secretAccessKey, string? sessionToken) { }
+        public string AccessKeyId { get; init; }
+        public string SecretAccessKey { get; init; }
+        public string? SessionToken { get; init; }
+    }
+    public interface IAwsBedrockRequestTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request);
+    }
+    public interface IAwsBedrockResponseParser
+    {
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.AwsBedrock.AwsBedrockResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.AwsBedrock.AwsBedrockResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IAwsCredentialSource
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.Providers.AwsBedrock.AwsSigV4Credential> GetCredentialAsync(System.Threading.CancellationToken cancellationToken = default);
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAwsBedrock(System.Action<AgentKit.Providers.AwsBedrock.AwsBedrockProviderOptions> configureOptions) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAwsBedrockStaticCredential(string accessKeyId, string secretAccessKey, string? sessionToken = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAwsBedrockCredentialSource<TSource>()
+                where TSource :  class, AgentKit.Providers.AwsBedrock.IAwsCredentialSource { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAwsBedrockLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId = default, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+        }
+    }
+    public sealed class StaticAwsCredentialSource : AgentKit.Providers.AwsBedrock.IAwsCredentialSource
+    {
+        public StaticAwsCredentialSource(AgentKit.Providers.AwsBedrock.AwsSigV4Credential credential) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Providers.AwsBedrock.AwsSigV4Credential> GetCredentialAsync(System.Threading.CancellationToken cancellationToken = default) { }
+    }
+}

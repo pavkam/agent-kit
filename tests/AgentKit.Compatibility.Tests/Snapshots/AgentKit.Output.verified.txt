@@ -1,0 +1,27 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Output.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Output
+{
+    public sealed class AgentOutputOptions
+    {
+        public AgentOutputOptions() { }
+        public bool AllowProviderModeDowngrade { get; set; }
+        public int MaximumCandidateBytes { get; set; }
+        public int MaximumRepairAttempts { get; set; }
+        public int MaximumValidationIssues { get; set; }
+        public bool RequireSchemaForStructuredModes { get; set; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentOutput(System.Action<AgentKit.Output.AgentOutputOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOutputDefinition(AgentKit.OutputDefinition definition) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceOutputProcessor<TProcessor>()
+                where TProcessor :  class, AgentKit.IOutputProcessor { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOutputValidator<TValidator>()
+                where TValidator :  class, AgentKit.IOutputValidator { }
+        }
+    }
+}

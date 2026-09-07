@@ -1,0 +1,45 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.ZAI.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.ZAI
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddZAI(System.Action<AgentKit.Providers.ZAI.ZAIProviderOptions>? configureOptions = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddZAIApiKeyCredential(string apiKey) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddZAIOAuthCredential<TProvider>()
+                where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddZAILlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+        }
+    }
+    public sealed class ZAILlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
+    {
+        public ZAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+    }
+    public static class ZAIProviderDefaults
+    {
+        public const string DefaultChatCompletionsPath = "chat/completions";
+        public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static System.Uri CodingPlanBaseAddress { get; }
+        public static System.Uri DefaultBaseAddress { get; }
+        public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ProviderId ProviderId { get; }
+        public static AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile CreateProfile(AgentKit.Providers.ZAI.ZAIProviderOptions options) { }
+    }
+    public sealed class ZAIProviderOptions
+    {
+        public ZAIProviderOptions() { }
+        public System.Uri BaseAddress { get; set; }
+        public string ChatCompletionsPath { get; set; }
+        public bool IncludeStreamUsage { get; set; }
+        public bool PreferStreaming { get; set; }
+    }
+    public sealed class ZAIProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.ZAI.ZAIProviderOptions>
+    {
+        public ZAIProviderOptionsValidator() { }
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.ZAI.ZAIProviderOptions options) { }
+    }
+}

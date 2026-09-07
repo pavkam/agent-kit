@@ -1,0 +1,112 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.OpenAICompatible.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.OpenAICompatible
+{
+    public interface IOpenAIEmbeddingRequestTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile);
+    }
+    public interface IOpenAIEmbeddingResponseParser
+    {
+        System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IOpenAIRequestTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, bool useStreaming);
+    }
+    public interface IOpenAIStreamParser
+    {
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public sealed class OpenAIAuthorizationDenied : AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationResult, System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationDenied>
+    {
+        public OpenAIAuthorizationDenied(AgentKit.ProviderFailure failure) { }
+        public AgentKit.ProviderFailure Failure { get; init; }
+    }
+    public sealed class OpenAIAuthorizationGranted : AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationResult, System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationGranted>
+    {
+        public OpenAIAuthorizationGranted(System.Net.Http.Headers.AuthenticationHeaderValue authorization) { }
+        public System.Net.Http.Headers.AuthenticationHeaderValue Authorization { get; init; }
+    }
+    public static class OpenAIAuthorizationHeaderFactory
+    {
+        public static AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
+    }
+    public abstract class OpenAIAuthorizationResult : System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationResult> { }
+    public sealed class OpenAIChatCompletionResponseParser : AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser
+    {
+        public OpenAIChatCompletionResponseParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class OpenAICompatibilityProfile : System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile>
+    {
+        public OpenAICompatibilityProfile(System.Uri baseAddress, string chatCompletionsPath, bool sendDeveloperRoleAsSystem, bool preferStreaming, bool includeStreamUsage, bool useMaxCompletionTokensField, System.Collections.Immutable.ImmutableDictionary<string, string> defaultRequestHeaders, string? embeddingsPath = null) { }
+        public System.Uri BaseAddress { get; }
+        public string ChatCompletionsPath { get; }
+        public System.Uri ChatCompletionsUri { get; }
+        public System.Collections.Immutable.ImmutableDictionary<string, string> DefaultRequestHeaders { get; }
+        public string? EmbeddingsPath { get; }
+        public System.Uri? EmbeddingsUri { get; }
+        public bool IncludeStreamUsage { get; }
+        public bool PreferStreaming { get; }
+        public bool SendDeveloperRoleAsSystem { get; }
+        public bool UseMaxCompletionTokensField { get; }
+    }
+    public abstract class OpenAICompatibleEmbeddingModelBase : AgentKit.IEmbeddingModel
+    {
+        protected OpenAICompatibleEmbeddingModelBase(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.EmbeddingModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public abstract class OpenAICompatibleLlmModelBase : AgentKit.ILlmModel
+    {
+        protected OpenAICompatibleLlmModelBase(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.ModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class OpenAIEmbeddingRequestTranslator : AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator
+    {
+        public OpenAIEmbeddingRequestTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile) { }
+    }
+    public sealed class OpenAIEmbeddingResponseParseContext : System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAIEmbeddingResponseParseContext>
+    {
+        public OpenAIEmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
+        public AgentKit.EmbeddingRequestId RequestId { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+    }
+    public sealed class OpenAIEmbeddingResponseParser : AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser
+    {
+        public OpenAIEmbeddingResponseParser() { }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class OpenAIRequestTranslator : AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator
+    {
+        public OpenAIRequestTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, bool useStreaming) { }
+    }
+    public sealed class OpenAIResponseParseContext : System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext>
+    {
+        public OpenAIResponseParseContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ModelRequestId ModelRequestId { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenAICompatibleProvider() { }
+        }
+    }
+}

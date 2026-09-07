@@ -1,0 +1,37 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Session.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Session
+{
+    public sealed class AgentSessionOptions
+    {
+        public AgentSessionOptions() { }
+        public AgentKit.Session.SessionBusyBehavior BusyBehavior { get; set; }
+        public System.TimeSpan BusyWaitTimeout { get; set; }
+        public int MaximumAppendEntries { get; set; }
+        public int MaximumPageSize { get; set; }
+    }
+    public sealed class NeverRetireSessionRetentionPolicy : AgentKit.ISessionRetentionPolicy
+    {
+        public NeverRetireSessionRetentionPolicy() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionRetentionDecision> EvaluateAsync(AgentKit.SessionDescriptor session, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentSession(System.Action<AgentKit.Session.AgentSessionOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSessionStore<TStore>()
+                where TStore :  class, AgentKit.ISessionStore { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSessionEventSink<TSink>()
+                where TSink :  class, AgentKit.ISessionEventSink { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceSessionRetentionPolicy<TPolicy>()
+                where TPolicy :  class, AgentKit.ISessionRetentionPolicy { }
+        }
+    }
+    public enum SessionBusyBehavior
+    {
+        Reject = 0,
+        Wait = 1,
+    }
+}

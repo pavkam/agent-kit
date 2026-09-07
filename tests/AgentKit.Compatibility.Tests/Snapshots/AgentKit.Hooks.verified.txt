@@ -1,0 +1,20 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Hooks.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Hooks
+{
+    public sealed class DefaultHookDispatcher : AgentKit.IHookDispatcher
+    {
+        public DefaultHookDispatcher(Microsoft.Extensions.Logging.ILogger<AgentKit.Hooks.DefaultHookDispatcher>? logger = null) { }
+        public System.Threading.Tasks.Task DispatchAsync<THook, TArgs>(AgentKit.HookPointId point, System.Collections.Generic.IEnumerable<THook> hooks, TArgs args, System.Func<THook, TArgs, AgentKit.HookDispatchScope, System.Threading.CancellationToken, System.Threading.Tasks.Task> invoke, AgentKit.HookDispatchScope scope, AgentKit.HookFailureMode failureMode = 0, int maxReentrantDepth = 1, System.Threading.CancellationToken cancellationToken = default)
+            where THook : AgentKit.IHook
+            where TArgs : AgentKit.AgentHookEventArgs { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentHooks() { }
+        }
+    }
+}

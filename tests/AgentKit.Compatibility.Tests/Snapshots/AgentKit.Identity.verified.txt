@@ -1,0 +1,42 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Identity.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Identity
+{
+    public sealed class AgentIdentityOptions
+    {
+        public AgentIdentityOptions() { }
+        public bool AllowAnonymous { get; set; }
+        public System.TimeSpan MaximumClockSkew { get; set; }
+        public int MaximumDelegationDepth { get; set; }
+        public System.TimeSpan MaximumEvidenceLifetime { get; set; }
+    }
+    public sealed class IdentityIssuerRegistration : System.IEquatable<AgentKit.Identity.IdentityIssuerRegistration>
+    {
+        public IdentityIssuerRegistration(AgentKit.IdentityIssuerId issuerId) { }
+        public AgentKit.IdentityIssuerId IssuerId { get; }
+    }
+    public sealed class IdentityNormalizationPolicyRegistration : System.IEquatable<AgentKit.Identity.IdentityNormalizationPolicyRegistration>
+    {
+        public IdentityNormalizationPolicyRegistration(string name, int order = 0) { }
+        public string Name { get; }
+        public int Order { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentIdentity(System.Action<AgentKit.Identity.AgentIdentityOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddIdentityIssuer<TIssuer>(AgentKit.Identity.IdentityIssuerRegistration registration)
+                where TIssuer :  class, AgentKit.IIdentityIssuer { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddIdentityNormalizationPolicy<TPolicy>(AgentKit.Identity.IdentityNormalizationPolicyRegistration registration)
+                where TPolicy :  class, AgentKit.IIdentityNormalizationPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceIdentityValidationPolicy<TPolicy>()
+                where TPolicy :  class, AgentKit.IIdentityValidationPolicy { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceDelegatedIdentityDeriver<TDeriver>()
+                where TDeriver :  class, AgentKit.IDelegatedIdentityDeriver { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceIdentityResolver<TResolver>()
+                where TResolver :  class, AgentKit.IExecutionIdentityResolver { }
+        }
+    }
+}

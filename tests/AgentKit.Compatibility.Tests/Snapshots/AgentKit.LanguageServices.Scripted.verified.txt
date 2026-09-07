@@ -1,0 +1,32 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.LanguageServices.Scripted.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.LanguageServices.Scripted
+{
+    public sealed class ScriptedLanguageIntelligenceService : AgentKit.ILanguageIntelligenceService
+    {
+        public ScriptedLanguageIntelligenceService(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.LanguageServices.Scripted.ScriptedLanguageOptions> options) { }
+        public ScriptedLanguageIntelligenceService(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.LanguageServices.Scripted.ScriptedLanguageOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.LanguageServices.Scripted.ScriptedLanguageIntelligenceService> logger) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.LanguageQueryResult> QueryAsync(AgentKit.LanguageQueryRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ScriptedLanguageOptions
+    {
+        public ScriptedLanguageOptions() { }
+        public System.Collections.Generic.List<AgentKit.LanguageServices.Scripted.ScriptedLanguageScenario> Scenarios { get; }
+    }
+    public sealed class ScriptedLanguageScenario : System.IEquatable<AgentKit.LanguageServices.Scripted.ScriptedLanguageScenario>
+    {
+        public ScriptedLanguageScenario(AgentKit.LanguageQueryId queryId, AgentKit.LanguageQueryResult result, System.TimeSpan delayAfterAdmission) { }
+        public System.TimeSpan DelayAfterAdmission { get; }
+        public AgentKit.LanguageQueryId QueryId { get; }
+        public AgentKit.LanguageQueryResult Result { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddScriptedLanguageIntelligence(System.Action<AgentKit.LanguageServices.Scripted.ScriptedLanguageOptions> configure) { }
+        }
+    }
+}

@@ -63,6 +63,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AgentKit.Test.Shared/AgentKit.Test.Shared.csproj"/>
+    <Project Path="tests/AgentKit.Compatibility.Tests/AgentKit.Compatibility.Tests.csproj"/>
     <Project Path="tests/AgentKit.Conformance/AgentKit.Conformance.csproj"/>
     <Project Path="tests/AgentKit.Tests/AgentKit.Tests.csproj"/>
     <Project Path="tests/AgentKit.Observability.Tests/AgentKit.Observability.Tests.csproj"/>

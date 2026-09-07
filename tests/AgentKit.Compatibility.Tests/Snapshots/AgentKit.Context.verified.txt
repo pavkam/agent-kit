@@ -1,0 +1,19 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Context.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Context
+{
+    public sealed class DefaultContextAssembler : AgentKit.IContextAssembler
+    {
+        public DefaultContextAssembler() { }
+        public DefaultContextAssembler(Microsoft.Extensions.Logging.ILogger<AgentKit.Context.DefaultContextAssembler> logger) { }
+        public System.Threading.Tasks.Task<AgentKit.ContextAssemblyResult> AssembleAsync(AgentKit.ContextAssemblyRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentContext() { }
+        }
+    }
+}

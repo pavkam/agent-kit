@@ -1,0 +1,35 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools.Task
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddTaskTool(System.Action<AgentKit.Tools.Task.TaskToolOptions>? configure = null) { }
+        }
+    }
+    public sealed class TaskTool : AgentKit.ITool
+    {
+        public static readonly AgentKit.ToolId Id;
+        public TaskTool(AgentKit.ITaskDelegationBroker broker, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityRequestIds, AgentKit.IIdentifierGenerator<AgentKit.DelegationId> delegationIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Task.TaskToolOptions> options) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class TaskToolOptions
+    {
+        public TaskToolOptions() { }
+        public int DefaultMaximumToolCalls { get; set; }
+        public int DefaultMaximumTurns { get; set; }
+        public System.TimeSpan DefaultTimeout { get; set; }
+        public int MaximumAcceptanceCriteria { get; set; }
+        public int MaximumAllowedTools { get; set; }
+        public int MaximumCriterionCharacters { get; set; }
+        public int MaximumObjectiveCharacters { get; set; }
+        public int MaximumSummaryCharacters { get; set; }
+        public System.TimeSpan MaximumTimeout { get; set; }
+        public int MaximumToolCalls { get; set; }
+        public int MaximumTurns { get; set; }
+    }
+}

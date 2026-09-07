@@ -1,0 +1,69 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Tools.Resource.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Tools.Resource
+{
+    public static class ArgumentExceptionExtensions
+    {
+        extension(System.ArgumentException)
+        {
+            public static void ThrowIfDuplicateResourceIds(System.Collections.Immutable.ImmutableArray<AgentKit.Tools.Resource.FileResourceDefinition> resources, [System.Runtime.CompilerServices.CallerArgumentExpression("resources")] string? paramName = null) { }
+        }
+    }
+    public sealed class FileResourceDefinition : System.IEquatable<AgentKit.Tools.Resource.FileResourceDefinition>
+    {
+        public FileResourceDefinition(AgentKit.Tools.Resource.ResourceId id, AgentKit.Tools.Resource.ResourceKind kind, AgentKit.Tools.Resource.ResourceTrust trust, string description, AgentKit.FileSystemPath path, string mediaType, AgentKit.ContentHash? expectedContentHash = default) { }
+        public string Description { get; }
+        public AgentKit.ContentHash? ExpectedContentHash { get; }
+        public AgentKit.Tools.Resource.ResourceId Id { get; }
+        public AgentKit.Tools.Resource.ResourceKind Kind { get; }
+        public string MediaType { get; }
+        public AgentKit.FileSystemPath Path { get; }
+        public AgentKit.Tools.Resource.ResourceTrust Trust { get; }
+    }
+    public readonly struct ResourceId : System.IEquatable<AgentKit.Tools.Resource.ResourceId>
+    {
+        public ResourceId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public enum ResourceKind
+    {
+        Documentation = 0,
+        Skill = 1,
+        Prompt = 2,
+        Configuration = 3,
+        Instructions = 4,
+        Other = 5,
+    }
+    public sealed class ResourceTool : AgentKit.ITool
+    {
+        public static readonly AgentKit.ToolId Id;
+        public ResourceTool(AgentKit.IFileSnapshotReader reader, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Resource.ResourceToolOptions> options) { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ResourceToolOptions
+    {
+        public ResourceToolOptions() { }
+        public long MaximumBytes { get; set; }
+        public int MaximumCharacters { get; set; }
+        public int MaximumDescriptionCharacters { get; set; }
+        public System.Collections.Generic.IList<AgentKit.Tools.Resource.FileResourceDefinition> Resources { get; }
+    }
+    public enum ResourceTrust
+    {
+        Managed = 0,
+        User = 1,
+        Package = 2,
+        Workspace = 3,
+        Invocation = 4,
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddResourceTool(System.Action<AgentKit.Tools.Resource.ResourceToolOptions>? configure = null) { }
+        }
+    }
+}

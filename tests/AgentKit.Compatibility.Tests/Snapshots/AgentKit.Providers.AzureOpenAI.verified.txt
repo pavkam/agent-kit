@@ -1,0 +1,62 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.AzureOpenAI.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.AzureOpenAI
+{
+    public sealed class AzureOpenAIAuthorizationDenied : AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationResult, System.IEquatable<AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationDenied>
+    {
+        public AzureOpenAIAuthorizationDenied(AgentKit.ProviderFailure failure) { }
+        public AgentKit.ProviderFailure Failure { get; init; }
+    }
+    public sealed class AzureOpenAIAuthorizationGranted : AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationResult, System.IEquatable<AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationGranted>
+    {
+        public AzureOpenAIAuthorizationGranted(string headerName, string headerValue) { }
+        public string HeaderName { get; init; }
+        public string HeaderValue { get; init; }
+    }
+    public static class AzureOpenAIAuthorizationHeaderFactory
+    {
+        public static AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
+    }
+    public abstract class AzureOpenAIAuthorizationResult : System.IEquatable<AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationResult> { }
+    public sealed class AzureOpenAILlmModel : AgentKit.ILlmModel
+    {
+        public AzureOpenAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.ModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ExecuteAsync(AgentKit.LlmModelRequest request, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class AzureOpenAIProviderDefaults
+    {
+        public const string DefaultChatCompletionsPath = "openai/v1/chat/completions";
+        public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ProviderId ProviderId { get; }
+        public static AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile CreateProfile(AgentKit.Providers.AzureOpenAI.AzureOpenAIProviderOptions options) { }
+    }
+    public sealed class AzureOpenAIProviderOptions
+    {
+        public AzureOpenAIProviderOptions() { }
+        public string ChatCompletionsPath { get; set; }
+        public bool IncludeStreamUsage { get; set; }
+        public bool PreferStreaming { get; set; }
+        public System.Uri? ResourceEndpoint { get; set; }
+        public bool UseMaxCompletionTokensField { get; set; }
+    }
+    public sealed class AzureOpenAIProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.AzureOpenAI.AzureOpenAIProviderOptions>
+    {
+        public AzureOpenAIProviderOptionsValidator() { }
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.AzureOpenAI.AzureOpenAIProviderOptions options) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAzureOpenAI(System.Action<AgentKit.Providers.AzureOpenAI.AzureOpenAIProviderOptions> configureOptions) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAzureOpenAIApiKeyCredential(string apiKey) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAzureOpenAIOAuthCredential<TProvider>()
+                where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAzureOpenAILlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.DeploymentId deploymentId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+        }
+    }
+}

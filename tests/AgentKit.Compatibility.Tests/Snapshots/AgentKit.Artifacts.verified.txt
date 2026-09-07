@@ -1,0 +1,39 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Artifacts
+{
+    public sealed class AgentArtifactOptions
+    {
+        public AgentArtifactOptions() { }
+        public int CopyBufferBytes { get; set; }
+        public long MaximumArtifactBytes { get; set; }
+        public System.TimeSpan PreparationLifetime { get; set; }
+        public AgentKit.ArtifactDataClassification ProcessOutputClassification { get; set; }
+        public AgentKit.ArtifactDirectoryId ProcessOutputDirectory { get; set; }
+        public AgentKit.ArtifactRetentionPolicyKey ProcessOutputRetentionPolicy { get; set; }
+        public AgentKit.ArtifactProfileKey ProfileKey { get; set; }
+        public AgentKit.ArtifactProfileVersion ProfileVersion { get; set; }
+    }
+    public sealed class ArtifactProcessOutputSink : AgentKit.IProcessOutputArtifactSink
+    {
+        public ArtifactProcessOutputSink(AgentKit.IArtifactCoordinator artifacts, Microsoft.Extensions.Options.IOptions<AgentKit.Artifacts.AgentArtifactOptions> options) { }
+        public System.Threading.Tasks.Task<AgentKit.ProcessOutputArtifactResult> StoreAsync(AgentKit.ProcessOutputArtifactRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class DefaultArtifactCoordinator : AgentKit.IArtifactCoordinator
+    {
+        public DefaultArtifactCoordinator(AgentKit.IArtifactStore store, AgentKit.ISecurityAuthority authority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> securityIds, AgentKit.IIdentifierGenerator<AgentKit.ArtifactId> artifactIds, AgentKit.IIdentifierGenerator<AgentKit.ArtifactPreparationId> preparationIds, System.TimeProvider time, Microsoft.Extensions.Options.IOptions<AgentKit.Artifacts.AgentArtifactOptions> options) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactAbortResult> AbortAsync(AgentKit.ArtifactAbortRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactDeleteResult> DeleteAsync(AgentKit.ArtifactDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactFinalizeResult> FinalizeAsync(AgentKit.ArtifactFinalizeRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ArtifactPrepareResult> PrepareAsync(AgentKit.ArtifactPrepareRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ArtifactReadResult> ReadAsync(AgentKit.ArtifactReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentArtifacts(System.Action<AgentKit.Artifacts.AgentArtifactOptions>? configure = null) { }
+        }
+    }
+}

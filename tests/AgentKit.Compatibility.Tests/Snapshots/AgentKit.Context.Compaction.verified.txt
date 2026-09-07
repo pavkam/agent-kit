@@ -1,0 +1,47 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Context.Compaction.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Context.Compaction
+{
+    public sealed class CompactionOptions
+    {
+        public CompactionOptions() { }
+        public double CharactersPerToken { get; set; }
+        public int MaximumCheckpointCharacters { get; set; }
+        public int MaximumSourceEntries { get; set; }
+        public int SourceReadPageSize { get; set; }
+    }
+    public sealed class DefaultCompactionValidator : AgentKit.ICompactionValidator
+    {
+        public DefaultCompactionValidator(AgentKit.Context.Compaction.ICompactionSizeEstimator estimator, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.CompactionValidationResult> ValidateAsync(AgentKit.CompactionValidationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class DefaultCompactor : AgentKit.ICompactor
+    {
+        public DefaultCompactor(AgentKit.ISessionCoordinator coordinator, AgentKit.ICompactionCutSelector cutSelector, AgentKit.ICompactionStrategy strategy, AgentKit.ICompactionValidator validator, AgentKit.Context.Compaction.ICompactionSizeEstimator estimator, AgentKit.IIdentifierGenerator<AgentKit.CompactionManifestId> manifestIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Context.Compaction.DefaultCompactor>? logger = null) { }
+        public System.Threading.Tasks.Task<AgentKit.CompactionResult> CompactAsync(AgentKit.CompactionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ExtractiveCompactionStrategy : AgentKit.ICompactionStrategy
+    {
+        public static readonly AgentKit.CompactionStrategyKey StrategyKey;
+        public ExtractiveCompactionStrategy(AgentKit.Context.Compaction.ICompactionSizeEstimator estimator, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options) { }
+        public System.Threading.Tasks.Task<AgentKit.CompactionStrategyResult> ProduceAsync(AgentKit.CompactionStrategyRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public interface ICompactionSizeEstimator
+    {
+        AgentKit.CompactionSizeEstimate EstimateCheckpoint(AgentKit.CompactionCheckpoint checkpoint);
+        AgentKit.CompactionSizeEstimate EstimateEntries(System.Collections.Immutable.ImmutableArray<AgentKit.SessionEntry> entries);
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddContextCompaction(System.Action<AgentKit.Context.Compaction.CompactionOptions>? configure = null) { }
+        }
+    }
+    public sealed class StructuralCompactionCutSelector : AgentKit.ICompactionCutSelector
+    {
+        public StructuralCompactionCutSelector(Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.CompactionCutSelectionResult> SelectAsync(AgentKit.CompactionCutSelectionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+}

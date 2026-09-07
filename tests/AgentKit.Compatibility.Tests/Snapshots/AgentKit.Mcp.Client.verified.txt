@@ -1,0 +1,63 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Mcp.Client.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Mcp.Client
+{
+    public sealed class McpClientToolCatalogSnapshot : System.IEquatable<AgentKit.Mcp.Client.McpClientToolCatalogSnapshot>
+    {
+        public McpClientToolCatalogSnapshot(AgentKit.Mcp.McpCatalogVersion version, AgentKit.Mcp.McpProtocolVersion protocolVersion, System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.Client.McpRemoteToolDescriptor> tools) { }
+        public AgentKit.Mcp.McpProtocolVersion ProtocolVersion { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Mcp.Client.McpRemoteToolDescriptor> Tools { get; }
+        public AgentKit.Mcp.McpCatalogVersion Version { get; }
+    }
+    public sealed class McpClientVersionPolicy : System.IEquatable<AgentKit.Mcp.Client.McpClientVersionPolicy>
+    {
+        public AgentKit.Mcp.McpProtocolVersion? MinimumVersion { get; }
+        public static AgentKit.Mcp.Client.McpClientVersionPolicy Automatic { get; }
+        public static AgentKit.Mcp.Client.McpClientVersionPolicy RequireAtLeast(AgentKit.Mcp.McpProtocolVersion version) { }
+    }
+    public sealed class McpRemoteToolDescriptor : System.IEquatable<AgentKit.Mcp.Client.McpRemoteToolDescriptor>
+    {
+        public McpRemoteToolDescriptor(AgentKit.Mcp.McpToolName name, AgentKit.ToolVersion version) { }
+        public AgentKit.Mcp.McpToolName Name { get; }
+        public AgentKit.ToolVersion Version { get; }
+    }
+    public sealed class McpToolClientFactory<TTools>
+        where TTools :  class
+    {
+        public McpToolClientFactory(AgentKit.Mcp.McpToolContract<TTools> contract) { }
+        public McpToolClientFactory(AgentKit.Mcp.McpToolContract<TTools> contract, Microsoft.Extensions.Logging.ILoggerFactory loggerFactory) { }
+        public System.Threading.Tasks.Task<AgentKit.Mcp.Client.McpToolClient<TTools>> ConnectAsync(ModelContextProtocol.Client.IClientTransport transport, AgentKit.Mcp.Client.McpClientVersionPolicy? versionPolicy = null, System.Text.Json.JsonSerializerOptions? serializerOptions = null, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class McpToolClient<TTools> : System.IAsyncDisposable
+        where TTools :  class
+    {
+        public AgentKit.Mcp.Client.McpClientToolCatalogSnapshot Catalog { get; }
+        public AgentKit.Mcp.McpProtocolVersion ProtocolVersion { get; }
+        public System.Threading.Tasks.ValueTask<TResponse> CallAsync<TResponse>(System.Linq.Expressions.Expression<System.Func<TTools, System.Threading.Tasks.Task<TResponse>>> invocation, System.Threading.CancellationToken cancellationToken = default)
+            where TResponse :  class { }
+        public System.Threading.Tasks.ValueTask<TResponse> CallAsync<TResponse>(System.Linq.Expressions.Expression<System.Func<TTools, System.Threading.Tasks.ValueTask<TResponse>>> invocation, System.Threading.CancellationToken cancellationToken = default)
+            where TResponse :  class { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Mcp.Client.McpClientToolCatalogSnapshot> RefreshAsync(System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    [System.Serializable]
+    public sealed class McpToolContractMismatchException : System.Exception
+    {
+        public McpToolContractMismatchException(string message) { }
+    }
+    [System.Serializable]
+    public sealed class McpToolInvocationException : System.Exception
+    {
+        public McpToolInvocationException(AgentKit.Mcp.McpToolName toolName, string message) { }
+        public AgentKit.Mcp.McpToolName ToolName { get; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMcpToolClient<TTools>()
+                where TTools :  class { }
+        }
+    }
+}
