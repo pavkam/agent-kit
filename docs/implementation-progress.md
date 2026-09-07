@@ -36,6 +36,19 @@ owning spec.
 original branch receipts and deletion tombstones | Verified checkpoint; identity
 authentication, grants, durable retention and lane coordination remain open |
 
+## Latest integration evidence
+
+At checkpoint `41f43f2`, the current shared worktree built all 120 registered
+projects with zero warnings or errors. The complete solution test run passed
+3,197 tests with no failures or skips. This includes the concurrent, uncommitted
+provider embedding changes present during that run; it is not evidence that the
+remaining architecture has been implemented.
+
+Active next checkpoints are the rich identity contracts and first-party identity
+runtime, followed by migration of the reduced identity test fixtures, and pinned
+agent-definition admission revalidation. Full keyed run-plan composition and
+caller-wait versus authoritative-run cancellation remain open.
+
 ## Concurrent ownership
 
 Two external agents own tool-feature completion and provider embedding support.
