@@ -30,8 +30,28 @@ public sealed record OutputValidationPolicy
     }
 
     /// <summary>Gets whether validation stops at the first failure or collects every failure.</summary>
-    public OutputValidationFailureMode FailureMode { get; init; }
+    /// <value>A defined <see cref="OutputValidationFailureMode"/> value.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer or record copy assigns an undefined value.</exception>
+    public OutputValidationFailureMode FailureMode
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfUndefined(value, nameof(FailureMode));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the maximum number of issues retained in a validation failure.</summary>
-    public int MaximumIssues { get; init; }
+    /// <value>A positive maximum applied together with the processor-wide diagnostic limit.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer or record copy assigns a value that is not positive.</exception>
+    public int MaximumIssues
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(MaximumIssues));
+            field = value;
+        }
+    }
 }

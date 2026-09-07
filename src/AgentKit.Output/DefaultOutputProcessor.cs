@@ -233,6 +233,7 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
         OutputDefinition definition, ValidatedOutput candidate, int attempt, CancellationToken cancellationToken)
     {
         var issues = ImmutableArray.CreateBuilder<OutputValidationIssue>();
+        var maximumIssues = Math.Min(definition.ValidationPolicy.MaximumIssues, _options.MaximumValidationIssues);
 
         foreach (var reference in definition.Validators)
         {
@@ -249,9 +250,11 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
 
             if (result is OutputValidationIssuesFound issuesFound)
             {
-                issues.AddRange(issuesFound.Issues);
+                var remaining = maximumIssues - issues.Count;
+                issues.AddRange(issuesFound.Issues.Take(remaining));
 
-                if (definition.ValidationPolicy.FailureMode == OutputValidationFailureMode.RejectOnFirstFailure)
+                if (definition.ValidationPolicy.FailureMode == OutputValidationFailureMode.RejectOnFirstFailure
+                    || issues.Count == maximumIssues)
                 {
                     break;
                 }
@@ -263,26 +266,33 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
             : new OutputValidationFailure(
                 OutputValidationFailureKind.ValidatorFailed,
                 "One or more output validators rejected the candidate.",
-                Bound(issues.ToImmutable(), definition.ValidationPolicy.MaximumIssues));
+                issues.ToImmutable());
     }
 
     private OutputProcessingResult Decide(OutputDefinition definition, int attempt, OutputValidationFailure failure)
     {
+        var maximumIssues = Math.Min(definition.ValidationPolicy.MaximumIssues, _options.MaximumValidationIssues);
+        var boundedFailure = failure.Issues.Length > maximumIssues
+            ? new OutputValidationFailure(
+                failure.Kind,
+                failure.SafeMessage,
+                Bound(failure.Issues, maximumIssues))
+            : failure;
         var allowedAttempts = Math.Min(definition.RetryPolicy.MaximumAttempts, _options.MaximumRepairAttempts);
 
         if (attempt > allowedAttempts)
         {
-            return new OutputRejected(failure);
+            return new OutputRejected(boundedFailure);
         }
 
-        var detail = failure.Issues.IsEmpty
-            ? failure.SafeMessage
-            : string.Join(' ', failure.Issues.Select(static issue => issue.SafeMessage));
+        var detail = boundedFailure.Issues.IsEmpty
+            ? boundedFailure.SafeMessage
+            : string.Join(' ', boundedFailure.Issues.Select(static issue => issue.SafeMessage));
 
         var repair = new OutputRepairInstruction(
             $"The previous output was rejected: {detail} Correct the output and respond again.");
 
-        return new OutputRetryRequired(repair, failure);
+        return new OutputRetryRequired(repair, boundedFailure);
     }
 
     private static ExtractionOutcome ExtractCandidate(OutputMode mode, ModelResponse response)

@@ -170,6 +170,30 @@ public sealed class DefaultOutputProcessorTests
         rejected.Failure.Issues.ShouldNotBeEmpty();
     }
 
+    [Fact]
+    public async Task ProcessAsync_WhenSchemaFailureExceedsDefinitionLimit_BoundsResultAndRepair()
+    {
+        var processor = CreateProcessor(options => options.MaximumValidationIssues = 5);
+        var schema = TestFactory.Schema(
+            /*lang=json,strict*/"""{"type":"object","required":["first","second","third"]}""");
+        var definition = TestFactory.Definition(
+            OutputMode.NativeSchema,
+            schema: schema,
+            validationPolicy: new OutputValidationPolicy(OutputValidationFailureMode.CollectAllFailures, 1),
+            retryPolicy: new OutputRetryPolicy(1));
+        var response = TestFactory.StructuredResponse(TestFactory.ParseJson(/*lang=json,strict*/"""{}"""));
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
+
+        var retry = result.ShouldBeOfType<OutputRetryRequired>();
+        retry.Failure.Issues.Count(issue => issue.SafeMessage.Contains("first", StringComparison.Ordinal)).ShouldBe(1);
+        retry.Failure.Issues.Length.ShouldBe(1);
+        retry.Repair.SafeMessage.ShouldContain("first");
+        retry.Repair.SafeMessage.ShouldNotContain("second");
+        retry.Repair.SafeMessage.ShouldNotContain("third");
+    }
+
     private sealed record TestPayload(string Name);
 
     [Fact]
@@ -304,6 +328,50 @@ public sealed class DefaultOutputProcessorTests
         rejected.Failure.Issues.Length.ShouldBe(2);
         first.ReceivedRequests.Count.ShouldBe(1);
         second.ReceivedRequests.Count.ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData(2, 5)]
+    [InlineData(5, 2)]
+    public async Task ProcessAsync_WhenValidatorIssuesReachEffectiveLimit_BoundsResultAndRepairAndStopsValidation(
+        int processorMaximumIssues,
+        int definitionMaximumIssues)
+    {
+        var first = new FakeOutputValidator(
+            "first",
+            static _ => new OutputValidationIssuesFound(
+                [
+                    new OutputValidationIssue("first-a", "included first issue", null),
+                    new OutputValidationIssue("first-b", "included second issue", null),
+                    new OutputValidationIssue("first-c", "omitted issue", null),
+                ]));
+        var second = new FakeOutputValidator(
+            "second",
+            static _ => new OutputValidationIssuesFound(
+                [new OutputValidationIssue("second", "validator should not run", null)]));
+        var processor = CreateProcessor(
+            options => options.MaximumValidationIssues = processorMaximumIssues,
+            [first, second]);
+        var definition = TestFactory.Definition(
+            OutputMode.Text,
+            validators: [new OutputValidatorReference("first"), new OutputValidatorReference("second")],
+            validationPolicy: new OutputValidationPolicy(
+                OutputValidationFailureMode.CollectAllFailures,
+                definitionMaximumIssues),
+            retryPolicy: new OutputRetryPolicy(1));
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("hi")),
+            TestContext.Current.CancellationToken);
+
+        var retry = result.ShouldBeOfType<OutputRetryRequired>();
+        retry.Failure.Issues.Select(static issue => issue.Code).ShouldBe(["first-a", "first-b"]);
+        retry.Repair.SafeMessage.ShouldContain("included first issue");
+        retry.Repair.SafeMessage.ShouldContain("included second issue");
+        retry.Repair.SafeMessage.ShouldNotContain("omitted issue");
+        retry.Repair.SafeMessage.ShouldNotContain("validator should not run");
+        first.ReceivedRequests.Count.ShouldBe(1);
+        second.ReceivedRequests.Count.ShouldBe(0);
     }
 
     [Fact]
