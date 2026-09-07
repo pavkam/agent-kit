@@ -10,11 +10,11 @@ public sealed class InMemoryArtifactStore: IArtifactStore
     private readonly Lock _lock = new();
     private readonly ISecurityGrantStore _grants;
     private readonly TimeProvider _time;
-    private readonly Dictionary<ArtifactPreparationId, PreparedState> _prepared = [];
-    private readonly Dictionary<ArtifactPreparationId, FinalizedState> _finalized = [];
-    private readonly Dictionary<ArtifactKey, FinalizedState> _committed = [];
-    private readonly HashSet<ArtifactPreparationId> _aborted = [];
-    private readonly Dictionary<ArtifactKey, ArtifactReference> _deleted = [];
+    private readonly Dictionary<TenantArtifactPreparationKey, PreparedState> _prepared = [];
+    private readonly Dictionary<TenantArtifactPreparationKey, FinalizedState> _finalized = [];
+    private readonly Dictionary<TenantArtifactKey, FinalizedState> _committed = [];
+    private readonly HashSet<TenantArtifactPreparationKey> _aborted = [];
+    private readonly Dictionary<TenantArtifactKey, ArtifactReference> _deleted = [];
     private readonly Dictionary<ReplayKey, PreparedState> _prepareReplay = [];
 
     /// <summary>Initializes the store over the authoritative grant store and deterministic clock.</summary>
@@ -44,6 +44,11 @@ public sealed class InMemoryArtifactStore: IArtifactStore
         if (consumed is not null)
         {
             return new ArtifactPrepareRejected(consumed);
+        }
+
+        if (request.TenantId != request.Identity.TenantId)
+        {
+            return RejectPrepare(ArtifactFailureKind.Denied, "The declared tenant does not match the authenticated identity.");
         }
 
         var observedHash = FileSecurityBinding.ContentFingerprint(request.Content.AsSpan());
@@ -78,12 +83,13 @@ public sealed class InMemoryArtifactStore: IArtifactStore
                     : RejectPrepare(ArtifactFailureKind.Conflict, "The prepare idempotency key was reused with different content or policy.");
             }
 
-            if (_prepared.ContainsKey(request.PreparationId) || _finalized.ContainsKey(request.PreparationId) || _aborted.Contains(request.PreparationId))
+            var preparationKey = new TenantArtifactPreparationKey(request.Identity.TenantId, request.PreparationId);
+            if (_prepared.ContainsKey(preparationKey) || _finalized.ContainsKey(preparationKey) || _aborted.Contains(preparationKey))
             {
                 return RejectPrepare(ArtifactFailureKind.Conflict, "The preparation identity is already in use.");
             }
 
-            _prepared.Add(request.PreparationId, state);
+            _prepared.Add(preparationKey, state);
             _prepareReplay.Add(replay, state);
             return state.Receipt;
         }
@@ -105,28 +111,29 @@ public sealed class InMemoryArtifactStore: IArtifactStore
 
         lock (_lock)
         {
-            if (_finalized.TryGetValue(request.PreparationId, out var prior))
+            var preparationKey = new TenantArtifactPreparationKey(request.Identity.TenantId, request.PreparationId);
+            if (_finalized.TryGetValue(preparationKey, out var prior))
             {
-                var priorKey = new ArtifactKey(prior.Result.Reference.Id, prior.Result.Reference.Version);
-                return prior.Snapshot.TenantId == request.Identity.TenantId && !_deleted.ContainsKey(priorKey)
+                var priorKey = new TenantArtifactKey(request.Identity.TenantId, prior.Result.Reference.Id, prior.Result.Reference.Version);
+                return !_deleted.ContainsKey(priorKey)
                     ? prior.Result
                     : RejectFinalize(ArtifactFailureKind.NotFound, "The preparation is unavailable or belongs to another tenant.");
             }
 
-            if (!_prepared.TryGetValue(request.PreparationId, out var staged) || staged.Snapshot.TenantId != request.Identity.TenantId)
+            if (!_prepared.TryGetValue(preparationKey, out var staged))
             {
                 return RejectFinalize(ArtifactFailureKind.NotFound, "The preparation is unavailable or belongs to another tenant.");
             }
 
             if (staged.Snapshot.ExpiresAt <= _time.GetUtcNow())
             {
-                _ = _prepared.Remove(request.PreparationId);
-                _ = _aborted.Add(request.PreparationId);
+                _ = _prepared.Remove(preparationKey);
+                _ = _aborted.Add(preparationKey);
                 return RejectFinalize(ArtifactFailureKind.NotFound, "The preparation expired before publication.");
             }
 
             var snapshot = staged.Snapshot;
-            var artifactKey = new ArtifactKey(snapshot.ArtifactId, snapshot.Version);
+            var artifactKey = new TenantArtifactKey(request.Identity.TenantId, snapshot.ArtifactId, snapshot.Version);
             if (_deleted.TryGetValue(artifactKey, out var deletedReference))
             {
                 return deletedReference.TenantId == snapshot.TenantId
@@ -150,9 +157,9 @@ public sealed class InMemoryArtifactStore: IArtifactStore
                 new ArtifactIntegrity(metadata.DeclaredContentHash, publicationTime), metadata.Classification,
                 metadata.Ownership, metadata.Mutability, metadata.Retention, publicationTime);
             var result = new ArtifactFinalized(reference);
-            _ = _prepared.Remove(request.PreparationId);
+            _ = _prepared.Remove(preparationKey);
             var finalized = new FinalizedState(snapshot, result);
-            _finalized.Add(request.PreparationId, finalized);
+            _finalized.Add(preparationKey, finalized);
             _committed.Add(artifactKey, finalized);
             return result;
         }
@@ -174,23 +181,27 @@ public sealed class InMemoryArtifactStore: IArtifactStore
 
         lock (_lock)
         {
-            if (_finalized.TryGetValue(request.PreparationId, out var finalized))
+            var preparationKey = new TenantArtifactPreparationKey(request.Identity.TenantId, request.PreparationId);
+            if (_finalized.TryGetValue(preparationKey, out var finalized))
             {
-                return finalized.Snapshot.TenantId != request.Identity.TenantId
-                    ? new ArtifactAbortRejected(new ArtifactFailure(ArtifactFailureKind.NotFound, "The preparation is unavailable or belongs to another tenant."))
-                    : _deleted.ContainsKey(new ArtifactKey(finalized.Result.Reference.Id, finalized.Result.Reference.Version))
+                return _deleted.ContainsKey(new TenantArtifactKey(request.Identity.TenantId, finalized.Result.Reference.Id, finalized.Result.Reference.Version))
                     ? new ArtifactAborted(true)
                     : new ArtifactAbortRejected(new ArtifactFailure(ArtifactFailureKind.Conflict, "Committed artifact content cannot be aborted."));
             }
 
-            if (_prepared.TryGetValue(request.PreparationId, out var staged) && staged.Snapshot.TenantId != request.Identity.TenantId)
+            if (_aborted.Contains(preparationKey))
             {
-                return new ArtifactAbortRejected(new ArtifactFailure(ArtifactFailureKind.NotFound, "The preparation is unavailable or belongs to another tenant."));
+                return new ArtifactAborted(true);
             }
 
-            var removed = _prepared.Remove(request.PreparationId);
-            _ = _aborted.Add(request.PreparationId);
-            return new ArtifactAborted(!removed);
+            var removed = _prepared.Remove(preparationKey);
+            if (removed)
+            {
+                _ = _aborted.Add(preparationKey);
+                return new ArtifactAborted(false);
+            }
+
+            return new ArtifactAbortRejected(new ArtifactFailure(ArtifactFailureKind.NotFound, "The preparation is unavailable or belongs to another tenant."));
         }
     }
 
@@ -215,7 +226,7 @@ public sealed class InMemoryArtifactStore: IArtifactStore
                 return RejectRead(ArtifactFailureKind.NotFound, "The committed artifact is unavailable or belongs to another tenant.");
             }
 
-            var key = new ArtifactKey(request.Reference.Id, request.Reference.Version);
+            var key = new TenantArtifactKey(request.Identity.TenantId, request.Reference.Id, request.Reference.Version);
             return !_committed.TryGetValue(key, out var committed) || committed.Result.Reference != request.Reference
                 ? RejectRead(ArtifactFailureKind.NotFound, "The exact committed artifact version was not found.")
                 : new ArtifactReadOpened(
@@ -245,7 +256,7 @@ public sealed class InMemoryArtifactStore: IArtifactStore
                 return RejectDelete(ArtifactFailureKind.NotFound, "The committed artifact is unavailable or belongs to another tenant.");
             }
 
-            var key = new ArtifactKey(request.Reference.Id, request.Reference.Version);
+            var key = new TenantArtifactKey(request.Identity.TenantId, request.Reference.Id, request.Reference.Version);
             if (_deleted.TryGetValue(key, out var deletedReference))
             {
                 return deletedReference == request.Reference
@@ -302,6 +313,5 @@ public sealed class InMemoryArtifactStore: IArtifactStore
         DateTimeOffset CreatedAt,
         DateTimeOffset ExpiresAt);
     private sealed record FinalizedState(PreparedSnapshot Snapshot, ArtifactFinalized Result);
-    private readonly record struct ArtifactKey(ArtifactId Id, ArtifactVersion Version);
     private readonly record struct ReplayKey(TenantId TenantId, string Operation, string Key);
 }

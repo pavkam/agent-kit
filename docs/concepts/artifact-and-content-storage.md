@@ -117,10 +117,23 @@ different tenant or an altered reference. Foreign or mismatched references
 remain indistinguishable from unavailable content, including after deletion. The
 stored reference remains authoritative for retention and ownership checks.
 
-An immutable artifact ID/version is never rebound, including by a new
-preparation after deletion. Finalization conditionally claims that version
-before changing preparation or publication state. Competing preparations in one
-tenant have one publication winner; a losing preparation receives a typed
+Store indexes and replay state are tenant-qualified. Preparation, finalization,
+abort, and deletion state in one tenant cannot reserve identifiers or change
+receipts in another tenant, even when their raw preparation or artifact IDs
+match. Lookup derives the tenant from the authenticated request identity and
+checks any separately supplied tenant before using it. A supplied artifact
+reference must match both that tenant and the stored canonical reference.
+
+An abort for an unknown preparation returns `NotFound` and creates no tombstone
+or identifier reservation. `AlreadyAbsent` is a replay result backed by that
+tenant's recorded abort or deleted publication, not a claim that every unknown
+identifier was previously aborted. Foreign preparation lookups follow the same
+unknown result and never inspect another tenant's state to choose a response.
+
+Within one tenant, an immutable artifact ID/version is never rebound, including
+by a new preparation after deletion. Finalization conditionally claims that
+version before changing preparation or publication state. Competing preparations
+in one tenant have one publication winner; a losing preparation receives a typed
 conflict and remains available for explicit abort. A failed publication cannot
 leave a successful receipt pointing to another preparation's bytes.
 
