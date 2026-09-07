@@ -123,6 +123,25 @@ public sealed class ExtractiveCompactionStrategyTests
                 cts.Token));
     }
 
+    [Fact]
+    public async Task ProduceAsync_WhenCoveredEntriesHaveNoExtractableText_ProducesPlaceholderSummary()
+    {
+        var strategy = CreateStrategy();
+        var address = Address();
+        var (call, _) = TestFactory.ToolCallPair(address, _branchId, callSequence: 1, resultSequence: 2);
+        var source = Source([call]);
+        var cut = new CompactionCut(
+            new CompactionSourceRange(call.Sequence, call.Sequence), new SessionSequence(2), [call.Id]);
+
+        var result = await strategy.ProduceAsync(
+            new CompactionStrategyRequest(TestFactory.Request(source.Context, _branchId, new SessionVersion(1), call.Sequence), source, cut),
+            TestContext.Current.CancellationToken);
+
+        var produced = result.ShouldBeOfType<CompactionCheckpointProduced>();
+        var text = ((TextPart) produced.Checkpoint.Summary[0]).Text;
+        text.ShouldBe("(no extractable text in covered entries)");
+    }
+
     private SessionAddress Address() => new(_agentId, _sessionId);
 
     private CompactionSourceSnapshot Source(ImmutableArray<SessionEntry> entries)

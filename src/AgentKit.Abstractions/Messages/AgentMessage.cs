@@ -143,4 +143,59 @@ public abstract record AgentMessage
 
     /// <summary>Gets provider-specific or forward-compatible data.</summary>
     public ExtensionData Extensions { get; init; }
+
+    /// <summary>
+    /// Determines whether this message and <paramref name="other"/> are
+    /// structurally equal, comparing <see cref="Parts"/> by content rather
+    /// than by the default reference equality <see cref="ImmutableArray{T}"/>
+    /// would otherwise use.
+    /// </summary>
+    /// <param name="other">The message to compare against.</param>
+    /// <returns>
+    /// <see langword="true"/> if <paramref name="other"/> is the same
+    /// concrete message kind and every field, including <see cref="Parts"/>
+    /// by content, is equal.
+    /// </returns>
+    /// <remarks>
+    /// Every sealed concrete message kind's compiler-synthesized equality
+    /// calls this override for the members declared here, so fixing content
+    /// comparison once in this shared base corrects every derived kind.
+    /// </remarks>
+    public virtual bool Equals(AgentMessage? other) =>
+        other is not null
+        && EqualityContract == other.EqualityContract
+        && Id.Equals(other.Id)
+        && AgentId.Equals(other.AgentId)
+        && SessionId.Equals(other.SessionId)
+        && Nullable.Equals(ConversationId, other.ConversationId)
+        && BranchId.Equals(other.BranchId)
+        && Nullable.Equals(RunId, other.RunId)
+        && Nullable.Equals(TurnId, other.TurnId)
+        && CreatedAt.Equals(other.CreatedAt)
+        && State == other.State
+        && Parts.SequenceEqual(other.Parts)
+        && Extensions.Equals(other.Extensions);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(EqualityContract);
+        hash.Add(Id);
+        hash.Add(AgentId);
+        hash.Add(SessionId);
+        hash.Add(ConversationId);
+        hash.Add(BranchId);
+        hash.Add(RunId);
+        hash.Add(TurnId);
+        hash.Add(CreatedAt);
+        hash.Add(State);
+        foreach (var part in Parts)
+        {
+            hash.Add(part);
+        }
+
+        hash.Add(Extensions);
+        return hash.ToHashCode();
+    }
 }

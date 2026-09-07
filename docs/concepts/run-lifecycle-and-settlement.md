@@ -19,35 +19,50 @@ Public methods MUST document which boundary they await. `RunAsync` SHOULD await
 settlement. A separate streaming handle MAY expose earlier boundaries without
 claiming the run is idle.
 
-## Single-active-run rule
+## Execution-lane coordination
 
 The default [session executor](sessions-persistence-and-branching.md) MUST
-permit at most one active mutating run per session. Calls for different sessions
-MAY run concurrently.
+permit at most one active operation per execution lane. Calls for different
+lanes MAY overlap provider and tool effects, including lanes in the same
+session. Their durable read-decide-write transitions serialize through the
+session mutation coordinator; concurrent effects do not imply concurrent
+unfenced branch-tip writes.
 
-When a caller starts work against a busy session, the configured API MUST follow
+A simpler host MAY configure one lane per session. That is a composition
+profile, not a universal session invariant.
+
+When a caller starts work against a busy lane, the configured API MUST follow
 the [input-admission contract](input-admission-and-message-queues.md) and do one
 of the following explicitly:
 
 - join the existing run;
 - admit input as steering or follow-up work and return a receipt;
 - wait for the active run and then start; or
-- reject with `SessionBusy`.
+- reject with `LaneBusy`.
 
-It MUST NOT start a second uncoordinated loop. `Wake` SHOULD coalesce multiple
-wake requests into one successor drain.
+It MUST NOT start a second uncoordinated loop on that lane. `Wake` SHOULD
+coalesce duplicate requests by lane and expected operation identity. A stale
+wake or abort for operation A MUST NOT affect successor operation B.
+
+A lane is idle only when no durable operation is installed **and** no
+process-local drive still owns it. An open operation without a driver is
+recoverable work, not idle. A `RunWhenIdle`-style maintenance operation owns the
+serialized idle window through its callback so command admission cannot slip
+between the idle check and the protected action.
 
 ## Event sequence
 
 At minimum, the runtime emits semantic events for:
 
 ```text
+OperationAccepted
 RunStarted
   TurnStarted
     ModelRequestStarted
     AssistantMessageCommitted
     ToolCallRecorded*
-    ToolResultCommitted*
+    ToolOutcomeRecorded*
+    ToolResultMaterialized*
   TurnCompleted
 RunCompleted | RunCancelled | RunLimitReached | RunFailed
 RunSettled
@@ -57,6 +72,14 @@ Events MAY be enriched and live deltas interleaved according to the
 [streaming event grammar](streaming-and-event-protocol.md), but durable semantic
 events MUST preserve causal order. `RunSettled` is always the final run
 lifecycle event.
+
+`ToolOutcomeRecorded` marks the authoritative `OutcomeReady` commit and MAY
+follow effect-completion order. `ToolResultMaterialized` marks the bounded
+history projection and `Completed` transition in assistant source order. A
+durable retry wait or provider suspension emits a nonterminal `RunWaiting` or
+`RunSuspended` event with its operation identity, reason, and wake condition; a
+later drive emits `RunResumed`. None of those events imply run completion or
+settlement.
 
 ## Observer settlement
 
@@ -78,17 +101,34 @@ agent-end event. Implementations MUST either perform such work before
 `RunCompleted` or represent the transition and return to active turns
 explicitly. They MUST NOT emit `RunSettled` and later resume the same run.
 
+An asynchronous before-end hook or continuation callback produces a proposal,
+not a terminal decision. Before accepting its follow-up or committing the
+terminal result, the runtime reacquires the session mutation line and rechecks
+operation identity, state, queue cutoff, and planned input IDs. Newly admitted
+external work takes precedence over a stale internally generated follow-up.
+
+A durable retry delay or deferred provider handle remains an open operation. A
+driver may return a typed `Waiting` result containing the next attempt,
+not-before time, owner, and wake conditions without claiming completion or
+installing a hidden process timer.
+
 ## Cancellation and stop
 
-[Cancellation requests](cancellation-timeouts-and-resilience.md) transition the
-run into `Cancelling`; they do not rewrite prior terminal tool results.
-Settlement MUST await or safely abandon run-owned tasks according to the tool
-cancellation contract.
+[Durable cancellation requests](cancellation-timeouts-and-resilience.md)
+transition the expected operation into `Cancelling`; they do not rewrite prior
+terminal tool results. Cancelling one caller's wait, stream, or RPC invocation
+MUST NOT silently become a durable abort request. Settlement MUST await or
+safely abandon run-owned tasks according to the tool cancellation contract.
 
 An application-requested graceful stop SHOULD finish the current atomic
 boundary, commit a truthful partial outcome, skip new side effects, and settle.
 An immediate cancellation may interrupt streaming but still MUST clean up and
 emit one terminal lifecycle result.
+
+Host close is neither cancellation nor settlement. Attachment may report an open
+operation, and close may deliberately leave it recoverable after sealing new
+process-local effects. It MUST NOT synthesize a terminal assistant message or
+run result merely to make the process look tidy.
 
 ## Result availability
 
@@ -106,20 +146,21 @@ append is forbidden.
 - A slow awaited observer delays settlement but not message commit ordering.
 - An observer exception is recorded and cannot corrupt run state.
 - Two simultaneous wake calls produce at most one successor drain.
-- New work for a stopping session begins after the old run settles.
+- Different lanes in one session may overlap effects while durable commits stay
+  serialized and branch-correct.
+- New work for a stopping lane begins after the old operation settles.
+- A stale wake for an earlier operation cannot advance its successor.
+- An installed operation with no driver is not reported as idle.
+- New external input admitted during a before-end hook wins revalidation over
+  the hook's stale follow-up proposal.
+- Closing and reattaching preserves an open operation without fabricating a
+  terminal result.
 - `RunSettled` is emitted once and no later event uses that run ID.
 - Failure of a required store append prevents a clean-success result.
-
-## Upstream evidence
-
-- Pi's agent listeners are awaited and its high-level session adds a stronger
-  settled event in
-  [`agent-session.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/coding-agent/src/core/agent-session.ts).
-- OpenCode's per-session run joining and wake coalescing are in
-  [`run-coordinator.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/run-coordinator.ts).
 
 ## Related specifications
 
 - [Streaming and event protocol](streaming-and-event-protocol.md)
 - [Durable execution and recovery](durable-execution-and-recovery.md)
 - [Observability and audit](observability-and-audit.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

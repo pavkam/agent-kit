@@ -15,6 +15,15 @@ and the
 When changing C#, also read the
 [modern C# rules](../references/modern-csharp.md).
 
+For a coding host, read
+[interactive terminals](../../../docs/concepts/interactive-terminals-and-process-sessions.md)
+for PTY fan-out and
+[export, sharing, and control plane](../../../docs/concepts/coding-harness-export-sharing-and-control-plane.md)
+for HTTP/SSE/WebSocket/RPC routing and reconnect semantics. Read
+[frontend and protocol adapters](../../../docs/concepts/coding-harness-frontends-and-protocol-adapters.md)
+for TUI, IDE, batch, RPC, or ACP-style projection behavior, including
+server-realm identity and projection-incarnation fencing.
+
 ## Decision guide
 
 1. Put provider-neutral receipts, delivery classes, queue entries, events,

@@ -34,6 +34,12 @@ Every persisted item MUST carry tenant, owner/principal visibility, namespace,
 source identity/version, classification, timestamps, retention, and version.
 Keys SHOULD make cross-tenant or cross-user reads structurally difficult.
 
+Every memory or retrieval operation MUST also carry the complete authenticated
+`ExecutionIdentity`, typed agent/session/operation correlation, immutable
+authorization snapshot, and exact memory-profile key and version. Durable
+tenant/owner fields are routing and visibility projections; they do not replace
+the identity that authorized the operation.
+
 Storage contracts define consistency, atomicity, optimistic concurrency,
 pagination, duplicate/idempotent writes, deletion, expiry, and failure behavior.
 Provider SDK and database query types stay in integration packages.
@@ -88,6 +94,21 @@ Retrieval MUST separate:
 7. enforce item/token/byte budgets; and
 8. produce typed context candidates with provenance and trust class.
 
+At run-plan compilation, the selected memory profile is frozen as an immutable
+versioned snapshot. At invocation, one runtime selector activates an owned lease
+containing the exact keyed sources/stores, provider operations, security
+authority selector, optional versioned query rewriter, budgets, and event
+dispatcher for that snapshot. Pipelines MUST use that lease rather than inject
+global selectors independently or resolve keyed services from
+`IServiceProvider`; this prevents collaborators from two agents or profile
+versions being mixed in one operation. A profile with rewriting disabled has no
+rewriter capability; an enabled profile receives exactly its selected key and
+version.
+
+Embedding and reranking require an explicit selector key, executor key, and
+ordered alias policy in that snapshot. A partial selection is invalid; the
+runtime never substitutes an engine-global semantic-operation default.
+
 Retrieved content is untrusted data, never host instruction. The context
 assembler delimits it and records which items were included or omitted.
 
@@ -116,13 +137,6 @@ the deleted content into diagnostics.
 - Memory proposal requires policy acceptance before later retrieval.
 - Source update cannot return stale and current chunks as one version.
 - Deletion propagates through index/cache and remains auditable without content.
-
-## Upstream synthesis
-
-The researched agents provide strong history and context mechanics but do not
-collectively define AgentKit's full storage/RAG boundary. This spec combines
-their context separation with the repository's provider-neutral storage and
-retrieval requirements. See [research provenance](research-provenance.md).
 
 ## Related specifications
 

@@ -19,6 +19,11 @@ When changing C#, also read the
 
 For tool catalog, schema, scheduling, invocation, or result work that does not
 change a security boundary, use [agentkit-tools](../agentkit-tools/SKILL.md).
+For coding edits, worktree reset/removal, terminals, or publication egress, also
+read the relevant profile under
+[coding harnesses](../../../docs/concepts/index.md#coding-harness-profile);
+these bind grants to final bytes, destinations, process intents, or target
+inventories.
 
 ## Decision guide
 
@@ -43,11 +48,20 @@ change a security boundary, use [agentkit-tools](../agentkit-tools/SKILL.md).
    session, MCP, and delegation effects. Installing or discovering a tool grants
    nothing.
 8. Preserve tool-call and operation correlation across authorization, durable
-   acceptance, effect, audit, and exactly one terminal result. Mutation after a
-   decision requires reevaluation.
-9. Test denial before effects, approval and grant binding, expiry and
-   revocation, atomic use consumption, lower-boundary enforcement, cancellation,
-   uncertain effects, redaction, and untrusted metadata at the owning contracts.
+   acceptance when invocation is admitted, effect, audit, exactly one terminal
+   result for every identified request, and its bounded projection. Mutation
+   after a decision requires reevaluation.
+9. Bind file grants to the explicit write disposition, expected target state,
+   exact encoded-content fingerprint, and atomicity requirements. Directory
+   creation is a separate resource/effect and grant; create-or-replace authority
+   is never inferred from a missing disposition.
+10. A bounded `ToolResultPart` is only a model/history projection of the
+    authoritative recorded `ToolCallResult`; it cannot mint authority or erase a
+    denial, uncertainty, or projection loss.
+11. Test denial before effects, approval and grant binding, expiry and
+    revocation, atomic use consumption, lower-boundary enforcement,
+    cancellation, write-disposition/parent-directory separation, uncertain
+    effects, redaction, and untrusted metadata at the owning contracts.
 
 Use the dedicated security skill for authority behavior that does not involve
 tools, and `agentkit-mcp` when MCP protocol semantics also change.

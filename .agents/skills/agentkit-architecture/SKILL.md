@@ -12,6 +12,12 @@ Use the [architecture index](../../../docs/architecture/index.md) as the map and
 the linked component and concept documents as the source of truth. When changing
 C#, also read the [modern C# rules](../references/modern-csharp.md).
 
+For a coding host or cross-package harness design, also read the
+[coding-harness execution profile](../../../docs/concepts/coding-harness-execution-profile.md)
+and only the focused workspace, tool, terminal, language-service, snapshot,
+resource, control-plane, or MCP profile linked from the
+[concept index](../../../docs/concepts/index.md#coding-harness-profile).
+
 ## Decision guide
 
 1. Name the behavior, its single policy owner, and the collaborators that
@@ -33,7 +39,9 @@ C#, also read the [modern C# rules](../references/modern-csharp.md).
    options, an immutable agent definition, or a bounded run override.
 7. Make capabilities and unsupported behavior observable before execution.
    Credentials, endpoints, persistence targets, and authority have no fabricated
-   defaults.
+   defaults. When several external services or accounts can coexist, bind and
+   capture their independently keyed identities rather than depending on an
+   unkeyed registration-order singleton.
 8. Keep cross-cutting hooks typed and security-neutral. Host file, network, and
    process effects remain protected leaf boundaries.
 9. Update the architecture index, affected component page, normative concepts,

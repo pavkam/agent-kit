@@ -54,6 +54,14 @@ role. [Adapter capability profiles](model-providers-and-capabilities.md) MUST
 define a loss-aware translation or reject an unsupported mapping before sending
 the request.
 
+Role translation MUST be monotonic in trust and instruction precedence. A
+runtime/synthetic notice is operational evidence, not a system or developer
+instruction, even when framework-authored. An adapter without a native runtime
+role MUST use an explicitly tagged non-instruction-bearing projection or reject
+the request; it MUST NOT map the notice to system/developer merely because that
+wire role is convenient. History processors, repair, compaction, and imported
+message normalization obey the same non-elevation rule.
+
 Instructions are structured sources with provenance and precedence. The core
 MUST NOT flatten system, developer, retrieved, and user content into one string
 before the provider adapter can translate them correctly.
@@ -96,14 +104,43 @@ data.
 
 ## Tool correlation
 
-Every tool call has a stable `ToolCallId`, tool identity/name, raw argument
-representation, and optional validated argument value. The
-[tool-call lifecycle](tool-call-lifecycle.md) requires a result to carry the
-same call ID and identify the resolved tool/version. There MUST be exactly one
-terminal result per accepted call.
+Every tool call has a stable `ToolCallId`, requested provider alias, optional
+resolved tool identity/version, raw argument representation, and optional
+validated argument value. The [tool-call lifecycle](tool-call-lifecycle.md)
+requires a result to carry the same call ID, preserve the requested alias, and
+identify the resolved tool/version only when resolution succeeded. Every
+bounded, identified request MUST reach exactly one terminal result and one
+message projection; calls admitted to invocation also have one accepted record
+before their effect.
+
+The tool runtime's recorded `ToolCallResult` is the authoritative terminal
+record. The `ToolResultPart` placed in durable message history is a separate,
+tighter projection for model context; it MUST retain the requested alias,
+resolved identity/version when available, source terminal status, side-effect
+certainty, retryability, source-result correlation, and explicit
+redaction/truncation/externalization provenance alongside its coarser portable
+outcome. It MUST also carry the same immutable projection-policy key/version
+reference recorded with the accepted call and terminal result. It cannot
+recreate omitted authorization, usage, or diagnostic fields. History-publication
+retries reproject from the recorded terminal result and never repeat the effect.
+
+Status mapping is loss-aware and fail-closed. Only an authoritative success maps
+to portable `Success`; pre-invocation invalid/unknown/denied outcomes map to
+`Rejected`; invocation or result-processing failures map to `Failed`; and
+cancellation/interruption maps to `Cancelled`. An unknown future status maps to
+`Failed` with an explicit mapping-loss marker. Human-readable result text is
+never parsed to determine status.
 
 Provider call IDs MUST be preserved. If a provider supplies no usable ID, the
 adapter MAY generate one and record that provenance.
+
+Canonical call identity is distinct from a target provider's constrained wire
+identity. If a target protocol requires normalization, the adapter uses one
+deterministic collision-safe request-scoped bijection and restores the canonical
+ID on events and results. The call also retains a stable content-part identity
+or its position in the assistant message's **complete** content array. That
+position counts text, reasoning, and other parts; it is not the ordinal in a
+filtered list of tool calls. Scheduling ordinal is a separate field.
 
 ## Data ownership
 
@@ -132,20 +169,20 @@ versions explicitly.
 - Unknown provider parts survive load/save without becoming strings.
 - A reasoning signature is reused only on a compatible continuation path.
 - Tool call and result remain correlated through adapter translation and replay.
+- Mixed text/reasoning/tool content preserves full-content position separately
+  from tool scheduling ordinal and any normalized wire ID.
 - An interrupted assistant message cannot be mistaken for successful output.
 - Canonical equality detects a duplicate ID with materially different content.
-
-## Upstream evidence
-
-- Pi's provider-neutral message and stream types are in
-  [`packages/ai/src/types.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/ai/src/types.ts).
-- OpenCode V2 models tagged message and tool-state variants in
-  [`session-message.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/schema/src/session-message.ts).
-- Pydantic AI's broader request/response part taxonomy and message states are in
-  [`messages.py`](https://github.com/pydantic/pydantic-ai/blob/c0e4d824eaa0401d4481d401e5b3894ab32ab59d/pydantic_ai_slim/pydantic_ai/messages.py).
+- A synthetic runtime notice cannot gain system/developer precedence during
+  provider translation or history repair.
+- A truncated model-visible tool result still identifies its authoritative
+  status, uncertainty, source correlation, and projection loss.
+- An unknown provider alias remains unresolved while its rejected terminal
+  result and projection retain that alias and the captured policy version.
 
 ## Related specifications
 
 - [Streaming and event protocol](streaming-and-event-protocol.md)
 - [History validation and repair](history-validation-and-repair.md)
+- [Tool errors, retries, and results](tool-errors-retries-and-results.md)
 - [Model providers and capabilities](model-providers-and-capabilities.md)

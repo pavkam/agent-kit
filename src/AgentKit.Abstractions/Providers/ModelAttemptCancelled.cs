@@ -49,4 +49,25 @@ public sealed record ModelAttemptCancelled: ModelAttemptResult
 
     /// <summary>Gets the last known usage before cancellation, if any was reported.</summary>
     public ModelUsage? Usage { get; init; }
+
+    /// <inheritdoc/>
+    public bool Equals(ModelAttemptCancelled? other) =>
+        other is not null
+        && Cancellation.Equals(other.Cancellation)
+        && PartialParts.SequenceEqual(other.PartialParts)
+        && Equals(Usage, other.Usage);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Cancellation);
+        foreach (var part in PartialParts)
+        {
+            hash.Add(part);
+        }
+
+        hash.Add(Usage);
+        return hash.ToHashCode();
+    }
 }

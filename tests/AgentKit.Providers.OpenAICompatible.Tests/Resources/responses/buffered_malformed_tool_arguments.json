@@ -1,0 +1,31 @@
+{
+  "id": "chatcmpl-malformed-buffered",
+  "object": "chat.completion",
+  "created": 1700000030,
+  "model": "gpt-4o-2024-08-06",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "partial text",
+        "tool_calls": [
+          {
+            "id": "call_malformed_buffered",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\":"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 30,
+    "completion_tokens": 5,
+    "total_tokens": 35
+  }
+}

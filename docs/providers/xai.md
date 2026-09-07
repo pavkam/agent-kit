@@ -275,6 +275,14 @@ request, model, or service-tier diagnostics.
 - Query model capabilities rather than sending every OpenAI field and hoping
   ignored means supported.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [xAI REST Chat and Responses reference](https://docs.x.ai/developers/rest-api-reference/inference/chat)

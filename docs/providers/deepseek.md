@@ -238,6 +238,14 @@ of truth. All dialect-specific failures still map through the
 - Silent ignore is not success: emit diagnostics when a requested feature has no
   effect.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [DeepSeek Chat Completions reference](https://api-docs.deepseek.com/api/create-chat-completion/)

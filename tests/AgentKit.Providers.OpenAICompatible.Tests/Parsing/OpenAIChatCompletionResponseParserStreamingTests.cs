@@ -14,14 +14,16 @@ public sealed class OpenAIChatCompletionResponseParserStreamingTests
 {
     public static TheoryData<int> ChunkSizes => [1, 2, 3, 7, 64, 4096];
 
-    private static OpenAIResponseParseContext CreateContext(ModelRequestId requestId) =>
+    private static OpenAIResponseParseContext CreateContext(
+        ModelRequestId requestId,
+        ProviderRequestId? providerRequestId = null) =>
         new(
             requestId,
             new ProviderId("openai"),
             new ApiFamilyId("openai-chat-completions"),
             new ModelId("gpt-4o"),
             deploymentId: null,
-            providerRequestId: null);
+            providerRequestId);
 
     [Theory]
     [MemberData(nameof(ChunkSizes))]
@@ -147,5 +149,45 @@ public sealed class OpenAIChatCompletionResponseParserStreamingTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenToolArgumentsAreMalformed_ReturnsCorrelatedProtocolFailure(
+        int chunkSize)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var providerRequestId = new ProviderRequestId("provider-request-streaming");
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllBytes("responses/streaming_malformed_tool_arguments.sse");
+        await using var stream = new ChunkedStream(payload, chunkSize);
+
+        var result = await parser.ParseStreamingAsync(
+            stream,
+            CreateContext(requestId, providerRequestId),
+            observer,
+            TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.RequestId.ShouldBe(providerRequestId);
+        failed.Failure.DiagnosticCause.ShouldBeNull();
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("partial text");
+
+        var argumentDeltas = observer.Events
+            .OfType<ModelPartDelta>()
+            .Select(responseEvent => responseEvent.Delta)
+            .OfType<ToolArgumentsContentDelta>()
+            .ToArray();
+        argumentDeltas.ShouldNotBeEmpty();
+        _ = argumentDeltas.Select(delta => delta.ToolCallId).Distinct().ShouldHaveSingleItem();
+
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.RequestId.ShouldBe(requestId);
+        terminal.Failure.ShouldBe(failed.Failure);
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        observer.Events.Select(responseEvent => responseEvent.Sequence).ShouldBe(
+            Enumerable.Range(0, observer.Events.Count).Select(index => (long) index));
     }
 }

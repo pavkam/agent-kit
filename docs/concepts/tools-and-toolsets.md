@@ -26,6 +26,11 @@ adapter-safe alias and MUST map back to one exact tool/version. Duplicate names
 MUST be rejected or resolved by explicit deterministic precedence before the
 request is sent.
 
+An alias returned by a provider remains the requested alias until resolution. An
+unknown or ambiguous value receives a rejected terminal result with no
+fabricated `ToolId` or `ToolVersion`; textual equality with a canonical ID does
+not make it one.
+
 Descriptions, schemas, MCP annotations, and model-selected names are untrusted
 metadata. They never grant authority.
 
@@ -38,7 +43,11 @@ metadata. They never grant authority.
 - `ISecurityAuthority` evaluates the canonical tool operation and returns allow
   with a bounded grant, deny, or require approval.
 - `IToolInvoker` performs one already-authorized invocation.
-- `IToolResultRecorder` commits terminal results.
+- `IToolCallRecorder` commits accepted calls and their authoritative terminal
+  results.
+- `IToolResultProjectionPolicyCatalog` retains captured policy versions, and
+  `IToolResultProjector` creates the bounded loss-aware history/model value
+  without invoking the tool.
 - Security and tool audit sinks receive correlated redacted decisions, grant
   consumption, and outcomes.
 
@@ -56,6 +65,14 @@ Toolset preparation occurs before each model request when availability can
 change. A preparation stage MAY add, remove, rename, or annotate tools based on
 run context and model capabilities, but its result MUST be immutable and
 captured in the request manifest.
+
+Discovery carries the complete authenticated `ExecutionIdentity`, immutable
+security/definition/configuration snapshots, and typed run correlation. Those
+values MUST agree before any dynamic, remote, or MCP provider is contacted.
+Principal-specific discovery is authorized, and caches include identity plus
+authority, policy, definition, configuration, source, and model-capability
+versions; a process-level engine never shares one agent's exposed catalog with
+another identity by accident.
 
 ## Schema rules
 
@@ -91,30 +108,63 @@ Dynamic tools MAY appear or disappear between turns. Calls resolve against the
 catalog snapshot used in the originating request, not whatever catalog happens
 to exist later.
 
+When toolsets are merged, the snapshot MUST retain a per-tool reference to the
+originating execution-policy key and version. Resolution, validation, and
+planning preserve it, and the run capability supplies the exact bound policy
+instance. Validation produces validated arguments; only a later policy decision
+may produce an execution plan.
+
+A tool result MAY propose tools to activate for later requests. Activation
+occurs only when that result is durably materialized in source order,
+deduplicates names deterministically, resolves them against the captured/next
+catalog, and passes capability and authority checks. It never changes the batch
+or provider request already in flight.
+
 Provider-native tools remain distinct from application tools because execution,
 permission, billing, and result lifecycles differ. Adapters MUST NOT disguise a
 server-side web search as a locally authorized function call.
+
+## First-party file tools
+
+The first-party file tools are separate feature packages: `AgentKit.Tools.Read`
+owns the model-facing read descriptor, line-window projection, continuation
+provenance, and registration; `AgentKit.Tools.Write` owns the write descriptor,
+explicit disposition, text-payload projection, and registration. Both depend on
+narrow file-system abstractions. Neither owns host path resolution, byte
+enforcement, or operating-system I/O.
+
+A convenience registration MAY install both packages, but a combined
+`AgentKit.Tools.FileSystem` package is not the normative ownership boundary.
+Read-only agents MUST be able to select the read tool without receiving a writer
+or a mutating descriptor.
+
+Read ranges are a model-facing concern. The read tool defines one-based logical
+line offsets, a positive finite line limit, EOF and trailing-newline behavior,
+truncation markers, and a version-bound continuation; an omitted limit uses a
+configured finite window. The host supplies a bounded byte stream and MUST NOT
+implement the request by loading an unbounded file before slicing it. The write
+tool requires one explicit `CreateOnly`, `ReplaceExisting`, `CreateOrReplace`,
+or `Append` disposition. It has no implicit overwrite mode, accepts empty and
+whitespace-only text, and exposes parent-directory creation as a separate
+declared and authorized effect.
 
 ## Acceptance scenarios
 
 - Duplicate provider-visible names fail before model I/O.
 - A dynamic call resolves against its original catalog snapshot.
+- A faster later result cannot activate a tool before its source-order result is
+  materialized, and proposed unknown tools remain inactive.
 - Canonical validation remains strict after provider schema downgrade.
 - Reflection tools pass the same validation and permission pipeline.
 - Untrusted remote annotations cannot lower effect class or grant approval.
 - Combining toolsets produces stable order and collision diagnostics.
-
-## Upstream evidence
-
-- Pydantic AI's static, combined, dynamic, prepared, prefixed, and external
-  toolsets are documented in [toolsets](https://ai.pydantic.dev/toolsets/).
-- OpenCode separates application tools from session execution in
-  [`application-tools.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/tool/application-tools.ts).
-- Pi's core tool definitions and execution options are in
-  [`types.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/agent/src/types.ts).
+- Selecting only `AgentKit.Tools.Read` does not resolve or authorize a writer.
+- A missing write disposition fails validation instead of defaulting to
+  destructive replacement.
 
 ## Related specifications
 
 - [Tool-call lifecycle](tool-call-lifecycle.md)
+- [Tool errors, retries, and results](tool-errors-retries-and-results.md)
 - [Permissions, approvals, and trust](permissions-approvals-and-trust.md)
 - [MCP integration](mcp-integration.md)

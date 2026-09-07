@@ -54,6 +54,14 @@ Usage updates are monotonic for a run. Provider corrections MAY replace one
 request's provisional value, but MUST not double-count streaming increments and
 terminal totals.
 
+Durable session usage is an append-only ledger, not a field reconstructed from
+the surviving transcript or current operation state. It records every settled
+provider attempt—including failed, retried, cancelled, and synthetic
+settlements—with provider-native counters, response/entry identity when one
+exists, and adjustment provenance. Terminal cleanup and conversation compaction
+do not delete billing evidence; recovery never treats a usage row as proof of an
+operation transition.
+
 ## Enforcement boundaries
 
 Before a [model request](provider-request-pipeline.md), the runtime MUST check
@@ -112,6 +120,13 @@ handles created by that authority; they MUST NOT be captured by singleton
 consumers. Profiles and policy implementations are keyed and replaceable only
 through an explicit same-key replacement registration.
 
+Consumers receive an invocation-only budget capability containing the exact
+profile version, authenticated execution identity, operation correlation, and
+`IBudgetScope`. They MUST validate that binding, reserve before every attempted
+effect, and settle or release it before returning. Out-of-run embedding,
+reranking, maintenance, or delegation work receives a child operation scope; it
+MUST NOT inject or fabricate an `IRunBudget`.
+
 ## Acceptance scenarios
 
 - Concurrent request reservations cannot oversubscribe one remaining slot.
@@ -121,18 +136,13 @@ through an explicit same-key replacement registration.
 - Post-response token overflow preserves received output and prevents another
   turn.
 - Limit results identify partial side-effect certainty.
-
-## Upstream evidence
-
-- Pydantic AI exposes request, token, successful tool-call, per-request input,
-  and cost limits in [usage limits](https://ai.pydantic.dev/usage/).
-- Pi's normalized token and cost breakdown appears in
-  [`packages/ai/src/types.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/ai/src/types.ts).
-- OpenCode's runner applies step limits and a final no-tools instruction in
-  [`llm.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/runner/llm.ts).
+- A failed first provider attempt and successful retry produce two attributable
+  ledger rows but one correctly aggregated run total.
+- Fork usage is copied or reset only through an explicit policy.
 
 ## Related specifications
 
 - [Context assembly and instructions](context-assembly-and-instructions.md)
 - [Tool scheduling and concurrency](tool-scheduling-and-concurrency.md)
 - [Observability and audit](observability-and-audit.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

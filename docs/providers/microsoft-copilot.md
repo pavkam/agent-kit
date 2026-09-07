@@ -287,6 +287,14 @@ tokens or retrieved content.
 7. Keep Copilot Studio Direct Line and GitHub Copilot administration in separate
    adapter families.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+separate public Microsoft 365, Copilot Studio, GitHub administration, and
+account-scoped inference profiles. Entitlement filtering remains account-local
+and does not redefine the public contracts below.
+
 ## First-party sources
 
 - [Microsoft 365 Copilot APIs overview](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/copilot-apis-overview)

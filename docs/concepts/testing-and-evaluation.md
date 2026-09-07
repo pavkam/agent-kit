@@ -69,6 +69,13 @@ behavior that every implementation must preserve.
   parity.
 - MCP lifecycle, capability, correlation, transport cleanup, and content.
 - DI replacement, keyed composition, scope validation, and disposal.
+- Coding-harness acceptance/drive/abort/attach/close equivalence, execution-lane
+  ownership, cross-lane mutation serialization, snapshots/reconnect, frontend
+  framing, resource precedence/trust, and host-effect bounds.
+- Provider-route catalog refresh, credential precedence/rotation, canonical-to-
+  wire tool-ID mapping, cross-provider history repair, schema dialects, strict
+  terminal parsing, retry ownership, silent-overflow profiles, and private-route
+  opt-in.
 
 ## Determinism
 
@@ -81,7 +88,8 @@ and controllable tasks to enumerate significant interleavings.
 
 Stream parsers MUST be tested at every meaningful fragmentation boundary,
 including multi-byte text, JSON escapes, interleaved tool arguments, missing and
-duplicate terminals, cancellation, and consumer abandonment.
+duplicate terminals, CR/LF/CRLF, multiline SSE, comments, residual EOF,
+cancellation, and consumer abandonment.
 
 Property-based and model-based tests SHOULD cover state machines, sequence
 monotonicity, idempotency, merge algebra, parser fragmentation, and tool-result
@@ -93,6 +101,14 @@ Inject failure before and after every durability boundary: admission, promotion,
 provider send, response terminal, call record, side effect, result record,
 message append, compaction activation, and settlement. Assert recovery follows
 the evidence table in the durable execution spec.
+
+The harness race matrix additionally covers two accepts on one lane, stale and
+duplicate drives, gate-close versus effect admission, abort-marker commit versus
+in-flight cancellation, completion-order staging versus source-order
+materialization, finish-hook proposal versus new input, watcher registration and
+resnapshot epochs, close versus settlement, and catalog/credential refresh
+versus provider replacement. Every persisted total-state leaf is reopened and
+must advance, wait, terminate, or fault without an unchanged-state hot loop.
 
 Security tests prove denial precedes effects, approvals and grants bind exact
 scope and audience, single-use grants cannot be spent concurrently, low-level
@@ -147,17 +163,11 @@ before the fix and pass afterward.
 - Cancellation is exercised at every await/state boundary.
 - Parser output is invariant under legal fragmentation.
 - Crash matrices prove no duplicate unsafe tool side effect.
+- Rich queue retraction never confuses identical text or drops attachments.
+- Provider conformance preserves canonical identity through every constrained
+  wire-ID mapping and handles “usage missing” separately from zero.
 - Eval reports are reproducible enough to compare versions honestly.
 - Secret canaries never appear in test telemetry artifacts.
-
-## Upstream evidence
-
-- Pydantic AI supplies `TestModel`, `FunctionModel`, override fixtures, and eval
-  tooling documented in [testing](https://ai.pydantic.dev/testing/) and
-  [evals](https://ai.pydantic.dev/evals/).
-- The three researched projects' own tests were used as supporting evidence,
-  while observable implementation and official docs remained primary. Exact
-  revisions are in [research provenance](research-provenance.md).
 
 ## Related specifications
 

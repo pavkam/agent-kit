@@ -27,9 +27,35 @@ class, immutable payload, complete immutable `ExecutionIdentity`, admission
 timestamp, and optional promotion sequence. Tenant and principal projections do
 not replace the identity's evidence, assurance, delegation chain, or version.
 
-`Steer` means deliver at the next safe turn boundary. `FollowUp` means deliver
-only when current work would otherwise finish. Names MAY differ, but the two
-semantics MUST remain distinct.
+The coding-harness profile distinguishes four delivery classes:
+
+- `Steer` delivers at the next safe boundary of the current run;
+- `FollowUp` delivers only when current work would otherwise finish;
+- `NextRun` is reserved for the next accepted run operation; and
+- `Write` is non-triggering deferred tree content.
+
+Names MAY differ, but these semantics remain distinct. A control command is not
+a conversational queue item; its descriptor states whether it is legal during
+generation, tool execution, retry delay, compaction, cancellation, and recovery.
+
+## Resource-backed input and control commands
+
+A slash command, skill invocation, or prompt-template invocation first resolves
+against the captured
+[coding-harness resource catalog](coding-harness-resources-and-project-trust.md#command-routing-and-prompt-expansion).
+A recognized control command is routed as its own typed operation and never
+falls through into `Steer` or `FollowUp`. An unrecognized command-like string
+follows an explicit profile rule: reject it, or admit it as ordinary user text
+with no implied authority.
+
+For conversational input, admission preserves both the original caller payload
+and the immutable transformed/expanded content plus its resource and hook
+manifest. Idempotency compares the caller payload under the same `InputId` and
+returns the already admitted expansion; a retry never reruns input hooks or
+reads a newer skill/template version. Expansion, validation, and bounds failure
+occur before admission and return typed outcomes. Queue snapshots and promotion
+events expose the immutable admitted result, not a resource reference that may
+resolve differently after reload.
 
 ## Idempotent admission
 
@@ -64,6 +90,18 @@ default, then include steering inputs eligible at that promotion's cutoff.
 Promoting one follow-up prevents a busy producer from consuming an unbounded
 queue in a single run. An alternative batch policy MAY be configured but MUST
 remain bounded and deterministic.
+
+Starting a run is one transaction, not a chain of hopeful acknowledgements. It
+claims the expected lane, selects eligible items at a cutoff, promotes their
+pending payloads to immutable entries, places the initiating prompt, deletes the
+pending forms, advances the branch tip, and installs complete initial operation
+state. Provider lookup and every external effect occur later.
+
+At a proposed finish boundary, asynchronous hooks or policy callbacks run
+outside the mutation line. Their follow-up is only a proposal. The executor
+re-enters the serialized boundary and revalidates the lane state, cutoff, and
+exact input-ID plan; newly admitted external work wins over a stale internally
+generated follow-up.
 
 ## Safe boundaries
 
@@ -116,25 +154,50 @@ input IDs. UI text is not a durable queue key. Adjacent compatible user content
 MAY be coalesced into one provider-facing request part, while all source IDs and
 order remain traceable.
 
+Every queue snapshot, event, retraction, and editor restoration retains the
+typed item ID, all content parts and attachments, source, delivery class,
+admitted sequence, admission status, and immutable identity. Retraction is a
+state transition on that identity, never removal by matching display text.
+Duplicate text and image-distinct inputs are therefore unambiguous.
+
+Durable abort removes only current-run `Steer` and `FollowUp` items selected by
+its committed cutoff. It preserves `NextRun`, `Write`, and input admitted after
+the abort marker. The abort result identifies every removed item so a UI may
+offer explicit restoration without fabricating a new admission.
+
+## Deferred-write ordering
+
+A profile that accepts non-triggering `Write` items MUST name every drain
+boundary and preserve their admitted order relative to later direct appends. A
+direct append MUST NOT jump ahead of older deferred writes or leave them
+permanently stranded merely because the lane became idle.
+
+The first-party coding-harness profile uses this policy: an append received
+while an operation owns the lane becomes a deferred `Write`; a later append
+against an idle lane atomically materializes all older `Write` items in FIFO
+order before the new entry. Another profile MAY reject appends during an
+operation or choose a different bounded drain boundary, but it MUST specify and
+test ordering, starvation, cancellation, and crash recovery.
+
 ## Acceptance scenarios
 
 - Retrying identical admission returns one record and one sequence.
 - A conflicting duplicate fails without replacing the original.
+- Retrying one resource-backed input after catalog reload returns its original
+  expansion without rerunning hooks.
+- A control command cannot enter a steering/follow-up queue through slash-text
+  fallthrough.
 - A steer arriving after the captured cutoff is not promoted early.
 - One idle boundary promotes one follow-up and all earlier eligible steers.
+- A stale finish-hook proposal cannot jump ahead of newly admitted external
+  input.
+- Retracting one of two text-identical items preserves the other and every
+  attachment.
+- Aborting a run preserves next-run work and deferred writes.
+- An idle direct append cannot overtake older deferred writes, and one atomic
+  commit materializes the selected FIFO prefix plus the new entry.
 - A crash after promotion can replay without redelivery into history.
 - Queue-full behavior is immediate, typed, and observable.
-
-## Upstream evidence
-
-- OpenCode V2's admission, idempotency, cutoff, and promotion rules are in
-  [`session/input.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/input.ts).
-- Pi distinguishes steering and follow-up delivery with configurable drain modes
-  in
-  [`agent.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/agent/src/agent.ts).
-- Pydantic AI models ASAP and when-idle priorities and correlates deliveries by
-  enqueue ID in
-  [`_enqueue.py`](https://github.com/pydantic/pydantic-ai/blob/c0e4d824eaa0401d4481d401e5b3894ab32ab59d/pydantic_ai_slim/pydantic_ai/_enqueue.py).
 
 ## Related specifications
 

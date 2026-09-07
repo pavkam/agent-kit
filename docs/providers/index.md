@@ -2,15 +2,27 @@
 
 This index is the protocol map for provider adapters in AgentKit. It documents
 wire contracts, not marketing model lists. Model IDs, prices, quotas, and
-feature availability drift too quickly to hard-code here; query each provider's
-model-discovery API and capability metadata at runtime.
+feature availability drift too quickly to treat a checked-in list as timeless.
+Use authoritative credential-scoped runtime discovery where a provider offers
+it; otherwise use a versioned generated or reviewed static snapshot with source,
+freshness, confidence, and explicit overrides.
 
 The [provider architecture](../architecture/model-and-embedding-providers.md)
 defines how this research maps into AgentKit.Providers,
 AgentKit.Providers.OpenAICompatible, and concrete provider packages. Researching
 an API does not by itself commit the project to shipping its adapter.
 
+The [coding-harness provider profiles](coding-harness-provider-profiles.md)
+complement these vendor contracts with AgentKit-owned interoperability
+requirements. They cover the full provider, API-family, model, endpoint,
+authentication, and transport route; dynamic catalogs; replay repair; schema and
+media translation; cache and usage semantics; and concrete conformance
+requirements. They are not a substitute for reverifying the vendor protocol
+linked from each provider page.
+
 **Last full verification:** 2026-09-06
+
+**Coding-harness interoperability re-audit:** 2026-09-07
 
 ## Scope and completeness
 
@@ -48,6 +60,12 @@ The cross-provider
 canonical semantic-operation types, embedding-space identity, score semantics,
 RAG timing, and conformance rules. Read that file before implementing any vector
 or ranking adapter.
+
+The [coding-harness provider profiles](coding-harness-provider-profiles.md)
+define route families, credential and catalog behavior, cross-provider history
+repair, and the compatibility details a long-running coding loop needs. Those
+requirements do not declare adapter support and do not replace current public
+vendor documentation.
 
 ## Provider index
 
@@ -124,17 +142,20 @@ bidirectional sessions can carry terminal errors after headers.
 ## Adapter invariants
 
 - Preserve the
-  [message correlation contract](../concepts/message-and-content-model.md): use
-  provider-generated tool-call IDs verbatim and never derive identity from array
+  [message correlation contract](../concepts/message-and-content-model.md): keep
+  canonical provider tool-call IDs and correlation. When a target protocol
+  constrains wire IDs, use a deterministic collision-safe request-scoped
+  bijection and restore canonical IDs; never derive identity from array
   position.
 - Follow the
   [streaming event grammar](../concepts/streaming-and-event-protocol.md) when
   accumulating text and JSON arguments; chunks are not guaranteed to align with
   UTF-8 characters or JSON tokens.
 - Keep client cancellation distinct from provider cancellation and model stop.
-- Retry 408, 409 lock/contention cases, 429, and transient 5xx only when the
-  operation is idempotent. Honor <code>Retry-After</code> and provider reset
-  headers.
+- Let the configured resilience layer own retries; disable or expose hidden SDK
+  retries. It may retry 408, 409 lock/contention cases, 429, and transient 5xx
+  only when the logical operation is safe. Honor <code>Retry-After</code> and
+  provider reset headers.
 - Generate an idempotency key where supported. For non-idempotent batch, upload,
   tuning, and media jobs, persist the returned job ID before polling.
 - Model unknown enum members as strings plus known constants. Providers add

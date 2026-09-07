@@ -46,4 +46,36 @@ public sealed record HookDispatchScope
     /// <param name="point">The hook point being entered.</param>
     /// <returns>A new scope with <paramref name="point"/>'s recorded depth incremented by one.</returns>
     public HookDispatchScope Entering(HookPointId point) => new(ActiveDepths.SetItem(point, DepthOf(point) + 1));
+
+    /// <inheritdoc/>
+    public bool Equals(HookDispatchScope? other)
+    {
+        if (other is null || ActiveDepths.Count != other.ActiveDepths.Count)
+        {
+            return false;
+        }
+
+        foreach (var (point, depth) in ActiveDepths)
+        {
+            if (!other.ActiveDepths.TryGetValue(point, out var otherDepth) || depth != otherDepth)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = default(HashCode);
+        foreach (var (point, depth) in ActiveDepths.OrderBy(static kvp => kvp.Key.Value, StringComparer.Ordinal))
+        {
+            hash.Add(point);
+            hash.Add(depth);
+        }
+
+        return hash.ToHashCode();
+    }
 }

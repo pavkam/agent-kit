@@ -63,6 +63,7 @@ public sealed class DefaultHookDispatcher: IHookDispatcher
                 }
                 catch (Exception)
                 {
+                    args.Validate();
                     continue;
                 }
             }

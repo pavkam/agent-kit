@@ -123,15 +123,6 @@ output, a limit outcome, cancellation, policy denial, or failure.
   side effects.
 - Result messages are the exact committed suffix, not a reconstructed guess.
 
-## Upstream evidence
-
-- Pydantic AI separates graph state, dependencies, run IDs, conversation IDs,
-  pending messages, and per-run caches in
-  [`_agent_graph.py`](https://github.com/pydantic/pydantic-ai/blob/c0e4d824eaa0401d4481d401e5b3894ab32ab59d/pydantic_ai_slim/pydantic_ai/_agent_graph.py).
-- Pi exposes mutable agent state but guards one active run in
-  [`agent.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/agent/src/agent.ts);
-  AgentKit deliberately isolates this state per run to permit safe concurrency.
-
 ## Related specifications
 
 - [Run lifecycle and settlement](run-lifecycle-and-settlement.md)

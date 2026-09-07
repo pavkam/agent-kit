@@ -110,15 +110,6 @@ tools.
 - Partial stream values never become final before terminal validation.
 - Output-tool names cannot collide with application tool aliases.
 
-## Upstream evidence
-
-- Pydantic AI's output modes, validators, and schemas are documented in
-  [output](https://ai.pydantic.dev/output/), with end-strategy behavior in its
-  [agent API](https://ai.pydantic.dev/api/agent/).
-- OpenCode legacy uses a required synthetic tool for structured output and
-  raises when no structured result is produced in
-  [`prompt.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/opencode/src/session/prompt.ts).
-
 ## Related specifications
 
 - [Tool errors, retries, and results](tool-errors-retries-and-results.md)

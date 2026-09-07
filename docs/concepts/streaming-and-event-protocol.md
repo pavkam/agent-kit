@@ -27,6 +27,11 @@ provider heartbeat/progress, and high-frequency output chunks. An application
 MAY persist them separately for diagnostics, but the core event log MUST NOT
 require them to recover stable state.
 
+A durable coding-harness profile MAY persist compact assistant-progress frames
+or replaceable tool-progress snapshots. These are bounded recovery aids, not
+semantic completion events. They never turn a live candidate into a committed
+message or prove that an external effect ended.
+
 ## Stream grammar
 
 One assistant response follows this grammar:
@@ -61,6 +66,78 @@ publish an immutable committed assistant message only after:
 
 Live events MUST NOT expose a writable shared partial-message object. Consumers
 receive immutable snapshots or typed deltas.
+
+## Wire projection and reduction
+
+A frontend MAY project an internal snapshot-rich stream to a delta-only wire
+grammar. That grammar MUST define one bounded base (`ResponseStarted` or an
+equivalent message-start snapshot), ordered part deltas, and one authoritative
+terminal aggregate. It states whether each usage update is cumulative or
+incremental and preserves usage report state; missing usage never becomes zero.
+
+Tool-call identity and name MUST be available no later than the first arguments
+delta, either in the part-start frame or an earlier correlated descriptor. A
+projection MUST NOT attach the complete response-so-far to every delta. For a
+response of `n` content bytes, total encoded content is bounded linearly by `n`
+plus declared per-frame overhead; repeated cumulative prefixes that produce
+quadratic traffic violate the adapter contract.
+
+The protocol publishes a deterministic reducer and conformance fixtures. A
+client applying the base, every delta exactly once, and the terminal aggregate
+must obtain the same terminal response as the canonical stream. Reconnect uses
+an epoch/cursor-bound replacement base and never mixes deltas from an earlier
+base. The terminal aggregate may supply later metadata or usage and therefore
+outvotes provisional live state.
+
+## Durable partials and reconnect
+
+When partial durability is selected, one encoder consumes provider events in
+order and writes at most one compact frame for each nonterminal event. It uses
+part identity or `contentIndex`, supports interleaving, and avoids cloning the
+ever-growing message for each token. Terminal response events are excluded;
+final settlement is a separate atomic record.
+
+Frame persistence SHOULD enqueue writes synchronously in event order without
+awaiting storage for every delta. The implementation observes every write
+failure and retains an ordered tail/fence whose completion proves all earlier
+accepted writes finished before response settlement. This bounds provider
+backpressure without permitting settlement to race queued persistence.
+
+After process loss, reduction of the committed frame prefix yields a
+**provisional** partial for display or an explicit interrupted result. It is not
+provider-stream resumption. A snapshot keeps that partial outside the immutable
+transcript until a complete or synthetic terminal message commits.
+
+A reconnecting subscription registers a bounded event buffer and captures its
+durable snapshot under the same mutation boundary. It then emits the snapshot,
+events after the captured sequence, and live events. Replaying historical start
+or delta events in addition to a snapshot is forbidden unless the protocol
+explicitly de-duplicates them.
+
+Registration occurs before snapshot capture and delivery remains buffered until
+the consumer explicitly starts. A resnapshot uses a new epoch and sequence
+barrier: discard delivery at or before the replacement boundary, hold later
+events during capture, publish the replacement snapshot, then resume. Recipient
+sets are fixed at publication time and payloads are immutable or cloned per
+recipient. A failing subscriber is isolated and diagnosed without recursively
+feeding the diagnostic through that same subscriber.
+
+A failed replacement capture cannot silently resume the prior snapshot after the
+new epoch has discarded any pre-boundary delivery. The implementation MUST
+either retry atomically while retaining every event needed to close the gap, or
+terminate the subscription with a typed resnapshot failure and release its
+buffer. It MUST NOT combine the old snapshot with only the held post-boundary
+events. This is an AgentKit safety requirement: a correct happy-path
+epoch/barrier protocol is insufficient unless its fallback semantics also close
+the delivery gap explicitly.
+
+An RPC/event channel multiplexing commands, acknowledgements, semantic events,
+and extension UI requests treats them as separate typed frame families. A
+preflight or `Accepted` response is not operation completion. Frames declare
+protocol version, required correlation, maximum encoded size, unknown-version
+behavior, event sequence or replay cursor when supported, and backpressure.
+Concurrent commands either serialize or carry expected-state/version evidence;
+their responses and events may otherwise interleave.
 
 ## Consumer behavior
 
@@ -105,22 +182,25 @@ diagnostics; it MUST NOT synthesize success.
   committed message.
 - Two interleaved tool-call argument streams assemble under the correct IDs.
 - Missing terminal, duplicate terminal, and delta-before-start each fail typed.
+- Delta-only projection scales linearly, exposes tool-call identity before
+  argument streaming, and reduces to the same authoritative terminal message.
 - A slow live UI cannot lose durable tool completion.
 - Cancelling a subscriber leaves the run active when subscriptions are
   non-owning.
 - Exactly one completion task result agrees with exactly one stream terminal.
-
-## Upstream evidence
-
-- Pi's start/content-delta/done stream event model is in
-  [`packages/ai/src/types.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/ai/src/types.ts).
-- OpenCode V2 explicitly separates replayable boundaries from live deltas in
-  [`session-event.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/schema/src/session-event.ts).
-- Pydantic AI exposes part start, delta, and end events in
-  [`messages.py`](https://github.com/pydantic/pydantic-ai/blob/c0e4d824eaa0401d4481d401e5b3894ab32ab59d/pydantic_ai_slim/pydantic_ai/messages.py).
+- Process loss restores only the committed frame prefix and never promotes it to
+  success.
+- Snapshot plus buffered live events has no registration gap or duplicate.
+- Resnapshot changes epoch without dropping a post-boundary event or replaying a
+  pre-boundary event.
+- Failed resnapshot capture either retries without a gap or terminates the
+  subscription; it never resumes an old snapshot with a partial later stream.
+- An accepted RPC prompt later emits exactly one independently correlated
+  terminal outcome.
 
 ## Related specifications
 
 - [Run lifecycle and settlement](run-lifecycle-and-settlement.md)
 - [Provider request pipeline](provider-request-pipeline.md)
 - [Observability and audit](observability-and-audit.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

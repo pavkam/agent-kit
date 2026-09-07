@@ -210,6 +210,142 @@ public sealed class DefaultCompactorTests
         succeeded.Record.Manifest.CoveredRange.EndInclusive.Value.ShouldBeGreaterThanOrEqualTo(toolResult.Sequence.Value);
     }
 
+    [Fact]
+    public async Task CompactAsync_WhenCutSelectionFails_ReturnsCompactionFailed()
+    {
+        var address = Address();
+        var entries = new[] { TestFactory.MessageEntry(address, _branchId, 1, "one") };
+        var cutSelector = new FakeCompactionCutSelector
+        {
+            OnSelect = static _ => new CompactionCutSelectionFailed(
+                new CompactionFailure(CompactionFailureKind.Unknown, "boom", retryable: false, ExtensionData.Empty))
+        };
+        var (compactor, coordinator) = CreateCompactorWithFakes(cutSelector: cutSelector);
+        coordinator.Seed(entries);
+
+        var context = TestFactory.CompactionContext(_agentId, _sessionId);
+        var request = TestFactory.Request(context, _branchId, coordinator.Version, new SessionSequence(1));
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.SafeMessage.ShouldBe("boom");
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenStrategyDeclinesToProduce_ReturnsCompactionRejected()
+    {
+        var address = Address();
+        var entries = new[] { TestFactory.MessageEntry(address, _branchId, 1, "one") };
+        var strategy = new FakeCompactionStrategy
+        {
+            OnProduce = static _ => new CompactionStrategyUnsupported(
+                new CompactionRejection(CompactionRejectionKind.NoSafeCut, "unsupported", ExtensionData.Empty))
+        };
+        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy);
+        coordinator.Seed(entries);
+
+        var context = TestFactory.CompactionContext(_agentId, _sessionId);
+        var request = TestFactory.Request(context, _branchId, coordinator.Version, new SessionSequence(1), minimumRetainedEntries: 0);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<CompactionRejected>();
+        rejected.Rejection.SafeMessage.ShouldBe("unsupported");
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenStrategyFails_ReturnsCompactionFailed()
+    {
+        var address = Address();
+        var entries = new[] { TestFactory.MessageEntry(address, _branchId, 1, "one") };
+        var strategy = new FakeCompactionStrategy
+        {
+            OnProduce = static _ => new CompactionStrategyFailed(
+                new CompactionFailure(CompactionFailureKind.StrategyFailure, "strategy boom", retryable: true, ExtensionData.Empty))
+        };
+        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy);
+        coordinator.Seed(entries);
+
+        var context = TestFactory.CompactionContext(_agentId, _sessionId);
+        var request = TestFactory.Request(context, _branchId, coordinator.Version, new SessionSequence(1), minimumRetainedEntries: 0);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.SafeMessage.ShouldBe("strategy boom");
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenValidationFails_ReturnsCompactionFailed()
+    {
+        var address = Address();
+        var entries = new[] { TestFactory.MessageEntry(address, _branchId, 1, "one") };
+        var validator = new FakeCompactionValidator
+        {
+            OnValidate = static _ => new CompactionValidationFailed(
+                new CompactionFailure(CompactionFailureKind.ValidationFailure, "validation boom", retryable: false, ExtensionData.Empty))
+        };
+        var (compactor, coordinator) = CreateCompactorWithFakes(validator: validator);
+        coordinator.Seed(entries);
+
+        var context = TestFactory.CompactionContext(_agentId, _sessionId);
+        var request = TestFactory.Request(context, _branchId, coordinator.Version, new SessionSequence(1), minimumRetainedEntries: 0);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.SafeMessage.ShouldBe("validation boom");
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenValidationRejectedWithMultipleIssues_ReturnsCompactionRejectedWithCombinedMessage()
+    {
+        var address = Address();
+        var entries = new[] { TestFactory.MessageEntry(address, _branchId, 1, "one") };
+        var validator = new FakeCompactionValidator
+        {
+            OnValidate = static _ => new CompactionValidationRejected([
+                new CompactionValidationIssue(CompactionValidationIssueKind.InvalidStructure, "issue one", []),
+                new CompactionValidationIssue(CompactionValidationIssueKind.UnboundedContent, "issue two", [])
+            ])
+        };
+        var (compactor, coordinator) = CreateCompactorWithFakes(validator: validator);
+        coordinator.Seed(entries);
+
+        var context = TestFactory.CompactionContext(_agentId, _sessionId);
+        var request = TestFactory.Request(context, _branchId, coordinator.Version, new SessionSequence(1), minimumRetainedEntries: 0);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<CompactionRejected>();
+        rejected.Rejection.Kind.ShouldBe(CompactionRejectionKind.PolicyViolation);
+        rejected.Rejection.SafeMessage.ShouldContain("issue one");
+        rejected.Rejection.SafeMessage.ShouldContain("issue two");
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenSessionOrBranchNotFoundDuringActivation_ReturnsCompactionFailed()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        var entries = Enumerable.Range(1, 5)
+            .Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('z', 200)))
+            .ToArray();
+        coordinator.Seed(entries);
+        coordinator.AppendOverride = request => new SessionAppendNotFound(request.Context.ToAddress());
+
+        var context = TestFactory.CompactionContext(_agentId, _sessionId);
+        var request = TestFactory.Request(
+            context, _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.Kind.ShouldBe(CompactionFailureKind.ActivationFailure);
+        failed.Failure.Retryable.ShouldBeFalse();
+    }
+
     private SessionAddress Address() => new(_agentId, _sessionId);
 
     private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactor(
@@ -229,6 +365,28 @@ public sealed class DefaultCompactorTests
             new StructuralCompactionCutSelector(options),
             new ExtractiveCompactionStrategy(estimator, options),
             new DefaultCompactionValidator(estimator, options),
+            estimator,
+            IdGenerator(static v => new CompactionManifestId(v)),
+            IdGenerator(static v => new SessionEntryId(v)),
+            TimeProvider.System,
+            options);
+
+        return (compactor, coordinator);
+    }
+
+    private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactorWithFakes(
+        ICompactionCutSelector? cutSelector = null,
+        ICompactionStrategy? strategy = null,
+        ICompactionValidator? validator = null)
+    {
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        var options = Options.Create(new CompactionOptions());
+        var estimator = new CharacterCompactionSizeEstimator(options);
+        var compactor = new DefaultCompactor(
+            coordinator,
+            cutSelector ?? new StructuralCompactionCutSelector(options),
+            strategy ?? new ExtractiveCompactionStrategy(estimator, options),
+            validator ?? new DefaultCompactionValidator(estimator, options),
             estimator,
             IdGenerator(static v => new CompactionManifestId(v)),
             IdGenerator(static v => new SessionEntryId(v)),

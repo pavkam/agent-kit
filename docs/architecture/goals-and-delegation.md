@@ -382,9 +382,21 @@ public static class ServiceExtensions
             Action<GoalProfileOptions> configure) =>
             GoalServiceRegistration.AddGoalProfile(services, key, configure);
 
+        public IServiceCollection ReplaceGoalProfile(
+            GoalProfileKey key,
+            Action<GoalProfileOptions> configure) =>
+            GoalServiceRegistration.ReplaceGoalProfile(
+                services,
+                key,
+                configure);
+
         public IServiceCollection AddGoalStore<TStore>(GoalStoreKey key)
             where TStore : class, IGoalStore =>
             GoalServiceRegistration.AddGoalStore<TStore>(services, key);
+
+        public IServiceCollection ReplaceGoalStore<TStore>(GoalStoreKey key)
+            where TStore : class, IGoalStore =>
+            GoalServiceRegistration.ReplaceGoalStore<TStore>(services, key);
 
         public IServiceCollection AddDelegationTargetProvider<TProvider>()
             where TProvider : class, IDelegationTargetProvider =>
@@ -398,15 +410,36 @@ public static class ServiceExtensions
                 services,
                 key);
 
+        public IServiceCollection ReplaceDelegationDispatcher<TDispatcher>(
+            DelegationDispatcherKey key)
+            where TDispatcher : class, IDelegationDispatcher =>
+            GoalServiceRegistration.ReplaceDelegationDispatcher<TDispatcher>(
+                services,
+                key);
+
         public IServiceCollection AddGoalJoinStrategy<TStrategy>(
             GoalJoinStrategyKey key)
             where TStrategy : class, IGoalJoinStrategy =>
             GoalServiceRegistration.AddGoalJoinStrategy<TStrategy>(services, key);
 
+        public IServiceCollection ReplaceGoalJoinStrategy<TStrategy>(
+            GoalJoinStrategyKey key)
+            where TStrategy : class, IGoalJoinStrategy =>
+            GoalServiceRegistration.ReplaceGoalJoinStrategy<TStrategy>(
+                services,
+                key);
+
         public IServiceCollection AddDelegationPolicy<TPolicy>(
             DelegationPolicyRegistration registration)
             where TPolicy : class, IDelegationPolicy =>
             GoalServiceRegistration.AddDelegationPolicy<TPolicy>(
+                services,
+                registration);
+
+        public IServiceCollection ReplaceDelegationPolicy<TPolicy>(
+            DelegationPolicyRegistration registration)
+            where TPolicy : class, IDelegationPolicy =>
+            GoalServiceRegistration.ReplaceDelegationPolicy<TPolicy>(
                 services,
                 registration);
 
@@ -422,9 +455,54 @@ public static class ServiceExtensions
             GoalServiceRegistration.ReplaceGoalCoordinator<TCoordinator>(
                 services);
 
+        public IServiceCollection ReplaceGoalStoreSelector<TSelector>()
+            where TSelector : class, IGoalStoreSelector =>
+            GoalServiceRegistration.ReplaceGoalStoreSelector<TSelector>(
+                services);
+
+        public IServiceCollection
+            ReplaceDelegationTargetCatalog<TCatalog>()
+            where TCatalog : class, IDelegationTargetCatalog =>
+            GoalServiceRegistration.ReplaceDelegationTargetCatalog<TCatalog>(
+                services);
+
+        public IServiceCollection
+            ReplaceDelegationTargetSelector<TSelector>()
+            where TSelector : class, IDelegationTargetSelector =>
+            GoalServiceRegistration.ReplaceDelegationTargetSelector<TSelector>(
+                services);
+
+        public IServiceCollection
+            ReplaceDelegationDispatcherSelector<TSelector>()
+            where TSelector : class, IDelegationDispatcherSelector =>
+            GoalServiceRegistration
+                .ReplaceDelegationDispatcherSelector<TSelector>(services);
+
+        public IServiceCollection
+            ReplaceGoalJoinStrategySelector<TSelector>()
+            where TSelector : class, IGoalJoinStrategySelector =>
+            GoalServiceRegistration.ReplaceGoalJoinStrategySelector<TSelector>(
+                services);
+
         public IServiceCollection ReplaceDelegationPolicyPipeline<TPipeline>()
             where TPipeline : class, IDelegationPolicyPipeline =>
             GoalServiceRegistration.ReplaceDelegationPolicyPipeline<TPipeline>(
+                services);
+
+        public IServiceCollection
+            ReplaceDelegationCoordinator<TCoordinator>()
+            where TCoordinator : class, IDelegationCoordinator =>
+            GoalServiceRegistration.ReplaceDelegationCoordinator<TCoordinator>(
+                services);
+
+        public IServiceCollection ReplaceGoalBudgetManager<TManager>()
+            where TManager : class, IGoalBudgetManager =>
+            GoalServiceRegistration.ReplaceGoalBudgetManager<TManager>(
+                services);
+
+        public IServiceCollection ReplaceGoalEventDispatcher<TDispatcher>()
+            where TDispatcher : class, IGoalEventDispatcher =>
+            GoalServiceRegistration.ReplaceGoalEventDispatcher<TDispatcher>(
                 services);
     }
 }

@@ -79,6 +79,12 @@ Output adapters cannot infer state from display text or treat live deltas as
 durable facts. The runtime remains usable without any specific UI, transport, or
 hosting model.
 
+Multi-server frontends qualify projection and routing identity by authenticated
+server realm, canonical domain identity, and projection incarnation. Async work
+captures that incarnation, so A -> B -> A navigation cannot let work from the
+first A mutate the replacement. Active-server guesses and ID-only cache keys are
+not valid protocol translation.
+
 The loop owns state transitions. The I/O component owns how accepted work enters
 those transitions and how provisional and final activity reaches consumers.
 
@@ -462,3 +468,6 @@ not replace them with transport strings or bypass admission.
 - [Input admission and message queues](../concepts/input-admission-and-message-queues.md)
 - [Streaming and event protocol](../concepts/streaming-and-event-protocol.md)
 - [Structured output](../concepts/structured-output.md)
+- [Interactive terminals and process sessions](../concepts/interactive-terminals-and-process-sessions.md)
+- [Coding-harness export, sharing, and control plane](../concepts/coding-harness-export-sharing-and-control-plane.md)
+- [Coding-harness frontends and protocol adapters](../concepts/coding-harness-frontends-and-protocol-adapters.md)

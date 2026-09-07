@@ -221,6 +221,14 @@ errors may include a structured field path.
 - Capability-gate every content chunk, hosted tool, and structured-output
   feature by model.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [Mistral Chat API](https://docs.mistral.ai/api/endpoint/chat)

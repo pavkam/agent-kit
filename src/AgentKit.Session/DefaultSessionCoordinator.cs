@@ -16,9 +16,10 @@ using Microsoft.Extensions.Options;
 /// loop, input coordinator, or context assembler. Publishing to
 /// <see cref="ISessionEventSink"/> instances happens after the store call
 /// returns a successful outcome and cannot influence or veto that outcome;
-/// a sink failure is not currently surfaced to the caller of this reduced
-/// coordinator (best-effort delivery), since required durable delivery
-/// belongs to the not-yet-implemented observability integration.
+/// sink delivery is best-effort and settlement-safe: after a successful store
+/// mutation, each sink is attempted independently, and sink failure or caller
+/// cancellation cannot replace the already-committed result. Required durable
+/// delivery belongs to the not-yet-implemented observability integration.
 /// </remarks>
 internal sealed class DefaultSessionCoordinator: ISessionCoordinator
 {
@@ -60,7 +61,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         var result = await _store.CreateAsync(request, cancellationToken).ConfigureAwait(false);
         if (result is SessionCreated created)
         {
-            await PublishAsync(
+            await PublishBestEffortAsync(
                 new SessionCreatedEvent(created.Descriptor.Address, _timeProvider.GetUtcNow(), created.Descriptor),
                 cancellationToken).ConfigureAwait(false);
         }
@@ -93,7 +94,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         var result = await _store.AppendAsync(request, cancellationToken).ConfigureAwait(false);
         if (result is SessionAppended appended)
         {
-            await PublishAsync(
+            await PublishBestEffortAsync(
                 new SessionAppendedEvent(
                     request.Context.ToAddress(),
                     _timeProvider.GetUtcNow(),
@@ -129,7 +130,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         var result = await _store.CreateBranchAsync(request, cancellationToken).ConfigureAwait(false);
         if (result is SessionBranched branched)
         {
-            await PublishAsync(
+            await PublishBestEffortAsync(
                 new SessionBranchedEvent(
                     request.Context.ToAddress(),
                     _timeProvider.GetUtcNow(),
@@ -152,7 +153,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         var result = await _store.DeleteAsync(request, cancellationToken).ConfigureAwait(false);
         if (result is SessionDeleted)
         {
-            await PublishAsync(
+            await PublishBestEffortAsync(
                 new SessionDeletedEvent(request.Context.ToAddress(), _timeProvider.GetUtcNow()),
                 cancellationToken).ConfigureAwait(false);
         }
@@ -160,11 +161,22 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         return result;
     }
 
-    private async ValueTask PublishAsync(SessionEvent sessionEvent, CancellationToken cancellationToken)
+    private async ValueTask PublishBestEffortAsync(
+        SessionEvent sessionEvent,
+        CancellationToken cancellationToken)
     {
         foreach (var sink in _eventSinks)
         {
-            await sink.PublishAsync(sessionEvent, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await sink.PublishAsync(sessionEvent, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Durable state has already committed. Best-effort observation
+                // cannot change or obscure that result, and one failed sink
+                // cannot prevent later sinks from receiving the same event.
+            }
         }
     }
 }

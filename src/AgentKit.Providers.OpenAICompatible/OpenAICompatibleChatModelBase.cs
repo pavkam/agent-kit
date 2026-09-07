@@ -95,13 +95,21 @@ public abstract class OpenAICompatibleChatModelBase: IChatModel
         ArgumentNullException.ThrowIfNull(observer);
 
         var requestId = request.Context.ModelRequestId;
-        long sequence = 0;
+        var trackingObserver = new TrackingModelResponseObserver(observer);
 
         async Task<ModelAttemptResult> FailAsync(ProviderFailure failure)
         {
-            await observer.OnEventAsync(new ModelResponseFailed(requestId, sequence++, failure, [], usage: null), cancellationToken)
+            await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+            await trackingObserver.OnEventAsync(
+                    new ModelResponseFailed(
+                        requestId,
+                        trackingObserver.NextSequence,
+                        failure,
+                        trackingObserver.CompletedParts,
+                        trackingObserver.Usage),
+                    cancellationToken)
                 .ConfigureAwait(false);
-            return new ModelAttemptFailed(failure, [], usage: null);
+            return new ModelAttemptFailed(failure, trackingObserver.CompletedParts, trackingObserver.Usage);
         }
 
         Task<ModelAttemptResult> FailWithKindAsync(ProviderFailureKind kind, string safeMessage, Exception? cause = null) =>
@@ -129,18 +137,45 @@ public abstract class OpenAICompatibleChatModelBase: IChatModel
                 diagnosticCause: null,
                 ExtensionData.Empty);
 
-            await observer.OnEventAsync(new ModelResponseCancelled(requestId, sequence++, cancellation, [], usage: null), cancellationToken)
+            await EnsureStartedAsync(CancellationToken.None).ConfigureAwait(false);
+            await trackingObserver.OnEventAsync(
+                    new ModelResponseCancelled(
+                        requestId,
+                        trackingObserver.NextSequence,
+                        cancellation,
+                        trackingObserver.CompletedParts,
+                        trackingObserver.Usage),
+                    CancellationToken.None)
                 .ConfigureAwait(false);
-            return new ModelAttemptCancelled(cancellation, [], usage: null);
+            return new ModelAttemptCancelled(cancellation, trackingObserver.CompletedParts, trackingObserver.Usage);
         }
 
-        await observer.OnEventAsync(new ModelResponseStarted(requestId, sequence++), cancellationToken).ConfigureAwait(false);
+        ValueTask EnsureStartedAsync(CancellationToken deliveryToken) =>
+            trackingObserver.NextSequence == 0
+                ? trackingObserver.OnEventAsync(new ModelResponseStarted(requestId, 0), deliveryToken)
+                : ValueTask.CompletedTask;
+
+        if (request.Context.Model != _descriptor)
+        {
+            return await FailWithKindAsync(
+                ProviderFailureKind.InvalidRequest,
+                "The request model descriptor does not match the configured adapter descriptor.").ConfigureAwait(false);
+        }
 
         if (request.Context.Tools.Length > 0 && !_descriptor.Capabilities.SupportsToolCalls)
         {
             return await FailWithKindAsync(
                 ProviderFailureKind.InvalidRequest,
                 "The selected model does not support tool calls.").ConfigureAwait(false);
+        }
+
+        if (request.Context.Tools.Length > 0 &&
+            request.Context.Settings.ParallelToolCalls is true &&
+            !_descriptor.Capabilities.SupportsParallelToolCalls)
+        {
+            return await FailWithKindAsync(
+                ProviderFailureKind.InvalidRequest,
+                "The selected model does not support parallel tool calls.").ConfigureAwait(false);
         }
 
         var remaining = request.Deadline - _timeProvider.GetUtcNow();
@@ -237,10 +272,10 @@ public abstract class OpenAICompatibleChatModelBase: IChatModel
                 {
                     return useStreaming
                         ? await _streamParser
-                            .ParseStreamingAsync(body, parseContext, observer, linkedSource.Token)
+                            .ParseStreamingAsync(body, parseContext, trackingObserver, linkedSource.Token)
                             .ConfigureAwait(false)
                         : await _streamParser
-                            .ParseBufferedAsync(body, parseContext, observer, linkedSource.Token)
+                            .ParseBufferedAsync(body, parseContext, trackingObserver, linkedSource.Token)
                             .ConfigureAwait(false);
                 }
             }
@@ -277,7 +312,6 @@ public abstract class OpenAICompatibleChatModelBase: IChatModel
 
     private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        string? safeMessage = null;
         string? providerCode = null;
 
         try
@@ -288,7 +322,6 @@ public abstract class OpenAICompatibleChatModelBase: IChatModel
                 var error = await JsonSerializer
                     .DeserializeAsync<OpenAIErrorResponse>(body, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
-                safeMessage = error?.Error?.Message;
                 providerCode = error?.Error?.Code ?? error?.Error?.Type;
             }
         }
@@ -310,76 +343,27 @@ public abstract class OpenAICompatibleChatModelBase: IChatModel
             (int) response.StatusCode,
             providerCode,
             retryAfter,
-            safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
+            $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause: null,
             ExtensionData.Empty);
     }
 
-    private static ProviderFailureKind MapStatusCode(HttpStatusCode statusCode) =>
-        statusCode switch
+    private static ProviderFailureKind MapStatusCode(HttpStatusCode statusCode)
+    {
+        var statusCodeValue = (int) statusCode;
+
+        return statusCodeValue switch
         {
-            HttpStatusCode.Unauthorized => ProviderFailureKind.Authentication,
-            HttpStatusCode.Forbidden => ProviderFailureKind.Authorization,
-            HttpStatusCode.TooManyRequests => ProviderFailureKind.Throttling,
-            HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity =>
-                ProviderFailureKind.InvalidRequest,
-            HttpStatusCode.RequestTimeout or HttpStatusCode.GatewayTimeout => ProviderFailureKind.Timeout,
-            var code when (int) code >= 500 => ProviderFailureKind.Unavailable,
-            HttpStatusCode.Continue => throw new NotImplementedException(),
-            HttpStatusCode.SwitchingProtocols => throw new NotImplementedException(),
-            HttpStatusCode.Processing => throw new NotImplementedException(),
-            HttpStatusCode.EarlyHints => throw new NotImplementedException(),
-            HttpStatusCode.OK => throw new NotImplementedException(),
-            HttpStatusCode.Created => throw new NotImplementedException(),
-            HttpStatusCode.Accepted => throw new NotImplementedException(),
-            HttpStatusCode.NonAuthoritativeInformation => throw new NotImplementedException(),
-            HttpStatusCode.NoContent => throw new NotImplementedException(),
-            HttpStatusCode.ResetContent => throw new NotImplementedException(),
-            HttpStatusCode.PartialContent => throw new NotImplementedException(),
-            HttpStatusCode.MultiStatus => throw new NotImplementedException(),
-            HttpStatusCode.AlreadyReported => throw new NotImplementedException(),
-            HttpStatusCode.IMUsed => throw new NotImplementedException(),
-            HttpStatusCode.Ambiguous => throw new NotImplementedException(),
-            HttpStatusCode.Moved => throw new NotImplementedException(),
-            HttpStatusCode.Found => throw new NotImplementedException(),
-            HttpStatusCode.RedirectMethod => throw new NotImplementedException(),
-            HttpStatusCode.NotModified => throw new NotImplementedException(),
-            HttpStatusCode.UseProxy => throw new NotImplementedException(),
-            HttpStatusCode.Unused => throw new NotImplementedException(),
-            HttpStatusCode.RedirectKeepVerb => throw new NotImplementedException(),
-            HttpStatusCode.PermanentRedirect => throw new NotImplementedException(),
-            HttpStatusCode.PaymentRequired => throw new NotImplementedException(),
-            HttpStatusCode.MethodNotAllowed => throw new NotImplementedException(),
-            HttpStatusCode.NotAcceptable => throw new NotImplementedException(),
-            HttpStatusCode.ProxyAuthenticationRequired => throw new NotImplementedException(),
-            HttpStatusCode.Conflict => throw new NotImplementedException(),
-            HttpStatusCode.Gone => throw new NotImplementedException(),
-            HttpStatusCode.LengthRequired => throw new NotImplementedException(),
-            HttpStatusCode.PreconditionFailed => throw new NotImplementedException(),
-            HttpStatusCode.RequestEntityTooLarge => throw new NotImplementedException(),
-            HttpStatusCode.RequestUriTooLong => throw new NotImplementedException(),
-            HttpStatusCode.UnsupportedMediaType => throw new NotImplementedException(),
-            HttpStatusCode.RequestedRangeNotSatisfiable => throw new NotImplementedException(),
-            HttpStatusCode.ExpectationFailed => throw new NotImplementedException(),
-            HttpStatusCode.MisdirectedRequest => throw new NotImplementedException(),
-            HttpStatusCode.Locked => throw new NotImplementedException(),
-            HttpStatusCode.FailedDependency => throw new NotImplementedException(),
-            HttpStatusCode.UpgradeRequired => throw new NotImplementedException(),
-            HttpStatusCode.PreconditionRequired => throw new NotImplementedException(),
-            HttpStatusCode.RequestHeaderFieldsTooLarge => throw new NotImplementedException(),
-            HttpStatusCode.UnavailableForLegalReasons => throw new NotImplementedException(),
-            HttpStatusCode.InternalServerError => throw new NotImplementedException(),
-            HttpStatusCode.NotImplemented => throw new NotImplementedException(),
-            HttpStatusCode.BadGateway => throw new NotImplementedException(),
-            HttpStatusCode.ServiceUnavailable => throw new NotImplementedException(),
-            HttpStatusCode.HttpVersionNotSupported => throw new NotImplementedException(),
-            HttpStatusCode.VariantAlsoNegotiates => throw new NotImplementedException(),
-            HttpStatusCode.InsufficientStorage => throw new NotImplementedException(),
-            HttpStatusCode.LoopDetected => throw new NotImplementedException(),
-            HttpStatusCode.NotExtended => throw new NotImplementedException(),
-            HttpStatusCode.NetworkAuthenticationRequired => throw new NotImplementedException(),
+            (int) HttpStatusCode.Unauthorized => ProviderFailureKind.Authentication,
+            (int) HttpStatusCode.Forbidden => ProviderFailureKind.Authorization,
+            (int) HttpStatusCode.TooManyRequests => ProviderFailureKind.Throttling,
+            (int) HttpStatusCode.RequestTimeout or (int) HttpStatusCode.GatewayTimeout =>
+                ProviderFailureKind.Timeout,
+            >= 400 and < 500 => ProviderFailureKind.InvalidRequest,
+            >= 500 => ProviderFailureKind.Unavailable,
             _ => ProviderFailureKind.Unknown,
         };
+    }
 
     private static ProviderRequestId? TryReadProviderRequestId(HttpResponseMessage response) =>
         response.Headers.TryGetValues("x-request-id", out var values) && values.FirstOrDefault() is { Length: > 0 } value

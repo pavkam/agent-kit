@@ -7,17 +7,20 @@
 
 ## Purpose
 
-The loop coordinates one run. Replaceable services decide how to build context,
-select a model, execute tools, enforce policy, persist state, and stop.
+The loop coordinates one run inside a durably accepted execution-lane operation.
+Replaceable services decide how to build context, select a model, execute tools,
+enforce policy, persist state, and stop. Acceptance, host scheduling, and
+process-local drive ownership are outside the loop.
 
 ## States
 
 ```text
-Created
-  -> AdmittingInput
-  -> PreparingTurn
-  -> AwaitingModel <-> StreamingModel
-  -> RecordingToolCalls
+Accepted -> Driving -> AdmittingInput -> PreparingTurn
+PreparingTurn -> AwaitingModel <-> StreamingModel
+StreamingModel -> RecordingToolCalls
+Any retryable active state -> WaitingRetry -> Driving
+StreamingModel -> SuspendedDeferred -> Driving
+RecordingToolCalls
   -> AwaitingTools
   -> CommittingToolResults
   -> PreparingTurn ...
@@ -32,6 +35,15 @@ Any active state -> Failing -> Settling
 `Settled` is terminal. A run MUST reach exactly one terminal outcome and emit
 exactly one settlement event.
 
+`Accepted` is already durable and may have no process-local driver. Every drive
+names the expected operation identity; a stale wake cannot advance a successor.
+
+`WaitingRetry` and `SuspendedDeferred` are durable, nonterminal operation
+states. A drive pass MAY return a typed `Waiting` outcome and relinquish its
+process-local ownership while the durable operation remains installed. Only an
+explicit wake, poll, or later drive advances it; entering either state emits no
+run-completion or settlement event.
+
 ## Turn algorithm
 
 The default loop MUST implement these semantic steps:
@@ -44,15 +56,18 @@ The default loop MUST implement these semantic steps:
    and budgets.
 5. Build a [bounded working context](context-assembly-and-instructions.md)
    without mutating durable history.
-6. Persist or publish a model-request-started boundary.
+6. Prepare the exact provider request, reserve its response and usage
+   identities, and durably record effect intent before provider I/O.
 7. Stream one provider response into
    [typed events](streaming-and-event-protocol.md) and a candidate immutable
    assistant message.
 8. Validate the terminal provider outcome before committing the message.
-9. If there are accepted tool calls, record them before side effects, then run
-   the [tool-call lifecycle](tool-call-lifecycle.md).
-10. Commit exactly one terminal result per accepted call in deterministic source
-    order.
+9. If there are accepted tool calls, record the batch and each call's canonical
+   arguments, replay policy, source ordinal, and result identity before side
+   effects, then run the [tool-call lifecycle](tool-call-lifecycle.md).
+10. Stage exactly one authoritative terminal tool outcome per accepted call in
+    completion order, then materialize its bounded history projection in
+    deterministic source order.
 11. At the tool-turn boundary, promote eligible steering input and decide
     whether another model request is required.
 12. When otherwise idle, promote at most the queue policy's allowed follow-up
@@ -96,8 +111,18 @@ semantics to pass conformance.
 - Model output MUST NOT be committed as complete before the terminal stream
   event validates.
 - Tool calls MUST be committed before invocation begins.
-- A tool result and its durable terminal event MUST be committed atomically
-  where the store supports transactions, or idempotently recoverable otherwise.
+- Provider and tool intents MUST reserve stable result/usage identities before
+  entering their uncertain effect window.
+- A complete authoritative tool outcome, its terminal event, and the transition
+  to `OutcomeReady` MUST be committed atomically where the store supports
+  transactions, or be idempotently recoverable otherwise. The later bounded
+  history projection and transition to `Completed` occur in source order and
+  MUST never repeat the invocation.
+- Current durable operation state MUST be total after every transition; recovery
+  MUST NOT infer a phase from missing auxiliary records.
+- Every drive dispatch MUST commit a changed total state, return a typed wait or
+  terminal outcome, or fault. A successful `continue` without durable progress
+  is an invariant violation.
 - Promotion of queued input MUST be atomic with recording its promoted sequence.
 
 ## Acceptance scenarios
@@ -108,22 +133,16 @@ semantics to pass conformance.
 - Input arriving after a steering cutoff waits until the next boundary.
 - An interrupted stream never emits a successful assistant completion.
 - Restoring after a crash does not re-admit input or lose a recorded tool call.
+- Acceptance survives process loss before the first driver or effect starts.
+- A completed later parallel tool does not replay while waiting for an earlier
+  source-position result to materialize.
+- Every persisted operation-state leaf has a tested recovery dispatch and none
+  can hot-loop without a durable transition.
 - A custom loop passes the same externally observable lifecycle suite.
-
-## Upstream evidence
-
-- Pi's nested turn/follow-up behavior is in
-  [`agent-loop.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/agent/src/agent-loop.ts).
-- OpenCode V2 separates durable admission, promotion, model work, and
-  continuation in
-  [`input.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/input.ts)
-  and
-  [`llm.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/runner/llm.ts).
-- Pydantic AI models inspectable graph nodes in
-  [`_agent_graph.py`](https://github.com/pydantic/pydantic-ai/blob/c0e4d824eaa0401d4481d401e5b3894ab32ab59d/pydantic_ai_slim/pydantic_ai/_agent_graph.py).
 
 ## Related specifications
 
 - [Run lifecycle and settlement](run-lifecycle-and-settlement.md)
 - [Tool-call lifecycle](tool-call-lifecycle.md)
 - [Cancellation, timeouts, and resilience](cancellation-timeouts-and-resilience.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

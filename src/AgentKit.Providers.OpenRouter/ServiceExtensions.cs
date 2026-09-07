@@ -53,7 +53,7 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             _ = services.AddOpenAICompatibleProvider();
-            _ = services.AddOptions<OpenRouterProviderOptions>();
+            _ = services.AddOptions<OpenRouterProviderOptions>().ValidateOnStart();
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IValidateOptions<OpenRouterProviderOptions>, OpenRouterProviderOptionsValidator>());
 
@@ -78,9 +78,11 @@ public static class ServiceExtensions
         /// chained with other registration methods.
         /// </returns>
         /// <remarks>
-        /// This registration is singular: it uses <c>TryAdd</c> semantics,
-        /// so it never overrides a credential source an application (or
-        /// <c>AddOpenRouterOAuthCredential</c>) already registered.
+        /// This registration is singular for the OpenRouter provider key: it
+        /// uses keyed <c>TryAdd</c> semantics, so it never overrides an
+        /// OpenRouter credential source an application (or
+        /// <c>AddOpenRouterOAuthCredential</c>) already registered, while
+        /// remaining isolated from other provider packages.
         /// </remarks>
         /// <exception cref="ArgumentException">
         /// <paramref name="apiKey"/> is null, empty, or consists only of
@@ -91,7 +93,9 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddSingleton<IProviderCredentialSource>(credentialSource);
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                OpenRouterProviderDefaults.ProviderId,
+                credentialSource);
 
             return services;
         }
@@ -109,17 +113,23 @@ public static class ServiceExtensions
         /// chained with other registration methods.
         /// </returns>
         /// <remarks>
-        /// This registration is singular: it uses <c>TryAdd</c> semantics,
-        /// so it never overrides a credential source an application (or
-        /// <c>AddOpenRouterApiKeyCredential</c>) already registered.
+        /// This registration is singular for the OpenRouter provider key: it
+        /// uses keyed <c>TryAdd</c> semantics, so it never overrides an
+        /// OpenRouter credential source an application (or
+        /// <c>AddOpenRouterApiKeyCredential</c>) already registered, while
+        /// remaining isolated from other provider packages.
         /// </remarks>
         public IServiceCollection AddOpenRouterOAuthCredential<TProvider>()
             where TProvider : class, IOAuthAccessTokenProvider
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddSingleton<IOAuthAccessTokenProvider, TProvider>();
-            services.TryAddSingleton<IProviderCredentialSource, DelegatingOAuthCredentialSource>();
+            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
+                OpenRouterProviderDefaults.ProviderId);
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                OpenRouterProviderDefaults.ProviderId,
+                static (provider, key) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
 
             return services;
         }
@@ -180,7 +190,7 @@ public static class ServiceExtensions
                     OpenRouterProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
-                    provider.GetRequiredService<IProviderCredentialSource>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<TimeProvider>());
             });

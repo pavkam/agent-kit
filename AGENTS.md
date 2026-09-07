@@ -97,6 +97,12 @@ code being changed and call out any unresolved conflict.
   provide sensible documented defaults through replaceable registrations;
   credentials, endpoints, persistence targets, and authority are external facts
   and are never fabricated as defaults.
+- Provider operations bind independently keyed, versioned endpoint/service-
+  surface and credential/account profiles to one operation/model registration.
+  Capture those bindings before an attempt; never pair providers or accounts
+  through unkeyed registration order. Credential-profile references are
+  classified execution/audit evidence and do not enter ordinary assistant
+  message metadata.
 - Validate options at the composition boundary. Do not defer missing endpoints,
   invalid models, or impossible limits until the middle of an agent run.
 - Do not use service locators, ambient containers, mutable global registries, or
@@ -107,26 +113,35 @@ code being changed and call out any unresolved conflict.
   excuse runtime constructor cycles.
 - Composition validation requires singular engine-wide composition services: one
   agent-definition catalog with at least one runnable definition, one run-scope
-  factory and validator, one session directory/store selector, one hook
-  dispatcher/profile selector, one security authority selector/policy catalog,
-  one approval broker, one model catalog, one budget authority, and a
-  `TimeProvider`. For every runnable agent definition it must resolve exactly
-  one selected loop, continuation policy, input coordinator, output publisher,
-  context assembler, session coordinator/run coordinator/profile and store, hook
-  profile, security authority/profile, model selector, model request executor,
-  and at least one compatible conversational model, output processor, and run
-  budget profile. Multiple keyed implementations may coexist; optional
-  capabilities validate their own required collaborators when selected.
+  factory and validator, one session directory/store selector, one hook dispatch
+  kernel/point-definition catalog/profile selector, one security authority
+  selector/policy catalog, one approval broker, one model catalog, one
+  provider-profile runtime selector, one budget authority, and a `TimeProvider`.
+  For every runnable agent definition it must resolve exactly one selected loop,
+  continuation policy, input coordinator, output publisher, context assembler,
+  session coordinator/run coordinator/profile and store, hook profile, security
+  authority/profile, model selector, model request executor, and at least one
+  compatible conversational model, output processor, and run budget profile.
+  Multiple keyed implementations may coexist; optional capabilities validate
+  their own required collaborators when selected.
 
 ### Hooks
 
-- Hook interfaces and their dedicated `EventArgs`-derived classes live in
-  `AgentKit.Abstractions`; `AgentKit.Hooks` owns dispatch, ordering, validation,
-  and per-run catalogs.
+- Built-in hook interfaces and their dedicated `EventArgs`-derived classes live
+  in `AgentKit.Abstractions`; third-party points live in their owning contract
+  assembly. `AgentKit.Hooks` owns the typed dispatch kernel, ordering,
+  validation, and captured catalogs without depending on feature packages.
 - Define one narrow interface and event-argument type for each named lifecycle
-  boundary. Do not expose a generic event-name-and-object escape hatch.
+  boundary. Point definitions are typed and additive; do not expose a generic
+  event-name-and-object escape hatch.
+- Hook event arguments expose only identities established at that lifecycle
+  stage. Distinguish point, registration, dispatch, and individual invocation
+  identities; never fabricate an agent, session, or run identity to satisfy a
+  universal base shape.
 - Registrations are additive. Mutating hooks run sequentially in deterministic
-  order, and the dispatcher validates allowed mutations after every hook.
+  order, and the dispatcher validates allowed mutations after every hook. Soft
+  before/after constraints ignore absent targets; hard dependencies, singleton
+  first/last anchors, contradictions, and cycles validate explicitly.
 - Stable identity, causal data, committed state, and authority-bearing values
   are read-only. Writable properties expose only changes the hook point permits.
 - Hooks may short-circuit only through a typed outcome defined by that boundary;
@@ -134,6 +149,10 @@ code being changed and call out any unresolved conflict.
 - Hooks cannot grant, widen, forge, consume, or mint security authority. A hook
   performing a protected operation uses the same security authority as every
   other component.
+- Failure policy is monotonic: each invocation uses the strictest point, host,
+  profile, registration, and narrower-scope requirement. Only read-only or
+  observational points may isolate failure, cancellation always propagates, and
+  isolation never leaks partial mutation.
 
 ### Provider neutrality
 
@@ -145,6 +164,9 @@ code being changed and call out any unresolved conflict.
   provider lacks it.
 - OpenAI-compatible providers may share transports and base adapters, but
   compatibility is a tested capability set, not a brand label.
+- A shared wire-family package may implement secret-safe token/header mechanics,
+  but the branded leaf owns supported authentication schemes, audience, scopes,
+  account binding, refresh, rotation, and endpoint/service-surface profiles.
 - `AgentKit.Providers` owns the first-party catalog, selection, capability
   validation, and model request execution. Branded provider packages own
   endpoints, credentials, wire profiles, and concrete model registrations.
@@ -159,6 +181,14 @@ code being changed and call out any unresolved conflict.
 - Keep embedding generation separate from conversational generation. Embedding
   model identity, dimensions, modality, and vector-space compatibility are part
   of the storage contract.
+- Candidate multiplicity and usage-reporting availability are capabilities. A
+  single-candidate operation rejects extra choices, and missing usage remains
+  unknown rather than becoming reported zero.
+- Provider translation may be one-to-many or many-to-one only through a
+  loss-aware mapping that preserves order, trust, and tool correlation. It never
+  promotes runtime/synthetic content to system/developer authority or
+  reconstructs an authoritative tool execution record from its message
+  projection.
 - Translate provider failures into a small stable taxonomy while retaining the
   original status, provider code, request identifier, and exception as
   diagnostic context.
@@ -168,6 +198,12 @@ code being changed and call out any unresolved conflict.
 - Messages are immutable, ordered, and content-part based. Preserve role,
   provider identifiers, tool-call correlation, and unknown extension content
   across round trips.
+- `RuntimeMessage` and other synthetic operational evidence never gain
+  system/developer instruction precedence during repair or provider mapping.
+- `ToolCallResult` is the authoritative terminal execution record;
+  `ToolResultPart` is a separately bounded, loss-aware history/model projection
+  using the captured policy version. Preserve the requested alias and represent
+  unresolved identity explicitly instead of fabricating a canonical tool ID.
 - Domain identities are dedicated immutable value types, normally
   `readonly record struct` values such as `AgentId`, `SessionId`, `RunId`,
   `TurnId`, `MessageId`, and `ToolCallId`. Public contracts do not exchange raw
@@ -223,6 +259,9 @@ code being changed and call out any unresolved conflict.
   grant permissions.
 - Preserve call IDs through provider, loop, permission, execution, and result
   messages. Redact secrets from logs and diagnostics.
+- Every bounded, identified call reaches one terminal record and one correlated
+  projection, including pre-invocation rejection. Projection/publication retry
+  never repeats the tool effect.
 - Any component may issue a typed `SecurityRequest`. Allow decisions produce a
   bounded `SecurityGrant` that the effecting component validates immediately
   before acting; mutation after authorization requires reevaluation.
@@ -231,6 +270,11 @@ code being changed and call out any unresolved conflict.
   audit is unavailable. Sandboxing limits consequences but never grants access.
 - Low-level file-system, network, and process implementations enforce the grant
   again so a higher-level allow cannot authorize a different concrete effect.
+- File writes require an explicit create-only, replace-existing,
+  create-or-replace, or append disposition with atomic target-state semantics.
+  Parent-directory creation is a separate declared and authorized effect;
+  actual-stream bounds and payload/final fingerprints are enforced at the host
+  boundary.
 
 ### Memory and storage
 
@@ -371,7 +415,7 @@ code being changed and call out any unresolved conflict.
 
 - Use [agentkit-architecture](.agents/skills/agentkit-architecture/SKILL.md) for
   package boundaries, `AgentEngine` composition, public contracts, DI,
-  configuration, and cross-package designs.
+  configuration, cross-package designs, and coding-harness profile composition.
 - Use
   [agentkit-identity-and-tenancy](.agents/skills/agentkit-identity-and-tenancy/SKILL.md)
   for trusted-ingress identity normalization, propagation, delegation chains,
@@ -381,23 +425,28 @@ code being changed and call out any unresolved conflict.
 - Use
   [agentkit-messages-and-history](.agents/skills/agentkit-messages-and-history/SKILL.md)
   for immutable messages, content parts, correlation, history validation, and
-  provider-ready repair views.
+  provider-ready repair views, including runtime-role non-elevation and
+  authoritative-result projection.
 - Use [agentkit-input-output](.agents/skills/agentkit-input-output/SKILL.md) for
   input admission, steering and follow-up queues, live event fan-out, final
-  publication, and channel adapters.
+  publication, channel adapters, PTY fan-out, control-plane reconnect, and TUI,
+  IDE, batch, RPC, or ACP-style frontend projections with server-realm and
+  incarnation fencing.
 - Use
   [agentkit-structured-output](.agents/skills/agentkit-structured-output/SKILL.md)
   for output contracts, candidate extraction, validation, repair decisions, and
   typed conversion.
 - Use [agentkit-context](.agents/skills/agentkit-context/SKILL.md) for context
-  contributors, instruction sources, trust, ordering, and request assembly.
+  contributors, instruction sources, coding-project resource discovery, trust,
+  ordering, and request assembly.
 - Use
   [agentkit-context-compaction](.agents/skills/agentkit-context-compaction/SKILL.md)
   for semantic cuts, summaries, compaction validation, activation, and
   concurrency.
 - Use [agentkit-sessions](.agents/skills/agentkit-sessions/SKILL.md) for
   canonical session records, stores, optimistic concurrency, snapshots,
-  branching, and active-run ownership.
+  branching, per-lane operation ownership, serialized cross-lane mutation,
+  export/import, and the session side of workspace reversion.
 - Use
   [agentkit-durable-execution](.agents/skills/agentkit-durable-execution/SKILL.md)
   for checkpoints, recovery, replay, leases, fencing, reconciliation, and
@@ -408,37 +457,45 @@ code being changed and call out any unresolved conflict.
   and deletion—not sessions or working context.
 - Use [agentkit-artifacts](.agents/skills/agentkit-artifacts/SKILL.md) for
   durable content references, integrity, backend selection, retention, and
-  orphan reconciliation.
+  orphan reconciliation, including tool-output spill, workspace snapshots, and
+  session export/share payloads.
 - Use
   [agentkit-goals-and-delegation](.agents/skills/agentkit-goals-and-delegation/SKILL.md)
   for goal state, attempts, scoped child work, joins, communication, and
-  handoffs.
+  handoffs, including coding-harness task/subagent tools.
 - Use [agentkit-budgets](.agents/skills/agentkit-budgets/SKILL.md) for
   hierarchical limits, atomic reservations, usage accounting, corrections, and
   typed exhaustion.
 - Use [agentkit-hooks](.agents/skills/agentkit-hooks/SKILL.md) for typed
   lifecycle hooks, ordering, mutation validation, short-circuiting, reentrancy,
-  and isolation.
+  stage identity, failure-policy precedence, and rollback-safe isolation.
 - Use [agentkit-observability](.agents/skills/agentkit-observability/SKILL.md)
   for neutral events, traces, metrics, logs, audit sinks, correlation,
   redaction, and exporter boundaries.
 - Use
   [agentkit-provider-adapters](.agents/skills/agentkit-provider-adapters/SKILL.md)
   for model catalogs, selection, capabilities, conversational operations,
-  embeddings, reranking, wire translation, and provider packages.
+  embeddings, reranking, endpoint/account binding, response multiplicity, usage
+  evidence, wire translation, provider packages, and coding-harness
+  interoperability profiles.
 - Use [agentkit-tools](.agents/skills/agentkit-tools/SKILL.md) for tool
   identity, catalogs, schemas, resolution, invocation, scheduling, retries, and
-  results.
+  authoritative results, bounded message projections, and coding-host
+  read/search/edit/patch/LSP built-ins.
 - Use
   [agentkit-tools-and-permissions](.agents/skills/agentkit-tools-and-permissions/SKILL.md)
   for system-wide security policy, approvals, bounded grants, enforcement,
-  audit, or an end-to-end protected tool-call flow.
+  audit, secondary effects such as parent creation, or an end-to-end protected
+  tool-call flow.
 - Use [agentkit-mcp](.agents/skills/agentkit-mcp/SKILL.md) for MCP clients,
   servers, transports, capability negotiation, primitives, adapters, and
-  protocol lifecycle.
+  protocol lifecycle, including coding-host namespace, instruction, root,
+  catalog-generation, and endpoint-bound OAuth/callback rules.
 - Use [agentkit-host-access](.agents/skills/agentkit-host-access/SKILL.md) for
   replaceable file-system, network, or process boundaries and their low-level
-  grant enforcement; load only the affected boundary guidance.
+  grant enforcement, including explicit write disposition, bounded read/text
+  semantics, workspaces, mutations, terminals, language services, and filesystem
+  snapshots; load only affected boundary guidance.
 - Use [agentkit-diagnostics](.agents/skills/agentkit-diagnostics/SKILL.md) to
   isolate runtime, composition, protocol, persistence, security, cancellation,
   or concurrency failures before changing behavior.

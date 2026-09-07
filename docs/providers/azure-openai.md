@@ -220,6 +220,14 @@ rate-limit headers as diagnostic context.
 6. Never merge vectors from different deployments unless their resolved
    embedding-space identity is proven compatible.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [Azure OpenAI v1 API lifecycle](https://learn.microsoft.com/azure/ai-foundry/openai/api-version-lifecycle)

@@ -88,10 +88,37 @@ public sealed record ChatRequestSettings
     public double? TopP { get; init; }
 
     /// <summary>Gets the maximum number of output tokens to produce, when overridden.</summary>
-    public long? MaxOutputTokens { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The value assigned during initialization or non-destructive mutation is negative.
+    /// </exception>
+    public long? MaxOutputTokens
+    {
+        get;
+        init
+        {
+            if (value.HasValue)
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(value.Value, nameof(value));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the sequences that stop generation when produced.</summary>
-    public ImmutableArray<string> StopSequences { get; init; }
+    /// <exception cref="ArgumentException">
+    /// The value assigned during initialization or non-destructive mutation is a default,
+    /// uninitialized array.
+    /// </exception>
+    public ImmutableArray<string> StopSequences
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value);
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Gets whether the model may request more than one tool call in a
@@ -103,5 +130,45 @@ public sealed record ChatRequestSettings
     public long? Seed { get; init; }
 
     /// <summary>Gets provider-specific sampling data.</summary>
-    public ExtensionData Extensions { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ExtensionData Extensions
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool Equals(ChatRequestSettings? other) =>
+        other is not null
+        && Temperature == other.Temperature
+        && TopP == other.TopP
+        && MaxOutputTokens == other.MaxOutputTokens
+        && StopSequences.SequenceEqual(other.StopSequences)
+        && ParallelToolCalls == other.ParallelToolCalls
+        && Seed == other.Seed
+        && Extensions.Equals(other.Extensions);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Temperature);
+        hash.Add(TopP);
+        hash.Add(MaxOutputTokens);
+        foreach (var stopSequence in StopSequences)
+        {
+            hash.Add(stopSequence);
+        }
+
+        hash.Add(ParallelToolCalls);
+        hash.Add(Seed);
+        hash.Add(Extensions);
+        return hash.ToHashCode();
+    }
 }

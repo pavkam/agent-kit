@@ -372,10 +372,25 @@ public static class ServiceExtensions
                 key,
                 configure);
 
+        public IServiceCollection ReplaceDurabilityProfile(
+            DurabilityProfileKey key,
+            Action<DurabilityProfileOptions> configure) =>
+            DurabilityServiceRegistration.ReplaceDurabilityProfile(
+                services,
+                key,
+                configure);
+
         public IServiceCollection AddDurabilityBackend<TBackend>(
             DurableBackendKey key)
             where TBackend : class, IDurableExecutionBackend =>
             DurabilityServiceRegistration.AddDurabilityBackend<TBackend>(
+                services,
+                key);
+
+        public IServiceCollection ReplaceDurabilityBackend<TBackend>(
+            DurableBackendKey key)
+            where TBackend : class, IDurableExecutionBackend =>
+            DurabilityServiceRegistration.ReplaceDurabilityBackend<TBackend>(
                 services,
                 key);
 
@@ -384,10 +399,24 @@ public static class ServiceExtensions
             where TJournal : class, IDurableOperationJournal =>
             DurabilityServiceRegistration.AddJournal<TJournal>(services, key);
 
+        public IServiceCollection ReplaceDurableJournal<TJournal>(
+            DurableJournalKey key)
+            where TJournal : class, IDurableOperationJournal =>
+            DurabilityServiceRegistration.ReplaceJournal<TJournal>(
+                services,
+                key);
+
         public IServiceCollection AddDurableLeaseManager<TLeaseManager>(
             DurableLeaseManagerKey key)
             where TLeaseManager : class, IDurableLeaseManager =>
             DurabilityServiceRegistration.AddLeaseManager<TLeaseManager>(
+                services,
+                key);
+
+        public IServiceCollection ReplaceDurableLeaseManager<TLeaseManager>(
+            DurableLeaseManagerKey key)
+            where TLeaseManager : class, IDurableLeaseManager =>
+            DurabilityServiceRegistration.ReplaceLeaseManager<TLeaseManager>(
                 services,
                 key);
 
@@ -403,6 +432,11 @@ public static class ServiceExtensions
             DurabilityServiceRegistration
                 .AddDurableOperationCodec<TState, TCodec>(services);
 
+        public IServiceCollection ReplaceDurableOperationCodec<TState, TCodec>()
+            where TCodec : class, IDurableOperationCodec<TState> =>
+            DurabilityServiceRegistration
+                .ReplaceDurableOperationCodec<TState, TCodec>(services);
+
         public IServiceCollection AddDurableExecutionEventSink<TSink>(
             DurableExecutionEventSinkRegistration registration)
             where TSink : class, IDurableExecutionEventSink =>
@@ -416,6 +450,34 @@ public static class ServiceExtensions
             DurabilityServiceRegistration.ReplaceRecoveryPolicy<TPolicy>(
                 services,
                 key);
+
+        public IServiceCollection
+            ReplaceDurabilityRuntimeSelector<TSelector>()
+            where TSelector : class, IDurabilityRuntimeSelector =>
+            DurabilityServiceRegistration.ReplaceRuntimeSelector<TSelector>(
+                services);
+
+        public IServiceCollection
+            ReplaceDurableExecutionCoordinator<TCoordinator>()
+            where TCoordinator : class, IDurableExecutionCoordinator =>
+            DurabilityServiceRegistration.ReplaceCoordinator<TCoordinator>(
+                services);
+
+        public IServiceCollection ReplaceDurableBackendCatalog<TCatalog>()
+            where TCatalog : class, IDurableBackendCatalog =>
+            DurabilityServiceRegistration.ReplaceBackendCatalog<TCatalog>(
+                services);
+
+        public IServiceCollection ReplaceDurableBackendSelector<TSelector>()
+            where TSelector : class, IDurableBackendSelector =>
+            DurabilityServiceRegistration.ReplaceBackendSelector<TSelector>(
+                services);
+
+        public IServiceCollection
+            ReplaceDurableExecutionEventDispatcher<TDispatcher>()
+            where TDispatcher : class, IDurableExecutionEventDispatcher =>
+            DurabilityServiceRegistration.ReplaceEventDispatcher<TDispatcher>(
+                services);
     }
 }
 ```

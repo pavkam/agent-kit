@@ -76,7 +76,6 @@ public readonly record struct ComponentId(string Value);
 public readonly record struct IdempotencyKey(string Value);
 public readonly record struct VersionToken(string Value);
 public readonly record struct SchemaVersion(string Value);
-public readonly record struct ContentHash(string Value);
 public readonly record struct InputFingerprint(ContentHash Hash);
 
 public readonly record struct CapabilityId(string Value);
@@ -109,26 +108,6 @@ public sealed record InRunOperationCorrelation(
 public sealed record AfterRunOperationCorrelation(
     OperationId OperationId,
     RunId CausalRunId) : OperationCorrelation(OperationId);
-
-public interface IIdentifierGenerator<TIdentifier>
-    where TIdentifier : struct
-{
-    TIdentifier Create();
-}
-
-public interface IRandomizer
-{
-    int NextInt32(int exclusiveMaximum);
-    void Fill(Span<byte> destination);
-}
-
-public interface IContentHasher
-{
-    ContentHash Compute(ReadOnlySpan<byte> content);
-    ValueTask<ContentHash> ComputeAsync(
-        Stream content,
-        CancellationToken cancellationToken = default);
-}
 ```
 
 The positional declarations above document storage and value-equality shape;
@@ -144,13 +123,14 @@ lifetime, and replaceable with deterministic generators in tests. External
 provider/model identities come from validated configuration or responses and are
 never fabricated by a local ID generator.
 
-`IRandomizer` and `IContentHasher` are the other foundation deterministic
-primitives. AgentKit registers cryptographically strong, thread-safe mechanical
-defaults; tests and replay scopes replace them explicitly. Components do not
-invent private ambient randomness or hash algorithms, and fingerprints record
-the algorithm/version required to reproduce them. These services depend on no
-runtime component, so provider selection, security, artifact integrity, and
-retry jitter consume them without reverse dependency edges.
+`ContentHash`, `IRandomizerFactory`, operation-owned `IRandomizer`, and
+`IContentHasher` have one canonical definition in
+[foundation contracts](foundation-contracts.md). Composition reuses those
+versioned algorithm/canonicalization values rather than redeclaring a digest
+string or registering mutable random state as an engine service. These
+foundation services depend on no runtime component, so provider selection,
+security, artifact integrity, and retry jitter consume them without reverse
+dependency edges.
 
 ### Agent definitions and catalog
 
@@ -434,7 +414,7 @@ internal sealed record AgentRunPlan(
     AgentCatalogVersion CatalogVersion,
     IAgentLoop Loop,
     AgentRunServices Services,
-    SessionProfileKey SessionProfile,
+    SessionExecutionCapability Session,
     HookDispatchContext Hooks,
     SecurityAuthorizationContext Authorization,
     AgentOptionalCapabilitySelection OptionalCapabilities);
@@ -513,16 +493,17 @@ AgentEngineBuilder, ASP.NET Core, a worker host, or a custom service collection.
 
 A valid engine has one effective engine-wide definition catalog, run-scope
 factory, composition validator, session directory/store catalog/selector, hook
-dispatcher/profile selector, security authority selector/policy catalog,
-approval broker, model catalog, budget authority, `TimeProvider`, `IRandomizer`,
-and `IContentHasher`. For every published agent definition, key and profile
-resolution must produce exactly one effective loop, continuation policy, input
-coordinator, output publisher, output processor, context assembler, run budget
-profile, session coordinator/run coordinator/profile and store, hook profile,
-security authority/profile, model selector, and model request executor, plus at
-least one compatible conversational model. Several keyed implementations and
-profiles may coexist; ambiguity means a definition failed to select one, not
-that the whole process must use one global implementation.
+dispatch kernel/point-definition catalog/profile selector, security authority
+selector/policy catalog, approval broker, model catalog, budget authority,
+`TimeProvider`, `IRandomizerFactory`, and `IContentHasher`. For every published
+agent definition, key and profile resolution must produce exactly one effective
+loop, continuation policy, input coordinator, output publisher, output
+processor, context assembler, run budget profile, session coordinator/run
+coordinator/profile and store, hook profile, security authority/profile, model
+selector, and model request executor, plus at least one compatible
+conversational model. Several keyed implementations and profiles may coexist;
+ambiguity means a definition failed to select one, not that the whole process
+must use one global implementation.
 
 `TimeProvider.System` is a replaceable `TryAdd` default when the host has not
 supplied another instance. The first-party security package registers
@@ -531,12 +512,35 @@ authority. Provider credentials, endpoints, principal identity, external
 resource authority, and production persistence never receive fabricated
 defaults.
 
+Every configured provider operation must resolve one immutable descriptor, one
+keyed/versioned endpoint and service-surface profile, and one keyed/versioned
+credential/account profile. Missing, ambiguous, or cross-provider bindings fail
+composition validation. Those profiles are captured with the operation factory;
+runtime adapters do not resolve an unkeyed credential/options service whose
+meaning depends on registration order.
+
+A selected tool runtime also resolves one terminal recorder, one versioned
+result-projection policy catalog, and one deterministic projector. Every
+captured projection policy remains resolvable for the retention period of calls
+that may still require history materialization; a missing version fails
+publication rather than selecting the current policy or repeating the effect.
+
 Tools, skills, memory, embeddings, reranking, goals, MCP, identity adapters,
 artifacts, evaluation, and extra contributors are optional. Once an optional
 capability is registered, its required collaborators must also be present. Build
 fails with component-specific diagnostics for missing services, duplicate
 singular registrations, invalid scopes, ambiguous keys, impossible limits,
 unsafe retry combinations, or incompatible capabilities.
+
+A selected coding-workspace profile likewise resolves exactly one effective
+`IWorkspaceDirectory` and one keyed `IWorkspaceCoordinator`. A profile that
+enables workspace snapshots also resolves exactly one
+`IWorkspaceSnapshotCoordinator`. Their neutral contracts live in
+AgentKit.Abstractions and their host implementations remain leaves over file,
+process, artifact, session, and security contracts. Omitting the workspace
+profile means those services are not required and workspace operations are
+unsupported; an application never receives an ambient default rooted at its
+current directory.
 
 Build validation also constructs the closed component dependency graph from
 typed registration descriptors. Each descriptor records contract, key,
@@ -683,9 +687,12 @@ configuration cannot load executable extensions, inject credentials, or widen
 tool, filesystem, network, or model authority. Invalid reloads leave the last
 known-good snapshot active. In-flight work continues with its captured snapshot.
 
-Credentials are resolved by leaf integrations when sending a request. They never
-enter AgentEngineBuilder, agent definitions, options display, context manifests,
-messages, or durable records.
+Credential profile selection is explicit provider composition, while secret
+material is resolved by the selected leaf integration for each send. Secrets
+never enter AgentEngineBuilder, agent definitions, options display, context
+manifests, messages, durable records, or profile keys. A branded package may
+offer an opt-in well-known endpoint profile, but absence of endpoint
+configuration never selects it implicitly.
 
 Every behaviorally meaningful choice has one declared configuration home:
 

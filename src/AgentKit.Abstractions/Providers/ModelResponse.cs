@@ -78,4 +78,31 @@ public sealed record ModelResponse
 
     /// <summary>Gets provider-specific response metadata.</summary>
     public ExtensionData Extensions { get; init; }
+
+    /// <inheritdoc/>
+    public bool Equals(ModelResponse? other) =>
+        other is not null
+        && RequestId.Equals(other.RequestId)
+        && Identity.Equals(other.Identity)
+        && Parts.SequenceEqual(other.Parts)
+        && StopReason == other.StopReason
+        && Usage.Equals(other.Usage)
+        && Extensions.Equals(other.Extensions);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(RequestId);
+        hash.Add(Identity);
+        foreach (var part in Parts)
+        {
+            hash.Add(part);
+        }
+
+        hash.Add(StopReason);
+        hash.Add(Usage);
+        hash.Add(Extensions);
+        return hash.ToHashCode();
+    }
 }

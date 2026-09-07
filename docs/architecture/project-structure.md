@@ -28,11 +28,13 @@ govern every project edge listed below.
 
 AgentKit.Abstractions never references AgentKit or a concrete implementation.
 AgentKit never references feature packages. Applications choose all concrete
-parts explicitly. AgentKit may `TryAdd` only its documented foundation defaults,
-including `TimeProvider.System` and the generic
-`IIdentifierGenerator<TIdentifier>`, `IRandomizer`, and `IContentHasher`
-implementations. Those defaults are replaceable and do not authorize effects or
-pull in a runtime package.
+parts explicitly. AgentKit may `TryAdd` only its documented foundation defaults:
+`TimeProvider.System`, explicit closed `IIdentifierGenerator<TIdentifier>`
+registrations for framework-created identities, a singleton
+`IRandomizerFactory`, and a singleton `IContentHasher`. The factory creates an
+operation-owned `IRandomizer`; no mutable randomizer is shared through the
+container. These defaults are replaceable and do not authorize effects or pull
+in a runtime package.
 
 ## Runnable spine
 
@@ -45,7 +47,7 @@ pull in a runtime package.
 | AgentKit.Hooks              | Hook dispatch, ordering, mutation validation, and immutable per-run catalogs                          | AddAgentHooks             |
 | AgentKit.IO                 | Input admission, queued promotion, live event fan-out, and final results                              | AddAgentIO                |
 | AgentKit.Output             | Output contracts, extraction, validation, repair decisions, and conversion                            | AddAgentOutput            |
-| AgentKit.Session            | Session coordination, active-run ownership, branching, and store use                                  | AddAgentSession           |
+| AgentKit.Session            | Session coordination, lane-operation ownership, serialized mutation, branching, and store use         | AddAgentSession           |
 | AgentKit.Permissions        | Security authority, policy evaluation, approvals, grants, and human control                           | AddAgentPermissions       |
 | AgentKit.Providers          | Model catalog, selection, capability validation, and model request execution                          | AddAgentProviders         |
 
@@ -79,15 +81,15 @@ the facade.
 | Input/output and context | I/O coordinator/publisher, queues, context assembler/contributors, compaction contracts      | AgentKit.IO / `AddAgentIO`; AgentKit.Context / `AddAgentContext`; AgentKit.Context.Compaction / `AddAgentContextCompaction`     | Keyed, singular assembler and compactor selections; additive ordered contributors/strategies                     |
 | Structured output        | output definitions, resolver, processor, validators, repair decisions                        | AgentKit.Output / `AddAgentOutput`                                                                                              | Keyed run-scoped processor; immutable definitions; additive ordered validators                                   |
 | Identity                 | execution identity, issuer mappings, validation and delegation derivation                    | AgentKit.Identity / `AddAgentIdentity`; authentication-specific leaves                                                          | Scoped ingress resolution; immutable identity values flow downstream without callback                            |
-| Hooks                    | `IHookDispatcher`, typed hook interfaces and `EventArgs`                                     | AgentKit.Hooks / `AddAgentHooks`                                                                                                | Engine-wide dispatcher; agent-selected catalog/profile; additive keyed hooks with declared lifetimes             |
+| Hooks                    | Typed dispatch kernel, closed point definitions, dedicated hook interfaces and `EventArgs`   | AgentKit.Hooks / `AddAgentHooks`; point contracts remain in their owning abstraction package                                    | Engine-wide kernel; stage-selected captured profile/catalog; additive points and hooks with declared lifetimes   |
 | Session                  | coordinator plus `ISessionStore` and typed entries/cursors                                   | AgentKit.Session / `AddAgentSession`; explicit store packages                                                                   | One effective coordinator/store profile per definition; keyed stores normally singleton/thread-safe              |
 | Security                 | authority, policies, approvals, grants, audit contracts                                      | AgentKit.Permissions / `AddAgentPermissions`                                                                                    | One effective authority/policy/approval selection per definition; additive policies/handlers/sinks               |
-| Providers                | model catalog/selector/executor and keyed operation contracts                                | AgentKit.Providers / `AddAgentProviders`; concrete provider `Add...` packages                                                   | Engine-wide catalog; keyed selector/executor per definition; additive models/providers; executor scoped          |
-| Tools                    | tool providers/catalog/resolver/validator/scheduler/invoker                                  | AgentKit.Tools and AgentKit.Tools.ToolName / package `Add...Tool`                                                               | Keyed effective runtime/toolset selection; additive tool sources; invocation state operation-owned               |
+| Providers                | model catalog/selector/executor plus endpoint, credential, and keyed operation contracts     | AgentKit.Providers / `AddAgentProviders`; concrete provider `Add...` packages                                                   | Engine-wide catalog; independently keyed captured profiles; additive operations; executor scoped                 |
+| Tools                    | providers/catalog/resolver/validator/scheduler/invoker, terminal recorder, result projector  | AgentKit.Tools and AgentKit.Tools.ToolName / package `Add...Tool`                                                               | Keyed runtime/toolset/projection policy; additive sources; invocation state operation-owned                      |
 | Memory/goals/durability  | Narrow stores, retrieval, goal/delegation, checkpoint/lease contracts                        | `AgentKit.Memory.*`, AgentKit.Goals; AgentKit.Durability / `AddAgentDurability` plus `AgentKit.Durability.<BackendName>` leaves | Optional; singular coordinators/catalogs with additive keyed strategies/backends/stores; explicit durable owners |
 | Observation              | `IRunEventSink`, `ISecurityAuditSink`, redaction values                                      | AgentKit.Observability.OpenTelemetry / `AddOpenTelemetryObservability`                                                          | Additive keyed sinks with declared lifetimes; singular replaceable redactor when capture is enabled              |
 | MCP                      | Neutral MCP lifecycle records plus core tool/retrieval/security contracts                    | AgentKit.Mcp.Client / `AddMcpClient` and endpoint registrations; AgentKit.Mcp.Server / `AddMcpServer`                           | Singular client factory, additive keyed endpoints/adapters; each open session explicitly owned                   |
-| File system              | Narrow read/write/directory/metadata/watch contracts                                         | AgentKit.FileSystem / `AddOperatingSystemFileSystem`; AgentKit.FileSystem.InMemory / `AddInMemoryFileSystem`                    | Singular narrow services per profile key; singleton services, operation-owned handles                            |
+| File system              | Narrow bounded-read and explicit atomic-write/directory/metadata/watch contracts             | AgentKit.FileSystem / `AddOperatingSystemFileSystem`; AgentKit.FileSystem.InMemory / `AddInMemoryFileSystem`                    | Singular narrow services per profile key; singleton services, operation-owned handles                            |
 | Network                  | `INetworkNameResolver`, `INetworkTransport`, request/response values                         | AgentKit.Network / `AddAgentNetwork`; AgentKit.Network.InMemory / `AddInMemoryNetwork`                                          | Singular resolver/transport pair per profile key; singleton pools, operation-owned responses                     |
 | Processes                | resolver, executor, sandbox, handle/output values                                            | AgentKit.Processes / `AddAgentProcesses`; AgentKit.Processes.Scripted / `AddScriptedProcesses`                                  | Singular resolver/executor per key, keyed sandboxes; singleton services, caller-owned handles                    |
 | Artifacts                | artifact references, coordinator, store catalog, retention, integrity                        | AgentKit.Artifacts / `AddAgentArtifacts`; explicit backend leaves                                                               | Keyed coordinators/stores; operation-owned streams; immutable references                                         |
@@ -190,12 +192,12 @@ provider attempts under the loop's budgets and fallback policy.
 
 Provider integrations follow AgentKit.Providers.ProviderName:
 
-| Project                             | Responsibility                                                                     | Registration                |
-| ----------------------------------- | ---------------------------------------------------------------------------------- | --------------------------- |
-| AgentKit.Providers.OpenAICompatible | Reusable Responses, Chat Completions, embeddings, transport, parsing, and profiles | AddOpenAICompatibleProvider |
-| AgentKit.Providers.OpenAI           | OpenAI endpoints, credentials, capabilities, conversational models, and embeddings | AddOpenAI                   |
-| AgentKit.Providers.OpenRouter       | OpenRouter routing, metadata, conversational models, embeddings, and reranking     | AddOpenRouter               |
-| AgentKit.Providers.ZAi              | Z.ai endpoints, credentials, Chat Completions profile, and native operations       | AddZAi                      |
+| Project                             | Responsibility                                                                                                                 | Registration                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------- |
+| AgentKit.Providers.OpenAICompatible | Reusable Responses, Chat Completions, embeddings, transport, parsing, profiles, and secret-safe credential transport mechanics | AddOpenAICompatibleProvider |
+| AgentKit.Providers.OpenAI           | OpenAI endpoints, credentials, capabilities, conversational models, and embeddings                                             | AddOpenAI                   |
+| AgentKit.Providers.OpenRouter       | OpenRouter routing, metadata, conversational models, embeddings, and reranking                                                 | AddOpenRouter               |
+| AgentKit.Providers.ZAi              | Z.ai endpoints, credentials, Chat Completions profile, and native operations                                                   | AddZAi                      |
 
 AgentKit.Providers.OpenAICompatible is a protocol-family toolkit for concrete
 providers and custom compatible endpoints. It is not a brand identity or a claim
@@ -203,12 +205,26 @@ that every OpenAI-shaped endpoint supports the same behavior. OpenAI,
 OpenRouter, and Z.ai each have their own package, options, compatibility
 profile, descriptors, and registration.
 
+Authentication support and provider composition remain concrete-leaf policy. A
+wire-family helper may obtain opaque credential material or construct a
+profile-approved header, but each branded package owns endpoint/service-surface
+profiles, credential/account profiles, scheme, audience, scopes, refresh,
+rotation, and the binding of both profiles to an operation adapter. No provider
+runtime consumes one unkeyed global credential source.
+
 Each vendor package exposes one ASP.NET-style entry point and registers its
 supported operations independently. AddOpenAI can configure named conversational
 and embedding models. AddOpenRouter can configure named conversational,
 embedding, and reranking models. AddZAi exposes only operations supported by its
 verified profile; it does not manufacture an embedding provider from a chat
 endpoint.
+
+Each configured operation captures a versioned endpoint profile and a versioned
+credential profile independently from its model alias. A package may expose an
+opt-in named profile for a well-known public endpoint; it never chooses that
+origin merely because endpoint configuration is absent. This keeps multiple
+providers, service surfaces, deployments, and accounts composable inside one
+engine without registration-order coupling.
 
 Further provider packages fall into three families:
 

@@ -146,6 +146,7 @@ public sealed record CompactionPolicySnapshot(
 
 public sealed record CompactionRequest(
     CompactionOperationContext Context,
+    SessionProfileReference SessionProfile,
     BranchId BranchId,
     SessionVersion SourceVersion,
     SessionSequence SourceThrough,
@@ -162,9 +163,11 @@ public sealed record CompactionRequest(
 Construction validates that correlation values agree with the authorization
 scope, the deadline follows the request time, bounds are positive, the source
 sequence exists in the named version and branch, and the strategy order has no
-duplicates. Provider overflow includes the failed provider request's
-`OperationId` as the causal operation. Text such as `Reason` is descriptive and
-never used as identity, policy, or authority.
+duplicates. The invocation's `SessionExecutionCapability.Profile.Reference` must
+equal `SessionProfile`; a mismatch is rejected before authorization or session
+I/O. Provider overflow includes the failed provider request's `OperationId` as
+the causal operation. Text such as `Reason` is descriptive and never used as
+identity, policy, or authority.
 
 ## Source snapshot and semantic cut
 
@@ -437,6 +440,7 @@ public interface ICompactionSummaryGenerator
 
     Task<CompactionSummaryGenerationResult> GenerateAsync(
         CompactionSummaryRequest request,
+        BudgetExecutionCapability budget,
         CancellationToken cancellationToken = default);
 }
 
@@ -534,6 +538,7 @@ public interface ICompactionStrategy
 
     Task<CompactionStrategyResult> ProduceAsync(
         CompactionStrategyRequest request,
+        BudgetExecutionCapability budget,
         CancellationToken cancellationToken = default);
 }
 
@@ -692,15 +697,21 @@ public interface ICompactionActivationCoordinator
 {
     Task<CompactionActivationResult> ActivateAsync(
         CompactionActivationRequest request,
+        SessionExecutionCapability session,
         SecurityGrant activationGrant,
         CancellationToken cancellationToken = default);
 }
 ```
 
-The activation grant is invocation-only and is never embedded in a manifest,
-checkpoint, durable record, or event. The coordinator and selected session store
-validate its audience, resource, operation, input fingerprint, policy versions,
-expiry, revocation, and remaining use immediately before append.
+The session capability and activation grant are invocation-only and are never
+embedded in a manifest, checkpoint, durable record, or event. The capability is
+compiled from the immutable agent definition's selected session profile and
+contains the exact keyed coordinator already validated for the run. The
+activation coordinator rejects a capability whose session/profile binding does
+not match the request; it never selects a store or coordinator itself. The
+coordinator and selected session store validate the grant's audience, resource,
+operation, input fingerprint, policy versions, expiry, revocation, and remaining
+use immediately before append.
 
 A version mismatch returns `CompactionRecordConflict`; it never retries against
 a newer version or truncates concurrent entries. Cancellation after an append is
@@ -796,6 +807,8 @@ public interface ICompactor
 {
     Task<CompactionResult> CompactAsync(
         CompactionRequest request,
+        SessionExecutionCapability session,
+        BudgetExecutionCapability budget,
         HookDispatchContext? hooks,
         CancellationToken cancellationToken = default);
 }
@@ -807,11 +820,13 @@ does not guarantee a safe cut or useful reduction. The context assembler maps a
 terminal non-reducing or no-safe-cut result to its typed context-limit outcome
 when mandatory content still cannot fit.
 
-`HookDispatchContext` is a separate optional, non-persisted invocation
-parameter. An in-run caller passes its active hook lease; maintenance or replay
-without a run hook lease passes `null`. It is never embedded in a request,
+`SessionExecutionCapability`, `BudgetExecutionCapability`, and
+`HookDispatchContext` are separate, non-persisted invocation parameters. The
+context assembler passes the exact session and budget capabilities compiled into
+its run plan. An in-run caller passes its active hook lease; maintenance or
+replay without a run hook lease passes `null`. None is embedded in a request,
 source snapshot, manifest, checkpoint, record, result, cache key, activation
-request, or event, and no implementation retains it after `CompactAsync`
+request, or event, and no implementation retains one after `CompactAsync`
 completes.
 
 ## Observation contract
@@ -901,7 +916,6 @@ the complete dependency direction:
 namespace AgentKit.Context.Compaction;
 
 internal sealed class DefaultCompactor(
-    ISessionCoordinator sessions,
     ICompactionCutSelector cutSelector,
     ICompactionStrategyResolver strategies,
     ICompactionValidator validator,
@@ -928,11 +942,16 @@ internal sealed class ModelBackedCompactionStrategy(
 
 `DefaultCompactor` selects a strategy only from the request's ordered typed keys
 through the resolver bound to its immutable options snapshot. It never resolves
-`IServiceProvider`, chooses a session store, changes security profiles, or
-consults mutable global state. The request's compactor key must match the
-snapshot key. The security selector resolves the authority named by the captured
-authorization context; separate bounded grants cover source read and activation
-write.
+`IServiceProvider`, injects an unkeyed session coordinator, chooses a session
+store, changes security profiles, or consults mutable global state. The
+request's compactor key must match the snapshot key. `CompactAsync` validates
+the supplied `SessionExecutionCapability` against the request before source
+access and passes the same capability explicitly to activation. It likewise
+validates the budget profile, identity, correlation, and scope, then passes that
+capability through the selected strategy to any model-backed summary generator.
+Every attempt reserves and settles its expected and actual work. The security
+selector resolves the authority named by the captured authorization context;
+separate bounded grants cover source read and activation write.
 
 The first-party semantic cut selector, structural validator, extractive
 strategy, and session-backed activation coordinator are sealed direct interface
@@ -1151,7 +1170,8 @@ the matching snapshot and exact keyed collaborators; it never injects an unkeyed
 `IOptions<ContextCompactionOptions>` or cross-key strategy collection.
 Registration also adds one safe extractive strategy, one semantic cut selector,
 one structural validator, and one session activation coordinator for that key.
-It does not build or resolve a service provider.
+It does not select or register an ambient session coordinator, and it does not
+build or resolve a service provider.
 
 Compactors, cut selectors, strategy resolvers, validators, activation
 coordinators, summary-generator resolvers, and event dispatchers are singular
@@ -1170,11 +1190,12 @@ validator, or observation path.
 ## Lifetimes, ownership, and cancellation
 
 The default compactor and activation coordinator are run-scoped. They own only
-attempt-local state and never retain session content after completion. Stateless
-cut selectors and validators may be singleton when immutable and thread-safe.
-Strategy, summary-generator, and event-sink registrations declare their
-lifetime. A model-backed or mutable strategy or summary generator is scoped or
-transient unless it proves singleton safety.
+attempt-local state and never retain the invocation's session capability or
+session content after completion. Stateless cut selectors and validators may be
+singleton when immutable and thread-safe. Strategy, summary-generator, and
+event-sink registrations declare their lifetime. A model-backed or mutable
+strategy or summary generator is scoped or transient unless it proves singleton
+safety.
 
 The container owns and disposes strategies, sinks, provider clients, session
 collaborators, and hook infrastructure exactly once. A singleton may not capture
@@ -1193,8 +1214,8 @@ Engine build validates every compaction-enabled context profile and agent
 selection. It rejects:
 
 - missing or ambiguous compactor, strategy, cut-selector, validator, activation,
-  session, hook, security, identifier-generator, event, or `TimeProvider`
-  collaborators;
+  selected session capability, hook, security, identifier-generator, event, or
+  `TimeProvider` collaborators;
 - empty strategy order, unknown keys, duplicate identities, ordering cycles,
   invalid versions, or singleton-to-scoped capture;
 - non-positive attempts, entries, bytes, tokens, retention, validation, or
@@ -1255,6 +1276,8 @@ first-party defaults. They verify:
 - hook context and security grants never appear in serialized records or caches;
 - all singular defaults can be replaced per key and additive strategies/sinks
   remain isolated between two agents in one engine; and
+- two agents with different session profiles pass only their compiled session
+  capability to the same reusable compactor without cross-profile resolution;
 - original covered history remains queryable, branchable, and recompacted.
 
 ## Related specifications

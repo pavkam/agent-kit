@@ -60,4 +60,29 @@ public sealed record ToolResultPart: ContentPart
 
     /// <summary>Gets the ordered result content returned to the model.</summary>
     public ImmutableArray<ContentPart> Content { get; init; }
+
+    /// <inheritdoc/>
+    public bool Equals(ToolResultPart? other) =>
+        other is not null
+        && CallId.Equals(other.CallId)
+        && Tool.Equals(other.Tool)
+        && Outcome.Equals(other.Outcome)
+        && Content.SequenceEqual(other.Content)
+        && Extensions.Equals(other.Extensions);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(CallId);
+        hash.Add(Tool);
+        hash.Add(Outcome);
+        foreach (var part in Content)
+        {
+            hash.Add(part);
+        }
+
+        hash.Add(Extensions);
+        return hash.ToHashCode();
+    }
 }

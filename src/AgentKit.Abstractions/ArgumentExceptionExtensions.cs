@@ -62,5 +62,59 @@ public static class ArgumentExceptionExtensions
                     paramName);
             }
         }
+
+        /// <summary>
+        /// Throws an <see cref="ArgumentException"/> if <paramref name="uri"/>
+        /// is not an absolute URI.
+        /// </summary>
+        /// <param name="uri">The candidate URI.</param>
+        /// <param name="paramName">
+        /// The name of the validated parameter, inferred from the call-site
+        /// expression when omitted.
+        /// </param>
+        /// <exception cref="ArgumentNullException"><paramref name="uri"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="uri"/> is not absolute.</exception>
+        public static void ThrowIfNotAbsoluteUri(
+            Uri uri,
+            [CallerArgumentExpression(nameof(uri))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(uri, paramName);
+
+            if (!uri.IsAbsoluteUri)
+            {
+                throw new ArgumentException("Value must be an absolute URI.", paramName);
+            }
+        }
+
+        /// <summary>
+        /// Throws an <see cref="ArgumentException"/> if <paramref name="path"/>
+        /// is not a non-rooted relative URI path.
+        /// </summary>
+        /// <remarks>
+        /// Rooted, authority-relative, and absolute values are rejected so
+        /// resolving the path against a trusted base address cannot replace
+        /// that address's origin or base path.
+        /// </remarks>
+        /// <param name="path">The candidate relative URI path.</param>
+        /// <param name="paramName">
+        /// The name of the validated parameter, inferred from the call-site
+        /// expression when omitted.
+        /// </param>
+        /// <exception cref="ArgumentNullException"><paramref name="path"/> is null.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="path"/> is empty, whitespace, rooted, authority-relative,
+        /// or an absolute URI.
+        /// </exception>
+        public static void ThrowIfNotRelativeUriPath(
+            string path,
+            [CallerArgumentExpression(nameof(path))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path, paramName);
+
+            if (!Uri.TryCreate(path, UriKind.Relative, out _) || path[0] is '/' or '\\')
+            {
+                throw new ArgumentException("Value must be a non-rooted relative URI path.", paramName);
+            }
+        }
     }
 }

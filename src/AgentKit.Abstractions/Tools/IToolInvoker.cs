@@ -20,7 +20,9 @@ namespace AgentKit;
 /// <see cref="ToolInvocationResult"/> whose <see cref="ToolCallOutcome.Kind"/>
 /// classifies which of those happened, so a caller (typically an agent
 /// loop) always receives exactly one terminal result per call regardless of
-/// how it failed.
+/// how it failed. An <see cref="OperationCanceledException"/> propagates only
+/// when the caller-provided cancellation token is signaled; an implementation
+/// that throws one without caller cancellation is normalized as a tool failure.
 /// </remarks>
 public interface IToolInvoker
 {
@@ -29,5 +31,8 @@ public interface IToolInvoker
     /// <param name="cancellationToken">A token used to cancel the call.</param>
     /// <returns>A task producing the terminal outcome and result content.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    /// <exception cref="OperationCanceledException">
+    /// <paramref name="cancellationToken"/> is canceled before the call settles.
+    /// </exception>
     public Task<ToolInvocationResult> InvokeAsync(ToolCallRequest request, CancellationToken cancellationToken = default);
 }

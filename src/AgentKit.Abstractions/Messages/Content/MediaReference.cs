@@ -96,4 +96,35 @@ public sealed record MediaReference
 
     /// <summary>Gets provider-specific or forward-compatible data.</summary>
     public ExtensionData Extensions { get; init; }
+
+    /// <inheritdoc/>
+    public bool Equals(MediaReference? other) =>
+        other is not null
+        && Id.Equals(other.Id)
+        && SourceKind == other.SourceKind
+        && MediaType == other.MediaType
+        && Uri == other.Uri
+        && InlineBytes.SequenceEqual(other.InlineBytes)
+        && SizeInBytes == other.SizeInBytes
+        && Nullable.Equals(Hash, other.Hash)
+        && Extensions.Equals(other.Extensions);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Id);
+        hash.Add(SourceKind);
+        hash.Add(MediaType);
+        hash.Add(Uri);
+        foreach (var b in InlineBytes)
+        {
+            hash.Add(b);
+        }
+
+        hash.Add(SizeInBytes);
+        hash.Add(Hash);
+        hash.Add(Extensions);
+        return hash.ToHashCode();
+    }
 }

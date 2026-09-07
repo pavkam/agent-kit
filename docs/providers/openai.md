@@ -286,6 +286,14 @@ both success and failure.
 7. Keep embedding-space identity with every stored vector; never infer
    compatibility from equal dimensions.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [API introduction](https://platform.openai.com/docs/api-reference/introduction)

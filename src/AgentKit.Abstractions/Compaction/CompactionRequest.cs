@@ -28,6 +28,8 @@ namespace AgentKit;
 /// </remarks>
 public sealed record CompactionRequest
 {
+    private readonly double _minimumReductionRatio;
+
     /// <summary>Initializes a new instance of the <see cref="CompactionRequest"/> record.</summary>
     /// <param name="context">The operation context for this attempt.</param>
     /// <param name="branchId">The branch to compact.</param>
@@ -77,11 +79,10 @@ public sealed record CompactionRequest
         ArgumentNullException.ThrowIfNull(extensions);
         ArgumentOutOfRangeException.ThrowIfNegative(targetInputTokens);
         ArgumentOutOfRangeException.ThrowIfNegative(minimumRetainedEntries);
-        if (minimumReductionRatio is <= 0 or >= 1)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(minimumReductionRatio), minimumReductionRatio, "Value must be in the open interval (0, 1).");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(
+            minimumReductionRatio, 0d, nameof(minimumReductionRatio));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
+            minimumReductionRatio, 1d, nameof(minimumReductionRatio));
 
         if (deadline <= requestedAt)
         {
@@ -95,7 +96,7 @@ public sealed record CompactionRequest
         ContextEpoch = contextEpoch;
         Trigger = trigger;
         TargetInputTokens = targetInputTokens;
-        MinimumReductionRatio = minimumReductionRatio;
+        _minimumReductionRatio = minimumReductionRatio;
         MinimumRetainedEntries = minimumRetainedEntries;
         RequestedAt = requestedAt;
         Deadline = deadline;
@@ -130,7 +131,20 @@ public sealed record CompactionRequest
     /// Gets the minimum fraction the candidate's estimated size must shrink
     /// by for the attempt to count as a measurable reduction.
     /// </summary>
-    public double MinimumReductionRatio { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// An initializer attempts to set the value outside the open interval
+    /// (0, 1), including either infinity or <see cref="double.NaN"/>.
+    /// </exception>
+    public double MinimumReductionRatio
+    {
+        get => _minimumReductionRatio;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(value, 0d, nameof(MinimumReductionRatio));
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(value, 1d, nameof(MinimumReductionRatio));
+            _minimumReductionRatio = value;
+        }
+    }
 
     /// <summary>Gets the minimum number of entries that must remain in the retained suffix.</summary>
     public int MinimumRetainedEntries { get; init; }

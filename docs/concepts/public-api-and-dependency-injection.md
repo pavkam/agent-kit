@@ -45,6 +45,8 @@ methods state which [completion boundary](run-lifecycle-and-settlement.md) they
 await.
 
 ```csharp
+namespace AgentKit;
+
 public interface IAgentRunner
 {
     Task<AgentRunResult<TOutput>> RunAsync<TOutput>(
@@ -87,11 +89,13 @@ specification and conformance suite:
 - `IContextAssembler`, `IHistoryProcessor`, `ICompactor`;
 - `IModelCatalog`, `IModelSelector`, `IModelRequestExecutor`, `IChatModel`,
   `IEmbeddingModel`, `IReranker`;
-- `IToolProvider`, `IToolResolver`, `IToolInvoker`, `IToolScheduler`;
+- `IToolProvider`, `IToolResolver`, `IToolInvoker`, `IToolScheduler`,
+  `IToolCallRecorder`, `IToolResultProjectionPolicyCatalog`, and
+  `IToolResultProjector`;
 - `ISecurityAuthority`, `ISecurityPolicy`, `IApprovalBroker`, security grant and
   audit contracts;
-- `IHookDispatcher`, dedicated hook interfaces, and their `EventArgs`-derived
-  boundary types;
+- `IHookDispatcher`, typed closed point definitions, dedicated hook interfaces,
+  and their `EventArgs`-derived boundary types;
 - narrow file-system, network, and process capability contracts;
 - `ISessionStore`, memory/document/vector/retrieval contracts;
 - `IRunEventSink`, `IUsageBudget`, `TimeProvider`, closed
@@ -131,7 +135,7 @@ builder.Services.AddAgentSession();
 builder.Services.AddInMemorySessionStore();
 builder.Services.AddAgentPermissions();
 builder.Services.AddAgentProviders();
-builder.Services.AddOpenAI(options => { ... });
+builder.Services.AddOpenAI();
 builder.Services.AddReadTool();
 builder.Services.AddAgentDefinition(agentDefinition);
 ```
@@ -174,6 +178,10 @@ Concrete provider packages MUST expose one package-level entry point such as
 `AddOpenAI`, `AddOpenRouter`, or `AddZAi`, then register named conversational,
 embedding, reranking, or other operations independently. One vendor package MAY
 supply several operations without merging their contracts or replacement paths.
+Each operation registration binds one immutable descriptor to explicit keyed,
+versioned endpoint/service-surface and credential/account profiles. Profile keys
+are independently replaceable and collision-checked; an unkeyed credential or
+options singleton whose meaning depends on registration order is invalid.
 
 ## Lifetimes
 
@@ -240,4 +248,3 @@ updated conformance packages.
 
 - [Configuration and overrides](configuration-and-overrides.md)
 - [Testing and evaluation](testing-and-evaluation.md)
-- [Research provenance](research-provenance.md)

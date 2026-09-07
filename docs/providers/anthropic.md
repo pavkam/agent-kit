@@ -233,6 +233,14 @@ direct Anthropic HTTP adapter.
    heuristics.
 6. Separate Managed Agents resources from stateless Messages.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [API overview](https://platform.claude.com/docs/en/api/overview)

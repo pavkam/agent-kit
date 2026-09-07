@@ -15,9 +15,13 @@ public sealed record FileWriteRequest
     /// <param name="content">The text content to write.</param>
     /// <param name="mode">How to treat an existing file at <paramref name="path"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="content"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="mode"/> is not a defined <see cref="FileWriteMode"/> value.
+    /// </exception>
     public FileWriteRequest(FileSystemPath path, string content, FileWriteMode mode)
     {
         ArgumentNullException.ThrowIfNull(content);
+        ArgumentOutOfRangeException.ThrowIfUndefined(mode);
 
         Path = path;
         Content = content;

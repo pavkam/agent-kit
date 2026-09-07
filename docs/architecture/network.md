@@ -348,3 +348,5 @@ resolved, connected, or transmitted.
 - [Tools](tools.md)
 - [Security and human control](permissions-and-human-control.md)
 - [MCP](mcp.md)
+- [Coding-harness built-in tools](../concepts/coding-harness-built-in-tools.md)
+- [Coding-harness export, sharing, and control plane](../concepts/coding-harness-export-sharing-and-control-plane.md)

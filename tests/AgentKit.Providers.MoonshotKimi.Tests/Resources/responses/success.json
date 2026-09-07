@@ -1,0 +1,21 @@
+{
+  "id": "moonshot-kimi-chat-1",
+  "object": "chat.completion",
+  "created": 1700000000,
+  "model": "kimi-k2-0711-preview",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Hello from Moonshot Kimi!"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 10,
+    "completion_tokens": 5,
+    "total_tokens": 15
+  }
+}

@@ -43,6 +43,14 @@ Concrete packages normally reference AgentKit.Abstractions. A leaf integration
 may reference the implementation package whose stable extension surface it
 adapts, but no foundation or implementation package references a concrete leaf.
 
+The
+[coding-harness execution profile](../concepts/coding-harness-execution-profile.md)
+is an application-level conformance profile across these owners. Workspaces,
+edits, terminals, language services, snapshots, resources, and control-plane
+adapters remain compositions of narrow session, I/O, tool, host-access,
+artifact, provider, and security contracts; they do not justify an
+`AgentKit.Harness` god package.
+
 ## Composition
 
 `AgentEngine` is the immutable process-level facade. `AgentEngineBuilder` is the
@@ -76,22 +84,24 @@ AgentKit supports two ownership modes through the same registrations:
   collection and the host owns the provider and its lifecycle.
 
 Engine-wide validation requires one agent-definition catalog and validator, one
-`TimeProvider`, and an effective `IIdentifierGenerator<TIdentifier>` for every
-identifier the selected composition creates. Each published `AgentDefinition`
-must then resolve exactly one effective keyed loop, input coordinator, output
-publisher, session coordinator/store selection, context assembler, hook
-dispatcher/catalog, security authority/policy profile, approval broker, model
-selector, and model request executor, plus a compatible conversational model.
-Engine-wide model and service catalogs may contain many implementations; the
-definition's selection may not be missing or ambiguous. Dynamic catalog reloads
-pass the same validation before publication. `TimeProvider.System` and the
-cryptographically strong generic identifier generator are documented,
-replaceable foundation defaults. Tools, skills, memory, embeddings, reranking,
-goals, MCP, and additional context contributors are optional. A registered
-optional capability must still be complete; a tool registration, for example,
-cannot build without its execution and security pipeline. A feature whose
-descriptor performs network I/O requires a configured network implementation; a
-process-backed tool or stdio transport requires a process implementation.
+`TimeProvider`, one `IRandomizerFactory`, one `IContentHasher`, and an effective
+closed `IIdentifierGenerator<TIdentifier>` for every identifier the selected
+composition creates. Each published `AgentDefinition` must then resolve exactly
+one effective keyed loop, input coordinator, output publisher, session
+coordinator/store selection, context assembler, hook dispatcher/catalog,
+security authority/policy profile, approval broker, model selector, and model
+request executor, plus a compatible conversational model. Engine-wide model and
+service catalogs may contain many implementations; the definition's selection
+may not be missing or ambiguous. Dynamic catalog reloads pass the same
+validation before publication. `TimeProvider.System`, closed cryptographically
+strong identifier generators, `IRandomizerFactory`, and `IContentHasher` are
+documented, replaceable foundation defaults. Tools, skills, memory, embeddings,
+reranking, goals, MCP, and additional context contributors are optional. A
+registered optional capability must still be complete; a tool registration, for
+example, cannot build without its execution and security pipeline. A feature
+whose descriptor performs network I/O requires a configured network
+implementation; a process-backed tool or stdio transport requires a process
+implementation.
 
 ## Configuration and default ownership
 
@@ -133,34 +143,34 @@ an existing ID and never generates a new one as repair.
 
 ## Components
 
-| Component                                                         | Owns                                                                                             |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| [Foundation contracts](foundation-contracts.md)                   | AgentKit.Abstractions values, interfaces, stable errors, deterministic primitives, and results   |
-| [Project structure](project-structure.md)                         | Package boundaries, dependency direction, common files, and mirrored tests                       |
-| [Composition and configuration](composition-and-configuration.md) | AgentEngine, its builder, dependency injection, validation, configuration, and lifetimes         |
-| [Agent runtime](agent-runtime.md)                                 | The replaceable loop, turn coordination, limits, cancellation, and settlement                    |
-| [Budgets and limits](budgets.md)                                  | Hierarchical limits, atomic reservations, accounting, and typed exhaustion                       |
-| [Messages and history](messages-and-history.md)                   | The immutable conversation model, durable history rules, validation, and repair                  |
-| [Input and output](input-and-output.md)                           | Input admission, queues, live streams, final-result publication, and channel adapters            |
-| [Structured output](structured-output.md)                         | Output definitions, extraction, validation, repair decisions, retries, and conversion            |
-| [Context](context.md)                                             | Context assembly plus the separate AgentKit.Context.Compaction implementation boundary           |
-| [Context compaction](context-compaction.md)                       | Semantic cuts, summarization strategies, validation, reduction, and durable activation           |
-| [Execution identity and tenancy](identity.md)                     | Trusted identity normalization, propagation, delegation chains, and tenant isolation             |
-| [Model and embedding providers](model-and-embedding-providers.md) | Capability discovery, selection, wire adaptation, streaming, and embeddings                      |
-| [Tools](tools.md)                                                 | Tool runtime and feature packages for discovery, validation, scheduling, invocation, and results |
-| [Security and human control](permissions-and-human-control.md)    | System-wide authority, policy, approvals, bounded grants, deferral, and enforcement              |
-| [Sessions](sessions.md)                                           | Session coordination, append-only state, branching, and replaceable storage                      |
-| [Durable execution](durable-execution.md)                         | Checkpoints, recovery, leases, fencing, and durable backend adaptation                           |
-| [Memory and retrieval](memory-and-retrieval.md)                   | Durable memory, documents, vectors, retrieval, provenance, and deletion                          |
-| [Goals and delegation](goals-and-delegation.md)                   | Goal state, attempts, delegation, agent communication, and joins                                 |
-| [Hooks and extensions](extensions.md)                             | Typed lifecycle hooks, allowed mutation, ordering, isolation, and dispatch                       |
-| [Observability](observability.md)                                 | Events, traces, metrics, logs, audit, correlation, and redaction                                 |
-| [MCP](mcp.md)                                                     | Protocol lifecycle, primitive adaptation, transports, and remote capability policy               |
-| [File system](file-system.md)                                     | Replaceable file and directory operations used by the framework and tools                        |
-| [Testing and evaluation](testing-and-evaluation.md)               | Mirrored tests, shared conformance, deterministic fakes, datasets, and evaluation reports        |
-| [Network access](network.md)                                      | Replaceable DNS, connections, redirects, request transport, and data-egress enforcement          |
-| [Process execution](process-execution.md)                         | Replaceable process creation, sandboxing, cancellation, output, and grant enforcement            |
-| [Artifact and content storage](artifacts.md)                      | Durable bounded content, integrity, retention, backend selection, and secure references          |
+| Component                                                         | Owns                                                                                                |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [Foundation contracts](foundation-contracts.md)                   | AgentKit.Abstractions values, interfaces, stable errors, deterministic primitives, and results      |
+| [Project structure](project-structure.md)                         | Package boundaries, dependency direction, common files, and mirrored tests                          |
+| [Composition and configuration](composition-and-configuration.md) | AgentEngine, its builder, dependency injection, validation, configuration, and lifetimes            |
+| [Agent runtime](agent-runtime.md)                                 | The replaceable loop, turn coordination, limits, cancellation, and settlement                       |
+| [Budgets and limits](budgets.md)                                  | Hierarchical limits, atomic reservations, accounting, and typed exhaustion                          |
+| [Messages and history](messages-and-history.md)                   | Immutable conversation truth, role trust, result projections, validation, and repair                |
+| [Input and output](input-and-output.md)                           | Input admission, queues, live streams, final-result publication, and channel adapters               |
+| [Structured output](structured-output.md)                         | Output definitions, extraction, validation, repair decisions, retries, and conversion               |
+| [Context](context.md)                                             | Context contributors, instruction trust, bounded assembly, selection, and request manifests         |
+| [Context compaction](context-compaction.md)                       | Semantic cuts, summarization strategies, validation, reduction, and durable activation              |
+| [Execution identity and tenancy](identity.md)                     | Trusted identity normalization, propagation, delegation chains, and tenant isolation                |
+| [Model and embedding providers](model-and-embedding-providers.md) | Provider catalogs, endpoint/account binding, capabilities, wire adaptation, and semantic operations |
+| [Tools](tools.md)                                                 | Tool runtime, terminal records, model projections, and focused feature packages                     |
+| [Security and human control](permissions-and-human-control.md)    | System-wide authority, policy, approvals, bounded grants, deferral, and enforcement                 |
+| [Sessions](sessions.md)                                           | Session coordination, append-only state, branching, and replaceable storage                         |
+| [Durable execution](durable-execution.md)                         | Checkpoints, recovery, leases, fencing, and durable backend adaptation                              |
+| [Memory and retrieval](memory-and-retrieval.md)                   | Durable memory, documents, vectors, retrieval, provenance, and deletion                             |
+| [Goals and delegation](goals-and-delegation.md)                   | Goal state, attempts, delegation, agent communication, and joins                                    |
+| [Hooks and extensions](extensions.md)                             | Stage-valid typed hooks, additive points, ordering, failure policy, isolation, and dispatch         |
+| [Observability](observability.md)                                 | Events, traces, metrics, logs, audit, correlation, and redaction                                    |
+| [MCP](mcp.md)                                                     | Protocol lifecycle, primitive adaptation, transports, and remote capability policy                  |
+| [File system](file-system.md)                                     | Bounded reads, explicit atomic writes, and replaceable file/directory capability contracts          |
+| [Testing and evaluation](testing-and-evaluation.md)               | Mirrored tests, shared conformance, deterministic fakes, datasets, and evaluation reports           |
+| [Network access](network.md)                                      | Replaceable DNS, connections, redirects, request transport, and data-egress enforcement             |
+| [Process execution](process-execution.md)                         | Replaceable process creation, sandboxing, cancellation, output, and grant enforcement               |
+| [Artifact and content storage](artifacts.md)                      | Durable bounded content, integrity, retention, backend selection, and secure references             |
 
 ## Concept coverage
 
@@ -168,58 +178,69 @@ Every normative concept has an architectural owner. Several concepts cross
 components, but one component owns each decision so dependencies remain
 directed.
 
-| Concept specification                                                                           | Architectural solution and policy owner                                                                                            |
-| ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| [Design principles](../concepts/design-principles.md)                                           | Cross-cutting invariants in this index, enforced by composition validation and conformance tests                                   |
-| [Architecture and dependency boundaries](../concepts/architecture-and-dependency-boundaries.md) | [Project structure](project-structure.md), including separate project and service DAG validation                                   |
-| [Agent definition and run context](../concepts/agent-definition-and-run-context.md)             | [Composition and configuration](composition-and-configuration.md) owns immutable definitions, run scopes, and compiled plans       |
-| [Agent loop state machine](../concepts/agent-loop-state-machine.md)                             | [Agent runtime](agent-runtime.md) owns transitions and coordination, not collaborator policy                                       |
-| [Run lifecycle and settlement](../concepts/run-lifecycle-and-settlement.md)                     | Agent runtime coordinates; [sessions](sessions.md) own active-run exclusion; [I/O](input-and-output.md) publishes terminal results |
-| [Public API and dependency injection](../concepts/public-api-and-dependency-injection.md)       | Composition facade and [project structure](project-structure.md) own registration, validation, lifetimes, and replacement          |
-| [Message and content model](../concepts/message-and-content-model.md)                           | [Messages and history](messages-and-history.md) owns immutable values; no implementation package is invented for records           |
-| [Streaming and event protocol](../concepts/streaming-and-event-protocol.md)                     | [I/O](input-and-output.md) owns fan-out; providers parse candidates; sessions persist only semantic events                         |
-| [Input admission and message queues](../concepts/input-admission-and-message-queues.md)         | I/O owns admission/promotion; session-selected queue storage owns durable ordering                                                 |
-| [History validation and repair](../concepts/history-validation-and-repair.md)                   | Messages define contracts; [context](context.md) owns the first-party history pipeline over session reads                          |
-| [Context assembly and instructions](../concepts/context-assembly-and-instructions.md)           | Context owns contributors, trust, selection, budgeting, and manifests                                                              |
-| [Sessions, persistence, and branching](../concepts/sessions-persistence-and-branching.md)       | Sessions own coordination and store selection; concrete stores are leaves                                                          |
-| [Context compaction](../concepts/context-compaction.md)                                         | [Context compaction](context-compaction.md) owns safe reduction and activation without calling context assembly                    |
-| [Memory, retrieval, and storage](../concepts/memory-retrieval-and-storage.md)                   | [Memory and retrieval](memory-and-retrieval.md) separates memory, documents, vectors, retrieval, and semantic operations           |
-| [Artifact and content storage](../concepts/artifact-and-content-storage.md)                     | [Artifacts](artifacts.md) own durable bytes and references outside history or memory                                               |
-| [Model providers and capabilities](../concepts/model-providers-and-capabilities.md)             | [Providers](model-and-embedding-providers.md) own catalogs, selection, operations, capabilities, and adapter leaves                |
-| [Provider request pipeline](../concepts/provider-request-pipeline.md)                           | Providers own attempts and wire adapters; [network](network.md) owns protected transport effects                                   |
-| [Configuration and overrides](../concepts/configuration-and-overrides.md)                       | Composition owns immutable merge snapshots, definition sources, reload boundaries, and validation                                  |
-| [Execution identity and tenancy](../concepts/execution-identity-and-tenancy.md)                 | [Identity](identity.md) owns trusted-ingress normalization; security consumes identity but owns authorization                      |
-| [Structured output](../concepts/structured-output.md)                                           | [Structured output](structured-output.md) owns validation and returns retry decisions to the loop                                  |
-| [Tools and toolsets](../concepts/tools-and-toolsets.md)                                         | [Tools](tools.md) own catalog, resolution, schemas, snapshots, and feature packages                                                |
-| [Tool-call lifecycle](../concepts/tool-call-lifecycle.md)                                       | Tools own validation through terminal recording; sessions provide durable append contracts                                         |
-| [Tool scheduling and concurrency](../concepts/tool-scheduling-and-concurrency.md)               | Tool scheduler owns barrier segments and deterministic publication                                                                 |
-| [Tool errors, retries, and results](../concepts/tool-errors-retries-and-results.md)             | Tools own retry safety and normalization; large results may become artifact references                                             |
-| [Permissions, approvals, and trust](../concepts/permissions-approvals-and-trust.md)             | [Security](permissions-and-human-control.md) owns policy, approval, grants, enforcement, revocation, and audit                     |
-| [Deferred operations and human-in-the-loop](../concepts/deferred-and-human-in-the-loop.md)      | Security owns approval deferral; sessions persist it; I/O admits resolution; durability may resume it                              |
-| [MCP integration](../concepts/mcp-integration.md)                                               | [MCP](mcp.md) owns protocol lifecycle and adapters without bypassing tool, retrieval, or security contracts                        |
-| [Usage limits and budgets](../concepts/usage-limits-and-budgets.md)                             | [Budgets](budgets.md) own hierarchy and atomic reservations; consumers own their estimates and responses                           |
-| [Cancellation, timeouts, and resilience](../concepts/cancellation-timeouts-and-resilience.md)   | Agent runtime owns cancellation composition; each effect owner owns safe retry and uncertainty—there is no generic replay layer    |
-| [Extensions, hooks, and middleware](../concepts/extensions-hooks-and-middleware.md)             | [Hooks](extensions.md) own typed dispatch, ordering, mutation validation, and reentrancy bounds                                    |
-| [Durable execution and recovery](../concepts/durable-execution-and-recovery.md)                 | [Durable execution](durable-execution.md) owns checkpoints, leases, fencing, recovery, and backend adaptation                      |
-| [Observability and audit](../concepts/observability-and-audit.md)                               | [Observability](observability.md) owns immutable sinks and exporters; it never becomes a control dependency                        |
-| [Goals and multi-agent delegation](../concepts/goals-and-multi-agent-delegation.md)             | [Goals and delegation](goals-and-delegation.md) own goal state, scoped child work, joins, and communication                        |
-| [Error taxonomy](../concepts/error-taxonomy.md)                                                 | Stable error values live in Abstractions; each boundary maps its own failures before observation—no central error manager          |
-| [Testing and evaluation](../concepts/testing-and-evaluation.md)                                 | [Testing and evaluation](testing-and-evaluation.md) own mirrored tests, conformance, fault injection, and behavioral evals         |
-| [Research provenance](../concepts/research-provenance.md)                                       | Evidence informs specifications; it has no runtime service or package dependency                                                   |
+| Concept specification                                                                                               | Architectural solution and policy owner                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Design principles](../concepts/design-principles.md)                                                               | Cross-cutting invariants in this index, enforced by composition validation and conformance tests                                                                |
+| [Architecture and dependency boundaries](../concepts/architecture-and-dependency-boundaries.md)                     | [Project structure](project-structure.md), including separate project and service DAG validation                                                                |
+| [Agent definition and run context](../concepts/agent-definition-and-run-context.md)                                 | [Composition and configuration](composition-and-configuration.md) owns immutable definitions, run scopes, and compiled plans                                    |
+| [Agent loop state machine](../concepts/agent-loop-state-machine.md)                                                 | [Agent runtime](agent-runtime.md) owns transitions and coordination, not collaborator policy                                                                    |
+| [Run lifecycle and settlement](../concepts/run-lifecycle-and-settlement.md)                                         | Agent runtime coordinates; [sessions](sessions.md) own per-lane operation exclusion and serialized mutation; I/O publishes terminals                            |
+| [Public API and dependency injection](../concepts/public-api-and-dependency-injection.md)                           | Composition facade and [project structure](project-structure.md) own registration, validation, lifetimes, and replacement                                       |
+| [Coding harness execution profile](../concepts/coding-harness-execution-profile.md)                                 | Applications compose the profile; each selected runtime, session, I/O, tool, provider, host, and security owner remains narrow                                  |
+| [Coding workspaces and worktrees](../concepts/coding-workspaces-and-worktrees.md)                                   | A host-selected workspace coordinator owns registry and lifecycle; file/process leaves enforce effects, sessions retain references, and security owns authority |
+| [Workspace mutations and code editing](../concepts/workspace-mutations-and-code-editing.md)                         | [Tools](tools.md) coordinates plans; file-system leaves enforce the final authorized path and byte effects                                                      |
+| [Coding-harness built-in tools](../concepts/coding-harness-built-in-tools.md)                                       | Focused tool packages compose [tools](tools.md), host access, I/O, sessions, goals, artifacts, and security                                                     |
+| [Interactive terminals and process sessions](../concepts/interactive-terminals-and-process-sessions.md)             | [Process execution](process-execution.md) owns processes; I/O owns bounded event fan-out; artifacts own spill                                                   |
+| [Language services, formatters, and watchers](../concepts/language-services-formatters-and-watchers.md)             | Tool and host leaves own protocol/process behavior; settled edits return through the file mutation boundary                                                     |
+| [Workspace snapshots and reversion](../concepts/workspace-snapshots-and-reversion.md)                               | A host-selected snapshot coordinator owns coverage and restore; artifacts own bytes, file-system leaves enforce effects, and sessions retain references         |
+| [Coding-harness resources and project trust](../concepts/coding-harness-resources-and-project-trust.md)             | Composition/context own pure discovery and manifests; process/network/security own executable or remote effects                                                 |
+| [Coding-harness export, sharing, and control plane](../concepts/coding-harness-export-sharing-and-control-plane.md) | Host/channel leaves own routes; I/O, identity, sessions, network, artifacts, and security retain their existing authority boundaries                            |
+| [Coding-harness frontends and protocol adapters](../concepts/coding-harness-frontends-and-protocol-adapters.md)     | [I/O](input-and-output.md) owns admission/publication; TUI, IDE, batch, RPC, and ACP-style integrations remain projection-only leaves                           |
+| [Coding-harness MCP exposure](../concepts/coding-harness-mcp-exposure.md)                                           | [MCP](mcp.md) owns protocol lifecycle; context, tools, I/O, artifacts, and security own each exposed primitive's local semantics                                |
+| [Message and content model](../concepts/message-and-content-model.md)                                               | [Messages and history](messages-and-history.md) owns immutable values, non-elevating roles, and bounded tool-result projections                                 |
+| [Streaming and event protocol](../concepts/streaming-and-event-protocol.md)                                         | [I/O](input-and-output.md) owns fan-out; providers parse candidates; sessions persist only semantic events                                                      |
+| [Input admission and message queues](../concepts/input-admission-and-message-queues.md)                             | I/O owns admission/promotion; session-selected queue storage owns durable ordering                                                                              |
+| [History validation and repair](../concepts/history-validation-and-repair.md)                                       | Messages define contracts; [context](context.md) owns the first-party history pipeline over session reads                                                       |
+| [Context assembly and instructions](../concepts/context-assembly-and-instructions.md)                               | Context owns contributors, trust, selection, budgeting, and manifests                                                                                           |
+| [Sessions, persistence, and branching](../concepts/sessions-persistence-and-branching.md)                           | Sessions own coordination and store selection; concrete stores are leaves                                                                                       |
+| [Context compaction](../concepts/context-compaction.md)                                                             | [Context compaction](context-compaction.md) owns safe reduction and activation without calling context assembly                                                 |
+| [Memory, retrieval, and storage](../concepts/memory-retrieval-and-storage.md)                                       | [Memory and retrieval](memory-and-retrieval.md) separates memory, documents, vectors, retrieval, and semantic operations                                        |
+| [Artifact and content storage](../concepts/artifact-and-content-storage.md)                                         | [Artifacts](artifacts.md) own durable bytes and references outside history or memory                                                                            |
+| [Model providers and capabilities](../concepts/model-providers-and-capabilities.md)                                 | [Providers](model-and-embedding-providers.md) own catalogs, service/endpoint/account binding, operation capabilities, and adapter leaves                        |
+| [Provider request pipeline](../concepts/provider-request-pipeline.md)                                               | Providers own loss-aware translation, credentials, attempts, and parsing; [network](network.md) owns protected transport effects                                |
+| [Configuration and overrides](../concepts/configuration-and-overrides.md)                                           | Composition owns immutable merge snapshots, definition sources, reload boundaries, and validation                                                               |
+| [Execution identity and tenancy](../concepts/execution-identity-and-tenancy.md)                                     | [Identity](identity.md) owns trusted-ingress normalization; security consumes identity but owns authorization                                                   |
+| [Structured output](../concepts/structured-output.md)                                                               | [Structured output](structured-output.md) owns validation and returns retry decisions to the loop                                                               |
+| [Tools and toolsets](../concepts/tools-and-toolsets.md)                                                             | [Tools](tools.md) own catalog, resolution, schemas, snapshots, and separate read/write feature packages                                                         |
+| [Tool-call lifecycle](../concepts/tool-call-lifecycle.md)                                                           | Tools own validation through authoritative terminal recording and bounded projection; sessions provide durable append contracts                                 |
+| [Tool scheduling and concurrency](../concepts/tool-scheduling-and-concurrency.md)                                   | Tool scheduler owns barrier segments and deterministic publication                                                                                              |
+| [Tool errors, retries, and results](../concepts/tool-errors-retries-and-results.md)                                 | Tools own retry safety, full terminal results, captured projection policy, and loss-aware message outcomes                                                      |
+| [Permissions, approvals, and trust](../concepts/permissions-approvals-and-trust.md)                                 | [Security](permissions-and-human-control.md) owns policy, approval, grants, enforcement, revocation, and audit                                                  |
+| [Deferred operations and human-in-the-loop](../concepts/deferred-and-human-in-the-loop.md)                          | Security owns approval deferral; sessions persist it; I/O admits resolution; durability may resume it                                                           |
+| [MCP integration](../concepts/mcp-integration.md)                                                                   | [MCP](mcp.md) owns protocol lifecycle and adapters without bypassing tool, retrieval, or security contracts                                                     |
+| [Usage limits and budgets](../concepts/usage-limits-and-budgets.md)                                                 | [Budgets](budgets.md) own hierarchy and atomic reservations; consumers own their estimates and responses                                                        |
+| [Cancellation, timeouts, and resilience](../concepts/cancellation-timeouts-and-resilience.md)                       | Agent runtime owns cancellation composition; each effect owner owns safe retry and uncertainty—there is no generic replay layer                                 |
+| [Extensions, hooks, and middleware](../concepts/extensions-hooks-and-middleware.md)                                 | [Hooks](extensions.md) own typed additive points, stage identity, ordering strength, monotonic failure, rollback, and reentrancy                                |
+| [Durable execution and recovery](../concepts/durable-execution-and-recovery.md)                                     | [Durable execution](durable-execution.md) owns checkpoints, leases, fencing, recovery, and backend adaptation                                                   |
+| [Observability and audit](../concepts/observability-and-audit.md)                                                   | [Observability](observability.md) owns immutable sinks and exporters; it never becomes a control dependency                                                     |
+| [Goals and multi-agent delegation](../concepts/goals-and-multi-agent-delegation.md)                                 | [Goals and delegation](goals-and-delegation.md) own goal state, scoped child work, joins, and communication                                                     |
+| [Error taxonomy](../concepts/error-taxonomy.md)                                                                     | Stable error values live in Abstractions; each boundary maps its own failures before observation—no central error manager                                       |
+| [Testing and evaluation](../concepts/testing-and-evaluation.md)                                                     | [Testing and evaluation](testing-and-evaluation.md) own mirrored tests, conformance, fault injection, and behavioral evals                                      |
 
 ## Contract and registration map
 
-| Boundary                             | Neutral selection/contract shape                                                                        | First-party registration and replacement                                                                                                                                                                                                    |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Engine and agents                    | `IAgentDefinitionCatalog`, immutable `AgentDefinition`, run-owned scope                                 | AgentKit foundation; engine-wide singular catalog/validator and additive definition sources, all replaceable                                                                                                                                |
-| Runnable spine                       | Keyed loop, I/O, context, compaction, output, hooks, session, security, provider, and budget selections | `AddAgentLoop`, `AddAgentIO`, `AddAgentContext`, `AddAgentContextCompaction`, `AddAgentOutput`, `AddAgentHooks`, `AddAgentSession`, `AddAgentPermissions`, `AddAgentProviders`, `AddAgentBudgets`; one effective selection per enabled axis |
-| Models and tools                     | Keyed model operations; additive tool providers with catalog snapshots                                  | Concrete provider and `AgentKit.Tools.*` package registrations; keys are unique and selections explicit                                                                                                                                     |
-| State and recovery                   | Engine-wide catalogs with keyed per-agent session, memory, vector, and durability selections            | `AgentKit.Session`, `AgentKit.Memory`, and provider-neutral `AgentKit.Durability` / `AddAgentDurability`; concrete durability backends remain `AgentKit.Durability.<BackendName>` leaves                                                    |
-| Observation                          | Additive keyed `IRunEventSink` and `ISecurityAuditSink`                                                 | AgentKit.Observability.OpenTelemetry or custom sinks; no hidden exporter                                                                                                                                                                    |
-| MCP                                  | Singular client/session factory, additive keyed endpoints and primitive adapters                        | `AddMcpClient`, `AddMcpStdioEndpoint`, `AddMcpHttpEndpoint`, and `AddMcpServer`                                                                                                                                                             |
-| Host file/network/process boundaries | Narrow keyed capability profiles with one effective selection per consumer                              | `AddOperatingSystemFileSystem`, `AddAgentNetwork`, and `AddAgentProcesses`; in-memory/scripted packages are explicit alternatives                                                                                                           |
-| Identity and artifacts               | Immutable execution identity plus keyed artifact coordinator/store contracts                            | `AddAgentIdentity` at trusted ingress and `AddAgentArtifacts` with explicit backend leaves                                                                                                                                                  |
-| Evaluation                           | Singular `IEvaluationRunner`, keyed additive evaluators/stores/exporters                                | `AddAgentEvaluation`; optional and uses only public engine surfaces                                                                                                                                                                         |
+| Boundary                             | Neutral selection/contract shape                                                                                 | First-party registration and replacement                                                                                                                                                                                                    |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Engine and agents                    | `IAgentDefinitionCatalog`, immutable `AgentDefinition`, run-owned scope                                          | AgentKit foundation; engine-wide singular catalog/validator and additive definition sources, all replaceable                                                                                                                                |
+| Runnable spine                       | Keyed loop, I/O, context, compaction, output, hooks, session, security, provider, and budget selections          | `AddAgentLoop`, `AddAgentIO`, `AddAgentContext`, `AddAgentContextCompaction`, `AddAgentOutput`, `AddAgentHooks`, `AddAgentSession`, `AddAgentPermissions`, `AddAgentProviders`, `AddAgentBudgets`; one effective selection per enabled axis |
+| Provider operations                  | Keyed operation/model registrations with captured endpoint/service-surface and credential/account profiles       | Concrete provider packages own independently keyed profiles and bind each operation explicitly; shared wire families own mechanics, not provider policy                                                                                     |
+| Tools                                | Additive providers and catalog snapshots; authoritative terminal records plus captured bounded projection policy | `AgentKit.Tools` owns the runtime; `AgentKit.Tools.Read` and `.Write` remain separate features; recorder and projection policy are explicit and replaceable                                                                                 |
+| State and recovery                   | Engine-wide catalogs with keyed per-agent session, memory, vector, and durability selections                     | `AgentKit.Session`, `AgentKit.Memory`, and provider-neutral `AgentKit.Durability` / `AddAgentDurability`; concrete durability backends remain `AgentKit.Durability.<BackendName>` leaves                                                    |
+| Observation                          | Additive keyed `IRunEventSink` and `ISecurityAuditSink`                                                          | AgentKit.Observability.OpenTelemetry or custom sinks; no hidden exporter                                                                                                                                                                    |
+| MCP                                  | Singular client/session factory, additive keyed endpoints and primitive adapters                                 | `AddMcpClient`, `AddMcpStdioEndpoint`, `AddMcpHttpEndpoint`, and `AddMcpServer`                                                                                                                                                             |
+| Host file/network/process boundaries | Narrow keyed capability profiles with one effective selection per consumer                                       | File writes require explicit atomic disposition and separately authorized parent creation; in-memory/scripted packages are explicit alternatives                                                                                            |
+| Identity and artifacts               | Immutable execution identity plus keyed artifact coordinator/store contracts                                     | `AddAgentIdentity` at trusted ingress and `AddAgentArtifacts` with explicit backend leaves                                                                                                                                                  |
+| Evaluation                           | Singular `IEvaluationRunner`, keyed additive evaluators/stores/exporters                                         | `AddAgentEvaluation`; optional and uses only public engine surfaces                                                                                                                                                                         |
 
 Singular defaults use `TryAdd` and an explicit replacement path. Additive
 registrations retain deterministic order. Keyed registrations use stable unique
@@ -244,19 +265,23 @@ components in a deliberate order:
 5. The session provides a stable history version for the active branch.
 6. Context contributors gather instructions, skills, tools, memory, goals, and
    runtime facts into a bounded request view.
-7. The provider runtime reserves budget, selects a compatible model, then a
-   concrete provider package performs one model request.
+7. The provider runtime reserves budget and selects a compatible operation whose
+   model, endpoint/service-surface profile, and credential/account profile are
+   already captured; a concrete provider package then performs one request.
 8. The output stream exposes typed provisional events while the loop builds a
    candidate response.
 9. The output processor validates or returns a bounded repair/retry decision to
    the loop. An accepted assistant response is committed to the session.
 10. Requested tools are resolved against the request's catalog snapshot,
-    authorized by the security authority, recorded, and executed with a bounded
-    grant enforced again by the effecting file, network, or process component.
-11. Tool results are committed in deterministic source order and the loop
-    decides whether another turn is required. Oversized or binary results may be
-    externalized through the artifact coordinator before their references are
-    committed.
+    authorized by the security authority, accepted-recorded, and executed with a
+    bounded grant enforced again by the effecting file, network, or process
+    component. Every identified request reaches one authoritative terminal
+    record, including pre-invocation rejection.
+11. The captured projection policy produces bounded `ToolResultPart` values,
+    which are committed in deterministic source order before the loop decides
+    whether another turn is required. Projection/publication retry never repeats
+    the tool effect; oversized or binary content may become an authorized
+    artifact reference.
 12. The run produces one typed terminal outcome and settles all required work.
 
 Goals, deferrals, recovery, and queued follow-up input can start later runs, but
@@ -272,14 +297,26 @@ they do not weaken these boundaries.
 - Every behaviorally meaningful default is documented, package-owned, safely
   replaceable, and captured in the effective configuration or catalog snapshot.
 - Provider output is a proposal until validated and committed.
-- Model text, retrieved content, tool metadata, and remote protocol metadata do
-  not grant authority.
-- Tool calls are durably recorded before side effects begin.
-- Every accepted tool call and run reaches exactly one terminal result.
+- Model text, retrieved content, tool metadata, runtime notices, and remote
+  protocol metadata do not grant authority or system/developer instruction
+  precedence.
+- Every tool call admitted to invocation is durably recorded before its side
+  effect; every bounded, identified call reaches exactly one authoritative
+  terminal result and bounded correlated projection.
+- A tool-result projection preserves requested alias, resolved identity when
+  available, exact source status, uncertainty, loss, and captured policy
+  version; it never substitutes for or reconstructs the terminal record.
+- Each provider operation captures independently keyed endpoint/service-surface,
+  credential/account, and operation/model bindings. Missing usage remains
+  unknown, and unexpected response candidates are never discarded silently.
+  Credential-profile references remain classified execution/audit evidence, not
+  assistant-message metadata.
 - Configuration, catalogs, and context are immutable snapshots while an
   operation is in flight.
-- Hook mutation is limited by dedicated event arguments, validated after each
-  hook, and can never widen security authority.
+- Hook contracts expose only identities established at their lifecycle stage.
+  Point definitions are typed and additive; ordering strength and failure-policy
+  precedence are explicit, isolated failures leak no partial mutation, and no
+  hook can widen security authority.
 - Time-dependent framework behavior uses the injected TimeProvider.
 - Random selection, jitter, identifiers, and fingerprints use injected
   deterministic primitives with replaceable production defaults.

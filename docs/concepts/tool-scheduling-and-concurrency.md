@@ -13,9 +13,12 @@ preflighted limits.
 ## Source order
 
 The [provider response](streaming-and-event-protocol.md) defines source order.
-Calls MUST receive an ordinal before execution. Scheduling MAY be concurrent,
-but committed result messages and the next provider context MUST use source
-order unless an explicit tool protocol requires another deterministic order.
+Calls MUST retain a stable part identity or position in the complete assistant
+content sequence and receive a separate scheduling ordinal before execution.
+Text and reasoning parts count toward content position. Scheduling MAY be
+concurrent, but committed result messages and the next provider context MUST use
+call source order unless an explicit tool protocol requires another
+deterministic order.
 
 Live completion events MAY arrive in completion order. They MUST carry call ID
 and source ordinal so consumers do not mistake completion order for history
@@ -70,13 +73,17 @@ policy MUST state whether independent allowed calls proceed.
 
 ## Publication
 
-Tool tasks MAY finish in any order. A publication coordinator buffers terminal
-results until all earlier source ordinals are terminal, then commits them in
-order. Bounded result-size limits prevent an early slow call from allowing
-unbounded buffered output behind it.
+Tool tasks MAY finish in any order. Each finished effect first commits one
+complete bounded authoritative outcome and marks the call `OutcomeReady` in
+completion order. That durable state prevents replay after a crash while an
+earlier call is still running. A separate history-materialization coordinator
+buffers only the bounded result projections until every earlier source ordinal
+is terminal, then places those projections and marks calls `Completed` in source
+order. Bounded result-size and call-count limits prevent an early slow call from
+allowing unbounded staged output behind it.
 
-If a call never settles by deadline, it receives a terminal timeout or
-interrupted result so later results can publish.
+If a call never settles by deadline, it receives an authoritative terminal
+timeout or interrupted outcome so later projections can materialize.
 
 ## Cancellation
 
@@ -100,27 +107,19 @@ the cancellation and settlement policy.
 ## Acceptance scenarios
 
 - Parallel calls finish in reverse order but commit in source order.
+- Mixed text, reasoning, and tool parts retain distinct content position and
+  scheduling ordinal.
 - A sequential call forms a barrier between two parallel segments.
 - A hard batch limit prevents every side effect, not just the last call.
 - Duplicate call IDs fail preflight.
 - Cancellation marks an uncooperative tool outcome unknown after drain timeout.
 - Buffer bounds apply while an earlier ordinal is slow.
-
-## Upstream evidence
-
-- Pydantic AI implements sequential tools as barriers between concurrent
-  segments and preflights tool-call usage limits in its agent graph and tool
-  manager; see
-  [`_agent_graph.py`](https://github.com/pydantic/pydantic-ai/blob/c0e4d824eaa0401d4481d401e5b3894ab32ab59d/pydantic_ai_slim/pydantic_ai/_agent_graph.py).
-- OpenCode V2 forks local tool execution while serializing publication in
-  [`llm.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/runner/llm.ts).
-- Pi supports parallel and sequential execution but serializes a whole batch
-  containing a sequential tool in
-  [`agent-loop.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/agent/src/agent-loop.ts);
-  AgentKit adopts the more precise barrier-segment rule.
+- A crash after later calls stage but before the head call settles replays only
+  the head according to its effect classification.
 
 ## Related specifications
 
 - [Structured output](structured-output.md)
 - [Cancellation, timeouts, and resilience](cancellation-timeouts-and-resilience.md)
 - [Durable execution and recovery](durable-execution-and-recovery.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

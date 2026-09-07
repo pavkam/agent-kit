@@ -110,6 +110,23 @@ public sealed class DefaultToolInvokerTests
         _ = await Should.ThrowAsync<OperationCanceledException>(() => invoker.InvokeAsync(request, cts.Token));
     }
 
+    [Fact]
+    public async Task InvokeAsync_WhenToolThrowsOperationCanceledExceptionWithoutCallerCancellation_ReturnsFailed()
+    {
+        var tool = new FakeTool
+        {
+            Descriptor = TestFactory.Descriptor("cancels-itself"),
+            OnInvoke = (_, _) => throw new OperationCanceledException("The tool canceled itself.")
+        };
+        var invoker = CreateInvoker([tool], allowed: "cancels-itself");
+        var request = TestFactory.CallRequest(new ToolId("cancels-itself"));
+
+        var result = await invoker.InvokeAsync(request, CancellationToken.None);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.FailureReason.ShouldNotBeNull().ShouldContain("cancels-itself");
+    }
+
     private static DefaultToolInvoker CreateInvoker(IEnumerable<ITool> tools, params string[] allowed)
     {
         var options = new AgentToolsOptions();

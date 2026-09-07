@@ -6,8 +6,8 @@ namespace AgentKit.Providers.ZAi;
 using Microsoft.Extensions.Options;
 
 /// <summary>
-/// Validates <see cref="ZAiProviderOptions"/> at the point they are first
-/// resolved, so a missing endpoint or invalid path fails composition
+/// Validates <see cref="ZAiProviderOptions"/> during host startup, so a
+/// missing endpoint or invalid path fails composition
 /// rather than the middle of an agent run.
 /// </summary>
 public sealed class ZAiProviderOptionsValidator: IValidateOptions<ZAiProviderOptions>
@@ -20,9 +20,11 @@ public sealed class ZAiProviderOptionsValidator: IValidateOptions<ZAiProviderOpt
         return options.BaseAddress is null || !options.BaseAddress.IsAbsoluteUri
             ? ValidateOptionsResult.Fail(
                 $"{nameof(ZAiProviderOptions.BaseAddress)} must be an absolute URI.")
-            : string.IsNullOrWhiteSpace(options.ChatCompletionsPath)
+            : string.IsNullOrWhiteSpace(options.ChatCompletionsPath) ||
+                !Uri.TryCreate(options.ChatCompletionsPath, UriKind.Relative, out _) ||
+                options.ChatCompletionsPath[0] is '/' or '\\'
             ? ValidateOptionsResult.Fail(
-                $"{nameof(ZAiProviderOptions.ChatCompletionsPath)} must not be null, empty, or whitespace.")
+                $"{nameof(ZAiProviderOptions.ChatCompletionsPath)} must be a non-rooted relative URI path.")
             : ValidateOptionsResult.Success;
     }
 }

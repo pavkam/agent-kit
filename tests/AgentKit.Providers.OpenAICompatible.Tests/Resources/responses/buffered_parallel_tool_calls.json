@@ -13,12 +13,18 @@
           {
             "id": "call_alpha",
             "type": "function",
-            "function": { "name": "get_weather", "arguments": "{\"location\":\"Paris\"}" }
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\":\"Paris\"}"
+            }
           },
           {
             "id": "call_beta",
             "type": "function",
-            "function": { "name": "get_time", "arguments": "{\"timezone\":\"UTC\"}" }
+            "function": {
+              "name": "get_time",
+              "arguments": "{\"timezone\":\"UTC\"}"
+            }
           }
         ]
       },

@@ -51,7 +51,7 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             _ = services.AddOpenAICompatibleProvider();
-            _ = services.AddOptions<ZAiProviderOptions>();
+            _ = services.AddOptions<ZAiProviderOptions>().ValidateOnStart();
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IValidateOptions<ZAiProviderOptions>, ZAiProviderOptionsValidator>());
 
@@ -76,12 +76,14 @@ public static class ServiceExtensions
         /// chained with other registration methods.
         /// </returns>
         /// <remarks>
-        /// This registration is singular: it uses <c>TryAdd</c> semantics,
-        /// so it never overrides a credential source an application (or
-        /// <c>AddZAiOAuthCredential</c>) already registered. A static API
-        /// key is Z.ai's documented primary credential; OAuth support is
-        /// offered for parity with the other AgentKit provider
-        /// integrations and for consoles that issue a derived token.
+        /// This registration is singular for the Z.ai provider key: it uses
+        /// keyed <c>TryAdd</c> semantics, so it never overrides a Z.ai
+        /// credential source an application (or
+        /// <c>AddZAiOAuthCredential</c>) already registered, while remaining
+        /// isolated from other provider packages. A static API key is Z.ai's
+        /// documented primary credential; OAuth support is offered for parity
+        /// with the other AgentKit provider integrations and for consoles that
+        /// issue a derived token.
         /// </remarks>
         /// <exception cref="ArgumentException">
         /// <paramref name="apiKey"/> is null, empty, or consists only of
@@ -92,7 +94,9 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddSingleton<IProviderCredentialSource>(credentialSource);
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                ZAiProviderDefaults.ProviderId,
+                credentialSource);
 
             return services;
         }
@@ -110,17 +114,23 @@ public static class ServiceExtensions
         /// chained with other registration methods.
         /// </returns>
         /// <remarks>
-        /// This registration is singular: it uses <c>TryAdd</c> semantics,
-        /// so it never overrides a credential source an application (or
-        /// <c>AddZAiApiKeyCredential</c>) already registered.
+        /// This registration is singular for the Z.ai provider key: it uses
+        /// keyed <c>TryAdd</c> semantics, so it never overrides a Z.ai
+        /// credential source an application (or
+        /// <c>AddZAiApiKeyCredential</c>) already registered, while remaining
+        /// isolated from other provider packages.
         /// </remarks>
         public IServiceCollection AddZAiOAuthCredential<TProvider>()
             where TProvider : class, IOAuthAccessTokenProvider
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddSingleton<IOAuthAccessTokenProvider, TProvider>();
-            services.TryAddSingleton<IProviderCredentialSource, DelegatingOAuthCredentialSource>();
+            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
+                ZAiProviderDefaults.ProviderId);
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                ZAiProviderDefaults.ProviderId,
+                static (provider, key) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
 
             return services;
         }
@@ -178,7 +188,7 @@ public static class ServiceExtensions
                     ZAiProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
-                    provider.GetRequiredService<IProviderCredentialSource>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAiProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<TimeProvider>());
             });

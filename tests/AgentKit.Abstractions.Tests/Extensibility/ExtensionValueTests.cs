@@ -43,5 +43,24 @@ public sealed class ExtensionValueTests
         var second = new ExtensionValue([1, 2, 3]);
 
         first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void Equality_WhenBytesDiffer_InstancesAreNotEqual()
+    {
+        var first = new ExtensionValue([1, 2, 3]);
+        var second = new ExtensionValue([1, 2, 4]);
+
+        first.ShouldNotBe(second);
+    }
+
+    [Fact]
+    public void Equality_WhenLengthsDiffer_InstancesAreNotEqual()
+    {
+        var first = new ExtensionValue([1, 2, 3]);
+        var second = new ExtensionValue([1, 2]);
+
+        first.ShouldNotBe(second);
     }
 }

@@ -65,10 +65,13 @@ reports filesystem metadata as external truth while using TimeProvider for
 framework-owned deadlines, polling, retries, and event times.
 
 Shared conformance suites run against both implementations. They cover path
-normalization, read/write behavior, atomic replacement, enumeration order,
-stream disposal, cancellation, metadata, root escape attempts, symbolic links,
-and concurrent access. Tests do not touch the developer's real workspace unless
-they are explicitly marked integration tests and use an isolated temporary root.
+normalization, bounds against actual stream bytes, every missing/existing write
+disposition, target-state races, replacement and append atomicity, concurrent
+non-interleaving append, text encoding/BOM/newline behavior, empty payloads,
+content/final fingerprints, enumeration order, stream disposal, cancellation,
+metadata, root escape attempts, symbolic links, and concurrent access. Tests do
+not touch the developer's real workspace unless they are explicitly marked
+integration tests and use an isolated temporary root.
 
 ## Contract shape
 
@@ -164,6 +167,29 @@ public interface IFileReadHandle : IAsyncDisposable
     FileMetadata Metadata { get; }
     Stream Content { get; }
 }
+
+public enum FileWriteDisposition
+{
+    CreateOnly,
+    ReplaceExisting,
+    CreateOrReplace,
+    Append
+}
+
+public enum FileWriteOutcomeKind
+{
+    Created,
+    Replaced,
+    Appended
+}
+
+public sealed record FileWriteSuccess(
+    FileWriteOutcomeKind Outcome,
+    long PayloadBytes,
+    long PreviousBytes,
+    long FinalBytes,
+    ContentHash PayloadFingerprint,
+    ContentHash FinalFingerprint) : FileWriteResult;
 ```
 
 `FileOperationId`, `FileRootId`, and the shared causal IDs are validated
@@ -177,19 +203,107 @@ operation IDs. `IFilePathNormalizer` performs only deterministic lexical work;
 the effecting implementation re-resolves external link and mount facts under the
 grant.
 
-`AuthorizedFileWrite` binds the canonical target, operation kind, declared
-content length and fingerprint, atomicity mode, effect class, and grant. The
-implementation rechecks the actual stream length/fingerprint before committing
-an atomic replacement. `FileWriteResult` and metadata results discriminate
-success, not found, conflict, denial, limit, cancellation, unsupported
-capability, and typed I/O failure. Expected host outcomes are not encoded as
-exception strings.
+`AuthorizedFileWrite` binds the canonical target, explicit disposition, expected
+target state or fingerprint, declared content length and fingerprint, atomicity
+mode, effect class, and grant. Declared stream metadata is advisory: the
+implementation bounds and fingerprints the bytes it actually consumes and
+compares them with the declaration before making the result visible. A length or
+fingerprint mismatch is a typed invalid-input or conflict result, never an
+excuse to commit different bytes.
+
+`FileWriteResult` and metadata results discriminate success, not found,
+conflict, denial, limit, cancellation, unsupported capability, and typed I/O
+failure. A successful write says whether it `Created`, `Replaced`, or
+`Appended`; reports payload, previous, and final byte counts; and carries both
+the consumed-payload fingerprint and the fingerprint of the committed final
+file. Expected host outcomes are not encoded as exception strings.
 
 The caller owns the returned read handle and must dispose it. Cancelling
 `OpenReadAsync` prevents a new handle from being returned; cancelling later does
 not dispose an already returned handle. Enumeration and watching are real
 streams: cancellation stops observation and releases the implementation-owned
 enumerator resources.
+
+## Read bounds and text interpretation
+
+`FileReadBounds` limits bytes actually obtained from the backing store, not only
+a metadata length observed before opening the file. Every returned stream is a
+bounded stream: the implementation stops before exposing bytes beyond the
+authorized limit and returns typed limit or truncation evidence when the target
+grows, metadata is stale, decompression expands content, or a remote source
+otherwise exceeds the bound. Reading the whole file and slicing it afterward is
+not an implementation of bounded access.
+
+The host boundary owns byte access, target snapshot/version evidence, and
+content integrity. Model-facing line, page, or character windows belong to the
+consuming tool or context feature. In particular, `AgentKit.Tools.Read` scans a
+bounded stream incrementally and does not move its line-offset contract into the
+file-system abstraction. A continuation binds the resolved target, snapshot or
+version evidence, decoding profile, next byte/line position, and prior window;
+if the target changes, continuing returns conflict instead of joining content
+from two file versions.
+
+Text access always selects a declared decoding profile. The profile states the
+encoding, malformed-input behavior, byte-order-mark interpretation, and newline
+projection. It never depends on a process locale or an ambient default encoding.
+A leading BOM is encoding evidence rather than ordinary text unless the selected
+profile explicitly says otherwise.
+
+## Write dispositions and atomicity
+
+Every write selects one disposition explicitly; there is no destructive default.
+The target-state test and commit form one atomic operation with respect to
+competing writers:
+
+| Disposition       | Missing target                    | Existing regular file                    |
+| ----------------- | --------------------------------- | ---------------------------------------- |
+| `CreateOnly`      | Create and report `Created`       | Return conflict without mutation         |
+| `ReplaceExisting` | Return not found without mutation | Atomically replace and report `Replaced` |
+| `CreateOrReplace` | Create and report `Created`       | Atomically replace and report `Replaced` |
+| `Append`          | Return not found without mutation | Append once and report `Appended`        |
+
+`CreateOrReplace` is available only when a caller deliberately requests and is
+authorized for both outcomes. Neither a tool schema, registration helper, nor a
+host adapter may silently choose it when the disposition is absent. A target
+state or fingerprint captured for authorization is a commit precondition; a
+racing change produces conflict rather than falling back to another disposition.
+An implementation that cannot provide the requested atomic state test and commit
+reports unsupported before mutation.
+
+Creating missing parent directories is a separate protected effect. The normal
+write contract returns a typed parent-not-found result. A caller that wants
+parents created must declare and authorize each directory creation, or use an
+explicit compound operation whose directory and file effects remain separately
+bound and audited. A file writer never calls an implicit recursive
+create-directory operation as a convenience.
+
+Append policy bounds the committed total size, not merely the appended payload.
+Under the same concurrency boundary that commits the append, the implementation
+checks the actual current size, uses overflow-safe arithmetic, verifies any
+expected target fingerprint, and ensures the payload is appended exactly once
+without interleaving bytes from another append. The selected capability states
+whether cancellation or host failure can expose a partial append. A policy that
+requires atomic append rejects an implementation that cannot provide it; it
+never reports a clean failure when the side effect is uncertain.
+
+For streamed writes, the implementation consumes at most the authorized bound
+through a bounded reader and computes the payload fingerprint over the bytes
+actually consumed. Metadata such as a declared length, seekable stream length,
+or model-provided size cannot replace this enforcement. Atomic create and
+replace stage validated content outside the visible target and publish it in one
+commit. Limit, cancellation, encoding, or fingerprint failure before that commit
+leaves the prior target unchanged.
+
+Text writes additionally declare encoding, BOM, and newline behavior. The
+first-party portable profile is UTF-8 without a BOM and preserves the supplied
+newline characters and final-newline state; another profile may deliberately
+normalize newlines or emit a BOM. Append never inserts a BOM in the middle of a
+file and must reject an incompatible existing text format unless an explicit
+conversion operation was authorized. Byte counts, limits, and fingerprints are
+computed after encoding, BOM, and newline policy have produced the exact bytes.
+Empty and whitespace-only text are valid payloads; missing or null content is
+not. No layer silently trims content, calls a line-oriented writer that adds a
+terminator, or treats an empty string as an absent argument.
 
 ## First-party classes and service dependencies
 
@@ -351,9 +465,11 @@ store, or other component declares that it needs it. Composition then validates
 the selected root configuration, path comparison and symlink policy, required
 capability set, security authority and grant store, audit delivery, bounds,
 service scopes, keyed options/profile-version agreement, and key selection.
-Writable configuration requires an effective writer and atomicity policy; watch
-configuration requires an implementation that advertises watch semantics and
-overflow behavior.
+Writable configuration requires an effective writer, an explicit disposition
+policy, actual-stream bounds, text profiles when text is selected, and the
+required create/replace/append atomicity. Parent creation requires its own
+directory capability and policy. Watch configuration requires an implementation
+that advertises watch semantics and overflow behavior.
 
 Read-only, no-watch, no-symlink, or non-atomic implementations declare those
 limits in `FileSystemCapabilities`. Selection rejects an incompatible operation
@@ -368,3 +484,6 @@ mismatched, or unauditable grants fail closed before host access.
 - [Project structure](project-structure.md)
 - [Tools](tools.md)
 - [Permissions and human control](permissions-and-human-control.md)
+- [Coding workspaces and worktrees](../concepts/coding-workspaces-and-worktrees.md)
+- [Workspace mutations and code editing](../concepts/workspace-mutations-and-code-editing.md)
+- [Workspace snapshots and reversion](../concepts/workspace-snapshots-and-reversion.md)

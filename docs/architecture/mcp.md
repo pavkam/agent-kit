@@ -71,6 +71,14 @@ defines reconnection and session behavior through AgentKit network abstractions
 and a network grant. A successful MCP login authorizes a connection, not every
 tool, resource, root, model request, or user interaction.
 
+OAuth state is endpoint- and audience-bound. Client registration, PKCE verifier,
+CSRF state, staged tokens, refresh, invalidation, and any loopback callback
+listener have explicit owners and lifetimes. A successful exchange atomically
+commits one credential set; timeout, cancellation, occupied-port ambiguity, or a
+changed endpoint commits nothing. Credential storage and callback hosting remain
+integration leaves behind narrow contracts rather than mutable state on an MCP
+session.
+
 If a connection is lost after sending an effectful request, the result reports
 unknown side-effect certainty unless idempotency or server reconciliation proves
 otherwise.
@@ -336,10 +344,26 @@ public static class ServiceExtensions
                 key,
                 configure);
 
+        public IServiceCollection ReplaceMcpStdioEndpoint(
+            McpEndpointKey key,
+            Action<McpStdioEndpointOptions> configure) =>
+            McpClientRegistration.ReplaceStdioEndpoint(
+                services,
+                key,
+                configure);
+
         public IServiceCollection AddMcpHttpEndpoint(
             McpEndpointKey key,
             Action<McpHttpEndpointOptions> configure) =>
             McpClientRegistration.AddHttpEndpoint(
+                services,
+                key,
+                configure);
+
+        public IServiceCollection ReplaceMcpHttpEndpoint(
+            McpEndpointKey key,
+            Action<McpHttpEndpointOptions> configure) =>
+            McpClientRegistration.ReplaceHttpEndpoint(
                 services,
                 key,
                 configure);
@@ -352,9 +376,27 @@ public static class ServiceExtensions
                 profileId,
                 configure);
 
+        public IServiceCollection ReplaceMcpCapabilityProfile(
+            CapabilityProfileId profileId,
+            Action<McpCapabilityProfileOptions> configure) =>
+            McpClientRegistration.ReplaceCapabilityProfile(
+                services,
+                profileId,
+                configure);
+
         public IServiceCollection ReplaceMcpClientSessionFactory<TFactory>()
             where TFactory : class, IMcpClientSessionFactory =>
             McpClientRegistration.ReplaceSessionFactory<TFactory>(services);
+
+        public IServiceCollection ReplaceMcpEndpointCatalog<TCatalog>()
+            where TCatalog : class, IMcpEndpointCatalog =>
+            McpClientRegistration.ReplaceEndpointCatalog<TCatalog>(services);
+
+        public IServiceCollection
+            ReplaceMcpCapabilityProfileCatalog<TCatalog>()
+            where TCatalog : class, IMcpCapabilityProfileCatalog =>
+            McpClientRegistration.ReplaceCapabilityProfileCatalog<TCatalog>(
+                services);
     }
 }
 ```
@@ -370,6 +412,11 @@ public static class ServiceExtensions
             McpServerKey key,
             Action<McpServerOptions> configure) =>
             McpServerRegistration.Add(services, key, configure);
+
+        public IServiceCollection ReplaceMcpServer(
+            McpServerKey key,
+            Action<McpServerOptions> configure) =>
+            McpServerRegistration.Replace(services, key, configure);
     }
 }
 ```
@@ -387,17 +434,16 @@ last-registration-wins. An MCP capability profile maps a definition's neutral
 `McpEndpointKey` values; definitions never carry endpoint keys directly. A run
 captures the capability-profile, endpoint, and `McpCatalogVersion` revisions
 together with `ProtectedSemanticOperationContext` before preparing an MCP
-request.
-`AddMcpClient` validates its mutable binding options and captures one immutable
-`McpClientOptionsSnapshot` for the provider lifetime. Stdio and HTTP endpoint
-options are named by `McpEndpointKey`, validated, and copied into immutable
-versioned `McpEndpoint` records; neither the singleton factory nor an open
-session injects unkeyed or monitored endpoint options. The defaults are finite
-client-mechanics bounds only. Server commands/URLs, credentials, authentication
-audiences, and endpoint selection remain explicit host configuration; AgentKit
-never invents them. Validation rejects non-positive timeouts or limits, a frame
-limit larger than the message limit, and any endpoint whose transport or
-credential reference is incomplete.
+request. `AddMcpClient` validates its mutable binding options and captures one
+immutable `McpClientOptionsSnapshot` for the provider lifetime. Stdio and HTTP
+endpoint options are named by `McpEndpointKey`, validated, and copied into
+immutable versioned `McpEndpoint` records; neither the singleton factory nor an
+open session injects unkeyed or monitored endpoint options. The defaults are
+finite client-mechanics bounds only. Server commands/URLs, credentials,
+authentication audiences, and endpoint selection remain explicit host
+configuration; AgentKit never invents them. Validation rejects non-positive
+timeouts or limits, a frame limit larger than the message limit, and any
+endpoint whose transport or credential reference is incomplete.
 
 ## Build validation and unsupported behavior
 
@@ -423,3 +469,4 @@ mid-run `NotSupportedException`.
 - [MCP integration](../concepts/mcp-integration.md)
 - [Tools and toolsets](../concepts/tools-and-toolsets.md)
 - [Permissions, approvals, and trust](../concepts/permissions-approvals-and-trust.md)
+- [Coding-harness MCP exposure](../concepts/coding-harness-mcp-exposure.md)

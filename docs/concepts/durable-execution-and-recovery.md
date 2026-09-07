@@ -32,11 +32,28 @@ Each durable operation MUST have:
 - deterministic operation name/version; and
 - a checkpoint or terminal record.
 
+Operation acceptance and execution ownership are separate. Acceptance commits
+immutable metadata plus one complete initial state and starts no effect. Every
+later transition replaces the complete current state or writes one terminal
+result. Recovery dispatches from that total state; it does not fold a mutation
+journal or infer progress from an absent auxiliary value.
+
 [Model requests](provider-request-pipeline.md),
 [tool calls](tool-call-lifecycle.md), compaction,
 [external approval waits](deferred-and-human-in-the-loop.md), and selected hooks
 MAY be durable operations. Pure context assembly normally remains a
 deterministic replayable function unless expensive enough to checkpoint.
+
+Attaching is side-effect free. It validates and reconstructs projections and
+returns the inventory of open lane/operation identities, kinds, start times, and
+abort state. It starts no provider, tool, hook, retry, poll, or timer; a caller
+must explicitly drive or schedule each operation. Host close may therefore leave
+a valid open operation for later attachment.
+
+The serializable state union is a total dispatcher algebra. Every leaf has one
+recovery procedure and cancellation meaning. A drive step must commit a changed
+state, return a typed wait/terminal outcome, or fault. `Continue` without
+durable progress is an invariant failure rather than a retry loop.
 
 ## Checkpoints
 
@@ -46,24 +63,36 @@ The runtime SHOULD checkpoint after these boundaries:
 - context/configuration manifest creation;
 - provider response terminal validation;
 - tool-call recording before side effects;
-- each terminal tool result;
-- assistant/tool message commit;
+- each complete authoritative tool outcome and its transition to `OutcomeReady`;
+- source-ordered assistant/tool message materialization and the transition to
+  `Completed`;
 - compaction activation; and
 - final run settlement.
 
-Fine-grained token or progress deltas are not required for recovery.
+Fine-grained token or progress deltas are not required for recovery. A harness
+MAY retain bounded assistant frames or complete tool-progress snapshots for
+reconnection and truthful interruption output. They remain auxiliary: apparent
+complete text, a successful shell line, or a terminal-looking JSON fragment does
+not prove external settlement.
+
+Every uncertain effect uses a durable sandwich: commit exact intent and reserved
+result identities, invoke the effect, then atomically stage or commit the full
+outcome with the next total state. Hook replay contracts are separate; a hook
+whose result was not consumed durably may rerun.
 
 ## Recovery classification
 
 After failure, every nonterminal operation MUST be classified:
 
-| Evidence                                          | Recovery                                           |
-| ------------------------------------------------- | -------------------------------------------------- |
-| No start record / definitely not sent             | Safe to start under policy                         |
-| Started with idempotency key and queryable result | Reconcile, then retry/query                        |
-| Started, effect unknown, non-idempotent           | Do not retry; require operator/tool reconciliation |
-| Terminal result exists, commit missing            | Idempotently commit without reinvocation           |
-| Durable external owner accepted handoff           | Resume waiting/query that owner                    |
+| Evidence                                          | Recovery                                              |
+| ------------------------------------------------- | ----------------------------------------------------- |
+| No start record / definitely not sent             | Safe to start under policy                            |
+| Started with idempotency key and queryable result | Reconcile, then retry/query                           |
+| Started, effect unknown, non-idempotent           | Do not retry; require operator/tool reconciliation    |
+| Terminal result exists, commit missing            | Idempotently commit without reinvocation              |
+| Complete outcome is durably staged out of order   | Materialize it when its source position is eligible   |
+| Durable external owner accepted handoff           | Resume waiting/query that owner                       |
+| Durable retry or deferred not-before state        | Return waiting; wake and re-drive after its condition |
 
 “Probably failed” is not a recovery policy.
 
@@ -97,33 +126,53 @@ available. If a crash occurs after send without a recoverable response, policy
 chooses reconcile, new explicitly duplicated request, or fail; it MUST not
 pretend exactly-once delivery.
 
+Persisted assistant frames are a committed prefix, not a resumable provider
+stream. When no provider status/continuation API proves the terminal outcome,
+recovery creates an explicit interrupted/unknown result or makes a separately
+accounted retry; it never converts the partial into success.
+
+Retry state records the next attempt, not-before instant, previous normalized
+error, retry owner, and logical-attempt identity. Deferred provider state binds
+the nonempty remote handle to provider, account, model, API family, and original
+request. A process-local delay or poll is never the only evidence that work is
+waiting.
+
 ## Tool calls
 
 Mutating durable tools require an idempotency key accepted by the effect owner,
 or an external status/reconciliation operation. Backend workflow retry settings
 MUST NOT override the tool's safety policy.
 
+Durable tool child state distinguishes `planned`, `effect_pending`,
+`outcome_ready`, and `completed`. `outcome_ready` owns one complete staged
+result and MUST never invoke again, even when an earlier parallel sibling still
+blocks source-order publication. Invocation-scoped memos MAY make named safe
+substeps replayable; a memo proves only that its value committed, not that an
+arbitrary external effect executed exactly once.
+
 ## Acceptance scenarios
 
-- Crash after tool success but before result commit commits without reinvoking.
+- Crash after a complete tool outcome is durably staged as `OutcomeReady` but
+  before source-order history materialization commits it without reinvoking.
+- Crash after an external tool effect may have succeeded but before its outcome
+  was durably staged remains an unknown-effect case and follows reconciliation
+  or idempotency policy.
 - A stale fenced worker cannot append after lease takeover.
 - Duplicate wake signals produce one drain of durable admitted input.
 - Replay with changed operation schema stops or migrates explicitly.
 - A non-idempotent unknown-outcome call requires reconciliation.
 - Recovery reconstructs stable state without live delta events.
-
-## Upstream evidence
-
-- Pydantic AI isolates durable execution adapters and operation codecs under
-  [`durable_exec`](https://github.com/pydantic/pydantic-ai/tree/c0e4d824eaa0401d4481d401e5b3894ab32ab59d/pydantic_ai_slim/pydantic_ai/durable_exec).
-- OpenCode V2's current local coordinator explicitly leaves clustered durable
-  ownership as a future boundary in
-  [`run-coordinator.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/run-coordinator.ts).
-- OpenCode records tool calls before local execution in
-  [`llm.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/runner/llm.ts).
+- Process loss after acceptance but before the first drive starts no duplicate
+  effect.
+- A staged later tool result materializes without replay after an earlier
+  sibling is reconciled.
+- Attaching an open operation performs no effect until an explicit drive.
+- Every persisted state leaf advances, waits, terminates, or faults; no leaf can
+  spin without a durable transition.
 
 ## Related specifications
 
 - [Input admission and message queues](input-admission-and-message-queues.md)
 - [Cancellation, timeouts, and resilience](cancellation-timeouts-and-resilience.md)
 - [Testing and evaluation](testing-and-evaluation.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

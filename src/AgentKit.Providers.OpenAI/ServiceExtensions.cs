@@ -51,7 +51,7 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             _ = services.AddOpenAICompatibleProvider();
-            _ = services.AddOptions<OpenAIProviderOptions>();
+            _ = services.AddOptions<OpenAIProviderOptions>().ValidateOnStart();
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IValidateOptions<OpenAIProviderOptions>, OpenAIProviderOptionsValidator>());
 
@@ -76,9 +76,11 @@ public static class ServiceExtensions
         /// chained with other registration methods.
         /// </returns>
         /// <remarks>
-        /// This registration is singular: it uses <c>TryAdd</c> semantics,
-        /// so it never overrides a credential source an application (or
-        /// <c>AddOpenAIOAuthCredential</c>) already registered.
+        /// This registration is singular for the OpenAI provider key: it uses
+        /// keyed <c>TryAdd</c> semantics, so it never overrides an OpenAI
+        /// credential source an application (or
+        /// <c>AddOpenAIOAuthCredential</c>) already registered, while
+        /// remaining isolated from other provider packages.
         /// </remarks>
         /// <exception cref="ArgumentException">
         /// <paramref name="apiKey"/> is null, empty, or consists only of
@@ -89,7 +91,9 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
-            services.TryAddSingleton<IProviderCredentialSource>(credentialSource);
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                OpenAIProviderDefaults.ProviderId,
+                credentialSource);
 
             return services;
         }
@@ -107,17 +111,23 @@ public static class ServiceExtensions
         /// chained with other registration methods.
         /// </returns>
         /// <remarks>
-        /// This registration is singular: it uses <c>TryAdd</c> semantics,
-        /// so it never overrides a credential source an application (or
-        /// <c>AddOpenAIApiKeyCredential</c>) already registered.
+        /// This registration is singular for the OpenAI provider key: it uses
+        /// keyed <c>TryAdd</c> semantics, so it never overrides an OpenAI
+        /// credential source an application (or
+        /// <c>AddOpenAIApiKeyCredential</c>) already registered, while
+        /// remaining isolated from other provider packages.
         /// </remarks>
         public IServiceCollection AddOpenAIOAuthCredential<TProvider>()
             where TProvider : class, IOAuthAccessTokenProvider
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddSingleton<IOAuthAccessTokenProvider, TProvider>();
-            services.TryAddSingleton<IProviderCredentialSource, DelegatingOAuthCredentialSource>();
+            services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
+                OpenAIProviderDefaults.ProviderId);
+            services.TryAddKeyedSingleton<IProviderCredentialSource>(
+                OpenAIProviderDefaults.ProviderId,
+                static (provider, key) => new DelegatingOAuthCredentialSource(
+                    provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
 
             return services;
         }
@@ -175,7 +185,7 @@ public static class ServiceExtensions
                     OpenAIProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
-                    provider.GetRequiredService<IProviderCredentialSource>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<TimeProvider>());
             });

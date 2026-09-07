@@ -39,14 +39,29 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddZAi_WhenBaseAddressIsNotAbsolute_FailsValidationOnAccess()
+    public void AddZAi_WhenBaseAddressIsNotAbsolute_FailsStartupValidation()
     {
         var services = new ServiceCollection();
         _ = services.AddZAi(options => options.BaseAddress = new Uri("not-absolute", UriKind.Relative));
 
         using var provider = services.BuildServiceProvider();
 
-        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<ZAiProviderOptions>>().Value);
+        _ = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
+    [Theory]
+    [InlineData("https://evil.example.test/chat")]
+    [InlineData("//evil.example.test/chat")]
+    public void AddZAi_WhenChatPathCanReplaceConfiguredEndpoint_FailsStartupValidation(string path)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddZAi(options => options.ChatCompletionsPath = path);
+
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IStartupValidator>().Validate());
     }
 
     [Fact]
@@ -57,7 +72,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddZAiApiKeyCredential("zai-test-key");
 
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredService<IProviderCredentialSource>();
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAiProviderDefaults.ProviderId);
 
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
@@ -70,7 +85,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddZAiOAuthCredential<StaticOAuthTokenProviderRegistration>();
 
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredService<IProviderCredentialSource>();
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAiProviderDefaults.ProviderId);
 
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }

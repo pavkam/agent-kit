@@ -44,14 +44,47 @@ public sealed record ChatModelRequest
     }
 
     /// <summary>Gets the provider-neutral content of the request.</summary>
-    public ChatRequestContext Context { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ChatRequestContext Context
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the one-based attempt number for this request's <see cref="ChatRequestContext.ModelRequestId"/>.</summary>
-    public int Attempt { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The value assigned during initialization or non-destructive mutation is less than one.
+    /// </exception>
+    public int Attempt
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the instant by which this attempt must complete.</summary>
     public DateTimeOffset Deadline { get; init; }
 
     /// <summary>Gets the bounded, provider-specific request options.</summary>
-    public ProviderRequestOptions Options { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ProviderRequestOptions Options
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 }

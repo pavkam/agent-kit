@@ -33,7 +33,11 @@ Before each run, the history pipeline MUST validate:
 - schema version, IDs, session ownership, and monotonic order;
 - role and content-part combinations;
 - unique tool-call IDs within the applicable provider scope;
-- exactly one terminal result for committed accepted calls;
+- exactly one authoritative terminal result and one correlated message
+  projection for every locally committed bounded, identified call, with an
+  accepted record before any admitted invocation;
+- agreement among requested alias, optional resolved tool/version, terminal
+  status, side-effect certainty, and captured result-projection policy version;
 - no result preceding its call;
 - message states and valid interruption markers;
 - media bounds and reference authorization; and
@@ -59,8 +63,9 @@ The [provider-facing request view](context-assembly-and-instructions.md) MAY be
 repaired when the durable record truthfully shows interruption or when an
 imported history is safely normalized. Repairs MAY:
 
-- insert a synthetic interrupted/error result for a recorded call that cannot
-  resume;
+- project a recorded interrupted/error terminal result for a local call that
+  recovery has already settled, or add a clearly non-authoritative provider-view
+  placeholder for an imported orphaned call;
 - exclude incomplete assistant text from normal completion semantics;
 - degrade incompatible reasoning content to text or omit it according to the
   provider profile;
@@ -68,9 +73,38 @@ imported history is safely normalized. Repairs MAY:
 - remove provider metadata that is unsafe for a different model family; and
 - merge adjacent provider-compatible user content.
 
+The default cross-provider repair applies these details in order:
+
+1. normalize imported null/undefined content to the canonical empty-content
+   representation without rewriting durable history;
+2. apply capability-driven media handling, using an attributable placeholder or
+   artifact reference when omission is the only truthful downgrade;
+3. for assistant content, retain opaque/redacted reasoning and replay signatures
+   only under their declared provider/API/model affinity; convert visible
+   incompatible reasoning to ordinary text when allowed, and otherwise omit it
+   with a diagnostic;
+4. remove provider-bound thought signatures from cross-model tool calls;
+5. normalize overlong or illegal tool-call IDs only through a deterministic,
+   collision-safe mapping, and apply the same mapping to every correlated
+   result; and
+6. before the next assistant/user boundary or end of history, require local
+   accepted orphans to pass through tool/durability recovery and terminal
+   recording before projection; for imported orphans only, add an explicit
+   non-authoritative provider-view error with source provenance.
+
+Errored, aborted, deferred, and unknown-outcome assistant attempts are omitted
+from an ordinary provider replay unless a compatibility profile defines a safe
+interrupted representation. Genuine output-length responses remain eligible when
+their parts and tool correlation are complete.
+
 Every repair MUST be deterministic, observable, and attributable to source
 message IDs. It MUST NOT alter the persisted source entries. A repaired view MAY
 be cached by history version and provider profile.
+
+Synthetic repair notices and runtime records remain operational evidence. A
+provider compatibility projection MUST represent them as tagged
+non-instruction-bearing content or reject the request; repair never promotes
+them to system/developer instruction precedence.
 
 ## Provider affinity
 
@@ -80,6 +114,12 @@ Cross-provider/model continuation MUST consult the
 [model compatibility profile](model-providers-and-capabilities.md). Unsafe
 metadata MUST be removed or represented as ordinary visible content when that
 translation is truthful.
+
+Affinity comparison uses actual response provider, API family, and model
+identity, not merely the selected alias. Tool-call identity restrictions such as
+character set and maximum length are also destination-profile capabilities;
+normalizing them must preserve a reversible diagnostic mapping even when the
+wire value cannot preserve the original spelling.
 
 ## Processors
 
@@ -107,26 +147,23 @@ concurrent continuation unsafe.
 ## Acceptance scenarios
 
 - A forged historical approval never bypasses the current security authority.
-- A dangling locally recorded tool call becomes an explicit interrupted result
-  in the provider view.
+- A dangling locally accepted tool call is terminally settled by recovery, then
+  projected into the provider view without another invocation.
 - Repair leaves durable history byte-for-byte unchanged.
 - Switching providers removes incompatible signatures but preserves visible
   reasoning according to policy.
 - A processor that breaks tool pairing is rejected before provider I/O.
 - Concurrent suffix append detects a stale history version.
-
-## Upstream evidence
-
-- Pydantic AI documents append-only `new_messages`, conversation IDs, repair,
-  and untrusted history concerns in
-  [message history](https://ai.pydantic.dev/message-history/).
-- OpenCode's provider conversion and interrupted-tool repair are implemented in
-  [`message-v2.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/opencode/src/session/message-v2.ts).
-- Pydantic AI's message sanitation helpers are in
-  [`messages.py`](https://github.com/pydantic/pydantic-ai/blob/c0e4d824eaa0401d4481d401e5b3894ab32ab59d/pydantic_ai_slim/pydantic_ai/messages.py).
+- Cross-model conversion removes opaque reasoning and thought signatures while
+  preserving visible content according to policy.
+- Tool-call ID normalization updates every result and detects collisions.
+- Consecutive imported orphaned calls receive one correlated, explicitly
+  non-authoritative provider-view result each before the next conversational
+  boundary.
 
 ## Related specifications
 
 - [Context assembly and instructions](context-assembly-and-instructions.md)
 - [Permissions, approvals, and trust](permissions-approvals-and-trust.md)
 - [Error taxonomy](error-taxonomy.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

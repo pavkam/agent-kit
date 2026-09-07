@@ -68,6 +68,12 @@ identity, retry hints, origin, and side-effect certainty. Original exceptions
 may remain non-serialized diagnostic context but never enter messages, durable
 records, or unrestricted telemetry.
 
+`RetryAfter` is a normalized non-negative delay observed using the injected
+`TimeProvider`, not an ambient future wall-clock promise. When safe and useful,
+`Diagnostics` retains whether the external hint was a delay, absolute date, or
+provider-specific reset plus its observation time; retry policy still owns all
+deadline, budget, idempotency, and side-effect checks.
+
 There is deliberately no central `IErrorManager` that depends on every
 subsystem. Each local mapper produces the common value before returning to its
 caller. Retry ownership remains with the operation owner, not the error record.

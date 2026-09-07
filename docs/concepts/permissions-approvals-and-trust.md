@@ -40,6 +40,12 @@ Requests MUST be evaluated after inputs and resources are canonicalized but
 before the effect starts. An operation changed after evaluation requires a new
 request.
 
+A file-write request includes the explicit disposition, expected target state or
+fingerprint, exact encoded-payload fingerprint, bounds, and required atomicity.
+Creating a missing parent directory is a different resource/effect and requires
+its own request and grant; write authority never implies recursive directory
+creation.
+
 ## Authority and policy
 
 The authority identified by the captured security profile MUST be selected
@@ -87,10 +93,14 @@ Single-use grants MUST be consumed atomically with durable operation recording.
 Concurrent requests cannot spend the same use twice. Expiry or revocation stops
 future use but does not rewrite completed effects.
 
-Every grant must carry the same execution-identity snapshot as its captured
-`SecurityAuthorizationContext`. Reauthentication, delegation, or any change to
-that identity requires a fresh context and decision; matching tenant and
-principal projections alone is insufficient.
+Every authorization context captures one immutable scope: typed agent, optional
+session, and operation correlation. Requests, approvals, grants, caches, and
+enforcers must carry that exact scope and the same execution-identity snapshot.
+Reauthentication, delegation, or any scope/identity change requires a fresh
+context and decision; matching tenant and principal projections alone is
+insufficient. Sessionless work is legal only for operation kinds whose policy
+explicitly permits it; session-bound work fails closed rather than fabricating
+an ID.
 
 ## Approval request and resolution
 
@@ -163,6 +173,13 @@ Transport authorization, provider credentials, and MCP OAuth identify access to
 an external service. They remain separate from AgentKit authorization for the
 operation performed through that service.
 
+Reading or refreshing protected credential material is itself a distinct
+secret-access effect. The credential source validates a grant bound to the exact
+provider/profile revision, account, audience, operation identity, attempt, and
+deadline before releasing an opaque disposable lease. That grant neither
+authorizes provider egress nor appears in model-visible data; the adapter still
+obtains a separate egress grant for the destination and classified payload.
+
 ## Audit
 
 Every request, winning policy, decision, approval transition, grant issue and
@@ -180,7 +197,11 @@ or best-effort delivery policy and can never convert denial into allow.
   use the same security authority with distinct typed operation details.
 - Denial occurs before any protected effect.
 - A tool grant for one path cannot authorize a different file-system path.
+- A file-replace grant cannot authorize create, append, or parent-directory
+  creation, and changed encoded bytes invalidate the prior grant.
 - Changed provider destination invalidates a prior model-egress grant.
+- A provider-egress grant cannot read a credential source, and a credential-read
+  grant cannot authorize network send.
 - Two concurrent operations cannot consume one single-use grant.
 - Human-edited input returns through validation and policy.
 - A headless host denies or defers instead of waiting forever.

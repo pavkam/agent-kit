@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DebugType>portable</DebugType>
+    <PackageId>AgentKit.FileSystem</PackageId>
+    <Title>AgentKit.FileSystem</Title>
+    <Description>A sandboxed, root-jailed file-system implementation of AgentKit.IFileSystem.</Description>
+    <PackageTags>agents;ai;llm;host-access;file-system;dependency-injection</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
+    <PackageReference Include="Microsoft.Extensions.Options"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" Link="README.md"/>
+  </ItemGroup>
+</Project>

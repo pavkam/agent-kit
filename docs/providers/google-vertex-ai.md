@@ -266,6 +266,14 @@ request DTO” will become a bag of mutually invalid fields.
 7. Keep generative Vertex AI and Discovery Engine ranking service identities
    separate.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [Vertex publisher model REST resource](https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1beta1/projects.locations.publishers.models)

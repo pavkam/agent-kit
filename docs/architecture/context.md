@@ -120,6 +120,12 @@ public enum ContextEvaluationFrequency
     OncePerModelRequest
 }
 
+public enum ContextOverflowBehavior
+{
+    Fail,
+    CompactWhenConfigured
+}
+
 public readonly record struct ContextSourceNamespace(string Value);
 
 public readonly record struct ContextSourceKey(string Value);
@@ -150,8 +156,7 @@ public sealed record ContextContributionRequest(
     AgentDefinition Agent,
     SessionId SessionId,
     ConversationId? ConversationId,
-    TenantId TenantId,
-    PrincipalId PrincipalId,
+    ExecutionIdentity Identity,
     RunId RunId,
     TurnId TurnId,
     ModelRequestId ModelRequestId,
@@ -175,8 +180,7 @@ public sealed record ContextAssemblyRequest(
     AgentDefinition Agent,
     SessionId SessionId,
     ConversationId? ConversationId,
-    TenantId TenantId,
-    PrincipalId PrincipalId,
+    ExecutionIdentity Identity,
     RunId RunId,
     TurnId TurnId,
     ModelRequestId ModelRequestId,
@@ -208,8 +212,7 @@ public sealed record ModelRequestContext(
     AgentId AgentId,
     SessionId SessionId,
     ConversationId? ConversationId,
-    TenantId TenantId,
-    PrincipalId PrincipalId,
+    ExecutionIdentity Identity,
     RunId RunId,
     TurnId TurnId,
     ModelRequestId ModelRequestId,
@@ -243,6 +246,12 @@ public interface IContextBudgetAllocator
         ContextBudgetRequest request,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record ContextCompactionCapability(
+    ComponentKey<ICompactor> CompactorKey,
+    ICompactor Compactor,
+    SessionExecutionCapability Session,
+    BudgetExecutionCapability Budget);
 ```
 
 `IContextAssembler` returns `Task` because assembly normally includes durable
@@ -266,7 +275,7 @@ internal sealed record ContextAssemblerServices(
     IHistoryPipeline History,
     IInstructionResolver Instructions,
     IEnumerable<IContextContributor> Contributors,
-    ICompactor Compactor,
+    ContextCompactionCapability? Compaction,
     IContextBudgetAllocator Budgets,
     IToolSnapshotProvider Tools,
     IOutputDefinitionResolver Outputs,
@@ -285,12 +294,21 @@ observable members are exactly the `IContextAssembler` contract above. It does
 not expose its contributors or an ambient service provider.
 
 The default class depends only on `AgentKit.Abstractions`. The package-internal
-keyed registration factory compiles the selected assembler key and compactor key
-into one `ContextAssemblerServices` bundle inside the run scope. The class
-cannot resolve an optional retriever, memory store, tool catalog, or compactor
-from `IServiceProvider`, and Microsoft DI is never expected to propagate an
-agent key through ordinary constructor injection. Optional features contribute
-through explicit contracts; registering one also validates its collaborators.
+keyed registration factory compiles the selected assembler key into one
+`ContextAssemblerServices` bundle inside the run scope. When the immutable agent
+definition selects compaction, that bundle contains exactly one
+`ContextCompactionCapability` with the keyed compactor and the already selected
+session and budget execution capabilities. When compaction is not selected, the
+value is `null`; mandatory overflow fails with the typed context-limit outcome.
+The capability is invocation-only, is never serialized or cached, and prevents
+the compactor from rediscovering a session coordinator or capturing a bare run
+budget.
+
+The class cannot resolve an optional retriever, memory store, tool catalog, or
+compactor from `IServiceProvider`, and Microsoft DI is never expected to
+propagate an agent key through ordinary constructor injection. Optional features
+contribute through explicit contracts; registering one also validates its
+collaborators.
 
 No assembler or contributor base class is initially required. Direct interface
 implementation keeps host policy, static instruction, retrieval, goal, skill,
@@ -308,9 +326,10 @@ results are restored to deterministic catalog order before selection.
 
 The assembler is run-scoped. Contributors may be singleton only when immutable,
 thread-safe, and independent of run services; dynamic contributors are scoped.
-Candidate caches include agent, principal/authority, source version, evaluation
-frequency, configuration, model profile, and catalog version. Cached retrieved
-content never crosses an authorization boundary.
+Candidate caches include agent, the complete `ExecutionIdentity` fingerprint,
+authority and policy versions, source version, evaluation frequency,
+configuration, model profile, and catalog version. Cached retrieved content
+never crosses an authorization boundary.
 
 Trust, precedence, and authority are invariants, not configurable away. Options
 may choose among documented loss-aware transformations, budget allocations, and
@@ -322,6 +341,15 @@ candidates within their typed boundary and are revalidated after each mutation.
 
 ```csharp
 namespace AgentKit.Context;
+
+public sealed class AgentContextOptions
+{
+    public ContextOverflowBehavior OverflowBehavior { get; set; } =
+        ContextOverflowBehavior.Fail;
+    public int ReservedOutputTokens { get; set; } = 1_024;
+    public double EstimationSafetyMargin { get; set; } = 0.10;
+    public bool AllowParallelContributors { get; set; }
+}
 
 public static class ServiceExtensions
 {
@@ -391,8 +419,8 @@ public static class ServiceExtensions
 The default assembler uses `TryAddKeyedScoped` and is singular per key.
 Contributors are additive and ordered; duplicate identity with different type,
 options, or constraints fails build. Budget allocator, instruction resolver,
-history pipeline, compactor selection, tool snapshot provider, and output
-resolver are singular for the selected context profile and have explicit
+history pipeline, optional compaction capability, tool snapshot provider, and
+output resolver are singular for the selected context profile and have explicit
 replacement paths. Compaction strategies are additive and deterministically
 ordered inside the selected compactor. Repeated equivalent package registration
 is idempotent.
@@ -403,7 +431,10 @@ trigger, trimming policy, safe transformation policy, parallel contribution,
 cache policy, and required/optional failure behavior. Defaults are
 deterministic: required host/agent instructions, pending input, tool
 correlation, output contract, and safety margin reserve capacity before optional
-content; unknown content is retained or rejected, never silently flattened.
+content; compaction is opt-in; unknown content is retained or rejected, never
+silently flattened. Mutable options are validated and copied into an immutable
+profile snapshot when the run plan is compiled, so reloads affect a later run or
+explicit next-turn boundary rather than an in-flight assembly.
 
 Composition validates keys, order cycles, scope captures, non-positive budgets,
 unsafe cache scopes, missing optional-feature collaborators, and model/output

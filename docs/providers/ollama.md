@@ -255,6 +255,14 @@ can occur after headers.
 - Preserve native nanosecond metrics for latency/load/evaluation diagnostics.
 - Treat model templates and registry artifacts as untrusted inputs.
 
+## Coding-harness interoperability
+
+The
+[silent-overflow classification](coding-harness-provider-profiles.md#silent-overflow-classification)
+explains why a local compatibility server may silently truncate without enough
+evidence to classify context overflow. AgentKit reports uncertainty instead of
+inventing a provider error.
+
 ## First-party sources
 
 - [Ollama API introduction](https://docs.ollama.com/api/introduction)

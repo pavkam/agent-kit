@@ -17,7 +17,10 @@ public sealed class ZAiChatModelEndToEndTests
 {
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
 
-    private static ChatModelRequest CreateRequest(ModelDescriptor descriptor)
+    private static ChatModelRequest CreateRequest(
+        ModelDescriptor descriptor,
+        ImmutableArray<ChatToolDefinition> tools = default,
+        ChatRequestSettings? settings = null)
     {
         var developerMessage = new DeveloperMessage(
             new MessageId(Guid.NewGuid()),
@@ -49,9 +52,9 @@ public sealed class ZAiChatModelEndToEndTests
             new ModelRequestId(Guid.NewGuid()),
             descriptor,
             [developerMessage, userMessage],
-            [],
+            tools.IsDefault ? [] : tools,
             ChatToolChoice.Auto,
-            ChatRequestSettings.Default,
+            settings ?? ChatRequestSettings.Default,
             ExtensionData.Empty);
 
         return new ChatModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
@@ -120,6 +123,34 @@ public sealed class ZAiChatModelEndToEndTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenParallelToolCallsAreRequested_FailsCapabilityValidationBeforeSending()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
+        var options = new ZAiProviderOptions { PreferStreaming = false };
+        var descriptor = CreateDescriptor();
+        var model = new ZAiChatModel(
+            descriptor,
+            ZAiProviderDefaults.CreateProfile(options),
+            new OpenAIRequestTranslator(),
+            new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
+            new StaticApiKeyCredentialSource("zai-real-looking-key"),
+            new HttpClient(handler),
+            new FakeTimeProvider(Now));
+        var tools = ImmutableArray.Create(
+            new ChatToolDefinition(new ToolId("get_weather"), "get_weather", null, JsonDocument.Parse("{}").RootElement));
+        var settings = ChatRequestSettings.Default with { ParallelToolCalls = true };
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(
+            CreateRequest(descriptor, tools, settings),
+            observer,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
         handler.Requests.ShouldBeEmpty();
     }
 

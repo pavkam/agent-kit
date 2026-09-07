@@ -76,4 +76,29 @@ public sealed record SessionAppendRequest
 
     /// <summary>Gets the entries to append, in commit order.</summary>
     public ImmutableArray<SessionEntry> Entries { get; init; }
+
+    /// <inheritdoc/>
+    public bool Equals(SessionAppendRequest? other) =>
+        other is not null
+        && Context.Equals(other.Context)
+        && BranchId.Equals(other.BranchId)
+        && ExpectedVersion.Equals(other.ExpectedVersion)
+        && IdempotencyKey.Equals(other.IdempotencyKey)
+        && Entries.SequenceEqual(other.Entries);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Context);
+        hash.Add(BranchId);
+        hash.Add(ExpectedVersion);
+        hash.Add(IdempotencyKey);
+        foreach (var entry in Entries)
+        {
+            hash.Add(entry);
+        }
+
+        return hash.ToHashCode();
+    }
 }

@@ -17,6 +17,7 @@ internal sealed class RecordingModelResponseObserver: IModelResponseObserver
     /// <inheritdoc/>
     public ValueTask OnEventAsync(ModelResponseEvent responseEvent, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         _events.Add(responseEvent);
         return ValueTask.CompletedTask;
     }

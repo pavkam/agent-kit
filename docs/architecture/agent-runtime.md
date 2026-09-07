@@ -108,8 +108,7 @@ public sealed record AgentRunInvocation(
 
 public sealed record AgentRunServices(
     IInputCoordinator Input,
-    ISessionCoordinator Sessions,
-    ISessionRunCoordinator SessionRuns,
+    SessionExecutionCapability Session,
     IModelCatalog Models,
     IModelSelector ModelSelector,
     IContextAssembler Context,
@@ -118,7 +117,7 @@ public sealed record AgentRunServices(
     IOutputProcessor OutputProcessor,
     IOutputPublisher Output,
     IHookDispatcher Hooks,
-    IRunBudget Budget,
+    BudgetExecutionCapability Budget,
     IRunContinuationPolicy ContinuationPolicy);
 
 public sealed record TurnContext(
@@ -241,10 +240,11 @@ later only if two real loops share substantial lifecycle mechanics without
 preventing direct `IAgentLoop` implementations.
 
 The loop depends inward on neutral contracts. Session coordination owns durable
-state and active-run exclusion; I/O owns admission/promotion and fan-out;
-context owns request preparation; provider runtime owns model selection and
-attempts; tools own authorization-aware scheduling and execution. The loop
-sequences them and cannot replace their decisions.
+state, per-lane operation exclusion, and cross-lane mutation serialization; I/O
+owns admission/promotion and fan-out; context owns request preparation; provider
+runtime owns model selection and attempts; tools own authorization-aware
+scheduling and execution. The loop sequences them and cannot replace their
+decisions.
 
 ## DI, options, and replacement
 
@@ -310,10 +310,11 @@ policy; it never rewrites already committed state.
 
 One scoped loop instance executes one run. Different run scopes may execute in
 parallel, including runs for different agents that select the same stateless
-collaborators. The session coordinator serializes mutations for a `SessionId`.
-Within a run, the tool scheduler—not the loop—owns tool concurrency. All
-run-owned tasks are complete, safely detached to a documented owner, or durably
-handed off before the result reports settlement.
+collaborators. The session run coordinator permits one operation per execution
+lane; different lanes may overlap effects. The session coordinator serializes
+durable mutations for a `SessionId`. Within a run, the tool scheduler—not the
+loop—owns tool concurrency. All run-owned tasks are complete, safely detached to
+a documented owner, or durably handed off before the result reports settlement.
 
 ## Related concept specifications
 

@@ -297,6 +297,14 @@ feedback and no usable candidate.
 6. Keep embedding task type, output dimension, truncation, and resolved model in
    the vector-space identity.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [Gemini API reference](https://ai.google.dev/api)

@@ -151,6 +151,13 @@ public interface IBudgetScope
 
 public interface IRunBudget : IBudgetScope;
 
+public sealed record BudgetExecutionCapability(
+    BudgetProfileKey ProfileKey,
+    BudgetProfileVersion ProfileVersion,
+    ExecutionIdentity Identity,
+    OperationCorrelation Correlation,
+    IBudgetScope Scope);
+
 public interface IBudgetAuthority
 {
     ValueTask<BudgetScopeResult> CreateChildScopeAsync(
@@ -171,6 +178,74 @@ records actual usage and releases any excess; an actual value above the
 reservation follows the configured overrun policy and never silently makes a
 hard limit negative. Provider corrections identify the original request so they
 replace provisional accounting rather than double-count it.
+
+`BudgetExecutionCapability` is an invocation-only binding to the exact profile,
+identity, operation correlation, and scope selected for one operation. It is
+never serialized or retained by a consumer. Provider, tool, retrieval, output,
+and delegation operations accept this capability explicitly, validate that its
+scope address agrees with their request, reserve before each attempt, and commit
+or release before returning. Out-of-run work receives a child operation scope
+from `IBudgetAuthority`; it never fabricates an `IRunBudget`.
+
+```csharp
+namespace AgentKit;
+
+public sealed record BudgetProfileSnapshot(
+    BudgetProfileKey Key,
+    BudgetProfileVersion Version,
+    ImmutableArray<BudgetLimit> Limits,
+    ImmutableArray<BudgetPolicyKey> Policies,
+    ContentHash ConfigurationFingerprint);
+
+public interface IBudgetLedger
+{
+    ValueTask<BudgetLedgerReservationResult> ReserveAsync(
+        BudgetLedgerReservationRequest request,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<BudgetLedgerSettlementResult> SettleAsync(
+        BudgetLedgerSettlementRequest request,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<BudgetLedgerReconciliationResult> ReconcileAsync(
+        BudgetLedgerReconciliationRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IBudgetProfileCatalog
+{
+    bool TryGet(
+        BudgetProfileKey key,
+        [NotNullWhen(true)] out BudgetProfileSnapshot? profile);
+}
+
+public interface IBudgetPolicyCatalog
+{
+    bool TryGet(
+        BudgetPolicyKey key,
+        [NotNullWhen(true)] out IBudgetPolicy? policy);
+}
+
+public interface IBudgetPolicy
+{
+    ValueTask<BudgetPolicyDecision> EvaluateAsync(
+        BudgetPolicyRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IBudgetEventDispatcher
+{
+    ValueTask<BudgetEventDispatchResult> PublishAsync(
+        BudgetEvent budgetEvent,
+        CancellationToken cancellationToken = default);
+}
+```
+
+Ledger reserve and settlement are atomic across every enforced parent and
+idempotent by their typed mutation key. Reconciliation never guesses effect
+completion. Catalogs expose immutable snapshots and exact keyed policies; they
+do not resolve services. Required budget/audit event delivery fails closed,
+while explicitly best-effort telemetry cannot change accounting.
 
 ## First-party implementation and DI
 
@@ -250,6 +325,26 @@ public static class ServiceExtensions
         public IServiceCollection ReplaceBudgetAuthority<TAuthority>()
             where TAuthority : class, IBudgetAuthority =>
             BudgetRegistration.ReplaceAuthority<TAuthority>(services);
+
+        public IServiceCollection ReplaceBudgetLedger<TLedger>()
+            where TLedger : class, IBudgetLedger =>
+            BudgetRegistration.ReplaceLedger<TLedger>(services);
+
+        public IServiceCollection ReplaceBudgetProfileCatalog<TCatalog>()
+            where TCatalog : class, IBudgetProfileCatalog =>
+            BudgetRegistration.ReplaceProfileCatalog<TCatalog>(services);
+
+        public IServiceCollection ReplaceBudgetPolicyCatalog<TCatalog>()
+            where TCatalog : class, IBudgetPolicyCatalog =>
+            BudgetRegistration.ReplacePolicyCatalog<TCatalog>(services);
+
+        public IServiceCollection ReplaceBudgetDimensionCatalog<TCatalog>()
+            where TCatalog : class, IBudgetDimensionCatalog =>
+            BudgetRegistration.ReplaceDimensionCatalog<TCatalog>(services);
+
+        public IServiceCollection ReplaceBudgetEventDispatcher<TDispatcher>()
+            where TDispatcher : class, IBudgetEventDispatcher =>
+            BudgetRegistration.ReplaceEventDispatcher<TDispatcher>(services);
 
         public IServiceCollection AddBudgetPolicy<TPolicy>(
             BudgetPolicyKey key)

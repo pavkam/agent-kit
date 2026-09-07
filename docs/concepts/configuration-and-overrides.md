@@ -33,6 +33,15 @@ outside world—credentials, endpoints, deployment/model availability, durable
 storage targets, tenant principals, and granted authority—MUST be supplied
 explicitly and MUST NOT be guessed.
 
+A concrete provider package MAY offer a named helper for a well-known public
+service endpoint, but selecting that helper is explicit host configuration. It
+materializes a versioned endpoint profile containing the service surface,
+origin, API version, routing/retention policy, and compatibility profile; the
+registration never falls back to it merely because no endpoint was supplied.
+Provider operation registrations independently bind an endpoint profile, a
+credential/account profile, and an operation/model adapter so several accounts
+and surfaces can coexist without registration-order coupling.
+
 ## Layers
 
 The default precedence, lowest to highest, SHOULD be:
@@ -69,6 +78,14 @@ resettable settings. Arrays MUST NOT accidentally deep-merge by index.
 Recommended defaults are: scalars replace; instruction and capability lists
 append; toolsets combine by stable identity; model settings deep-merge by key;
 and security policies use their own ordered-rule semantics.
+
+Provider payload extensions do not inherit a universal dictionary merge. Each
+key belongs to a provider/profile namespace and declares its allowed layers,
+classification, merge operation, and whether reset is supported. Collisions
+without a declared rule fail validation. Extension data cannot shadow typed
+identity, destination, authentication, security, budget, correlation, or
+protocol fields; attempted protected-field overrides are rejected and diagnosed,
+not silently ignored.
 
 ## Dynamic overrides
 
@@ -129,21 +146,14 @@ object by magic, darling.
 - Invalid hot reload leaves the last good snapshot active.
 - Untrusted project config cannot load code or broaden permissions.
 - A next-turn override expires exactly after its named boundary.
-
-## Upstream evidence
-
-- Pi's settings manager merges global, project, and runtime sources, handles
-  trust, last-good state, and concurrent writes in
-  [`settings-manager.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/coding-agent/src/core/settings-manager.ts).
-- Pydantic AI's declarative merge behavior is specified in
-  [`agent-spec.md`](https://github.com/pydantic/pydantic-ai/blob/c0e4d824eaa0401d4481d401e5b3894ab32ab59d/docs/agent-spec.md),
-  and model-setting precedence is documented in
-  [model settings](https://ai.pydantic.dev/api/settings/).
-- OpenCode V2's configuration direction is recorded in
-  [`config.md`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/specs/v2/config.md).
+- Two provider operations bound to different endpoint/account profiles cannot
+  exchange options or credentials through registration order.
+- A provider payload-extension collision follows its declared merge rule or
+  fails before I/O; it never overrides a protected typed field.
 
 ## Related specifications
 
 - [Context assembly and instructions](context-assembly-and-instructions.md)
 - [Extensions, hooks, and middleware](extensions-hooks-and-middleware.md)
 - [Public API and dependency injection](public-api-and-dependency-injection.md)
+- [Coding-harness resources and project trust](coding-harness-resources-and-project-trust.md)

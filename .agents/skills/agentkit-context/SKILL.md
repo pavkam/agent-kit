@@ -24,6 +24,10 @@ read the [modern C# rules](../references/modern-csharp.md).
   or
   [memory, retrieval, and storage](../../../docs/concepts/memory-retrieval-and-storage.md)
   only when changing those contributor boundaries.
+- Read
+  [coding-harness resources and project trust](../../../docs/concepts/coding-harness-resources-and-project-trust.md)
+  when changing project instruction discovery, templates, remote includes,
+  resource precedence, or executable-resource trust.
 
 ## Working rules
 

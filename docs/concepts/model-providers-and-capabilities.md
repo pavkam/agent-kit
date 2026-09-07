@@ -11,8 +11,16 @@ This contract describes what may enter the
 [provider profiles](../providers/index.md) supply current wire-level evidence
 for each concrete adapter.
 
-Provider, API family, endpoint/deployment, and model are distinct identities.
-Capabilities belong to their configured combination, not to a brand name.
+Provider, API family, service surface, endpoint, deployment, and model are
+distinct identities. Capabilities belong to their configured combination, not to
+a brand name.
+
+A provider registration is the concrete runtime unit for one provider identity:
+it owns authentication methods, endpoint/profile metadata, model catalog and
+refresh behavior, and independently registered operations. It MAY dispatch
+different models through different API families. A model whose declared API
+family has no registered operation fails before transport; the runtime never
+guesses from the provider name.
 
 ## Identity model
 
@@ -21,10 +29,25 @@ The canonical public `ModelDescriptor` shape is defined once in the
 This concept owns the identity and capability semantics rather than a parallel
 descriptor declaration.
 
-Two deployments with the same model name MAY have different capabilities,
-limits, regions, policy, or API versions. Their descriptors MUST remain
-distinct. Aliases MAY resolve to descriptors but MUST NOT erase actual identity
-from responses and telemetry.
+Two service surfaces, endpoints, or deployments with the same model name MAY
+have different capabilities, limits, regions, routing, billing, retention,
+authentication, policy, or API versions. Their descriptors MUST remain distinct.
+Aliases MAY resolve to descriptors but MUST NOT erase actual identity from
+responses and telemetry.
+
+Composition MUST keep three bindings independent: an endpoint profile selects
+the service surface and transport target, a credential profile selects one
+account/workload identity and authentication policy, and an operation
+registration binds one model adapter to both. Those bindings are keyed,
+versioned, validated, and captured before an attempt. A process-global unkeyed
+credential source or endpoint option cannot safely represent several providers,
+accounts, or service surfaces in one engine.
+
+The credential-profile reference is classified execution/configuration evidence,
+not ordinary assistant-message metadata. Response identity preserves the actual
+provider, surface, endpoint, deployment, and model; credential binding appears
+only in protected operation/audit records under explicit redaction and access
+policy.
 
 ## Capability inventory
 
@@ -36,6 +59,9 @@ The descriptor MUST express support and relevant constraints for:
 - parallel tool calls and tool-choice controls;
 - native, prompted, and tool-based structured output;
 - streaming, usage-in-stream, and partial result behavior;
+- candidate/choice counts and multi-candidate stream behavior;
+- whether usage can be absent, interim, or terminal and which counters may be
+  unavailable;
 - reasoning content, signatures, and continuation affinity;
 - citations, safety/refusal, and server-side context;
 - request continuation/response IDs and cache controls; and
@@ -43,6 +69,19 @@ The descriptor MUST express support and relevant constraints for:
 
 Support SHOULD be more expressive than booleans when modes, schema dialects,
 media limits, or mutually exclusive features matter.
+
+Capabilities also describe operational details that affect a harness: supported
+thinking levels and their provider mapping, cache retention modes, session
+affinity, deferred response/tool loading, tool-name and call-ID constraints,
+usage availability, transport choices, and whether model discovery is static or
+credential-scoped.
+
+Reasoning capability is a structured profile, not a list of display labels. It
+declares the mechanism—effort, token budget, toggle, adaptive mode, or a
+provider template field—its legal values and mapping, replay/signature binding,
+summary and display behavior, and whether reasoning tokens are included in
+reported output usage. A reasoning block that is valid only with one prior
+response, model, tool set, or provider route carries that affinity explicitly.
 
 ## Provider contract
 
@@ -66,15 +105,53 @@ endpoint, credentials, options, profiles, descriptors, wire behavior, and
 registration.
 
 `AgentKit.Providers.OpenAICompatible` is a reusable protocol-family package for
-Responses, Chat Completions, embeddings, HTTP, streaming, and common errors. It
-is not a provider identity. `AgentKit.Providers.OpenAI`,
-`AgentKit.Providers.OpenRouter`, and `AgentKit.Providers.ZAi` MUST retain their
-own profiles and tests even when they reuse that package.
+Responses, Chat Completions, embeddings, HTTP, streaming, common errors, and
+secret-safe credential transport mechanics proven common by conformance. It is
+not a provider identity and MUST NOT decide authentication support, account,
+scheme, audience, scopes, refresh, or rotation policy. Those choices and the
+credential-profile binding remain owned by the concrete branded package.
+`AgentKit.Providers.OpenAI`, `AgentKit.Providers.OpenRouter`, and
+`AgentKit.Providers.ZAi` MUST retain their own profiles and tests even when they
+reuse that package.
 
 Provider packages register operations independently. OpenAI may provide
 conversation and embeddings; OpenRouter may provide conversation, embeddings,
 and reranking; Z.ai MUST expose only the operations in its verified profile.
 Applications MAY combine named operations from different providers.
+
+## Catalog lifecycle
+
+Catalog reads return one immutable last-known snapshot and never perform hidden
+network I/O. Static baseline models and a dynamic overlay merge by stable model
+identity; an overlay replaces the matching baseline descriptor rather than
+creating an ambiguous duplicate.
+
+Every descriptor claim carries catalog source, checked-at time, and confidence
+or provenance sufficient to distinguish provider-reported, generated,
+heuristically inferred, manually corrected, and application-overridden data.
+Runtime discovery is used only when the provider actually offers an
+authoritative surface; a generated or reviewed static snapshot is a valid
+explicit fallback, not a reason to fabricate live discovery.
+
+Refresh is explicit, cancellable, and provider-scoped. A dynamic provider:
+
+1. restores its validated cached snapshot before requiring current credentials
+   or network access;
+2. skips network work in cache-only mode;
+3. resolves or refreshes credentials only when network access is allowed;
+4. publishes persistence and in-memory state through one generation-checked
+   operation; and
+5. retains the prior usable snapshot when refresh fails.
+
+Concurrent refreshes for one provider are superseded or serialized by a
+generation/fence. Replacing or removing a provider invalidates in-flight refresh
+publication so stale results cannot repopulate the new registration. Refreshing
+several providers MAY run concurrently, but errors and cancellation remain
+attributable per provider.
+
+Credential-specific availability is a filter over the complete catalog, not a
+mutation of its descriptors. A subscription token may expose fewer models than
+an API key for the same provider.
 
 ## Capability negotiation
 
@@ -111,6 +188,11 @@ unsafe when history contains provider-bound reasoning signatures, continuation
 IDs, native tool state, or unsupported media. The selector MUST fail rather than
 corrupt context.
 
+Thinking/reasoning selection MUST use the model's supported-level map. An
+unsupported requested level follows an explicit clamp/reselect/fail policy and
+records the effective provider value; the numeric or string spelling is not
+assumed common across API families.
+
 ## Embeddings are separate
 
 Canonical embedding and reranking request, identity, and result semantics live
@@ -134,22 +216,23 @@ from an embedding contract.
   endpoints.
 - Fallback refuses to discard provider-bound continuation state silently.
 - Actual response model identity survives alias-based selection.
+- Two accounts for the same provider remain isolated through distinct captured
+  credential profiles.
+- A single-candidate operation rejects an unexpected second candidate instead of
+  silently selecting the first.
+- Missing provider usage remains unknown rather than becoming reported zero.
 - Embeddings from incompatible model revisions cannot share an index query.
 - Replacing an embedding or reranking registration does not replace the selected
   conversational model.
-
-## Upstream evidence
-
-- Pi separates provider and API type from model capabilities, limits, cost, and
-  compatibility in
-  [`packages/ai/src/types.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/ai/src/types.ts).
-- OpenCode isolates provider configuration and plugin adapters in
-  [`provider.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/provider.ts).
-- Pydantic AI defines a provider-independent model layer documented in
-  [models](https://ai.pydantic.dev/models/overview/).
+- A mixed-API provider dispatches each model only to its declared family.
+- Provider replacement prevents an older model-refresh result from publishing.
+- Cache-only startup restores a validated catalog without auth or network I/O.
+- Credential-scoped availability filters models without changing the canonical
+  catalog snapshot.
 
 ## Related specifications
 
 - [Provider request pipeline](provider-request-pipeline.md)
 - [Configuration and overrides](configuration-and-overrides.md)
 - [Error taxonomy](error-taxonomy.md)
+- [Coding-harness provider profiles](../providers/coding-harness-provider-profiles.md)

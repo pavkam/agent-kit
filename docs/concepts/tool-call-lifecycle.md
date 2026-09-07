@@ -17,10 +17,13 @@ Every application tool call MUST pass through this pipeline:
 ```text
 discover -> resolve snapshot -> bound -> parse -> validate
   -> authorize -> approve/defer -> record call -> invoke
-  -> normalize -> record terminal result -> return to loop
+  -> normalize -> record terminal result
+  -> project bounded result -> materialize in source order -> return to loop
 ```
 
-The model requests a call; it never directly invokes application code.
+The model requests a call; it never directly invokes application code. Any stage
+may produce the corresponding pre-invocation terminal rejection without falling
+through to later effect stages.
 
 ## States
 
@@ -28,14 +31,17 @@ The model requests a call; it never directly invokes application code.
 Observed
   -> Parsing -> Validating -> Authorizing
   -> AwaitingApproval | Deferred | Ready
-  -> Recorded -> Running
-  -> Succeeded | Failed | Denied | Cancelled | TimedOut | Interrupted
+  -> Planned -> EffectPending -> OutcomeReady -> Completed
 ```
 
-Terminal states are immutable. There MUST be exactly one terminal result for
-every accepted recorded call. Invalid raw calls rejected before acceptance MAY
-produce a model-visible validation result but MUST still have stable diagnostic
-correlation.
+`OutcomeReady` is terminal for effect execution: one complete result is durably
+staged and the tool MUST never run again. `Completed` means that result has been
+projected and placed into history in assistant source order. Every bounded call
+with a stable `ToolCallId` MUST reach exactly one terminal result and one
+message projection, including unknown tools, invalid arguments, and denials.
+Calls admitted to invocation additionally have one accepted record before their
+effect. Raw input rejected before a stable call identity can be assigned is a
+provider/request protocol failure, not an anonymous tool success or invocation.
 
 ## Resolution snapshot
 
@@ -73,12 +79,25 @@ file-system, network, or process component validates its derived grant again.
 
 The accepted call MUST be durably recorded before invocation. Its record
 includes call ID, tool snapshot identity, normalized argument fingerprint,
-security decision and grant reference, attempt, idempotency information, and
-start metadata with secrets redacted.
+security decision and grant reference, source part identity/position, scheduling
+ordinal, reserved result identity, replay classification, attempt, idempotency
+information, and start metadata with secrets redacted.
+
+`SourcePartId` or source position refers to the call's position in the complete
+assistant content sequence, including non-tool parts. `SchedulingOrdinal` orders
+only accepted calls. The reserved result identity may also scope the framework
+`ToolInvocationId` and its memos, but neither replaces the provider call ID.
 
 If the record cannot be committed, invocation MUST NOT occur. This boundary
 enables recovery to distinguish “never started” from “side effect may have
 occurred.”
+
+The executor receives invocation-only session and budget capabilities compiled
+into the run plan. Accepted and terminal records use that exact versioned
+session profile/coordinator, while every attempted invocation reserves and
+settles against the exact budget profile/scope. Recorders and executors MUST NOT
+inject an unkeyed session coordinator, rediscover a store, or capture a mutable
+run budget in singleton state.
 
 ## Invocation context
 
@@ -90,43 +109,67 @@ It MUST NOT receive loop mutation methods, the service provider, raw credentials
 unrelated to the tool, or permission to append arbitrary messages.
 
 Progress is live-only by default. Semantic checkpoints MAY be durable and MUST
-be bounded. Progress after terminal settlement is ignored and diagnosed.
+be bounded complete snapshots with declared cadence and replacement behavior. A
+checkpoint never proves completion. Progress after outcome staging is fenced,
+ignored, and diagnosed.
+
+The public progress view labels the latest live update separately from the
+latest committed checkpoint. Ordered assistant frames and replacement tool
+snapshots are different durability shapes; a tool update is persisted only when
+the tool requests a checkpoint under the configured cadence.
+
+An invocation MAY expose a narrow durable memo API for idempotent substeps. Memo
+names and values are bounded, invocation-scoped, written before returning to the
+tool, and deleted when the outcome becomes ready. Memos do not authorize new
+effects or make the enclosing external call exactly once.
+
+A before-tool transform is followed by schema validation, canonicalization,
+fingerprinting, and authorization of the transformed call. Replacing arguments
+after approval invalidates the prior grant; no hook can smuggle a different
+effect through an already authorized fingerprint.
 
 ## Terminal result
 
 Terminal status, retryability, and side-effect certainty follow the
 [tool error and result contract](tool-errors-retries-and-results.md).
 
-The result MUST contain call/tool IDs, terminal status, bounded typed content,
-safe structured data, normalized error when applicable, timestamps, usage or
-cost, retryability, side-effect certainty, and extension data.
+The result MUST contain call ID, requested alias, resolved tool/version when
+available, terminal status, bounded typed content, safe structured data,
+normalized error when applicable, timestamps, usage or cost, retryability,
+side-effect certainty, the captured result-projection policy reference, and
+extension data.
 
-Recording the terminal result and durable completion event SHOULD be atomic.
-When that is unavailable, the operation MUST use an idempotency key so recovery
-can safely complete the record without invoking again.
+Recording the complete staged outcome and transition to `OutcomeReady` SHOULD be
+atomic. Source-order materialization then places the result and advances to
+`Completed` without invocation. When atomic staging is unavailable, the
+operation MUST use an external idempotency/status mechanism so recovery can
+safely finish the record without invoking again.
+
+History materialization is a separate deterministic projection from the
+authoritative recorded result. It preserves terminal meaning and uncertainty,
+uses the exact captured projection-policy version, and records every loss. A
+projection or append retry never returns to invocation.
 
 ## Acceptance scenarios
 
 - Denied, invalid, and unknown calls produce no invocation side effect.
+- Denied, invalid, and unknown identified calls still receive one terminal
+  record and one correlated history projection.
 - The call record is observable before the invoker starts.
 - A late progress update cannot mutate a terminal result.
 - Result commit retry does not invoke the tool twice.
+- A later parallel call may become outcome-ready first but cannot enter history
+  before an earlier source ordinal.
+- A durable progress checkpoint that looks successful still recovers as unknown
+  when the effect never settled.
 - Catalog changes after model dispatch cannot redirect a call.
-- Every accepted call has exactly one correlated terminal result after
-  settlement or repair.
-
-## Upstream evidence
-
-- OpenCode V2 records tool calls before forking execution in
-  [`llm.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/runner/llm.ts).
-- Pydantic AI's validation, approval, execution, and event behavior is
-  implemented across its tool manager and
-  [`messages.py`](https://github.com/pydantic/pydantic-ai/blob/c0e4d824eaa0401d4481d401e5b3894ab32ab59d/pydantic_ai_slim/pydantic_ai/messages.py).
-- Pi exposes prepare, before, after, update, and terminal tool events in
-  [`agent-loop.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/agent/src/agent-loop.ts).
+- Every identified call has exactly one correlated terminal result and
+  projection after settlement or repair; an accepted call has no second
+  invocation during publication recovery.
 
 ## Related specifications
 
 - [Tool scheduling and concurrency](tool-scheduling-and-concurrency.md)
 - [Tool errors, retries, and results](tool-errors-retries-and-results.md)
 - [Observability and audit](observability-and-audit.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

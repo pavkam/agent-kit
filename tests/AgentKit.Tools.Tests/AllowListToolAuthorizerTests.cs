@@ -14,6 +14,18 @@ public sealed class AllowListToolAuthorizerTests
     }
 
     [Fact]
+    public void Constructor_WhenAllowListContainsDefaultToolId_ThrowsArgumentException()
+    {
+        var options = new AgentToolsOptions();
+        _ = options.AllowedToolIds.Add(default);
+
+        var exception = Should.Throw<ArgumentException>(
+            () => new AllowListToolAuthorizer(Options.Create(options)));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
     public async Task AuthorizeAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
         var authorizer = CreateAuthorizer();
@@ -56,6 +68,19 @@ public sealed class AllowListToolAuthorizerTests
 
         var denied = decision.ShouldBeOfType<ToolAuthorizationDenied>();
         denied.SafeMessage.ShouldContain("other");
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenOptionsMutatedAfterConstruction_DoesNotGrantNewTool()
+    {
+        var options = new AgentToolsOptions();
+        var authorizer = new AllowListToolAuthorizer(Options.Create(options));
+        _ = options.AllowedToolIds.Add(new ToolId("late"));
+        var request = new ToolAuthorizationRequest(TestFactory.ExecutionContext(), TestFactory.Descriptor("late"));
+
+        var decision = await authorizer.AuthorizeAsync(request, TestContext.Current.CancellationToken);
+
+        _ = decision.ShouldBeOfType<ToolAuthorizationDenied>();
     }
 
     private static AllowListToolAuthorizer CreateAuthorizer(Action<AgentToolsOptions>? configure = null)

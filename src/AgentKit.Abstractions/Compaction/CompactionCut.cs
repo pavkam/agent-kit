@@ -47,4 +47,25 @@ public sealed record CompactionCut
 
     /// <summary>Gets the exact entries covered by <see cref="CoveredRange"/>.</summary>
     public ImmutableArray<SessionEntryId> CoveredEntryIds { get; init; }
+
+    /// <inheritdoc/>
+    public bool Equals(CompactionCut? other) =>
+        other is not null
+        && CoveredRange.Equals(other.CoveredRange)
+        && RetainedSuffixStart.Equals(other.RetainedSuffixStart)
+        && CoveredEntryIds.SequenceEqual(other.CoveredEntryIds);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(CoveredRange);
+        hash.Add(RetainedSuffixStart);
+        foreach (var id in CoveredEntryIds)
+        {
+            hash.Add(id);
+        }
+
+        return hash.ToHashCode();
+    }
 }

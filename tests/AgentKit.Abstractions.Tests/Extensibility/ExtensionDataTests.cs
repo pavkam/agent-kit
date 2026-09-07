@@ -47,4 +47,58 @@ public sealed class ExtensionDataTests
 
         first.ShouldBe(second);
     }
+
+    [Fact]
+    public void Equals_WhenOtherIsNull_ReturnsFalse() =>
+        ExtensionData.Empty.Equals(null).ShouldBeFalse();
+
+    [Fact]
+    public void Equals_WhenSameReference_ReturnsTrue()
+    {
+        var data = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("k", new ExtensionValue([1])));
+
+        data.Equals(data).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Equals_WhenCountDiffers_ReturnsFalse()
+    {
+        var first = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("k", new ExtensionValue([1])));
+        var second = new ExtensionData(
+            ImmutableDictionary<string, ExtensionValue>.Empty.Add("k", new ExtensionValue([1])).Add("k2", new ExtensionValue([2])));
+
+        first.Equals(second).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Equals_WhenKeyMissingInOther_ReturnsFalse()
+    {
+        var first = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("k", new ExtensionValue([1])));
+        var second = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("other", new ExtensionValue([1])));
+
+        first.Equals(second).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Equals_WhenValueDiffersForSameKey_ReturnsFalse()
+    {
+        var first = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("k", new ExtensionValue([1])));
+        var second = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("k", new ExtensionValue([2])));
+
+        first.Equals(second).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GetHashCode_WhenInsertionOrderDiffers_ProducesSameHashCode()
+    {
+        var first = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty
+            .Add("a", new ExtensionValue([1]))
+            .Add("b", new ExtensionValue([2])));
+        var second = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty
+            .Add("b", new ExtensionValue([2]))
+            .Add("a", new ExtensionValue([1])));
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
 }

@@ -79,6 +79,11 @@ public sealed record SecurityPolicySnapshotReference(
     SecurityPolicyVersion Version,
     ContentHash Fingerprint);
 
+public sealed record SecurityAuthorizationScope(
+    AgentId AgentId,
+    SessionId? SessionId,
+    OperationCorrelation Correlation);
+
 public sealed record SecurityAuthorizationContext(
     SecurityProfileKey ProfileKey,
     SecurityProfileVersion ProfileVersion,
@@ -86,13 +91,12 @@ public sealed record SecurityAuthorizationContext(
     ComponentKey<ISecurityAuthority> AuthorityKey,
     AgentDefinitionRevision AgentDefinitionRevision,
     ConfigurationVersion ConfigurationVersion,
+    SecurityAuthorizationScope Scope,
     ExecutionIdentity Identity);
 
 public sealed record SecurityRequest(
     SecurityRequestId Id,
-    AgentId AgentId,
-    SessionId SessionId,
-    OperationCorrelation Correlation,
+    SecurityAuthorizationScope Scope,
     ToolCallId? ToolCallId,
     SecurityAuthorizationContext Authorization,
     ComponentId ComponentId,
@@ -129,9 +133,7 @@ public sealed record SecurityApprovalRequired(
 public sealed record SecurityGrant(
     GrantId Id,
     SecurityRequestId RequestId,
-    AgentId AgentId,
-    SessionId SessionId,
-    OperationCorrelation Correlation,
+    SecurityAuthorizationScope Scope,
     SecurityAuthorizationContext Authorization,
     ComponentId Audience,
     SecurityOperationKind Kind,
@@ -173,9 +175,7 @@ public sealed record ApprovalAuthenticationEvidence(
 
 public sealed record ApprovalScopeBinding(
     SecurityAuthorizationContext Authorization,
-    AgentId AgentId,
-    SessionId SessionId,
-    OperationCorrelation Correlation,
+    SecurityAuthorizationScope Scope,
     ComponentId Audience,
     SecurityOperationKind Kind,
     SecurityEffect Effect,
@@ -207,9 +207,7 @@ public sealed record ApprovalResponse(
 
 public sealed record SecurityAuditRecord(
     SecurityAuditRecordId Id,
-    AgentId AgentId,
-    SessionId SessionId,
-    OperationCorrelation Correlation,
+    SecurityAuthorizationScope Scope,
     SecurityRequestId RequestId,
     GrantId? GrantId,
     ApprovalRequestId? ApprovalRequestId,
@@ -243,9 +241,7 @@ public interface ISecurityPolicy
 }
 
 public sealed record SecurityAuthorizationCaptureRequest(
-    AgentId AgentId,
-    SessionId SessionId,
-    OperationCorrelation Correlation,
+    SecurityAuthorizationScope Scope,
     SecurityProfileKey ProfileKey,
     AgentDefinitionRevision AgentDefinitionRevision,
     ConfigurationVersion ConfigurationVersion,
@@ -301,6 +297,14 @@ asks the grant issuer to create bounded authority. Direct run work receives that
 selected authority from the compiled run plan; delayed approval resolution uses
 `ISecurityAuthoritySelector` and the persisted binding rather than a keyed
 container lookup.
+
+`SecurityAuthorizationScope` is captured with the profile and policy snapshot,
+not supplied later as unrelated fields. Requests, approvals, grants, cache keys,
+and enforcement compare the entire scope structurally. `SessionId` is optional
+only for truthful before-session or sessionless protected operations; when it is
+present every later boundary requires exact equality, and policy denies an
+operation kind that requires a session when it is absent. No caller fabricates a
+session identity to obtain authority.
 
 `HookDispatchContext` is an optional non-persisted invocation dependency. An
 in-run caller passes its active hook lease; before-run work and delayed approval
@@ -463,10 +467,25 @@ public static class ServiceExtensions
                 key,
                 configure);
 
+        public IServiceCollection ReplaceSecurityProfile(
+            SecurityProfileKey key,
+            Action<SecurityProfileOptions> configure) =>
+            PermissionServiceRegistration.ReplaceSecurityProfile(
+                services,
+                key,
+                configure);
+
         public IServiceCollection AddSecurityPolicy<TPolicy>(
             SecurityPolicyRegistration registration)
             where TPolicy : class, ISecurityPolicy =>
             PermissionServiceRegistration.AddSecurityPolicy<TPolicy>(
+                services,
+                registration);
+
+        public IServiceCollection ReplaceSecurityPolicy<TPolicy>(
+            SecurityPolicyRegistration registration)
+            where TPolicy : class, ISecurityPolicy =>
+            PermissionServiceRegistration.ReplaceSecurityPolicy<TPolicy>(
                 services,
                 registration);
 
@@ -487,6 +506,64 @@ public static class ServiceExtensions
             PermissionServiceRegistration.ReplaceSecurityAuthority<TAuthority>(
                 services,
                 key);
+
+        public IServiceCollection
+            ReplaceSecurityProfileSelector<TSelector>()
+            where TSelector : class, ISecurityProfileSelector =>
+            PermissionServiceRegistration
+                .ReplaceSecurityProfileSelector<TSelector>(services);
+
+        public IServiceCollection ReplaceSecurityPolicyCatalog<TCatalog>()
+            where TCatalog : class, ISecurityPolicyCatalog =>
+            PermissionServiceRegistration.ReplaceSecurityPolicyCatalog<TCatalog>(
+                services);
+
+        public IServiceCollection ReplaceSecurityPolicySelector<TSelector>()
+            where TSelector : class, ISecurityPolicySelector =>
+            PermissionServiceRegistration
+                .ReplaceSecurityPolicySelector<TSelector>(services);
+
+        public IServiceCollection
+            ReplaceSecurityAuthoritySelector<TSelector>()
+            where TSelector : class, ISecurityAuthoritySelector =>
+            PermissionServiceRegistration
+                .ReplaceSecurityAuthoritySelector<TSelector>(services);
+
+        public IServiceCollection ReplaceApprovalBroker<TBroker>()
+            where TBroker : class, IApprovalBroker =>
+            PermissionServiceRegistration.ReplaceApprovalBroker<TBroker>(
+                services);
+
+        public IServiceCollection
+            ReplaceApprovalHandlerDispatcher<TDispatcher>()
+            where TDispatcher : class, IApprovalHandlerDispatcher =>
+            PermissionServiceRegistration
+                .ReplaceApprovalHandlerDispatcher<TDispatcher>(services);
+
+        public IServiceCollection ReplaceApprovalStore<TStore>()
+            where TStore : class, IApprovalStore =>
+            PermissionServiceRegistration.ReplaceApprovalStore<TStore>(services);
+
+        public IServiceCollection ReplaceSecurityGrantStore<TStore>()
+            where TStore : class, ISecurityGrantStore =>
+            PermissionServiceRegistration.ReplaceSecurityGrantStore<TStore>(
+                services);
+
+        public IServiceCollection ReplaceSecurityDecisionStore<TStore>()
+            where TStore : class, ISecurityDecisionStore =>
+            PermissionServiceRegistration.ReplaceSecurityDecisionStore<TStore>(
+                services);
+
+        public IServiceCollection ReplaceSecurityGrantIssuer<TIssuer>()
+            where TIssuer : class, ISecurityGrantIssuer =>
+            PermissionServiceRegistration.ReplaceSecurityGrantIssuer<TIssuer>(
+                services);
+
+        public IServiceCollection
+            ReplaceSecurityAuditDispatcher<TDispatcher>()
+            where TDispatcher : class, ISecurityAuditDispatcher =>
+            PermissionServiceRegistration
+                .ReplaceSecurityAuditDispatcher<TDispatcher>(services);
     }
 }
 ```
@@ -507,10 +584,12 @@ replacement names the exact `SecurityPolicyId`.
 Security profiles are keyed and versioned, select an authority component key,
 and are captured from each agent definition into a
 `SecurityAuthorizationContext` with an immutable effective-policy snapshot
-reference and the exact `ExecutionIdentity` authenticated at ingress. Required
-and best-effort audit sinks are registered with explicit delivery semantics.
-Runtime components receive the selected authority or typed catalogs/selectors
-rather than resolving keyed services from `IServiceProvider`.
+reference, exact `SecurityAuthorizationScope`, and `ExecutionIdentity`
+authenticated at ingress. Changing any scope, definition, configuration,
+identity, or policy field requires a new capture. Required and best-effort audit
+sinks are registered with explicit delivery semantics. Runtime components
+receive the selected authority or typed catalogs/selectors rather than resolving
+keyed services from `IServiceProvider`.
 
 The first-party authority, catalog, selector, and dispatchers are thread-safe
 singletons. The approval broker never captures handler instances. Its typed
@@ -553,10 +632,11 @@ The
 defines the authority carried across each protected boundary.
 
 A security request describes the operation before it starts. It carries the
-complete immutable execution identity plus the agent, session, run, component,
-stable operation kind, requested resources, effect class, normalized input
-fingerprint, reason, deadline, configuration and policy versions, and causal
-parent.
+complete immutable execution identity plus the captured agent, optional session,
+run correlation, component, stable operation kind, requested resources, effect
+class, normalized input fingerprint, reason, deadline, configuration and policy
+versions, and causal parent. An operation kind that requires a session fails
+closed when the captured session is absent; callers never invent one.
 
 The request is generic enough for the whole framework but strongly typed at each
 caller. Examples include:
@@ -577,12 +657,12 @@ Pure internal computation does not require a ceremonial approval. Each protected
 component documents the boundary at which authorization becomes mandatory.
 
 The authority validates that every request, approval binding, and grant carries
-the same `ExecutionIdentity` snapshot as its `SecurityAuthorizationContext`.
-Tenant or principal projections are permitted only for indexing and redacted
-telemetry; they never replace the evidence, claims, assurance, delegation chain,
-or identity version used for policy and enforcement. A changed or
-reauthenticated identity requires a newly captured authorization context and
-fresh decision.
+the same `SecurityAuthorizationScope` and `ExecutionIdentity` snapshots as its
+`SecurityAuthorizationContext`. Tenant or principal projections are permitted
+only for indexing and redacted telemetry; they never replace the evidence,
+claims, assurance, delegation chain, or identity version used for policy and
+enforcement. A changed or reauthenticated identity requires a newly captured
+authorization context and fresh decision.
 
 ## Authority and decisions
 
@@ -591,8 +671,8 @@ allow, deny, or require approval. Missing policy context, unknown operation,
 unknown effect, ambiguous resource, stale configuration, evaluation failure, or
 unavailable enforcement fails closed.
 
-Allow produces a bounded security grant. The grant binds the exact operation,
-principal, resources, effect, input fingerprint, policy version, intended
+Allow produces a bounded security grant. The grant binds the exact captured
+scope, principal, resources, effect, input fingerprint, policy version, intended
 consumer, issue and expiry time, and remaining uses. A grant is evidence for one
 approved scope, not a global permission flag.
 
@@ -602,6 +682,13 @@ path to the file system. Resource, argument, destination, executable, principal,
 or effect changes require a new request. Low-level file, network, and process
 components enforce grants again so higher-level callers cannot accidentally
 bypass policy.
+
+File-write grants bind explicit disposition, expected target evidence, exact
+encoded-payload fingerprint, bounds, and atomicity. Parent-directory creation is
+a separate effect and grant. Provider credential read/refresh likewise uses a
+credential-source grant bound to the captured profile/account/audience and is
+distinct from both provider-egress and lower-level network grants; none can be
+substituted for another.
 
 ## Human approval
 

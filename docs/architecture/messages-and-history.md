@@ -29,6 +29,10 @@ complete, incomplete, suspended, and interrupted output distinguishable.
 System, developer, user, assistant, tool, and runtime semantics remain distinct.
 Provider adapters may translate or reject unsupported roles, but the durable
 model does not erase the distinction to accommodate the weakest provider.
+Translation is monotonic in trust: a lower-precedence or synthetic kind may lose
+fidelity or be rejected, but it cannot acquire system/developer instruction
+authority. In particular, a `RuntimeMessage` never becomes a system or developer
+instruction merely because a provider has no runtime role.
 
 Unknown typed content and safe provider metadata survive storage round trips.
 Live SDK objects, open streams, credentials, and exception instances do not
@@ -59,12 +63,21 @@ normalize imported content. Every repair is deterministic, observable, and
 attributable to source messages. Untrusted history cannot manufacture approvals,
 tool success, or authority.
 
+Repair and provider preparation also preserve role trust. They may tag,
+quarantine, omit under an explicit loss policy, or reject an unsupported
+runtime/synthetic notice, but may not relabel it as system/developer content or
+merge it into a trusted instruction source.
+
 ## Correlation
 
-Tool calls and terminal results share a stable call identity. Provider-supplied
-identifiers are preserved, while AgentKit identities remain authoritative. There
-is exactly one terminal result for every accepted call. Message order and
-causality survive provider translation, storage, branching, compaction, and
+Tool calls, authoritative terminal records, and their message projections share
+a stable call identity. Provider-supplied identifiers are preserved, while
+AgentKit identities remain authoritative. Every bounded, identified tool-call
+request reaches exactly one terminal record and one materialized
+`ToolResultPart`, including pre-invocation rejection. A call admitted to
+invocation also has one accepted record committed before its effect. Projection
+may be retried without repeating invocation. Message order, result provenance,
+and causality survive provider translation, storage, branching, compaction, and
 replay.
 
 ## Normative minimal message shape
@@ -186,6 +199,7 @@ public sealed record ToolResultPart(
     ToolReference Tool,
     ToolCallOutcome Outcome,
     ImmutableArray<ContentPart> Content,
+    ToolResultProjectionInfo Projection,
     ExtensionData Extensions) : ContentPart(Extensions);
 
 public sealed record StructuredDataPart(
@@ -293,11 +307,20 @@ public sealed record RuntimeMessage(
         CreatedAt, State, Parts, Extensions);
 ```
 
-`ToolMessage` carries the committed `ToolResultPart` values for accepted calls.
+`ToolMessage` carries the committed `ToolResultPart` values for identified calls
+that reached terminal results, including pre-invocation rejection.
 `RuntimeMessage` is reserved for synthetic in-run notices such as an explicit
 interruption record; compaction and configuration-change records remain distinct
 session entries owned by [sessions](sessions.md), never a `RuntimeMessage`
 pretending to be conversational content.
+
+`RuntimeMessage` is operational evidence, not an instruction source. Its
+framework or adapter provenance does not give its text system/developer
+precedence. A provider adapter that lacks a runtime role may project it into an
+explicitly tagged non-instruction-bearing representation or reject the request;
+it MUST NOT map it to a system or developer role when that mapping elevates the
+notice's trust or instruction priority. History processors and repair policies
+are bound by the same non-elevation rule.
 
 ### Content-part support values
 
@@ -356,9 +379,9 @@ public sealed record ReasoningContent(
     ExtensionData Extensions);
 
 public sealed record ToolReference(
-    ToolId Id,
-    ToolVersion? Version,
-    string Name);
+    ToolAlias ProviderAlias,
+    ToolId? Id,
+    ToolVersion? Version);
 
 public enum ToolCallOutcomeKind
 {
@@ -370,8 +393,27 @@ public enum ToolCallOutcomeKind
 
 public sealed record ToolCallOutcome(
     ToolCallOutcomeKind Kind,
+    ToolTerminalStatus SourceStatus,
+    SideEffectCertainty SideEffectCertainty,
+    bool Retryable,
     string? FailureReason,
     ExtensionData Extensions);
+
+public enum ToolResultProjectionLoss
+{
+    Redacted,
+    Normalized,
+    Summarized,
+    Truncated,
+    Externalized,
+    StatusCoarsened
+}
+
+public sealed record ToolResultProjectionInfo(
+    ToolResultProjectionPolicyReference Policy,
+    ImmutableArray<ToolResultProjectionLoss> Losses,
+    long OmittedBytes,
+    int OmittedParts);
 
 public sealed record JsonSchemaReference(
     string Name,
@@ -380,10 +422,48 @@ public sealed record JsonSchemaReference(
 
 `ToolId` and `ToolVersion` are the canonical typed values from
 [tools](tools.md#normative-minimal-contract-shape); the message model reuses
-them rather than redefining tool identity. `MediaReference.InlineBytes` is empty
-unless `SourceKind` is `InlineBytes`; a `Uri`-sourced or file-referenced medium
-never inlines its bytes into a durable message merely because it was observed
-once.
+them rather than redefining tool identity. `ToolReference.ProviderAlias` is
+always present; `Id` and `Version` are both present only after successful
+resolution. Construction rejects a version without an ID, an ID without a
+version, or any unresolved reference that claims canonical identity.
+`MediaReference.InlineBytes` is empty unless `SourceKind` is `InlineBytes`; a
+`Uri`-sourced or file-referenced medium never inlines its bytes into a durable
+message merely because it was observed once.
+
+`ToolResultPart` is the bounded durable/model-facing projection of the
+authoritative `ToolCallResult` recorded by the tool runtime. It preserves the
+source terminal status, side-effect certainty, retryability, requested alias,
+exact tool/version when resolution succeeded, and correlation to the one
+terminal record for that call even when `ToolCallOutcomeKind` or the selected
+provider protocol is coarser. Projection loss is explicit and ordered; omitted
+byte/part counts are zero when nothing was omitted. Authorized artifact or
+continuation references appear as typed content and remain covered by the same
+projection provenance.
+
+`Policy` is the same immutable key/version reference captured in the accepted
+call and authoritative terminal result. Its referenced snapshot owns the exact
+bounds and transformation rules, so a publication retry either uses that version
+or returns a typed unavailable result; it never silently uses the current
+policy.
+
+`Success` maps only from an authoritative successful terminal status.
+Pre-invocation unknown, invalid, unsupported, denied, or approval-rejected calls
+map to `Rejected`; attempted failures and result-processing failures map to
+`Failed`; cancellation and interruption map to `Cancelled`. Unknown future
+statuses map fail-closed to `Failed` with `StatusCoarsened`. The exact
+`SourceStatus` and `SideEffectCertainty` remain available, so a coarse portable
+kind never claims that an uncertain effect did not occur. Text is never parsed
+to derive outcome.
+
+Construction validates the closed status mapping, success/error consistency,
+non-negative omitted counts, initialized loss collections, and agreement between
+loss markers and omitted content. A projection cannot claim lossless status or
+content while carrying a coarsened status or non-zero omitted count.
+
+The projection cannot be used to recreate authorization, usage, diagnostics, or
+other fields omitted from the terminal record. If history materialization must
+be retried, the session/tool coordinator reprojects from the already recorded
+`ToolCallResult`; it never invokes the tool again.
 
 The base records preserve closed invariants while derived records preserve
 semantics. They are not an invitation to serialize arbitrary CLR objects.
@@ -425,11 +505,6 @@ public sealed record HistorySnapshot(
     MessageCursor Cursor,
     ImmutableArray<AgentMessage> Messages);
 
-public sealed record SessionExecutionCapability(
-    SessionProfileKey ProfileKey,
-    ComponentKey<ISessionCoordinator> CoordinatorKey,
-    ISessionCoordinator Coordinator);
-
 public sealed record HistoryPreparationRequest(
     AgentDefinition Agent,
     SessionId SessionId,
@@ -466,6 +541,7 @@ public interface IHistoryPipeline
     Task<HistoryPreparationResult> PrepareAsync(
         HistoryPreparationRequest request,
         SessionExecutionCapability session,
+        HookDispatchContext hooks,
         CancellationToken cancellationToken = default);
 }
 
@@ -526,14 +602,18 @@ observable members are exactly the `IHistoryPipeline` contract above. It does
 not expose extra resolution or mutation APIs.
 
 The pipeline is run-scoped. The facade compiles `SessionExecutionCapability`
-from the run's selected session profile and coordinator key. It passes that same
+from the run's selected immutable `SessionProfileSnapshot`. It passes that same
 capability to context history preparation and compaction; the record is an
 invocation-only service bundle, is never serialized, and does not own or dispose
-the coordinator. `DefaultHistoryPipeline` never injects an unkeyed
+either coordinator. `DefaultHistoryPipeline` never injects an unkeyed
 `ISessionCoordinator`, resolves keyed services, or receives `IServiceProvider`.
+The active `HookDispatchContext` is a separate invocation-only argument; the
+pipeline dispatches through its injected dispatcher but never reselects a hook
+profile or embeds the lease in history values.
 
 Construction and invocation validate that the request session and agent match
-the cursor and selected capability and that
+the cursor and selected capability; that the profile key, version, coordinator
+keys, and configuration fingerprint match the compiled run plan; and that
 `request.Identity == request.Authorization.Identity`. Validators and processors
 receive that same immutable identity and authorization snapshot; they cannot
 substitute a tenant/principal projection or an ambient principal.

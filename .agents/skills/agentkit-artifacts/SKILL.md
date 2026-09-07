@@ -14,6 +14,12 @@ Read [AGENTS.md](../../../AGENTS.md), the
 When changing C#, also read the
 [modern C# rules](../references/modern-csharp.md).
 
+For a coding host, read the focused profile when artifacts hold
+[truncated tool output](../../../docs/concepts/coding-harness-built-in-tools.md),
+[workspace snapshots](../../../docs/concepts/workspace-snapshots-and-reversion.md),
+or
+[session exports/shares](../../../docs/concepts/coding-harness-export-sharing-and-control-plane.md).
+
 ## Boundary
 
 - Keep portable identities, references, metadata, requests, results, and store

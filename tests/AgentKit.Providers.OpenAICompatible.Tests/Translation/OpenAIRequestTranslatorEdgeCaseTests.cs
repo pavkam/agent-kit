@@ -99,12 +99,18 @@ public sealed class OpenAIRequestTranslatorEdgeCaseTests
             [new TextPart("Follow the house style.", TextSemantics.Plain, ExtensionData.Empty)],
             ExtensionData.Empty);
 
-        var profileSendAsSystem = NonStreamingProfile with { SendDeveloperRoleAsSystem = true };
+        var profileSendAsSystem = new OpenAICompatibilityProfile(
+            NonStreamingProfile.BaseAddress,
+            NonStreamingProfile.ChatCompletionsPath,
+            sendDeveloperRoleAsSystem: true,
+            NonStreamingProfile.PreferStreaming,
+            NonStreamingProfile.IncludeStreamUsage,
+            NonStreamingProfile.UseMaxCompletionTokensField,
+            NonStreamingProfile.DefaultRequestHeaders);
         var body = Translate([developer], profile: profileSendAsSystem);
         body["messages"]![0]!["role"]!.GetValue<string>().ShouldBe("system");
 
-        var profileNative = NonStreamingProfile with { SendDeveloperRoleAsSystem = false };
-        var nativeBody = Translate([developer], profile: profileNative);
+        var nativeBody = Translate([developer], profile: NonStreamingProfile);
         nativeBody["messages"]![0]!["role"]!.GetValue<string>().ShouldBe("developer");
     }
 
@@ -198,7 +204,14 @@ public sealed class OpenAIRequestTranslatorEdgeCaseTests
     public void Translate_WhenUseMaxCompletionTokensFieldIsFalse_UsesLegacyMaxTokensField()
     {
         var settings = ChatRequestSettings.Default with { MaxOutputTokens = 256 };
-        var legacyProfile = NonStreamingProfile with { UseMaxCompletionTokensField = false };
+        var legacyProfile = new OpenAICompatibilityProfile(
+            NonStreamingProfile.BaseAddress,
+            NonStreamingProfile.ChatCompletionsPath,
+            NonStreamingProfile.SendDeveloperRoleAsSystem,
+            NonStreamingProfile.PreferStreaming,
+            NonStreamingProfile.IncludeStreamUsage,
+            useMaxCompletionTokensField: false,
+            NonStreamingProfile.DefaultRequestHeaders);
 
         var body = Translate([TestMessages.User("hi")], settings: settings, profile: legacyProfile);
 

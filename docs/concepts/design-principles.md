@@ -1,7 +1,6 @@
 # Design principles
 
-**Status:** Normative foundation  
-**Depends on:** [Research provenance](research-provenance.md)
+**Status:** Normative foundation
 
 ## Purpose
 

@@ -3,6 +3,7 @@
 
 namespace AgentKit.Abstractions.Tests.Identity;
 
+using System.Globalization;
 using System.Reflection;
 
 using AgentKit;
@@ -125,7 +126,7 @@ public sealed class IdentityValueTypeConformanceTests
     [MemberData(nameof(LongBackedOrderingTypes))]
     public void Equality_WhenValuesMatch_InstancesAreStructurallyEqual(Type identityType)
     {
-        var value = SampleValueFor(identityType);
+        var value = SampleValueFor(identityType, 1);
 
         var first = Activator.CreateInstance(identityType, value);
         var second = Activator.CreateInstance(identityType, value);
@@ -134,15 +135,57 @@ public sealed class IdentityValueTypeConformanceTests
         first!.GetHashCode().ShouldBe(second!.GetHashCode());
     }
 
-    private static object SampleValueFor(Type identityType)
+    [Theory]
+    [MemberData(nameof(GuidBackedIdentityTypes))]
+    public void ToString_WhenGuidBacked_ReturnsCanonicalGuidFormat(Type identityType)
+    {
+        var guid = Guid.NewGuid();
+        var instance = Activator.CreateInstance(identityType, guid);
+
+        instance!.ToString().ShouldBe(guid.ToString("D"));
+    }
+
+    [Theory]
+    [MemberData(nameof(StringBackedIdentityTypes))]
+    public void ToString_WhenStringBacked_ReturnsUnderlyingText(Type identityType)
+    {
+        const string value = "sample-value";
+        var instance = Activator.CreateInstance(identityType, value);
+
+        instance!.ToString().ShouldBe(value);
+    }
+
+    [Theory]
+    [MemberData(nameof(LongBackedOrderingTypes))]
+    public void ToString_WhenLongBacked_ReturnsInvariantCultureText(Type identityType)
+    {
+        const long value = 42L;
+        var instance = Activator.CreateInstance(identityType, value);
+
+        instance!.ToString().ShouldBe(value.ToString(CultureInfo.InvariantCulture));
+    }
+
+    [Theory]
+    [MemberData(nameof(GuidBackedIdentityTypes))]
+    [MemberData(nameof(StringBackedIdentityTypes))]
+    [MemberData(nameof(LongBackedOrderingTypes))]
+    public void Equality_WhenValuesDiffer_InstancesAreNotEqual(Type identityType)
+    {
+        var first = Activator.CreateInstance(identityType, SampleValueFor(identityType, 1));
+        var second = Activator.CreateInstance(identityType, SampleValueFor(identityType, 2));
+
+        first.ShouldNotBe(second);
+    }
+
+    private static object SampleValueFor(Type identityType, int variant)
     {
         var valueType = GetValueProperty(identityType).PropertyType;
 
         return valueType switch
         {
             _ when valueType == typeof(Guid) => Guid.NewGuid(),
-            _ when valueType == typeof(string) => "sample-value",
-            _ when valueType == typeof(long) => 7L,
+            _ when valueType == typeof(string) => $"sample-value-{variant}",
+            _ when valueType == typeof(long) => 7L + variant,
             _ => throw new NotSupportedException($"Unsupported identity value type: {valueType}."),
         };
     }

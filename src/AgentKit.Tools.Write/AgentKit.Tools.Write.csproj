@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <DebugType>portable</DebugType>
+    <PackageId>AgentKit.Tools.Write</PackageId>
+    <Title>AgentKit.Tools.Write</Title>
+    <Description>A write-file tool for AgentKit, built on the IFileSystem host-access abstraction.</Description>
+    <PackageTags>agents;ai;llm;tools;write;file-system;dependency-injection</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" Link="README.md"/>
+  </ItemGroup>
+</Project>

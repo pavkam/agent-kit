@@ -6,7 +6,10 @@ remain in
 [model and embedding providers](../../../../docs/architecture/model-and-embedding-providers.md)
 and [project structure](../../../../docs/architecture/project-structure.md).
 Provider-specific research and primary links live in the
-[provider index](../../../../docs/providers/index.md).
+[provider index](../../../../docs/providers/index.md). For a long-running coding
+loop, also inspect the pinned
+[coding-harness provider profiles](../../../../docs/providers/coding-harness-provider-profiles.md);
+they are interoperability evidence, not current vendor guarantees.
 
 ## Heuristics
 
@@ -21,8 +24,17 @@ Provider-specific research and primary links live in the
   translator.
 - Register conversation, embeddings, reranking, media, and provider-native tools
   independently. Sharing a vendor does not merge operation contracts.
-- Keep endpoint, credentials, options, descriptors, and registration in the
-  concrete provider package. Keep vendor SDK types out of neutral contracts.
+- Treat model discovery as a capability: prefer authoritative credential-scoped
+  discovery, otherwise retain a versioned generated/static snapshot with
+  provenance, freshness, and confidence.
+- Keep canonical tool-call identity distinct from a constrained provider wire
+  ID. Any normalization is deterministic, collision-safe, request-scoped, and
+  reversible across calls, events, and results.
+- Keep endpoint/service-surface profiles, credential/account policy and binding,
+  options, descriptors, and registration in the concrete provider package. A
+  family package may share secret-safe header/token mechanics proven common, but
+  not authentication support, audience, scopes, refresh, or account selection.
+  Keep vendor SDK types out of neutral contracts.
 - Research coverage is not a commitment to ship a package. Add one only when its
   supported operations and compatibility profile can be stated and tested.
 

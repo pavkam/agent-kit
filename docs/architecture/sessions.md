@@ -2,16 +2,17 @@
 
 **Role:** Provide the durable coordination boundary for related runs.
 
-A [session](../concepts/sessions-persistence-and-branching.md) owns an ordered
-record, active branch, admitted input, configuration and context transitions,
-and optimistic concurrency state. It is not an in-memory agent instance. Even a
+A [session](../concepts/sessions-persistence-and-branching.md) owns an immutable
+entry tree, named branches, execution lanes, admitted input, current
+orchestration state, usage evidence, configuration/context transitions, and
+optimistic concurrency state. It is not an in-memory agent instance. Even a
 standalone run uses an ephemeral session with the same ordering and correlation
 semantics.
 
-AgentKit.Session contains session coordination, active-run ownership, branching,
-and store usage. Session contracts and durable values live in
-AgentKit.Abstractions. AddAgentSession registers the coordinator but never
-chooses a storage medium.
+AgentKit.Session contains session coordination, per-lane operation ownership,
+the session mutation line, branching, and store usage. Session contracts and
+durable values live in AgentKit.Abstractions. AddAgentSession registers the
+coordinator but never chooses a storage medium.
 
 `AgentEngine` hosts many agents and sessions concurrently. A session is always
 addressed by typed `AgentId` and `SessionId`, while every mutating operation has
@@ -33,6 +34,8 @@ public readonly record struct SessionEntryId(Guid Value);
 
 public readonly record struct BranchId(Guid Value);
 
+public readonly record struct ExecutionLaneId(Guid Value);
+
 public readonly record struct SessionSnapshotId(Guid Value);
 
 public readonly record struct SessionLeaseId(Guid Value);
@@ -40,6 +43,10 @@ public readonly record struct SessionLeaseId(Guid Value);
 public readonly record struct SessionStoreKey(string Value);
 
 public readonly record struct SessionProfileKey(string Value);
+
+public readonly record struct SessionProfileVersion(long Value);
+
+public readonly record struct SessionRetentionProfileKey(string Value);
 
 public readonly record struct SessionVersion(long Value);
 
@@ -50,6 +57,10 @@ public readonly record struct SessionSequence(long Value);
 public readonly record struct SessionAddress(
     AgentId AgentId,
     SessionId SessionId);
+
+public sealed record SessionProfileReference(
+    SessionProfileKey Key,
+    SessionProfileVersion Version);
 ```
 
 Session, entry, branch, snapshot, lease, run, and operation identities are
@@ -64,13 +75,19 @@ public sealed record SessionDescriptor(
     TenantId TenantId,
     PrincipalId OwnerId,
     SessionStoreKey StoreKey,
-    BranchId ActiveBranchId,
+    ImmutableArray<SessionLaneDescriptor> Lanes,
     SessionVersion Version,
     SessionLifecycleState State,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     SchemaVersion SchemaVersion,
     ExtensionData Extensions);
+
+public sealed record SessionLaneDescriptor(
+    ExecutionLaneId Id,
+    BranchId BranchId,
+    OperationId? OpenOperationId,
+    RunId? OpenRunId);
 
 public abstract record SessionEntry(
     SessionEntryId Id,
@@ -89,6 +106,24 @@ public sealed record SessionOperationContext(
     ExecutionIdentity Identity,
     SecurityAuthorizationContext Authorization,
     HookDispatchContext? Hooks);
+
+public sealed record SessionProfileSnapshot(
+    SessionProfileReference Reference,
+    ComponentKey<ISessionCoordinator> CoordinatorKey,
+    ComponentKey<ISessionRunCoordinator> RunCoordinatorKey,
+    SessionStoreKey DefaultStoreKey,
+    SessionRetentionProfileKey RetentionProfile,
+    SessionBusyBehavior BusyBehavior,
+    int MaximumAppendEntries,
+    int MaximumPageSize,
+    bool VerifySnapshotHashes,
+    bool DeleteOnDispose,
+    ContentHash ConfigurationFingerprint);
+
+public sealed record SessionExecutionCapability(
+    SessionProfileSnapshot Profile,
+    ISessionCoordinator Coordinator,
+    ISessionRunCoordinator RunCoordinator);
 
 public sealed record AuthorizedSessionDirectoryRequest<TRequest>(
     TRequest Request,
@@ -203,14 +238,23 @@ public interface ISessionStoreCatalog
     ImmutableArray<SessionStoreDescriptor> GetDescriptors();
 }
 
+public sealed record SessionStoreCreateSelectionRequest(
+    SessionCreateRequest Request,
+    SessionProfileSnapshot Profile);
+
+public sealed record SessionStoreSelectionRequest(
+    SessionOperationContext Context,
+    SessionProfileSnapshot Profile,
+    SessionLocation Location);
+
 public interface ISessionStoreSelector
 {
     ValueTask<SessionStoreSelectionResult> SelectForCreateAsync(
-        SessionCreateRequest request,
+        SessionStoreCreateSelectionRequest request,
         CancellationToken cancellationToken);
 
     ValueTask<SessionStoreSelectionResult> ResolveExistingAsync(
-        SessionOperationContext context,
+        SessionStoreSelectionRequest request,
         CancellationToken cancellationToken);
 }
 
@@ -253,10 +297,13 @@ session is created. Before creating store state, the coordinator idempotently
 records the chosen `SessionStoreKey` in `ISessionDirectory`; retries and crash
 recovery must finish creation against that same key. The session descriptor also
 persists the key as an integrity check. Existing-session resolution asks the
-directory, then the selector maps the returned key against its explicitly
-injected store set. Callers supply the normal immutable operation context; they
-never know a store key or access keyed DI. A selector never scans stores, falls
-back to a new default, or migrates data as an incidental read.
+directory, then the coordinator passes the authoritative `SessionLocation` and
+captured `SessionProfileSnapshot` to the selector. The selector only maps that
+returned key against its explicitly injected store set; it neither re-queries
+the directory nor receives a directory grant. Application callers supply the
+normal immutable operation context and never know a store key or access keyed
+DI. A selector never scans stores, falls back to a new default, or migrates data
+as an incidental read.
 
 The directory is authoritative routing state with conditional, idempotent
 writes. It partitions locations by tenant and validates the supplied operation
@@ -287,18 +334,22 @@ public interface ISessionCoordinator
 {
     ValueTask<SessionCreateResult> CreateAsync(
         SessionCreateRequest request,
+        SessionProfileSnapshot profile,
         CancellationToken cancellationToken);
 
     ValueTask<SessionLoadResult> LoadAsync(
         SessionOperationContext context,
+        SessionProfileSnapshot profile,
         CancellationToken cancellationToken);
 
     ValueTask<SessionAppendResult> AppendAsync(
         SessionAppendRequest request,
+        SessionProfileSnapshot profile,
         CancellationToken cancellationToken);
 
     ValueTask<SessionBranchResult> BranchAsync(
         SessionBranchRequest request,
+        SessionProfileSnapshot profile,
         CancellationToken cancellationToken);
 }
 
@@ -306,6 +357,7 @@ public interface ISessionRunCoordinator
 {
     ValueTask<SessionRunLeaseResult> AcquireAsync(
         SessionRunLeaseRequest request,
+        SessionProfileSnapshot profile,
         CancellationToken cancellationToken);
 }
 
@@ -314,6 +366,8 @@ public interface ISessionRunLease : IAsyncDisposable
     SessionLeaseId LeaseId { get; }
     AgentId AgentId { get; }
     SessionId SessionId { get; }
+    ExecutionLaneId ExecutionLaneId { get; }
+    OperationId OperationId { get; }
     RunId RunId { get; }
 }
 
@@ -332,19 +386,23 @@ public interface ISessionEventSink
 }
 ```
 
-The coordinator owns authorization orchestration, routing, optimistic conflict
-handling, and semantic events. It does not implement storage. The run
-coordinator owns process-local single-active-run behavior. A durable execution
-adapter may replace or augment it with fenced distributed leases; the local
-implementation never claims cluster safety. Retention policy decides when work
-is eligible, the store performs the protected mutation, and event sinks only
-observe immutable outcomes.
+The coordinator owns authorization orchestration, routing, the serialized
+session mutation line, optimistic conflict handling, and semantic events. It
+does not implement storage. The run coordinator owns process-local
+single-active-operation behavior **per execution lane**. Different lanes may
+overlap effects while every durable read-decide-write transition still enters
+the one session mutation line. A durable execution adapter may replace or
+augment lane ownership with fenced distributed leases; the local implementation
+never claims cluster safety. Retention policy decides when work is eligible, the
+store performs the protected mutation, and event sinks only observe immutable
+outcomes.
 
 The session coordinator never invokes the agent loop, input coordinator, context
 assembler, or durability coordinator. The engine acquires a session run lease
-and then calls the loop; durability integration decorates the lease/store
-boundary from above or below through dedicated contracts. This avoids both
-session → loop → session and session → durability → session constructor cycles.
+for the expected lane and operation and then calls the loop; durability
+integration decorates the lease/store boundary from above or below through
+dedicated contracts. This avoids both session → loop → session and session →
+durability → session constructor cycles.
 
 AgentKit.Session supplies sealed coordinator, store catalog and selector, branch
 service, and local run-coordinator classes. Its primary dependency shape is
@@ -378,6 +436,14 @@ directory grant, resolves the returned store key, then authorizes and consumes a
 separate store grant. Failure at any step returns a typed result without probing
 another store or leaking whether the session exists.
 
+The coordinator is stateless with respect to session profiles. Every method
+receives the immutable profile snapshot from the caller's
+`SessionExecutionCapability`, validates its key/version/fingerprint and selected
+coordinator key, and passes it to store selection. Multiple agents may therefore
+share one coordinator implementation while retaining different stores, bounds,
+retention, and concurrency policies. No constructor or factory captures the
+first profile registered for a component key.
+
 AgentKit defines no session-store base class. In-memory, SQLite, and remote
 stores have materially different transaction, serialization, and ownership
 mechanics; they implement the same interface and conformance suite directly.
@@ -390,8 +456,29 @@ run-coordinator component keys, default `SessionStoreKey`, busy-session policy,
 paging bounds, and retention profile. Run overrides may tighten limits but
 cannot silently change the store of an existing session.
 
+Mutable option binding is validated and copied into a `SessionProfileSnapshot`
+with a positive explicit version and configuration fingerprint when the agent
+run plan is compiled. The invocation-only `SessionExecutionCapability` binds
+that exact snapshot to its selected coordinator and run coordinator. A
+configuration reload creates a later snapshot; it never changes an in-flight run
+or reroutes an existing session.
+
 ```csharp
 namespace AgentKit.Session;
+
+public static class SessionComponentKeys
+{
+    public static ComponentKey<ISessionCoordinator> Coordinator { get; } =
+        new("agentkit.session.coordinator");
+    public static ComponentKey<ISessionRunCoordinator> RunCoordinator { get; } =
+        new("agentkit.session.run-coordinator");
+}
+
+public static class SessionRetentionProfileKeys
+{
+    public static SessionRetentionProfileKey RetainUntilExplicitlyDeleted
+        { get; } = new("agentkit.retain-until-explicit-delete");
+}
 
 public sealed class AgentSessionOptions
 {
@@ -403,18 +490,31 @@ public sealed class AgentSessionOptions
     public bool DeleteOnDispose { get; set; }
 }
 
+public sealed class SessionProfileOptions
+{
+    public SessionProfileVersion Version { get; set; } = new(1);
+    public ComponentKey<ISessionCoordinator> CoordinatorKey { get; set; } =
+        SessionComponentKeys.Coordinator;
+    public ComponentKey<ISessionRunCoordinator> RunCoordinatorKey { get; set; } =
+        SessionComponentKeys.RunCoordinator;
+    public SessionStoreKey? DefaultStoreKey { get; set; }
+    public SessionRetentionProfileKey RetentionProfile { get; set; } =
+        SessionRetentionProfileKeys.RetainUntilExplicitlyDeleted;
+    public SessionBusyBehavior? BusyBehavior { get; set; }
+    public int? MaximumAppendEntries { get; set; }
+    public int? MaximumPageSize { get; set; }
+    public bool? VerifySnapshotHashes { get; set; }
+    public bool? DeleteOnDispose { get; set; }
+}
+
 public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
         public IServiceCollection AddAgentSession(
-            ComponentKey<ISessionCoordinator> coordinatorKey,
-            ComponentKey<ISessionRunCoordinator> runCoordinatorKey,
             Action<AgentSessionOptions>? configure = null) =>
             SessionServiceRegistration.AddAgentSession(
                 services,
-                coordinatorKey,
-                runCoordinatorKey,
                 configure);
 
         public IServiceCollection AddSessionProfile(
@@ -425,10 +525,39 @@ public static class ServiceExtensions
                 key,
                 configure);
 
+        public IServiceCollection ReplaceSessionProfile(
+            SessionProfileKey key,
+            Action<SessionProfileOptions> configure) =>
+            SessionServiceRegistration.ReplaceSessionProfile(
+                services,
+                key,
+                configure);
+
+        public IServiceCollection AddSessionCoordinator<TCoordinator>(
+            ComponentKey<ISessionCoordinator> key)
+            where TCoordinator : class, ISessionCoordinator =>
+            SessionServiceRegistration.AddSessionCoordinator<TCoordinator>(
+                services,
+                key);
+
+        public IServiceCollection AddSessionRunCoordinator<TCoordinator>(
+            ComponentKey<ISessionRunCoordinator> key)
+            where TCoordinator : class, ISessionRunCoordinator =>
+            SessionServiceRegistration.AddRunCoordinator<TCoordinator>(
+                services,
+                key);
+
         public IServiceCollection AddSessionStore<TStore>(
             SessionStoreKey key)
             where TStore : class, ISessionStore =>
             SessionServiceRegistration.AddSessionStore<TStore>(services, key);
+
+        public IServiceCollection ReplaceSessionStore<TStore>(
+            SessionStoreKey key)
+            where TStore : class, ISessionStore =>
+            SessionServiceRegistration.ReplaceSessionStore<TStore>(
+                services,
+                key);
 
         public IServiceCollection AddSessionDirectory<TDirectory>()
             where TDirectory : class, ISessionDirectory =>
@@ -445,6 +574,32 @@ public static class ServiceExtensions
             SessionServiceRegistration.ReplaceSessionCoordinator<TCoordinator>(
                 services,
                 key);
+
+        public IServiceCollection ReplaceSessionRunCoordinator<TCoordinator>(
+            ComponentKey<ISessionRunCoordinator> key)
+            where TCoordinator : class, ISessionRunCoordinator =>
+            SessionServiceRegistration.ReplaceRunCoordinator<TCoordinator>(
+                services,
+                key);
+
+        public IServiceCollection ReplaceSessionStoreSelector<TSelector>()
+            where TSelector : class, ISessionStoreSelector =>
+            SessionServiceRegistration.ReplaceStoreSelector<TSelector>(
+                services);
+
+        public IServiceCollection AddSessionRetentionPolicy<TPolicy>(
+            SessionRetentionProfileKey profile)
+            where TPolicy : class, ISessionRetentionPolicy =>
+            SessionServiceRegistration.AddRetentionPolicy<TPolicy>(
+                services,
+                profile);
+
+        public IServiceCollection ReplaceSessionRetentionPolicy<TPolicy>(
+            SessionRetentionProfileKey profile)
+            where TPolicy : class, ISessionRetentionPolicy =>
+            SessionServiceRegistration.ReplaceRetentionPolicy<TPolicy>(
+                services,
+                profile);
     }
 }
 ```
@@ -452,15 +607,22 @@ public static class ServiceExtensions
 The package-internal `SessionServiceRegistration` helper owns the registration
 details and never builds or resolves a service provider.
 
-`AddAgentSession` is idempotent and uses `TryAddKeyed` for each selected
+`AddAgentSession` is idempotent and uses `TryAddKeyed` for each selected default
 coordinator/run-coordinator key and `TryAdd` for the engine-wide store catalog,
-store selector, branch service, snapshot validator, and default retention
-policy. The directory is an engine-wide singular: `AddSessionDirectory` rejects
-a conflicting registration and `ReplaceSessionDirectory` is its explicit
-replacement path. Explicit replacement methods replace one singular-per-key axis
-at a time. Stores and event sinks are additive. Store keys are keyed
-registrations; a duplicate key fails build unless an explicit replacement API
-identifies it.
+store selector, branch service, snapshot validator, and conservative
+retain-until-explicit-delete policy. `AddSessionProfile` publishes one immutable
+versioned profile after validation. The directory is an engine-wide singular:
+`AddSessionDirectory` rejects a conflicting registration and
+`ReplaceSessionDirectory` is its explicit replacement path. Exact `Replace*`
+methods replace one named profile, component key, store key, selector, or
+retention profile at a time. Stores and event sinks are additive. Duplicate keys
+fail build unless the corresponding replacement API names that same axis.
+
+Defaults are useful but do not fabricate persistence: busy sessions reject,
+append/page bounds are finite, snapshot hashes are verified, disposal does not
+delete, and retention never deletes without an explicit transition. A runnable
+profile must explicitly configure `DefaultStoreKey`; credentials, remote
+endpoints, durable directories, and storage targets have no synthetic default.
 
 `AddInMemorySessionStore(key)` and `AddSqliteSessionStore(key, configure)` are
 explicit leaf registrations. The in-memory leaf may `TryAdd` its process-local
@@ -485,22 +647,25 @@ as definitely absent or reroutes a retry to another store.
 
 A runnable engine requires one engine-wide directory, store catalog, and store
 selector. Each runnable agent definition resolves exactly one selected session
-coordinator, run coordinator, profile, and store; at least one store is
-registered explicitly. Build or agent-definition validation checks unique keys,
-default store/profile references, scope safety, page and batch bounds, snapshot
+coordinator, run coordinator, immutable profile version, and store; at least one
+store is registered explicitly. Build or agent-definition validation checks
+unique keys, positive profile versions, default store/profile references,
+configuration fingerprints, scope safety, page and batch bounds, snapshot
 hashing, store capabilities, serialization versions, `TimeProvider`, ID
 generators, security authority, hook dispatcher, and required event/audit
-delivery.
+delivery. It also validates the constructor/factory graph for each selected
+profile so a coordinator, selector, retention policy, or store cannot depend
+back on its consumer.
 
 Durable sessions cannot select an ephemeral store or a process-local directory.
 The directory must be able to locate every existing configured session store
 without probing, and selected store/directory durability and consistency must be
-compatible. Distributed-active-run mode cannot select a store without fencing.
-Unsupported transactions, branching, snapshots, retention, or migration return
-typed capability results before a partial mutation. Cross-agent, cross-session,
-cross-tenant, missing-policy, or stale-grant access fails closed without
-revealing whether the session exists. No missing store falls back to process
-memory, and no local lock is presented as a distributed lease.
+compatible. Distributed lane-operation mode cannot select a store without
+fencing. Unsupported transactions, branching, snapshots, retention, or migration
+return typed capability results before a partial mutation. Cross-agent,
+cross-session, cross-tenant, missing-policy, or stale-grant access fails closed
+without revealing whether the session exists. No missing store falls back to
+process memory, and no local lock is presented as a distributed lease.
 
 ## Canonical record
 
@@ -551,12 +716,16 @@ first durable local implementation. Future stores follow
 AgentKit.Session.ProviderName. A store is registered separately and composition
 fails when none is present; there is no hidden production default.
 
-## Active-run ownership
+## Execution-lane ownership
 
-The default coordinator permits one active mutating run per session. New work
-must explicitly join, queue, wait, or fail while the session is busy. A local
-lock provides process-local coordination only. Cross-process ownership requires
-the durable execution component's leases and fencing.
+The default coordinator permits one active operation per execution lane. New
+work for a busy lane must explicitly join, queue, wait, or fail. Operations on
+different lanes may overlap provider and tool effects, including lanes in one
+session, while their durable mutations serialize and validate expected session,
+branch, lane, and operation versions. A one-lane-per-session host is an explicit
+compatibility profile, not a session invariant. A local lock provides
+process-local coordination only. Cross-process ownership requires the durable
+execution component's leases and fencing.
 
 Conversation history belongs here. Durable memory across sessions belongs to the
 memory component. The working provider context belongs to the context component.
@@ -572,3 +741,6 @@ pagination, cancellation, and disposal.
 - [Sessions, persistence, and branching](../concepts/sessions-persistence-and-branching.md)
 - [Context compaction](../concepts/context-compaction.md)
 - [Input admission and message queues](../concepts/input-admission-and-message-queues.md)
+- [Coding harness execution profile](../concepts/coding-harness-execution-profile.md)
+- [Workspace snapshots and reversion](../concepts/workspace-snapshots-and-reversion.md)
+- [Coding-harness export, sharing, and control plane](../concepts/coding-harness-export-sharing-and-control-plane.md)

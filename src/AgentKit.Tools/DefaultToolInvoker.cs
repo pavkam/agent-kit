@@ -17,8 +17,11 @@ namespace AgentKit.Tools;
 /// <see cref="ToolInvocationResult"/> whose <see cref="ToolCallOutcome.Kind"/>
 /// is <see cref="ToolCallOutcomeKind.Rejected"/> or
 /// <see cref="ToolCallOutcomeKind.Failed"/> respectively. Cancellation is
-/// the one exception allowed to propagate, since it represents the caller
-/// itself abandoning the operation rather than a terminal outcome for it.
+/// the one exception allowed to propagate when the caller's token is actually
+/// canceled, since that represents the caller itself abandoning the operation
+/// rather than a terminal outcome for it. An implementation-thrown
+/// <see cref="OperationCanceledException"/> without caller cancellation is an
+/// ordinary failed invocation.
 /// </remarks>
 public sealed class DefaultToolInvoker: IToolInvoker
 {
@@ -64,7 +67,7 @@ public sealed class DefaultToolInvoker: IToolInvoker
         {
             return await tool.InvokeAsync(invocationRequest, cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }

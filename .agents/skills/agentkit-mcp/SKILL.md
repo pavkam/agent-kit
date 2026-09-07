@@ -13,6 +13,12 @@ Treat [MCP architecture](../../../docs/architecture/mcp.md) and the
 as canonical. When changing C#, also read the
 [modern C# rules](../references/modern-csharp.md).
 
+For an MCP-enabled coding host, also read the
+[coding-harness MCP profile](../../../docs/concepts/coding-harness-mcp-exposure.md)
+for namespace collisions, instruction trust, root disclosure, pagination,
+catalog generations, endpoint-bound OAuth/callback lifecycle, and nested
+orchestration.
+
 Read the local [protocol model](references/protocol-model.md) only when work
 changes wire lifecycle, primitives, transports, or protocol security. Then
 verify volatile details against the current official MCP specification.

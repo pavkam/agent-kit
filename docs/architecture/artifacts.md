@@ -379,3 +379,6 @@ upload, backend failure, and retention conflict are typed outcomes.
 - [File system](file-system.md)
 - [Network access](network.md)
 - [Testing and evaluation](testing-and-evaluation.md)
+- [Coding-harness built-in tools](../concepts/coding-harness-built-in-tools.md)
+- [Workspace snapshots and reversion](../concepts/workspace-snapshots-and-reversion.md)
+- [Coding-harness export, sharing, and control plane](../concepts/coding-harness-export-sharing-and-control-plane.md)

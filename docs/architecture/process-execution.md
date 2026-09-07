@@ -318,10 +318,44 @@ public static class ServiceExtensions
             where TSandbox : class, IProcessSandboxProvider =>
             ProcessServiceRegistration.AddSandbox<TSandbox>(services, key);
 
+        public IServiceCollection ReplaceProcessSandbox<TSandbox>(
+            SandboxProfileId key)
+            where TSandbox : class, IProcessSandboxProvider =>
+            ProcessServiceRegistration.ReplaceSandbox<TSandbox>(services, key);
+
+        public IServiceCollection AddExecutableResolver<TResolver>(
+            ProcessExecutorKey key)
+            where TResolver : class, IExecutableResolver =>
+            ProcessServiceRegistration.AddExecutableResolver<TResolver>(
+                services,
+                key);
+
+        public IServiceCollection ReplaceExecutableResolver<TResolver>(
+            ProcessExecutorKey key)
+            where TResolver : class, IExecutableResolver =>
+            ProcessServiceRegistration.ReplaceExecutableResolver<TResolver>(
+                services,
+                key);
+
         public IServiceCollection AddProcessExecutor<TExecutor>(
             ProcessExecutorKey key)
             where TExecutor : class, IProcessExecutor =>
             ProcessServiceRegistration.AddExecutor<TExecutor>(services, key);
+
+        public IServiceCollection ReplaceProcessExecutor<TExecutor>(
+            ProcessExecutorKey key)
+            where TExecutor : class, IProcessExecutor =>
+            ProcessServiceRegistration.ReplaceExecutor<TExecutor>(services, key);
+
+        public IServiceCollection ReplaceProcessExecutorSelector<TSelector>()
+            where TSelector : class, IProcessExecutorSelector =>
+            ProcessServiceRegistration.ReplaceExecutorSelector<TSelector>(
+                services);
+
+        public IServiceCollection ReplaceProcessSandboxSelector<TSelector>()
+            where TSelector : class, IProcessSandboxSelector =>
+            ProcessServiceRegistration.ReplaceSandboxSelector<TSelector>(
+                services);
     }
 }
 ```
@@ -392,3 +426,5 @@ integration testing against harmless fixtures in isolated temporary roots.
 - [Security and human control](permissions-and-human-control.md)
 - [File system](file-system.md)
 - [Network access](network.md)
+- [Interactive terminals and process sessions](../concepts/interactive-terminals-and-process-sessions.md)
+- [Language services, formatters, and watchers](../concepts/language-services-formatters-and-watchers.md)

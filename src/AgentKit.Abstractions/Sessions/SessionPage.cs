@@ -43,4 +43,25 @@ public sealed record SessionPage: SessionPageResult
     /// <see cref="ThroughSequence"/> at the time of this read.
     /// </summary>
     public bool HasMore { get; init; }
+
+    /// <inheritdoc/>
+    public bool Equals(SessionPage? other) =>
+        other is not null
+        && Entries.SequenceEqual(other.Entries)
+        && ThroughSequence.Equals(other.ThroughSequence)
+        && HasMore == other.HasMore;
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        foreach (var entry in Entries)
+        {
+            hash.Add(entry);
+        }
+
+        hash.Add(ThroughSequence);
+        hash.Add(HasMore);
+        return hash.ToHashCode();
+    }
 }

@@ -51,13 +51,13 @@ public sealed record OpenAICompatibilityProfile
     /// headers.
     /// </param>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="baseAddress"/> or <paramref name="defaultRequestHeaders"/>
-    /// is null.
+    /// <paramref name="baseAddress"/>, <paramref name="chatCompletionsPath"/>,
+    /// or <paramref name="defaultRequestHeaders"/> is null.
     /// </exception>
     /// <exception cref="ArgumentException">
     /// <paramref name="baseAddress"/> is not an absolute URI, or
-    /// <paramref name="chatCompletionsPath"/> is null, empty, or consists
-    /// only of whitespace.
+    /// <paramref name="chatCompletionsPath"/> is empty, whitespace, rooted,
+    /// authority-relative, or absolute.
     /// </exception>
     public OpenAICompatibilityProfile(
         Uri baseAddress,
@@ -68,14 +68,9 @@ public sealed record OpenAICompatibilityProfile
         bool useMaxCompletionTokensField,
         ImmutableDictionary<string, string> defaultRequestHeaders)
     {
-        ArgumentNullException.ThrowIfNull(baseAddress);
-        ArgumentException.ThrowIfNullOrWhiteSpace(chatCompletionsPath);
+        ArgumentException.ThrowIfNotAbsoluteUri(baseAddress);
+        ArgumentException.ThrowIfNotRelativeUriPath(chatCompletionsPath);
         ArgumentNullException.ThrowIfNull(defaultRequestHeaders);
-
-        if (!baseAddress.IsAbsoluteUri)
-        {
-            throw new ArgumentException("Value must be an absolute URI.", nameof(baseAddress));
-        }
 
         BaseAddress = baseAddress;
         ChatCompletionsPath = chatCompletionsPath;
@@ -87,40 +82,40 @@ public sealed record OpenAICompatibilityProfile
     }
 
     /// <summary>Gets the absolute base address of the provider's OpenAI-compatible endpoint.</summary>
-    public Uri BaseAddress { get; init; }
+    public Uri BaseAddress { get; }
 
     /// <summary>Gets the path, relative to <see cref="BaseAddress"/>, of the chat completions operation.</summary>
-    public string ChatCompletionsPath { get; init; }
+    public string ChatCompletionsPath { get; }
 
     /// <summary>
     /// Gets whether a <c>DeveloperMessage</c> should be translated using
     /// the legacy <c>"system"</c> role instead of the newer
     /// <c>"developer"</c> role.
     /// </summary>
-    public bool SendDeveloperRoleAsSystem { get; init; }
+    public bool SendDeveloperRoleAsSystem { get; }
 
     /// <summary>
     /// Gets whether the adapter should request the streaming
     /// (<c>stream: true</c>) operation by default rather than a single
     /// buffered response.
     /// </summary>
-    public bool PreferStreaming { get; init; }
+    public bool PreferStreaming { get; }
 
     /// <summary>
     /// Gets whether a streaming request should ask the provider to include
     /// a final usage-only chunk (<c>stream_options.include_usage</c>).
     /// </summary>
-    public bool IncludeStreamUsage { get; init; }
+    public bool IncludeStreamUsage { get; }
 
     /// <summary>
     /// Gets whether the output-token limit should be sent using the current
     /// <c>max_completion_tokens</c> field name instead of the legacy
     /// <c>max_tokens</c> field name.
     /// </summary>
-    public bool UseMaxCompletionTokensField { get; init; }
+    public bool UseMaxCompletionTokensField { get; }
 
     /// <summary>Gets additional headers to send with every request, beyond authentication headers.</summary>
-    public ImmutableDictionary<string, string> DefaultRequestHeaders { get; init; }
+    public ImmutableDictionary<string, string> DefaultRequestHeaders { get; }
 
     /// <summary>Gets the absolute URI of the chat completions operation.</summary>
     public Uri ChatCompletionsUri => new(BaseAddress, ChatCompletionsPath);

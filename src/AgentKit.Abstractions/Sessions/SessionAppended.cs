@@ -32,4 +32,21 @@ public sealed record SessionAppended: SessionAppendResult
 
     /// <summary>Gets the committed entries, in the same order as the request.</summary>
     public ImmutableArray<SessionEntry> CommittedEntries { get; init; }
+
+    /// <inheritdoc/>
+    public bool Equals(SessionAppended? other) =>
+        other is not null && NewVersion.Equals(other.NewVersion) && CommittedEntries.SequenceEqual(other.CommittedEntries);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(NewVersion);
+        foreach (var entry in CommittedEntries)
+        {
+            hash.Add(entry);
+        }
+
+        return hash.ToHashCode();
+    }
 }

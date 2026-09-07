@@ -2,8 +2,8 @@
 name: agentkit-sessions
 description:
   "Implement or review AgentKit.Session coordination, append-only records,
-  branching, store selection, and active-run ownership. Use for durable
-  per-session truth and concurrency; not for cross-session memory,
+  branching, store selection, execution lanes, and operation ownership. Use for
+  durable per-session truth and concurrency; not for cross-session memory,
   request-context selection, or durability-backend recovery."
 ---
 
@@ -22,6 +22,14 @@ read the [modern C# rules](../references/modern-csharp.md).
 - Read
   [input admission and message queues](../../../docs/concepts/input-admission-and-message-queues.md)
   when changing admitted-input records or promotion.
+- Read the
+  [coding-harness execution profile](../../../docs/concepts/coding-harness-execution-profile.md)
+  for lanes and operation-owned state, and
+  [workspace snapshots and reversion](../../../docs/concepts/workspace-snapshots-and-reversion.md)
+  when session navigation must be distinguished from filesystem restoration.
+- Read
+  [export, sharing, and control plane](../../../docs/concepts/coding-harness-export-sharing-and-control-plane.md)
+  for session export/import, durable sharing outboxes, or host routing.
 
 ## Working rules
 
@@ -33,11 +41,14 @@ read the [modern C# rules](../references/modern-csharp.md).
    sequence, causality, schema version, typed failures, and authorization scope.
 4. Model edit, revert, and fork as branch operations over committed parents.
    Never rewrite history or imply that moving a branch undoes external effects.
-5. Enforce one active mutating drain per session. A local lock is process-local;
-   distributed ownership requires durability leases and fencing.
+5. Enforce one active operation per execution lane and one serialized session
+   mutation line across lanes. Different lanes may overlap effects; they never
+   perform unfenced concurrent branch-tip commits. A local lock is
+   process-local; distributed ownership requires durability leases and fencing.
 6. Select stores explicitly through the singular directory and selector. A
    missing or incompatible durable store never falls back to process memory.
 
 Run the common store conformance suite for ordering, idempotency, optimistic
 conflicts, branching, pagination, snapshot fallback, authorization,
-cancellation, disposal, and active-run coordination.
+cancellation, disposal, per-lane operation ownership, and cross-lane mutation
+serialization.

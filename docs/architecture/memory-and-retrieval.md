@@ -16,8 +16,9 @@ axis independently.
 
 `AgentEngine` may host many agents concurrently. Memory and retrieval never use
 engine-global ambient scope: proposals, records, queries, selected stores, and
-results carry typed `AgentId`, `SessionId`, `RunId`, and `OperationId` plus
-tenant/principal visibility. Sharing a process does not imply sharing memory.
+results carry typed `AgentId`, `SessionId`, operation correlation, complete
+`ExecutionIdentity`, and tenant/principal visibility. Sharing a process does not
+imply sharing memory.
 
 ## Normative minimal contract shape
 
@@ -45,6 +46,16 @@ public readonly record struct VectorIndexKey(string Value);
 public readonly record struct RetrievalRequestId(Guid Value);
 
 public readonly record struct MemoryProfileKey(string Value);
+
+public readonly record struct MemoryProfileVersion(long Value);
+
+public readonly record struct RetrievalSourceKey(string Value);
+
+public readonly record struct MemoryPolicyProfileKey(string Value);
+
+public readonly record struct QueryRewriterKey(string Value);
+
+public readonly record struct QueryRewriterVersion(string Value);
 ```
 
 Memory, document, chunk, retrieval, and operation identities come from injected
@@ -54,14 +65,18 @@ from source content/version and a versioned chunker, not random ambient state.
 ```csharp
 namespace AgentKit;
 
-public sealed record MemoryProposal(
-    MemoryId Id,
+public sealed record MemoryOperationContext(
     AgentId AgentId,
     SessionId SessionId,
-    RunId RunId,
-    OperationId OperationId,
-    TenantId TenantId,
-    PrincipalId PrincipalId,
+    ExecutionIdentity Identity,
+    OperationCorrelation Correlation,
+    SecurityAuthorizationContext Authorization,
+    MemoryProfileKey ProfileKey,
+    MemoryProfileVersion ProfileVersion);
+
+public sealed record MemoryProposal(
+    MemoryId Id,
+    MemoryOperationContext Context,
     MemoryKind Kind,
     MemoryContent Content,
     DataClassification Classification,
@@ -94,6 +109,8 @@ public sealed record DocumentRecord(
     AgentId AgentId,
     SessionId SourceSessionId,
     RunId SourceRunId,
+    TenantId TenantId,
+    PrincipalVisibility Visibility,
     DocumentVersion Version,
     ContentHash ContentHash,
     DocumentMetadata Metadata,
@@ -108,13 +125,7 @@ public sealed record VectorSpaceDescriptor(
 
 public sealed record RetrievalQuery(
     RetrievalRequestId Id,
-    AgentId AgentId,
-    SessionId SessionId,
-    RunId RunId,
-    OperationId OperationId,
-    TenantId TenantId,
-    PrincipalId PrincipalId,
-    MemoryProfileKey ProfileKey,
+    MemoryOperationContext Context,
     RetrievalQueryContent Query,
     RetrievalScope Scope,
     RetrievalBudget Budget,
@@ -136,6 +147,12 @@ public sealed record RetrievalCandidate(
 
 Candidates are data, never instructions. IDs and provenance survive rewriting,
 reranking, deduplication, trimming, and later context-manifest selection.
+`MemoryOperationContext` carries the complete authenticated `ExecutionIdentity`
+and the exact authorization, agent-definition, configuration, memory-profile,
+and operation correlation snapshots used by the call. Construction rejects
+disagreement between those values. Tenant and owner fields on durable records
+are normalized routing and visibility projections; they never replace the
+authenticated operation identity that authorized a read or write.
 
 ### Storage discovery, selection, and state
 
@@ -217,6 +234,105 @@ validates that grant immediately before the read or mutation. A matching vector
 dimension alone is not compatibility; the complete `VectorSpaceDescriptor` must
 match before contacting an index.
 
+### Immutable profile selection and runtime capability
+
+An agent selects one versioned memory profile when its run plan is compiled. The
+profile is data; the runtime capability is an invocation-scoped bundle of the
+exact services selected for that profile. This keeps ordinary constructor
+injection useful while avoiding keyed-service discovery inside the retrieval
+pipeline.
+
+```csharp
+namespace AgentKit;
+
+public sealed record EmbeddingRuntimeReference(
+    ComponentKey<IEmbeddingModelSelector> SelectorKey,
+    ComponentKey<IEmbeddingRequestExecutor> ExecutorKey,
+    EmbeddingSelectionPolicy Policy);
+
+public sealed record RerankerRuntimeReference(
+    ComponentKey<IRerankerSelector> SelectorKey,
+    ComponentKey<IRerankRequestExecutor> ExecutorKey,
+    RerankerSelectionPolicy Policy);
+
+public sealed record MemoryProfileSnapshot(
+    MemoryProfileKey Key,
+    MemoryProfileVersion Version,
+    bool DurableMemoryEnabled,
+    bool RetrievalEnabled,
+    bool QueryRewritingEnabled,
+    bool RequireExposureAuthorization,
+    MemoryStoreKey? MemoryStore,
+    DocumentStoreKey? DocumentStore,
+    ImmutableArray<VectorIndexKey> VectorIndexes,
+    ImmutableArray<RetrievalSourceKey> RetrievalSources,
+    QueryRewriterReference? QueryRewriter,
+    MemoryPolicyProfileKey PolicyProfile,
+    EmbeddingRuntimeReference? Embedding,
+    RerankerRuntimeReference? Reranker,
+    RetrievalBudget RetrievalBudget,
+    DataClassification MaximumClassification,
+    ContentHash ConfigurationFingerprint);
+
+public interface IMemoryProfileRuntimeLease : IAsyncDisposable
+{
+    MemoryProfileSnapshot Profile { get; }
+    IMemoryStore? MemoryStore { get; }
+    IDocumentStore? DocumentStore { get; }
+    ImmutableArray<IVectorIndex> VectorIndexes { get; }
+    IRetrievalSourceSelector Sources { get; }
+    IQueryRewriter? QueryRewriter { get; }
+    IEmbeddingModelSelector? EmbeddingSelector { get; }
+    IEmbeddingRequestExecutor? EmbeddingExecutor { get; }
+    IRerankerSelector? RerankerSelector { get; }
+    IRerankRequestExecutor? RerankerExecutor { get; }
+    ModelCatalogSnapshot Models { get; }
+    ISecurityAuthoritySelector SecurityAuthorities { get; }
+    BudgetExecutionCapability Budget { get; }
+    IRetrievalBudgetPolicy BudgetPolicy { get; }
+    IMemoryEventDispatcher Events { get; }
+}
+
+public abstract record MemoryProfileRuntimeSelectionResult;
+
+public enum MemoryProfileRuntimeFailureKind
+{
+    UnknownProfile,
+    VersionMismatch,
+    MissingCapability,
+    InvalidComposition
+}
+
+public sealed record MemoryProfileRuntimeFailure(
+    MemoryProfileRuntimeFailureKind Kind,
+    string SafeMessage);
+
+public sealed record MemoryProfileRuntimeSelected(
+    IMemoryProfileRuntimeLease Runtime)
+    : MemoryProfileRuntimeSelectionResult;
+
+public sealed record MemoryProfileRuntimeUnavailable(
+    MemoryProfileKey ProfileKey,
+    MemoryProfileVersion ProfileVersion,
+    MemoryProfileRuntimeFailure Failure)
+    : MemoryProfileRuntimeSelectionResult;
+
+public interface IMemoryProfileRuntimeSelector
+{
+    ValueTask<MemoryProfileRuntimeSelectionResult> SelectAsync(
+        MemoryOperationContext context,
+        CancellationToken cancellationToken = default);
+}
+```
+
+The selector is the single engine-wide routing boundary. It validates the
+requested key and version, activates the keyed scope, captures one immutable
+model catalog snapshot, and returns an owned lease. A successful caller must
+dispose that lease after the operation. The lease may omit embedding or
+reranking collaborators only when the profile does not select that operation;
+using an omitted capability returns a typed unavailable result before I/O.
+Neither the selector nor the lease exposes `IServiceProvider`.
+
 ### Policy, retrieval execution, and observation
 
 ```csharp
@@ -230,18 +346,29 @@ public interface IMemoryPolicy
         CancellationToken cancellationToken);
 }
 
+public interface IMemoryPolicyDispatcher
+{
+    ValueTask<MemoryPolicyDecision> EvaluateAsync(
+        MemoryProposal proposal,
+        MemoryPolicyContext context,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IMemoryCoordinator
 {
     ValueTask<MemoryProposalResult> ProposeAsync(
         MemoryProposal proposal,
+        HookDispatchContext? hooks,
         CancellationToken cancellationToken);
 
     ValueTask<MemoryTransitionResult> CorrectAsync(
         MemoryCorrectionRequest request,
+        HookDispatchContext? hooks,
         CancellationToken cancellationToken);
 
     ValueTask<MemoryDeleteResult> DeleteAsync(
         MemoryDeleteRequest request,
+        HookDispatchContext? hooks,
         CancellationToken cancellationToken);
 }
 
@@ -263,10 +390,20 @@ public interface IRetrievalSourceSelector
 
 public interface IQueryRewriter
 {
+    QueryRewriterDescriptor Descriptor { get; }
+
     ValueTask<QueryRewriteResult> RewriteAsync(
         RetrievalQuery query,
         CancellationToken cancellationToken);
 }
+
+public sealed record QueryRewriterDescriptor(
+    QueryRewriterKey Key,
+    QueryRewriterVersion Version);
+
+public sealed record QueryRewriterReference(
+    QueryRewriterKey Key,
+    QueryRewriterVersion Version);
 
 public interface IRetrievalPipeline
 {
@@ -281,6 +418,14 @@ public interface IMemoryEventSink
     ValueTask PublishAsync(
         MemoryEvent memoryEvent,
         CancellationToken cancellationToken);
+}
+
+public interface IMemoryEventDispatcher
+{
+    ValueTask<MemoryEventDispatchResult> PublishAsync(
+        MemoryProfileKey profile,
+        MemoryEvent memoryEvent,
+        CancellationToken cancellationToken = default);
 }
 ```
 
@@ -299,20 +444,42 @@ source selector, and pipeline classes. Its dependencies stay explicit:
 namespace AgentKit.Memory;
 
 internal sealed class RetrievalPipeline(
-    IRetrievalSourceSelector sourceSelector,
-    IQueryRewriter queryRewriter,
-    IEmbeddingModelSelector embeddingSelector,
-    IEmbeddingRequestExecutor embeddingExecutor,
-    IRerankerSelector rerankerSelector,
-    IRerankRequestExecutor rerankExecutor,
-    ISecurityAuthority securityAuthority,
-    IRetrievalBudgetPolicy budgetPolicy,
+    IMemoryProfileRuntimeSelector runtimes,
     IHookDispatcher hooks,
-    IEnumerable<IMemoryEventSink> eventSinks,
-    TimeProvider timeProvider) : IRetrievalPipeline
+    TimeProvider timeProvider,
+    ILogger<RetrievalPipeline> logger) : IRetrievalPipeline
+{
+}
+
+internal sealed class DefaultMemoryCoordinator(
+    IMemoryProfileRuntimeSelector runtimes,
+    IMemoryPolicyDispatcher policies,
+    IIdentifierGenerator<MemoryId> memoryIds,
+    IHookDispatcher hooks,
+    TimeProvider timeProvider,
+    ILogger<DefaultMemoryCoordinator> logger) : IMemoryCoordinator
 {
 }
 ```
+
+Each operation asks `IMemoryProfileRuntimeSelector` for the exact profile key
+and version in `MemoryOperationContext`, holds the resulting lease through
+authorization, provider calls, storage, required observation, and settlement,
+then disposes it. The pipeline and coordinator therefore cannot accidentally
+combine one agent's source selector or query rewriter with another agent's
+embedding model, security authority, budgets, store, or event dispatcher. A
+profile with rewriting disabled receives no rewriter; an enabled profile
+captures the selected rewriter key and version and receives that exact instance
+in its lease. The operation-owned budget capability covers retrieval and any
+embedding or reranking child attempts. The selected security authority issues
+separate bounded grants for query, embedding egress, each source read, result
+exposure, and durable mutation; no grant is reused for a different concrete
+effect.
+
+The active `HookDispatchContext` is passed separately to coordinator and
+retrieval invocations. In-run callers provide their compiled hook lease;
+maintenance callers may pass `null`. The injected dispatcher uses only that
+lease and never selects a live/unkeyed hook profile or persists the context.
 
 There is no all-purpose `IMemory` and no mandatory store or pipeline base class.
 Storage backends and retrieval sources implement their narrow contracts
@@ -330,6 +497,12 @@ classification.
 ```csharp
 namespace AgentKit.Memory;
 
+public static class MemoryPolicyProfileKeys
+{
+    public static MemoryPolicyProfileKey FailClosed { get; } =
+        new("agentkit.fail-closed");
+}
+
 public sealed class AgentMemoryOptions
 {
     public MemoryAcceptanceMode AcceptanceMode { get; set; } =
@@ -339,6 +512,35 @@ public sealed class AgentMemoryOptions
     public int MaximumRetrievalTokens { get; set; } = 8_192;
     public bool EnableQueryRewriting { get; set; }
     public bool RequireExposureAuthorization { get; set; } = true;
+}
+
+public sealed class MemoryProfileOptions
+{
+    public MemoryProfileVersion Version { get; set; } = new(1);
+    public bool EnableDurableMemory { get; set; }
+    public bool EnableRetrieval { get; set; }
+    public bool EnableQueryRewriting { get; set; }
+    public bool? RequireExposureAuthorization { get; set; }
+    public MemoryStoreKey? MemoryStore { get; set; }
+    public DocumentStoreKey? DocumentStore { get; set; }
+    public List<VectorIndexKey> VectorIndexes { get; set; } = [];
+    public List<RetrievalSourceKey> RetrievalSources { get; set; } = [];
+    public QueryRewriterKey? QueryRewriter { get; set; }
+    public MemoryPolicyProfileKey PolicyProfile { get; set; } =
+        MemoryPolicyProfileKeys.FailClosed;
+    public ComponentKey<IEmbeddingModelSelector>? EmbeddingSelectorKey
+        { get; set; }
+    public ComponentKey<IEmbeddingRequestExecutor>? EmbeddingExecutorKey
+        { get; set; }
+    public List<EmbeddingModelAlias> EmbeddingModels { get; set; } = [];
+    public ComponentKey<IRerankerSelector>? RerankerSelectorKey { get; set; }
+    public ComponentKey<IRerankRequestExecutor>? RerankerExecutorKey
+        { get; set; }
+    public List<RerankerAlias> Rerankers { get; set; } = [];
+    public int? MaximumRetrievedItems { get; set; }
+    public int? MaximumRetrievedBytes { get; set; }
+    public int? MaximumRetrievalTokens { get; set; }
+    public DataClassification? MaximumClassification { get; set; }
 }
 
 public static class ServiceExtensions
@@ -356,21 +558,52 @@ public static class ServiceExtensions
             Action<MemoryProfileOptions> configure) =>
             MemoryServiceRegistration.AddMemoryProfile(services, key, configure);
 
+        public IServiceCollection ReplaceMemoryProfile(
+            MemoryProfileKey key,
+            Action<MemoryProfileOptions> configure) =>
+            MemoryServiceRegistration.ReplaceMemoryProfile(
+                services,
+                key,
+                configure);
+
         public IServiceCollection AddMemoryStore<TStore>(MemoryStoreKey key)
             where TStore : class, IMemoryStore =>
             MemoryServiceRegistration.AddMemoryStore<TStore>(services, key);
+
+        public IServiceCollection ReplaceMemoryStore<TStore>(MemoryStoreKey key)
+            where TStore : class, IMemoryStore =>
+            MemoryServiceRegistration.ReplaceMemoryStore<TStore>(services, key);
 
         public IServiceCollection AddDocumentStore<TStore>(DocumentStoreKey key)
             where TStore : class, IDocumentStore =>
             MemoryServiceRegistration.AddDocumentStore<TStore>(services, key);
 
+        public IServiceCollection ReplaceDocumentStore<TStore>(
+            DocumentStoreKey key)
+            where TStore : class, IDocumentStore =>
+            MemoryServiceRegistration.ReplaceDocumentStore<TStore>(
+                services,
+                key);
+
         public IServiceCollection AddVectorIndex<TIndex>(VectorIndexKey key)
             where TIndex : class, IVectorIndex =>
             MemoryServiceRegistration.AddVectorIndex<TIndex>(services, key);
 
-        public IServiceCollection AddRetrievalSource<TSource>()
+        public IServiceCollection ReplaceVectorIndex<TIndex>(VectorIndexKey key)
+            where TIndex : class, IVectorIndex =>
+            MemoryServiceRegistration.ReplaceVectorIndex<TIndex>(services, key);
+
+        public IServiceCollection AddRetrievalSource<TSource>(
+            RetrievalSourceKey key)
             where TSource : class, IRetrievalSource =>
-            MemoryServiceRegistration.AddRetrievalSource<TSource>(services);
+            MemoryServiceRegistration.AddRetrievalSource<TSource>(services, key);
+
+        public IServiceCollection ReplaceRetrievalSource<TSource>(
+            RetrievalSourceKey key)
+            where TSource : class, IRetrievalSource =>
+            MemoryServiceRegistration.ReplaceRetrievalSource<TSource>(
+                services,
+                key);
 
         public IServiceCollection AddMemoryPolicy<TPolicy>(
             MemoryPolicyRegistration registration)
@@ -379,9 +612,62 @@ public static class ServiceExtensions
                 services,
                 registration);
 
+        public IServiceCollection ReplaceMemoryPolicy<TPolicy>(
+            MemoryPolicyRegistration registration)
+            where TPolicy : class, IMemoryPolicy =>
+            MemoryServiceRegistration.ReplaceMemoryPolicy<TPolicy>(
+                services,
+                registration);
+
         public IServiceCollection ReplaceRetrievalPipeline<TPipeline>()
             where TPipeline : class, IRetrievalPipeline =>
             MemoryServiceRegistration.ReplaceRetrievalPipeline<TPipeline>(
+                services);
+
+        public IServiceCollection ReplaceMemoryCoordinator<TCoordinator>()
+            where TCoordinator : class, IMemoryCoordinator =>
+            MemoryServiceRegistration.ReplaceMemoryCoordinator<TCoordinator>(
+                services);
+
+        public IServiceCollection
+            ReplaceMemoryProfileRuntimeSelector<TSelector>()
+            where TSelector : class, IMemoryProfileRuntimeSelector =>
+            MemoryServiceRegistration.ReplaceRuntimeSelector<TSelector>(
+                services);
+
+        public IServiceCollection AddQueryRewriter<TRewriter>(
+            QueryRewriterDescriptor descriptor)
+            where TRewriter : class, IQueryRewriter =>
+            MemoryServiceRegistration.AddQueryRewriter<TRewriter>(
+                services,
+                descriptor);
+
+        public IServiceCollection ReplaceQueryRewriter<TRewriter>(
+            QueryRewriterDescriptor descriptor)
+            where TRewriter : class, IQueryRewriter =>
+            MemoryServiceRegistration.ReplaceQueryRewriter<TRewriter>(
+                services,
+                descriptor);
+
+        public IServiceCollection ReplaceRetrievalBudgetPolicy<TPolicy>()
+            where TPolicy : class, IRetrievalBudgetPolicy =>
+            MemoryServiceRegistration.ReplaceBudgetPolicy<TPolicy>(services);
+
+        public IServiceCollection ReplaceMemoryPolicyDispatcher<TDispatcher>()
+            where TDispatcher : class, IMemoryPolicyDispatcher =>
+            MemoryServiceRegistration.ReplacePolicyDispatcher<TDispatcher>(
+                services);
+
+        public IServiceCollection AddMemoryEventSink<TSink>(
+            MemoryEventSinkRegistration registration)
+            where TSink : class, IMemoryEventSink =>
+            MemoryServiceRegistration.AddEventSink<TSink>(
+                services,
+                registration);
+
+        public IServiceCollection ReplaceMemoryEventDispatcher<TDispatcher>()
+            where TDispatcher : class, IMemoryEventDispatcher =>
+            MemoryServiceRegistration.ReplaceEventDispatcher<TDispatcher>(
                 services);
     }
 }
@@ -391,11 +677,28 @@ The package-internal `MemoryServiceRegistration` helper performs registrations
 without building or resolving a service provider.
 
 `AddAgentMemory` is idempotent and `TryAdd`s singular coordinators and retrieval
-pipelines, engine-wide catalogs and selectors, the default no-rewrite strategy,
-budget policy, and fail-closed memory policy. Explicit replacement methods
-replace singular axes. Stores, indexes, retrieval sources, policy contributors,
-chunkers, and event sinks are additive. Store/index keys and source identities
-are unique; duplicate registration fails build unless explicitly replaced.
+pipelines, the engine-wide memory-profile runtime selector, policy and event
+dispatchers, the default no-rewrite strategy, bounded budget policy, and
+fail-closed memory policy. Explicit replacement methods replace singular axes or
+one exact keyed implementation. Stores, indexes, retrieval sources, policy
+contributors, chunkers, and event sinks are additive. Store/index keys and
+source identities are unique; duplicate registration fails build unless
+explicitly replaced.
+
+The base registration is useful without inventing external facts: it enables no
+durable store, vector index, retrieval source, embedding model, reranker,
+credential, endpoint, persistence target, or cross-principal visibility. The
+default profile version is one, proposal policy denies until an explicit policy
+allows retention, durable memory and retrieval are off, query rewriting is off,
+exposure authorization remains on, and retrieval bounds inherit the finite
+engine ceilings shown above. Enabling an axis without naming all of its required
+keyed collaborators and a classification ceiling fails composition validation.
+
+Embedding and reranking are enabled only by a complete selected triple: selector
+key, executor key, and non-empty ordered aliases. The compiled snapshot retains
+all three while the runtime lease captures the matching catalog version.
+Supplying only part of a triple is a build error; no global/default semantic
+operation is discovered at runtime.
 
 Backends use leaf packages such as `AgentKit.Memory.Sqlite` or
 `AgentKit.Memory.Qdrant` and register each supported state operation
@@ -405,11 +708,13 @@ provider as a locator.
 
 Catalogs, selectors, policies proven thread-safe, and store clients may be
 singletons. Mutable proposal, retrieval, ranking, and budget state is run- or
-operation-scoped. The container owns store clients; enumerated pages or streams
-declare caller disposal. Different agent scopes may execute concurrently.
-Optimistic versions, idempotency keys, bounded batches, and cancellation define
-partial-failure semantics; retries belong to the coordinator or backend named by
-the contract, never both.
+operation-scoped. Runtime leases and the pipeline are scoped; a lease may hold a
+keyed child scope but never outlives the operation that selected it. The
+container owns store clients; enumerated pages or streams declare caller
+disposal. Different agent scopes may execute concurrently. Optimistic versions,
+idempotency keys, bounded batches, and cancellation define partial-failure
+semantics; retries belong to the coordinator or backend named by the contract,
+never both.
 
 ## Composition validation and unsupported behavior
 
@@ -419,6 +724,12 @@ stores/indexes/sources, embedding and reranking capabilities, complete vector
 compatibility, security authority, hook dispatcher, `TimeProvider`, ID
 generators, classification/region constraints, bounds, lifetimes, deletion
 propagation, and required audit delivery.
+
+Validation covers both graphs. Package references remain acyclic, and every
+selected runtime lease must be constructible without a constructor/factory
+cycle. In particular, memory profiles may consume provider, security, budget,
+hook, and storage abstractions, while those components never depend back on the
+memory coordinator or retrieval pipeline.
 
 An agent without a memory profile has no durable-memory or retrieval capability.
 Missing stores, incompatible vector spaces, unsupported modality, unavailable

@@ -124,8 +124,6 @@ because it exposes a useful tool.
 - Current security behavior MUST follow the official
   [security best practices](https://modelcontextprotocol.io/specification/latest/basic/security_best_practices)
   and authorization specification rather than a copied handshake.
-- Pydantic AI's MCP capability integration is documented in
-  [MCP capabilities](https://ai.pydantic.dev/capabilities/mcp/).
 
 ## Related specifications
 

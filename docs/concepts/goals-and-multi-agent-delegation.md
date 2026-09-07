@@ -97,14 +97,6 @@ rejected.
 - Parent cancellation settles every child attempt or durable handoff.
 - Goal replay reconstructs status and ownership from transitions.
 
-## Upstream synthesis
-
-Pi, OpenCode, and Pydantic AI primarily supply single-agent loop and tool
-mechanics. AgentKit deliberately generalizes their identity, queueing,
-settlement, and durable-operation lessons to delegation. This spec is a design
-synthesis, not a claim that any one upstream implements the full model; see
-[research provenance](research-provenance.md).
-
 ## Related specifications
 
 - [Usage limits and budgets](usage-limits-and-budgets.md)

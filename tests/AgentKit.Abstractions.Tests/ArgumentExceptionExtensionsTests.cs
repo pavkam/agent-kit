@@ -49,4 +49,64 @@ public sealed class ArgumentExceptionExtensionsTests
 
         exception.ParamName.ShouldBe("canonicalJson");
     }
+
+    [Fact]
+    public void ThrowIfNotAbsoluteUri_WhenUriIsAbsolute_DoesNotThrow()
+    {
+        var uri = new Uri("https://api.example.test/v1/");
+
+        Should.NotThrow(() => ArgumentException.ThrowIfNotAbsoluteUri(uri));
+    }
+
+    [Fact]
+    public void ThrowIfNotAbsoluteUri_WhenUriIsRelative_ThrowsArgumentExceptionWithInferredParamName()
+    {
+        var uri = new Uri("v1/chat/completions", UriKind.Relative);
+
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfNotAbsoluteUri(uri));
+
+        exception.ParamName.ShouldBe("uri");
+    }
+
+    [Fact]
+    public void ThrowIfNotAbsoluteUri_WhenUriIsNull_ThrowsArgumentNullException()
+    {
+        Uri uri = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(() => ArgumentException.ThrowIfNotAbsoluteUri(uri));
+
+        exception.ParamName.ShouldBe("uri");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("https://evil.example.test/chat")]
+    [InlineData("/rooted/chat")]
+    [InlineData("//evil.example.test/chat")]
+    [InlineData("\\evil.example.test\\chat")]
+    public void ThrowIfNotRelativeUriPath_WhenPathCanEscapeBaseAddress_ThrowsArgumentException(string path)
+    {
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfNotRelativeUriPath(path));
+
+        exception.ParamName.ShouldBe("path");
+    }
+
+    [Fact]
+    public void ThrowIfNotRelativeUriPath_WhenPathIsNull_ThrowsArgumentNullException()
+    {
+        string path = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(() => ArgumentException.ThrowIfNotRelativeUriPath(path));
+
+        exception.ParamName.ShouldBe("path");
+    }
+
+    [Fact]
+    public void ThrowIfNotRelativeUriPath_WhenPathIsRelative_DoesNotThrow()
+    {
+        const string path = "v1/chat/completions";
+
+        Should.NotThrow(() => ArgumentException.ThrowIfNotRelativeUriPath(path));
+    }
 }

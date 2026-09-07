@@ -6,8 +6,8 @@ namespace AgentKit.Providers.OpenRouter;
 using Microsoft.Extensions.Options;
 
 /// <summary>
-/// Validates <see cref="OpenRouterProviderOptions"/> at the point they are
-/// first resolved, so a missing endpoint or invalid path fails composition
+/// Validates <see cref="OpenRouterProviderOptions"/> during host startup, so
+/// a missing endpoint or invalid path fails composition
 /// rather than the middle of an agent run.
 /// </summary>
 public sealed class OpenRouterProviderOptionsValidator: IValidateOptions<OpenRouterProviderOptions>
@@ -20,9 +20,11 @@ public sealed class OpenRouterProviderOptionsValidator: IValidateOptions<OpenRou
         return options.BaseAddress is null || !options.BaseAddress.IsAbsoluteUri
             ? ValidateOptionsResult.Fail(
                 $"{nameof(OpenRouterProviderOptions.BaseAddress)} must be an absolute URI.")
-            : string.IsNullOrWhiteSpace(options.ChatCompletionsPath)
+            : string.IsNullOrWhiteSpace(options.ChatCompletionsPath) ||
+                !Uri.TryCreate(options.ChatCompletionsPath, UriKind.Relative, out _) ||
+                options.ChatCompletionsPath[0] is '/' or '\\'
             ? ValidateOptionsResult.Fail(
-                $"{nameof(OpenRouterProviderOptions.ChatCompletionsPath)} must not be null, empty, or whitespace.")
+                $"{nameof(OpenRouterProviderOptions.ChatCompletionsPath)} must be a non-rooted relative URI path.")
             : ValidateOptionsResult.Success;
     }
 }

@@ -224,6 +224,14 @@ originating dialect and request ID.
 - Model lists and allowed parameters drift. Query <code>/v1/models</code> and
   keep a capability matrix.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [Kimi API overview](https://platform.kimi.ai/docs/api/overview)

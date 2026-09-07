@@ -114,18 +114,6 @@ retained.
 - Seeded secrets in external error bodies do not reach safe messages/logs.
 - Unknown vendor code remains available as external metadata.
 
-## Upstream evidence
-
-- Pi normalizes stop reasons including error, aborted, deferred, and length in
-  [`packages/ai/src/types.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/ai/src/types.ts).
-- OpenCode maps provider status, retries, content filter, and tool errors across
-  its session processor and provider layer, including
-  [`provider.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/provider.ts).
-- Pydantic AI distinguishes tool retry, terminal failure, unexpected exception,
-  usage limit, and deferred outcomes in
-  [function tools](https://ai.pydantic.dev/tools/) and
-  [usage limits](https://ai.pydantic.dev/usage/).
-
 ## Related specifications
 
 - [Tool errors, retries, and results](tool-errors-retries-and-results.md)

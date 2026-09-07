@@ -290,6 +290,58 @@ public sealed class DefaultHookDispatcherTests
     }
 
     [Fact]
+    public async Task DispatchAsync_WhenFailureModeIsolateAndHookThrowsOperationCanceled_PropagatesWithoutIsolating()
+    {
+        var dispatcher = new DefaultHookDispatcher();
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (_, _, ct) => throw new OperationCanceledException(ct)
+            },
+            Hook("b")
+        };
+        var args = new TestHookEventArgs();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => dispatcher.DispatchAsync(
+            _point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken));
+
+        args.InvocationOrder.ShouldBe([new HookId("a")]);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenIsolatedHookThrowsAfterInvalidMutation_RejectsMutationAndStopsDispatch()
+    {
+        var dispatcher = new DefaultHookDispatcher();
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (args, _, _) =>
+                {
+                    args.RejectPayload = true;
+                    throw new InvalidOperationException("boom");
+                }
+            },
+            Hook("b")
+        };
+        var args = new TestHookEventArgs();
+
+        _ = await Should.ThrowAsync<HookValidationException>(() => dispatcher.DispatchAsync(
+            _point,
+            hooks,
+            args,
+            Invoker,
+            HookDispatchScope.Root,
+            HookFailureMode.Isolate,
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        args.InvocationOrder.ShouldBe([new HookId("a")]);
+    }
+
+    [Fact]
     public async Task DispatchAsync_WhenCancelledBeforeRemainingHooks_ThrowsOperationCanceledException()
     {
         var dispatcher = new DefaultHookDispatcher();

@@ -24,6 +24,12 @@ output reserve cannot be met. An overflow retry MAY compact after a provider
 rejects the request, but the original failure and retry decision remain
 observable.
 
+The profile defines the comparison operator, reserve, retained-tail target,
+usage-vs-estimate precedence, and modality estimates. Reported nonzero final
+usage is preferable to estimation; missing or invalid usage may fall back to a
+versioned estimator. Usage before the newest active compaction boundary is not
+reapplied to the compacted request or it can trigger immediate recompaction.
+
 ## Semantic cut point
 
 The compactor MUST choose a cut at a complete semantic boundary, preferably
@@ -32,9 +38,11 @@ before a user turn. It MUST preserve the
 call from its result, an assistant content block, a deferred request from its
 resolution, or an admitted input from its promotion.
 
-When one oversized turn cannot fit, the compactor MAY summarize a prefix within
-that turn only if it creates explicit repair markers and preserves all tool
-causality needed by the retained suffix.
+When one oversized turn cannot fit, the compactor MAY cut before a complete
+assistant message or summarize a prefix within that turn only if it creates an
+explicit turn-prefix summary and preserves all tool causality needed by the
+retained suffix. It never begins the retained suffix at a tool result, and
+metadata that semantically qualifies a retained entry stays adjacent to it.
 
 ## Compaction record
 
@@ -55,6 +63,12 @@ The active branch uses the latest applicable successful compaction plus all
 later entries. Original covered entries remain available for audit and
 recompaction.
 
+The checkpoint MUST be self-contained for ordinary context reconstruction: the
+summary plus its complete retained tail and all later entries are sufficient.
+The assembler does not need to scan through the checkpoint into covered history.
+This is a request-read optimization and recovery invariant, not permission to
+delete the covered entries.
+
 ## Summary requirements
 
 The summary SHOULD preserve:
@@ -71,6 +85,13 @@ Generated summaries are untrusted model output until structurally validated.
 They MUST NOT create new approvals, claim unrecorded tool success, or elevate
 retrieved text into instructions.
 
+Summary generation is its own provider operation with stable identity, usage,
+budget, cache/session-affinity policy, capability checks, retry accounting, and
+terminal validation. An error, output-length stop, attempted tool call, invalid
+manifest, or non-reducing result cannot activate. File or workspace state comes
+from committed tool outcomes and audit evidence, never merely from an
+assistant's intended tool calls.
+
 ## Concurrency and atomicity
 
 Compaction reads a stable branch/version. Publishing succeeds only if its source
@@ -79,6 +100,25 @@ becoming active. A concurrent append MUST NOT be lost.
 
 Only the record activation needs to be atomic; potentially expensive summary
 generation SHOULD occur outside the session append lock.
+
+Manual compaction is a structural lane operation with its own operation
+identity, cancellation, usage, and terminal result. Preparation captures the
+source tip and settings outside the mutation line; activation rechecks both. A
+concurrent append either precedes a newly prepared compaction or causes the
+stale preparation to be discarded—never silently omitted.
+
+The caller passes the immutable session execution capability selected for the
+agent's run as a separate invocation-only value. Source loading and activation
+use that exact keyed coordinator; the compactor MUST NOT inject an unkeyed
+session coordinator, select a store, or consult an ambient current session. The
+capability and security grants are never persisted in compaction records,
+manifests, events, or caches.
+
+The caller also passes the exact invocation-owned budget capability. The
+compactor validates its profile version, identity, correlation, and scope and
+propagates it through a selected strategy to any model-backed summary generator.
+Every attempt reserves and settles its own expected/actual work; compaction
+never captures a bare run budget or treats an out-of-run operation as a run.
 
 ## Failure and retry
 
@@ -89,6 +129,13 @@ loop by recording attempts and requiring measurable reduction.
 If compaction cannot reduce mandatory context below the model limit, the run
 ends with `ContextLimitExceeded`, not a generic provider error.
 
+Overflow recovery and ordinary transport/rate-limit retry use separate budgets
+and attempt records. The failed assistant attempt remains auditable but is
+excluded from the retry request context. A profile states whether manual
+compaction durably aborts the current operation or can suspend/resume it; it
+never resumes implicitly. Extension-supplied summaries and cut identities pass
+the same source-bound validation as built-in output.
+
 ## Acceptance scenarios
 
 - A chosen cut never separates a tool call and terminal result.
@@ -97,22 +144,16 @@ ends with `ContextLimitExceeded`, not a generic provider error.
 - A summary cannot forge permission or tool outcome state.
 - Repeated non-reducing compaction stops under a typed limit.
 - The original covered history remains queryable and branchable.
-
-## Upstream evidence
-
-- Pi's semantic turn selection, recent suffix, summaries, and oversized-turn
-  handling are in
-  [`compaction.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/coding-agent/src/core/compaction/compaction.ts)
-  and
-  [`utils.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/coding-agent/src/core/compaction/utils.ts).
-- OpenCode V2 represents compaction as a message/event boundary and loads
-  post-compaction history in its session runner at
-  [`llm.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/runner/llm.ts).
-- Pydantic AI supplies compaction as a composable capability, documented in
-  [compaction](https://ai.pydantic.dev/capabilities/compaction/).
+- Context reconstruction stops at the newest checkpoint and reproduces exactly
+  its summary, retained tail, and later suffix.
+- A stale manual-compaction preparation cannot publish over a newer branch tip.
+- A failed edit intent cannot appear as completed file state in a summary.
+- A length-truncated or tool-calling summary is rejected without changing the
+  active context path.
 
 ## Related specifications
 
 - [History validation and repair](history-validation-and-repair.md)
 - [Usage limits and budgets](usage-limits-and-budgets.md)
 - [Durable execution and recovery](durable-execution-and-recovery.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

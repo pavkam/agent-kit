@@ -230,6 +230,14 @@ rate-limit/timing headers.
   persisted IDs.
 - Keep reasoning and citations separate from answer text.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [Groq API reference](https://console.groq.com/docs/api-reference)

@@ -64,7 +64,7 @@ public sealed record OutputProcessingRequest(
     OutputDefinition Definition,
     ModelResponse Response,
     int ValidationAttempt,
-    IBudgetScope Budget);
+    BudgetExecutionCapability Budget);
 
 public abstract record OutputProcessingResult;
 

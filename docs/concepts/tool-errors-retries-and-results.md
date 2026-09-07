@@ -66,19 +66,85 @@ MUST NOT execute them because their arguments may be truncated. It produces
 interrupted/invalid terminal results for all such calls or retries the model
 request according to policy.
 
+## Authoritative terminal record and history projection
+
+`ToolCallResult` is the complete authoritative terminal record. It retains the
+exact terminal status, call and requested alias, resolved tool/version identity
+when available, authorization and grant correlation, bounded normalized content,
+safe error, side-effect certainty, usage, retry decision, timestamps, and
+extension evidence. The runtime MUST commit that full value through
+`IToolCallRecorder` before adding a tool result to message history. A failure to
+materialize history retries from the recorded result and MUST NOT invoke the
+tool again.
+
+The accepted call and terminal record retain the captured projection-policy
+identity, version, and bounds. Recovery MUST use that captured policy or return
+a typed unavailable/publication failure; it MUST NOT reproject under whatever
+policy happens to be current after a restart.
+
+The terminal result and `ToolResultPart` MUST carry the same durable projection
+policy key/version reference. The referenced immutable snapshot owns the exact
+bounds and transformation rules and remains available for the retention period
+of any call that can require history repair.
+
+`ToolResultPart` is a separate bounded durable projection for history and model
+context. It is not the authoritative record and MUST NOT be used to reconstruct
+one. Its outcome retains the source `ToolTerminalStatus`, side-effect certainty,
+and retryability alongside the coarser portable `ToolCallOutcomeKind`. Its
+projection remains bound by call and requested alias, plus exact tool/version
+when resolution succeeded, to the one terminal record. It records every
+redaction, normalization, summary, truncation, omitted part/byte count, and
+authorized artifact or continuation reference.
+
+Projection policy MAY be tighter than terminal-record policy. It may omit
+diagnostic detail and usage that the model does not need, but it MUST preserve
+call identity, requested alias, resolved tool/version when available, terminal
+meaning, uncertainty, and enough safe correction detail for the selected loop
+policy. Projection failure is a result-publication failure, not evidence that
+the invocation failed or should be retried.
+
+## Loss-aware status mapping
+
+The portable message outcome is derived from the authoritative status by a
+closed, tested mapping:
+
+| Authoritative terminal-status class                                                                     | Portable outcome | Required retained evidence                                       |
+| ------------------------------------------------------------------------------------------------------- | ---------------- | ---------------------------------------------------------------- |
+| Successful invocation and result normalization                                                          | `Success`        | Exact success status and content provenance                      |
+| Unknown tool, invalid arguments, denial, unsupported call, or approval denied/expired before invocation | `Rejected`       | Exact rejection status and safe correction or policy reason      |
+| Invocation, timeout, result-normalization, serialization, or protocol failure                           | `Failed`         | Exact failure status, retryability, and side-effect certainty    |
+| Cancellation or interruption                                                                            | `Cancelled`      | Exact cancellation/interruption status and side-effect certainty |
+| Unknown future or unrepresentable status                                                                | `Failed`         | Original status value plus an explicit unknown-mapping marker    |
+
+`ApprovalRequired` or durable deferral is not terminal by itself. It suspends or
+defers the call; only its eventual denial, expiry, cancellation, failure, or
+successful invocation is projected as a terminal outcome.
+
+A coarse outcome MUST never erase whether invocation began or whether an effect
+may have occurred. In particular, cancellation with unknown effect remains
+`Cancelled` with `SideEffectCertainty.Unknown`; it is never represented as a
+clean pre-invocation rejection. Unknown statuses fail toward `Failed`, never
+`Success`. Human-readable content, `isError`, or absence of an error string is
+not parsed to determine any of these values.
+
+When a provider protocol lacks a separate status field, the adapter MUST encode
+a deterministic bounded status envelope in the model-visible tool result or
+reject the mapping. It may not drop the status, infer it from text, or turn a
+failed/uncertain result into ordinary successful-looking content.
+
 ## Result bounds and normalization
 
-Tool output MUST be bounded before it enters history or telemetry. The
-normalizer MAY truncate, summarize, store externally with an authorized
-reference, or reject according to tool policy. It MUST mark transformations and
-retain safe provenance.
+Both the authoritative result and its model/history projection are bounded, with
+independently configured limits. The normalizer MAY truncate, summarize, store
+externally with an authorized reference, or reject according to tool policy. It
+MUST mark transformations and retain safe provenance. Replacing content with a
+reference never changes terminal status.
 
 Result content MAY include text, structured data, images, audio, files, and
 resource references. Unsupported media MUST not be silently stringified.
-
-`isError` or terminal status is authoritative. Human-readable text MUST NOT be
-parsed to decide success. Tool-specific details and usage remain typed extension
-data.
+Tool-specific details and usage remain typed fields or typed extension data in
+the authoritative record; only explicitly selected safe fields enter the
+projection.
 
 ## Hook overrides
 
@@ -96,6 +162,11 @@ MAY cancel siblings but must still terminally settle every accepted call. A
 batch MAY request loop termination only through an explicit aggregate policy;
 one tool's arbitrary output flag must not silently suppress results.
 
+The default coding-harness policy accepts early termination only when every
+terminal result in the accepted batch explicitly requests it. Cancellation
+removes termination advice. A profile choosing `Any`, priority, or another rule
+names and tests it before effects start.
+
 ## Acceptance scenarios
 
 - Truncated tool arguments never execute.
@@ -104,21 +175,22 @@ one tool's arbitrary output flag must not silently suppress results.
 - Raw exceptions and secret arguments never reach model-visible results.
 - Oversized output follows configured normalization with a visible marker.
 - Every sibling call receives a terminal result after fail-fast cancellation.
-
-## Upstream evidence
-
-- Pi rejects tool calls from length-truncated assistant output and normalizes
-  hook replacements in
-  [`agent-loop.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/agent/src/agent-loop.ts).
-- Pydantic AI distinguishes retry prompts, terminal tool failures, timeouts, and
-  unexpected exceptions in its tools documentation at
-  [function tools](https://ai.pydantic.dev/tools/).
-- OpenCode's legacy processor persists pending/running/completed/error tool
-  states and repairs unsettled calls in
-  [`processor.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/opencode/src/session/processor.ts).
+- One terminating result cannot suppress non-terminating sibling results under
+  the default all-results aggregate policy.
+- A history-append retry reprojects the recorded result without invoking the
+  tool again.
+- An unavailable captured projection-policy version fails publication instead of
+  silently using the current version.
+- An unknown requested alias reaches one rejected terminal result and projection
+  without fabricating a resolved `ToolId` or `ToolVersion`.
+- A timeout with unknown side effects projects as failed with uncertainty, not
+  as success or a clean pre-invocation rejection.
+- A provider without native tool status receives an explicit bounded status
+  envelope or rejects the mapping.
 
 ## Related specifications
 
+- [Message and content model](message-and-content-model.md)
 - [Permissions, approvals, and trust](permissions-approvals-and-trust.md)
 - [Cancellation, timeouts, and resilience](cancellation-timeouts-and-resilience.md)
 - [Observability and audit](observability-and-audit.md)

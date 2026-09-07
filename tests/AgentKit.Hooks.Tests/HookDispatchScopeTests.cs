@@ -45,4 +45,27 @@ public sealed class HookDispatchScopeTests
 
         original.DepthOf(point).ShouldBe(0);
     }
+
+    [Fact]
+    public void Equality_WhenSameActiveDepths_InstancesAreStructurallyEqual()
+    {
+        var point = new HookPointId("p");
+
+        var first = HookDispatchScope.Root.Entering(point);
+        var second = HookDispatchScope.Root.Entering(point);
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void Equality_WhenDifferentActiveDepths_InstancesAreNotEqual()
+    {
+        var point = new HookPointId("p");
+
+        var first = HookDispatchScope.Root.Entering(point);
+        var second = HookDispatchScope.Root.Entering(point).Entering(point);
+
+        first.ShouldNotBe(second);
+    }
 }

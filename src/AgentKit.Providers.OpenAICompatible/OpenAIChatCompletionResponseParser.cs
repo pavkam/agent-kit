@@ -117,10 +117,28 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                         cancellationToken)
                     .ConfigureAwait(false);
 
+                JsonElement arguments;
+                try
+                {
+                    arguments = ParseArgumentsOrEmpty(toolCall.Function.Arguments);
+                }
+                catch (JsonException)
+                {
+                    return await FailAsync(
+                        observer,
+                        context,
+                        sequence,
+                        "The provider returned malformed tool-call arguments.",
+                        diagnosticCause: null,
+                        cancellationToken,
+                        parts.ToImmutable(),
+                        dto.Usage is null ? null : MapUsage(dto.Usage)).ConfigureAwait(false);
+                }
+
                 var toolCallPart = new ToolCallPart(
                     callId,
                     new ToolReference(new ToolId(toolCall.Function.Name), null, toolCall.Function.Name),
-                    ParseArgumentsOrEmpty(toolCall.Function.Arguments),
+                    arguments,
                     new ProviderToolCallId(toolCall.Id),
                     ExtensionData.Empty);
 
@@ -317,10 +335,28 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             var toolName = slot.ToolName ?? slot.ProviderCallId ?? "unknown";
             var argumentsJson = slot.Arguments.Length > 0 ? slot.Arguments.ToString() : "{}";
 
+            JsonElement arguments;
+            try
+            {
+                arguments = ParseArgumentsOrEmpty(argumentsJson);
+            }
+            catch (JsonException)
+            {
+                return await FailAsync(
+                    observer,
+                    context,
+                    sequence,
+                    "The provider returned malformed tool-call arguments.",
+                    diagnosticCause: null,
+                    cancellationToken,
+                    parts.ToImmutable(),
+                    usageDto is null ? null : MapUsage(usageDto)).ConfigureAwait(false);
+            }
+
             var toolCallPart = new ToolCallPart(
                 slot.CallId,
                 new ToolReference(new ToolId(toolName), null, toolName),
-                ParseArgumentsOrEmpty(argumentsJson),
+                arguments,
                 slot.ProviderCallId is { } providerCallId ? new ProviderToolCallId(providerCallId) : null,
                 ExtensionData.Empty);
 
@@ -358,8 +394,11 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
         long sequence,
         string safeMessage,
         Exception? diagnosticCause,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ImmutableArray<ContentPart> partialParts = default,
+        ModelUsage? usage = null)
     {
+        var normalizedPartialParts = partialParts.IsDefault ? [] : partialParts;
         var failure = new ProviderFailure(
             ProviderFailureKind.ProtocolViolation,
             context.ProviderId,
@@ -372,11 +411,11 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             ExtensionData.Empty);
 
         await observer.OnEventAsync(
-                new ModelResponseFailed(context.ModelRequestId, sequence, failure, [], usage: null),
+                new ModelResponseFailed(context.ModelRequestId, sequence, failure, normalizedPartialParts, usage),
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new ModelAttemptFailed(failure, [], usage: null);
+        return new ModelAttemptFailed(failure, normalizedPartialParts, usage);
     }
 
     private static ProviderResponseIdentity BuildIdentity(

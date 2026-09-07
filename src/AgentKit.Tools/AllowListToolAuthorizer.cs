@@ -16,18 +16,31 @@ using Microsoft.Extensions.Options;
 /// actually wants a tool invocable requires explicitly adding its
 /// <see cref="ToolId"/> to the allow-list; there is no ambient "development
 /// mode" that grants everything by default.
+/// The constructor validates and copies the configured identities into an
+/// immutable snapshot. Mutating the options object afterward therefore cannot
+/// change authority already composed into this instance, and concurrent
+/// authorization checks share no mutable collection state.
 /// </remarks>
 public sealed class AllowListToolAuthorizer: IToolAuthorizer
 {
-    private readonly HashSet<ToolId> _allowedToolIds;
+    private readonly ImmutableHashSet<ToolId> _allowedToolIds;
 
     /// <summary>Initializes a new instance of the <see cref="AllowListToolAuthorizer"/> class.</summary>
     /// <param name="options">The validated tools options carrying the allow-list.</param>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="ArgumentException">
+    /// The configured allow-list contains a default, uninitialized <see cref="ToolId"/>.
+    /// </exception>
     public AllowListToolAuthorizer(IOptions<AgentToolsOptions> options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        _allowedToolIds = options.Value.AllowedToolIds;
+
+        foreach (var id in options.Value.AllowedToolIds)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(id.Value, nameof(options));
+        }
+
+        _allowedToolIds = [.. options.Value.AllowedToolIds];
     }
 
     /// <inheritdoc/>

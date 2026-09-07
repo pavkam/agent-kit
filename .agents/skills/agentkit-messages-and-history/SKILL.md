@@ -36,9 +36,19 @@ read the [modern C# rules](../references/modern-csharp.md).
    interruption or safely normalizable imported/provider-bound content.
 5. Untrusted history and processors cannot manufacture authority, approval,
    completed output, or tool success. Revalidate processor output.
-6. Keep the first-party history pipeline in `AgentKit.Context`; processors are
+6. Treat `ToolResultPart` as a bounded durable/model-facing projection, never
+   the authoritative terminal record. Preserve source status, uncertainty,
+   retryability, requested alias, optional resolved identity, source
+   correlation, projection losses, and the captured policy key/version;
+   publication retry reprojects the recorded `ToolCallResult` without repeating
+   the effect.
+7. Provider and history role projection cannot elevate `RuntimeMessage` or any
+   synthetic notice into system/developer instruction trust. Use a tagged
+   non-instruction projection or reject unsupported mapping.
+8. Keep the first-party history pipeline in `AgentKit.Context`; processors are
    additive and ordered, while validator and repair policy are singular per key.
 
-Verify storage round trips, call/result correlation, interrupted states,
-provider-affinity loss, deterministic repair provenance, and stale-version
-conflicts through public contracts.
+Verify storage round trips, full-result/projection correlation and loss,
+interrupted states, runtime-role non-elevation, provider-affinity loss,
+deterministic repair provenance, and stale-version conflicts through public
+contracts.

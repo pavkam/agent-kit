@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <DebugType>portable</DebugType>
+    <PackageId>AgentKit.Providers.Ollama</PackageId>
+    <Title>AgentKit Providers Ollama</Title>
+    <Description>Ollama conversational provider integration for AgentKit's OpenAI-compatible endpoint, for both local and cloud servers, with API key and OAuth credential support.</Description>
+    <PackageTags>agents;ai;llm;ollama;local;providers</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
+    <PackageReference Include="Microsoft.Extensions.Options"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+    <ProjectReference Include="../AgentKit.Providers.OpenAICompatible/AgentKit.Providers.OpenAICompatible.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" Link="README.md"/>
+  </ItemGroup>
+</Project>

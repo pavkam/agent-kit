@@ -14,7 +14,8 @@ queues, stores, and middleware.
 
 The runtime MUST distinguish:
 
-- caller cancellation;
+- caller/invocation cancellation;
+- durable operation abort;
 - host shutdown;
 - run deadline;
 - operation timeout;
@@ -26,12 +27,24 @@ The runtime MUST distinguish:
 An internal cancellation token MAY carry all of these, but the terminal result
 and events MUST retain the normalized reason.
 
+Invocation cancellation stops one caller's wait, stream, or RPC request. It MUST
+NOT silently write durable abort or cancel work owned by another joiner. Durable
+abort names the expected operation identity and is admitted through the session
+mutation boundary. A stale abort for operation A cannot affect successor B.
+
+Durable abort synchronously changes the process-local effect gate from `open` to
+`aborting`, then commits the cancel marker and current-run queue pruning, then
+resolves the gate barrier, and only afterward signals already admitted effects.
+New effects cannot slip into the commit wait, and an in-flight effect cannot see
+cancellation before its durable cause exists.
+
 ## Propagation
 
-Every public asynchronous API accepts `CancellationToken`. The run creates a
-linked token for caller, deadline, host, and internal stop sources and passes it
+Every public asynchronous API accepts `CancellationToken`. The runtime derives
+separate invocation and operation-owned signals, then passes the appropriate one
 through every await, stream, provider attempt, tool, store, queue, middleware,
-and observer operation.
+and observer operation. A shared receiver never retains a caller token as its
+ambient current cancellation source.
 
 Code MUST NOT translate every `OperationCanceledException` into caller
 cancellation. It compares the relevant tokens and deadlines to choose the
@@ -62,6 +75,11 @@ Results arriving after terminal interruption are ignored for model context and
 recorded as late diagnostics or reconciliation input. They MUST NOT create a
 second terminal tool result.
 
+Restored cancellation never replays a tool, even when its ordinary recovery
+classification is safe. Planned calls receive synthetic aborted results;
+`effect_pending` calls receive explicit interrupted results; already staged
+outcomes remain real and materialize in source order.
+
 ## Provider retry
 
 A provider resilience policy above the
@@ -78,6 +96,20 @@ errors and decides retry, fallback, or fail. Retry MUST consider:
 Backoff is bounded exponential delay with injectable jitter by default. It MUST
 honor cancellation. Authentication, authorization, invalid request, unsupported
 capability, and protocol violations are not transient by default.
+
+Context-overflow compaction/retry has a separate attempt budget from transport,
+rate-limit, and dependency retry. A failed assistant attempt remains durable
+audit evidence but does not re-enter the repaired request context. Compaction
+and branch-summary provider calls record their own usage and retry state.
+
+Provider retry hints are advisory evidence. HTTP-style adapters MUST support
+both delay and absolute-date forms, normalize them at response-observation time
+with the injected `TimeProvider`, and preserve safe provenance. Past dates clamp
+to a zero minimum; malformed values are diagnosed and ignored. The retry owner
+then applies configured maximum-delay, remaining-deadline, budget, attempt,
+idempotency, visible-output, and side-effect rules. A hint never authorizes a
+retry or bypasses those checks, and no component sleeps against an ambient
+wall-clock value.
 
 ## Partial streams
 
@@ -110,18 +142,18 @@ does not erase evidence of cancellation.
 - Provider retry stops immediately on cancellation and respects fake time.
 - Partial streamed output is never transparently duplicated by retry.
 - Fallback rejects incompatible provider-bound history.
-
-## Upstream evidence
-
-- Pi uses a run-owned abort controller and preserves aborted responses in
-  [`agent.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/agent/src/agent.ts).
-- OpenCode's retry policy and interrupted tool cleanup are in
-  [`processor.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/opencode/src/session/processor.ts).
-- Pydantic AI's concurrent task draining and tool timeouts are documented in
-  [function tools](https://ai.pydantic.dev/tools/).
+- Delta and absolute-date retry hints normalize deterministically under fake
+  time and cannot extend work beyond the operation deadline.
+- Cancelling one joined observer leaves the durably accepted operation active.
+- A stale durable abort cannot cancel a later operation on the same lane.
+- No effect starts after the local abort gate closes, and no admitted effect
+  sees cancellation before the durable marker commits.
+- Exhausting overflow-repair attempts does not consume or reset the unrelated
+  transport-retry budget.
 
 ## Related specifications
 
 - [Tool errors, retries, and results](tool-errors-retries-and-results.md)
 - [Durable execution and recovery](durable-execution-and-recovery.md)
 - [Observability and audit](observability-and-audit.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

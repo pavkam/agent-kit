@@ -1,0 +1,137 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Tests;
+
+public sealed class ServiceExtensionsTests
+{
+    [Fact]
+    public void AddAgentKit_WhenServicesIsNull_ThrowsBeforeRegistration()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(services.AddAgentKit);
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddAgentKit_WhenCalledTwice_RegistersSingularFacadeDefaultsOnce()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddAgentKit();
+        _ = services.AddAgentKit();
+
+        services.Count(static descriptor => descriptor.ServiceType == typeof(AgentEngine)).ShouldBe(1);
+        services.Count(static descriptor => descriptor.ServiceType == typeof(TimeProvider)).ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddAgentKit_WhenRegistered_DoesNotResolveServices()
+    {
+        var resolutionCount = 0;
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(
+            _ =>
+            {
+                resolutionCount++;
+                return TimeProvider.System;
+            });
+
+        _ = services.AddAgentKit();
+
+        resolutionCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AddAgentKit_WhenTimeProviderAlreadyExists_PreservesRegistration()
+    {
+        var timeProvider = new TrackingTimeProvider();
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<TimeProvider>(timeProvider);
+
+        _ = services.AddAgentKit();
+        await using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<AgentEngine>().TimeProvider.ShouldBeSameAs(timeProvider);
+    }
+
+    [Fact]
+    public async Task ReplaceTimeProvider_WhenDefaultExists_ReplacesItExactlyOnce()
+    {
+        var timeProvider = new TrackingTimeProvider();
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+
+        _ = services.ReplaceTimeProvider(timeProvider);
+        await using var provider = services.BuildServiceProvider();
+
+        services.Count(static descriptor => descriptor.ServiceType == typeof(TimeProvider)).ShouldBe(1);
+        provider.GetRequiredService<AgentEngine>().TimeProvider.ShouldBeSameAs(timeProvider);
+    }
+
+    [Fact]
+    public void ReplaceTimeProvider_WhenInstanceIsNull_ValidatesBeforeMutation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+
+        var exception = Should.Throw<ArgumentNullException>(
+            () => services.ReplaceTimeProvider(null!));
+
+        exception.ParamName.ShouldBe("timeProvider");
+        services.Count(static descriptor => descriptor.ServiceType == typeof(TimeProvider)).ShouldBe(1);
+    }
+
+    [Fact]
+    public void ReplaceTimeProvider_WhenServicesIsNull_ThrowsBeforeRegistration()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(
+            () => services.ReplaceTimeProvider(TimeProvider.System));
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public async Task AddAgentKit_WhenEngineIsHostManaged_DoesNotDisposeHostServices()
+    {
+        TrackingTimeProvider? timeProvider = null;
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<TimeProvider>(
+            _ => timeProvider = new TrackingTimeProvider());
+        _ = services.AddAgentKit();
+        var provider = services.BuildServiceProvider();
+
+        try
+        {
+            var engine = provider.GetRequiredService<AgentEngine>();
+            _ = timeProvider.ShouldNotBeNull();
+
+            await engine.DisposeAsync();
+
+            timeProvider.DisposeCount.ShouldBe(0);
+        }
+        finally
+        {
+            await provider.DisposeAsync();
+        }
+
+        timeProvider!.DisposeCount.ShouldBe(1);
+    }
+
+    private sealed class TrackingTimeProvider: TimeProvider, IAsyncDisposable
+    {
+        private int _disposeCount;
+
+        public int DisposeCount => _disposeCount;
+
+        public ValueTask DisposeAsync()
+        {
+            _ = Interlocked.Increment(ref _disposeCount);
+            return ValueTask.CompletedTask;
+        }
+    }
+}

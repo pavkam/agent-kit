@@ -28,12 +28,20 @@ public sealed class OpenAICompatibleChatModelBaseTests
         useMaxCompletionTokensField: true,
         []);
 
-    private static readonly OpenAICompatibilityProfile NonStreamingProfile = StreamingProfile with { PreferStreaming = false };
+    private static readonly OpenAICompatibilityProfile NonStreamingProfile = new(
+        StreamingProfile.BaseAddress,
+        StreamingProfile.ChatCompletionsPath,
+        StreamingProfile.SendDeveloperRoleAsSystem,
+        preferStreaming: false,
+        StreamingProfile.IncludeStreamUsage,
+        StreamingProfile.UseMaxCompletionTokensField,
+        StreamingProfile.DefaultRequestHeaders);
 
     private static ChatModelRequest CreateRequest(
         ModelDescriptor descriptor,
         DateTimeOffset deadline,
-        ImmutableArray<ChatToolDefinition> tools = default)
+        ImmutableArray<ChatToolDefinition> tools = default,
+        ChatRequestSettings? settings = null)
     {
         var context = new ChatRequestContext(
             new ModelRequestId(Guid.NewGuid()),
@@ -41,7 +49,7 @@ public sealed class OpenAICompatibleChatModelBaseTests
             [TestMessages.User("Hello!")],
             tools.IsDefault ? [] : tools,
             ChatToolChoice.Auto,
-            ChatRequestSettings.Default,
+            settings ?? ChatRequestSettings.Default,
             ExtensionData.Empty);
 
         return new ChatModelRequest(context, attempt: 1, deadline, ProviderRequestOptions.Empty);
@@ -98,6 +106,9 @@ public sealed class OpenAICompatibleChatModelBaseTests
 
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        observer.Events.OfType<ModelResponseStarted>().Count().ShouldBe(1);
+        observer.Events.Select(e => e.Sequence).ShouldBe(
+            Enumerable.Range(0, observer.Events.Count).Select(index => (long) index));
 
         var sentBody = JsonNode.Parse(handler.RequestBodies[0]!);
         sentBody!["stream"]!.GetValue<bool>().ShouldBeTrue();
@@ -116,8 +127,29 @@ public sealed class OpenAICompatibleChatModelBaseTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
         failed.Failure.StatusCode.ShouldBe(401);
-        failed.Failure.SafeMessage.ShouldBe("Incorrect API key provided.");
+        failed.Failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
         failed.Failure.ProviderCode.ShouldBe("invalid_api_key");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.Unauthorized, "responses/error_hostile.json");
+        var model = CreateModel(
+            handler,
+            NonStreamingProfile,
+            new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-bad")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
+        failure.SafeMessage.ShouldNotContain("sk-live-super-secret");
+        failure.SafeMessage.ShouldNotContain("alice@example.test");
+        failure.ProviderCode.ShouldBe("invalid_api_key");
+        failure.DiagnosticCause.ShouldBeNull();
     }
 
     [Fact]
@@ -173,6 +205,70 @@ public sealed class OpenAICompatibleChatModelBaseTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenRequestModelIdentityDiffersFromAdapter_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var model = CreateModel(
+            handler,
+            NonStreamingProfile,
+            new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var requestDescriptor = TestModels.Gpt4O with { ModelId = new ModelId("different-model") };
+        var request = CreateRequest(requestDescriptor, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenRequestCapabilitiesDifferFromAdapter_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var model = CreateModel(
+            handler,
+            NonStreamingProfile,
+            new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var requestDescriptor = TestModels.Gpt4O with
+        {
+            Capabilities = TestModels.Gpt4O.Capabilities with { SupportsStructuredOutput = false },
+        };
+        var request = CreateRequest(requestDescriptor, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenParallelToolCallsAreUnsupported_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var descriptor = TestModels.Gpt4O with
+        {
+            Capabilities = TestModels.Gpt4O.Capabilities with { SupportsParallelToolCalls = false },
+        };
+        var model = CreateModel(
+            handler,
+            NonStreamingProfile,
+            new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")),
+            descriptor);
+        var tools = ImmutableArray.Create(
+            new ChatToolDefinition(new ToolId("get_weather"), "get_weather", null, JsonDocument.Parse("{}").RootElement));
+        var settings = ChatRequestSettings.Default with { ParallelToolCalls = true };
+        var request = CreateRequest(descriptor, Now.AddMinutes(1), tools, settings);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
         handler.Requests.ShouldBeEmpty();
     }
 
@@ -260,6 +356,31 @@ public sealed class OpenAICompatibleChatModelBaseTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
         failed.Failure.StatusCode.ShouldBe(500);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Conflict, ProviderFailureKind.InvalidRequest)]
+    [InlineData(HttpStatusCode.MovedPermanently, ProviderFailureKind.Unknown)]
+    public async Task ExecuteAsync_WhenOtherNonSuccessStatus_ReturnsTypedFailure(
+        HttpStatusCode statusCode,
+        ProviderFailureKind expectedKind)
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(statusCode)
+        {
+            Content = new StringContent("{}", Encoding.UTF8, "application/json"),
+        });
+        var model = CreateModel(
+            handler,
+            NonStreamingProfile,
+            new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(expectedKind);
+        failed.Failure.StatusCode.ShouldBe((int) statusCode);
     }
 
     [Fact]

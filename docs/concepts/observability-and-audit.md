@@ -33,6 +33,12 @@ Trace/span IDs supplement rather than replace domain identities.
 Provider request IDs and MCP correlation IDs SHOULD be retained as external
 identifiers. They MUST not be mistaken for globally stable AgentKit IDs.
 
+Invocation context is process-local. Concurrent calls on one shared engine,
+session, lane, provider catalog, or tool receiver MUST retain independent
+telemetry parentage and cancellation. Shared receivers do not discover an
+ambient current invocation or serialize trace context into durable business
+state.
+
 ## Span model
 
 Recommended spans are:
@@ -79,6 +85,19 @@ Reasoning/thinking content may contain sensitive data and provider-restricted
 material; it follows a separate capture policy. Hashed fingerprints SHOULD use
 keyed or appropriately salted schemes when equality itself is sensitive.
 
+Update checks, installation/update telemetry, product analytics, diagnostics,
+security audit, and model/tool content capture are separate consent and
+retention domains. Each states its default, destination, stable pseudonymous ID
+creation, reset/delete behavior, offline behavior, and exact field allowlist.
+Enabling one never opts into another. A coding harness excludes prompts,
+workspace paths, session IDs, model payloads, tool inputs/results, reasoning,
+and credentials from telemetry by default.
+
+Offline is enforced as network-egress policy across update checks, catalog
+refresh, telemetry, remote resources, packages, providers, and network tools. It
+is not inferred from one skipped version check. Machine-readable adapters send
+diagnostics through protocol frames or stderr and preserve stdout framing.
+
 ## Audit records
 
 Audit MUST cover:
@@ -110,6 +129,12 @@ cannot deadlock shutdown.
 Sampling decisions SHOULD preserve failures, permission activity, recovery, and
 limit outcomes even when routine successful runs are sampled.
 
+Snapshot/watch publication uses semantic session sequence, not trace order, to
+prevent observation gaps. Event-producing commits bind their complete immutable
+event batch and emitting invocation context in the continuation that observes
+the commit; a later dispatcher MUST NOT rediscover recipients or parentage from
+mutable global state.
+
 ## Metrics
 
 At minimum, expose run/turn/request duration and outcome, queue depth/age,
@@ -125,19 +150,16 @@ settlement/recovery delay.
 - Required audit failure prevents a clean settlement success.
 - Metric cardinality tests reject domain IDs as unbounded labels.
 - Permission and approval audit can reconstruct the winning decision safely.
-
-## Upstream evidence
-
-- Pydantic AI uses OpenTelemetry-compatible instrumentation and run/conversation
-  correlation, documented in
-  [instrumentation](https://ai.pydantic.dev/logfire/).
-- Pi carries provider/model/usage/diagnostic metadata in
-  [`packages/ai/src/types.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/ai/src/types.ts).
-- OpenCode's durable semantic events provide a clean observation boundary in
-  [`session-event.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/schema/src/session-event.ts).
+- Two concurrent invocations through one receiver retain different trace and
+  cancellation lineage.
+- Registering a watcher concurrently with a commit yields either the old
+  snapshot plus that event batch or the new snapshot, never neither or both.
+- Enabling update telemetry leaves product analytics and content capture off.
+- Offline policy prevents every configured telemetry destination from sending.
 
 ## Related specifications
 
 - [Usage limits and budgets](usage-limits-and-budgets.md)
 - [Error taxonomy](error-taxonomy.md)
 - [Testing and evaluation](testing-and-evaluation.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

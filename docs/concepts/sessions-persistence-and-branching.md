@@ -7,8 +7,9 @@
 ## Purpose
 
 A session is the durable coordination boundary for related runs. It owns the
-ordered record, active branch, admitted input, and optimistic concurrency state.
-It is not the same thing as an in-memory agent object.
+immutable conversation tree, named branches, execution-lane state, admitted
+input, current orchestration projection, usage evidence, and optimistic
+concurrency state. It is not the same thing as an in-memory agent object.
 
 ## Session identity and scope
 
@@ -23,6 +24,14 @@ replace the storage isolation key.
 A run MUST declare its session. Standalone runs MAY use an ephemeral session
 whose behavior still satisfies ordering and correlation contracts.
 
+The run plan MUST freeze the selected session profile as an immutable,
+positively versioned snapshot containing its coordinator keys, default store,
+retention policy, concurrency behavior, bounds, and configuration fingerprint.
+An invocation-only capability binds that snapshot to the exact coordinator and
+run coordinator. History, tools, compaction, and other session-writing
+components receive the same capability; they MUST NOT rediscover an unkeyed
+coordinator or observe a newer profile during the operation.
+
 ## Append-only record
 
 The record is authoritative for both the
@@ -30,7 +39,8 @@ The record is authoritative for both the
 [input admission](input-admission-and-message-queues.md); neither subsystem
 keeps a competing durable truth.
 
-The canonical record SHOULD be append-only and contain typed entries such as:
+The canonical semantic record SHOULD be append-only and contain typed entries
+such as:
 
 - user, assistant, system, synthetic, and tool messages;
 - input admitted and promoted events;
@@ -44,6 +54,18 @@ Each entry MUST have a stable ID, monotonic sequence, optional parent/causal ID,
 timestamp from an injectable clock, and schema version. Stores MUST support
 append-if-version so concurrent writers cannot silently overwrite one another.
 
+Current branch tips, lane configuration, inboxes, leases, total operation state,
+bounded progress checkpoints, and staged outcomes MAY use replaceable typed
+state records. Replacing current state MUST NOT erase semantic history or usage
+evidence. Every such record declares one owner, lifecycle, fork policy, and
+terminal cleanup transaction. Derived indexes and statistics are rebuildable and
+never prove effect completion.
+
+Usage is an append-only ledger separate from recovery state. Every settled
+provider attempt retains native counters and cost provenance even when retried
+or when its enclosing run later aborts. Recovery does not infer control flow
+from billing rows.
+
 ## Branching
 
 [Context compaction](context-compaction.md) names a range within one branch and
@@ -52,6 +74,11 @@ never rewrites that branch's covered entries.
 The storage model SHOULD permit entries to name a parent entry rather than
 assuming a single irreversible tail. An active branch is the path from a chosen
 leaf to the root plus branch-local derived records.
+
+A branch owns data and a tip. An execution lane binds total agent configuration,
+input queues, and at most one current operation to one branch. Multiple lanes
+MAY share immutable ancestry and run effects concurrently; they MUST NOT share
+an unfenced movable tip.
 
 Creating a branch MUST:
 
@@ -91,6 +118,11 @@ append, idempotency, versioning, and stable pagination.
 - retention, archival, deletion, and legal-hold behavior; and
 - conflict, unavailable, corrupt-data, and migration failures.
 
+Multi-record transitions that publish an entry, move a tip, settle usage, and
+advance total operation state MUST be atomic or expose an equivalent idempotent
+commit protocol. Recovery reads one complete current operation state; it MUST
+NOT deduce the restart point from absent auxiliary rows.
+
 Session directory access and session store access are separate protected
 effects. The coordinator MUST first obtain and consume a short-lived grant bound
 to the exact directory lookup or record. After the authoritative store key is
@@ -103,12 +135,76 @@ effecting calls. Authority selection uses the captured
 Serialization MUST be provider-neutral and preserve unknown fields needed for
 forward-compatible round trips.
 
-## Active-run coordination
+## Open, discovery, migration, and workspace binding
 
-The execution coordinator owns one active mutating drain per session. A store
-lease MAY extend that rule across processes, but a local mutex is not a claim of
-cluster safety. Distributed ownership, fencing token, lease expiry, and takeover
-must be explicit before multi-process execution is supported.
+The session profile declares when the first durable record is created. A host
+that acknowledges durable admission MUST persist it immediately; it cannot keep
+user-only work and early metadata solely in memory until an assistant happens to
+reply.
+
+Discovery is a bounded projection, not authoritative loading. It defines header
+scan limits, unreadable/oversized behavior, activity-time meaning, and whether
+an empty candidate is eligible. Authoritative open validates the complete
+record. A torn final transaction may be discarded only as a whole under the
+backend contract; a malformed interior record is corruption and MUST NOT be
+silently skipped. Orphans, self-parent entries, duplicate IDs, and impossible
+tips are reported or repaired through an explicit versioned policy, never
+quietly promoted into a new tree shape.
+
+Schema migration is a protected atomic maintenance operation with a backup or
+recoverable replacement strategy. Opening a session MUST NOT truncate and
+rewrite its file as an incidental read. Multi-process writers require CAS or a
+lease/fence; append-only syntax alone supplies neither.
+
+Human-friendly ID prefixes are accepted only when they resolve uniquely within
+the authorized scope. Exact matches take precedence, ambiguous prefixes fail,
+and lookup order cannot silently pick “the first” session. A session records its
+canonical workspace binding and placement. Opening it under another workspace is
+an explicit authorized rebind, fork, or handoff with a result describing the new
+identity and copied state.
+
+Activity and statistics declare their scope: whole tree, selected branch,
+execution lane, current operation, or provider request. File modification time,
+last conversational activity, label changes, abandoned-branch usage, and
+compacted-history usage are distinct projections.
+
+## Navigation, extraction, and labels
+
+Tree navigation, branch extraction, and cross-workspace fork are distinct:
+
+- navigation moves a tip in the same session and preserves later branches;
+- extraction creates a new session containing one selected ancestry path and
+  repairs every retained causal/compaction reference; and
+- a cross-workspace fork copies the declared tree/application scope into a new
+  workspace binding without moving external effects.
+
+A navigation result records old and new tip, any editor payload restored from a
+selected user/custom entry, summary identity and usage, and the explicit fact
+that earlier external effects remain. If navigation summarizes an abandoned
+path, the summary's placement and covered range are unambiguous.
+
+Labels and bookmarks are metadata entries. Adding, clearing, reconstructing, or
+dropping them during extraction MUST NOT move the semantic branch tip or break
+ancestry. Destructive session removal SHOULD use a recoverable trash/archive
+operation where the host supports one and always names the exact authorized
+session/workspace identity.
+
+## Mutation and operation coordination
+
+The execution coordinator owns one active operation per execution lane. The
+session coordinator also owns one serialized mutation line, transaction queue,
+or equivalent optimistic protocol for durable read-decide-write transitions
+across all of that session's lanes. Ordinary stable reads need not block on a
+long-running provider or tool effect.
+
+Exactly one host owns writable session coordination at a time unless a
+distributed profile supplies leases and fencing. A process-local mutex is not a
+claim of cluster safety. Distributed ownership, fencing token, lease expiry, and
+takeover must be explicit before multi-process execution is supported.
+
+Invocation cancellation releases or stops one caller observation. Durable abort
+names the expected operation and is a separate session mutation. Neither may be
+implemented as an ambient cancellation token stored on the session object.
 
 ## Acceptance scenarios
 
@@ -119,17 +215,20 @@ must be explicit before multi-process execution is supported.
 - Snapshot corruption falls back to verified log replay.
 - Revert does not claim to reverse external tool side effects.
 - Cross-tenant session IDs fail authorization without revealing existence.
-
-## Upstream evidence
-
-- Pi's versioned JSONL session tree, parent IDs, branching, and migration logic
-  are centered in
-  [`session-manager.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/coding-agent/src/core/session-manager.ts).
-- OpenCode V2's local execution coordinator explicitly scopes active drains in
-  [`execution/local.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/execution/local.ts).
+- Two lanes sharing ancestry can overlap effects without losing either branch
+  append.
+- Recovery resumes from total current operation state rather than folding a
+  partial write journal.
+- A fork excludes open-operation state unless a durable handoff protocol is
+  explicitly selected.
+- A malformed interior record fails open without rewriting the source.
+- An ambiguous session-ID prefix selects nothing.
+- Navigating to an earlier entry returns an explicit restored-editor payload and
+  does not claim that external effects were reverted.
 
 ## Related specifications
 
 - [Context compaction](context-compaction.md)
 - [Durable execution and recovery](durable-execution-and-recovery.md)
 - [Memory, retrieval, and storage](memory-retrieval-and-storage.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

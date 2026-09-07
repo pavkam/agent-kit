@@ -49,4 +49,29 @@ public sealed record ModelResponseFailed: ModelResponseEvent
 
     /// <summary>Gets the last known usage before the failure, if any was reported.</summary>
     public ModelUsage? Usage { get; init; }
+
+    /// <inheritdoc/>
+    public bool Equals(ModelResponseFailed? other) =>
+        other is not null
+        && RequestId.Equals(other.RequestId)
+        && Sequence == other.Sequence
+        && Failure.Equals(other.Failure)
+        && PartialParts.SequenceEqual(other.PartialParts)
+        && Equals(Usage, other.Usage);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(RequestId);
+        hash.Add(Sequence);
+        hash.Add(Failure);
+        foreach (var part in PartialParts)
+        {
+            hash.Add(part);
+        }
+
+        hash.Add(Usage);
+        return hash.ToHashCode();
+    }
 }

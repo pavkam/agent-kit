@@ -367,6 +367,14 @@ skin-specific converted codes. The
 7. Treat router/debug metadata as sensitive: transformed upstream bodies may
    contain prompts, document text, and tool arguments.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [OpenRouter API overview](https://openrouter.ai/docs/api_reference/overview)

@@ -280,6 +280,14 @@ extended request ID, model ID, region, and original model error status/resource.
 7. Keep Bedrock Runtime embedding codecs and Bedrock Agent Runtime rerank as
    separate clients and IAM capabilities.
 
+## Coding-harness interoperability
+
+The
+[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+define the route, history-repair, streaming, and compatibility details required
+by a long-running coding loop. They do not override the public contract verified
+below.
+
 ## First-party sources
 
 - [Bedrock Runtime operations](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_Operations_Amazon_Bedrock_Runtime.html)

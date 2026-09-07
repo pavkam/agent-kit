@@ -7,9 +7,10 @@
 
 ## Purpose
 
-Working context is the bounded, provider-ready input for one model request. It
-is derived from durable history, instructions, tools, retrieval, and runtime
-state, but is not itself the durable conversation record.
+Working context is the bounded, provider-neutral and capability-checked input
+for one model request. It is derived from durable history, instructions, tools,
+retrieval, and runtime state, but is not itself the durable conversation record
+or a provider wire DTO.
 
 ## Assembly pipeline
 
@@ -29,12 +30,26 @@ The context assembler MUST run ordered stages:
    [output schema](structured-output.md).
 7. Allocate [token/byte budgets](usage-limits-and-budgets.md) by content class.
 8. Select, trim, or summarize candidates deterministically.
-9. Translate roles and parts against the selected provider capability profile.
+9. Validate roles, parts, tools, and output requirements against the selected
+   provider capability profile and record any required adapter transformation or
+   rejection without producing wire messages.
 10. Return an immutable `ModelRequestContext` plus a manifest of included and
     omitted source IDs.
 
 No stage may write durable history as an incidental side effect. Deliberate
 memory writes or compaction are separate operations.
+
+Every assembly request carries the complete authenticated `ExecutionIdentity`
+and immutable security/configuration snapshots. Tenant or principal projections
+are not substitutes for that identity. Cache keys include its fingerprint and
+the relevant authority and policy versions, so cached context cannot cross an
+identity boundary.
+
+Compaction is optional and is selected when the run plan is compiled. An enabled
+plan passes an invocation-only capability containing the exact keyed compactor
+and already selected session coordinator; neither component rediscovers services
+from a container. Without that capability, mandatory overflow returns
+`ContextLimitExceeded`.
 
 ## Instruction sources
 
@@ -89,15 +104,17 @@ content.
 `ModelRequestContext` MUST include:
 
 - selected provider/model and effective capabilities;
-- ordered translated messages/instructions;
+- ordered provider-neutral messages and instructions with stable source-part
+  correlation;
 - available tool definitions and output schema;
 - effective settings;
 - estimated token/byte use and reservations;
 - source manifest and transformation diagnostics; and
 - session history/configuration versions used.
 
-The provider adapter MAY perform wire-specific translation but MUST NOT make
-policy decisions about which history or retrieval content survives.
+The provider adapter owns every wire-specific role, part, schema, and identifier
+translation. It MUST NOT make policy decisions about which history or retrieval
+content survives.
 
 ## Acceptance scenarios
 
@@ -105,20 +122,10 @@ policy decisions about which history or retrieval content survives.
   manifests.
 - Mandatory content overflow fails before provider I/O.
 - Retrieved prompt injection remains data and cannot replace host instructions.
-- Switching model profiles rebuilds translated history and tool schemas.
+- Switching model profiles rebuilds capability validation, tool schemas, and the
+  adapter's translated wire request.
 - A replacement instruction set starts a new epoch or waits for compaction.
 - An in-flight request is unaffected by a later configuration reload.
-
-## Upstream evidence
-
-- OpenCode V2 tracks system-context baselines and reconciles additive versus
-  replacement changes in
-  [`context-epoch.ts`](https://github.com/anomalyco/opencode/blob/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/session/context-epoch.ts).
-- Pi supports per-request context transformation and next-turn preparation in
-  [`agent-loop.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/agent/src/agent-loop.ts).
-- Pydantic AI supports ordered history processing through its capability model,
-  documented in
-  [process history](https://ai.pydantic.dev/capabilities/process-history/).
 
 ## Related specifications
 

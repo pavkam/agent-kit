@@ -57,4 +57,29 @@ public sealed record CompactionSourceSnapshot
 
     /// <summary>Gets the eligible entries, in ascending sequence order.</summary>
     public ImmutableArray<SessionEntry> Entries { get; init; }
+
+    /// <inheritdoc/>
+    public bool Equals(CompactionSourceSnapshot? other) =>
+        other is not null
+        && Context.Equals(other.Context)
+        && BranchId.Equals(other.BranchId)
+        && Version.Equals(other.Version)
+        && ThroughSequence.Equals(other.ThroughSequence)
+        && Entries.SequenceEqual(other.Entries);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Context);
+        hash.Add(BranchId);
+        hash.Add(Version);
+        hash.Add(ThroughSequence);
+        foreach (var entry in Entries)
+        {
+            hash.Add(entry);
+        }
+
+        return hash.ToHashCode();
+    }
 }

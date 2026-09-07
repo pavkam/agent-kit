@@ -9,7 +9,7 @@ using Microsoft.Extensions.Time.Testing;
 public sealed class DefaultSessionCoordinatorTests
 {
     private static DefaultSessionCoordinator CreateCoordinator(
-        FakeSessionStore store,
+        ISessionStore store,
         IEnumerable<ISessionEventSink>? sinks = null,
         TimeProvider? timeProvider = null,
         AgentSessionOptions? options = null) =>
@@ -209,5 +209,77 @@ public sealed class DefaultSessionCoordinatorTests
 
         _ = first.Received.ShouldHaveSingleItem();
         _ = second.Received.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenSinkFailsAfterCommit_ReturnsCommittedResultAndContinuesDelivery()
+    {
+        var store = new FakeSessionStore
+        {
+            OnAppend = _ => new SessionAppended(new SessionVersion(1), []),
+        };
+        var failing = new FakeSessionEventSink
+        {
+            OnPublish = static (_, _) => ValueTask.FromException(new InvalidOperationException("observer failed")),
+        };
+        var succeeding = new FakeSessionEventSink();
+        var coordinator = CreateCoordinator(store, [failing, succeeding]);
+        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
+        var branchId = new BranchId(Guid.NewGuid());
+        var request = new SessionAppendRequest(
+            TestFactory.OperationContext(address),
+            branchId,
+            new SessionVersion(0),
+            new IdempotencyKey("append"),
+            [TestFactory.MessageEntry(address, branchId, 1)]);
+
+        var result = await coordinator.AppendAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionAppended>();
+        store.ReceivedAppends.ShouldHaveSingleItem().ShouldBe(request);
+        _ = failing.Received.ShouldHaveSingleItem();
+        _ = succeeding.Received.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenCallerCancelsDuringPostCommitDelivery_ReturnsCommittedResultAndPreservesState()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInMemorySessionStore();
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true,
+        });
+        var store = provider.GetRequiredService<ISessionStore>();
+        var created = (SessionCreated) await store.CreateAsync(TestFactory.CreateRequest(), CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        var sink = new FakeSessionEventSink
+        {
+            OnPublish = (_, token) =>
+            {
+                cancellation.Cancel();
+                token.ThrowIfCancellationRequested();
+                return ValueTask.CompletedTask;
+            },
+        };
+        var coordinator = CreateCoordinator(store, [sink]);
+        var descriptor = created.Descriptor;
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var entry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1);
+        var request = new SessionAppendRequest(
+            context,
+            descriptor.ActiveBranchId,
+            descriptor.Version,
+            new IdempotencyKey("append"),
+            [entry]);
+
+        var result = await coordinator.AppendAsync(request, cancellation.Token);
+
+        _ = result.ShouldBeOfType<SessionAppended>();
+        var page = await store.ReadAsync(
+            new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10),
+            CancellationToken.None);
+        page.ShouldBeOfType<SessionPage>().Entries.ShouldHaveSingleItem().ShouldBe(entry);
     }
 }

@@ -83,20 +83,121 @@ public sealed record ChatRequestContext
     public ModelRequestId ModelRequestId { get; init; }
 
     /// <summary>Gets the selected model descriptor.</summary>
-    public ModelDescriptor Model { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ModelDescriptor Model
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the ordered conversation history to send.</summary>
-    public ImmutableArray<AgentMessage> Messages { get; init; }
+    /// <exception cref="ArgumentException">
+    /// The value assigned during initialization or non-destructive mutation is a default,
+    /// uninitialized array.
+    /// </exception>
+    public ImmutableArray<AgentMessage> Messages
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the tools available for the model to call.</summary>
-    public ImmutableArray<ChatToolDefinition> Tools { get; init; }
+    /// <exception cref="ArgumentException">
+    /// The value assigned during initialization or non-destructive mutation is a default,
+    /// uninitialized array.
+    /// </exception>
+    public ImmutableArray<ChatToolDefinition> Tools
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the tool-call selection policy.</summary>
-    public ChatToolChoice ToolChoice { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ChatToolChoice ToolChoice
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the effective sampling and output settings.</summary>
-    public ChatRequestSettings Settings { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ChatRequestSettings Settings
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets provider-specific request data.</summary>
-    public ExtensionData Extensions { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ExtensionData Extensions
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool Equals(ChatRequestContext? other) =>
+        other is not null
+        && ModelRequestId.Equals(other.ModelRequestId)
+        && Model.Equals(other.Model)
+        && Messages.SequenceEqual(other.Messages)
+        && Tools.SequenceEqual(other.Tools)
+        && ToolChoice.Equals(other.ToolChoice)
+        && Settings.Equals(other.Settings)
+        && Extensions.Equals(other.Extensions);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(ModelRequestId);
+        hash.Add(Model);
+        foreach (var message in Messages)
+        {
+            hash.Add(message);
+        }
+
+        foreach (var tool in Tools)
+        {
+            hash.Add(tool);
+        }
+
+        hash.Add(ToolChoice);
+        hash.Add(Settings);
+        hash.Add(Extensions);
+        return hash.ToHashCode();
+    }
 }

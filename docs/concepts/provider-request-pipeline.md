@@ -29,6 +29,10 @@ validate capabilities
 Each stage MUST accept cancellation. No stage after credential injection may log
 or expose raw secrets.
 
+Lazy SDK or transport loading, credential refresh, endpoint materialization, and
+request setup are part of the attempt and share its effect-start gate. A setup
+failure becomes a typed stream/result failure with no fake response-start event.
+
 The first-party catalog, selection, capability validation, and model request
 execution live in `AgentKit.Providers`. Translation, authentication, transport,
 parsing, and concrete errors live in the selected
@@ -41,11 +45,14 @@ remains responsible for its compatibility profile and observable behavior.
 The provider-neutral request MUST include:
 
 - provider/model descriptor and API family;
+- captured service-surface, endpoint-profile, and credential-profile identities
+  and versions;
 - the complete immutable `ExecutionIdentity`, its matching
   `SecurityAuthorizationContext`, and typed operation correlation;
 - ordered context messages and instruction sources;
 - tool definitions, tool-choice policy, and output schema;
 - sampling, output, cache, and reasoning settings;
+- the requested response-candidate count;
 - run/request IDs and safe metadata;
 - deadline and attempt number; and
 - explicitly scoped provider extension options.
@@ -53,6 +60,11 @@ The provider-neutral request MUST include:
 Output token limits MUST be clamped or rejected against the model context and
 output ceilings after reserving input estimate and a safety margin. Any clamp
 MUST be visible in diagnostics.
+
+Cache retention and session affinity are independent settings. Disabling cache
+retention removes cache keys and affinity headers only where the concrete
+profile defines that behavior. A session identifier is never sent merely because
+AgentKit has a `SessionId`; egress requires an explicit classified mapping.
 
 ## Translation
 
@@ -64,16 +76,67 @@ Translation SHOULD produce a provider request DTO independent of the transport
 so serialization can be fixture-tested. Vendor SDK types stay inside the leaf
 adapter.
 
+Translation cardinality is explicit. One neutral message MAY become several wire
+messages, and several adjacent neutral parts MAY be coalesced only when the
+compatibility profile proves the mapping loss-aware. The translation manifest
+retains source message/part order and tool-call correlation so diagnostics and
+responses can be mapped back. A protocol that requires one tool result per wire
+message therefore expands a multi-result neutral `ToolMessage`; it never drops
+all but the first result.
+
+Only the bounded `ToolResultPart` projection enters provider translation; the
+adapter never reconstructs the authoritative `ToolCallResult`, retries the
+effect, or infers outcome from display text. It preserves the requested alias,
+resolved identity/version when available, exact source status, uncertainty, and
+projection-loss markers. A protocol without a status field uses the profile's
+deterministic bounded status envelope or rejects the mapping.
+
+Role fallback preserves trust as well as content. Runtime/synthetic notices,
+retrieved text, and tool output MUST NOT be promoted to system or developer
+authority merely because a provider lacks their native role. The profile must
+use a non-elevating representation or reject the request before I/O.
+
+Wire normalization MUST remove unpaired Unicode surrogates or reject them before
+JSON serialization while preserving valid pairs. Incremental tool JSON is kept
+as raw ordered fragments until the provider terminal boundary, then parsed and
+schema-validated by the tool lifecycle. Provider-specific empty-content,
+adjacent-tool-result, and reasoning-signature rules belong to the compatibility
+profile, not scattered conditionals in the loop.
+
+Canonical provider call identity is distinct from a constrained target wire ID.
+When the destination imposes length or character rules, translation creates one
+deterministic collision-safe request-scoped bijection and applies it to calls,
+results, and stream correlation. Normalization is reversible in the translation
+manifest; independently hashing each occurrence or using array position is
+forbidden.
+
 ## Options and headers
 
 Core settings MUST remain typed. Provider-specific options MAY use a validated
 extension object owned by that adapter. Unknown options MUST fail validation or
 be explicitly passed through; silent misspelling is forbidden.
 
+Every payload extension key has an owning provider/profile namespace, content
+classification, merge operation, and allowed source layers. The effective order
+follows the configuration manifest; duplicate keys are replaced or rejected
+according to that key's declared rule and never resolved by incidental
+dictionary insertion order. Canonical request fields, identities, destination,
+authentication, security, budgets, tool correlation, and protocol framing are
+reserved. An extension that attempts to set or shadow one is rejected with a
+safe diagnostic before credential resolution or network access rather than
+silently ignored.
+
 Header policy MUST define precedence among adapter defaults, authentication,
 host configuration, run extensions, and trusted hooks. Sensitive or protocol-
 critical headers MUST NOT be replaceable by untrusted input. An explicit
 suppression value MAY remove an optional default; absence means inherit.
+
+Header names compare case-insensitively even when the options representation is
+a dictionary. A later override replaces differently cased earlier spellings
+rather than sending duplicates. Signature-sensitive transports such as AWS
+reject or ignore caller overrides for `Authorization`, `Host`, and signing
+headers before signing. A custom HTTP transport/fetch option does not silently
+claim to affect WebSocket or SDK-owned transports.
 
 ## Hooks
 
@@ -86,6 +149,11 @@ Payload replacement MUST be revalidated for size and protected fields. Every
 replacement should emit a safe hook identity in diagnostics. A replacement that
 changes destination, classified content, or another security input requires a
 fresh security decision.
+
+Arbitrary sampling pass-through, when supported for local or compatible servers,
+is scoped to an explicit API-family profile and merged at a documented
+precedence. Other adapters reject or ignore it observably; it is not a universal
+request bag.
 
 ## Transport
 
@@ -121,12 +189,67 @@ Streaming attempts MUST NOT be retried transparently after visible output has
 been delivered. The loop decides whether to preserve partial output, repair
 history, and make a new request.
 
+Conversational, embedding, and reranking execution use the immutable descriptor
+and catalog version returned by selection; an executor MUST NOT re-read a newer
+live catalog mid-operation. Embedding and reranking calls carry an
+invocation-only budget capability and optional hook lease. Their executors
+reserve before every attempt, settle actual usage exactly once, and dispatch
+hooks through the configured dispatcher even when the operation runs outside an
+agent run.
+
+Retry delay parsing accepts the provider's documented seconds/date and
+millisecond headers, clamps invalid negative values, and enforces a configured
+maximum wait. A server-requested delay beyond that bound returns control to the
+higher resilience layer instead of parking an invisible SDK timer. Any
+transport/SDK retry is disabled or surfaced so total attempts are accounted
+once.
+
 ## Authentication
 
-Credentials enter through an explicit credential provider at send time. They
-MUST NOT be stored in model descriptors, messages, configuration snapshots,
-events, exception text, or replay logs. Credential refresh and audience/scope
-selection belong to the leaf integration.
+Every operation registration binds a keyed, versioned credential profile to a
+keyed, versioned endpoint profile. Credentials enter through that captured
+profile at send time; there is no unkeyed process-global credential source whose
+meaning changes with registration order. Resolution receives the provider,
+service surface, endpoint/audience, account profile, operation, attempt,
+execution identity, and deadline.
+
+The operation descriptor retains both profile references. At each attempt, a
+narrow profile runtime selector returns an owned lease over the exact
+version-retained, secret-free snapshots and matching credential source. A
+replacement affects only later selections; resolution MUST NOT fall forward to a
+newer profile or another account while an operation is in flight.
+
+Credential access is itself a protected effect. Before resolution, the adapter
+obtains a separate bounded grant tied to the profile revision, source, account,
+audience, execution identity, attempt, and deadline. The source revalidates that
+grant immediately before returning an opaque disposable credential lease; raw
+secret material is never a public value. Sending uses a different
+provider-egress grant, and the network transport enforces its own grant again.
+
+Credential refresh, expiry skew, rotation, authentication support, scheme,
+audience, and scope selection belong to the concrete leaf integration. A shared
+wire-family package MAY supply opaque-token retrieval and header-construction
+mechanics, but it does not claim that every compatible provider supports the
+same authentication modes. Expired or near-expiry material is refreshed before
+I/O or returns a typed authentication failure. Credentials MUST NOT be stored in
+model descriptors, messages, configuration snapshots, events, exception text,
+replay logs, profile keys, or diagnostics.
+
+The compatibility profile also declares candidate multiplicity and usage
+reporting. A single-candidate operation requests and accepts exactly one
+candidate; extra choices are a protocol failure, never silently discarded. When
+a successful response omits usage, the terminal aggregate records usage as not
+reported, emits no fabricated usage update, and leaves budget reconciliation to
+the configured usage policy. Not reported is distinct from a provider-reported
+zero.
+
+Credential precedence is explicit: a trusted per-request override, then stored
+provider credential, then ambient provider-specific sources when no stored
+credential owns the provider. A failed or incompatible stored credential MUST
+NOT silently fall back to environment credentials. OAuth refresh uses a
+provider-scoped single-flight/double-check boundary, persists rotated
+credentials before release, has its own timeout, and leaves the prior credential
+available for an explicit retry or re-login decision.
 
 ## Acceptance scenarios
 
@@ -137,14 +260,23 @@ selection belong to the leaf integration.
   completion.
 - A settings clamp is deterministic and observable.
 - Provider-specific options cannot mutate protected identity or auth fields.
-
-## Upstream evidence
-
-- Pi's request options include headers, payload/response hooks, retries,
-  timeouts, transport, cache retention, and session affinity in
-  [`packages/ai/src/types.ts`](https://github.com/badlogic/pi-mono/blob/9767ba275f3e9a5ee0f5c5342249b629ab1b2282/packages/ai/src/types.ts).
-- OpenCode's provider construction and wire-specific plugins live under
-  [`packages/core/src/plugin/provider`](https://github.com/anomalyco/opencode/tree/337fd144d2ba144743368f78d9579a99cce175bd/packages/core/src/plugin/provider).
+- One neutral tool-result message can expand to several wire messages without
+  losing source order or call correlation.
+- A runtime notice is rejected or mapped without gaining system/developer
+  authority.
+- Two operations using different endpoint or account profiles resolve only their
+  captured credentials.
+- Unexpected extra candidates and absent usage are handled explicitly rather
+  than by selecting index zero or reporting zero consumption.
+- Differently cased header overrides yield one effective header.
+- Provider replacement or request cancellation fences a late credential/catalog
+  publication.
+- A server retry hint beyond policy returns a typed retry decision without an
+  unbounded sleep.
+- Unpaired surrogate input fails or sanitizes before transport while valid emoji
+  survives unchanged.
+- A constrained wire tool ID maps back to one canonical call ID across request,
+  stream events, and tool results without collision.
 
 ## Related specifications
 
@@ -152,3 +284,4 @@ selection belong to the leaf integration.
 - [Extensions, hooks, and middleware](extensions-hooks-and-middleware.md)
 - [Permissions, approvals, and trust](permissions-approvals-and-trust.md)
 - [Observability and audit](observability-and-audit.md)
+- [Coding-harness provider profiles](../providers/coding-harness-provider-profiles.md)

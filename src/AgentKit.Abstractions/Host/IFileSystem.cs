@@ -41,5 +41,8 @@ public interface IFileSystem
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A task producing the terminal outcome.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <see cref="FileWriteRequest.Mode"/> is not a defined <see cref="FileWriteMode"/> value.
+    /// </exception>
     public Task<FileWriteResult> WriteAsync(FileWriteRequest request, CancellationToken cancellationToken = default);
 }

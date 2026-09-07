@@ -15,6 +15,10 @@ the
 When changing C#, also read the
 [modern C# rules](../references/modern-csharp.md).
 
+When delegation is exposed as a coding-harness task/subagent tool, also read the
+[built-in tool profile](../../../docs/concepts/coding-harness-built-in-tools.md)
+for catalog snapshots, placement, nested call budgets, and result publication.
+
 ## Boundary
 
 - Goals and attempts are durable versioned domain state, never prompt prefixes.

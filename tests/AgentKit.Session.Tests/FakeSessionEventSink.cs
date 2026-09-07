@@ -11,9 +11,11 @@ internal sealed class FakeSessionEventSink: ISessionEventSink
 {
     public List<SessionEvent> Received { get; } = [];
 
+    public Func<SessionEvent, CancellationToken, ValueTask>? OnPublish { get; set; }
+
     public ValueTask PublishAsync(SessionEvent sessionEvent, CancellationToken cancellationToken = default)
     {
         Received.Add(sessionEvent);
-        return ValueTask.CompletedTask;
+        return OnPublish?.Invoke(sessionEvent, cancellationToken) ?? ValueTask.CompletedTask;
     }
 }

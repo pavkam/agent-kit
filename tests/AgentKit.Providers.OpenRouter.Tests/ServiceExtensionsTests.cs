@@ -49,14 +49,29 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddOpenRouter_WhenBaseAddressIsNotAbsolute_FailsValidationOnAccess()
+    public void AddOpenRouter_WhenBaseAddressIsNotAbsolute_FailsStartupValidation()
     {
         var services = new ServiceCollection();
         _ = services.AddOpenRouter(options => options.BaseAddress = new Uri("not-absolute", UriKind.Relative));
 
         using var provider = services.BuildServiceProvider();
 
-        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<OpenRouterProviderOptions>>().Value);
+        _ = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
+    [Theory]
+    [InlineData("https://evil.example.test/chat")]
+    [InlineData("//evil.example.test/chat")]
+    public void AddOpenRouter_WhenChatPathCanReplaceConfiguredEndpoint_FailsStartupValidation(string path)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOpenRouter(options => options.ChatCompletionsPath = path);
+
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IStartupValidator>().Validate());
     }
 
     [Fact]
@@ -67,7 +82,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenRouterApiKeyCredential("sk-or-test-key");
 
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredService<IProviderCredentialSource>();
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId);
 
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
@@ -80,7 +95,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenRouterOAuthCredential<StaticOAuthTokenProviderRegistration>();
 
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredService<IProviderCredentialSource>();
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId);
 
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }
