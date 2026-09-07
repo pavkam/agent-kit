@@ -14,7 +14,7 @@ public sealed class InMemoryArtifactStore: IArtifactStore
     private readonly Dictionary<ArtifactPreparationId, FinalizedState> _finalized = [];
     private readonly Dictionary<ArtifactKey, FinalizedState> _committed = [];
     private readonly HashSet<ArtifactPreparationId> _aborted = [];
-    private readonly HashSet<ArtifactKey> _deleted = [];
+    private readonly Dictionary<ArtifactKey, ArtifactReference> _deleted = [];
     private readonly Dictionary<ReplayKey, PreparedState> _prepareReplay = [];
 
     /// <summary>Initializes the store over the authoritative grant store and deterministic clock.</summary>
@@ -108,7 +108,7 @@ public sealed class InMemoryArtifactStore: IArtifactStore
             if (_finalized.TryGetValue(request.PreparationId, out var prior))
             {
                 var priorKey = new ArtifactKey(prior.Result.Reference.Id, prior.Result.Reference.Version);
-                return prior.Snapshot.TenantId == request.Identity.TenantId && !_deleted.Contains(priorKey)
+                return prior.Snapshot.TenantId == request.Identity.TenantId && !_deleted.ContainsKey(priorKey)
                     ? prior.Result
                     : RejectFinalize(ArtifactFailureKind.NotFound, "The preparation is unavailable or belongs to another tenant.");
             }
@@ -125,8 +125,23 @@ public sealed class InMemoryArtifactStore: IArtifactStore
                 return RejectFinalize(ArtifactFailureKind.NotFound, "The preparation expired before publication.");
             }
 
-            var publicationTime = _time.GetUtcNow();
             var snapshot = staged.Snapshot;
+            var artifactKey = new ArtifactKey(snapshot.ArtifactId, snapshot.Version);
+            if (_deleted.TryGetValue(artifactKey, out var deletedReference))
+            {
+                return deletedReference.TenantId == snapshot.TenantId
+                    ? RejectFinalize(ArtifactFailureKind.Conflict, "A deleted immutable artifact version cannot be published again.")
+                    : RejectFinalize(ArtifactFailureKind.NotFound, "The artifact identity is unavailable or belongs to another tenant.");
+            }
+
+            if (_committed.TryGetValue(artifactKey, out var existing))
+            {
+                return existing.Snapshot.TenantId == snapshot.TenantId
+                    ? RejectFinalize(ArtifactFailureKind.Conflict, "The immutable artifact version is already committed.")
+                    : RejectFinalize(ArtifactFailureKind.NotFound, "The artifact identity is unavailable or belongs to another tenant.");
+            }
+
+            var publicationTime = _time.GetUtcNow();
             var metadata = snapshot.Metadata;
             var reference = new ArtifactReference(
                 snapshot.ArtifactId, snapshot.Version, snapshot.DirectoryId,
@@ -138,7 +153,7 @@ public sealed class InMemoryArtifactStore: IArtifactStore
             _ = _prepared.Remove(request.PreparationId);
             var finalized = new FinalizedState(snapshot, result);
             _finalized.Add(request.PreparationId, finalized);
-            _committed.Add(new ArtifactKey(reference.Id, reference.Version), finalized);
+            _committed.Add(artifactKey, finalized);
             return result;
         }
     }
@@ -161,11 +176,11 @@ public sealed class InMemoryArtifactStore: IArtifactStore
         {
             if (_finalized.TryGetValue(request.PreparationId, out var finalized))
             {
-                return _deleted.Contains(new ArtifactKey(finalized.Result.Reference.Id, finalized.Result.Reference.Version))
+                return finalized.Snapshot.TenantId != request.Identity.TenantId
+                    ? new ArtifactAbortRejected(new ArtifactFailure(ArtifactFailureKind.NotFound, "The preparation is unavailable or belongs to another tenant."))
+                    : _deleted.ContainsKey(new ArtifactKey(finalized.Result.Reference.Id, finalized.Result.Reference.Version))
                     ? new ArtifactAborted(true)
-                    : finalized.Snapshot.TenantId == request.Identity.TenantId
-                    ? new ArtifactAbortRejected(new ArtifactFailure(ArtifactFailureKind.Conflict, "Committed artifact content cannot be aborted."))
-                    : new ArtifactAbortRejected(new ArtifactFailure(ArtifactFailureKind.NotFound, "The preparation is unavailable or belongs to another tenant."));
+                    : new ArtifactAbortRejected(new ArtifactFailure(ArtifactFailureKind.Conflict, "Committed artifact content cannot be aborted."));
             }
 
             if (_prepared.TryGetValue(request.PreparationId, out var staged) && staged.Snapshot.TenantId != request.Identity.TenantId)
@@ -231,9 +246,11 @@ public sealed class InMemoryArtifactStore: IArtifactStore
             }
 
             var key = new ArtifactKey(request.Reference.Id, request.Reference.Version);
-            if (_deleted.Contains(key))
+            if (_deleted.TryGetValue(key, out var deletedReference))
             {
-                return new ArtifactDeleted(true);
+                return deletedReference == request.Reference
+                    ? new ArtifactDeleted(true)
+                    : RejectDelete(ArtifactFailureKind.NotFound, "The exact committed artifact version was not found.");
             }
 
             if (!_committed.TryGetValue(key, out var committed) || committed.Result.Reference != request.Reference)
@@ -247,7 +264,7 @@ public sealed class InMemoryArtifactStore: IArtifactStore
             }
 
             _ = _committed.Remove(key);
-            _ = _deleted.Add(key);
+            _deleted.Add(key, committed.Result.Reference);
             return new ArtifactDeleted(false);
         }
     }

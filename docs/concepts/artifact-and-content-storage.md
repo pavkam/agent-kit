@@ -111,6 +111,19 @@ durable memory sources, evaluation evidence, and externally owned resources.
 Deletion is idempotent and auditable. A tombstone prevents a stale reference
 from silently resolving to different bytes.
 
+Deletion replay retains tenant and canonical reference evidence. Matching an
+artifact ID and version alone cannot produce an already-deleted receipt for a
+different tenant or an altered reference. Foreign or mismatched references
+remain indistinguishable from unavailable content, including after deletion. The
+stored reference remains authoritative for retention and ownership checks.
+
+An immutable artifact ID/version is never rebound, including by a new
+preparation after deletion. Finalization conditionally claims that version
+before changing preparation or publication state. Competing preparations in one
+tenant have one publication winner; a losing preparation receives a typed
+conflict and remains available for explicit abort. A failed publication cannot
+leave a successful receipt pointing to another preparation's bytes.
+
 The finalized reference MUST carry the resolved retention decision, integrity
 evidence, mutability mode, and ownership kind. Append-only content creates a new
 typed version; immutable content cannot be overwritten. External ownership MUST
