@@ -3,6 +3,8 @@
 
 namespace AgentKit.Output;
 
+using System.Diagnostics;
+
 /// <summary>
 /// The default <see cref="IOutputProcessor"/>: extracts a candidate from a
 /// terminal model response, validates it, and returns an accept, retry, or
@@ -160,15 +162,18 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
                     []));
         }
 
-        var extraction = ExtractCandidate(definition.Mode, request.Response);
+        var extraction = ExtractCandidate(
+            definition.Mode,
+            request.Response,
+            _options.MaximumCandidateBytes,
+            cancellationToken);
         if (extraction.Failure is not null)
         {
             return Decide(definition, attempt, extraction.Failure);
         }
 
-        var candidateBytes = extraction.Text is not null
-            ? Encoding.UTF8.GetByteCount(extraction.Text)
-            : Encoding.UTF8.GetByteCount(extraction.Json!.Value.GetRawText());
+        var candidateBytes = extraction.Utf8ByteCount
+            ?? Encoding.UTF8.GetByteCount(extraction.Json!.Value.GetRawText());
 
         if (candidateBytes > _options.MaximumCandidateBytes)
         {
@@ -295,20 +300,30 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
         return new OutputRetryRequired(repair, boundedFailure);
     }
 
-    private static ExtractionOutcome ExtractCandidate(OutputMode mode, ModelResponse response)
+    private static ExtractionOutcome ExtractCandidate(
+        OutputMode mode,
+        ModelResponse response,
+        int maximumCandidateBytes,
+        CancellationToken cancellationToken)
     {
         if (mode == OutputMode.Text)
         {
-            return new ExtractionOutcome(ExtractText(response), null, null);
+            return ExtractTextWithinLimit(response, maximumCandidateBytes, cancellationToken);
         }
 
         var structured = response.Parts.OfType<StructuredDataPart>().FirstOrDefault();
         if (structured is not null)
         {
-            return new ExtractionOutcome(null, structured.Value, null);
+            return new ExtractionOutcome(null, structured.Value, null, null);
         }
 
-        var rawText = ExtractText(response);
+        var textExtraction = ExtractTextWithinLimit(response, maximumCandidateBytes, cancellationToken);
+        if (textExtraction.Failure is not null)
+        {
+            return textExtraction;
+        }
+
+        var rawText = textExtraction.Text;
         if (string.IsNullOrWhiteSpace(rawText))
         {
             return new ExtractionOutcome(
@@ -317,13 +332,14 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
                 new OutputValidationFailure(
                     OutputValidationFailureKind.MalformedJson,
                     "No structured data or text content was found to parse as JSON.",
-                    []));
+                    []),
+                textExtraction.Utf8ByteCount);
         }
 
         try
         {
             using var document = JsonDocument.Parse(rawText);
-            return new ExtractionOutcome(null, document.RootElement.Clone(), null);
+            return new ExtractionOutcome(null, document.RootElement.Clone(), null, textExtraction.Utf8ByteCount);
         }
         catch (JsonException exception)
         {
@@ -333,15 +349,84 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
                 new OutputValidationFailure(
                     OutputValidationFailureKind.MalformedJson,
                     "The candidate text could not be parsed as JSON.",
-                    [new OutputValidationIssue("json-parse-error", exception.Message, null)]));
+                    [new OutputValidationIssue("json-parse-error", exception.Message, null)]),
+                textExtraction.Utf8ByteCount);
         }
     }
 
-    private static string ExtractText(ModelResponse response) =>
-        string.Concat(response.Parts.OfType<TextPart>().Select(static part => part.Text));
+    private static ExtractionOutcome ExtractTextWithinLimit(
+        ModelResponse response,
+        int maximumCandidateBytes,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(response is not null, "Candidate extraction requires a terminal model response.");
+        Debug.Assert(maximumCandidateBytes > 0, "The captured candidate byte limit must be positive.");
+
+        var encoder = Encoding.UTF8.GetEncoder();
+        var builder = new StringBuilder();
+        var byteCount = 0;
+        Span<byte> byteBuffer = stackalloc byte[256];
+
+        foreach (var part in response.Parts.OfType<TextPart>())
+        {
+            var remaining = part.Text.AsSpan();
+            while (!remaining.IsEmpty)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                encoder.Convert(
+                    remaining,
+                    byteBuffer,
+                    flush: false,
+                    out var charsUsed,
+                    out var bytesUsed,
+                    out _);
+
+                if (bytesUsed > maximumCandidateBytes - byteCount)
+                {
+                    return OversizedText(maximumCandidateBytes);
+                }
+
+                byteCount += bytesUsed;
+                remaining = remaining[charsUsed..];
+            }
+
+            _ = builder.Append(part.Text);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        encoder.Convert(
+            [],
+            byteBuffer,
+            flush: true,
+            out _,
+            out var finalBytes,
+            out _);
+
+        if (finalBytes > maximumCandidateBytes - byteCount)
+        {
+            return OversizedText(maximumCandidateBytes);
+        }
+
+        byteCount += finalBytes;
+        return new ExtractionOutcome(builder.ToString(), null, null, byteCount);
+    }
+
+    private static ExtractionOutcome OversizedText(int maximumCandidateBytes) =>
+        new(
+            null,
+            null,
+            new OutputValidationFailure(
+                OutputValidationFailureKind.OversizedCandidate,
+                $"The text candidate exceeds the maximum of {maximumCandidateBytes} UTF-8 bytes.",
+                []),
+            null);
 
     private static ImmutableArray<OutputValidationIssue> Bound(ImmutableArray<OutputValidationIssue> issues, int maximum) =>
         issues.Length > maximum ? issues[..maximum] : issues;
 
-    private readonly record struct ExtractionOutcome(string? Text, JsonElement? Json, OutputValidationFailure? Failure);
+    private readonly record struct ExtractionOutcome(
+        string? Text,
+        JsonElement? Json,
+        OutputValidationFailure? Failure,
+        int? Utf8ByteCount);
 }

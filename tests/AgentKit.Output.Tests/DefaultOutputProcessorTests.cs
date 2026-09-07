@@ -242,6 +242,87 @@ public sealed class DefaultOutputProcessorTests
         rejected.Failure.Kind.ShouldBe(OutputValidationFailureKind.OversizedCandidate);
     }
 
+    [Theory]
+    [InlineData(/*lang=json,strict*/"""{"value":true}""")]
+    [InlineData("{{{{{{{{{{")]
+    public async Task ProcessAsync_WhenStructuredTextExceedsMaximumBytes_ReturnsOversizedBeforeParsingOrValidation(
+        string text)
+    {
+        var validator = new FakeOutputValidator("semantic", static _ => OutputValidationPassed.Instance);
+        var processor = CreateProcessor(options => options.MaximumCandidateBytes = 4, [validator]);
+        var definition = TestFactory.Definition(
+            OutputMode.Prompted,
+            schema: TestFactory.Schema(/*lang=json,strict*/"""{"type":"object"}"""),
+            validators: [new OutputValidatorReference("semantic")],
+            retryPolicy: OutputRetryPolicy.None);
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, TestFactory.TextResponse(text)),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputRejected>().Failure.Kind.ShouldBe(OutputValidationFailureKind.OversizedCandidate);
+        validator.ReceivedRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenMultibyteTextEqualsMaximumBytes_ReturnsAccepted()
+    {
+        var processor = CreateProcessor(options => options.MaximumCandidateBytes = 2);
+        var definition = TestFactory.Definition(OutputMode.Text);
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("é")),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputAccepted>().Output.Text.ShouldBe("é");
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenMultibyteTextExceedsMaximumBytes_ReturnsOversizedCandidate()
+    {
+        var processor = CreateProcessor(options => options.MaximumCandidateBytes = 1);
+        var definition = TestFactory.Definition(OutputMode.Text, retryPolicy: OutputRetryPolicy.None);
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("é")),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputRejected>().Failure.Kind.ShouldBe(OutputValidationFailureKind.OversizedCandidate);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenSurrogatePairSpansTextParts_CountsCombinedUtf8Bytes()
+    {
+        var processor = CreateProcessor(options => options.MaximumCandidateBytes = 4);
+        var definition = TestFactory.Definition(OutputMode.Text);
+        var response = TestFactory.Response(
+            [
+                new TextPart("\uD83D", TextSemantics.Plain, ExtensionData.Empty),
+                new TextPart("\uDE00", TextSemantics.Plain, ExtensionData.Empty),
+            ]);
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputAccepted>().Output.Text.ShouldBe("😀");
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenAllowedStructuredTextIsMalformed_ReturnsMalformedJson()
+    {
+        var processor = CreateProcessor(options => options.MaximumCandidateBytes = 16);
+        var definition = TestFactory.Definition(
+            OutputMode.Prompted,
+            schema: TestFactory.Schema(/*lang=json,strict*/"""{"type":"object"}"""),
+            retryPolicy: OutputRetryPolicy.None);
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("{{")),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputRejected>().Failure.Kind.ShouldBe(OutputValidationFailureKind.MalformedJson);
+    }
+
     [Fact]
     public async Task ProcessAsync_WhenNamedValidatorNotRegistered_ReturnsValidatorNotFoundFailure()
     {
