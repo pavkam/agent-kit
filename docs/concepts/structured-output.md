@@ -47,6 +47,53 @@ A declarative JSON schema without a CLR runtime type yields validated JSON, not
 a magically safe application object. Deserialization into a runtime type MUST
 occur after schema/protocol validation and follow configured serializer limits.
 
+The embedded schema owns its JSON storage. Constructing or copying a definition
+MUST detach caller-owned JSON so disposing the original document cannot change
+or invalidate a retained contract. Name, version, and body remain validated
+through record-copy initialization as well as construction. Reconstructed schema
+values compare by JSON content, with equality-compatible hashes; DOM instance
+identity is not contract identity. The schema value preserves the document
+independently of which validator is selected.
+
+## Schema capabilities and preflight
+
+An output processor's selected schema validator declares its dialect and
+supported vocabulary explicitly. A schema's application version is not its JSON
+Schema dialect. A generic structured-output capability flag is insufficient to
+prove that either the local validator or the selected native provider enforces
+the definition's constraints.
+
+Composition preflights the complete selected schema, including nested schemas
+and union alternatives, before publishing a runnable selection. It validates
+keyword shapes, dialect compatibility, supported assertions, reference
+resolution, and configured resource bounds. Dynamic definitions pass the same
+preflight before provider I/O. A bounded structural validator is permitted, but
+it MUST reject assertions it cannot evaluate. Documenting that an assertion is
+ignored does not make an accepted candidate conformant. Annotation-only keywords
+may be retained without validation effects only when the selected profile
+explicitly classifies them as annotations.
+
+Local validation and provider translation have separate capability checks. Every
+accepted candidate must satisfy the original canonical schema locally. Provider
+projection records any restriction or loss and follows explicit mode selection
+or downgrade policy; it never silently weakens the local contract. Native output
+evidence comes from the captured request mode and provider mapping, not from
+whether the normalized candidate happens to be a text part or a structured-data
+part.
+
+Schema preflight and evaluation use captured, bounded resources. They do not
+consult mutable global schema, vocabulary, or format registries. The default
+path performs no network or file fetches. Referenced documents require an
+explicit resolver with immutable identity/version evidence and the usual host
+authorization for any protected acquisition. Missing references, unsupported
+constructs, malformed schemas, and exceeded schema-processing bounds return
+typed failures; none becomes an unconstrained schema.
+
+Invalid definitions and unsupported dialects are configuration failures. They do
+not ask the model to repair its answer or spend output retry budget. A candidate
+that violates an otherwise valid supported schema is a distinct validation
+failure eligible for the definition's bounded retry policy.
+
 ## Validation pipeline
 
 Candidate output MUST pass:
@@ -61,6 +108,15 @@ Candidate output MUST pass:
 Validators receive immutable run context and may accept, transform within the
 declared type/schema, or request a model retry. They MUST NOT perform hidden
 side effects unless explicitly modeled as tools.
+
+Candidate byte and parsing-depth limits apply before parsing or deserialization
+can consume unbounded work. Validation diagnostics retain at most the smaller of
+the processor-wide issue limit and the definition's issue limit, in
+deterministic source/validator order. Schema failures, semantic failures, final
+failure records, and generated repair text follow that same effective bound.
+Reaching the diagnostic limit cannot turn rejection into acceptance. Once the
+outcome is rejection and its diagnostic limit is reached, collection may stop;
+this does not establish that any unexecuted validator passed.
 
 ## Retry behavior
 
