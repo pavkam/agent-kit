@@ -34,6 +34,8 @@ owning spec.
 | Pinned-agent admission and retained-value integrity    | Focused facade suite: 59 passed; replacement/removal, reconstructed values, scope failure, schema ownership, one terminal admission and isolated diagnostics      | Verified checkpoint; keyed run-plan composition, retention/revocation catalogs and waiter cancellation remain open                         |
 | Trusted execution identity and delegation              | Focused identity runtime: 58 passed; rich contracts and migration included in full 3,440-test integration pass                                                    | Verified checkpoint; downstream admission/revalidation and reusable identity conformance remain open                                       |
 | Catalog bootstrap and publication                      | Focused facade/catalog: 91 passed; abstractions: 1,448 passed; full integration: 3,440 passed                                                                     | Verified checkpoint; no-I/O readiness, immutable revision bindings and atomic publication; complete selected graph validation remains open |
+| Selected capability requirements                       | `5148df1`; focused contract tests: 13 passed                                                                                                                      | Removed best-effort resolution of a selected capability; omission is the optionality boundary                                              |
+| Reproducible artifact contract capture                 | Clean archive exposed an ignored source directory; Abstractions build: zero warnings/errors; focused artifact contracts: 10 passed                                | Anchored build-output ignore rule and captured 38 existing contract files plus their tests; artifact conformance remains open              |
 
 ## Latest integration evidence
 
@@ -43,6 +45,15 @@ passed 3,440 tests with no failures or skips. This includes the concurrent,
 uncommitted provider embedding changes present during that run. The separate
 public API compatibility harness is being added and is not included in this
 solution result.
+
+A subsequent clean archive check found that the unanchored `artifacts/` ignore
+rule also excluded the source `Artifacts` directories on the development
+filesystem. The earlier shared-worktree result included those files, while a
+fresh checkout could not compile the process-output contracts that use them. The
+ignore rule now targets only root build output and the omitted artifact
+contracts and tests are captured. A complete clean-checkout verification and
+public API baseline are pending after that repair; the earlier integration run
+must not be cited as proof of checkout reproducibility.
 
 Rich identity contracts, the first-party identity runtime, reduced test-fixture
 migration, and pinned agent admission have verified checkpoints. Catalog
@@ -64,35 +75,35 @@ implementation exists but the complete contract has not been demonstrated.
 “Missing” names a required owner absent from the inspected repository; it does
 not make that component a mandatory dependency of every engine.
 
-| Owner                         | Outstanding implementation or proof                                                                                  |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Architecture index            | End-to-end source-of-truth conformance and complete coverage ledger                                                  |
-| Foundation contracts          | Validated values, compatibility snapshots, versioning and deterministic primitives                                   |
-| Project structure             | Missing owners, both dependency graphs, required project/test topology                                               |
-| Composition and configuration | Full closed runnable graph, catalog publication/reload, keyed selection, scope ownership, readiness                  |
-| Agent runtime                 | Explicit state transitions, waiter cancellation, recovery identity, settlement outcomes                              |
-| Budgets                       | Replaceable ledger/profile/policy/event contracts, consumer integration, durable accounting and full conformance     |
-| Messages and history          | Immutable/loss-aware values, non-elevation, correlation and shared round-trip conformance                            |
-| Input and output              | Admission, durable promotion, lane routing, fan-out, final publication and channel contracts                         |
-| Structured output             | Complete candidate extraction, validation, repair decisions and conversion conformance                               |
-| Context                       | Instruction precedence, contributor trust/order, bounded assembly and request manifests                              |
-| Context compaction            | Safe cuts, trustworthy activation evidence, cancellation, cursor/manifest reconciliation                             |
-| Identity                      | Verified normalization/derivation baseline; downstream revalidation, ingress integration and reusable conformance    |
-| Model and embedding providers | All advertised operation/capability mappings, endpoint/account bindings, terminal/error/usage semantics              |
-| Tools                         | Authoritative terminal records, rejection projections, scheduling, retries and focused feature contracts             |
-| Permissions and human control | Policy algebra, grants, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap  |
-| Sessions                      | Lane operations, receipt-before-conflict replay, branch fencing, retention/export/import; missing SQLite backend     |
-| Durable execution             | Missing runtime and explicit backend; journals, codecs, leases, checkpoints, evidence and recovery                   |
-| Memory and retrieval          | Missing runtime/storage ownership; documents/vectors, retrieval provenance, tombstones and purge                     |
-| Goals and delegation          | Durable goals/attempts/intents, joins, communication, parent occupancy and missing hosting worker                    |
-| Hooks and extensions          | Typed point coverage, ordering, mutation validation, failure precedence and timeout quiescence                       |
-| Observability                 | Complete safe signals, reusable assertions, required-sink separation and exporter implementation                     |
-| MCP                           | Supported protocol eras, reflection, transports/lifecycle, capabilities and protected primitive adapters             |
-| File system                   | Full dispositions/bounds/isolation semantics and missing deterministic in-memory backend                             |
-| Network                       | DNS/send authority, connection reuse, redirects/retries, bounded streaming and egress evidence                       |
-| Processes                     | Executable identity, sandbox enforcement, termination certainty, child effects and deterministic backend conformance |
-| Artifacts                     | Reference-commit evidence, integrity/retention, finalize/abort races and fenced collection                           |
-| Testing and evaluation        | Additional reusable contract suites, compatibility snapshots and missing evaluation owner                            |
+| Owner                         | Outstanding implementation or proof                                                                                                                                    |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture index            | End-to-end source-of-truth conformance and complete coverage ledger                                                                                                    |
+| Foundation contracts          | Validated values, compatibility snapshots, versioning and deterministic primitives                                                                                     |
+| Project structure             | Missing owners, both dependency graphs, required project/test topology                                                                                                 |
+| Composition and configuration | Full closed runnable graph, catalog publication/reload, keyed selection, scope ownership, readiness                                                                    |
+| Agent runtime                 | Explicit state transitions, waiter cancellation, recovery identity, settlement outcomes                                                                                |
+| Budgets                       | Replaceable ledger/profile/policy/event contracts, consumer integration, durable accounting and full conformance                                                       |
+| Messages and history          | Immutable/loss-aware values, non-elevation, correlation and shared round-trip conformance                                                                              |
+| Input and output              | Admission, durable promotion, lane routing, fan-out, final publication and channel contracts                                                                           |
+| Structured output             | Complete candidate extraction, validation, repair decisions and conversion conformance                                                                                 |
+| Context                       | Instruction precedence, contributor trust/order, bounded assembly and request manifests                                                                                |
+| Context compaction            | Safe cuts, trustworthy activation evidence, cancellation, cursor/manifest reconciliation                                                                               |
+| Identity                      | Verified normalization/derivation baseline; downstream revalidation, ingress integration and reusable conformance                                                      |
+| Model and embedding providers | All advertised operation/capability mappings, endpoint/account bindings, terminal/error/usage semantics                                                                |
+| Tools                         | Authoritative terminal records, rejection projections, scheduling, retries and focused feature contracts                                                               |
+| Permissions and human control | Policy algebra, grants, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap                                                    |
+| Sessions                      | Lane operations, receipt-before-conflict replay, branch fencing, retention/export/import; missing SQLite backend                                                       |
+| Durable execution             | Missing runtime and explicit backend; journals, codecs, leases, checkpoints, evidence and recovery                                                                     |
+| Memory and retrieval          | Missing runtime/storage ownership; documents/vectors, retrieval provenance, tombstones and purge                                                                       |
+| Goals and delegation          | Durable goals/attempts/intents, joins, communication, parent occupancy and missing hosting worker                                                                      |
+| Hooks and extensions          | Typed point coverage, ordering, mutation validation, failure precedence and timeout quiescence                                                                         |
+| Observability                 | Complete safe signals, reusable assertions, required-sink separation and exporter implementation                                                                       |
+| MCP                           | Supported protocol eras, reflection, transports/lifecycle, capabilities and protected primitive adapters                                                               |
+| File system                   | Full dispositions/bounds/isolation semantics and missing deterministic in-memory backend                                                                               |
+| Network                       | DNS/send authority, connection reuse, redirects/retries, bounded streaming and egress evidence                                                                         |
+| Processes                     | Executable identity, sandbox enforcement, termination certainty, child effects and deterministic backend conformance                                                   |
+| Artifacts                     | External ownership/reference shape, shared classification, event contracts, reference-commit evidence, integrity/retention, finalize/abort races and fenced collection |
+| Testing and evaluation        | Additional reusable contract suites, compatibility snapshots and missing evaluation owner                                                                              |
 
 ## Dependency order
 

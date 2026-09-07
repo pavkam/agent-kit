@@ -18,7 +18,7 @@
 [Oo]bj/
 [Dd]ebug/
 [Rr]elease/
-artifacts/
+/artifacts/
 TestResults/
 *.coverage
 *.coveragexml
