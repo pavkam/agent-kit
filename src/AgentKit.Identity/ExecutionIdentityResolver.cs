@@ -69,6 +69,7 @@ internal sealed class ExecutionIdentityResolver: IExecutionIdentityResolver
             var capturedVersion = candidate.Version;
             foreach (var policy in _normalization.Policies)
             {
+                var previousCandidate = candidate;
                 var result = await policy.NormalizeAsync(new IdentityNormalizationRequest(assertion, candidate), cancellationToken).ConfigureAwait(false);
                 if (result is IdentityNormalizationRejected rejection)
                 {
@@ -76,8 +77,14 @@ internal sealed class ExecutionIdentityResolver: IExecutionIdentityResolver
                 }
 
                 if (result is not IdentityNormalized normalized ||
+                    normalized.Identity.TenantId != previousCandidate.TenantId ||
+                    normalized.Identity.PrincipalId != previousCandidate.PrincipalId ||
+                    normalized.Identity.SubjectKind != previousCandidate.SubjectKind ||
                     normalized.Identity.Evidence != capturedEvidence ||
                     normalized.Identity.Version != capturedVersion ||
+                    !normalized.Identity.DelegationChain.AsSpan().SequenceEqual(previousCandidate.DelegationChain.AsSpan()) ||
+                    normalized.Identity.Assurance > previousCandidate.Assurance ||
+                    normalized.Identity.Claims.Any(claim => !previousCandidate.Claims.Contains(claim)) ||
                     !TryCaptureCandidate(normalized.Identity, assertion.Issuer, descriptor.Version, out candidate))
                 {
                     return Complete(new IdentityRejected(new IdentityFailure(IdentityFailureKind.Unavailable, "A normalization policy returned an unsupported result.", assertion.Issuer)), activity, _logger);

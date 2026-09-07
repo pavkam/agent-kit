@@ -3,12 +3,13 @@
 
 namespace AgentKit;
 
-/// <summary>Applies one deterministically ordered normalization rule to an issuer-mapped candidate.</summary>
+/// <summary>Applies one deterministically ordered narrowing rule to an issuer-mapped candidate.</summary>
+/// <remarks>Each policy may remove claims, lower assurance, or reject the candidate. It must preserve the mapped tenant, principal, subject kind, authentication evidence, identity version, and complete delegation chain. Narrowing is evaluated against the candidate produced by the immediately preceding policy.</remarks>
 public interface IIdentityNormalizationPolicy
 {
-    /// <summary>Normalizes a candidate without broadening its trusted issuer provenance.</summary>
-    /// <param name="request">The assertion and current candidate.</param>
+    /// <summary>Narrows the current candidate without replacing authenticated identity or restoring previously removed claims or assurance.</summary>
+    /// <param name="request">The trusted assertion and current candidate produced by the issuer or preceding policy.</param>
     /// <param name="cancellationToken">Signals that the caller no longer needs normalization.</param>
-    /// <returns>An updated immutable candidate or typed rejection.</returns>
+    /// <returns>An immutable candidate narrowed from the request candidate, or a typed rejection.</returns>
     public ValueTask<IdentityNormalizationResult> NormalizeAsync(IdentityNormalizationRequest request, CancellationToken cancellationToken = default);
 }

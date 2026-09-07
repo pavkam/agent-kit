@@ -119,6 +119,21 @@ version. Admission captures the resulting immutable identity. Later protected
 work uses the applicable live revocation or reauthentication policy rather than
 assuming an earlier validation is permanent authority.
 
+The issuer mapping owns authenticated subject mapping and claim enrichment.
+After it returns, `IIdentityNormalizationPolicy` is a narrowing boundary: each
+stage may remove claims, lower assurance, or reject the candidate. It preserves
+tenant, principal, subject kind, authentication evidence, mapping version, and
+the complete delegation chain. Comparison is against the immediately preceding
+candidate, so a later stage cannot restore a claim or assurance removed by an
+earlier one. Claim renaming, value changes, and changes to issuer provenance are
+new claims, not narrowing. The resolver rejects an invalid policy result before
+validation or admission; it never silently repairs the result into acceptance.
+
+A host that needs enrichment or subject remapping implements it in the trusted,
+versioned issuer mapping. Delegated identities use the separate derivation
+contract. This keeps filtering an authenticated identity distinct from creating
+new authentication or delegation evidence.
+
 The default delegated-identity deriver revalidates parent evidence, preserves
 tenant and principal, retains issuer-provenanced claim subsets, and never raises
 assurance. It preserves the complete parent chain and rejects repeated

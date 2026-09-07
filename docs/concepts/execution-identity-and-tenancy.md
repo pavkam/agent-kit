@@ -46,6 +46,15 @@ An execution identity MUST include:
 Credentials and raw authentication tokens MUST NOT be stored in the identity,
 messages, session history, context manifests, or diagnostics.
 
+The trusted issuer mapping establishes the subject and issuer-provenanced claim
+set. Subsequent normalization policies MUST preserve tenant, principal, subject
+kind, authentication evidence, mapping version, and delegation chain. They MAY
+remove claims, lower assurance, or reject the identity; they MUST NOT enrich
+claims, replace a subject, or restore values removed by an earlier policy. Claim
+enrichment belongs to the versioned issuer mapping and delegation belongs to the
+identity-derivation contract. The resolver validates every policy result against
+the preceding candidate before the identity can enter admission.
+
 ## Propagation and boundaries
 
 The immutable identity is captured when input is admitted or a run begins and
@@ -95,6 +104,10 @@ payloads.
 ## Acceptance scenarios
 
 - A principal name in model output cannot change the run identity.
+- A normalization policy cannot replace the mapped subject or widen claims and
+  assurance, including restoring claims removed by an earlier policy.
+- A policy that only removes claims or lowers assurance preserves the captured
+  evidence and remains a valid normalization step.
 - Two tenants using the same external subject string never share cache or store
   entries.
 - A child run retains its parent delegation chain and cannot gain authority.
