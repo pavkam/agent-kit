@@ -69,6 +69,43 @@ authority before a new effect. Already committed effects remain committed and
 are reconciled from their recorded evidence rather than repeated to obtain a new
 fingerprint.
 
+### Preparation authority and replay identity
+
+Prepare has two distinct comparison boundaries. Its per-attempt grant binds the
+reserved artifact and preparation IDs, immutable artifact version, selected
+profile key and version, authenticated tenant and creating principal, directory,
+complete metadata and content fingerprint/length, and concrete staging creation
+and expiry instants. The backend recomputes this evidence from the actual
+request. Changing any of these fields after authorization requires a new
+decision. The separately carried tenant and creator must equal the authenticated
+identity's tenant and principal; an ownership label cannot impersonate the
+creator.
+
+The coordinator captures all selected profile and lifecycle settings before
+authorization and uses those same values to issue the backend request. Mutation
+of a caller-owned options object or a later configuration publication cannot
+change an already authorized attempt.
+
+Prepare idempotency compares stable intent within the tenant partition: creating
+principal, immutable artifact version, profile key/version, directory, metadata,
+exact content, and staging lifetime policy. For a relative staging lifetime,
+compare the positive duration between creation and expiry, rather than the
+absolute instants. These staging bounds are distinct from the artifact's
+retention expiry, which remains part of the exact metadata.
+
+A retry may generate new reservation IDs and later staging instants. Those
+fields remain bound in its fresh grant but are excluded from stable replay
+matching. An otherwise identical request returns the original preparation
+receipt, IDs, and expiry. It does not create new staging state or extend the
+original lifetime. Changed version, profile, creator, content, or lifetime under
+the same idempotency key returns a typed conflict. Reusing the original grant is
+governed by its authoritative use count; receipt replay never replenishes a use.
+
+Creation must precede staging expiry. Both instants are compared and
+fingerprinted by their UTC value so equivalent offset representations produce
+the same evidence. A longer staging duration is a policy change, not an
+incidental consequence of retrying later.
+
 ## References in durable state
 
 Messages and session records store immutable artifact references, not incidental
