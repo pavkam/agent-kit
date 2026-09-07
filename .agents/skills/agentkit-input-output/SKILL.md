@@ -16,11 +16,11 @@ When changing C#, also read the
 [modern C# rules](../references/modern-csharp.md).
 
 For a coding host, read
-[interactive terminals](../../../docs/concepts/interactive-terminals-and-process-sessions.md)
+[interactive terminals](../../../docs/profiles/coding-harness/interactive-terminals-and-process-sessions.md)
 for PTY fan-out and
-[export, sharing, and control plane](../../../docs/concepts/coding-harness-export-sharing-and-control-plane.md)
+[export, sharing, and control plane](../../../docs/profiles/coding-harness/coding-harness-export-sharing-and-control-plane.md)
 for HTTP/SSE/WebSocket/RPC routing and reconnect semantics. Read
-[frontend and protocol adapters](../../../docs/concepts/coding-harness-frontends-and-protocol-adapters.md)
+[frontend and protocol adapters](../../../docs/profiles/coding-harness/coding-harness-frontends-and-protocol-adapters.md)
 for TUI, IDE, batch, RPC, or ACP-style projection behavior, including
 server-realm identity and projection-incarnation fencing.
 
@@ -42,7 +42,8 @@ server-realm identity and projection-incarnation fencing.
    loss-marker, and failure behavior.
 6. Subscription disposal does not cancel durable work unless the public contract
    explicitly transfers cancellation ownership.
-7. Publish exactly one typed final result through the selected output publisher.
+7. Reject pre-admission failure without a fabricated RunId. Publish one finished
+   result for accepted work, separating semantic outcome and settlement status.
    The loop owns state transitions and settlement; `AgentKit.Output` owns
    extraction, validation, repair decisions, and conversion.
 8. Keep HTTP, console, UI, chat, and worker adapters as protocol translators.
@@ -51,6 +52,11 @@ server-realm identity and projection-incarnation fencing.
 9. Test idempotency conflicts, promotion races, full queues, redelivery, fan-out
    pressure, abandoned consumers, event loss, cancellation, and exactly one
    final result with deterministic scheduling.
+
+Persist the resolved lane on admission and use session-sequence promotion
+cutoffs. Equivalent replay does not consume capacity. Recoverable run-event
+sequences reserve durable ranges before publication; redelivery preserves their
+identity and a new drive never restarts the counter.
 
 Use
 [run lifecycle and settlement](../../../docs/concepts/run-lifecycle-and-settlement.md)

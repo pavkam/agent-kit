@@ -193,6 +193,26 @@ local generators. Exact replay records the randomizer descriptor and the policy
 that consumed it; injecting a deterministic factory does not make an otherwise
 nondeterministic external operation reproducible.
 
+## Time, chronology, and retained versions
+
+UTC timestamps record observations and external deadlines. They are not an
+ordering authority: clock adjustment may put a later observation before an
+earlier one. Session/event sequences and operation transitions establish order.
+Within one process, elapsed durations and timeout scheduling use the injected
+`TimeProvider` monotonic timestamp surface; persisted deadlines carry UTC and a
+captured timeout policy. A restarted owner applies the remaining-deadline and
+clock-skew policy rather than persisting a process-local timestamp counter.
+Lease and grant services decide their own expiry under the consistency domain
+that owns those records; a caller's clock never grants an extension.
+
+Versioned records retain the canonical data needed to interpret or replay their
+references for the advertised recovery/retention window. This may be embedded
+snapshot data or a retained catalog entry; it does not require keeping every old
+service instance alive. Removing a referenced version before pending work can
+settle is invalid. After a supported retention window ends, unavailable history
+or code yields typed incompatibility/unavailability, not substitution of the
+latest behavior or fabricated replay success.
+
 ## Registration helpers
 
 The package's ServiceExtensions file may contain typed helpers for registering

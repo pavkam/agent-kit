@@ -1,9 +1,12 @@
 # Workspace snapshots and reversion
 
-**Status:** Normative coding-harness profile  
+**Status:** Normative application profile
+
+**Scope:** Optional application composition; not a required AgentKit capability.
+
 **Depends on:** [Coding workspaces](coding-workspaces-and-worktrees.md),
-[sessions](sessions-persistence-and-branching.md),
-[artifacts](artifact-and-content-storage.md)
+[sessions](../../concepts/sessions-persistence-and-branching.md),
+[artifacts](../../concepts/artifact-and-content-storage.md)
 
 ## Purpose
 
@@ -127,6 +130,6 @@ revert process, network, provider, or other external effects.
 ## Related specifications
 
 - [Workspace mutations and code editing](workspace-mutations-and-code-editing.md)
-- [Context compaction](context-compaction.md)
-- [Durable execution and recovery](durable-execution-and-recovery.md)
+- [Context compaction](../../concepts/context-compaction.md)
+- [Durable execution and recovery](../../concepts/durable-execution-and-recovery.md)
 - [Coding-harness export, sharing, and control plane](coding-harness-export-sharing-and-control-plane.md)

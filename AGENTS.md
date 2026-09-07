@@ -52,6 +52,13 @@ code being changed and call out any unresolved conflict.
 - Architecture documents use descriptive filenames without numeric ordering
   prefixes. Their relationships belong in links and indexes, not filenames.
 
+## Architecture authority
+
+`docs/architecture` and its linked normative concepts are the design source of
+truth. Implementation, tests, and API snapshots do not override them. Resolve
+conflicting owner/concept requirements together and update acceptance scenarios.
+The architecture index defines document authority and change rules.
+
 ## Architectural invariants
 
 ### Composition
@@ -71,9 +78,23 @@ code being changed and call out any unresolved conflict.
 - An `Agent` is an immutable engine-bound handle over one validated
   `AgentDefinition`. It owns no mutable session or run state and is safe to use
   concurrently.
-- Dependencies point inward: abstractions → nothing concrete; runtime →
-  abstractions; integrations → abstractions and, only when necessary, runtime.
-  Applications are the composition roots.
+- Dependencies point inward: abstractions → nothing concrete; behavioral runtime
+  → abstractions; integrations → abstractions and, when needed, runtime.
+  First-party packages may reference shared exporter-free
+  AgentKit.Observability. Evaluation and goal-worker hosting are application
+  leaves allowed to consume the public facade; no facade/runtime depends on
+  them. Applications compose.
+- New admissions revalidate pinned definitions and profiles. Recovery preserves
+  an open run's identities; work after a settled run receives a new RunId.
+  Caller-wait cancellation is distinct from durable abort. Final results
+  separate semantic outcome from settlement/recovery status.
+- Grant use is consumed once by the effecting boundary with its own enforcement
+  intent. It is not atomic with arbitrary external effects. Security-control
+  persistence uses explicit bounded host bootstrap capabilities and cannot
+  recursively authorize its own grant/audit writes.
+- Started budget reservations with unknown spend survive disposal or process
+  loss until reconciliation. Indivisible batches reserve all dimensions
+  atomically. Storage fencing alone never proves an external effect stopped.
 
 ### Dependency injection
 
@@ -247,6 +268,40 @@ code being changed and call out any unresolved conflict.
   never appends its own session or tool records; callers coordinate reference
   commitment so artifact and session dependencies remain one-way.
 
+### Observability and diagnostics
+
+- Every externally reachable operation and every materially asynchronous
+  internal stage MUST be observable through structured
+  `Microsoft.Extensions.Logging` logs and `System.Diagnostics` instrumentation.
+  Operations with meaningful duration or causality MUST create an `Activity`;
+  bounded aggregate behavior MUST use `Meter` instruments. Point-in-time
+  diagnostics that need neither duration nor aggregation remain structured log
+  events.
+- All first-party packages use the shared `AgentKit` activity source, meter,
+  activity names, metric names, and tag names from `AgentKit.Observability`. Do
+  not create package-local naming dialects or depend on an exporter SDK.
+  Exporters and hosts subscribe through the standard Microsoft diagnostics and
+  logging surfaces.
+- Use source-generated `LoggerMessage` methods with stable, package-owned event
+  IDs and templates. Do not use interpolated log strings. Log categories name
+  the emitting type, and event severity reflects the semantic outcome rather
+  than whether an exception happened to be thrown.
+- Start activities before observable work and set every terminal activity to a
+  truthful success or error status. Preserve parentage through the async call
+  context, record normalized outcome and error attributes, and attach applicable
+  typed domain identities to traces and logs. Never persist `Activity.Current`
+  or treat trace/span identity as semantic state.
+- Logs and spans MAY carry high-cardinality correlation identities; metrics MUST
+  use only bounded dimensions. Prompts, model output, reasoning, tool
+  arguments/results, retrieved content, raw paths, credentials, authorization
+  headers, and secrets are content and MUST NOT be logged or tagged by default.
+  Content capture remains explicit, classified, bounded, policy-controlled, and
+  redacted before export; redaction failure omits content.
+- Instrumentation is observational only. Disabled listeners MUST leave behavior
+  unchanged, logging/exporter failures MUST NOT mutate semantic outcomes, and
+  instrumentation MUST NOT become a control-flow, authorization, persistence, or
+  synchronization dependency.
+
 ### Tools and security
 
 - Separate tool description, discovery, resolution, authorization, execution,
@@ -386,6 +441,10 @@ code being changed and call out any unresolved conflict.
   await boundary, provider error mapping, tool-call correlation, DI replacement,
   queue ordering, hook order and mutation validation, grant scope and
   consumption, and denial before protected effects.
+- Test each new operation's structured log event IDs and safe fields, activity
+  name, parentage, correlation tags, terminal status, and bounded metrics.
+  Verify cancellation and failures, verify that disabled listeners do not alter
+  behavior, and assert that protected content is absent from every signal.
 - Add focused tests for every new or changed argument constraint and every
   documented `<exception>` condition. Assert the exact exception type and
   `ParamName`, exercise boundary values, and prove that validation occurs before
@@ -488,14 +547,18 @@ code being changed and call out any unresolved conflict.
   audit, secondary effects such as parent creation, or an end-to-end protected
   tool-call flow.
 - Use [agentkit-mcp](.agents/skills/agentkit-mcp/SKILL.md) for MCP clients,
-  servers, transports, capability negotiation, primitives, adapters, and
-  protocol lifecycle, including coding-host namespace, instruction, root,
-  catalog-generation, and endpoint-bound OAuth/callback rules.
+  servers, shared reflection contracts, object-in/object-out tool classes,
+  protocol-era/version distinctions, transports, capability negotiation,
+  primitives, adapters, and protocol lifecycle, including coding-host namespace,
+  instruction, root, catalog-generation, and endpoint-bound OAuth/callback
+  rules.
 - Use [agentkit-host-access](.agents/skills/agentkit-host-access/SKILL.md) for
   replaceable file-system, network, or process boundaries and their low-level
   grant enforcement, including explicit write disposition, bounded read/text
   semantics, workspaces, mutations, terminals, language services, and filesystem
-  snapshots; load only affected boundary guidance.
+  snapshots; load only affected boundary guidance. Each host surface has its own
+  normative specification in `docs/concepts/`: file-system access and bounds,
+  network access and egress, and process execution and sandboxing.
 - Use [agentkit-diagnostics](.agents/skills/agentkit-diagnostics/SKILL.md) to
   isolate runtime, composition, protocol, persistence, security, cancellation,
   or concurrency failures before changing behavior.

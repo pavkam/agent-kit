@@ -42,9 +42,48 @@ File-aware tools still follow the
 [normal tool-call lifecycle](../concepts/tool-call-lifecycle.md), while the
 filesystem re-enforces the resulting bounded grant at the lower-level effect.
 
-AgentKit.Tools.Read, AgentKit.Tools.Write, AgentKit.Tools.Skill, and any other
-file-aware package depend only on the file-system abstractions. They do not
-reference AgentKit.FileSystem.
+AgentKit.Tools.Read, AgentKit.Tools.List, AgentKit.Tools.Glob,
+AgentKit.Tools.Search, AgentKit.Tools.Write, AgentKit.Tools.Skill, and any other
+file-aware package depend only on the narrow file-system abstractions they
+consume. They do not reference AgentKit.FileSystem. Directory pages bind their
+continuation to the fingerprint of the complete ordered name snapshot;
+resumption reports a typed snapshot-changed result instead of silently mixing
+two directory versions.
+
+Content search is exposed through `IFileContentSearcher`, not through process
+execution or the broad read/write facade. The default implementation consumes
+one exact `FileSearch` grant before opening the base directory, traverses with
+descriptor-relative no-follow operations, and never consults ambient ignore
+files. Its profile pins ordinal path ordering, simple-glob v1 path selection,
+ordinal literal or .NET non-backtracking content matching, strict UTF-8, binary
+exclusion, and explicit depth, file, byte, match, line-projection, and monotonic
+duration bounds. Each match carries the full-file SHA-256 fingerprint and exact
+line and byte coordinates; partial limit and timeout results remain typed.
+
+Exact text editing uses two narrower capabilities rather than the general text
+writer. `IFileSnapshotReader` observes complete bounded bytes and their SHA-256
+fingerprint under a read grant. `IAtomicFileReplacer` then consumes a separate
+replace grant binding the expected fingerprint, exact final-byte fingerprint,
+mutation identity, target path, and derived same-directory staging path. The
+default adapter serializes cooperative mutations per canonical path, rechecks
+the current bytes, preserves the Unix mode, flushes the staged file, and uses an
+atomic same-directory rename. Denial and version conflict happen before a
+staging file is created; pre-commit cancellation cleans staging, while a
+successful rename is always reported as committed even if cancellation arrives
+afterward.
+
+Multi-file mutation uses `IWorkspacePatchApplier`. Each create, replace, delete,
+or move entry carries its own single-use grant; create and replace grants also
+bind the deterministic same-directory staging resource. The operating-system
+adapter consumes every entry grant before observing host state, rejects
+duplicate paths and mutation identities, locks all affected paths in ordinal
+order, preflights the complete plan, and stages every write before the first
+target-visible effect. Creates and moves use a no-replace rename, replacements
+preserve the existing Unix mode, and no operation creates a missing parent
+directory. A one-entry success is `AtomicCommitted`; a multi-entry success is
+`CommittedWithNonAtomicVisibility`; failure after a committed prefix is
+`Partial` with per-entry settlement. Cancellation before the first commit cleans
+staging and propagates, while later cancellation reports the committed prefix.
 
 The file system does not grant tool authority. A caller first sends the
 canonical operation through the security authority, which determines approved
@@ -305,6 +344,37 @@ Empty and whitespace-only text are valid payloads; missing or null content is
 not. No layer silently trims content, calls a line-oriented writer that adds a
 terminator, or treats an empty string as an absent argument.
 
+## Isolation, visibility, and durability
+
+Capabilities distinguish atomic publication, conditional target-state commit,
+and survival of host/process failure. An atomic rename publishes one directory
+entry; it does not by itself compare a previously observed fingerprint or make
+staged bytes durable. A separate read/hash followed by rename is not a
+compare-and-swap against arbitrary external writers. This distinction follows
+from the replacement semantics of
+[POSIX rename](https://pubs.opengroup.org/onlinepubs/9799919799/functions/rename.html).
+
+Every write profile names its writer-isolation domain. Cooperative path locks
+protect only writers participating in the same coordinator. Conditional writes
+against a workspace with independent writers require a host primitive or an
+exclusive workspace boundary that actually enforces the precondition through
+commit. If that guarantee cannot be provided, the operation returns unsupported
+before mutation. A quiet preflight or a successful staging flush is not proof.
+Create-only, replace-existing, append, multi-file visibility, metadata
+retention, and crash durability each require their own declared capability and
+tests.
+
+Lexical path normalization is pure. Inspecting links, mounts, directory entries,
+metadata, or content is already protected observation and requires a bounded
+observation grant. The final mutation grant binds that observed evidence; the
+leaf revalidates under the enforced isolation boundary. This avoids requiring
+unauthorized filesystem reads merely to construct a security request.
+
+At an exact read-byte ceiling, the reader reports limit/unknown EOF unless it
+has trustworthy snapshot-length evidence. It cannot read an unauthorized extra
+byte merely to distinguish EOF. A full-file hash requires a complete stable byte
+snapshot; a truncated prefix hash is never labeled the file's fingerprint.
+
 ## First-party classes and service dependencies
 
 | Package class                                                                                                                                              | Role and injected dependencies                                                                                                                             |
@@ -360,7 +430,9 @@ contracts, not on tools or `AgentEngine`. Tool packages depend only on the file
 contracts. The implementation canonicalizes again at the effect boundary,
 matches the exact grant audience, operation, principal, target, link evidence,
 and input fingerprint, atomically consumes a use, and emits audit before acting.
-If any check cannot be performed, no operating-system call occurs.
+If any check cannot be performed, the requested effect does not occur.
+Separately authorized observation used to establish the target is not that
+mutation and retains its own evidence.
 
 ## Lifetime, concurrency, and ownership
 
@@ -479,11 +551,15 @@ System.IO, widens a root, follows an unapproved link, or throws
 `NotSupportedException` as normal discovery. Missing, expired, consumed,
 mismatched, or unauditable grants fail closed before host access.
 
+## Related concept specifications
+
+- [File-system access and bounds](../concepts/file-system-access-and-bounds.md)
+- [Permissions, approvals, and trust](../concepts/permissions-approvals-and-trust.md)
+- [Process execution and sandboxing](../concepts/process-execution-and-sandboxing.md)
+- [Tool-call lifecycle](../concepts/tool-call-lifecycle.md)
+
 ## Related architecture
 
 - [Project structure](project-structure.md)
 - [Tools](tools.md)
 - [Permissions and human control](permissions-and-human-control.md)
-- [Coding workspaces and worktrees](../concepts/coding-workspaces-and-worktrees.md)
-- [Workspace mutations and code editing](../concepts/workspace-mutations-and-code-editing.md)
-- [Workspace snapshots and reversion](../concepts/workspace-snapshots-and-reversion.md)

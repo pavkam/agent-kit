@@ -1,6 +1,9 @@
 # Observability and audit
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Observability](../architecture/observability.md)
+
 **Depends on:** [Streaming and events](streaming-and-event-protocol.md),
 [run lifecycle](run-lifecycle-and-settlement.md)
 
@@ -15,8 +18,11 @@ Signals describe the
 [typed streaming and durable event model](streaming-and-event-protocol.md)
 without becoming an alternate source of run state.
 
-AgentKit SHOULD emit OpenTelemetry-compatible traces, metrics, and structured
-logs plus an independent security audit stream.
+AgentKit MUST emit OpenTelemetry-compatible traces and metrics through
+`System.Diagnostics`, structured logs through `Microsoft.Extensions.Logging`,
+and an independent security audit stream. First-party packages MUST use the
+shared instrumentation names and sources owned by `AgentKit.Observability` so a
+host can subscribe once without replacing runtime components.
 
 Traces describe causal work. Metrics aggregate bounded operational facts. Logs
 diagnose exceptional behavior. Audit records permission, approval, tool, memory,
@@ -56,6 +62,12 @@ agent.run
   run.settle
 ```
 
+The agent invocation, model inference, and tool execution boundaries SHOULD use
+the current OpenTelemetry GenAI names and attributes when their semantics match.
+AgentKit-specific inner spans retain the stable names above. Semantic-convention
+drift is handled additively or through a documented compatibility revision; it
+MUST NOT silently rename an existing emitted signal.
+
 Queue admission, compaction, retrieval, permission/approval, provider retry, and
 durable recovery MAY be linked or nested according to actual causality.
 
@@ -85,18 +97,10 @@ Reasoning/thinking content may contain sensitive data and provider-restricted
 material; it follows a separate capture policy. Hashed fingerprints SHOULD use
 keyed or appropriately salted schemes when equality itself is sensitive.
 
-Update checks, installation/update telemetry, product analytics, diagnostics,
-security audit, and model/tool content capture are separate consent and
-retention domains. Each states its default, destination, stable pseudonymous ID
-creation, reset/delete behavior, offline behavior, and exact field allowlist.
-Enabling one never opts into another. A coding harness excludes prompts,
-workspace paths, session IDs, model payloads, tool inputs/results, reasoning,
-and credentials from telemetry by default.
-
-Offline is enforced as network-egress policy across update checks, catalog
-refresh, telemetry, remote resources, packages, providers, and network tools. It
-is not inferred from one skipped version check. Machine-readable adapters send
-diagnostics through protocol frames or stderr and preserve stdout framing.
+Security audit, operational telemetry, and model/tool content capture are
+separate consent and retention domains. Each states its default, destination,
+stable pseudonymous identity behavior, reset/delete behavior, and exact field
+allowlist. Enabling one never opts into another.
 
 ## Audit records
 
@@ -121,19 +125,26 @@ Required sink delivery participates in
 [run settlement](run-lifecycle-and-settlement.md); best-effort export cannot
 mutate the semantic result.
 
-Instrumentation MUST NOT mutate run state. Exporter failure MUST NOT change
-semantic results unless the host explicitly marks an audit sink as required.
-Required sink failure becomes a settlement failure and must be bounded so it
-cannot deadlock shutdown.
+Instrumentation MUST NOT mutate run state. Logging, activity, metric, and
+exporter failures MUST NOT change semantic results. A host-selected required
+semantic or audit sink is a separate commit/settlement participant: its failure
+prevents clean settlement, preserves the terminal semantic outcome, and must be
+bounded so it cannot deadlock shutdown. Final-marker delivery follows the
+[non-recursive settlement barrier](run-lifecycle-and-settlement.md#result-availability).
+
+Every duration-bearing operation MUST set a terminal activity status and a
+normalized outcome attribute on every return path. Logging MUST use
+source-generated `LoggerMessage` methods with stable event IDs and structured
+fields. Metrics MUST exclude tenant, agent, session, run, turn, request,
+message, input, tool-call, goal, path, and operation identities from tags.
 
 Sampling decisions SHOULD preserve failures, permission activity, recovery, and
 limit outcomes even when routine successful runs are sampled.
 
-Snapshot/watch publication uses semantic session sequence, not trace order, to
-prevent observation gaps. Event-producing commits bind their complete immutable
-event batch and emitting invocation context in the continuation that observes
-the commit; a later dispatcher MUST NOT rediscover recipients or parentage from
-mutable global state.
+Event-producing commits bind their complete immutable event batch and emitting
+invocation context in the continuation that observes the commit; a later
+dispatcher MUST NOT rediscover recipients or parentage from mutable global
+state.
 
 ## Metrics
 
@@ -152,14 +163,11 @@ settlement/recovery delay.
 - Permission and approval audit can reconstruct the winning decision safely.
 - Two concurrent invocations through one receiver retain different trace and
   cancellation lineage.
-- Registering a watcher concurrently with a commit yields either the old
-  snapshot plus that event batch or the new snapshot, never neither or both.
-- Enabling update telemetry leaves product analytics and content capture off.
-- Offline policy prevents every configured telemetry destination from sending.
+- Enabling operational telemetry leaves security audit and content capture
+  unchanged.
 
 ## Related specifications
 
 - [Usage limits and budgets](usage-limits-and-budgets.md)
 - [Error taxonomy](error-taxonomy.md)
 - [Testing and evaluation](testing-and-evaluation.md)
-- [Coding harness execution profile](coding-harness-execution-profile.md)

@@ -337,8 +337,10 @@ codec or polling reuse.
 Durability is selected by an agent definition through a `DurabilityProfileKey`.
 Global options are host ceilings; named profiles choose the backend, operation
 allowlist, checkpoints, lease policy, and recovery policy. Per-run overrides may
-request less durability or tighter limits, never a backend or retry mode
-excluded by the selected profile.
+tighten limits but cannot weaken the durability required by accepted work or
+select a backend or retry mode excluded by the profile. An explicitly ephemeral
+new operation is permitted only when the profile advertises that separate mode;
+an existing durable operation never changes mode during recovery.
 
 ```csharp
 namespace AgentKit.Durability;
@@ -558,6 +560,20 @@ A started non-idempotent operation with unknown outcome is not retried. It
 requires reconciliation or operator action. Exactly-once is not achieved by
 adding optimism to a retry loop, darling.
 
+Recovery treats these boundaries independently:
+
+| Last verified durable evidence                                     | Permitted next action                                                 |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| Accepted intent; enforcement not started                           | Reauthorize and start only after proving no prior driver can start it |
+| Grant use consumed or effect may have started; no terminal outcome | Reconcile, use receiver idempotency, or require operator action       |
+| Full terminal outcome recorded; history projection absent          | Reproject and append under the captured policy; never invoke          |
+| Terminal run outcome; settlement/outbox pending                    | Finish required commits and delivery; preserve semantic outcome       |
+| Settled run; later approval or child result arrives                | Append after-run causality and admit new work if authorized           |
+
+Absence of a record is evidence of non-start only when the enforced protocol
+requires that record before every start and the prior owner is fenced out. A
+missing checkpoint in an unavailable or stale store is not such evidence.
+
 ## Determinism and versioning
 
 Replay uses captured configuration and catalog versions plus injected time,
@@ -567,10 +583,22 @@ behavior, or a typed incompatibility result.
 
 ## Distributed ownership
 
-Distributed execution has one authoritative owner per session or operation.
-Leases include expiry, renewal, owner identity, and a monotonically increasing
-fencing token. Durable writes verify the active token so a stale worker cannot
-append after takeover.
+Distributed execution has one authoritative owner for each claimed lane or
+operation scope. Session mutation serialization remains a separate shared
+boundary across lanes. Leases include expiry, renewal, owner identity, and a
+monotonically increasing fencing token. The lease service is authoritative for
+expiry; workers use injected monotonic time for local renewal/deadline handling
+and cannot extend ownership based on their own wall clock. Every durable write
+verifies the active token, so a stale worker cannot append after takeover.
+
+A storage fence does not stop an already-running external process or remote
+request. Safe takeover of an effect requires receiver-enforced fencing,
+receiver-side idempotency, or reconciliation that proves it cannot duplicate
+work. Without such evidence, a successor reconciles or requires operator action;
+it does not invoke again simply because it acquired a newer lease. Required
+budget/grant/journal stores must support the same distributed ownership domain.
+A durable session store paired with process-local grant or budget state is not a
+crash-safe distributed composition.
 
 Wake signals are hints and may be duplicated or lost. Durable admitted input is
 the source of truth. Settlement is complete only when run-owned work is

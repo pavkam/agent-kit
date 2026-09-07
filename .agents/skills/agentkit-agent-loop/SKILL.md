@@ -21,9 +21,10 @@ changing C#, also read the [modern C# rules](../references/modern-csharp.md).
    budgets, hooks, and observation.
 2. Model states and allowed transitions explicitly. Validate each transition and
    produce exactly one terminal outcome followed by exactly one settlement.
-3. Preserve the distinction between generation complete, turn complete, run
-   complete, and run settled. The ordinary high-level operation waits for
-   settlement.
+3. Preserve generation, turn, semantic run completion, and settlement
+   boundaries. The high-level result distinguishes pre-admission rejection from
+   an accepted run and reports settlement/recovery separately from its semantic
+   outcome.
 4. Capture immutable run and turn snapshots. No ambient current agent, service
    locator, or mutable engine-wide run state may influence execution.
 5. Ask collaborators to perform their policy decisions; do not reimplement them
@@ -34,8 +35,10 @@ changing C#, also read the [modern C# rules](../references/modern-csharp.md).
    failure remain distinct outcomes.
 7. Reserve through the run budget before concurrent work. Budget policy belongs
    to `AgentKit.Budgets`; the loop responds to its typed decisions.
-8. Record cancellation source, stop new work, propagate cancellation, and drain
-   only what settlement requires. Never retry uncertain effects generically.
+8. Distinguish caller-wait cancellation from durable abort. Stop new effects on
+   operation cancellation; required terminal writes use an independent bounded
+   settlement token. Recovery preserves open-run IDs; settled work never
+   reopens. Never retry uncertain effects generically.
 9. Test every transition, continuation and stop branch, cancellation boundary,
    collaborator failure, partial attempt, and settlement path with deterministic
    clocks, identities, and scripted collaborators.

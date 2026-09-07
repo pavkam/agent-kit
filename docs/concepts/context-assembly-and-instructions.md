@@ -1,6 +1,9 @@
 # Context assembly and instructions
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Context](../architecture/context.md)
+
 **Depends on:** [History validation](history-validation-and-repair.md),
 [model capabilities](model-providers-and-capabilities.md),
 [memory and retrieval](memory-retrieval-and-storage.md)
@@ -51,11 +54,19 @@ and already selected session coordinator; neither component rediscovers services
 from a container. Without that capability, mandatory overflow returns
 `ContextLimitExceeded`.
 
+When assembly triggers configured compaction, that is an explicit nested
+operation with its own identity, authorization, budget, and terminal result.
+After activation, the assembler reloads the committed cursor and rebuilds its
+manifest. Cancelling assembly discards the candidate request but MUST NOT erase
+an activated compaction or its usage. Without activation, source history stays
+unchanged. The compactor never calls back into assembly.
+
 ## Instruction sources
 
 Instructions MUST retain source, trust, priority, and scope. Typical classes are
-framework safety, host policy, agent definition, capability/middleware, project
-or workspace guidance, run override, and generated next-turn instruction.
+framework safety, host policy, agent definition, capability/middleware,
+application resource guidance, run override, and generated next-turn
+instruction.
 
 Concatenation and replacement MUST be explicit per source. Higher precedence
 does not let untrusted retrieved or tool-return text become instructions.
@@ -68,7 +79,7 @@ cancellation token; failures are typed context-preparation failures.
 ## Context epoch
 
 The runtime SHOULD model a context epoch: a baseline set of instructions,
-workspace state, and history/event cursor used by subsequent turns.
+application resource state, and history/event cursor used by subsequent turns.
 
 An additive context change MAY append a visible context-update record. A
 replacement that would contradict the historical prefix SHOULD wait for a

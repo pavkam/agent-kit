@@ -15,10 +15,10 @@ When changing C#, also read the
 [modern C# rules](../references/modern-csharp.md).
 
 For a coding host, read the focused profile when artifacts hold
-[truncated tool output](../../../docs/concepts/coding-harness-built-in-tools.md),
-[workspace snapshots](../../../docs/concepts/workspace-snapshots-and-reversion.md),
+[truncated tool output](../../../docs/profiles/coding-harness/coding-harness-built-in-tools.md),
+[workspace snapshots](../../../docs/profiles/coding-harness/workspace-snapshots-and-reversion.md),
 or
-[session exports/shares](../../../docs/concepts/coding-harness-export-sharing-and-control-plane.md).
+[session exports/shares](../../../docs/profiles/coding-harness/coding-harness-export-sharing-and-control-plane.md).
 
 ## Boundary
 
@@ -37,6 +37,11 @@ or
   network boundary; every real backend revalidates its bounded grant.
 - Define stream ownership, orphan reconciliation, tombstones, external
   ownership, and deletion semantics instead of pretending cross-store atomicity.
+
+Reference commitment uses a caller-owned durable intent and a pin/retention
+fence. Timer expiry alone cannot prove an orphan or authorize garbage collection
+that races a late reference commit. Finalize and abort have one conditional
+winner; artifact storage never calls back into the referencing coordinator.
 
 Use the specification's acceptance scenarios for focused tests, then run the
 artifact store's shared conformance suite and DI replacement checks.

@@ -1,9 +1,12 @@
 # Permissions, approvals, and trust
 
-**Status:** Normative security boundary  
+**Status:** Normative security boundary
+
+**Architecture:**
+[Security and human control](../architecture/permissions-and-human-control.md)
+
 **Depends on:** [Architecture](architecture-and-dependency-boundaries.md),
-[history validation](history-validation-and-repair.md),
-[hooks](extensions-hooks-and-middleware.md)
+[history validation](history-validation-and-repair.md)
 
 ## Purpose
 
@@ -70,6 +73,14 @@ display strings.
 Policy MAY approve some requests automatically. Emitting a security request does
 not mean every operation interrupts a human.
 
+The
+[policy decision algebra](../architecture/permissions-and-human-control.md#policy-decision-algebra-and-revocation)
+requires an explicit bounded permit or approval-conditioned permit. Applicable
+denials dominate, constraints intersect, and every required approval must be
+satisfied. All-abstain denies. The terminal fail-closed policy applies only when
+no decision permits the request; it is not a blanket veto of configured allows.
+Retained policy snapshots do not bypass current grant/approval revocation.
+
 ## Security grants
 
 A grant MUST bind:
@@ -89,9 +100,24 @@ operation. A higher-level component may not treat an allow decision as authority
 for a different lower-level request. File-system, network, and process
 implementations MUST enforce the derived scope again.
 
-Single-use grants MUST be consumed atomically with durable operation recording.
-Concurrent requests cannot spend the same use twice. Expiry or revocation stops
-future use but does not rewrite completed effects.
+Single-use grants MUST be consumed atomically with an enforcement-intent receipt
+inside the grant store's consistency boundary. The receipt identifies the exact
+attempt, fingerprint, audience, use, and fence where required. Concurrent
+requests cannot spend the same use twice. The external effect and its terminal
+record are separate commit boundaries unless an adapter explicitly proves a
+shared transaction. A consumed use with no terminal record is unknown, not proof
+of success or permission to retry. Expiry or revocation stops future use but
+does not rewrite completed effects.
+
+Only the effecting boundary consumes the use. An orchestrating coordinator may
+validate and forward it; it MUST NOT consume it a second time. Each separate
+lower-boundary effect receives a distinct grant.
+
+The authority's own persistence and audit infrastructure follow the
+[trusted bootstrap contract](../architecture/permissions-and-human-control.md#trusted-infrastructure-and-the-security-dependency-graph).
+They MUST NOT recursively authorize the storage of their own grant or audit
+decision. The host supplies fixed, bounded infrastructure capabilities that
+ordinary requests cannot select or reuse. Bootstrap failure fails closed.
 
 Every authorization context captures one immutable scope: typed agent, optional
 session, and operation correlation. Requests, approvals, grants, caches, and

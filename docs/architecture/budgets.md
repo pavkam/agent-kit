@@ -124,12 +124,31 @@ public sealed record BudgetReserved(IBudgetReservation Reservation)
 public sealed record BudgetRejected(BudgetLimitFailure Failure)
     : BudgetReservationResult;
 
+public abstract record BudgetStartResult;
+
+public sealed record BudgetStarted : BudgetStartResult;
+
+public sealed record BudgetStartRejected(BudgetLimitFailure Failure)
+    : BudgetStartResult;
+
+public abstract record BudgetBatchReservationResult;
+
+public sealed record BudgetBatchReserved(
+    ImmutableArray<IBudgetReservation> Reservations)
+    : BudgetBatchReservationResult;
+
+public sealed record BudgetBatchRejected(BudgetLimitFailure Failure)
+    : BudgetBatchReservationResult;
+
 public interface IBudgetReservation : IAsyncDisposable
 {
     BudgetReservationId Id { get; }
     BudgetScopeId ScopeId { get; }
     BudgetDimension Dimension { get; }
     decimal Reserved { get; }
+
+    ValueTask<BudgetStartResult> MarkStartedAsync(
+        CancellationToken cancellationToken = default);
 
     ValueTask<BudgetCommitResult> CommitAsync(
         decimal actual,
@@ -143,6 +162,10 @@ public interface IBudgetScope
 
     ValueTask<BudgetReservationResult> ReserveAsync(
         BudgetReservationRequest request,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<BudgetBatchReservationResult> ReserveBatchAsync(
+        ImmutableArray<BudgetReservationRequest> requests,
         CancellationToken cancellationToken = default);
 
     ValueTask<BudgetSnapshot> GetSnapshotAsync(
@@ -173,19 +196,52 @@ public interface IBudgetDimensionCatalog
 }
 ```
 
-Disposing an uncommitted reservation releases it exactly once. Committing
-records actual usage and releases any excess; an actual value above the
-reservation follows the configured overrun policy and never silently makes a
-hard limit negative. Provider corrections identify the original request so they
-replace provisional accounting rather than double-count it.
+Disposal releases an unstarted reservation exactly once. Immediately before
+starting charged work, its owner calls `MarkStartedAsync`; failure starts no
+work. A started reservation is committed with known actual usage or retained as
+unresolved accounting. Disposal, timeout, lease expiry, and process loss do not
+refund possibly consumed work. Reconciliation releases it only with evidence of
+non-consumption, records an explicitly estimated charge, or keeps it unresolved
+under the captured bounded reconciliation policy. A live concurrency gauge is
+released only when work stops or its ownership and capacity are transferred.
+
+Committing records actual usage and releases only proven excess. An actual value
+above the reservation remains fully recorded, marks the hard ceiling exceeded,
+sets available capacity to zero, and stops new work; it is never clamped to the
+reservation or rejected as though the consumption did not occur. Corrections
+identify the original attempt and adjustment revision. They replace provisional
+accounting without double-counting and may reduce a measured aggregate; the
+ledger sequence, rather than every numeric total, is monotonic.
+
+`ReserveBatchAsync` atomically reserves all requested dimensions across all
+enforced ancestors or reserves none. Requests must be initialized, nonempty,
+finite, compatible in units, and share the scope and logical operation; item
+idempotency keys must be unique. An equivalent replay returns the same
+reservations, while changed content is a conflict. This is the tool batch
+preflight boundary: independent `ReserveAsync` calls cannot prove all-or-none
+admission. A consumer must not begin any effect before batch acceptance.
+
+The ledger binds each item key to the full ordered batch fingerprint and returns
+reservations in request order. Reusing a batch item in a different batch or an
+independent reservation is a conflict; replay cannot splice an old reservation
+into newly admitted work. All batch members name the batch operation, while the
+owning executor records their assignment to individual calls separately.
+
+Each charged dimension has one reservation owner. The loop owns turn admission;
+the provider executor owns individual provider attempts; the tool executor owns
+batch and per-call reservations. Passing a reservation to child work transfers
+its use or subdivides its capacity explicitly, rather than charging the same
+work again. A child scope attenuates the parent's capacity; it does not copy a
+fresh allowance.
 
 `BudgetExecutionCapability` is an invocation-only binding to the exact profile,
 identity, operation correlation, and scope selected for one operation. It is
 never serialized or retained by a consumer. Provider, tool, retrieval, output,
 and delegation operations accept this capability explicitly, validate that its
 scope address agrees with their request, reserve before each attempt, and commit
-or release before returning. Out-of-run work receives a child operation scope
-from `IBudgetAuthority`; it never fabricates an `IRunBudget`.
+or durably transfer unresolved accounting before returning. Out-of-run work
+receives a child operation scope from `IBudgetAuthority`; it never fabricates an
+`IRunBudget`.
 
 ```csharp
 namespace AgentKit;
@@ -392,10 +448,10 @@ replacement API names that exact axis.
 
 ## Dependency direction and cycle prevention
 
-AgentKit.Budgets depends only on AgentKit.Abstractions. It does not depend on
-the loop, providers, tools, goals, context, sessions, or evaluation. Those
-consumers receive `IBudgetScope` or `IRunBudget` through their operation context
-or the compiled run plan.
+AgentKit.Budgets depends on AgentKit.Abstractions and shared diagnostic
+infrastructure. It does not depend on the loop, providers, tools, goals,
+context, sessions, or evaluation. Those consumers receive `IBudgetScope` or
+`IRunBudget` through their operation context or the compiled run plan.
 
 Budget events are immutable observations. A budget sink cannot call back into
 the authority during delivery. Hooks may tighten a proposed amount before the

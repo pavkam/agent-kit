@@ -1,12 +1,15 @@
 # Coding harness execution profile
 
-**Status:** Normative integration profile  
-**Depends on:** [Agent loop](agent-loop-state-machine.md),
-[sessions](sessions-persistence-and-branching.md),
-[input admission](input-admission-and-message-queues.md),
-[provider requests](provider-request-pipeline.md),
-[tools](tool-call-lifecycle.md), and
-[durable execution](durable-execution-and-recovery.md)
+**Status:** Normative application profile
+
+**Scope:** Optional application composition; not a required AgentKit capability.
+
+**Depends on:** [Agent loop](../../concepts/agent-loop-state-machine.md),
+[sessions](../../concepts/sessions-persistence-and-branching.md),
+[input admission](../../concepts/input-admission-and-message-queues.md),
+[provider requests](../../concepts/provider-request-pipeline.md),
+[tools](../../concepts/tool-call-lifecycle.md), and
+[durable execution](../../concepts/durable-execution-and-recovery.md)
 
 ## Purpose
 
@@ -359,6 +362,20 @@ Manual compaction and branch navigation are structural operations with their own
 generation occurs outside the mutation line; activation rechecks the source tip
 and version. Navigating away from unsummarized work may create a branch summary,
 but moving a branch never claims to reverse external effects.
+
+Session discovery is a bounded projection; authoritative open validates the
+complete record. Human-friendly ID prefixes resolve only within the authorized
+scope: exact matches win, ambiguous prefixes fail, and lookup order never picks
+the first candidate. Opening a session under another workspace is an explicit
+authorized rebind, fork, or handoff.
+
+A navigation result records the old and new tip, any editor payload restored
+from a selected application entry, summary identity and usage, and the fact that
+earlier external effects remain. Labels and bookmarks are metadata entries;
+changing or rebuilding them cannot move the semantic branch tip or break
+ancestry. Destructive removal uses the host's recoverable archive or trash
+operation when one is available and always names the exact authorized session
+and workspace.
 
 ## Cancellation, abort, close, and fault
 
@@ -735,13 +752,13 @@ caution, never a proven distributed contract.
 - Resource loading, extension execution, and every host effect preserve trust,
   authorization, provenance, and teardown rules.
 - Every selected provider profile supplies the behaviors required by
-  [coding-harness provider profiles](../providers/coding-harness-provider-profiles.md).
+  [coding-harness provider profiles](provider-interoperability.md).
 
 ## Related specifications
 
-- [Agent definition and run context](agent-definition-and-run-context.md)
-- [Run lifecycle and settlement](run-lifecycle-and-settlement.md)
-- [Streaming and event protocol](streaming-and-event-protocol.md)
-- [Configuration and overrides](configuration-and-overrides.md)
-- [Extensions, hooks, and middleware](extensions-hooks-and-middleware.md)
-- [Testing and evaluation](testing-and-evaluation.md)
+- [Agent definition and run context](../../concepts/agent-definition-and-run-context.md)
+- [Run lifecycle and settlement](../../concepts/run-lifecycle-and-settlement.md)
+- [Streaming and event protocol](../../concepts/streaming-and-event-protocol.md)
+- [Configuration and overrides](../../concepts/configuration-and-overrides.md)
+- [Extensions, hooks, and middleware](../../concepts/extensions-hooks-and-middleware.md)
+- [Testing and evaluation](../../concepts/testing-and-evaluation.md)

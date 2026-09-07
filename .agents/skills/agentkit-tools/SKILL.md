@@ -17,11 +17,11 @@ and [result rules](../../../docs/concepts/tool-errors-retries-and-results.md).
 When changing C#, read the [modern C# rules](../references/modern-csharp.md).
 
 For coding-host built-ins read the
-[coding-harness tool profile](../../../docs/concepts/coding-harness-built-in-tools.md).
+[coding-harness tool profile](../../../docs/profiles/coding-harness/coding-harness-built-in-tools.md).
 Also read
-[workspace mutations](../../../docs/concepts/workspace-mutations-and-code-editing.md)
+[workspace mutations](../../../docs/profiles/coding-harness/workspace-mutations-and-code-editing.md)
 for edit/write/patch behavior or
-[language services](../../../docs/concepts/language-services-formatters-and-watchers.md)
+[language services](../../../docs/profiles/coding-harness/language-services-formatters-and-watchers.md)
 for LSP, formatter, and code-action tools.
 
 When work spans protected execution end to end, also use

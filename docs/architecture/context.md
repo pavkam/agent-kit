@@ -5,7 +5,9 @@
 [Working context is derived state](../concepts/context-assembly-and-instructions.md).
 It combines the durable conversation with instructions, skills, tools,
 retrieval, goals, output requirements, and runtime facts. It is not the session
-record, and assembling it does not mutate durable history.
+record. Ordinary assembly does not append history; when enabled, compaction runs
+as a separately identified and authorized sub-operation and may append an
+activation through its session capability.
 
 AgentKit.Context contains the first-party context assembler and ordered
 contributor pipeline. The context contracts and candidate values live in
@@ -293,16 +295,16 @@ The body is intentionally omitted from this constructor/dependency shape; its
 observable members are exactly the `IContextAssembler` contract above. It does
 not expose its contributors or an ambient service provider.
 
-The default class depends only on `AgentKit.Abstractions`. The package-internal
-keyed registration factory compiles the selected assembler key into one
-`ContextAssemblerServices` bundle inside the run scope. When the immutable agent
-definition selects compaction, that bundle contains exactly one
-`ContextCompactionCapability` with the keyed compactor and the already selected
-session and budget execution capabilities. When compaction is not selected, the
-value is `null`; mandatory overflow fails with the typed context-limit outcome.
-The capability is invocation-only, is never serialized or cached, and prevents
-the compactor from rediscovering a session coordinator or capturing a bare run
-budget.
+The default class consumes neutral contracts and shared diagnostic
+infrastructure. The package-internal keyed registration factory compiles the
+selected assembler key into one `ContextAssemblerServices` bundle inside the run
+scope. When the immutable agent definition selects compaction, that bundle
+contains exactly one `ContextCompactionCapability` with the keyed compactor and
+the already selected session and budget execution capabilities. When compaction
+is not selected, the value is `null`; mandatory overflow fails with the typed
+context-limit outcome. The capability is invocation-only, is never serialized or
+cached, and prevents the compactor from rediscovering a session coordinator or
+capturing a bare run budget.
 
 The class cannot resolve an optional retriever, memory store, tool catalog, or
 compactor from `IServiceProvider`, and Microsoft DI is never expected to
@@ -441,8 +443,12 @@ unsafe cache scopes, missing optional-feature collaborators, and model/output
 capability compatibility. Mandatory-content overflow, invalid history,
 unauthorized retrieval, contributor failure, non-reducing compaction, and
 unsupported translation produce typed `ContextPreparationFailure` outcomes
-before provider I/O. Cancellation discards the candidate view and leaves durable
-history unchanged.
+before the main provider request. Cancellation discards an unpublished candidate
+view. It cannot roll back an already activated compaction or erase separately
+recorded summary-generation usage. After successful activation, assembly loads
+the returned committed cursor and rebuilds its manifest before returning a
+provider-ready request; it cannot combine a pre-activation cursor with a newly
+activated summary.
 
 ## Related concept specifications
 

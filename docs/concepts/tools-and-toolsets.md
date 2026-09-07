@@ -1,6 +1,9 @@
 # Tools and toolsets
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Tools](../architecture/tools.md)
+
 **Depends on:** [Architecture](architecture-and-dependency-boundaries.md),
 [model capabilities](model-providers-and-capabilities.md)
 
@@ -126,17 +129,17 @@ server-side web search as a locally authorized function call.
 
 ## First-party file tools
 
-The first-party file tools are separate feature packages: `AgentKit.Tools.Read`
-owns the model-facing read descriptor, line-window projection, continuation
-provenance, and registration; `AgentKit.Tools.Write` owns the write descriptor,
-explicit disposition, text-payload projection, and registration. Both depend on
-narrow file-system abstractions. Neither owns host path resolution, byte
+First-party file tools are separate feature packages. Observation uses
+`AgentKit.Tools.Read`, `.List`, `.Glob`, and `.Search`; mutation uses
+`AgentKit.Tools.Write`, `.Edit`, and `.Patch`. Each owns only its descriptor,
+model-facing projection, options, and registration and depends on the narrow
+file-system abstractions it consumes. None owns host path resolution, byte
 enforcement, or operating-system I/O.
 
-A convenience registration MAY install both packages, but a combined
+A convenience registration MAY install several packages, but a combined
 `AgentKit.Tools.FileSystem` package is not the normative ownership boundary.
-Read-only agents MUST be able to select the read tool without receiving a writer
-or a mutating descriptor.
+Read-only agents MUST be able to select observation tools without receiving a
+writer or another mutating descriptor.
 
 Read ranges are a model-facing concern. The read tool defines one-based logical
 line offsets, a positive finite line limit, EOF and trailing-newline behavior,
@@ -159,6 +162,8 @@ declared and authorized effect.
 - Untrusted remote annotations cannot lower effect class or grant approval.
 - Combining toolsets produces stable order and collision diagnostics.
 - Selecting only `AgentKit.Tools.Read` does not resolve or authorize a writer.
+- Selecting list, glob, or search does not implicitly grant read, process, or
+  mutation authority.
 - A missing write disposition fails validation instead of defaulting to
   destructive replacement.
 

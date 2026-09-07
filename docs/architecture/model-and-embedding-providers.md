@@ -173,6 +173,13 @@ hosted retrieval also remain explicit capabilities. AgentKit does not pretend
 that installing a vendor package turns every endpoint in that vendor's control
 plane into part of the conversational model contract.
 
+Provider-backed web search follows that independent-operation rule through
+`IWebSearchProvider`. It is not an optional method on `ILlmModel` and does not
+inherit a conversational model's endpoint or credential by registration order.
+The selected operation exposes a stable provider identity, exact secret-free
+destination, and effecting security audience; its leaf adapter owns credentials,
+wire behavior, one-attempt execution, and exact egress-grant consumption.
+
 ## Normative minimal identity and catalog shape
 
 The following C# shapes are normative and minimal rather than exhaustive. Every
@@ -609,7 +616,7 @@ Provider-specific counters that do not fit these portable fields remain in
 ```csharp
 namespace AgentKit;
 
-public sealed record ChatModelRequest(
+public sealed record LlmModelRequest(
     ProtectedSemanticOperationContext Operation,
     ModelRequestContext Context,
     int Attempt,
@@ -714,12 +721,12 @@ public sealed record ModelAttemptCancelled(
     ImmutableArray<ContentPart> PartialParts,
     ModelUsage? Usage) : ModelAttemptResult;
 
-public interface IChatModel
+public interface ILlmModel
 {
     ModelAlias Alias { get; }
 
     Task<ModelAttemptResult> ExecuteAsync(
-        ChatModelRequest request,
+        LlmModelRequest request,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default);
 }
@@ -800,10 +807,11 @@ cancellation terminal and its returned result use a `ProviderFailure` whose kind
 is `Cancellation`; all other failures use `ModelResponseFailed` and
 `ModelAttemptFailed`.
 
-Only `ModelResponseCompleted` carries the committed `ModelResponse` aggregate.
-Its ordered parts must equal the completed part events and its usage must equal
-the last usage event, or a final provider usage report that arrived only with
-the terminal response. When the provider reports no usage, the aggregate carries
+Only `ModelResponseCompleted` carries the validated terminal `ModelResponse`
+aggregate. This is still a candidate until the session commit succeeds. Its
+ordered parts must equal the completed part events and its usage must equal the
+last usage event, or a final provider usage report that arrived only with the
+terminal response. When the provider reports no usage, the aggregate carries
 `ModelUsage.NotReported` and no usage event is synthesized. Failure and
 cancellation terminals preserve every bounded partial part and the last known
 usage without presenting them as a successful response. The returned
@@ -824,6 +832,13 @@ configured selector, asks the context assembler to rebuild against the newly
 selected descriptor, and starts a new observable execution request. This keeps
 selection pipeline-owned and prevents provider runtime from reusing stale
 model-specific context.
+
+A terminal observer failure does not permit a second provider terminal. Once a
+validated terminal aggregate is known, the adapter returns that same outcome and
+the owning publisher records delivery failure separately. Before terminal, an
+observer failure may stop the attempt with truthful partial and usage evidence.
+No retry follows merely because terminal delivery acknowledgement was lost; the
+runtime reconciles publication and preserves the provider's known outcome.
 
 ## Embedding and reranking contracts
 
@@ -1147,7 +1162,7 @@ internal sealed class DefaultModelSelector(
 
 internal sealed class DefaultModelRequestExecutor(
     IModelCapabilityValidator capabilityValidator,
-    IEnumerable<IChatModel> chatModels,
+    IEnumerable<ILlmModel> llmModels,
     IProviderRetryPolicy retryPolicy,
     IHookDispatcher hookDispatcher,
     TimeProvider timeProvider,
@@ -1231,12 +1246,11 @@ actual usage exactly once, and dispatch the invocation's hook context through
 semantic operations may execute outside an agent run.
 
 `DefaultModelRequestExecutor` maps a selected alias to exactly one injected
-`IChatModel`, validates the request's exact `BudgetExecutionCapability`,
-reserves before each attempt, and revalidates descriptor, history affinity,
-deadline, and capability before each same-model attempt. It does not capture an
-`IRunBudget`. It may retry only under the configured provider policy and never
-after visible output unless a new, observable repaired request is started by the
-loop.
+`ILlmModel`, validates the request's exact `BudgetExecutionCapability`, reserves
+before each attempt, and revalidates descriptor, history affinity, deadline, and
+capability before each same-model attempt. It does not capture an `IRunBudget`.
+It may retry only under the configured provider policy and never after visible
+output unless a new, observable repaired request is started by the loop.
 
 ## Justified protocol-family base classes
 
@@ -1247,7 +1261,7 @@ behavior. The dependency shape remains explicit:
 ```csharp
 namespace AgentKit.Providers.OpenAICompatible;
 
-public abstract class OpenAICompatibleChatModelBase(
+public abstract class OpenAICompatibleLlmModelBase(
     ModelAlias alias,
     OpenAICompatibilityProfile profile,
     IOpenAIRequestTranslator translator,
@@ -1257,12 +1271,12 @@ public abstract class OpenAICompatibleChatModelBase(
     ISecurityGrantStore grants,
     INetworkTransport networkTransport,
     IHookDispatcher hookDispatcher,
-    TimeProvider timeProvider) : IChatModel
+    TimeProvider timeProvider) : ILlmModel
 {
     public ModelAlias Alias { get; } = alias;
 
     public abstract Task<ModelAttemptResult> ExecuteAsync(
-        ChatModelRequest request,
+        LlmModelRequest request,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default);
 }
@@ -1278,7 +1292,7 @@ snapshots and exact credential source; the adapter never resolves an unkeyed
 helper may handle opaque secret material and expiry mechanically, but the
 branded package declares which schemes it supports and owns audience, scope,
 account, refresh, and header policy. The base cannot broaden the profile or
-become a provider identity. Native adapters and direct `IChatModel`
+become a provider identity. Native adapters and direct `ILlmModel`
 implementations remain first-class; inheritance is never the only extension
 path.
 
@@ -1291,10 +1305,12 @@ and pass it to the selected credential source. The source validates the grant
 immediately before releasing one opaque, disposable credential lease. The
 adapter then obtains and atomically consumes a distinct provider-egress grant
 bound to the destination, classified payload, model revision, and attempt
-fingerprint, and asks `INetworkTransport` to obtain and enforce its own
-lower-boundary network grant. An adapter never injects an unkeyed authority,
-reuses a grant for another boundary or retry, exposes raw credential material,
-or treats the semantic-operation context as authority.
+fingerprint, and obtains separate resolution and send grants for the narrow
+network boundaries. `INetworkNameResolver` and `INetworkTransport` consume their
+supplied grants; the transport never obtains implicit authority for the adapter.
+An adapter never injects an unkeyed authority, reuses a grant for another
+boundary or retry, exposes raw credential material, or treats the
+semantic-operation context as authority.
 
 ## DI registration and replacement semantics
 
@@ -1426,13 +1442,13 @@ public static class ServiceExtensions
                 services,
                 key);
 
-        public IServiceCollection AddChatModel<TModel>(ModelAlias alias)
-            where TModel : class, IChatModel =>
-            AgentProviderRegistration.AddChatModel<TModel>(services, alias);
+        public IServiceCollection AddLlmModel<TModel>(ModelAlias alias)
+            where TModel : class, ILlmModel =>
+            AgentProviderRegistration.AddLlmModel<TModel>(services, alias);
 
-        public IServiceCollection ReplaceChatModel<TModel>(ModelAlias alias)
-            where TModel : class, IChatModel =>
-            AgentProviderRegistration.ReplaceChatModel<TModel>(services, alias);
+        public IServiceCollection ReplaceLlmModel<TModel>(ModelAlias alias)
+            where TModel : class, ILlmModel =>
+            AgentProviderRegistration.ReplaceLlmModel<TModel>(services, alias);
 
         public IServiceCollection AddEmbeddingModel<TModel>(
             EmbeddingModelAlias alias)
@@ -1595,6 +1611,5 @@ wall-clock sleeps.
 - [Model providers and capabilities](../concepts/model-providers-and-capabilities.md)
 - [Provider request pipeline](../concepts/provider-request-pipeline.md)
 - [Provider research](../providers/index.md)
-- [Coding-harness provider profiles](../providers/coding-harness-provider-profiles.md)
 - [Semantic operations](../providers/semantic-operations.md)
 - [Project structure](project-structure.md)

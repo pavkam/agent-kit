@@ -51,6 +51,11 @@ When changing C#, also read the
 - Hooks do not own telemetry. They emit bounded diagnostics through
   observability contracts, whose sinks remain immutable observers.
 
+Timeout does not prove an in-process hook stopped. Do not restore shared event
+arguments and continue while timed-out code can still mutate them. Drain to
+quiescence or fail with explicit ownership; hard isolation requires a host
+execution boundary.
+
 Use the specification's acceptance scenarios to cover stage identity, typed
 third-party points, ordering, invalid mutation, scope isolation, reentrancy,
 unwind, failure-policy monotonicity, isolation rollback, and security limits.

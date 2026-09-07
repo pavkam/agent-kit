@@ -2,6 +2,8 @@
 
 **Status:** Normative foundation
 
+**Architecture:** [Architecture index](../architecture/index.md)
+
 ## Purpose
 
 The [architecture index](../architecture/index.md) maps these principles to

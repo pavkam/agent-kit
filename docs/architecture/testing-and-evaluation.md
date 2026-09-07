@@ -30,11 +30,15 @@ the developer's real filesystem. They use the in-memory file-system and network
 packages plus scripted processes.
 
 Composition tests validate both dependency graphs. The project gate rejects a
-runtime-to-runtime or runtime-to-integration reference that violates the ranked
-package DAG. AgentKit.Tests builds closed service graphs containing direct,
-keyed, additive, optional, factory-created, and mixed-lifetime registrations. It
-proves that every cycle reports its complete path and that `Lazy<T>`, `Func<T>`,
-nested scopes, and opaque factories cannot hide a reverse edge.
+behavioral runtime-to-runtime or runtime-to-integration reference that violates
+the ranked package DAG. It explicitly permits shared diagnostic infrastructure
+and application leaves driving the facade. AgentKit.Tests builds closed service
+graphs containing direct, keyed, additive, optional, factory-created, and
+mixed-lifetime registrations. It proves that every declared cycle reports its
+complete path. Undeclared factory dependencies are rejected rather than treated
+as verified; `Lazy<T>`, `Func<T>`, or nested scopes do not excuse a declared
+reverse edge. Tests cannot prove what arbitrary executable callbacks will do;
+review and conformance enforce their declared boundaries.
 
 Regression fixtures cover the dangerous seams explicitly: session/security
 stores never call session coordination, output processors never call provider
@@ -42,6 +46,39 @@ execution, compaction summary generators never call context assembly, artifact
 stores never append session/tool records, identity resolvers never depend on
 downstream authorization, and observation sinks never become control
 dependencies.
+
+## Cross-component acceptance matrix
+
+These scenarios are contract gates. A unit test of either happy-path component
+alone is insufficient; each fixture composes deterministic alternatives across
+the named boundary and injects failure at the commit or ownership transition.
+
+| Boundary                            | Required evidence                                                                                                                                          |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Definition reload and activation    | Conflicting same-revision content is rejected; a removed definition cannot run through an old handle; retained open work can reconcile                     |
+| Build and external readiness        | Synchronous build performs no network or secret access; unavailable runtime services fail at their declared operation boundary                             |
+| Lane admission and promotion        | Cross-lane inputs never mix; idempotent replay succeeds when the queue is full; promotion and history commit once                                          |
+| Session idempotency and concurrency | A committed append replay returns its original receipt before version-conflict evaluation; stale operations cannot commit to successor branches            |
+| Cancellation and settlement         | Cancelling one waiter leaves accepted work active; required writes use independent bounded cancellation; recovery-required is distinct from clean success  |
+| Event publication and recovery      | New drives allocate above reserved sequence ranges; redelivery keeps event identity; lost live ranges require resnapshot                                   |
+| Policy and enforcement              | All-abstain denies, explicit allow survives fallback policy, hard deny dominates, and exactly one leaf consumes each use                                   |
+| Control-plane bootstrap             | Grant-store and audit persistence never recurse through themselves; unavailable required infrastructure denies effects                                     |
+| Effect and terminal recording       | Crash after consumption remains unknown; a stored terminal outcome only reprojects; fencing a store never falsely proves an external effect stopped        |
+| Budget accounting                   | Batch reservation is all-or-none; unknown started spend is retained; overruns and downward corrections remain truthful and idempotent                      |
+| Compaction and assembly             | Cancellation preserves committed activation; rebuilt manifests use the returned cursor; generated prose cannot establish authoritative checkpoint facts    |
+| Artifacts and reference commits     | Finalize/abort have one winner; lost reference acknowledgement cannot cause collection; a late commit cannot race a fenced deletion                        |
+| Files and processes                 | Conditional target/binary identity holds against every writer in the declared isolation domain, or selection rejects the guarantee                         |
+| Network and SDK adapters            | Reused connections honor the current peer grant; one-pass bodies stage before fingerprint-bound egress; no hidden retry or redirect bypasses authorization |
+| Delegation and joins                | A waiting parent frees worker occupancy; one intent creates one child; recorded join winners replay identically                                            |
+| Memory and deletion                 | Stale index hits and cached context cannot expose a tombstoned version; receipts distinguish logical deletion from physical purge                          |
+| Hook timeout                        | An unquiesced invocation cannot mutate arguments observed by a later hook                                                                                  |
+
+Tests cover both sides of each failure boundary, including lost acknowledgement
+and successful commit followed by cancellation. Exact assertion targets are
+public outcomes, durable receipts, content-free diagnostics, and
+protected-effect counts, never private implementation calls. The architectural
+API changes to run rejection/settlement, lane routing, and budget start/batch
+states also require public API compatibility review before release.
 
 ## Agent evaluation
 

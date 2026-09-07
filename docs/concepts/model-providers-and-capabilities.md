@@ -1,6 +1,10 @@
 # Model providers and capabilities
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:**
+[Model and embedding providers](../architecture/model-and-embedding-providers.md)
+
 **Depends on:** [Architecture](architecture-and-dependency-boundaries.md),
 [messages](message-and-content-model.md)
 
@@ -70,11 +74,11 @@ The descriptor MUST express support and relevant constraints for:
 Support SHOULD be more expressive than booleans when modes, schema dialects,
 media limits, or mutually exclusive features matter.
 
-Capabilities also describe operational details that affect a harness: supported
-thinking levels and their provider mapping, cache retention modes, session
-affinity, deferred response/tool loading, tool-name and call-ID constraints,
-usage availability, transport choices, and whether model discovery is static or
-credential-scoped.
+Capabilities also describe operational details that affect applications:
+supported thinking levels and their provider mapping, cache retention modes,
+session affinity, deferred response/tool loading, tool-name and call-ID
+constraints, usage availability, transport choices, and whether model discovery
+is static or credential-scoped.
 
 Reasoning capability is a structured profile, not a list of display labels. It
 declares the mechanism—effort, token budget, toggle, adaptive mode, or a
@@ -85,7 +89,7 @@ response, model, tool set, or provider route carries that affinity explicitly.
 
 ## Provider contract
 
-`IChatModel` or equivalent MUST accept a provider-neutral immutable request and
+`ILlmModel` or equivalent MUST accept a provider-neutral immutable request and
 return a typed stream/result. The adapter owns wire translation, transport,
 authentication injection, stream parsing, raw error capture, and normalized
 provider failure mapping.
@@ -235,4 +239,4 @@ from an embedding contract.
 - [Provider request pipeline](provider-request-pipeline.md)
 - [Configuration and overrides](configuration-and-overrides.md)
 - [Error taxonomy](error-taxonomy.md)
-- [Coding-harness provider profiles](../providers/coding-harness-provider-profiles.md)
+- [Coding-harness provider profiles](../profiles/coding-harness/provider-interoperability.md)

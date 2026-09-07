@@ -1,6 +1,9 @@
 # Durable execution and recovery
 
-**Status:** Normative extension boundary  
+**Status:** Normative extension boundary
+
+**Architecture:** [Durable execution](../architecture/durable-execution.md)
+
 **Depends on:** [Sessions](sessions-persistence-and-branching.md),
 [run lifecycle](run-lifecycle-and-settlement.md),
 [tool-call lifecycle](tool-call-lifecycle.md)
@@ -69,11 +72,11 @@ The runtime SHOULD checkpoint after these boundaries:
 - compaction activation; and
 - final run settlement.
 
-Fine-grained token or progress deltas are not required for recovery. A harness
-MAY retain bounded assistant frames or complete tool-progress snapshots for
-reconnection and truthful interruption output. They remain auxiliary: apparent
-complete text, a successful shell line, or a terminal-looking JSON fragment does
-not prove external settlement.
+Fine-grained token or progress deltas are not required for recovery. An
+application MAY retain bounded assistant frames or complete tool-progress
+snapshots for reconnection and truthful interruption output. They remain
+auxiliary: apparent complete text, a successful shell line, or a
+terminal-looking JSON fragment does not prove external settlement.
 
 Every uncertain effect uses a durable sandwich: commit exact intent and reserved
 result identities, invoke the effect, then atomically stage or commit the full
@@ -86,7 +89,7 @@ After failure, every nonterminal operation MUST be classified:
 
 | Evidence                                          | Recovery                                              |
 | ------------------------------------------------- | ----------------------------------------------------- |
-| No start record / definitely not sent             | Safe to start under policy                            |
+| Proven not started and prior owner fenced out     | Reauthorize, reserve, and start under policy          |
 | Started with idempotency key and queryable result | Reconcile, then retry/query                           |
 | Started, effect unknown, non-idempotent           | Do not retry; require operator/tool reconciliation    |
 | Terminal result exists, commit missing            | Idempotently commit without reinvocation              |
@@ -109,10 +112,17 @@ reinterpretation of recorded input is forbidden.
 
 ## Leases and fencing
 
-Distributed execution requires one authoritative owner per session or operation.
-Leases MUST have expiration, renewal, owner ID, and monotonically increasing
-fencing token. Every durable write from an owner verifies the current token so
-an expired worker cannot corrupt a resumed run.
+Distributed execution requires one authoritative owner per claimed lane or
+operation, plus serialized session mutations across lanes. Leases MUST have
+expiration, renewal, owner ID, and a monotonically increasing fencing token. The
+lease service is authoritative for expiry; worker wall clocks cannot extend
+ownership. Every durable write verifies the current token.
+
+A storage fence does not cancel an external effect. Takeover MUST require
+receiver fencing, idempotency, or reconciliation before another invocation;
+otherwise the operation remains unknown and requires action. Session, journal,
+grant, and budget capabilities must cover the requested distributed recovery
+domain. An in-memory grant ledger cannot support crash-safe durable grants.
 
 Wake signals are hints and MAY coalesce.
 [Durably admitted inputs](input-admission-and-message-queues.md) remain the
@@ -175,4 +185,3 @@ arbitrary external effect executed exactly once.
 - [Input admission and message queues](input-admission-and-message-queues.md)
 - [Cancellation, timeouts, and resilience](cancellation-timeouts-and-resilience.md)
 - [Testing and evaluation](testing-and-evaluation.md)
-- [Coding harness execution profile](coding-harness-execution-profile.md)

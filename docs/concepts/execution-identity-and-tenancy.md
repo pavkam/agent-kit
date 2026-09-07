@@ -1,6 +1,9 @@
 # Execution identity and tenancy
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Execution identity and tenancy](../architecture/identity.md)
+
 **Depends on:**
 [Agent definition and run context](agent-definition-and-run-context.md),
 [permissions, approvals, and trust](permissions-approvals-and-trust.md)

@@ -20,6 +20,28 @@ AgentKit.Artifacts.FileSystem uses protected AgentKit.FileSystem contracts;
 cloud packages use protected network contracts and their vendor SDKs. Consumers
 never depend on a concrete backend.
 
+## Implemented baseline
+
+`AgentKit.Artifacts` currently provides a bounded two-phase coordinator for
+complete immutable content. Prepare validates the declared byte length and
+SHA-256 fingerprint before requesting authority; finalize publishes the portable
+reference atomically; abort removes staging only. Committed reads return an
+owned asynchronously disposable stream, and deletion is idempotent and fails
+before authorization when the captured reference carries a legal hold.
+
+`AgentKit.Artifacts.InMemory` is the first backend leaf. Every prepare,
+finalize, abort, read, and delete consumes an exact single-use artifact grant
+before state access. State is tenant-partitioned, unpublished staging is never
+readable, committed bytes are returned by copy, replay keys cannot silently
+change prepare content or policy, and consumed grants are not retained with
+stored content. `AddAgentArtifacts` intentionally does not fabricate a backend;
+applications select one explicitly, with `AddInMemoryArtifactStore` available
+for deterministic compositions and tests. The package also registers
+`ArtifactProcessOutputSink`, which converts complete bounded process
+stdout/stderr captures into immutable session- or run-owned artifacts. Process
+execution remains independent of the artifact runtime and depends only on the
+optional `IProcessOutputArtifactSink` abstraction.
+
 ## Normative minimal contract shape
 
 ```csharp
@@ -352,16 +374,48 @@ unless a concrete adapter explicitly documents transferred ownership.
 
 ## Dependency direction and cycle prevention
 
-AgentKit.Artifacts depends only on AgentKit.Abstractions. Tools, messages,
-memory, sessions, compaction, and evaluation exchange `ArtifactReference` values
-or use `IArtifactCoordinator`; the artifact runtime never calls those
-components. Backend leaves may depend on FileSystem or Network, which never
-depend on Artifacts.
+AgentKit.Artifacts depends on neutral contracts and shared diagnostic
+infrastructure. Tools, messages, memory, sessions, compaction, and evaluation
+exchange `ArtifactReference` values or use `IArtifactCoordinator`; the artifact
+runtime never calls those components. Backend leaves may depend on FileSystem or
+Network, which never depend on Artifacts.
 
 Artifact creation and durable reference commitment are coordinated by the caller
 through prepare/finalize or an outbox. The artifact coordinator does not call
 `ISessionCoordinator` to append its own reference. That rule prevents the cycle
 session → artifact → session and keeps transaction ownership honest.
+
+## Reference commitment and garbage collection
+
+Prepare, finalize, abort, and delete are distinct protected operations with
+separate grants and idempotency identities. Finalize is an atomic transition of
+one preparation: it returns the same immutable reference on equivalent retry;
+abort racing finalize has one winner and cannot delete a finalized version as
+though it were unfinished staging. Cancellation or a lost acknowledgement is
+reconciled by preparation identity before retrying or aborting.
+
+A finalized reference is resolvable to an authorized holder. Artifact storage
+cannot infer whether another store has committed a reference to it. The caller
+therefore records an idempotent reference-commit intent before finalization,
+finalizes the bytes, then commits the returned reference and intent completion
+in its owning session/tool/memory store. A crash leaves an explicit pending
+intent for reconciliation. Only complete finalized content enters an ordinary
+message; a pending preparation is never exposed as a readable reference.
+
+Finalization retention must cover the entire pending reference-commit window. A
+store offering automatic orphan collection must support a durable pin or an
+equivalent retention fence covering that intent. Renewal, reference commitment,
+and collection race through conditional versioned transitions. Expiry alone
+cannot prove that a reference commit failed: collection first fences out a late
+commit and establishes its terminal disposition through the caller-owned
+reconciliation path. If the stores cannot establish that evidence, collection
+retains the object and reports pending reconciliation. Conservative retention is
+the default; a time-based orphan sweep is not safe reference accounting.
+
+The artifact runtime never scans or calls session/tool coordinators to prove
+reachability. The caller's outbox/reconciler supplies evidence through artifact
+contracts. Deduplication shares bytes only under retention and isolation rules;
+deleting one logical reference cannot collect content still pinned by another.
 
 ## Validation and unsupported behavior
 
@@ -371,6 +425,12 @@ authority, event delivery, lifetimes, and reconciliation ownership. Unsupported
 media, overflow, hash mismatch, stale version, missing authority, partial
 upload, backend failure, and retention conflict are typed outcomes.
 
+## Related concept specifications
+
+- [Artifact and content storage](../concepts/artifact-and-content-storage.md)
+- [File-system access and bounds](../concepts/file-system-access-and-bounds.md)
+- [Network access and egress](../concepts/network-access-and-egress.md)
+
 ## Related architecture
 
 - [Messages and history](messages-and-history.md)
@@ -379,6 +439,3 @@ upload, backend failure, and retention conflict are typed outcomes.
 - [File system](file-system.md)
 - [Network access](network.md)
 - [Testing and evaluation](testing-and-evaluation.md)
-- [Coding-harness built-in tools](../concepts/coding-harness-built-in-tools.md)
-- [Workspace snapshots and reversion](../concepts/workspace-snapshots-and-reversion.md)
-- [Coding-harness export, sharing, and control plane](../concepts/coding-harness-export-sharing-and-control-plane.md)

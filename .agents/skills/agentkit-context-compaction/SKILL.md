@@ -33,12 +33,14 @@ read the [modern C# rules](../references/modern-csharp.md).
    Preserve tool, approval, deferred, goal, and admitted-input causality.
 3. Retain the exact suffix and a source manifest. Covered history remains
    queryable, branchable, auditable, and eligible for recompaction.
-4. Treat every generated summary as untrusted until structural, causal,
-   security, provenance, and measurable-reduction validation succeeds.
+4. Keep generated prose untrusted after structural validation. Authoritative
+   checkpoint fields derive only from committed source records; structural
+   validation does not prove semantic entailment of arbitrary summary text.
 5. Generate outside the append lock, then activate with optimistic concurrency.
    A stale source produces a conflict; never silently rebase or lose an append.
-6. Failure or cancellation leaves the previous context path active. Bound
-   non-reducing attempts and return typed context-limit outcomes.
+6. Before activation, failure leaves the previous path active. After activation,
+   preserve the committed record and report truthful or unknown commit state.
+   Bound non-reducing attempts and return typed context-limit outcomes.
 
 Verify safe cuts, forged-state rejection, exact suffix replay, concurrent
 append, idempotent activation, truthful cancellation commit state, bounded

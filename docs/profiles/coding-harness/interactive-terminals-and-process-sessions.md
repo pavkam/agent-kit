@@ -1,9 +1,12 @@
 # Interactive terminals and process sessions
 
-**Status:** Normative coding-harness profile  
+**Status:** Normative application profile
+
+**Scope:** Optional application composition; not a required AgentKit capability.
+
 **Depends on:** [Coding harness execution](coding-harness-execution-profile.md),
-[streaming](streaming-and-event-protocol.md),
-[permissions](permissions-approvals-and-trust.md)
+[streaming](../../concepts/streaming-and-event-protocol.md),
+[permissions](../../concepts/permissions-approvals-and-trust.md)
 
 ## Purpose
 
@@ -185,5 +188,5 @@ process-tool boundary.
 
 - [Coding workspaces and worktrees](coding-workspaces-and-worktrees.md)
 - [Coding-harness export, sharing, and control plane](coding-harness-export-sharing-and-control-plane.md)
-- [Cancellation, timeouts, and resilience](cancellation-timeouts-and-resilience.md)
-- [Artifact and content storage](artifact-and-content-storage.md)
+- [Cancellation, timeouts, and resilience](../../concepts/cancellation-timeouts-and-resilience.md)
+- [Artifact and content storage](../../concepts/artifact-and-content-storage.md)

@@ -1,9 +1,12 @@
 # Coding-harness resources and project trust
 
-**Status:** Normative coding-harness profile  
-**Depends on:** [Configuration](configuration-and-overrides.md),
-[context assembly](context-assembly-and-instructions.md),
-[permissions](permissions-approvals-and-trust.md)
+**Status:** Normative application profile
+
+**Scope:** Optional application composition; not a required AgentKit capability.
+
+**Depends on:** [Configuration](../../concepts/configuration-and-overrides.md),
+[context assembly](../../concepts/context-assembly-and-instructions.md),
+[permissions](../../concepts/permissions-approvals-and-trust.md)
 
 ## Purpose
 
@@ -235,5 +238,5 @@ execute a shell outside the process security boundary.
 
 - [Language services, formatters, and watchers](language-services-formatters-and-watchers.md)
 - [Coding workspaces and worktrees](coding-workspaces-and-worktrees.md)
-- [Extensions, hooks, and middleware](extensions-hooks-and-middleware.md)
-- [Provider request pipeline](provider-request-pipeline.md)
+- [Extensions, hooks, and middleware](../../concepts/extensions-hooks-and-middleware.md)
+- [Provider request pipeline](../../concepts/provider-request-pipeline.md)

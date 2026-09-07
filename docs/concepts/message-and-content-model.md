@@ -1,6 +1,10 @@
 # Message and content model
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:**
+[Messages and history](../architecture/messages-and-history.md)
+
 **Depends on:** [Design principles](design-principles.md)
 
 ## Purpose

@@ -44,6 +44,11 @@ When changing C#, also read the
    correction and deletion, vector incompatibility, deterministic ranking,
    provenance, redaction, and migrations.
 
+Publish complete indexed versions through an atomic active-version pointer.
+Tombstones exclude data from new retrieval/exposure before physical cleanup;
+revalidate stale deletion/revocation generations before egress and distinguish
+logical invisibility from completed purge.
+
 Do not leak provider SDK, database client, or vector-query types into neutral
 contracts, and do not turn this skill into guidance for every persistent state
 in AgentKit.

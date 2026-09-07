@@ -17,6 +17,11 @@ When changing C#, also read the
 
 ## Boundary
 
+- Emit first-party routine telemetry through `Microsoft.Extensions.Logging` and
+  `System.Diagnostics.ActivitySource`/`Meter`, using the stable shared names
+  from AgentKit.Observability. Use source-generated `LoggerMessage` events with
+  stable IDs; packages do not invent private source, meter, tag, or event-name
+  dialects.
 - Keep immutable event, audit, policy, redaction, and sink contracts in
   AgentKit.Abstractions. Exporters are leaf integrations.
 - Distinguish durable semantic events from provisional live events, and routine
@@ -34,5 +39,6 @@ When changing C#, also read the
 - Preserve stable error categories and side-effect certainty without exposing
   raw prompts, credentials, tool arguments, retrieved content, or reasoning.
 
-Test correlation, redaction, cardinality, sink capability negotiation, delivery
-failure, required settlement, cancellation, and DI replacement.
+Test structured log IDs and fields, activity parentage and terminal status,
+bounded metric dimensions, correlation, redaction, sink capability negotiation,
+delivery failure, required settlement, cancellation, and DI replacement.

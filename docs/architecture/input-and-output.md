@@ -21,6 +21,26 @@ promotion, and settlement through AgentKit.Session contracts. Channel-specific
 adapters remain leaves and may use names such as AgentKit.IO.AspNetCore or
 AgentKit.IO.Console when their reusable behavior justifies a package.
 
+## Human questions
+
+`IHumanQuestionBroker` is the protected runtime boundary used by a question
+tool. Its request carries the stable question, agent/session/tool-call
+causality, authenticated asking identity, ordered bounded options, free-text
+policy, deadline, and the exact publication grant. The first-party
+`DefaultHumanQuestionBroker` recomputes concrete effect evidence and atomically
+consumes the grant immediately before publication. A mismatch, stale grant,
+revocation, expiry, or exhaustion fails closed without calling the application
+channel.
+
+The selected `IHumanQuestionChannel` receives a grant-free
+`HumanQuestionPrompt`. The adapter owns presentation and authentication of the
+answer as new input; rendering alone never authorizes or resolves the question.
+Durable adapters persist pending state and exactly one terminal resolution
+through session/application storage rather than treating the caller's in-memory
+wait as the record of truth. Cancellation ends the caller's wait without
+fabricating an answer, while timeout and unavailable-channel outcomes remain
+explicit.
+
 ## Input admission
 
 Input follows the
@@ -41,6 +61,19 @@ input behavior, and backpressure. Full queues fail with a typed outcome rather
 than silently dropping data or blocking forever. Durable queue state remains in
 the session record so recovery cannot observe one conversation history and a
 different input truth.
+
+Admission resolves the lane before persistence. Receipts and queued items retain
+that lane; promotion can consume only eligible inputs for the named lane and
+expected operation. A cutoff is a typed `SessionSequence` from durable admission
+order, not a live run-event sequence. Duplicate equivalent input returns the
+original authorized receipt before capacity is reserved; replay cannot fail just
+because the queue is now full or consume a second slot.
+
+Promotion atomically records the selected admission IDs, their target turn, and
+their consumed state with the corresponding history transition. A lost
+acknowledgement is reconciled using that promotion identity. It cannot consume
+input twice, change its target lane, or leave history committed while the same
+input is still eligible for another turn.
 
 ## Live output
 
@@ -79,12 +112,6 @@ Output adapters cannot infer state from display text or treat live deltas as
 durable facts. The runtime remains usable without any specific UI, transport, or
 hosting model.
 
-Multi-server frontends qualify projection and routing identity by authenticated
-server realm, canonical domain identity, and projection incarnation. Async work
-captures that incarnation, so A -> B -> A navigation cannot let work from the
-first A mutate the replacement. Active-server guesses and ID-only cache keys are
-not valid protocol translation.
-
 The loop owns state transitions. The I/O component owns how accepted work enters
 those transitions and how provisional and final activity reaches consumers.
 
@@ -114,6 +141,7 @@ public sealed record AgentInput(
 public sealed record InputAdmissionRequest(
     AgentId AgentId,
     SessionId SessionId,
+    ExecutionLaneId ExecutionLaneId,
     ExecutionIdentity Identity,
     OperationCorrelation Correlation,
     SecurityAuthorizationContext Authorization,
@@ -125,19 +153,21 @@ public sealed record AdmittedInput(
     InputId InputId,
     AgentId AgentId,
     SessionId SessionId,
+    ExecutionLaneId ExecutionLaneId,
     ExecutionIdentity Identity,
-    long AdmittedSequence,
+    SessionSequence AdmittedSequence,
     InputDelivery Delivery,
     AgentInput Payload,
     DateTimeOffset AdmittedAt,
-    long? PromotedEventSequence);
+    SessionSequence? PromotedSequence);
 
 public sealed record AdmissionReceipt(
     AdmissionId AdmissionId,
     InputId InputId,
     AgentId AgentId,
     SessionId SessionId,
-    long AdmittedSequence,
+    ExecutionLaneId ExecutionLaneId,
+    SessionSequence AdmittedSequence,
     bool Existing);
 
 public abstract record InputAdmissionResult;
@@ -158,16 +188,17 @@ public sealed record RejectedInput(InputRejection Rejection)
 public sealed record InputPromotionRequest(
     AgentId AgentId,
     SessionId SessionId,
+    ExecutionLaneId ExecutionLaneId,
     RunId RunId,
     TurnId? PreviousTurnId,
     ExecutionIdentity Identity,
     SecurityAuthorizationContext Authorization,
-    long CutoffEventSequence,
+    SessionSequence CutoffSequence,
     PromotionBoundary Boundary);
 
 public sealed record InputPromotionResult(
     ImmutableArray<AdmittedInput> Promoted,
-    long CutoffEventSequence,
+    SessionSequence CutoffSequence,
     SessionVersion SessionVersion);
 
 public interface IInputCoordinator
@@ -240,7 +271,7 @@ public sealed record ContentDeltaEvent(
     SessionId SessionId,
     ConversationId? ConversationId,
     RunId RunId,
-    TurnId TurnId,
+    TurnId? TurnId,
     long Sequence,
     DateTimeOffset OccurredAt,
     ModelRequestId RequestId,
@@ -261,7 +292,7 @@ public sealed record MessageCommittedEvent(
     SessionId SessionId,
     ConversationId? ConversationId,
     RunId RunId,
-    TurnId TurnId,
+    TurnId? TurnId,
     long Sequence,
     DateTimeOffset OccurredAt,
     MessageId MessageId,
@@ -288,18 +319,41 @@ public sealed record RunLimitReached(RunLimitFailure Limit) : AgentRunOutcome;
 public sealed record RunPolicyHalted(PolicyHalt Reason) : AgentRunOutcome;
 public sealed record RunFailed(RunFailure Failure) : AgentRunOutcome;
 
-public sealed record AgentRunResult<TOutput>(
+public abstract record AgentRunResult<TOutput>;
+
+public sealed record AgentRunRejected<TOutput>(
+    AgentId AgentId,
+    SessionId SessionId,
+    AgentError Failure) : AgentRunResult<TOutput>;
+
+public abstract record RunSettlementOutcome;
+
+public sealed record RunSettlementCompleted : RunSettlementOutcome;
+
+public sealed record RunSettlementRecoveryRequired(
+    AgentError Failure) : RunSettlementOutcome;
+
+public sealed record AgentRunFinished<TOutput>(
     AgentId AgentId,
     SessionId SessionId,
     ConversationId? ConversationId,
     RunId RunId,
     AgentRunOutcome Outcome,
+    RunSettlementOutcome Settlement,
     TOutput? Output,
     MessageCursor PreviousCursor,
     ImmutableArray<AgentMessage> NewMessages,
     RunUsage Usage,
     ImmutableArray<DeferredOperationRequest> DeferredRequests,
-    ExtensionData Metadata);
+    ExtensionData Metadata) : AgentRunResult<TOutput>;
+
+public abstract record AgentRunStreamStartResult<TOutput>;
+
+public sealed record AgentRunStreamStarted<TOutput>(
+    IAgentRunStream<TOutput> Stream) : AgentRunStreamStartResult<TOutput>;
+
+public sealed record AgentRunStreamRejected<TOutput>(
+    AgentRunRejected<TOutput> Rejection) : AgentRunStreamStartResult<TOutput>;
 
 public interface IOutputPublisher
 {
@@ -308,7 +362,7 @@ public interface IOutputPublisher
         CancellationToken cancellationToken = default);
 
     ValueTask CompleteAsync<TOutput>(
-        AgentRunResult<TOutput> result,
+        AgentRunFinished<TOutput> result,
         CancellationToken cancellationToken = default);
 }
 
@@ -322,14 +376,46 @@ public interface IAgentRunStream<TOutput> : IAsyncDisposable
     IAsyncEnumerable<RunEvent> ReadAllAsync(
         CancellationToken cancellationToken = default);
 
-    Task<AgentRunResult<TOutput>> Completion { get; }
+    Task<AgentRunFinished<TOutput>> Completion { get; }
 }
 ```
+
+An expected rejection before run acceptance returns `AgentRunRejected`, without
+a `RunId`, terminal run event, or fabricated run state. It retains the requested
+address and a safe typed error; unauthorized rejection does not disclose whether
+a session exists. Invalid CLR arguments still fail at the argument boundary.
+`StreamAsync` returns either a started subscription or that same rejection.
+After acceptance, `RunAsync` returns `AgentRunFinished` and a started stream's
+`Completion` returns the identical finished envelope. Callers must distinguish
+pre-run rejection from a failed accepted run.
+
+The semantic outcome, output, usage snapshot, and message order freeze at the
+run terminal transition. The final envelope is created after the bounded
+settlement attempt and additionally reports `Settlement`. A successful semantic
+outcome with `RunSettlementRecoveryRequired` is not clean success. Required
+persistence or audit failure cannot change earlier effects into failure-to-start
+or mutate the terminal output. Recovery status is queried through the original
+run/operation identity; a later recovery record never mutates a result already
+returned to a caller.
+
+`ContentDeltaEvent` and `MessageCommittedEvent` require a non-null `TurnId` at
+construction; their positional type matches the nullable base property exactly.
+A domain event's required correlation is validated before publication.
 
 A run event's stable protocol identity is the composite `(RunId, Sequence)`.
 Sequence is monotonic within that run and is not a process-global identity;
 publishers, sinks, durable projections, and reconnecting subscribers use the
 same composite for deduplication and resume.
+
+The I/O publisher is the sole sequence allocator for one run. For recoverable
+runs it reserves bounded sequence ranges through the session mutation boundary
+before publishing from them. The persisted high-water mark survives drive loss;
+a successor starts above every reserved range, including numbers allocated only
+to lost live events. Durable event envelopes persist their assigned sequence
+with their semantic entry or outbox intent, so redelivery preserves identity.
+Consumers allow gaps and receive an explicit loss/resnapshot boundary; they
+never treat a fresh in-process counter as continuation of the old stream.
+Provider-attempt sequences are separate and do not become run-event sequences.
 
 `ReadAllAsync` is genuine incremental streaming. Its cancellation token cancels
 only that subscription by default; explicit run cancellation uses the engine or
@@ -338,14 +424,22 @@ awaited repeatedly and therefore remains `Task`. Disposing the stream releases
 the subscription and buffers exactly once but does not imply ownership of the
 run unless a separately named owning-stream option says so.
 
-The outcome, not `Output is null`, states why the run ended. A success result
-contains output accepted by the configured output contract; a schema-backed
-untyped contract returns validated JSON. Partial streamed structures remain
-provisional and never populate the final result before terminal validation.
+The outcome, not `Output is null`, states why the run ended. A `RunSucceeded`
+finished result contains output accepted by the configured output contract; a
+schema-backed untyped contract returns validated JSON. Partial streamed
+structures remain provisional and never populate the final result before
+terminal validation.
 
 The additive `IRunEventSink` contract is owned by
 [observability](observability.md). AgentKit.IO consumes those sinks for
 delivery; it does not declare a competing observer abstraction.
+
+Final-marker delivery and output completion follow the
+[non-recursive settlement barrier](../concepts/run-lifecycle-and-settlement.md#result-availability).
+Required preceding deliveries finish before the final marker commits; the marker
+itself requires durable outbox acceptance, while its external delivery receipt
+is separate. `CompleteAsync` exposes the frozen envelope and cannot add a new
+required effect that changes its settlement status.
 
 ## First-party classes and dependencies
 
@@ -468,6 +562,3 @@ not replace them with transport strings or bypass admission.
 - [Input admission and message queues](../concepts/input-admission-and-message-queues.md)
 - [Streaming and event protocol](../concepts/streaming-and-event-protocol.md)
 - [Structured output](../concepts/structured-output.md)
-- [Interactive terminals and process sessions](../concepts/interactive-terminals-and-process-sessions.md)
-- [Coding-harness export, sharing, and control plane](../concepts/coding-harness-export-sharing-and-control-plane.md)
-- [Coding-harness frontends and protocol adapters](../concepts/coding-harness-frontends-and-protocol-adapters.md)

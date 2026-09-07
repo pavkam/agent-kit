@@ -1,6 +1,9 @@
 # Usage limits and budgets
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Budgets and limits](../architecture/budgets.md)
+
 **Depends on:** [Agent loop](agent-loop-state-machine.md),
 [model capabilities](model-providers-and-capabilities.md)
 
@@ -29,7 +32,7 @@ The first-party catalog MUST support independent limits for:
 - successful, attempted, and concurrently running tool calls;
 - output-validation and tool retry attempts;
 - total and concurrently active delegations;
-- wall-clock run duration and per-operation deadline;
+- elapsed run duration and per-operation deadline;
 - context bytes/tokens and retained media;
 - queued input count, bytes, and age; and
 - event, final-result, tool-result, artifact, retrieval item/byte, and
@@ -50,9 +53,10 @@ whether it is an estimate.
 Cached tokens and reasoning tokens MUST remain separate where providers report
 them. A portable `TotalTokens` convenience value MUST document its formula.
 
-Usage updates are monotonic for a run. Provider corrections MAY replace one
-request's provisional value, but MUST not double-count streaming increments and
-terminal totals.
+Usage ledger order and adjustment versions are monotonic. Corrected numeric
+totals may decrease when authoritative evidence replaces an estimate. Each
+correction MUST name its original attempt and prior accounting version; it MUST
+NOT double-count streaming increments, terminal totals, or repeated delivery.
 
 Durable session usage is an append-only ledger, not a field reconstructed from
 the surviving transcript or current operation state. It records every settled
@@ -78,9 +82,22 @@ request/cost budget.
 ## Reservation
 
 Concurrent operations require atomic reservations. A budget service MUST reserve
-capacity before starting work, commit actual usage afterward, and release unused
-reservation. Reservations carry run/operation IDs and expire or recover after
-failure.
+capacity before starting work, mark the reservation started before the effect,
+commit actual usage afterward, and release only proven unused capacity.
+Reservations carry run/operation IDs. Expiry and disposal release an unstarted
+reservation; a started reservation with unknown usage MUST remain unresolved or
+be conservatively charged with explicit estimated provenance until reconciled.
+Process loss is not evidence that no money or tokens were consumed.
+
+An indivisible batch MUST reserve every required dimension across its shared
+ancestors atomically or reserve none. A sequence of independently successful
+single-dimension checks is insufficient. Each charged dimension has one owner;
+outer preflight capacity is transferred or subdivided rather than charged again
+by the lower executor.
+
+Actual overrun MUST be fully recorded even when it exceeds a hard ceiling. It
+sets remaining capacity to zero and stops new work; the ledger MUST NOT clamp
+reported consumption or reject its truthful accounting.
 
 The scheduler MUST NOT check `current < limit` independently in several tasks;
 that race is adorable until it charges the card four times.
@@ -123,9 +140,9 @@ through an explicit same-key replacement registration.
 Consumers receive an invocation-only budget capability containing the exact
 profile version, authenticated execution identity, operation correlation, and
 `IBudgetScope`. They MUST validate that binding, reserve before every attempted
-effect, and settle or release it before returning. Out-of-run embedding,
-reranking, maintenance, or delegation work receives a child operation scope; it
-MUST NOT inject or fabricate an `IRunBudget`.
+effect, and settle it or transfer unresolved accounting before returning.
+Out-of-run embedding, reranking, maintenance, or delegation work receives a
+child operation scope; it MUST NOT inject or fabricate an `IRunBudget`.
 
 ## Acceptance scenarios
 
@@ -140,9 +157,13 @@ MUST NOT inject or fabricate an `IRunBudget`.
   ledger rows but one correctly aggregated run total.
 - Fork usage is copied or reset only through an explicit policy.
 
+- Crash after provider send retains unknown spend and cannot reopen capacity.
+- A batch rejected on its last dimension starts no effects and reserves nothing.
+- A downward correction changes accounting once without rewinding ledger order.
+- Actual overrun is fully recorded and blocks subsequent reservations.
+
 ## Related specifications
 
 - [Context assembly and instructions](context-assembly-and-instructions.md)
 - [Tool scheduling and concurrency](tool-scheduling-and-concurrency.md)
 - [Observability and audit](observability-and-audit.md)
-- [Coding harness execution profile](coding-harness-execution-profile.md)

@@ -1,8 +1,10 @@
 # Streaming and event protocol
 
-**Status:** Normative  
-**Depends on:** [Messages](message-and-content-model.md),
-[run lifecycle](run-lifecycle-and-settlement.md)
+**Status:** Normative
+
+**Architecture:** [Input and output](../architecture/input-and-output.md)
+
+**Depends on:** [Messages](message-and-content-model.md)
 
 ## Purpose
 
@@ -27,10 +29,20 @@ provider heartbeat/progress, and high-frequency output chunks. An application
 MAY persist them separately for diagnostics, but the core event log MUST NOT
 require them to recover stable state.
 
-A durable coding-harness profile MAY persist compact assistant-progress frames
-or replaceable tool-progress snapshots. These are bounded recovery aids, not
+An application profile MAY persist compact assistant-progress frames or
+replaceable tool-progress snapshots. These are bounded recovery aids, not
 semantic completion events. They never turn a live candidate into a committed
 message or prove that an external effect ended.
+
+## Run-event identity across recovery
+
+The stable event identity is `(RunId, Sequence)`. The I/O publisher owns
+allocation and, for recoverable runs, reserves sequence ranges durably before
+publication. A new drive starts above the persisted high-water mark, not at one
+or at the last durable semantic event. Lost live events and unused reservations
+may leave gaps, which require an explicit loss/resnapshot boundary. Durable
+redelivery preserves the originally committed event sequence. A provider's
+contiguous per-attempt sequence is a different ordering domain.
 
 ## Stream grammar
 
@@ -203,4 +215,3 @@ diagnostics; it MUST NOT synthesize success.
 - [Run lifecycle and settlement](run-lifecycle-and-settlement.md)
 - [Provider request pipeline](provider-request-pipeline.md)
 - [Observability and audit](observability-and-audit.md)
-- [Coding harness execution profile](coding-harness-execution-profile.md)

@@ -1,8 +1,12 @@
 # Memory, retrieval, and storage
 
-**Status:** Normative boundaries  
-**Depends on:** [Context assembly](context-assembly-and-instructions.md),
-[architecture](architecture-and-dependency-boundaries.md)
+**Status:** Normative boundaries
+
+**Architecture:**
+[Memory and retrieval](../architecture/memory-and-retrieval.md)
+
+**Depends on:** [Architecture](architecture-and-dependency-boundaries.md),
+[permissions](permissions-approvals-and-trust.md)
 
 ## Purpose
 
@@ -128,6 +132,15 @@ Data classification controls encryption, region, retention, logging, and model
 exposure. Stores MUST support scoped deletion and tombstones where eventual
 indexes/caches need propagation. Deletion jobs are auditable and must not leak
 the deleted content into diagnostics.
+
+Source publication and deletion follow the
+[consistency contract](../architecture/memory-and-retrieval.md#publication-deletion-and-exposure-consistency).
+An atomic active-version pointer exposes a complete indexed chunk set. A logical
+deletion tombstone immediately excludes that source version from new retrieval
+and exposure, even when physical index/cache cleanup is pending. Exposure binds
+a deletion/revocation generation and MUST revalidate a stale generation before
+egress. Receipts distinguish logical invisibility, pending purge, and completed
+physical deletion; backup replay cannot resurrect a logically deleted version.
 
 ## Acceptance scenarios
 

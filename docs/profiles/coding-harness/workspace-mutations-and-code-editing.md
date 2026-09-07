@@ -1,8 +1,11 @@
 # Workspace mutations and code editing
 
-**Status:** Normative coding-harness profile  
-**Depends on:** [Tools](tool-call-lifecycle.md),
-[permissions](permissions-approvals-and-trust.md),
+**Status:** Normative application profile
+
+**Scope:** Optional application composition; not a required AgentKit capability.
+
+**Depends on:** [Tools](../../concepts/tool-call-lifecycle.md),
+[permissions](../../concepts/permissions-approvals-and-trust.md),
 [coding workspaces](coding-workspaces-and-worktrees.md)
 
 ## Purpose
@@ -101,6 +104,28 @@ Sequential application without rollback MUST NOT report transaction atomicity. A
 failure after three files were written returns those three facts and never a
 single generic “patch failed” result.
 
+The first-party host contract is `IWorkspacePatchApplier`. Its request contains
+an ordered immutable entry for each `Create`, `Replace`, `Delete`, or `Move`.
+Every entry has a distinct `WorkspaceMutationId` and exact single-use grant;
+move grants bind source and destination, while create and replace grants bind
+the target plus the derived private staging path. The default host rejects
+duplicate touched paths, absent parents, symbolic-link traversal, stale hashes,
+existing create/move destinations, and configured entry or aggregate-byte limit
+violations before target effects. Newly created files use the pinned
+owner-read/write mode; replacements preserve the captured Unix mode. This policy
+is part of the authorized input fingerprint rather than ambient umask behavior.
+
+The first pinned model-facing grammar is `agentkit-patch-v1`. It uses exact
+`*** Begin Patch` / `*** End Patch` envelopes, `Add File`, `Update File`,
+`Delete File`, and `Move to` headers, `@@` update hunks, and space/`-`/`+` line
+prefixes. New files are strict UTF-8 with LF line endings. Updates accept strict
+UTF-8 with an optional BOM and preserve a uniform LF or CRLF policy plus the
+final-newline state; mixed newlines, bare carriage returns, binary NUL, invalid
+Unicode, missing context, and ambiguous context are rejected before mutation
+authorization. Version 1 permits content-preserving moves only; combining a move
+and content change is rejected because the default host cannot settle that
+compound effect atomically as one entry.
+
 ## Formatting and code actions
 
 Formatters and language-server code actions are separate process or protocol
@@ -150,5 +175,5 @@ rather than the absence of an exception.
 
 - [Language services, formatters, and watchers](language-services-formatters-and-watchers.md)
 - [Workspace snapshots and reversion](workspace-snapshots-and-reversion.md)
-- [Tool errors, retries, and results](tool-errors-retries-and-results.md)
-- [Artifact and content storage](artifact-and-content-storage.md)
+- [Tool errors, retries, and results](../../concepts/tool-errors-retries-and-results.md)
+- [Artifact and content storage](../../concepts/artifact-and-content-storage.md)

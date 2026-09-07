@@ -9,10 +9,20 @@ budget, attempts, and evidence. Their transitions are part of the session record
 and follow the same authorization, queueing, settlement, and recovery rules as
 the rest of AgentKit.
 
-AgentKit.Goals will contain the first-party goal coordinator and delegation
-policies. Goal values, stores, messages, leases, and join-policy contracts live
-in AgentKit.Abstractions. The package remains optional until an application
+AgentKit.Goals owns the first-party goal coordinator and delegation policies.
+Goal values, stores, messages, leases, and join-policy contracts live in
+AgentKit.Abstractions. The package remains optional until an application
 registers goal behavior.
+
+The coding-harness task tool uses a protected adapter boundary:
+`DefaultTaskDelegationBroker` consumes the exact `Delegation/Create` grant
+before forwarding a grant-free `TaskDelegationPrompt` to an explicitly selected
+`ITaskDelegationChannel`. These `TaskDelegation*` contracts are intentionally
+adapter-specific and do not claim to be the complete coordinator contracts
+below. A channel is responsible for resolving an active parent goal, narrowing
+authority and the child tool catalog, reserving budget, idempotently creating
+durable child state, deterministic joining, and terminal settlement. No channel
+is registered implicitly because those application facts cannot be fabricated.
 
 `AgentEngine` is one process-level host for many `AgentDefinition` instances,
 not one agent. Goal state and every target-selection decision therefore carry
@@ -304,10 +314,21 @@ scope, and budget; the dispatcher performs one already-authorized handoff; and
 join strategies decide deterministically from durable child results. Event sinks
 observe immutable transitions only.
 
-The local dispatcher routes agent-to-agent messages through `IInputCoordinator`
-and agent execution through `IAgentRunner`. A remote dispatcher is a leaf
-integration. Both validate their delegation grant immediately before creating
-child state or sending data.
+The local dispatcher commits an idempotent child-admission intent through the
+goal/session contracts and returns its handoff receipt. It does not constructor-
+depend on `AgentEngine`, `IAgentRunner`, or a callback that captures the engine.
+A host-owned worker drains those intents through normal input admission and the
+same engine's public runner. The reusable first-party hosting adapter belongs in
+`AgentKit.Goals.Hosting`, an application leaf depending on Goals and the public
+facade. The facade, loop, and Goals runtime never depend on that worker.
+
+This separates the construction graph from the workflow graph:
+`parent loop -> delegation dispatcher -> durable intent` and
+`host worker -> public engine -> child run`. The worker activates after engine
+readiness and replays an intent by its idempotency identity, without creating a
+second child. A remote dispatcher follows the same durable handoff contract.
+Every effecting dispatcher validates its own delegation grant; subsequent child
+admission, state access, and communication obtain their own scoped grants.
 
 The live caller supplies `HookDispatchContext` separately to the coordinator. It
 is never persisted in `DelegationRequest`, `AgentGoal`, or a child result;
@@ -594,11 +615,27 @@ identity. Text remains content; routing and authority are typed metadata.
 
 Independent child goals may run concurrently. The parent declares a join policy
 such as all, first valid success, quorum, best effort, or a dependency graph.
-Winner and result ordering are deterministic from the declared criteria, not
-from whichever task happened to finish first.
+The default all-results join orders children by their recorded delegation
+ordinal. An ordinal-first-success policy waits until every earlier child is
+terminally ineligible before selecting a later success. A fastest-valid-success
+policy is a separate opt-in: it chooses the first eligible result in the durable
+parent join-inbox sequence, records that winner once, and reuses it on replay.
+It is timing-sensitive in live execution, though replay of its recorded evidence
+is deterministic. Quorum and deadline joins similarly capture their cutoff and
+ordered eligible result set before committing a decision. No join uses
+unrecorded task completion order as recoverable state.
 
 Child output is untrusted agent-produced data until the parent validates its
 shape and evidence. The parent may accept, reject, or request revision.
+
+A parent waiting for children must not hold a session mutation lock or an
+executor permit that every child needs. It durably records the join, releases
+only its active-worker/concurrency occupancy, and retains spent or reserved
+child budget under the budget authority. Wake-up reacquires the parent lane for
+the expected operation. Composition and admission reject a topology that cannot
+make child progress within its declared capacity. A parent cannot wait for a
+child that is queued behind that parent's own exclusive lane operation; local
+children use separately admitted child sessions/lanes.
 
 ## Control and limits
 

@@ -1,6 +1,10 @@
 # Goals and multi-agent delegation
 
-**Status:** Normative domain model  
+**Status:** Normative domain model
+
+**Architecture:**
+[Goals and delegation](../architecture/goals-and-delegation.md)
+
 **Depends on:** [Input admission](input-admission-and-message-queues.md),
 [sessions](sessions-persistence-and-branching.md)
 
@@ -68,11 +72,24 @@ failure, request for authority, and cancellation are durable semantic events.
 
 The parent MAY create independent child goals and await a join policy: all,
 first successful, quorum, best effort, or named dependency graph. Join order and
-winner selection MUST be deterministic from declared criteria, not task
-completion timing.
+winner selection MUST follow a captured policy. The default orders by recorded
+child ordinal. A fastest-valid-success policy is explicitly timing-sensitive: it
+selects and persists the winner using the durable parent join-inbox sequence,
+never an unrecorded `Task.WhenAny` result. Replay uses that persisted decision.
+Ordinal-first-success waits for earlier children to become terminally
+ineligible. Quorum and deadline policies record their eligible set and cutoff.
 
 Cancelling a parent propagates according to the declared relationship. Already
 performed child side effects remain and their certainty is reported.
+
+Local dispatch commits a child-admission intent; a host-owned worker invokes the
+public engine after readiness. A dispatcher MUST NOT capture a runner that
+creates a constructor cycle back through the loop and goal coordinator. A
+waiting parent releases active-worker occupancy and session critical sections,
+retains budget ownership, and wakes by expected operation identity. Children
+must have a lane and executor capacity that can progress independently of the
+waiting parent. See the
+[delegation boundary](../architecture/goals-and-delegation.md#delegation-discovery-selection-policy-and-execution).
 
 ## Result integration
 
@@ -92,7 +109,10 @@ rejected.
 
 - Retried task messages do not create duplicate child goals.
 - Child authority cannot exceed the parent's scope.
-- Parallel completion order does not change deterministic join results.
+- Ordinal joins ignore task completion order; timing-sensitive joins replay the
+  recorded inbox winner exactly.
+- A one-worker host parks a waiting parent so its separately admitted child can
+  progress without a dependency cycle or duplicate child.
 - A child result cannot complete its parent without validation.
 - Parent cancellation settles every child attempt or durable handoff.
 - Goal replay reconstructs status and ownership from transitions.

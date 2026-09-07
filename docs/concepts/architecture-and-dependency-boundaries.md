@@ -1,6 +1,9 @@
 # Architecture and dependency boundaries
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Project structure](../architecture/project-structure.md)
+
 **Depends on:** [Design principles](design-principles.md)
 
 ## Package topology
@@ -54,6 +57,16 @@ capability-validation, and attempt-coordination behavior.
 classes and services. It MUST NOT replace concrete identity, options, profiles,
 credentials, or registration in packages such as `AgentKit.Providers.OpenAI`,
 `AgentKit.Providers.OpenRouter`, and `AgentKit.Providers.ZAi`.
+
+The shared exporter-free `AgentKit.Observability` package is an explicit
+infrastructure dependency of first-party facade, runtime, and leaf packages. It
+may depend on Abstractions and Microsoft diagnostics/logging abstractions, never
+on its consumers or exporter SDKs. Behavioral runtimes still cannot reference
+sibling implementations. Evaluation and goal-worker hosting are application
+leaves allowed to drive the public facade; no runtime or facade references those
+leaves. These exceptions are enumerated in
+[project structure](../architecture/project-structure.md#acyclic-dependency-graphs),
+not inferred from arbitrary package names.
 
 ## Extension-axis rule
 
@@ -138,7 +151,9 @@ Agent definitions are additive registrations with unique typed `AgentId` values.
 The definition catalog is singular and replaceable; its default implementation
 publishes immutable versioned snapshots. Build validation MUST validate every
 registered definition against the keyed capabilities it selects and reject
-duplicate IDs before the engine becomes runnable.
+unresolved duplicate IDs before the engine becomes runnable. Explicit definition
+sources follow the canonical precedence and identical-content rules; equal
+precedence never uses registration order as a tie-breaker.
 
 Cardinality is evaluated at the boundary that owns it. The definition, session-
 store, hook-profile, security-policy, and model catalogs/selectors; validators;

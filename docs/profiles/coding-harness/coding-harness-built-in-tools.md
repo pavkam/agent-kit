@@ -1,8 +1,11 @@
 # Coding-harness built-in tools
 
-**Status:** Normative coding-harness profile  
-**Depends on:** [Tools and toolsets](tools-and-toolsets.md),
-[tool lifecycle](tool-call-lifecycle.md),
+**Status:** Normative application profile
+
+**Scope:** Optional application composition; not a required AgentKit capability.
+
+**Depends on:** [Tools and toolsets](../../concepts/tools-and-toolsets.md),
+[tool lifecycle](../../concepts/tool-call-lifecycle.md),
 [coding workspaces](coding-workspaces-and-worktrees.md)
 
 ## Purpose
@@ -75,6 +78,58 @@ arguments. It cannot receive an untrusted pattern through shell concatenation.
 Pre-search `stat` and external-directory detection happen under the same
 authorized observation scope.
 
+## Command execution
+
+`AgentKit.Tools.Command` is the explicit shell capability. It passes the model's
+command as one final structured argument after configured fixed shell arguments;
+ordinary `IProcessRunner` requests never infer or invoke a shell. The command
+tool resolves the executable, workspace-relative working directory, workspace
+access, sandbox profile, timeout, and output bounds before requesting
+`Process`/`Execute` authority. The effecting runner resolves those facts again
+and consumes the exact single-use grant immediately before process creation.
+Child-process policy is part of the fingerprinted intent. The shell feature
+explicitly requests sandbox-inherited children; ordinary process callers may
+require denial, which is enforced on macOS and fails closed on the initial Linux
+profile until a seccomp-backed denial profile is configured.
+
+The first operating-system profile in `AgentKit.Processes` clears the ambient
+environment, admits only configured executable paths and environment names,
+requires the `workspace-no-network-v1` sandbox, and exposes the workspace as
+read-only or read-write. macOS uses a deny-by-default `sandbox-exec` profile;
+Linux uses bubblewrap and fails closed when it is unavailable. Neither platform
+falls back to an unsandboxed process. `AgentKit.Processes.Scripted` provides
+identified deterministic scenarios for unit tests and replay without starting a
+host process.
+
+Command results retain independent stdout and stderr byte tails, total observed
+byte counts, truncation flags, exit status, and side-effect certainty. Strict
+UTF-8 output is projected as text; non-UTF-8 tails are represented losslessly as
+base64 rather than replacement text. A nonzero exit is a failed tool outcome
+whose typed output remains available. Timeout or cancellation after creation
+attempts bounded graceful and forced process-tree termination, reports that
+effects may have occurred, and makes inability to confirm reaping explicit. When
+a retained tail truncates, the operating-system runner captures the complete
+stream up to an independent artifact ceiling and the command result projects the
+committed artifact ID, version, and integrity hash. Artifact publication obtains
+fresh storage authority and never retries the process.
+
+## Language intelligence
+
+`AgentKit.Tools.Language` provides diagnostics, hover, definitions,
+implementations, references, document symbols, and workspace symbols over one
+selected `ILanguageIntelligenceService`. Document operations authorize the exact
+workspace-relative file; workspace-symbol search authorizes the workspace root,
+with query text represented only by its fingerprint in security evidence. The
+effecting service consumes that exact `FileRead`/`Observe` grant before it may
+inspect language state.
+
+Inputs use one-based line and character coordinates. Provider contracts use
+zero-based UTF-16 coordinates and half-open ranges, and projected results return
+to one-based coordinates. Successful empty, unsupported, unavailable, denied,
+stale, timed-out, cancelled, and failed results remain distinct. Returned arrays
+and text are bounded again at model projection, with truncation explicitly
+clearing completeness rather than pretending the snapshot was whole.
+
 ## Output bounds and spill
 
 Every tool has separate live-event, normalized-result, model-context, durable-
@@ -86,7 +141,41 @@ owner, classification, integrity, retention, and access policy. It is not placed
 in a globally shared temp directory and rediscovered by path. Cleanup uses
 `TimeProvider` and reference-aware retention.
 
+## Resource loading
+
+`AgentKit.Tools.Resource` provides the local configured-resource baseline. The
+host maps stable public resource IDs to protected workspace-relative files and
+captures that mapping when the tool is constructed. Catalog listing never scans
+the filesystem and never reveals backing paths. A read authorizes the exact path
+and complete-file byte bound, and the snapshot boundary consumes the resulting
+single-use grant before observation.
+
+Loaded resources use strict UTF-8, optional SHA-256 integrity pins, explicit
+source kind/trust/media metadata, and an independent character ceiling. A trust
+label records provenance only: resource output explicitly lacks instruction
+authority. Discovery, prompt expansion, skill activation, migration,
+installation, command-backed values, and remote fetch remain separate captured
+pipelines rather than side effects hidden inside `resource`.
+
 ## Web fetch and search
+
+`AgentKit.Tools.Web` provides the local `web_fetch` baseline over
+`INetworkNameResolver` and `INetworkTransport`; it does not create an
+unrestricted HTTP client. The baseline performs GET-only public-data fetches and
+does not accept model-provided cookies, authorization values, user information,
+or URI fragments. Search remains a separately selectable provider-backed or
+endpoint-configured capability—AgentKit never fabricates a search service or
+credential as a default.
+
+`AgentKit.Tools.WebSearch` implements that selectable `web_search` surface over
+one `IWebSearchProvider`. Its registration fails composition until the host
+selects an operation. The tool authorizes classified query egress to the
+provider's exact secret-free destination, and the provider must consume the same
+grant immediately before its single attempt. Queries, canonical domain filters,
+freshness, result and time ceilings are fingerprinted together. Returned
+correlation, HTTP(S) URLs, requested-domain containment, counts, and text bounds
+are checked again; bounded results remain untrusted data and an oversized
+response is explicitly incomplete rather than silently whole.
 
 Network tools validate URI syntax and scheme, resolve DNS through the protected
 network boundary, authorize every redirect/effective destination, prevent
@@ -97,6 +186,13 @@ MIME is validated from declared and sniffed evidence. Charset and decoding are
 explicit. HTML-to-text/Markdown conversion is a deterministic transform with
 diagnostics; it does not make remote content trusted. Scripts, embedded objects,
 data URLs, link targets, and prompt-like instructions remain untrusted data.
+
+The first-party fetch profile accepts bounded textual media, rejects binary NUL
+evidence and unsupported/compressed representations, performs strict UTF-8,
+UTF-16, ASCII, or Latin-1 decoding, removes script/style/object/embed regions
+from declared HTML, and reports declared and conservatively sniffed media
+evidence. Character truncation is explicit; byte-limit or deadline exhaustion is
+a failure, never truncated success.
 
 Retry after a challenge or alternate user agent is a new network attempt with a
 fresh grant and attempt record. The result preserves final URL, redirect chain,
@@ -114,12 +210,57 @@ Human questions use the normal deferred/approval channel with bounded options,
 free-text policy, deadline, identity, and exactly one resolution. Rendering a
 question is not acceptance of its answer.
 
+The local baseline is `AgentKit.Tools.Question` over `IHumanQuestionBroker`.
+Question publication is an application-state create effect, so the tool obtains
+an exact grant and the first-party `AgentKit.IO.DefaultHumanQuestionBroker`
+consumes it before presentation. Application channels receive
+`HumanQuestionPrompt`, never the grant. They authenticate a response as new
+input and, when durable waiting is promised, persist the pending prompt and its
+exactly-one resolution independently of an in-memory task. A missing headless
+channel returns an explicit unavailable result; response deadlines return an
+explicit timeout. Selected IDs, optional text, and bounds are revalidated before
+the answer is projected to the model as non-authoritative data.
+
+`AgentKit.Tools.Plan` is the local planning baseline. `get` observes the current
+session plan, `replace` installs a complete bounded snapshot against an expected
+revision (or explicitly expects no current plan), and `set_status` advances one
+stable item against an exact positive revision. The default store consumes state
+authority before session access and appends each accepted revision as a typed
+`PlanSessionEntry`. The tool rejects duplicate IDs, multiple in-progress items,
+stale revisions, missing sessions, and oversized presentation before any
+authorization or state access. Plan state is operational data; it does not gain
+instruction precedence merely because the model authored it.
+
+`todo` is a compatibility name over that same canonical plan state. Exposing
+both names does not create two lists, two revision streams, or two security
+resources; a change through either name is immediately visible through the
+other.
+
+`skill` lists or activates one entry from the immutable catalog also exposed by
+the context inventory source. Listing returns only bounded public metadata and
+the catalog version; it neither observes backing paths nor authorizes file
+access. Activation uses the same stable ID and catalog version, requires an
+exact protected snapshot read, validates integrity and UTF-8, and reports
+truncation. Skill text remains non-authoritative tool data and activation never
+installs dependencies, runs scripts, migrates files, or changes project trust.
+
 ## Delegation and orchestration code
 
 Delegation creates a scoped child goal/attempt with explicit context, tool
 catalog, workspace placement, authority attenuation, budget, cancellation, join,
 and result publication. A child cannot inherit every host credential or
 permission merely because its parent could access them.
+
+`AgentKit.Tools.Task` exposes this boundary as `task`. The model selects one
+target agent, bounded objective and acceptance criteria, an exact tool
+allow-list, turn/tool-call ceilings, and a settlement timeout. The tool requires
+a durable session and active run, authorizes the full envelope as one
+`Delegation/Create` effect, and delegates only through `ITaskDelegationBroker`.
+The default broker in `AgentKit.Goals` consumes that grant immediately before
+dispatch; it supplies no default goal channel. A rejection before child creation
+returns no child identities, while a child result preserves the durable goal,
+attempt, session, run, status, and side-effect certainty and remains untrusted
+data in the parent context.
 
 A sandboxed orchestration/code-mode tool is still a tool scheduler. It uses the
 captured child-tool catalog; validates and authorizes every nested call; assigns
@@ -184,4 +325,4 @@ pre-effect cancellation.
 - [Workspace mutations and code editing](workspace-mutations-and-code-editing.md)
 - [Interactive terminals and process sessions](interactive-terminals-and-process-sessions.md)
 - [Language services, formatters, and watchers](language-services-formatters-and-watchers.md)
-- [Goals and multi-agent delegation](goals-and-multi-agent-delegation.md)
+- [Goals and multi-agent delegation](../../concepts/goals-and-multi-agent-delegation.md)

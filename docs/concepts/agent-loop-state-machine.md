@@ -1,6 +1,9 @@
 # Agent loop state machine
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Agent runtime](../architecture/agent-runtime.md)
+
 **Depends on:** [Agent and run context](agent-definition-and-run-context.md),
 [messages](message-and-content-model.md),
 [input admission](input-admission-and-message-queues.md)
@@ -15,7 +18,7 @@ process-local drive ownership are outside the loop.
 ## States
 
 ```text
-Accepted -> Driving -> AdmittingInput -> PreparingTurn
+Accepted -> Driving -> PromotingInput -> PreparingTurn
 PreparingTurn -> AwaitingModel <-> StreamingModel
 StreamingModel -> RecordingToolCalls
 Any retryable active state -> WaitingRetry -> Driving
@@ -48,9 +51,11 @@ run-completion or settlement event.
 
 The default loop MUST implement these semantic steps:
 
-1. Admit caller input durably or into the configured queue before acknowledging
-   acceptance.
-2. Promote eligible input using the queue's atomic ordering rules.
+1. Verify the already accepted durable operation and acquire its fenced drive
+   ownership. Input admission and acknowledgement occurred before the loop was
+   dispatched.
+2. Ask the I/O coordinator to promote eligible input using the queue's atomic
+   ordering rules.
 3. [Repair and validate the history boundary](history-validation-and-repair.md).
 4. Resolve the next-turn effective configuration, tools, model, instructions,
    and budgets.
@@ -145,4 +150,3 @@ semantics to pass conformance.
 - [Run lifecycle and settlement](run-lifecycle-and-settlement.md)
 - [Tool-call lifecycle](tool-call-lifecycle.md)
 - [Cancellation, timeouts, and resilience](cancellation-timeouts-and-resilience.md)
-- [Coding harness execution profile](coding-harness-execution-profile.md)

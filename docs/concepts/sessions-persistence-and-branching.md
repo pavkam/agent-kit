@@ -1,8 +1,10 @@
 # Sessions, persistence, and branching
 
-**Status:** Normative  
-**Depends on:** [Messages](message-and-content-model.md),
-[input admission](input-admission-and-message-queues.md)
+**Status:** Normative
+
+**Architecture:** [Sessions](../architecture/sessions.md)
+
+**Depends on:** [Messages](message-and-content-model.md)
 
 ## Purpose
 
@@ -135,7 +137,7 @@ effecting calls. Authority selection uses the captured
 Serialization MUST be provider-neutral and preserve unknown fields needed for
 forward-compatible round trips.
 
-## Open, discovery, migration, and workspace binding
+## Discovery and migration
 
 The session profile declares when the first durable record is created. A host
 that acknowledges durable admission MUST persist it immediately; it cannot keep
@@ -156,38 +158,22 @@ recoverable replacement strategy. Opening a session MUST NOT truncate and
 rewrite its file as an incidental read. Multi-process writers require CAS or a
 lease/fence; append-only syntax alone supplies neither.
 
-Human-friendly ID prefixes are accepted only when they resolve uniquely within
-the authorized scope. Exact matches take precedence, ambiguous prefixes fail,
-and lookup order cannot silently pick “the first” session. A session records its
-canonical workspace binding and placement. Opening it under another workspace is
-an explicit authorized rebind, fork, or handoff with a result describing the new
-identity and copied state.
-
 Activity and statistics declare their scope: whole tree, selected branch,
 execution lane, current operation, or provider request. File modification time,
 last conversational activity, label changes, abandoned-branch usage, and
 compacted-history usage are distinct projections.
 
-## Navigation, extraction, and labels
+## Branch selection and extraction
 
-Tree navigation, branch extraction, and cross-workspace fork are distinct:
+Branch selection and extraction are distinct:
 
-- navigation moves a tip in the same session and preserves later branches;
+- selection moves a tip in the same session and preserves later branches; and
 - extraction creates a new session containing one selected ancestry path and
-  repairs every retained causal/compaction reference; and
-- a cross-workspace fork copies the declared tree/application scope into a new
-  workspace binding without moving external effects.
+  repairs every retained causal and compaction reference.
 
-A navigation result records old and new tip, any editor payload restored from a
-selected user/custom entry, summary identity and usage, and the explicit fact
-that earlier external effects remain. If navigation summarizes an abandoned
-path, the summary's placement and covered range are unambiguous.
-
-Labels and bookmarks are metadata entries. Adding, clearing, reconstructing, or
-dropping them during extraction MUST NOT move the semantic branch tip or break
-ancestry. Destructive session removal SHOULD use a recoverable trash/archive
-operation where the host supports one and always names the exact authorized
-session/workspace identity.
+Neither operation moves or reverses external effects. Application workspace
+placement, editor restoration, labels, bookmarks, and user-facing lookup rules
+belong to the host or an application profile rather than the session contract.
 
 ## Mutation and operation coordination
 
@@ -219,16 +205,12 @@ implemented as an ambient cancellation token stored on the session object.
   append.
 - Recovery resumes from total current operation state rather than folding a
   partial write journal.
-- A fork excludes open-operation state unless a durable handoff protocol is
-  explicitly selected.
 - A malformed interior record fails open without rewriting the source.
-- An ambiguous session-ID prefix selects nothing.
-- Navigating to an earlier entry returns an explicit restored-editor payload and
-  does not claim that external effects were reverted.
+- Extracting a branch repairs retained references and excludes open-operation
+  state unless a durable handoff protocol is explicitly selected.
 
 ## Related specifications
 
 - [Context compaction](context-compaction.md)
 - [Durable execution and recovery](durable-execution-and-recovery.md)
 - [Memory, retrieval, and storage](memory-retrieval-and-storage.md)
-- [Coding harness execution profile](coding-harness-execution-profile.md)

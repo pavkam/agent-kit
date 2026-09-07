@@ -1,6 +1,9 @@
 # Structured output
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Structured output](../architecture/structured-output.md)
+
 **Depends on:** [Messages](message-and-content-model.md),
 [model capabilities](model-providers-and-capabilities.md),
 [tool scheduling](tool-scheduling-and-concurrency.md)

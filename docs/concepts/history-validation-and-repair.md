@@ -1,6 +1,11 @@
 # History validation and repair
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:**
+[Messages and history](../architecture/messages-and-history.md),
+[Context](../architecture/context.md)
+
 **Depends on:** [Messages](message-and-content-model.md),
 [sessions](sessions-persistence-and-branching.md)
 
@@ -166,4 +171,3 @@ concurrent continuation unsafe.
 - [Context assembly and instructions](context-assembly-and-instructions.md)
 - [Permissions, approvals, and trust](permissions-approvals-and-trust.md)
 - [Error taxonomy](error-taxonomy.md)
-- [Coding harness execution profile](coding-harness-execution-profile.md)

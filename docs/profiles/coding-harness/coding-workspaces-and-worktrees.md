@@ -1,9 +1,12 @@
 # Coding workspaces and worktrees
 
-**Status:** Normative coding-harness profile  
+**Status:** Normative application profile
+
+**Scope:** Optional application composition; not a required AgentKit capability.
+
 **Depends on:** [Coding harness execution](coding-harness-execution-profile.md),
-[permissions](permissions-approvals-and-trust.md),
-[sessions](sessions-persistence-and-branching.md)
+[permissions](../../concepts/permissions-approvals-and-trust.md),
+[sessions](../../concepts/sessions-persistence-and-branching.md)
 
 ## Purpose
 

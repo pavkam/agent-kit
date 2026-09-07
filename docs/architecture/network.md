@@ -1,7 +1,7 @@
 # Network access
 
-**Role:** Make outbound and inbound network activity replaceable, bounded,
-security-aware, and deterministic in tests.
+**Role:** Make outbound network activity replaceable, bounded, security-aware,
+and deterministic in tests.
 
 Framework components and tools do not create unrestricted clients, resolve DNS,
 or open sockets directly. They depend on narrow network contracts in
@@ -20,6 +20,11 @@ addresses, port, route or operation, redirect chain, method, request-body
 fingerprint, and declared data classification. DNS names and addresses are both
 security inputs. A grant for one does not silently authorize rebinding,
 alternate addresses, redirects, proxy changes, or protocol upgrades.
+
+Inbound listener ownership stays with hosting and protocol leaves. The outbound
+resolver/transport contracts below do not claim to implement listeners, peer
+authentication, or request admission. An inbound leaf authenticates through its
+host and enters AgentKit through ordinary admission and security boundaries.
 
 ## Security and data egress
 
@@ -72,55 +77,41 @@ DNS APIs.
 namespace AgentKit;
 
 public readonly record struct NetworkOperationId(Guid Value);
-public readonly record struct NetworkProfileKey(string Value);
-public readonly record struct NetworkProfileVersion(long Value);
-
 public sealed record NetworkDestination(
-    string Scheme,
-    NormalizedHost Host,
-    int Port,
-    NetworkRoute Route);
+    string Scheme, NormalizedHost Host, int Port, NetworkRoute Route);
 
 public sealed record NetworkResolutionRequest(
     NetworkOperationId Id,
-    OperationId CausalOperationId,
-    AgentId AgentId,
-    RunId? RunId,
     NetworkDestination Destination,
-    NetworkResolutionBounds Bounds);
+    NetworkBounds Bounds,
+    SecurityGrant Grant);
 
 public sealed record NetworkRequest(
     NetworkOperationId Id,
-    OperationId CausalOperationId,
-    AgentId AgentId,
-    RunId? RunId,
     NetworkMethod Method,
     NetworkDestination Destination,
     NetworkHeaderSet Headers,
     NetworkRequestContent? Content,
-    DataClassification Classification,
-    NetworkRequestBounds Bounds);
+    NetworkBounds Bounds,
+    ImmutableArray<NetworkAddress> ResolvedAddresses,
+    NetworkDataClassification Classification,
+    SecurityGrant Grant);
 
 public interface INetworkNameResolver
 {
+    ComponentId SecurityAudience { get; }
+
     ValueTask<NetworkResolutionResult> ResolveAsync(
         NetworkResolutionRequest request,
-        SecurityGrant grant,
         CancellationToken cancellationToken);
 }
 
 public interface INetworkTransport
 {
+    ComponentId SecurityAudience { get; }
+
     ValueTask<NetworkSendResult> SendAsync(
         NetworkRequest request,
-        SecurityGrant grant,
-        CancellationToken cancellationToken);
-}
-
-public interface INetworkSelector
-{
-    ValueTask<NetworkSelectionResult> SelectAsync(
-        NetworkProfileKey key,
         CancellationToken cancellationToken);
 }
 
@@ -131,14 +122,16 @@ public interface INetworkResponse : IAsyncDisposable
 }
 ```
 
-`NetworkOperationId` and all causal identities are validated readonly values;
-callers use `IIdentifierGenerator<NetworkOperationId>` for new operations.
-`NetworkProfileKey` is a validated non-empty configuration key selected through
-options or an agent definition and is never generated as an operation ID.
-`NormalizedHost`, resolved address values, route, headers, classifications, and
-bounds have canonical serializers and validation; a URI string is not itself a
-security decision. Credential values are represented by private leaf-adapter
-content and are excluded from request display, security records, and audit.
+`NetworkOperationId` is a validated readonly value; callers use
+`IIdentifierGenerator<NetworkOperationId>` for new operations. The minimum
+composition selects one engine-wide resolver/transport pair through ordinary DI
+replacement. A host supporting several profiles must expose explicit keyed
+selection and capture the selected pair and immutable options in its operation
+binding; registration order is never profile selection. `NormalizedHost`,
+resolved address values, route, headers, classifications, and bounds have
+canonical serializers and validation; a URI string is not itself a security
+decision. Credential values are represented by private leaf-adapter content and
+are excluded from request display, security records, and audit.
 
 Resolution returns typed addresses with source, expiry, and canonical-host
 evidence. Sending returns a discriminated result or a response handle. Redirect,
@@ -147,10 +140,13 @@ scheme, and transport failure remain typed outcomes. A redirect is a new
 destination requiring policy and grant evaluation; it is not hidden inside a
 successful response.
 
-The caller owns and asynchronously disposes a returned response handle. Response
-bounds are enforced while reading its stream. Cancelling `SendAsync` stops
-awaiting/start work according to the returned side-effect certainty; it does not
-claim bytes were unsent when the transport cannot prove that.
+The caller owns and asynchronously disposes a returned response handle. Declared
+oversize responses return `NetworkResponseLimitExceeded`; actual streamed
+overruns and body-deadline expiry throw the provider-neutral
+`NetworkResponseTooLargeException` and `NetworkResponseTimedOutException` from
+the owned stream. Cancelling `SendAsync` stops awaiting/start work according to
+the returned side-effect certainty; it does not claim bytes were unsent when the
+transport cannot prove that.
 
 ## First-party classes and service dependencies
 
@@ -160,73 +156,35 @@ claim bytes were unsent when the transport cannot prove that.
 | `DefaultNetworkTransport` in AgentKit.Network                                             | Connection/request/redirect/response enforcement over host-provided primitives, resolver, security authority/grant store, audit, and safe observability |
 | `ScriptedNetworkNameResolver` and `ScriptedNetworkTransport` in AgentKit.Network.InMemory | Deterministic addresses, fragmentation, redirects, failures, timing, and redacted proof that no denied phase ran                                        |
 
-The real transport depends on narrow mechanics and security services rather than
-a provider, tool, or engine facade:
+The real resolver and transport inject `ISecurityGrantStore`, `TimeProvider`, an
+immutable validated `AgentNetworkOptions` snapshot, and content-free logging.
+Each exposes its own `SecurityAudience`. The resolver consumes a grant bound to
+the canonical origin before IP-literal handling or DNS. The transport consumes a
+different grant bound to the routed destination, exact resolved-address set,
+method, secret-safe header/body fingerprints, data classification, and bounds
+before policy checks or connection.
 
-```csharp
-namespace AgentKit.Network;
-
-internal sealed record AgentNetworkOptionsSnapshot(
-    NetworkProfileKey ProfileKey,
-    NetworkProfileVersion ProfileVersion,
-    NetworkDestinationPolicy DestinationPolicy,
-    NetworkConnectionPolicy ConnectionPolicy,
-    NetworkRequestBounds RequestBounds,
-    NetworkResponseBounds ResponseBounds);
-
-internal sealed record AgentNetworkProfileBinding(
-    INetworkNameResolver Resolver,
-    AgentNetworkOptionsSnapshot Options);
-
-internal sealed class DefaultNetworkTransport(
-    AgentNetworkProfileBinding profile,
-    INetworkConnectionFactory connections,
-    ISecurityAuthoritySelector securityAuthorities,
-    ISecurityGrantStore grants,
-    ISecurityAuditDispatcher audit,
-    TimeProvider timeProvider) : INetworkTransport
-{
-    public ValueTask<NetworkSendResult> SendAsync(
-        NetworkRequest request,
-        SecurityGrant grant,
-        CancellationToken cancellationToken) =>
-        NetworkRequestExecution.SendAsync(
-            request,
-            grant,
-            profile.Resolver,
-            connections,
-            securityAuthorities,
-            grants,
-            audit,
-            timeProvider,
-            profile.Options,
-            cancellationToken);
-}
-```
-
-Direct implementations remain supported; no transport base class is required.
+`DefaultNetworkTransport` disables automatic redirects and pins its socket to
+one still-fresh, policy-eligible address carried in the authorized request; the
+operating system never silently re-resolves the hostname for that connection.
+TLS still uses the canonical DNS endpoint for SNI and certificate validation. A
+redirect is returned as `NetworkRedirectReceived`; the caller must create a new
+operation, resolve, and authorize the next hop. The transport performs no
+retries.
 
 Provider, MCP, store, observability, and tool packages depend on
 `INetworkNameResolver` / `INetworkTransport`, never on AgentKit.Network or an
-unrestricted `HttpClient`. Authentication remains in the leaf integration. The
-real implementation re-canonicalizes and revalidates the grant before DNS,
-connection, redirect, and upload; a different address, proxy route, certificate
-identity, method, sensitive header audience, or body fingerprint returns through
-security evaluation. If enforcement or required audit is unavailable, no next
-network phase begins.
-
-`ISecurityAuthoritySelector` selects only the authority key and profile version
-captured in `SecurityGrant.Authorization` when a redirect or other changed phase
-requires fresh evaluation; it never consults a latest agent definition.
+unrestricted `HttpClient`. Direct implementations remain supported; no transport
+base class is required.
 
 ## Lifetime, concurrency, and ownership
 
-Resolvers and transports are thread-safe singletons and may pool safe connection
-resources across many agents and runs in one `AgentEngine`. Pools are
-partitioned by every security-relevant route, credential audience, proxy, and
-certificate setting; they contain no run-scoped authority. Requests and
-responses are immutable/operation-owned. The in-memory implementation is scoped
-to its registration and concurrency-controlled.
+Resolvers and transports are thread-safe singletons. The real transport owns one
+handler and connection pool; requests carry operation authority but the pool
+does not. Requests are immutable and responses are operation-owned. The
+in-memory implementation is singleton-scoped to its registration,
+lock-protected, and transfers every scripted response outcome exactly once so a
+disposed body is never handed out again.
 
 Response handles own their body streams; disposing one releases or invalidates
 the underlying connection according to framing state. The container owns pools,
@@ -234,6 +192,29 @@ handlers, and resolver resources. Retries are not owned by this abstraction: the
 calling provider/tool/storage pipeline retries only after checking idempotency
 and side-effect certainty. A transport may repeat only a phase it can prove was
 not observably sent. Shutdown is bounded and uses injected time.
+
+## Request evidence and connection reuse
+
+The caller first authorizes pure canonical origin data for resolution, then
+passes that resolver grant to `INetworkNameResolver`. After resolution it
+constructs and authorizes a separate exact send request. `INetworkTransport`
+validates and consumes that send grant; it does not invent authority, perform
+hidden DNS, or consume the resolution grant again.
+
+A connection pool is partitioned by effective route, peer address, proxy, TLS
+and credential-audience policy. Before each send, including multiplexed or
+reused connections, the transport verifies that the actual peer and pool binding
+satisfy the current grant and address freshness. Opening a socket once under an
+earlier grant does not authorize later requests. Unsupported connection
+coalescing or opaque SDK pooling fails capability validation.
+
+The egress fingerprint binds bytes actually sent. A replayable immutable body
+may be hashed directly. A one-pass stream requiring a full-payload fingerprint
+must first be staged under a bounded, separately authorized spool operation;
+after-send hashing cannot prevent unauthorized bytes from leaving. A declared
+incremental authentication protocol is a separate capability. SDK automatic
+retries, redirects, hidden credential refresh, and alternate transports must be
+disabled or adapted through their own authorized operation boundaries.
 
 ## Dependency-injection registration
 
@@ -245,9 +226,7 @@ public static class ServiceExtensions
     extension(IServiceCollection services)
     {
         public IServiceCollection AddAgentNetwork(
-            NetworkProfileKey key,
-            Action<AgentNetworkOptions> configure) =>
-            NetworkRegistration.AddDefault(services, key, configure);
+            Action<AgentNetworkOptions>? configure = null);
     }
 }
 ```
@@ -259,88 +238,53 @@ public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
-        public IServiceCollection AddInMemoryNetwork(
-            NetworkProfileKey key,
-            Action<InMemoryNetworkOptions>? configure = null) =>
-            InMemoryNetworkRegistration.Add(services, key, configure);
+        public IServiceCollection AddAgentNetworkInMemory();
     }
 }
 ```
 
-```csharp
-namespace AgentKit;
-
-public static class ServiceExtensions
-{
-    extension(IServiceCollection services)
-    {
-        public IServiceCollection AddNetwork<TResolver, TTransport>(
-            NetworkProfileKey key,
-            NetworkCapabilities capabilities)
-            where TResolver : class, INetworkNameResolver
-            where TTransport : class, INetworkTransport =>
-            NetworkServiceRegistration.Add<TResolver, TTransport>(
-                services,
-                key,
-                capabilities);
-    }
-}
-```
-
-The first-party methods `TryAddKeyed` one resolver and transport pair per
-`NetworkProfileKey`. Each capability is singular and replaceable for that key,
-but composition rejects an incomplete or incompatible pair. Repeated identical
-registration is idempotent; adding the in-memory package does not silently
-displace a real implementation under an existing key.
-
-Every network profile key owns named `AgentNetworkOptions`. Registration
-validates and copies them into a package-owned immutable
-`AgentNetworkOptionsSnapshot` containing the key and `NetworkProfileVersion`,
-then supplies that snapshot to the keyed resolver/transport pair. Neither
-service injects unkeyed `IOptions<T>`. Default options are captured for the
-provider lifetime, not monitored in place; a validated new provider or versioned
-profile publication is required for changes, and in-flight requests retain the
-snapshot with which they began. The keyed transport factory closes over one
-exact profile snapshot and the resolver registered under that same key,
-constructing `AgentNetworkProfileBinding`; the transport never receives an
-unkeyed resolver or performs runtime keyed lookup.
-
-Multiple isolated network profiles are keyed, additive registrations selected by
-a singular injected `INetworkSelector` using an explicit profile reference from
-options or an agent definition. Keys are unique and stable. There is no additive
-executor chain and no implicit last-registration-wins route. Network policy,
-security audit, hooks, and observers remain additive through their own
-contracts.
+Both methods use `TryAdd` so repeated registration is idempotent and explicit
+host registrations remain replaceable through ordinary DI. Both require an
+externally registered `ISecurityGrantStore`; neither fabricates authority.
+`AddAgentNetwork` validates destination policy, resolution lifetime, and the
+real handler's response-header ceiling. The in-memory package registers its
+concrete scripted services as well as their interfaces so tests configure
+scenarios and inspect phase traces through the same singleton.
 
 ## Build validation and unsupported behavior
 
-Network is optional until a selected provider, web tool, MCP endpoint, remote
-store, exporter, or other feature declares it. Composition then validates a
-matching resolver/transport profile, supported schemes/methods/streaming,
-private-address and redirect policy, bounds, proxy/certificate options, security
-authority and grant store, audit delivery, scopes, keyed options/profile-version
-agreement, and key selection. Credential configuration is validated by its leaf
-integration without exposing secrets.
-
-Unsupported schemes, streaming modes, proxy features, certificate policies, or
-request sizes are declared in `NetworkCapabilities` and fail preflight or return
-a typed unsupported result. The implementation never falls back to unrestricted
-clients or sockets. Missing, expired, consumed, mismatched, or unauditable
-grants deny before DNS or egress. DNS rebinding, changed redirects, and changed
-content cannot reuse the earlier grant, even when a higher-level tool was
-approved.
+Network is optional until a provider, web tool, MCP endpoint, remote store,
+exporter, or other feature declares it. That feature must resolve both narrow
+interfaces plus the system-wide authority and grant store. The baseline
+real-leaf profile requires HTTP(S), explicit methods/content, pinned direct
+connections, bounded headers and bodies, and platform TLS validation. Proxy
+selection, custom certificate policy, automatic decompression, and multiple
+network profiles are independent optional capabilities with explicit descriptors
+and conformance; absence fails selection rather than falling back to
+unrestricted behavior. Missing, expired, consumed, mismatched, or unauditable
+grants deny before DNS or egress.
 
 ## Testing
 
-Shared conformance suites run against the real implementation with loopback
-infrastructure and against AgentKit.Network.InMemory. They cover canonical
-destinations, DNS changes, private-address blocking, redirects, proxy behavior,
-certificate failures, request and response bounds, streaming fragmentation,
-cancellation, retries, grant expiry and consumption, and denial before egress.
+Focused suites run the real implementation against loopback infrastructure and
+the deterministic implementation without public network access. They cover exact
+grant evidence and denial-before-effect, literal resolution, pinned loopback
+connections, unfollowed redirects, secret-free fingerprints, declared and actual
+response bounds, response-body deadlines, deterministic scenario ordering,
+one-shot response ownership, and fail-closed DI. Any adapter advertising proxy,
+decompression, or custom certificate capabilities also runs their focused
+security and lifecycle suites.
 
 Tests never require public internet access. The in-memory implementation exposes
 redacted operation traces so assertions can prove that denied data was never
 resolved, connected, or transmitted.
+
+## Related concept specifications
+
+- [Network access and egress](../concepts/network-access-and-egress.md)
+- [Permissions, approvals, and trust](../concepts/permissions-approvals-and-trust.md)
+- [Provider request pipeline](../concepts/provider-request-pipeline.md)
+- [Cancellation, timeouts, and resilience](../concepts/cancellation-timeouts-and-resilience.md)
 
 ## Related architecture
 
@@ -348,5 +292,3 @@ resolved, connected, or transmitted.
 - [Tools](tools.md)
 - [Security and human control](permissions-and-human-control.md)
 - [MCP](mcp.md)
-- [Coding-harness built-in tools](../concepts/coding-harness-built-in-tools.md)
-- [Coding-harness export, sharing, and control plane](../concepts/coding-harness-export-sharing-and-control-plane.md)

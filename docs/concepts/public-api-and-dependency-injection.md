@@ -1,6 +1,11 @@
 # Public API and dependency injection
 
-**Status:** Normative API direction  
+**Status:** Normative API direction
+
+**Architecture:**
+[Composition and configuration](../architecture/composition-and-configuration.md),
+[Project structure](../architecture/project-structure.md)
+
 **Depends on:** [Architecture](architecture-and-dependency-boundaries.md),
 [agent and run context](agent-definition-and-run-context.md)
 
@@ -53,7 +58,7 @@ public interface IAgentRunner
         AgentRunRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<IAgentRunStream<TOutput>> StreamAsync<TOutput>(
+    Task<AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(
         AgentRunRequest request,
         CancellationToken cancellationToken = default);
 }
@@ -75,7 +80,11 @@ shapes are defined once in the
 deferred, cancelled, limit reached, policy halt, and failed. Null output alone
 MUST NOT encode these differences.
 
-Streaming completion returns the same result. The stream owns a subscription;
+Pre-admission rejection has no run identity. An accepted run produces a
+`AgentRunFinished<TOutput>` envelope containing its semantic outcome and
+separate settlement outcome; clean success requires both to succeed. Stream
+creation is a typed started-or-rejected result, and a started stream's
+completion returns the same finished envelope. The stream owns a subscription;
 disposing it MUST have documented run-cancellation behavior.
 
 ## Core contracts
@@ -87,7 +96,7 @@ specification and conformance suite:
 - `IAgentLoop`, `IInputCoordinator`, `IInputQueue`, `IOutputPublisher`,
   `ISessionCoordinator`;
 - `IContextAssembler`, `IHistoryProcessor`, `ICompactor`;
-- `IModelCatalog`, `IModelSelector`, `IModelRequestExecutor`, `IChatModel`,
+- `IModelCatalog`, `IModelSelector`, `IModelRequestExecutor`, `ILlmModel`,
   `IEmbeddingModel`, `IReranker`;
 - `IToolProvider`, `IToolResolver`, `IToolInvoker`, `IToolScheduler`,
   `IToolCallRecorder`, `IToolResultProjectionPolicyCatalog`, and
@@ -98,7 +107,7 @@ specification and conformance suite:
   and their `EventArgs`-derived boundary types;
 - narrow file-system, network, and process capability contracts;
 - `ISessionStore`, memory/document/vector/retrieval contracts;
-- `IRunEventSink`, `IUsageBudget`, `TimeProvider`, closed
+- `IRunEventSink`, `IBudgetAuthority`, `IBudgetScope`, `TimeProvider`, closed
   `IIdentifierGenerator<TIdentifier>` services, `IRandomizerFactory`, and
   `IContentHasher`; and
 - capability and hook contracts for demonstrated extension axes.
@@ -128,6 +137,8 @@ policy, execution, state, and observation remain separate.
 
 ```csharp
 builder.Services.AddAgentLoop();
+builder.Services.AddAgentBudgets();
+builder.Services.AddAgentOutput();
 builder.Services.AddAgentContext();
 builder.Services.AddAgentHooks();
 builder.Services.AddAgentIO();
@@ -158,17 +169,21 @@ catalog/selector. Runtime code MUST NOT receive `IServiceProvider` as a locator.
 services: one agent-definition catalog with at least one runnable definition,
 run-scope factory and validator, session directory/store selector, hook
 dispatcher/profile selector, security authority selector/policy catalog,
-approval broker, model catalog, and `TimeProvider`. `TimeProvider.System` is the
-replaceable default. For every runnable definition, validation resolves exactly
+approval broker, model catalog, budget authority, `TimeProvider`,
+`IRandomizerFactory`, and `IContentHasher`, plus one effective closed
+`IIdentifierGenerator<TIdentifier>` for every framework-created identity.
+`TimeProvider.System` and the deterministic primitive implementations are
+replaceable defaults. For every runnable definition, validation resolves exactly
 one selected loop, continuation policy, input coordinator, output publisher,
-context assembler, session coordinator/run coordinator/profile/store, hook
-profile, security authority/profile, model selector, model request executor, and
-at least one compatible conversational model. Missing or ambiguous selections
-fail before the first run.
+output processor, context assembler, run budget profile, session coordinator/run
+coordinator/profile/store, hook profile, security authority/profile, model
+selector, model request executor, and at least one compatible conversational
+model. Missing or ambiguous selections fail before the first run.
 
 Every registered definition MUST resolve all of its typed keyed selections and
 pass capability, scope, and policy validation. Agent definitions are additive;
-duplicate `AgentId` values are rejected deterministically.
+conflicting `AgentId` values are rejected deterministically under the
+[canonical source-precedence rules](../architecture/composition-and-configuration.md#agent-definitions-and-catalog).
 
 Tools, skills, memory, embeddings, reranking, goals, MCP, evaluation, and
 additional contributors are optional. When one is registered, validation MUST
@@ -223,6 +238,13 @@ fabricated defaults.
 Credentials use dedicated providers or platform credential abstractions. They
 MUST NOT appear in option display, validation messages, or configuration
 snapshots.
+
+Synchronous build consumes a materialized initial catalog and checks declared
+capabilities without network or secret access. Hosts materialize remote initial
+configuration asynchronously before readiness. Publication, admission, and each
+effect revalidate their own evidence under the
+[staged validation contract](../architecture/composition-and-configuration.md#build-validation).
+Build cannot prove remote availability or the behavior of arbitrary factories.
 
 ## Compatibility
 

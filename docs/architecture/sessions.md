@@ -102,6 +102,7 @@ public abstract record SessionEntry(
 public sealed record SessionOperationContext(
     AgentId AgentId,
     SessionId SessionId,
+    ExecutionLaneId? ExecutionLaneId,
     OperationCorrelation Correlation,
     ExecutionIdentity Identity,
     SecurityAuthorizationContext Authorization,
@@ -159,6 +160,12 @@ security, goals, checkpoints, and lifecycle facts. The common base exists to
 preserve ordering and causality; it is not an `object` payload escape hatch.
 Unknown compatible serialized fields are retained in typed extension data.
 
+Coding-harness planning uses the same rule. `PlanSessionEntry` carries a
+complete immutable `WorkPlan` revision with stable plan/item identities and an
+authenticated author. Replacement and status change append a later revision
+under session optimistic concurrency; neither mutates an earlier entry nor keeps
+a private mutable plan beside the session record.
+
 `BeforeRunOperationCorrelation` covers creation, admission, and other facts
 recorded before a `RunId` exists. `InRunOperationCorrelation` carries the active
 run and optional turn. `AfterRunOperationCorrelation` names the settled causal
@@ -166,6 +173,13 @@ run for deferred resolutions, late durable observations, and post-run cleanup
 without falsely making that run active again. Every variant retains the distinct
 `OperationId`; code must pattern-match the correlation rather than infer
 lifecycle state from nullable IDs.
+
+`SessionOperationContext.ExecutionLaneId` is present for lane-owned work and
+absent only for explicitly session-wide creation, observation, or maintenance. A
+lane mutation verifies the lane's installed operation against the correlation,
+branch, and expected session version. A missing lane is never permission to
+mutate an arbitrary active lane, and a stale operation cannot commit through a
+successor's lease.
 
 Snapshot writers copy or transfer payload ownership into `ImmutableArray<byte>`
 before publication. Stores may use pooled buffers internally, but no public
@@ -431,10 +445,11 @@ remain explicit collaborators rather than container lookups.
 `SessionCoordinator` selects the authority named by the immutable
 `SessionOperationContext.Authorization` through `ISecurityAuthoritySelector`; it
 never injects an unkeyed authority. It validates that the operation identity
-equals `SecurityAuthorizationContext.Identity`, authorizes and consumes one
-directory grant, resolves the returned store key, then authorizes and consumes a
-separate store grant. Failure at any step returns a typed result without probing
-another store or leaking whether the session exists.
+equals `SecurityAuthorizationContext.Identity`, authorizes a directory grant for
+the directory to consume, resolves the returned store key, then authorizes a
+separate grant for the selected store to consume. Failure at any step returns a
+typed result without probing another store or leaking whether the session
+exists.
 
 The coordinator is stateless with respect to session profiles. Every method
 receives the immutable profile snapshot from the caller's
@@ -716,6 +731,24 @@ first durable local implementation. Future stores follow
 AgentKit.Session.ProviderName. A store is registered separately and composition
 fails when none is present; there is no hidden production default.
 
+## Mutation boundaries and idempotency
+
+The mutation coordinator never holds its session critical section while waiting
+for a provider, tool, approval, child run, hook, or remote event sink. It
+captures the branch tip, expected version, lane, and operation identity,
+releases the critical section for that work, then rechecks all commit
+preconditions on return. A stale result may be recorded as evidence for its
+original operation; it cannot append to whichever branch is current or repeat
+its effect to resolve an optimistic conflict. A stable loaded snapshot remains
+immutable while other lanes append. Read-your-writes uses an explicit committed
+cursor, not a mutable singleton session view.
+
+Every mutating retry first reconciles the idempotency identity, then compares
+expected state. An equivalent already-committed append returns its original
+receipt even if the current session version is newer. Reuse of the identity with
+different canonical content is a conflict. Lookup and conflict handling remain
+authorized and tenant-scoped; they cannot disclose another caller's receipt.
+
 ## Execution-lane ownership
 
 The default coordinator permits one active operation per execution lane. New
@@ -741,6 +774,3 @@ pagination, cancellation, and disposal.
 - [Sessions, persistence, and branching](../concepts/sessions-persistence-and-branching.md)
 - [Context compaction](../concepts/context-compaction.md)
 - [Input admission and message queues](../concepts/input-admission-and-message-queues.md)
-- [Coding harness execution profile](../concepts/coding-harness-execution-profile.md)
-- [Workspace snapshots and reversion](../concepts/workspace-snapshots-and-reversion.md)
-- [Coding-harness export, sharing, and control plane](../concepts/coding-harness-export-sharing-and-control-plane.md)

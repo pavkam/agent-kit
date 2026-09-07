@@ -23,12 +23,12 @@ read the [modern C# rules](../references/modern-csharp.md).
   [input admission and message queues](../../../docs/concepts/input-admission-and-message-queues.md)
   when changing admitted-input records or promotion.
 - Read the
-  [coding-harness execution profile](../../../docs/concepts/coding-harness-execution-profile.md)
+  [coding-harness execution profile](../../../docs/profiles/coding-harness/coding-harness-execution-profile.md)
   for lanes and operation-owned state, and
-  [workspace snapshots and reversion](../../../docs/concepts/workspace-snapshots-and-reversion.md)
+  [workspace snapshots and reversion](../../../docs/profiles/coding-harness/workspace-snapshots-and-reversion.md)
   when session navigation must be distinguished from filesystem restoration.
 - Read
-  [export, sharing, and control plane](../../../docs/concepts/coding-harness-export-sharing-and-control-plane.md)
+  [export, sharing, and control plane](../../../docs/profiles/coding-harness/coding-harness-export-sharing-and-control-plane.md)
   for session export/import, durable sharing outboxes, or host routing.
 
 ## Working rules

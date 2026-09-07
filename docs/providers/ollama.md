@@ -258,7 +258,7 @@ can occur after headers.
 ## Coding-harness interoperability
 
 The
-[silent-overflow classification](coding-harness-provider-profiles.md#silent-overflow-classification)
+[silent-overflow classification](../profiles/coding-harness/provider-interoperability.md#silent-overflow-classification)
 explains why a local compatibility server may silently truncate without enough
 evidence to classify context overflow. AgentKit reports uncertainty instead of
 inventing a provider error.

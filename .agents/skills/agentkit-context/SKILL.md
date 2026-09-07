@@ -25,14 +25,16 @@ read the [modern C# rules](../references/modern-csharp.md).
   [memory, retrieval, and storage](../../../docs/concepts/memory-retrieval-and-storage.md)
   only when changing those contributor boundaries.
 - Read
-  [coding-harness resources and project trust](../../../docs/concepts/coding-harness-resources-and-project-trust.md)
+  [coding-harness resources and project trust](../../../docs/profiles/coding-harness/coding-harness-resources-and-project-trust.md)
   when changing project instruction discovery, templates, remote includes,
   resource precedence, or executable-resource trust.
 
 ## Working rules
 
-1. Treat working context as derived, provider-ready state. Assembly never
-   appends session history or performs an incidental memory or compaction write.
+1. Treat working context as derived, provider-ready state. Ordinary assembly
+   never appends history. Configured compaction is an explicitly identified,
+   authorized sub-operation; after activation reload its cursor and manifest.
+   Assembly cancellation cannot undo a committed activation.
 2. Keep the first-party assembler in `AgentKit.Context`; contributors are
    additive and deterministically ordered, while selected collaborators are
    singular per context profile.
@@ -47,4 +49,4 @@ read the [modern C# rules](../references/modern-csharp.md).
 
 Verify deterministic manifests, authorization-scoped caches, contributor order,
 fresh next-turn resolution, epoch replacement, mandatory overflow before
-provider I/O, and cancellation without durable mutation.
+provider I/O, and cancellation preserving any already committed compaction.

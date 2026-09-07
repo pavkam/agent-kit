@@ -29,10 +29,12 @@ read the [modern C# rules](../references/modern-csharp.md).
    `AgentKit.Budgets`. Consumers estimate work and react to outcomes.
 2. Use one hierarchy of host, tenant, principal, agent, session, run, and
    operation scopes. Do not maintain private counters for shared dimensions.
-3. Reserve atomically before concurrent work, commit actual usage afterward, and
-   release excess or uncommitted capacity exactly once.
-4. Enforce every applicable shared scope and preflight indivisible batches so an
-   over-limit batch starts no effects.
+3. Reserve before work and mark started before an effect. Dispose only unstarted
+   capacity; unknown started spend remains unresolved or explicitly estimated
+   until reconciliation. Record actual overrun fully and apply corrections once.
+4. Enforce every shared scope and reserve every dimension of an indivisible
+   batch atomically or none. Transfer/subdivide reserved capacity rather than
+   charging the same work again at a lower layer.
 5. Preserve measured, provider-reported, estimated, and unknown provenance.
    Provider corrections replace provisional accounting rather than double-count.
 6. Return typed exhaustion with boundary and partial-effect certainty. Budget

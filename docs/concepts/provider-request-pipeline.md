@@ -1,6 +1,10 @@
 # Provider request pipeline
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:**
+[Model and embedding providers](../architecture/model-and-embedding-providers.md)
+
 **Depends on:** [Model capabilities](model-providers-and-capabilities.md),
 [context assembly](context-assembly-and-instructions.md),
 [streaming](streaming-and-event-protocol.md)
@@ -284,4 +288,4 @@ available for an explicit retry or re-login decision.
 - [Extensions, hooks, and middleware](extensions-hooks-and-middleware.md)
 - [Permissions, approvals, and trust](permissions-approvals-and-trust.md)
 - [Observability and audit](observability-and-audit.md)
-- [Coding-harness provider profiles](../providers/coding-harness-provider-profiles.md)
+- [Coding-harness provider profiles](../profiles/coding-harness/provider-interoperability.md)

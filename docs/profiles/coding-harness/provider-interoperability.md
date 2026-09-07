@@ -1,6 +1,9 @@
 # Coding-harness provider profiles
 
-**Status:** Normative AgentKit interoperability requirements  
+**Status:** Normative application profile
+
+**Scope:** Optional coding-harness interoperability; not required by AgentKit
+core.\
 **Last reviewed:** 2026-09-07
 
 ## Purpose
@@ -315,8 +318,8 @@ provider packages, and removable without changing provider-neutral contracts.
 
 ## Related specifications
 
-- [Provider API index](index.md)
-- [Model providers and capabilities](../concepts/model-providers-and-capabilities.md)
-- [Provider request pipeline](../concepts/provider-request-pipeline.md)
-- [History validation and repair](../concepts/history-validation-and-repair.md)
-- [Coding harness execution profile](../concepts/coding-harness-execution-profile.md)
+- [Provider API index](../../providers/index.md)
+- [Model providers and capabilities](../../concepts/model-providers-and-capabilities.md)
+- [Provider request pipeline](../../concepts/provider-request-pipeline.md)
+- [History validation and repair](../../concepts/history-validation-and-repair.md)
+- [Coding harness execution profile](coding-harness-execution-profile.md)

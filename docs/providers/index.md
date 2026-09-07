@@ -12,7 +12,8 @@ defines how this research maps into AgentKit.Providers,
 AgentKit.Providers.OpenAICompatible, and concrete provider packages. Researching
 an API does not by itself commit the project to shipping its adapter.
 
-The [coding-harness provider profiles](coding-harness-provider-profiles.md)
+The
+[coding-harness provider profiles](../profiles/coding-harness/provider-interoperability.md)
 complement these vendor contracts with AgentKit-owned interoperability
 requirements. They cover the full provider, API-family, model, endpoint,
 authentication, and transport route; dynamic catalogs; replay repair; schema and
@@ -61,7 +62,8 @@ canonical semantic-operation types, embedding-space identity, score semantics,
 RAG timing, and conformance rules. Read that file before implementing any vector
 or ranking adapter.
 
-The [coding-harness provider profiles](coding-harness-provider-profiles.md)
+The
+[coding-harness provider profiles](../profiles/coding-harness/provider-interoperability.md)
 define route families, credential and catalog behavior, cross-provider history
 repair, and the compatibility details a long-running coding loop needs. Those
 requirements do not declare adapter support and do not replace current public

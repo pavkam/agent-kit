@@ -21,9 +21,8 @@ For tool catalog, schema, scheduling, invocation, or result work that does not
 change a security boundary, use [agentkit-tools](../agentkit-tools/SKILL.md).
 For coding edits, worktree reset/removal, terminals, or publication egress, also
 read the relevant profile under
-[coding harnesses](../../../docs/concepts/index.md#coding-harness-profile);
-these bind grants to final bytes, destinations, process intents, or target
-inventories.
+[coding harnesses](../../../docs/profiles/coding-harness/index.md); these bind
+grants to final bytes, destinations, process intents, or target inventories.
 
 ## Decision guide
 
@@ -62,6 +61,12 @@ inventories.
     revocation, atomic use consumption, lower-boundary enforcement,
     cancellation, write-disposition/parent-directory separation, uncertain
     effects, redaction, and untrusted metadata at the owning contracts.
+
+Exactly one effecting boundary consumes a grant use with an enforcement-intent
+receipt. It is not atomic with an arbitrary external effect. Authority stores
+and audit export use bounded host bootstrap capabilities so they cannot recurse
+through their own authorization path. Explicit allows survive the undecided-only
+fail-closed fallback; hard denial dominates and live revocation remains binding.
 
 Use the dedicated security skill for authority behavior that does not involve
 tools, and `agentkit-mcp` when MCP protocol semantics also change.

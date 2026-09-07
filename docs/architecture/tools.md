@@ -20,19 +20,153 @@ specific `AgentId`, `SessionId`, and `RunId`; neither the catalog nor the
 scheduler has a mutable "current agent". Runs for different agents may execute
 concurrently without sharing mutable call or budget state.
 
-Individual tools are feature packages named AgentKit.Tools.ToolName. The first
-set includes AgentKit.Tools.Read, AgentKit.Tools.Write, AgentKit.Tools.Skill,
-and AgentKit.Tools.Web. Process-backed tools follow the same naming rule when
-introduced. Each package owns its descriptor, invoker, options, registration,
-and tests. AddReadTool, AddWriteTool, AddSkillTool, and AddWebTool register
-their features through the service collection.
+Individual tools are feature packages named AgentKit.Tools.ToolName. Workspace
+observation is split into AgentKit.Tools.Read, AgentKit.Tools.List,
+AgentKit.Tools.Glob, and AgentKit.Tools.Search; mutation uses
+AgentKit.Tools.Write, AgentKit.Tools.Edit, and AgentKit.Tools.Patch. Skill, web,
+process, language-service, session-state, and delegation tools follow the same
+naming rule. Each package owns its descriptor, invoker, options, registration,
+and tests. Registration methods such as AddReadTool and AddListTool add only
+their feature and never grant its effects.
 
-AgentKit.Tools.Skill deliberately contributes two capabilities: the skill tool
-and the context contributor that describes available skills to the model. Both
-use the same source identity and are registered together. File-aware tools
-depend on file-system abstractions and never on AgentKit.FileSystem itself. Web
-tools depend on network abstractions and never create an unrestricted HTTP
-client. Process-backed tools depend on process abstractions and never start an
+`AgentKit.Tools.Search` validates the complete search profile before requesting
+authority, including the pinned pattern engine, path glob, hidden-file policy,
+and every resource/output bound. It authorizes `FileSearch` against the narrow
+host audience and passes the resulting single-use grant to
+`IFileContentSearcher`; the low-level host consumes the same fingerprint before
+observing path names or content. Invalid patterns and denied requests therefore
+cannot leak base existence, sibling names, file types, or match data.
+
+`AgentKit.Tools.Edit` performs exact ordinal text replacement over a strict
+UTF-8 byte snapshot. A normal edit requires exactly one occurrence; explicit
+`replace_all` replaces every non-overlapping occurrence, while zero or ambiguous
+matches fail before mutation authorization. Untouched bytes, a UTF-8 BOM,
+newline spelling, and final-newline state are preserved because the complete
+final bytes are computed before the second security decision. The mutation
+decision binds those bytes and the observed source hash, and the host rejects a
+concurrent version change instead of overwriting it under stale authority.
+
+`AgentKit.Tools.Patch` parses its pinned patch grammar without effects, resolves
+the complete source-ordered plan against exact snapshots, and obtains separate
+authority for every create, replace, delete, and move. It depends on
+`IWorkspacePatchApplier`, never on `AgentKit.FileSystem`, and passes exact final
+bytes plus source-version fingerprints to the host boundary. Duplicate or
+overlapping paths fail before authorization. Patch results preserve the host's
+operation-level atomicity classification and every per-entry committed,
+unchanged, or uncertain state; a sequential multi-file commit is never presented
+as atomic.
+
+`AgentKit.Tools.Language` is a thin read-only adapter over the selected
+`ILanguageIntelligenceService`. It validates document and workspace-symbol query
+shapes before authority, converts the model-facing one-based positions to
+zero-based UTF-16 coordinates, and requests exact `FileRead`/`Observe` authority
+for the document or workspace resource. The host implementation consumes the
+same single-use grant before observation. Results preserve successful-empty,
+unsupported, unavailable, stale, timeout, cancellation, and failure states;
+model projection re-applies item and text bounds even when an adapter returns an
+oversized snapshot.
+
+`AgentKit.Tools.Web` supplies the local `web_fetch` tool. It accepts only
+absolute HTTP(S) URLs without user information or fragments and never accepts
+model-provided credential headers. For every hop it first requests authority for
+the resolver audience, consumes that grant before DNS, then requests a second
+grant bound to the exact method, routed destination, resolved addresses,
+headers, classification, and bounds. Redirects are returned unfollowed by the
+transport and repeat this full sequence with a fresh operation identity and two
+fresh single-use grants. Response bytes, headers, total duration, redirects,
+character decoding, and final projection are independently bounded. HTML uses a
+deterministic executable-region-removing transform, and every projection marks
+remote content as untrusted data.
+
+`AgentKit.Tools.WebSearch` supplies `web_search` over one explicitly selected
+`IWebSearchProvider`; registration deliberately supplies no provider, endpoint,
+credential, or synthetic result source. Query text, ordered canonical domain
+filters, freshness, result bound, provider identity, secret-free destination,
+attempt ID, and deadline form one exact `Network`/`Egress` fingerprint. A
+provider implementation consumes that single-use grant before sending the
+classified query and performs one attempt without hidden retry. The tool
+revalidates request correlation, HTTP(S) result URLs, domain filters, item
+count, title/snippet bounds, and provider result kinds. Truncation clears
+completeness, and every projection marks titles, URLs, and snippets as
+non-authoritative untrusted data.
+
+`AgentKit.Tools.Resource` supplies a stable `resource` list/read tool over an
+immutable host-configured file-resource catalog. Listing returns only approved
+identity, kind, trust, description, media, and integrity metadata; backing paths
+remain private and listing performs no discovery. Reading resolves the identity
+before authority, obtains exact `FileRead`/`Observe` authority for the
+configured path and complete-file byte bound, then calls `IFileSnapshotReader`,
+which consumes the same single-use grant. The tool requires strict UTF-8,
+verifies an optional pinned content hash, independently bounds decoded
+characters, and marks all loaded text `instruction_authority: false`. Loading
+never migrates, installs, executes, or mutates its source.
+
+`AgentKit.Tools.Question` supplies the explicit `question` boundary for a
+material decision that cannot be inferred safely. It validates two through ten
+unique, mutually exclusive options, prompt and option text ceilings, optional
+supplementary free text, and a bounded response timeout before allocating an ID
+or asking for authority. Publication requests exact `StateMutation`/`Create`
+authority bound to the question ID, full ordered presentation, free-text policy,
+and deadline. `AgentKit.IO.DefaultHumanQuestionBroker` consumes that single-use
+grant immediately before passing a grant-free prompt to the selected application
+channel. The tool returns only after an answer, timeout, unavailable channel, or
+cancellation; it never disguises pending work as a successful terminal result.
+Answers are checked against the authorized option set and output bounds and are
+projected with `instruction_authority: false`.
+
+`AgentKit.Tools.Plan` supplies the versioned `plan` tool and the default
+session-backed `IPlanStateStore`. A plan has a stable `PlanId`, positive
+optimistic revision, authenticated author, bounded title, and one through fifty
+ordered items with stable IDs and explicit pending, in-progress, completed, or
+blocked status. At most one item may be in progress. Reads, complete
+replacements, and individual status transitions have distinct exact
+fingerprints; mutations require the revision previously observed by the model.
+The tool obtains `StateRead`/`Observe` or `StateMutation`/`Mutate` authority,
+and `SessionPlanStateStore` consumes that single-use grant before loading or
+appending session state. Every accepted mutation appends a complete typed
+`PlanSessionEntry`; it never rewrites an earlier revision. Session optimistic
+conflicts are re-read and returned as plan revision conflicts rather than
+silently overwriting concurrent work.
+
+The same package also exposes `todo` as an explicit compatibility tool over the
+identical `IPlanStateStore`, schema, revisions, grants, and session entries.
+Hosts may publish either or both names, but AgentKit never creates a second todo
+list beside the work plan merely to imitate another harness's spelling.
+
+`AgentKit.Tools.Task` supplies the model-facing `task` adapter over an
+explicitly selected `ITaskDelegationBroker`. It requires a durable parent
+session and an active in-run correlation, validates the target agent, objective,
+acceptance criteria, exact child tool allow-list, turn/tool-call budgets, and
+deadline before allocating identities or requesting authority, and binds every
+field to one `Delegation/Create` grant. The result projection preserves child
+goal, attempt, session, run, terminal status, and side-effect certainty while
+marking the child summary `instruction_authority: false`.
+
+The adapter-specific `TaskDelegation*` contracts deliberately do not replace the
+fuller goal coordinator contracts. `AgentKit.Goals` supplies the protected
+default broker, which atomically consumes the exact single-use grant immediately
+before forwarding a grant-free envelope to an application-selected
+`ITaskDelegationChannel`. That channel delegates to the goal coordinator's
+durable admission and join contracts: resolve the active parent goal, attenuate
+authority and catalogs, reserve budget, and create child state idempotently.
+Local execution crosses the
+[host-owned worker boundary](goals-and-delegation.md#delegation-discovery-selection-policy-and-execution)
+without capturing the engine inside the tool or dispatcher graph. Admitted work
+must settle or be durably handed off. Registration supplies no fake channel and
+rejection before dispatch contains no invented child identities.
+
+`AgentKit.Tools.Skill` deliberately contributes two capabilities: the `skill`
+tool and `ISkillCatalogContextSource`, which renders bounded discovery metadata
+without reading skill bodies. Both resolve the same singleton `ISkillCatalog`
+snapshot and therefore share one deterministic catalog version and source
+identity. Listing performs no file observation. Activation selects by stable ID,
+authorizes an exact bounded file snapshot, validates optional integrity and
+strict UTF-8, reports truncation explicitly, and marks both discovery and loaded
+content `instruction_authority: false`; it never installs, migrates, executes,
+or silently elevates repository text. File-aware tools depend on file-system
+abstractions and never on AgentKit.FileSystem itself. Web tools depend on
+network abstractions and never create an unrestricted HTTP client.
+Process-backed tools depend on process abstractions and never start an
 operating-system process directly.
 
 ## Normative minimal contract shape
@@ -281,9 +415,10 @@ public sealed record ToolCallResult(
 impossible combinations such as `Succeeded` without a resolved tool/version,
 `Succeeded` with an error, `Denied` with a claim that invocation ran, a
 descriptor/version mismatch, a missing requested alias, only one member of the
-resolved tool/version pair, timestamps outside
-`RequestedAt <= InvocationStartedAt <= CompletedAt`, or a retryable unknown
-mutating effect. Calls that terminate before invocation leave
+resolved tool/version pair, a start timestamp on an uninvoked call, or a
+retryable unknown mutating effect. UTC timestamp comparison is not a stage-order
+check: clocks can move backward. Durable transitions establish chronology and
+monotonic timing measures duration. Calls that terminate before invocation leave
 `InvocationStartedAt` null but still carry required request and completion
 timestamps.
 
@@ -799,12 +934,12 @@ identity, deadline, cancellation, attempt data, safe dependencies, and a bounded
 progress channel. It does not receive the loop, arbitrary history, credentials,
 or the dependency container.
 
-## First-party file read and write tools
+## First-party file observation and mutation tools
 
-`AgentKit.Tools.Read` and `AgentKit.Tools.Write` are independent normative
-feature packages. A convenience registration package may add both, but it does
-not own their tool types, merge their descriptors, or replace their distinct
-read and write dependency/capability validation. A combined
+`AgentKit.Tools.Read`, `.List`, `.Glob`, `.Search`, `.Write`, `.Edit`, and
+`.Patch` are independent feature packages. A convenience registration may add
+several, but it does not own their tool types, merge their descriptors, or
+replace their distinct dependency and capability validation. A combined
 `AgentKit.Tools.FileSystem` package is not the architectural package boundary.
 
 The read tool exposes a model-facing line window while depending only on
@@ -896,6 +1031,3 @@ acting. Changed resources or inputs return through authorization.
 - [Security and human control](permissions-and-human-control.md)
 - [Network access](network.md)
 - [Process execution](process-execution.md)
-- [Coding-harness built-in tools](../concepts/coding-harness-built-in-tools.md)
-- [Workspace mutations and code editing](../concepts/workspace-mutations-and-code-editing.md)
-- [Language services, formatters, and watchers](../concepts/language-services-formatters-and-watchers.md)

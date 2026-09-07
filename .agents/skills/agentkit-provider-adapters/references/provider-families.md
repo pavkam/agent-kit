@@ -8,7 +8,7 @@ and [project structure](../../../../docs/architecture/project-structure.md).
 Provider-specific research and primary links live in the
 [provider index](../../../../docs/providers/index.md). For a long-running coding
 loop, also inspect the pinned
-[coding-harness provider profiles](../../../../docs/providers/coding-harness-provider-profiles.md);
+[coding-harness provider profiles](../../../../docs/profiles/coding-harness/provider-interoperability.md);
 they are interoperability evidence, not current vendor guarantees.
 
 ## Heuristics

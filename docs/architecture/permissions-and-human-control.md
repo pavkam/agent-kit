@@ -625,6 +625,37 @@ durable deferral returns a typed unavailable result rather than holding an
 in-memory task. A sandbox reduces consequences but never changes a denial into
 an allow.
 
+## Trusted infrastructure and the security dependency graph
+
+The authority's decision, grant, approval, and required-audit stores are part of
+its trusted control plane. Their persistence must not request a grant from the
+same authority whose decision or consumption they are recording. Grant-store
+network access cannot depend on that grant store, and exporting an audit record
+cannot recursively emit required audit for its own export.
+
+The host supplies these adapters with explicit bootstrap capabilities for fixed
+storage, credential, and transport targets before exposing the engine. These
+capabilities are bounded by host configuration and platform access controls, are
+unavailable to model-selected tools or arbitrary application operations, and
+cannot accept caller-selected destinations. Adapters still enforce identity
+partitioning, atomic state transitions, bounds, and redaction. Bootstrap failure
+prevents readiness or future grant use; it never falls back to an unrestricted
+client. A shared low-level transport may implement both paths, but its bootstrap
+and ordinary operation capabilities are distinct and cannot substitute for one
+another. Audit export health uses non-recursive best-effort diagnostics.
+
+Composition validates this control-plane dependency graph separately from the
+ordinary protected-effect graph. Required audit must have a durable acceptance
+path before an effect; an asynchronous outbox is sufficient only when the
+configured policy explicitly accepts its durability guarantee. Remote exporter
+availability cannot be inferred from a successful local log call.
+
+These contracts govern cooperating components. Trusted in-process extension code
+can call platform APIs outside AgentKit; DI and a `SecurityGrant` are not a
+sandbox for hostile native or managed code. A host running untrusted extensions
+must put them behind an enforceable process or remote boundary and expose only
+authorized capabilities there.
+
 ## Protected operations
 
 The
@@ -690,6 +721,29 @@ credential-source grant bound to the captured profile/account/audience and is
 distinct from both provider-egress and lower-level network grants; none can be
 substituted for another.
 
+### Policy decision algebra and revocation
+
+Evaluation considers every applicable policy in the captured deterministic
+order. Any applicable hard denial or evaluation failure denies. Otherwise,
+bounded allow and approval-conditioned proposals contribute intersecting scope,
+expiry, use-count, and effect constraints. An empty intersection denies; every
+required approval must be satisfied before a grant can issue. At least one
+policy must explicitly permit the resulting scope, either directly or subject to
+approval. Abstention, descriptive metadata, and the absence of a denial are not
+permission.
+
+The registered terminal fail-closed policy is a fallback for an undecided
+request, not an unconditional denial that overrides every explicit allow.
+Ordering determines deterministic evaluation and evidence; it is not a
+last-writer-wins authority rule. A policy replacement cannot remove managed
+constraints by changing registration order.
+
+Captured policy snapshots preserve interpretation. Live revocation is separate:
+the authority checks its current revocation generation at grant issue and
+consumption. An emergency deny retires the relevant grants/approval bindings
+before the new policy becomes effective. Retaining old snapshots for audit or
+recovery never lets a delayed approval resurrect revoked authority.
+
 ## Human approval
 
 When a decision cannot complete inline, the
@@ -738,13 +792,29 @@ consumption, denial, expiry, revocation, and enforcement failure emits a
 redacted audit record. Required audit persistence is part of settlement.
 
 Revocation prevents future grant use but does not claim to undo completed side
-effects. Single-use grants are consumed atomically with durable operation
-recording. Cached decisions require an explicit scope and lifetime and include
-every security-relevant input in their key.
+effects. Single-use grants are consumed atomically with an enforcement-intent
+receipt in the grant store's own consistency boundary. This records permission
+to start the exact effect, not its completion. Cached decisions require an
+explicit scope and lifetime and include every security-relevant input in their
+key.
 
 The security authority and approval broker are independently replaceable. Custom
 implementations pass the same fail-closed, binding, concurrency, durability,
 hook-isolation, and audit conformance suites.
+
+Exactly one effecting boundary consumes each grant use. Coordinators validate
+and forward the grant; they do not spend it before the leaf spends it again.
+Separate effects, including directory lookup, store access, credential read,
+provider egress, DNS, and network send, use separately issued audience-bound
+grants. A consumed receipt is recovery evidence, never a reusable grant.
+
+The consuming boundary records exact attempt, request fingerprint, audience,
+grant use, and any required fence before the effect. Consumption and an external
+effect generally do not share a transaction. A crash between consumption and
+terminal recording leaves the effect unknown unless independent evidence proves
+otherwise. Recovery reconciles it under the
+[durable execution contract](durable-execution.md#recovery); it does not refund
+the use or repeat a non-idempotent effect merely because no result was recorded.
 
 ## Related documentation
 

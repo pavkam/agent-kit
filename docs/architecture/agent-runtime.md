@@ -9,9 +9,9 @@ AgentEngine resolves the addressed `Agent`, creates an isolated run scope, and
 uses that definition's selected keyed loop. The process-level engine does not
 contain privileged orchestration behavior.
 
-The loop owns control flow: when input is promoted, when context is prepared,
-when a model is called, when tools may run, whether another turn is required,
-and when the run is
+The loop owns control flow: when to request input promotion, when context is
+prepared, when a model is called, when tools may run, whether another turn is
+required, and when the run is
 [truly settled](../concepts/run-lifecycle-and-settlement.md). Session
 coordination remains in AgentKit.Session.
 
@@ -19,10 +19,10 @@ coordination remains in AgentKit.Session.
 
 A run moves through the
 [explicit state-machine phases](../concepts/agent-loop-state-machine.md) for
-input admission, turn preparation, model streaming, assistant commit, tool
-recording and execution, completion, cancellation or failure, and settlement.
-State transitions are observable and validated. A run reaches exactly one
-terminal outcome and one settlement event.
+promotion of already-admitted input, turn preparation, model streaming,
+assistant commit, tool recording and execution, completion, cancellation or
+failure, and settlement. State transitions are observable and validated. A run
+reaches exactly one terminal outcome and one settlement event.
 
 The runtime distinguishes generation complete, turn complete, run complete, and
 run settled. The normal high-level operation waits for settlement. A stream may
@@ -95,6 +95,7 @@ public sealed record AgentRunInvocation(
     AgentDefinition Definition,
     AgentCatalogVersion AgentCatalogVersion,
     SessionId SessionId,
+    ExecutionLaneId ExecutionLaneId,
     ConversationId? ConversationId,
     ExecutionIdentity Identity,
     RunId RunId,
@@ -123,6 +124,7 @@ public sealed record AgentRunServices(
 public sealed record TurnContext(
     AgentId AgentId,
     SessionId SessionId,
+    ExecutionLaneId ExecutionLaneId,
     ConversationId? ConversationId,
     RunId RunId,
     TurnId TurnId,
@@ -132,14 +134,17 @@ public sealed record TurnContext(
 
 public enum AgentRunState
 {
-    Created,
-    AdmittingInput,
+    Accepted,
+    Driving,
+    PromotingInput,
     PreparingTurn,
     AwaitingModel,
     StreamingModel,
     RecordingToolCalls,
     AwaitingTools,
     CommittingToolResults,
+    WaitingRetry,
+    SuspendedDeferred,
     Completing,
     Cancelling,
     Failing,
@@ -163,6 +168,7 @@ public sealed record AgentLoopResult(
     ConversationId? ConversationId,
     RunId RunId,
     AgentRunOutcome Outcome,
+    RunSettlementOutcome Settlement,
     MessageCursor PreviousCursor,
     ImmutableArray<AgentMessage> NewMessages,
     ValidatedOutput? Output,
@@ -203,8 +209,10 @@ snapshots; mutable state-machine internals stay inside the run scope.
 `RunId` is created once by the injected `IIdentifierGenerator<RunId>` before the
 first durable run event. Each turn gets one `TurnId` from
 `IIdentifierGenerator<TurnId>` and a separate monotonic turn number. Resume
-restores durable IDs; it never generates replacements for an existing run or
-turn.
+restores durable IDs for an open run or turn and creates a fresh drive scope.
+Continuing after a terminally deferred or otherwise settled run starts a new
+`RunId` linked to the prior run and deferred operation. A new worker or drive
+does not itself create a new logical run, and `RunSettled` is never reopened.
 
 ## First-party runtime class and dependencies
 
@@ -294,19 +302,24 @@ agent definition may select a policy key and narrow defaults; run options may
 narrow them again. Managed ceilings cannot be widened by either layer.
 
 Composition validates each definition's loop and continuation-policy keys, scope
-graph, non-negative bounded limits, reachable terminal states, and required
-collaborators. Unsupported capability, unknown tool, invalid transition,
-deadline, limit, policy halt, and cancellation are typed outcomes. They are not
-`NotSupportedException`, magic assistant text, or a successful result with a
-null output.
+graph, non-negative bounded limits, and required collaborators. Conformance
+tests verify reachable terminal states and progress; build validation cannot
+prove termination of arbitrary loop implementations. Unsupported capability,
+unknown tool, invalid transition, deadline, limit, policy halt, and cancellation
+are typed outcomes. They are not `NotSupportedException`, magic assistant text,
+or a successful result with a null output.
 
 ## Cancellation, concurrency, and ownership
 
-Every await and observer call receives the run token. The run token combines
-caller cancellation, host shutdown, deadlines, budget stops, and explicit
-interrupts while preserving the normalized cancellation reason. A cancellation
-request stops new work, then follows the configured bounded drain and settlement
-policy; it never rewrites already committed state.
+Each await receives the token owned by that phase. An invocation token cancels
+admission before acceptance or that caller's wait after acceptance; it does not
+abort durably accepted work or another joiner's run. Operation-owned
+cancellation combines authorized aborts, deadlines, budget stops, and the host's
+explicit shutdown policy while preserving the reason. A separately named
+owning-run API may bind caller cancellation to an abort, and must document that
+ownership. Required terminal persistence and audit use a bounded independent
+settlement token. Cancellation stops new effects and follows drain policy; it
+never rewrites committed state or prevents recording why work stopped.
 
 One scoped loop instance executes one run. Different run scopes may execute in
 parallel, including runs for different agents that select the same stateless

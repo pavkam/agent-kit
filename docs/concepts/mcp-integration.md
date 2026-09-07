@@ -1,6 +1,9 @@
 # MCP integration
 
-**Status:** Normative integration boundary  
+**Status:** Normative integration boundary
+
+**Architecture:** [MCP](../architecture/mcp.md)
+
 **Depends on:** [Tools and toolsets](tools-and-toolsets.md),
 [permissions](permissions-approvals-and-trust.md)
 
@@ -23,16 +26,17 @@ AgentKit MUST state its role explicitly:
 - a **client** connects to one MCP server and negotiates capabilities;
 - a **server** exposes AgentKit-backed primitives to external clients.
 
-Client and server support SHOULD live in separate leaf packages. The first
-integration MAY implement host/client only. MCP SDK types MUST NOT leak into
-`AgentKit.Abstractions`.
+Shared protocol-version and reflected tool contracts SHOULD live in
+`AgentKit.Mcp`; client and server support SHOULD live in separate leaf packages.
+The first integration MAY implement host/client only. MCP SDK types MUST NOT
+leak into `AgentKit.Abstractions` or runtime packages.
 
 ## Layering
 
 ```text
 AgentKit host policy
   -> MCP primitive adapter
-  -> MCP session/client lifecycle
+  -> MCP protocol-era/client lifecycle
   -> JSON-RPC correlation
   -> transport (stdio or HTTP)
 ```
@@ -43,10 +47,22 @@ or disclose every resource.
 
 ## Lifecycle and capabilities
 
-The client MUST negotiate protocol version and capabilities before using a
-method. It MUST enforce valid lifecycle state and advertised capability for each
-request/notification. Unknown optional metadata is preserved for forward
-compatibility; unsupported required behavior fails typed.
+For supported revision 2026-07-28, requests carry the revision's version and
+capability envelope. `clientInfo` is recommended display metadata, not required
+authentication evidence. Modern servers MUST implement `server/discover`, while
+clients MAY skip prior discovery; it is not a required handshake. For explicitly
+supported legacy revisions, including 2025-11-25, clients MUST complete
+`initialize` before using negotiated methods. Compatibility profiles enumerate
+supported revisions; unknown future dates do not inherit current behavior. See
+the
+[MCP lifecycle architecture](../architecture/mcp.md#lifecycle-and-correlation)
+for the governing official protocol references. A dual-era implementation MUST
+determine the server era with the official transport-specific rules and MUST
+distinguish a recognized modern version error from evidence of a legacy server.
+
+The client MUST enforce the protocol revision, era, and advertised capability
+valid for each request/notification. Unknown optional metadata is preserved for
+forward compatibility; unsupported required behavior fails typed.
 
 Protocol correlation IDs are separate from AgentKit run, message, and tool-call
 IDs. Adapters maintain explicit mappings and reject duplicate, missing, or
@@ -72,6 +88,20 @@ Mixed MCP content—text, image, audio, resource link, or embedded resource—MU
 remain typed. Stringifying non-text results is non-conforming.
 
 ## Tool adapter
+
+An AgentKit reflected MCP tool surface MUST be a class whose attributed methods
+each accept one request object plus an optional trailing `CancellationToken` and
+return `Task<TResponse>` or `ValueTask<TResponse>` containing one response
+object. The reflection contract MUST derive the JSON-RPC argument member and
+JSON schemas from the method shape, reject ambiguous or primitive-only shapes,
+and reject duplicate MCP names before transport or server registration.
+
+Protocol revision, SDK/package version, tool contract version, and catalog
+generation MUST remain separate. A server exposing reflected AgentKit tools MUST
+publish the tool contract version as namespaced untrusted metadata. A typed
+client MUST validate the expected name and tool contract version against an
+immutable catalog snapshot before invocation; it MUST NOT infer compatibility
+from the MCP protocol revision.
 
 MCP tool descriptors MUST receive stable source-qualified AgentKit identities.
 Remote names, descriptions, schemas, annotations, and effect hints are
@@ -108,7 +138,13 @@ because it exposes a useful tool.
 
 ## Acceptance scenarios
 
-- Calling a non-negotiated method fails before transport send.
+- A legacy client cannot call a negotiated method before initialization.
+- A modern request carries its revision and client capability view without
+  relying on prior session state.
+- A reflected tool class rejects primitive request/response shapes and duplicate
+  names before registration.
+- A typed client rejects a missing or mismatched tool contract version before
+  invocation.
 - Duplicate/mismatched JSON-RPC correlation fails typed.
 - Tool-list change does not redirect an in-flight call.
 - Security denial prevents the MCP tool request and its transport effect.

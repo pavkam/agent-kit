@@ -1,6 +1,10 @@
 # Agent definition and run context
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:**
+[Composition and configuration](../architecture/composition-and-configuration.md)
+
 **Depends on:** [Architecture](architecture-and-dependency-boundaries.md),
 [configuration](configuration-and-overrides.md)
 
@@ -22,6 +26,11 @@ mutable run or session state. Looking up an agent by its typed `AgentId`
 captures the catalog version used to bind the handle; a later definition reload
 affects newly resolved handles or a documented next-run boundary, never an
 in-flight run.
+
+A pinned handle is revalidated at each new admission. Definition removal,
+revocation, or unavailable retained profiles reject new work without silently
+rebinding the handle. Captured revisions and reload precedence follow
+[composition rules](../architecture/composition-and-configuration.md#agent-definitions-and-catalog).
 
 ## Agent definition
 
@@ -48,7 +57,7 @@ compiled definition records the exact resolved keys and versions used for a run.
 Starting a run MUST create a unique `RunId` and an isolated run-owned context.
 The context tracks at least:
 
-- session and optional conversation identity;
+- session, execution-lane, and optional conversation identity;
 - admitted input IDs and promotion cutoffs;
 - current loop state and monotonically increasing turn/step number;
 - the effective immutable configuration snapshot;
@@ -106,10 +115,12 @@ serialized as run state.
 
 ## Result boundary
 
-`AgentRunResult<TOutput>` MUST include the terminal reason, output if present,
-new messages or an append cursor, usage, run/session/conversation IDs, and
-metadata. It MUST distinguish a successful output from a completed run with no
-output, a limit outcome, cancellation, policy denial, or failure.
+`AgentRunResult<TOutput>` distinguishes pre-admission rejection, which has no
+run identity, from `AgentRunFinished<TOutput>`. The latter MUST include the
+terminal reason, separate settlement outcome, output if present, new messages or
+an append cursor, usage, run/session/conversation IDs, and metadata. It MUST
+distinguish a successful output from a completed run with no output, a limit
+outcome, cancellation, policy denial, or failure.
 
 ## Acceptance criteria
 

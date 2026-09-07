@@ -225,11 +225,29 @@ public interface IAgentDefinitionCatalog
 ```
 
 The first-party catalog in `AgentKit` composes additive definition sources into
-one immutable, versioned snapshot. It is thread-safe, rejects conflicting
-`AgentId` revisions according to explicit source precedence, and publishes a new
-snapshot only after complete validation. Invalid reloads leave the previous
-snapshot active. A custom catalog may load definitions remotely, but it must
-preserve the same snapshot, validation, cancellation, and concurrency semantics.
+one immutable, versioned snapshot. It is thread-safe, resolves source precedence
+under the rules below, and publishes a new snapshot only after complete
+validation. Invalid reloads leave the previous snapshot active. A custom catalog
+may load definitions remotely, but it must preserve the same snapshot,
+validation, cancellation, and concurrency semantics.
+
+For each `AgentId`, the highest declared source precedence wins.
+Equal-precedence sources must supply identical revision and canonical content or
+publication fails; registration order never breaks that tie. Within one source,
+duplicate IDs are invalid except equivalent idempotent registration. A published
+`(AgentId, Revision)` is never rebound to different content. Replacing content
+advances the revision, including an intentional rollback to an earlier design.
+Removal in a newer snapshot prevents new engine-level resolution.
+
+A resolved `Agent` pins its definition, not permission to execute it forever.
+Before each new admission, activation checks that the pinned revision remains
+enabled and that its exact component/profile versions are retained. Replacement
+may leave an older revision explicitly enabled; removal or revocation rejects
+new work through existing handles. Running operations keep their captured
+snapshots, subject to live revocation. Recovery may resolve a retained disabled
+revision only to reconcile or settle its existing operation, or under an
+explicit authorized continuation policy. Reload never silently upgrades a
+handle, an open operation, or an existing session's store.
 
 ### Process-level execution surface
 
@@ -242,7 +260,8 @@ public sealed record AgentRunRequest(
     ConversationId? ConversationId,
     ExecutionIdentity Identity,
     AgentInput Input,
-    AgentRunOptions? Options = null);
+    AgentRunOptions? Options = null,
+    ExecutionLaneId? ExecutionLaneId = null);
 
 public sealed record AgentSessionCreateRequest(
     AgentId AgentId,
@@ -312,6 +331,7 @@ public sealed class Agent
         AgentInput input,
         ConversationId? conversationId = null,
         AgentRunOptions? options = null,
+        ExecutionLaneId? executionLaneId = null,
         CancellationToken cancellationToken = default) =>
         runtime.RunAsync<TOutput>(
             this,
@@ -320,14 +340,16 @@ public sealed class Agent
             identity,
             input,
             options,
+            executionLaneId,
             cancellationToken);
 
-    public Task<IAgentRunStream<TOutput>> StreamAsync<TOutput>(
+    public Task<AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(
         SessionId sessionId,
         ExecutionIdentity identity,
         AgentInput input,
         ConversationId? conversationId = null,
         AgentRunOptions? options = null,
+        ExecutionLaneId? executionLaneId = null,
         CancellationToken cancellationToken = default) =>
         runtime.StreamAsync<TOutput>(
             this,
@@ -336,6 +358,7 @@ public sealed class Agent
             identity,
             input,
             options,
+            executionLaneId,
             cancellationToken);
 }
 
@@ -369,7 +392,7 @@ public sealed class AgentEngine : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         runtime.RunAsync<TOutput>(request, cancellationToken);
 
-    public Task<IAgentRunStream<TOutput>> StreamAsync<TOutput>(
+    public Task<AgentRunStreamStartResult<TOutput>> StreamAsync<TOutput>(
         AgentRunRequest request,
         CancellationToken cancellationToken = default) =>
         runtime.StreamAsync<TOutput>(request, cancellationToken);
@@ -491,19 +514,48 @@ AgentEngineBuilder, ASP.NET Core, a worker host, or a custom service collection.
 
 ## Build validation
 
+Validation is staged. Registration helpers collect and validate local
+descriptors without I/O. Synchronous `Build()` validates a materialized initial
+catalog, registered graphs, options, and declared capabilities; it never blocks
+on `ReadAsync`, fetches secrets, probes a model, or starts application work. A
+host needing remote configuration materializes it asynchronously under its
+trusted bootstrap policy before building or exposing the engine. Hosted
+composition follows the same readiness rule.
+
+| Boundary                    | Required evidence                                                                                                                       | Failure behavior                                              |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Build or host readiness     | Nonempty validated definition snapshot, complete selected graphs, explicit external bindings, compatible declared capabilities          | No runnable engine is exposed                                 |
+| Catalog/profile publication | Complete candidate snapshot, unambiguous references, valid versions and lifetimes                                                       | Keep the last valid snapshot                                  |
+| Admission and activation    | Enabled captured definition, exact profile set, authenticated identity, valid lane/session address, requested output-type compatibility | Typed rejection before run acceptance or protected effects    |
+| Each protected effect       | Current grant state, exact concrete request, deadline, budget and fencing evidence                                                      | Deny, conflict, limit, or recovery outcome before new effects |
+
+Build proves configuration consistency, not remote availability or the behavior
+of arbitrary application code. Structural graph validation does not execute user
+factories to discover hidden dependencies or prove that every custom loop
+terminates. Factories declare dependencies; contract tests verify their actual
+activation and lifecycle. External availability and expiring credentials are
+checked at their operation boundary, with typed failures.
+
+Base registration of an optional subsystem does not enable every operation it
+can implement. Validate the base services when registered and the complete
+dependency closure of each enabled profile, operation, and published definition.
+For example, registering the provider runtime does not require an embedding
+model until an embedding operation is configured. Invalid explicitly configured
+operations still fail validation even if no current agent selects them.
+
 A valid engine has one effective engine-wide definition catalog, run-scope
 factory, composition validator, session directory/store catalog/selector, hook
 dispatch kernel/point-definition catalog/profile selector, security authority
-selector/policy catalog, approval broker, model catalog, budget authority,
-`TimeProvider`, `IRandomizerFactory`, and `IContentHasher`. For every published
-agent definition, key and profile resolution must produce exactly one effective
-loop, continuation policy, input coordinator, output publisher, output
-processor, context assembler, run budget profile, session coordinator/run
-coordinator/profile and store, hook profile, security authority/profile, model
-selector, and model request executor, plus at least one compatible
-conversational model. Several keyed implementations and profiles may coexist;
-ambiguity means a definition failed to select one, not that the whole process
-must use one global implementation.
+selector/policy catalog, approval broker, model catalog, provider-profile
+runtime selector, budget authority, `TimeProvider`, `IRandomizerFactory`, and
+`IContentHasher`. For every published agent definition, key and profile
+resolution must produce exactly one effective loop, continuation policy, input
+coordinator, output publisher, output processor, context assembler, run budget
+profile, session coordinator/run coordinator/profile and store, hook profile,
+security authority/profile, model selector, and model request executor, plus at
+least one compatible conversational model. Several keyed implementations and
+profiles may coexist; ambiguity means a definition failed to select one, not
+that the whole process must use one global implementation.
 
 `TimeProvider.System` is a replaceable `TryAdd` default when the host has not
 supplied another instance. The first-party security package registers
@@ -526,24 +578,15 @@ that may still require history materialization; a missing version fails
 publication rather than selecting the current policy or repeating the effect.
 
 Tools, skills, memory, embeddings, reranking, goals, MCP, identity adapters,
-artifacts, evaluation, and extra contributors are optional. Once an optional
-capability is registered, its required collaborators must also be present. Build
-fails with component-specific diagnostics for missing services, duplicate
-singular registrations, invalid scopes, ambiguous keys, impossible limits,
-unsafe retry combinations, or incompatible capabilities.
+artifacts, evaluation, and extra contributors are optional. An enabled optional
+capability requires its complete selected collaborators; registering a base
+runtime does not enable every optional operation. Build fails with
+component-specific diagnostics for missing services, duplicate singular
+registrations, invalid scopes, ambiguous keys, impossible limits, unsafe retry
+combinations, or incompatible capabilities.
 
-A selected coding-workspace profile likewise resolves exactly one effective
-`IWorkspaceDirectory` and one keyed `IWorkspaceCoordinator`. A profile that
-enables workspace snapshots also resolves exactly one
-`IWorkspaceSnapshotCoordinator`. Their neutral contracts live in
-AgentKit.Abstractions and their host implementations remain leaves over file,
-process, artifact, session, and security contracts. Omitting the workspace
-profile means those services are not required and workspace operations are
-unsupported; an application never receives an ambient default rooted at its
-current directory.
-
-Build validation also constructs the closed component dependency graph from
-typed registration descriptors. Each descriptor records contract, key,
+Build validation also constructs the declared closed component dependency graph
+from typed registration descriptors. Each descriptor records contract, key,
 implementation, lifetime, direct dependencies, and any explicit operation-owned
 factory boundary. The validator combines those descriptors with Microsoft DI
 scope/build validation, rejects every strongly connected component, and reports
@@ -604,8 +647,12 @@ run scope leaks into another run. Session state is loaded through the session
 component; it is not kept indefinitely in a singleton agent object.
 
 Two agents may run concurrently in one engine, and one definition may support
-many concurrent sessions. The session executor still enforces the configured
-single-active-mutating-run rule for a particular `SessionId`.
+many concurrent sessions. The session executor enforces one active operation per
+execution lane and one serialized durable mutation line per session. Different
+lanes may overlap effects. An omitted lane selects the persisted default lane
+only when the session profile defines one unambiguously; it never means
+whichever lane is idle. A host exposing multiple lanes includes a typed
+`ExecutionLaneId` in its admission and control requests.
 
 ## Registration model
 
@@ -677,15 +724,16 @@ The [configuration merge contract](../concepts/configuration-and-overrides.md)
 defines how these layers combine and when a captured value may change.
 
 Configuration is layered immutable input. Library defaults, host settings,
-managed policy, workspace settings, agent definition, composed capabilities, run
-options, and next-turn overrides have explicit precedence. Each value also
-declares how it combines: replacement, append, keyed merge, deep merge, ordered
-rules, or explicit reset.
+managed policy, external-resource settings, agent definition, composed
+capabilities, run options, and next-turn overrides have explicit precedence.
+Each value also declares how it combines: replacement, append, keyed merge, deep
+merge, ordered rules, or explicit reset.
 
-Security constraints are not ordinary overridable values. Untrusted workspace
-configuration cannot load executable extensions, inject credentials, or widen
-tool, filesystem, network, or model authority. Invalid reloads leave the last
-known-good snapshot active. In-flight work continues with its captured snapshot.
+Security constraints are not ordinary overridable values. Untrusted
+external-resource configuration cannot load executable extensions, inject
+credentials, or widen tool, filesystem, network, or model authority. Invalid
+reloads leave the last known-good snapshot active. In-flight work continues with
+its captured snapshot.
 
 Credential profile selection is explicit provider composition, while secret
 material is resolved by the selected leaf integration for each send. Secrets
@@ -726,6 +774,15 @@ retain state across runs.
 A singleton may not capture a run-scoped service. Concurrent scopes never share
 mutable agent state. Disposal or cancellation of one run cannot dispose a
 catalog, provider adapter, or shared immutable definition needed by another run.
+
+Shutdown first seals admission and creation of new local effects, then drains,
+cancels, or durably hands off accepted work under the configured bounded policy.
+Run-owned scopes are released only after their tasks finish or transfer to an
+explicit owner. Root-provider disposal comes last; a timed-out drain cannot
+dispose a provider still used by an untracked task. A host that elects to leave
+an operation recoverable persists that state and releases local drive ownership
+without fabricating `RunSettled`. Repeated disposal is idempotent, and an
+already disposed engine rejects new operations deterministically.
 
 ## Related concept specifications
 

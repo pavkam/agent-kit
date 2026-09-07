@@ -1,6 +1,9 @@
 # Artifact and content storage
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Artifacts](../architecture/artifacts.md)
+
 **Depends on:** [Message and content model](message-and-content-model.md),
 [permissions, approvals, and trust](permissions-approvals-and-trust.md),
 [execution identity and tenancy](execution-identity-and-tenancy.md)
@@ -68,10 +71,22 @@ stores. Implementations MUST use an explicit prepare/finalize protocol, outbox,
 or compensating orphan policy; they MUST NOT pretend the writes are one atomic
 transaction when they are not.
 
-An artifact may be finalized before its durable reference is committed. Such an
-orphan remains inaccessible except to reconciliation and becomes eligible for
-bounded garbage collection. Deleting a reference does not delete shared bytes
-until retention, legal-hold, and reference-count policy permit it.
+An artifact may be finalized before its durable reference is committed. The
+returned reference is resolvable only through ordinary authorization; artifact
+storage cannot infer the transaction state of another store. The caller MUST
+record a reference-commit intent before finalization and reconcile it after
+finalization and reference append. A pending preparation is never a readable
+message reference.
+
+Automatic collection MUST honor a durable pin or equivalent retention fence
+covering a pending commit. An expired timer alone does not prove an orphan:
+collection must fence late commits and establish the intent's terminal state, or
+retain the object for reconciliation. The caller owns that cross-store protocol;
+the artifact runtime never calls back into the session/tool owner. The exact
+protocol is defined in
+[reference commitment](../architecture/artifacts.md#reference-commitment-and-garbage-collection).
+Deleting a reference does not delete shared bytes until retention, hold, and
+reference accounting permit it.
 
 ## Retention, deletion, and external ownership
 

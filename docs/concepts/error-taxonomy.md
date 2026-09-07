@@ -1,6 +1,10 @@
 # Error taxonomy
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:**
+[Foundation contracts](../architecture/foundation-contracts.md)
+
 **Depends on:** [Design principles](design-principles.md)
 
 ## Purpose

@@ -47,6 +47,15 @@ or represented as a separately constrained capability. Available
 their own grants and the sandbox profile; permission to start a process is not
 blanket host access.
 
+Executable resolution that inspects a directory, binary, script interpreter,
+link, or file metadata is protected observation. A pure configured alias may be
+normalized before I/O; lookup and hashing use their own bounded observation
+grant before the executor requests the separate start grant. Rechecking a
+fingerprint before start does not alone prevent an independent actor swapping
+the executable between check and creation. The selected host profile must prove
+executable identity through a handle-bound start or enforceable isolation, or
+reject the required guarantee. Script/interpreter chains follow the same rule.
+
 ## Lifecycle and results
 
 Process output uses the
@@ -59,6 +68,17 @@ and standard-error identity. The component defines encoding, binary output,
 truncation, backpressure, cancellation, graceful termination, forced kill,
 orphan prevention, and disposal. A timeout outcome distinguishes a process that
 never started from one that may have produced effects.
+
+The current `OperatingSystemProcessRunner` always retains independently bounded
+stdout and stderr tails. When a tail truncates and an
+`IProcessOutputArtifactSink` is registered, it also retains the complete stream
+up to `MaximumArtifactOutputBytes` and asks the sink to publish those exact
+bytes after process settlement. `AgentKit.Artifacts` supplies the adapter: it
+uses a fresh artifact authorization and two-phase prepare/finalize flow, never
+reuses the process grant as storage authority, and compensates failed
+publication by aborting staging. Artifact failure never repeats or rewrites the
+already-settled process effect; the result keeps the tail, byte counts,
+truncation flags, and a safe preservation warning.
 
 Under the
 [resilience contract](../concepts/cancellation-timeouts-and-resilience.md),
@@ -419,6 +439,13 @@ process creation.
 Unit tests use AgentKit.Processes.Scripted. Real-process coverage is explicit
 integration testing against harmless fixtures in isolated temporary roots.
 
+## Related concept specifications
+
+- [Process execution and sandboxing](../concepts/process-execution-and-sandboxing.md)
+- [Permissions, approvals, and trust](../concepts/permissions-approvals-and-trust.md)
+- [File-system access and bounds](../concepts/file-system-access-and-bounds.md)
+- [Network access and egress](../concepts/network-access-and-egress.md)
+
 ## Related architecture
 
 - [Project structure](project-structure.md)
@@ -426,5 +453,3 @@ integration testing against harmless fixtures in isolated temporary roots.
 - [Security and human control](permissions-and-human-control.md)
 - [File system](file-system.md)
 - [Network access](network.md)
-- [Interactive terminals and process sessions](../concepts/interactive-terminals-and-process-sessions.md)
-- [Language services, formatters, and watchers](../concepts/language-services-formatters-and-watchers.md)

@@ -1,9 +1,12 @@
 # Language services, formatters, and watchers
 
-**Status:** Normative coding-harness profile  
+**Status:** Normative application profile
+
+**Scope:** Optional application composition; not a required AgentKit capability.
+
 **Depends on:** [Coding workspaces](coding-workspaces-and-worktrees.md),
 [workspace mutations](workspace-mutations-and-code-editing.md),
-[streaming](streaming-and-event-protocol.md)
+[streaming](../../concepts/streaming-and-event-protocol.md)
 
 ## Purpose
 
@@ -14,6 +17,33 @@ failures affect edits and model-visible evidence.
 
 These services compose tool, file-system, process, I/O, artifact, and security
 contracts. A protocol-specific adapter remains a leaf.
+
+## Portable query surface
+
+`ILanguageIntelligenceService` is the provider-neutral read-only boundary for
+diagnostics, hover, definitions, implementations, references, document symbols,
+and workspace symbols. Every `LanguageQueryRequest` carries a stable
+`LanguageQueryId`, an operation-specific validated shape, a positive retained
+result count, a finite timeout, and the exact single-use observation grant.
+Document positions and half-open ranges use zero-based UTF-16 coordinates;
+`LanguageLocation` may carry the observed document fingerprint.
+
+`AgentKit.Tools.Language` exposes those operations through the stable `language`
+tool. Its JSON inputs and projected ranges are one-based. It validates all path,
+position, query, count, and timeout fields before authorization, then requests
+`FileRead`/`Observe` for the exact document or the workspace directory. The
+workspace-symbol query enters authorization only through a cryptographic
+fingerprint. The selected service revalidates and consumes the same grant before
+observing language state.
+
+Query results distinguish successful empty snapshots from `Unsupported`,
+`Unavailable`, `Denied`, `Stale`, `TimedOut`, `Cancelled`, and `Failed`
+outcomes. Arrays are bounded by the requested item count. The tool independently
+bounds every projected array and provider-returned text field, marks any loss
+with `projection_truncated`, and clears `complete`; an oversized or misbehaving
+adapter therefore cannot create unbounded model context. The scripted leaf
+provides identified deterministic scenarios for tests and replay and performs no
+process or network effects.
 
 ## Descriptors and selection
 
@@ -120,5 +150,5 @@ graceful protocol termination before process escalation.
 
 - [Interactive terminals and process sessions](interactive-terminals-and-process-sessions.md)
 - [Coding-harness resources and project trust](coding-harness-resources-and-project-trust.md)
-- [Cancellation, timeouts, and resilience](cancellation-timeouts-and-resilience.md)
-- [Observability and audit](observability-and-audit.md)
+- [Cancellation, timeouts, and resilience](../../concepts/cancellation-timeouts-and-resilience.md)
+- [Observability and audit](../../concepts/observability-and-audit.md)

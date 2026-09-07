@@ -1,6 +1,9 @@
 # Cancellation, timeouts, and resilience
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Agent runtime](../architecture/agent-runtime.md)
+
 **Depends on:** [Run lifecycle](run-lifecycle-and-settlement.md),
 [error taxonomy](error-taxonomy.md)
 
@@ -156,4 +159,3 @@ does not erase evidence of cancellation.
 - [Tool errors, retries, and results](tool-errors-retries-and-results.md)
 - [Durable execution and recovery](durable-execution-and-recovery.md)
 - [Observability and audit](observability-and-audit.md)
-- [Coding harness execution profile](coding-harness-execution-profile.md)

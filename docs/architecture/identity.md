@@ -177,11 +177,12 @@ singleton-to-scoped captures fail composition.
 
 ## Dependency direction and cycle prevention
 
-AgentKit.Identity depends only on AgentKit.Abstractions. It does not depend on
-AgentKit.IO, AgentKit.Session, AgentKit.Permissions, or AgentKit.Goals. Ingress
-and hosting leaves may depend on Identity and then call the public AgentKit
-facade. Downstream components consume `ExecutionIdentity` as request data; they
-do not call back into the resolver.
+AgentKit.Identity depends on neutral contracts and shared diagnostic
+infrastructure. It does not depend on AgentKit.IO, AgentKit.Session,
+AgentKit.Permissions, or AgentKit.Goals. Ingress and hosting leaves may depend
+on Identity and then call the public AgentKit facade. Downstream components
+consume `ExecutionIdentity` as request data; they do not call back into the
+resolver.
 
 This produces one-way flow: host authentication → identity normalization →
 admission/run request → security evaluation and protected components. Security

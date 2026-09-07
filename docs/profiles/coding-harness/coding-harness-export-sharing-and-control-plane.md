@@ -1,9 +1,12 @@
 # Coding-harness export, sharing, and control plane
 
-**Status:** Normative coding-harness profile  
+**Status:** Normative application profile
+
+**Scope:** Optional application composition; not a required AgentKit capability.
+
 **Depends on:** [Coding harness execution](coding-harness-execution-profile.md),
-[execution identity](execution-identity-and-tenancy.md),
-[sessions](sessions-persistence-and-branching.md)
+[execution identity](../../concepts/execution-identity-and-tenancy.md),
+[sessions](../../concepts/sessions-persistence-and-branching.md)
 
 ## Purpose
 
@@ -168,7 +171,7 @@ adapter projects them; it does not reimplement them.
 
 ## Related specifications
 
-- [Streaming and event protocol](streaming-and-event-protocol.md)
-- [History validation and repair](history-validation-and-repair.md)
-- [Artifact and content storage](artifact-and-content-storage.md)
-- [Observability and audit](observability-and-audit.md)
+- [Streaming and event protocol](../../concepts/streaming-and-event-protocol.md)
+- [History validation and repair](../../concepts/history-validation-and-repair.md)
+- [Artifact and content storage](../../concepts/artifact-and-content-storage.md)
+- [Observability and audit](../../concepts/observability-and-audit.md)

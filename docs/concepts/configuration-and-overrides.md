@@ -1,7 +1,12 @@
 # Configuration and overrides
 
-**Status:** Normative  
-**Depends on:** [Agent and run context](agent-definition-and-run-context.md),
+**Status:** Normative
+
+**Architecture:**
+[Composition and configuration](../architecture/composition-and-configuration.md)
+
+**Depends on:** [Design principles](design-principles.md),
+[architecture and dependency boundaries](architecture-and-dependency-boundaries.md),
 [model capabilities](model-providers-and-capabilities.md)
 
 ## Purpose
@@ -49,7 +54,7 @@ The default precedence, lowest to highest, SHOULD be:
 1. library defaults;
 2. host/global configuration;
 3. trusted organization policy;
-4. project/workspace configuration;
+4. application or external-resource configuration;
 5. agent definition;
 6. composed capabilities;
 7. run invocation;
@@ -109,10 +114,10 @@ A next-turn override expires after that request unless explicitly promoted to
 tool, and system-instruction overrides MUST apply at a turn boundary, never to
 an in-flight request.
 
-## File discovery and trust
+## External configuration sources and trust
 
-Configuration discovery MUST define search locations and precedence. Project or
-workspace files are untrusted until the host marks the workspace trusted.
+Configuration discovery MUST define source locations and precedence. External
+resource content is untrusted until the host establishes its trust class.
 Untrusted configuration MUST NOT load executable extensions, change permission
 policy, inject credentials, or widen filesystem/network scope.
 
@@ -120,12 +125,12 @@ Parse or validation failure MUST preserve the last known-good immutable snapshot
 and report the rejected source. It MUST NOT replace effective configuration with
 partial defaults.
 
-## Concurrent writes and reload
+## Source updates and reload
 
-Configuration writes MUST use atomic replacement plus a lock or optimistic
-version. A field-level writer SHOULD merge against the latest disk version so
-unrelated concurrent edits survive. Watcher events MUST be debounced and the
-full candidate validated before publication.
+AgentKit does not own configuration-file editing. A mutable configuration source
+MUST nevertheless publish through atomic replacement or optimistic versioning,
+and the full candidate MUST validate before publication. File-backed sources own
+their locking, merge, and watcher mechanics as host or integration behavior.
 
 Runs use captured snapshots. Reload affects only named boundaries of current
 runs and new runs according to policy.
@@ -156,4 +161,3 @@ object by magic, darling.
 - [Context assembly and instructions](context-assembly-and-instructions.md)
 - [Extensions, hooks, and middleware](extensions-hooks-and-middleware.md)
 - [Public API and dependency injection](public-api-and-dependency-injection.md)
-- [Coding-harness resources and project trust](coding-harness-resources-and-project-trust.md)

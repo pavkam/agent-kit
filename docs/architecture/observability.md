@@ -13,6 +13,15 @@ through those contracts without depending on an exporter. A first-party
 OpenTelemetry bridge belongs in AgentKit.Observability.OpenTelemetry; other
 exporters remain independent leaf packages.
 
+`AgentKit.Observability` owns the shared Microsoft diagnostics surface:
+`AgentKitDiagnostics`, stable activity, metric, and tag names, and logging
+registration. Runtime packages depend on this focused package and on
+`Microsoft.Extensions.Logging.Abstractions`; they never depend on OpenTelemetry
+or another exporter SDK. Hosts subscribe to its `ActivitySource`, `Meter`, and
+ordinary `ILogger` categories. Neutral durable event and security-audit sinks
+remain separate contracts because an activity or log record is not durable
+semantic truth.
+
 ## Domain events
 
 Durable semantic events are sufficient to reconstruct stable session and run
@@ -32,6 +41,13 @@ batches, validation, persistence, and settlement. Metrics report bounded
 aggregates such as latency, outcome, queue depth, retries, denial, token and
 cost usage, context pressure, stream loss, compaction, and recovery delay. Logs
 carry structured diagnostic facts and normalized error categories.
+
+The shared source and meter name is `AgentKit`. Agent invocation uses the
+OpenTelemetry GenAI `invoke_agent` operation, model inference uses its
+applicable operation such as `chat`, and application tool execution uses
+`execute_tool`. Stable AgentKit inner names cover turn preparation, context
+assembly, session commit, output validation, and settlement. Public name
+constants prevent packages from drifting independently.
 
 [Domain errors have stable categories](../concepts/error-taxonomy.md), retry
 advice, origin, safe message, external correlation, and side-effect certainty.
@@ -268,15 +284,23 @@ keyed factories with the same `ObservationExporterKey` and closes each factory
 over that exact snapshot. Ordinary constructor activation cannot pair a sink
 with an unkeyed or differently keyed snapshot.
 
+Routine `ILogger`, activity, and metric emission is best-effort observation.
+Listener/exporter failure cannot alter accounting, authorization, semantic
+outcomes, or commit decisions. Required semantic and audit sinks are different:
+their delivery policy participates in the owning operation's commit/settlement
+protocol. Their protected infrastructure uses the
+[bounded bootstrap path](permissions-and-human-control.md#trusted-infrastructure-and-the-security-dependency-graph)
+so grant persistence and audit export do not recurse through themselves.
+
 ## Build validation and unsupported behavior
 
-Observability is optional. Once a sink is registered, composition validates its
-unique name, declared signal capabilities, lifetime, bounds, exporter
-dependencies, keyed immutable options snapshot, and delivery policy. Enabling
-content capture additionally requires an effective redactor, classification
-policy, and maximum sizes. A required sink requires a bounded flush/settlement
-policy; an unavailable required audit sink fails closed and prevents clean
-settlement.
+Shared instrumentation is required; exporter and sink selection is optional.
+Once a sink is registered, composition validates its unique name, declared
+signal capabilities, lifetime, bounds, exporter dependencies, keyed immutable
+options snapshot, and delivery policy. Enabling content capture additionally
+requires an effective redactor, classification policy, and maximum sizes. A
+required sink requires a bounded flush/settlement policy; an unavailable
+required audit sink fails closed and prevents clean settlement.
 
 An exporter that cannot represent a signal declares that capability before a
 run. Unsupported content or signal kinds return a typed unsupported result and

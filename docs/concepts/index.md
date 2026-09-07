@@ -16,6 +16,11 @@ Each specification contains acceptance scenarios suitable for conformance tests.
 Public names and C# sketches are provisional until an API review accepts them,
 while the behavioral invariants are normative.
 
+Product compositions belong under [application profiles](../profiles/index.md),
+not in this normative core. A profile may require several AgentKit capabilities,
+but it cannot make its frontend, deployment, workspace, or orchestration policy
+a responsibility of the framework.
+
 ## Concept map
 
 There is no canonical reading order. Start with the concept being implemented,
@@ -37,42 +42,6 @@ stitching point; the filenames deliberately carry no sequence.
 - [Public API and dependency injection](public-api-and-dependency-injection.md)
   turns those boundaries into replaceable .NET contracts and registrations.
 
-### Coding-harness profile
-
-- [Coding harness execution profile](coding-harness-execution-profile.md)
-  composes existing AgentKit owners into one durable interactive, batch, and RPC
-  harness without inventing a god interface.
-- [Coding workspaces and worktrees](coding-workspaces-and-worktrees.md) defines
-  canonical project identity, provisioning, leases, readiness, reset, and safe
-  removal.
-- [Workspace mutations and code editing](workspace-mutations-and-code-editing.md)
-  binds fuzzy edits, patches, moves, formatting, authorization, and settlement
-  into one exact mutation transaction.
-- [Coding-harness built-in tools](coding-harness-built-in-tools.md) specifies
-  observation, search, output spill, web fetch, session-state, delegation, and
-  nested orchestration details.
-- [Interactive terminals and process sessions](interactive-terminals-and-process-sessions.md)
-  specifies PTY ownership, byte cursors, bounded fan-out, attachment, and
-  process-tree cleanup.
-- [Language services, formatters, and watchers](language-services-formatters-and-watchers.md)
-  makes installation, document versions, code actions, diagnostics, restart, and
-  watch gaps explicit.
-- [Workspace snapshots and reversion](workspace-snapshots-and-reversion.md)
-  separates filesystem coverage and restoration from session, context, UI, and
-  external-effect semantics.
-- [Coding-harness resources and project trust](coding-harness-resources-and-project-trust.md)
-  keeps discovery pure and gives instructions, variables, remote includes,
-  templates, extensions, and reloads bounded provenance.
-- [Coding-harness export, sharing, and control plane](coding-harness-export-sharing-and-control-plane.md)
-  defines authenticated workspace routing, runtime instance ownership, versioned
-  routes, reconnect, export, publication, and import.
-- [Coding-harness frontends and protocol adapters](coding-harness-frontends-and-protocol-adapters.md)
-  keeps TUI, IDE, batch, RPC, and agent-client protocol state as projections of
-  one canonical harness.
-- [Coding-harness MCP exposure](coding-harness-mcp-exposure.md) constrains
-  remote names, instructions, roots, pagination, change generations, and nested
-  calls.
-
 ### Messages, context, and sessions
 
 - [Message and content model](message-and-content-model.md) defines immutable
@@ -81,8 +50,8 @@ stitching point; the filenames deliberately carry no sequence.
 - [Streaming and event protocol](streaming-and-event-protocol.md) separates live
   deltas from replayable semantic events.
 - [Input admission and message queues](input-admission-and-message-queues.md)
-  defines idempotent acceptance, steer/follow-up/next-run/write delivery, and
-  safe promotion.
+  defines idempotent acceptance, steering/follow-up delivery, and safe
+  promotion.
 - [History validation and repair](history-validation-and-repair.md) protects
   durable truth while producing provider-compatible request views.
 - [Context assembly and instructions](context-assembly-and-instructions.md)
@@ -105,9 +74,6 @@ stitching point; the filenames deliberately carry no sequence.
   deployments, models, response multiplicity, usage evidence, and capabilities.
 - [Provider request pipeline](provider-request-pipeline.md) owns translation,
   authentication, transport, stream parsing, and provider error normalization.
-- [Coding-harness provider profiles](../providers/coding-harness-provider-profiles.md)
-  records route-level interoperability requirements without treating one
-  compatibility family as universal provider behavior.
 - [Configuration and overrides](configuration-and-overrides.md) defines merge
   algebra, precedence, dynamic values, trust, and reload boundaries.
 - [Execution identity and tenancy](execution-identity-and-tenancy.md) defines
@@ -119,7 +85,7 @@ stitching point; the filenames deliberately carry no sequence.
 
 - [Tools and toolsets](tools-and-toolsets.md) separates tool identity,
   discovery, resolution, schema, execution hints, dynamic availability, and
-  focused read/write feature ownership.
+  focused observation and mutation feature ownership.
 - [Tool-call lifecycle](tool-call-lifecycle.md) specifies the complete path from
   model request to one authoritative terminal result and bounded history
   projection.
@@ -135,6 +101,18 @@ stitching point; the filenames deliberately carry no sequence.
   protected operation.
 - [MCP integration](mcp-integration.md) keeps MCP lifecycle, transport,
   primitives, correlation, and host policy in a leaf integration.
+
+### Protected host boundaries
+
+- [File-system access and bounds](file-system-access-and-bounds.md) defines path
+  identity, bounded reads, explicit write dispositions, atomicity, and
+  separately authorized secondary effects.
+- [Network access and egress](network-access-and-egress.md) defines canonical
+  destinations, egress authorization, redirect and rebinding rules, streaming
+  bounds, and retry uncertainty.
+- [Process execution and sandboxing](process-execution-and-sandboxing.md)
+  defines executable resolution, environment projection, sandbox limits, output
+  streaming, termination, and side-effect certainty.
 
 ### Operational behavior
 
@@ -160,17 +138,17 @@ stitching point; the filenames deliberately carry no sequence.
 
 ```text
 trusted ingress ─> identity ─> admission ─> loop ─> settlement
-                                      │       ├─> budgets
-messages ───────┬─> history ─> context ──────> provider request
-                ├─> streaming ────────────────┤
-                └─> artifact references       ├─> output validation
-admission ──────┴─> sessions ─> compaction ───┤
-loop ─> protected operations ─> security ─────┘
-             ├─> deferred
-             └─> artifacts/file/network/process
+messages ───────┬─> sessions ─> admission
+                │      └─> compaction ─┐
+                ├─> history ──────────┴─> context ─> provider request
+                ├─> streaming ─────────────────────> output publication
+                └─> artifact references ───────────> artifacts
 
-coding harness = workspaces + mutations + terminals + language services
-               + snapshots + resources + control plane + channel adapters
+loop ─┬─> budgets
+      └─> protected request
+
+protected request ─> security ─┬─> tools/file/network/process
+                               └─> deferred resolution
 
 configuration + capabilities + typed hooks apply at documented boundaries;
 observability records them without becoming a control dependency.

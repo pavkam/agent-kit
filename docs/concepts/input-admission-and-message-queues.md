@@ -1,7 +1,10 @@
 # Input admission and message queues
 
-**Status:** Normative  
-**Depends on:** [Run lifecycle](run-lifecycle-and-settlement.md),
+**Status:** Normative
+
+**Architecture:** [Input and output](../architecture/input-and-output.md)
+
+**Depends on:** [Messages](message-and-content-model.md),
 [sessions](sessions-persistence-and-branching.md)
 
 ## Purpose
@@ -27,35 +30,20 @@ class, immutable payload, complete immutable `ExecutionIdentity`, admission
 timestamp, and optional promotion sequence. Tenant and principal projections do
 not replace the identity's evidence, assurance, delegation chain, or version.
 
-The coding-harness profile distinguishes four delivery classes:
+Core conversational admission distinguishes two delivery classes:
 
 - `Steer` delivers at the next safe boundary of the current run;
-- `FollowUp` delivers only when current work would otherwise finish;
-- `NextRun` is reserved for the next accepted run operation; and
-- `Write` is non-triggering deferred tree content.
+- `FollowUp` delivers only when current work would otherwise finish.
 
-Names MAY differ, but these semantics remain distinct. A control command is not
-a conversational queue item; its descriptor states whether it is legal during
-generation, tool execution, retry delay, compaction, cancellation, and recovery.
+Names MAY differ, but these semantics remain distinct. Application profiles MAY
+define additional non-conversational operations, but they do not become core
+delivery classes or gain permission to bypass admission.
 
-## Resource-backed input and control commands
-
-A slash command, skill invocation, or prompt-template invocation first resolves
-against the captured
-[coding-harness resource catalog](coding-harness-resources-and-project-trust.md#command-routing-and-prompt-expansion).
-A recognized control command is routed as its own typed operation and never
-falls through into `Steer` or `FollowUp`. An unrecognized command-like string
-follows an explicit profile rule: reject it, or admit it as ordinary user text
-with no implied authority.
-
-For conversational input, admission preserves both the original caller payload
-and the immutable transformed/expanded content plus its resource and hook
-manifest. Idempotency compares the caller payload under the same `InputId` and
-returns the already admitted expansion; a retry never reruns input hooks or
-reads a newer skill/template version. Expansion, validation, and bounds failure
-occur before admission and return typed outcomes. Queue snapshots and promotion
-events expose the immutable admitted result, not a resource reference that may
-resolve differently after reload.
+Input preprocessing, when configured, MUST finish before admission. The admitted
+record preserves the original caller payload, the immutable effective payload,
+and the versioned preprocessing manifest needed for idempotency. Retrying the
+same `InputId` returns that captured result rather than rerunning preprocessors
+against newer configuration.
 
 ## Idempotent admission
 
@@ -154,50 +142,33 @@ input IDs. UI text is not a durable queue key. Adjacent compatible user content
 MAY be coalesced into one provider-facing request part, while all source IDs and
 order remain traceable.
 
-Every queue snapshot, event, retraction, and editor restoration retains the
-typed item ID, all content parts and attachments, source, delivery class,
-admitted sequence, admission status, and immutable identity. Retraction is a
-state transition on that identity, never removal by matching display text.
-Duplicate text and image-distinct inputs are therefore unambiguous.
-
-Durable abort removes only current-run `Steer` and `FollowUp` items selected by
-its committed cutoff. It preserves `NextRun`, `Write`, and input admitted after
-the abort marker. The abort result identifies every removed item so a UI may
-offer explicit restoration without fabricating a new admission.
-
-## Deferred-write ordering
-
-A profile that accepts non-triggering `Write` items MUST name every drain
-boundary and preserve their admitted order relative to later direct appends. A
-direct append MUST NOT jump ahead of older deferred writes or leave them
-permanently stranded merely because the lane became idle.
-
-The first-party coding-harness profile uses this policy: an append received
-while an operation owns the lane becomes a deferred `Write`; a later append
-against an idle lane atomically materializes all older `Write` items in FIFO
-order before the new entry. Another profile MAY reject appends during an
-operation or choose a different bounded drain boundary, but it MUST specify and
-test ordering, starvation, cancellation, and crash recovery.
+Every queue snapshot, event, and retraction retains the typed item ID, all
+content parts and attachments, source, delivery class, admitted sequence,
+admission status, and immutable identity. Retraction is a state transition on
+that identity, never removal by matching display text. Duplicate text and
+image-distinct inputs are therefore unambiguous.
 
 ## Acceptance scenarios
 
 - Retrying identical admission returns one record and one sequence.
 - A conflicting duplicate fails without replacing the original.
-- Retrying one resource-backed input after catalog reload returns its original
-  expansion without rerunning hooks.
-- A control command cannot enter a steering/follow-up queue through slash-text
-  fallthrough.
+- Retrying preprocessed input after configuration reload returns its original
+  effective payload without rerunning preprocessors.
 - A steer arriving after the captured cutoff is not promoted early.
 - One idle boundary promotes one follow-up and all earlier eligible steers.
 - A stale finish-hook proposal cannot jump ahead of newly admitted external
   input.
 - Retracting one of two text-identical items preserves the other and every
   attachment.
-- Aborting a run preserves next-run work and deferred writes.
-- An idle direct append cannot overtake older deferred writes, and one atomic
-  commit materializes the selected FIFO prefix plus the new entry.
 - A crash after promotion can replay without redelivery into history.
 - Queue-full behavior is immediate, typed, and observable.
+
+Resolved lane identity is persisted on the receipt and queued item. Promotion
+uses a durable session-sequence cutoff and can consume only that lane's eligible
+items. The promotion marker, target turn/history transition, and consumption of
+those admission IDs are one idempotent session transaction. Equivalent admission
+replays return the original authorized receipt without consuming capacity,
+including when the queue is now full.
 
 ## Related specifications
 

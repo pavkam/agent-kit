@@ -40,6 +40,11 @@ read the [modern C# rules](../references/modern-csharp.md).
 6. Keep durability optional and explicit. No backend, journal, or recovery
    profile may appear by fallback, and cancellation reports true external state.
 
+A storage fence cannot stop an external effect. Takeover requires receiver
+fencing, idempotency, or reconciliation before another invocation. Grant and
+budget storage must match the requested distributed recovery domain. Terminal
+semantic output and unfinished settlement remain separate durable facts.
+
 Verify crashes around every protected effect and checkpoint, duplicate wakes,
 idempotent commit, unknown outcomes, lease takeover, stale fencing, schema
 migration or incompatibility, cancellation, and explicit non-durable behavior.

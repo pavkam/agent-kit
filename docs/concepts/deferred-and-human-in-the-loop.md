@@ -1,6 +1,11 @@
 # Deferred operations and human-in-the-loop
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:**
+[Security and human control](../architecture/permissions-and-human-control.md),
+[Sessions](../architecture/sessions.md)
+
 **Depends on:** [Permissions and approvals](permissions-approvals-and-trust.md),
 [sessions](sessions-persistence-and-branching.md)
 

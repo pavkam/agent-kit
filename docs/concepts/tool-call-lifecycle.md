@@ -1,6 +1,9 @@
 # Tool-call lifecycle
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Tools](../architecture/tools.md)
+
 **Depends on:** [Tools and toolsets](tools-and-toolsets.md),
 [permissions](permissions-approvals-and-trust.md)
 
@@ -172,4 +175,3 @@ projection or append retry never returns to invocation.
 - [Tool scheduling and concurrency](tool-scheduling-and-concurrency.md)
 - [Tool errors, retries, and results](tool-errors-retries-and-results.md)
 - [Observability and audit](observability-and-audit.md)
-- [Coding harness execution profile](coding-harness-execution-profile.md)

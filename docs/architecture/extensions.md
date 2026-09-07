@@ -653,6 +653,16 @@ receive cancellation, share the operation deadline, and consume bounded time and
 allocation budgets. Hooks cannot detach untracked work from the owning scope's
 settlement.
 
+A timeout is not proof that an in-process hook stopped. The dispatcher cannot
+restore shared event arguments and continue to later hooks while timed-out code
+can still mutate them. It must wait for quiescence under the bounded drain
+policy or fail the owning operation and retain explicit ownership of the
+unfinished invocation. An isolated invocation may continue only after its work
+has terminated and any permitted mutations have been rolled back. Hosts needing
+hard execution or allocation limits use an isolated execution boundary; a
+cancellation token and timing measurement do not enforce those limits against
+uncooperative code.
+
 ## Failure and security
 
 Every protected effect still passes through the

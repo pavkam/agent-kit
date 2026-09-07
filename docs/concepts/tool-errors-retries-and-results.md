@@ -1,6 +1,9 @@
 # Tool errors, retries, and results
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Tools](../architecture/tools.md)
+
 **Depends on:** [Tool-call lifecycle](tool-call-lifecycle.md),
 [error taxonomy](error-taxonomy.md)
 
@@ -162,10 +165,10 @@ MAY cancel siblings but must still terminally settle every accepted call. A
 batch MAY request loop termination only through an explicit aggregate policy;
 one tool's arbitrary output flag must not silently suppress results.
 
-The default coding-harness policy accepts early termination only when every
+The first-party `All` aggregate policy accepts early termination only when every
 terminal result in the accepted batch explicitly requests it. Cancellation
-removes termination advice. A profile choosing `Any`, priority, or another rule
-names and tests it before effects start.
+removes termination advice. A configured `Any`, priority, or other policy names
+and tests its behavior before effects start.
 
 ## Acceptance scenarios
 

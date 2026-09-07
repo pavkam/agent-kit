@@ -1,6 +1,9 @@
 # Tool scheduling and concurrency
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Tools](../architecture/tools.md)
+
 **Depends on:** [Tool-call lifecycle](tool-call-lifecycle.md),
 [usage limits](usage-limits-and-budgets.md)
 
@@ -122,4 +125,3 @@ the cancellation and settlement policy.
 - [Structured output](structured-output.md)
 - [Cancellation, timeouts, and resilience](cancellation-timeouts-and-resilience.md)
 - [Durable execution and recovery](durable-execution-and-recovery.md)
-- [Coding harness execution profile](coding-harness-execution-profile.md)

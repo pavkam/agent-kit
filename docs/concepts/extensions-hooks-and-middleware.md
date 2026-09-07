@@ -1,6 +1,9 @@
 # Extensions, hooks, and middleware
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Hooks and extensions](../architecture/extensions.md)
+
 **Depends on:** [Architecture](architecture-and-dependency-boundaries.md),
 [configuration](configuration-and-overrides.md),
 [permissions](permissions-approvals-and-trust.md)
@@ -212,27 +215,12 @@ Hooks receive cancellation and share the operation deadline unless configured
 with a smaller bound. They MUST NOT detach untracked tasks; required hook work
 is part of settlement.
 
-Session replacement and reload actively invalidate captured extension contexts.
-A stale context fails with its old/new generation and replacement reason; an
-extension obtains an explicit new session scope rather than retaining mutable
-handles. Reload also tears down subscriptions, child processes, timers, and
-background jobs within a bounded settlement period.
-
 Transform chains receive immutable values. Later handlers see earlier validated
 replacements, but the canonical message object is never mutated in place. Input
 handlers may return a typed handled outcome; session-before structural points
 declare decisive-result ordering; context replacements use an immutable cloned
 list. Public listeners have an explicit order relative to extension handlers and
 an explicit awaited/isolation contract.
-
-Extension UI calls are frontend capabilities, not guaranteed properties of a
-hook context. Each adapter declares support for notifications, dialogs, status
-and working indicators, widgets by content kind, editor reads/writes, custom
-components, autocomplete, themes, raw terminal input, and tool expansion. An
-unavailable call returns typed unsupported; it MUST NOT silently no-op, discard
-a component factory, or return an empty/default value that an extension can
-mistake for real UI state. Fire-and-forget UI notifications still emit a bounded
-delivery or rejection diagnostic.
 
 Failure policy is point-specific and declared in the closed hook definition.
 Read-only observational extension errors MAY be diagnosed and isolated when the
@@ -267,6 +255,14 @@ hook MUST NOT leak a partial mutation, short-circuit marker, or replacement
 value to later hooks or the owning operation. Its failure MUST emit bounded
 diagnostics. Hook exceptions never become successful operation results.
 
+A timeout requests cancellation; it does not prove an in-process hook stopped.
+The dispatcher MUST NOT restore shared arguments and continue while the
+timed-out invocation can still mutate them. It MUST await quiescence within the
+cleanup bound or fail the owning operation and retain explicit ownership of the
+unquiesced task and scope. It MUST NOT run later hooks over those arguments.
+Hard execution or allocation limits require an enforceable host isolation
+boundary; cooperative cancellation alone cannot provide them.
+
 Diagnostics SHOULD record registration, point, dispatch, and invocation
 identities, duration, outcome, effective failure policy, and names of changed
 fields. Values before and after mutation are sensitive payloads and MUST follow
@@ -295,13 +291,8 @@ explicit content-capture and redaction policy.
   registration claiming both anchors, self-reference, contradictory edges, and
   ordering cycles fail before dispatch.
 - Per-scope hook state is isolated under concurrent runs.
-- Using a captured extension context after session replacement fails before it
-  can observe or mutate the new session.
 - Message transformation yields a new immutable value and cannot mutate a value
   already published to another listener.
-- An extension running through an RPC frontend receives typed unsupported for a
-  missing UI operation instead of silent success or fabricated editor/theme
-  state.
 - Reentrant dispatch cannot recurse without a declared bounded policy.
 - A hook cannot turn a denied operation into an allowed one.
 - A changed authorized request is sent back through security evaluation.
@@ -314,6 +305,9 @@ explicit content-capture and redaction policy.
 - An isolated observer that throws after adding diagnostic metadata is rolled
   back, diagnosed, and cannot leak that metadata into the next hook or owning
   operation.
+
+- A timed-out hook that ignores cancellation cannot mutate arguments observed by
+  a later hook; failed cleanup retains explicit ownership.
 
 ## Related specifications
 

@@ -8,11 +8,10 @@ This component follows the
 session history remains with sessions, working context remains with context
 assembly, and embedding generation remains a provider operation.
 
-AgentKit.Memory will contain the first-party memory lifecycle and retrieval
-pipeline when that subsystem is implemented. Stores and vector integrations
-remain leaf packages named for their backend. Their contracts live in
-AgentKit.Abstractions, so applications may replace the pipeline or any storage
-axis independently.
+AgentKit.Memory owns the first-party memory lifecycle and retrieval pipeline.
+Stores and vector integrations remain leaf packages named for their backend.
+Their contracts live in AgentKit.Abstractions, so applications may replace the
+pipeline or any storage axis independently.
 
 `AgentEngine` may host many agents concurrently. Memory and retrieval never use
 engine-global ambient scope: proposals, records, queries, selected stores, and
@@ -788,6 +787,31 @@ SDK types remain in integrations.
 Classification controls encryption, region, logging, and model exposure.
 Deletion propagates through documents, chunks, vectors, caches, and retrieval
 results, with auditable tombstones where immediate removal is impossible.
+
+## Publication, deletion, and exposure consistency
+
+A source update creates a complete versioned chunk set. Indexing may stage it
+incrementally, but an atomic active-version pointer switches retrieval only once
+the declared set is ready. Query results carry source/version and index
+watermarks; stale index hits are filtered against the authoritative active
+source state before reranking or model exposure. Failed indexing leaves the
+prior active version intact and a recoverable intent, rather than a mixed
+version.
+
+Deletion commits an authoritative tombstone before asynchronous removal from
+indexes, caches, and artifact stores. New retrieval and exposure reject that
+source version even while physical cleanup is pending. A deletion receipt
+separates logical invisibility from physical purge and names the pending stores
+without returning deleted content. Tombstones and active-version evidence must
+outlive stale indexes, caches, and permitted backup replay; restoring a backup
+cannot resurrect deleted data for retrieval.
+
+An exposure decision binds the selected source versions and deletion/revocation
+generation. Before egress, a stale generation causes revalidation or context
+rebuild; an unavailable required check fails closed. Already transmitted data
+cannot be recalled. The deletion contract states that limit, plus retention,
+backup, and externally owned-content constraints. Eventual physical cleanup is
+never advertised as immediate erasure everywhere.
 
 ## Related concept specifications
 

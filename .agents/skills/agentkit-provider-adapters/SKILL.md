@@ -22,7 +22,7 @@ broker. For wire behavior, verify the current primary provider documentation
 linked from the [provider index](../../../docs/providers/index.md).
 
 For coding-harness interoperability also read the
-[coding-harness provider profiles](../../../docs/providers/coding-harness-provider-profiles.md).
+[coding-harness provider profiles](../../../docs/profiles/coding-harness/provider-interoperability.md).
 They define route-level compatibility requirements and do not replace current
 official vendor protocol documentation.
 
@@ -39,9 +39,9 @@ official vendor protocol documentation.
 3. Register conversation, embeddings, reranking, media, and provider-native
    tools as independent operations. A vendor may implement several without
    merging their contracts or replacement paths.
-4. Make one leaf adapter perform one provider attempt. Selection, safe retry,
-   and fallback stay in the provider executor above it and consume shared
-   budgets.
+4. Make one leaf adapter perform one attempt. The selector chooses a model; the
+   executor owns safe same-model retries and returns fallback-required to its
+   caller for reselection/context rebuild. Each attempt uses shared budgets.
 5. Preserve portable semantics plus provider identities, call correlation,
    content order, trust/provenance, usage availability, finish reasons,
    continuation data, safety information, upstream routing, and safe unknown

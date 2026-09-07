@@ -7,32 +7,98 @@ MCP is a leaf integration, not a synonym for tools. AgentKit separates host
 policy, protocol primitives, client or server lifecycle, request correlation,
 transport, and authorization.
 
-Client support belongs in AgentKit.Mcp.Client and server support in
-AgentKit.Mcp.Server. Both depend on AgentKit.Abstractions and the official
-protocol SDK or transport dependencies they require. Neither is referenced by
-the facade, loop, tool runtime, or context package.
+Shared protocol-version identities and reflection contracts belong in
+AgentKit.Mcp. Client support belongs in AgentKit.Mcp.Client and server support
+in AgentKit.Mcp.Server; both depend inward on AgentKit.Mcp and use the official
+protocol SDK at their leaf integration boundary. None is referenced by the
+facade, loop, tool runtime, or context package.
 
 ## Roles and packages
 
 The AgentKit host coordinates models, consent, roots, and MCP clients. An MCP
-client connects to one server and negotiates capabilities. An MCP server exposes
-selected AgentKit-backed primitives to external clients. Client and server
-support belong in separate integration packages, and MCP SDK types never enter
-AgentKit.Abstractions.
+client connects to one server and establishes the version/capability rules for
+its requests. An MCP server exposes selected AgentKit-backed primitives to
+external clients. Client and server support belong in separate integration
+packages. Shared object-in/object-out method reflection belongs in AgentKit.Mcp,
+and MCP SDK types never enter AgentKit.Abstractions.
 
 The internal layering runs from AgentKit host policy through a primitive
-adapter, an MCP session, protocol correlation, and finally the transport. Each
-layer has one lifecycle and one error boundary.
+adapter, protocol-version lifecycle and correlation, and finally the transport.
+Each layer has one lifecycle and one error boundary.
 
 ## Lifecycle and correlation
 
-A client negotiates protocol version and capabilities before using a method.
-Every request and notification is valid only in the appropriate lifecycle state.
-Protocol request identities remain separate from AgentKit run, message, and tool
-call identities, with explicit correlation between them.
+Supported revisions are explicitly enumerated by the captured compatibility
+profile. Revision 2026-07-28 uses per-request version and capability metadata;
+`clientInfo` is recommended metadata, not authenticated identity or a universal
+required field. A modern server implements `server/discover`; clients may skip
+that RPC when prior discovery is unnecessary. Supported legacy revisions,
+including 2025-11-25, use `initialize` to establish version and capability
+state. These distinctions follow the official
+[discovery specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2026-07-28/server/discover.mdx)
+and
+[envelope guidance](https://ts.sdk.modelcontextprotocol.io/v2/migration/support-2026-07-28#server-identity-in-result-_meta-clientinfo-demoted-to-should).
+A later date is not evidence that an unknown revision has the same contract. A
+dual-era client probes or retries according to the transport-specific
+compatibility rules; it never treats an unrecognized modern error as permission
+to silently downgrade.
+
+Every request and notification is valid only for its captured era, revision, and
+capability view. Protocol request identities remain separate from AgentKit run,
+message, and tool-call identities, with explicit correlation between them.
 
 List-change notifications publish a new immutable, versioned catalog. In-flight
 model requests continue to resolve against the snapshot they originally saw.
+
+## Reflection-driven tool surfaces
+
+AgentKit.Mcp describes a tool surface as a class whose attributed public
+instance methods each accept exactly one request object plus an optional
+trailing `CancellationToken`, and return `Task<TResponse>` or
+`ValueTask<TResponse>` for one response object. Reflection captures the method,
+request parameter name, request and response types, description, effect hints,
+protocol-facing name, and `ToolVersion`. Duplicate names fail because MCP names
+do not select versions.
+
+AgentKit.Mcp.Server converts those descriptors into the official SDK's
+`tools/list` schemas and `tools/call` handlers. AgentKit.Mcp.Client uses an
+expression over the same class contract to select a method, serializes the
+request object beneath the reflected parameter name, and deserializes structured
+content into the reflected response object. The official SDK owns JSON-RPC 2.0
+framing and request correlation; AgentKit never hand-maintains a second wire
+model.
+
+MCP protocol revision, AgentKit package/SDK version, individual `ToolVersion`,
+and local `McpCatalogVersion` are distinct identities. The server publishes the
+tool contract version under namespaced metadata, the client validates it before
+invocation, and every catalog refresh publishes a new immutable generation.
+
+```csharp
+public abstract class WeatherTools
+{
+    [McpTool("weather.get", "2.1", ReadOnly = true)]
+    public abstract Task<WeatherResponse> GetAsync(
+        WeatherRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class WeatherToolImplementation : WeatherTools
+{
+    public override Task<WeatherResponse> GetAsync(
+        WeatherRequest request,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new WeatherResponse($"Sunny in {request.City}"));
+}
+
+services.AddAgentKitMcpServer()
+    .WithAgentKitTools<WeatherToolImplementation>();
+
+services.AddMcpToolClient<WeatherTools>();
+var client = await factory.ConnectAsync(transport, cancellationToken: cancellationToken);
+var response = await client.CallAsync(
+    tools => tools.GetAsync(new WeatherRequest("Lisbon"), cancellationToken),
+    cancellationToken);
+```
 
 ## Primitive mapping
 
@@ -88,8 +154,9 @@ otherwise.
 MCP-specific lifecycle and wire contracts are provider-neutral but belong to the
 MCP packages; the core abstractions expose only the AgentKit tool, retrieval,
 prompt, security, event, and identity contracts those adapters implement. This
-keeps protocol SDK types out of AgentKit.Abstractions. A minimal client
-extension surface is:
+keeps protocol SDK types out of AgentKit.Abstractions. The reflected tool-class
+surface is the first implemented slice; the lower-level host/session adapter
+surface remains:
 
 ```csharp
 namespace AgentKit;
@@ -228,6 +295,9 @@ at that lower boundary.
 
 | Package class                                                           | Role and injected dependencies                                                                                                                                                                                                   |
 | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `McpToolContract<TTools>` in AgentKit.Mcp                               | Validate and capture one immutable object-in/object-out reflection surface, including distinct tool contract versions                                                                                                            |
+| `McpToolClientFactory<TTools>` and `McpToolClient<TTools>`              | Connect an official SDK transport, capture the negotiated protocol revision, validate versioned remote tools, publish immutable catalog generations, and invoke through expressions                                              |
+| `WithAgentKitTools<TTools>` in AgentKit.Mcp.Server                      | Generate JSON schemas and official SDK handlers from one concrete reflected tool class and publish namespaced tool-version metadata                                                                                              |
 | `McpClientSessionFactory` and `McpClientSession` in AgentKit.Mcp.Client | Protocol lifecycle, correlation, bounds, catalog snapshots, `IIdentifierGenerator<McpSessionId>`, `IIdentifierGenerator<McpRequestId>`, `TimeProvider`, security authority/grant store, audit, and a keyed MCP transport factory |
 | `McpToolProvider` / `McpToolInvoker`                                    | Adapt a catalog snapshot to `IToolProvider` / `IToolInvoker`; use the ordinary tool validation, scheduling, security, result, and audit pipeline                                                                                 |
 | `McpResourceSource` and `McpPromptSource`                               | Adapt resources or user-selected prompts through retrieval/context trust and security contracts; never inject them directly into history                                                                                         |
@@ -276,10 +346,12 @@ internal sealed class McpClientSessionFactory(
 }
 ```
 
-The official MCP SDK and JSON-RPC implementation are private dependencies of the
-client or server package. `McpClientSession` does not depend on `AgentEngine`;
-it depends on narrow services. `McpServer` may use public runner, tool,
-retrieval, and output contracts, never a service locator or loop internals.
+The official MCP SDK and JSON-RPC implementation stay within the MCP leaf
+packages. SDK transport and builder types may appear at those explicit leaf
+composition boundaries, but never enter AgentKit.Abstractions or runtime
+packages. `McpClientSession` does not depend on `AgentEngine`; it depends on
+narrow services. `McpServer` may use public runner, tool, retrieval, and output
+contracts, never a service locator or loop internals.
 
 ## Lifetime, concurrency, and ownership
 
@@ -469,4 +541,3 @@ mid-run `NotSupportedException`.
 - [MCP integration](../concepts/mcp-integration.md)
 - [Tools and toolsets](../concepts/tools-and-toolsets.md)
 - [Permissions, approvals, and trust](../concepts/permissions-approvals-and-trust.md)
-- [Coding-harness MCP exposure](../concepts/coding-harness-mcp-exposure.md)

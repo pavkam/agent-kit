@@ -1,6 +1,9 @@
 # Context compaction
 
-**Status:** Normative  
+**Status:** Normative
+
+**Architecture:** [Context compaction](../architecture/context-compaction.md)
+
 **Depends on:** [Sessions](sessions-persistence-and-branching.md),
 [context assembly](context-assembly-and-instructions.md)
 
@@ -55,7 +58,7 @@ A durable record MUST include:
 - source manifest or content hashes;
 - model/algorithm and settings used;
 - context epoch and effective instructions;
-- file, resource, goal, and tool-side-effect state that future turns need;
+- relevant resource, goal, and tool-side-effect state that future turns need;
 - token estimates before and after; and
 - status, failure, and supersession metadata.
 
@@ -81,14 +84,17 @@ The summary SHOULD preserve:
 - important identifiers without secrets; and
 - explicit instructions for interpreting the retained suffix.
 
-Generated summaries are untrusted model output until structurally validated.
-They MUST NOT create new approvals, claim unrecorded tool success, or elevate
-retrieved text into instructions.
+Generated summaries remain untrusted model output after structural validation.
+Authoritative checkpoint fields MUST derive from identified committed records,
+never generated prose. Validation checks those fields, provenance, causality,
+and bounds; it does not prove arbitrary prose factually correct. Summary text
+MUST NOT create approvals, establish unrecorded tool success, or elevate
+retrieved content into instructions.
 
 Summary generation is its own provider operation with stable identity, usage,
 budget, cache/session-affinity policy, capability checks, retry accounting, and
 terminal validation. An error, output-length stop, attempted tool call, invalid
-manifest, or non-reducing result cannot activate. File or workspace state comes
+manifest, or non-reducing result cannot activate. External resource state comes
 from committed tool outcomes and audit evidence, never merely from an
 assistant's intended tool calls.
 
@@ -122,9 +128,12 @@ never captures a bare run budget or treats an out-of-run operation as a run.
 
 ## Failure and retry
 
-Compaction failure leaves the prior context path active. The runtime MAY retry
-within a dedicated budget. It MUST prevent an infinite overflow/compact/retry
-loop by recording attempts and requiring measurable reduction.
+Failure before activation leaves the prior context path active. Failure or
+cancellation after activation preserves the committed record and reports its
+commit state; unknown activation is reconciled before retry. The runtime MAY
+retry within a dedicated budget. It MUST prevent an infinite
+overflow/compact/retry loop by recording attempts and requiring measurable
+reduction.
 
 If compaction cannot reduce mandatory context below the model limit, the run
 ends with `ContextLimitExceeded`, not a generic provider error.
@@ -147,7 +156,7 @@ the same source-bound validation as built-in output.
 - Context reconstruction stops at the newest checkpoint and reproduces exactly
   its summary, retained tail, and later suffix.
 - A stale manual-compaction preparation cannot publish over a newer branch tip.
-- A failed edit intent cannot appear as completed file state in a summary.
+- A failed effect intent cannot appear as completed resource state in a summary.
 - A length-truncated or tool-calling summary is rejected without changing the
   active context path.
 
@@ -156,4 +165,3 @@ the same source-bound validation as built-in output.
 - [History validation and repair](history-validation-and-repair.md)
 - [Usage limits and budgets](usage-limits-and-budgets.md)
 - [Durable execution and recovery](durable-execution-and-recovery.md)
-- [Coding harness execution profile](coding-harness-execution-profile.md)

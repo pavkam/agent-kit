@@ -25,7 +25,7 @@ The component:
   goal, or admitted-input causality;
 - preserves an exact retained suffix and a hash manifest of the covered source;
 - invokes only strategies selected by the immutable compaction policy snapshot;
-- treats generated summaries as untrusted until structural, causal, security,
+- keeps generated summaries untrusted even after structural, causal, security,
   and measurable-reduction validation succeeds;
 - records strategy, model, settings, source, context epoch, instruction,
   configuration, estimate, and supersession provenance; and
@@ -641,10 +641,18 @@ service but may not invoke a protected effect without normal authorization.
 Activation rechecks the validation stamp and all immutable hashes; constructing
 a `ValidatedCompaction` object is not authority.
 
-No summary may create a grant, approval, tool result, provider success, goal
-transition, resource mutation, or fact absent from its source manifest.
-Untrusted retrieved or model-generated content remains data. Validation never
-promotes it into system or developer instructions.
+Authoritative checkpoint fields are copied or deterministically derived from
+identified committed source records. Validators compare those fields with the
+source manifest and reject invented grants, approvals, tool results, provider
+success, goal transitions, and resource mutations. Generated prose cannot supply
+those fields or override them.
+
+Structural validation does not prove that arbitrary natural-language prose is
+factually entailed by its sources. Summaries retain model-produced provenance
+and uncertainty after validation. A host may add a bounded semantic evaluator,
+but its score does not certify facts or grant authority. Source records remain
+the evidence when a later operation needs an exact claim. The framework never
+promotes a validated summary to system/developer instruction trust.
 
 ## Activation and optimistic concurrency
 

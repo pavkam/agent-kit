@@ -1,8 +1,12 @@
 # Coding-harness MCP exposure
 
-**Status:** Normative coding-harness profile  
-**Depends on:** [MCP integration](mcp-integration.md),
-[tools](tools-and-toolsets.md), [context](context-assembly-and-instructions.md)
+**Status:** Normative application profile
+
+**Scope:** Optional application composition; not a required AgentKit capability.
+
+**Depends on:** [MCP integration](../../concepts/mcp-integration.md),
+[tools](../../concepts/tools-and-toolsets.md),
+[context](../../concepts/context-assembly-and-instructions.md)
 
 ## Purpose
 
@@ -129,5 +133,5 @@ callback listener already exists.
 
 - [Coding-harness resources and project trust](coding-harness-resources-and-project-trust.md)
 - [Coding-harness built-in tools](coding-harness-built-in-tools.md)
-- [Permissions, approvals, and trust](permissions-approvals-and-trust.md)
-- [Streaming and event protocol](streaming-and-event-protocol.md)
+- [Permissions, approvals, and trust](../../concepts/permissions-approvals-and-trust.md)
+- [Streaming and event protocol](../../concepts/streaming-and-event-protocol.md)

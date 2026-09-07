@@ -224,7 +224,7 @@ errors may include a structured field path.
 ## Coding-harness interoperability
 
 The
-[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+[provider-specific compatibility requirements](../profiles/coding-harness/provider-interoperability.md#provider-specific-compatibility-requirements)
 define the route, history-repair, streaming, and compatibility details required
 by a long-running coding loop. They do not override the public contract verified
 below.

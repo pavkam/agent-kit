@@ -13,10 +13,10 @@ the linked component and concept documents as the source of truth. When changing
 C#, also read the [modern C# rules](../references/modern-csharp.md).
 
 For a coding host or cross-package harness design, also read the
-[coding-harness execution profile](../../../docs/concepts/coding-harness-execution-profile.md)
+[coding-harness execution profile](../../../docs/profiles/coding-harness/coding-harness-execution-profile.md)
 and only the focused workspace, tool, terminal, language-service, snapshot,
 resource, control-plane, or MCP profile linked from the
-[concept index](../../../docs/concepts/index.md#coding-harness-profile).
+[coding-harness profile index](../../../docs/profiles/coding-harness/index.md).
 
 ## Decision guide
 
@@ -26,9 +26,11 @@ resource, control-plane, or MCP profile linked from the
    [project structure](../../../docs/architecture/project-structure.md): neutral
    contracts in `AgentKit.Abstractions`, the dependency-light facade in
    `AgentKit`, focused implementations above it, and integrations as leaves.
-3. Validate both DAGs: project references and the closed constructor/factory
-   graph. A service locator, deferred factory, or nested scope does not repair a
-   cycle.
+3. Validate both DAGs: project references and the declared closed constructor/
+   factory graph. Shared exporter-free observability is infrastructure;
+   evaluation and goal-worker hosting are application leaves allowed to consume
+   the facade. A service locator, deferred factory, or nested scope does not
+   repair a cycle.
 4. Add a narrow contract only for a demonstrated extension axis with plausible
    alternatives. Keep discovery, selection, policy, execution, persistence, and
    observation separate; inheritance remains optional.
@@ -54,6 +56,12 @@ Start with
 [public API and DI](../../../docs/concepts/public-api-and-dependency-injection.md),
 and
 [configuration and overrides](../../../docs/concepts/configuration-and-overrides.md).
+
+Synchronous build consumes a materialized initial catalog without network or
+secret access. Validate publication, admission, and effects at their separate
+boundaries. Revalidate pinned handles for new work; retained versions support
+recovery but never override live revocation. Implementation and tests do not
+supersede architecture or its linked normative concepts.
 
 An architecture result must state the owner, contract location, dependency
 edges, registration and selection model, lifecycle, unsupported behavior, and

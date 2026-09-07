@@ -290,7 +290,7 @@ tokens or retrieved content.
 ## Coding-harness interoperability
 
 The
-[provider-specific compatibility requirements](coding-harness-provider-profiles.md#provider-specific-compatibility-requirements)
+[provider-specific compatibility requirements](../profiles/coding-harness/provider-interoperability.md#provider-specific-compatibility-requirements)
 separate public Microsoft 365, Copilot Studio, GitHub administration, and
 account-scoped inference profiles. Entitlement filtering remains account-local
 and does not redefine the public contracts below.

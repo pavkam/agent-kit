@@ -1,8 +1,12 @@
 # Coding-harness frontends and protocol adapters
 
-**Status:** Normative coding-harness profile  
-**Depends on:** [Input and output](input-admission-and-message-queues.md),
-[streaming](streaming-and-event-protocol.md),
+**Status:** Normative application profile
+
+**Scope:** Optional application composition; not a required AgentKit capability.
+
+**Depends on:**
+[Input and output](../../concepts/input-admission-and-message-queues.md),
+[streaming](../../concepts/streaming-and-event-protocol.md),
 [coding-harness control plane](coding-harness-export-sharing-and-control-plane.md)
 
 ## Purpose
