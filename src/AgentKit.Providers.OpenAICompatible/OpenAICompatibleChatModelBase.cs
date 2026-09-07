@@ -298,7 +298,10 @@ public abstract class OpenAICompatibleChatModelBase: IChatModel
         }
 
         var kind = MapStatusCode(response.StatusCode);
-        var retryAfter = response.Headers.RetryAfter?.Delta;
+        var retryAfter = response.Headers.RetryAfter?.Delta
+            ?? (response.Headers.RetryAfter?.Date is { } retryAfterDate
+                ? retryAfterDate - _timeProvider.GetUtcNow()
+                : null);
 
         return new ProviderFailure(
             kind,

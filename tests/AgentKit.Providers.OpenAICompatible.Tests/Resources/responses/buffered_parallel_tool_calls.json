@@ -1,0 +1,33 @@
+{
+  "id": "chatcmpl-parallel1",
+  "object": "chat.completion",
+  "created": 1700000003,
+  "model": "gpt-4o-2024-08-06",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_alpha",
+            "type": "function",
+            "function": { "name": "get_weather", "arguments": "{\"location\":\"Paris\"}" }
+          },
+          {
+            "id": "call_beta",
+            "type": "function",
+            "function": { "name": "get_time", "arguments": "{\"timezone\":\"UTC\"}" }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 40,
+    "completion_tokens": 20,
+    "total_tokens": 60
+  }
+}

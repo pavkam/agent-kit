@@ -81,9 +81,9 @@ public sealed class OpenAIChatModelEndToEndTests
             OpenAIProviderDefaults.CreateProfile(options),
             new OpenAIRequestTranslator(),
             new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
-            new OpenAIApiKeyCredentialSource("sk-real-looking-key"),
+            new StaticApiKeyCredentialSource("sk-real-looking-key"),
             new HttpClient(handler),
-            new FixedTimeProvider(Now));
+            new FakeTimeProvider(Now));
 
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -110,9 +110,9 @@ public sealed class OpenAIChatModelEndToEndTests
             OpenAIProviderDefaults.CreateProfile(options),
             new OpenAIRequestTranslator(),
             new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
-            new OpenAIOAuthTokenCredentialSource(new StaticOAuthTokenProvider(expiredToken)),
+            new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)),
             new HttpClient(handler),
-            new FixedTimeProvider(Now));
+            new FakeTimeProvider(Now));
 
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
@@ -135,9 +135,9 @@ public sealed class OpenAIChatModelEndToEndTests
             OpenAIProviderDefaults.CreateProfile(options),
             new OpenAIRequestTranslator(),
             new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
-            new OpenAIOAuthTokenCredentialSource(new StaticOAuthTokenProvider(validToken)),
+            new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(validToken)),
             new HttpClient(handler),
-            new FixedTimeProvider(Now));
+            new FakeTimeProvider(Now));
 
         var observer = new RecordingModelResponseObserver();
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);

@@ -2,9 +2,6 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
 namespace AgentKit.Providers.OpenAICompatible.Tests.Authorization;
-
-using AgentKit.Providers.OpenAICompatible.Tests.Fakes;
-
 /// <summary>
 /// Verifies that <see cref="OpenAIAuthorizationHeaderFactory"/> correctly
 /// distinguishes API key and OAuth token credentials, and rejects an
@@ -14,7 +11,7 @@ public sealed class OpenAIAuthorizationHeaderFactoryTests
 {
     private static readonly ProviderId ProviderId = new("openai");
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
-    private static readonly TimeProvider Clock = new FixedTimeProvider(Now);
+    private static readonly TimeProvider Clock = new FakeTimeProvider(Now);
 
     [Fact]
     public void Create_WhenApiKeyCredential_ReturnsGrantedBearerHeader()

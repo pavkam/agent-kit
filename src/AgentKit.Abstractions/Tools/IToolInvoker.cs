@@ -1,0 +1,33 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit;
+
+/// <summary>
+/// Orchestrates one complete tool call: resolving it against an
+/// <see cref="IToolCatalog"/>, authorizing it through an
+/// <see cref="IToolAuthorizer"/>, invoking the resolved <see cref="ITool"/>,
+/// and translating every outcome — including an unknown tool, a denial, or
+/// an unexpected exception — into one <see cref="ToolInvocationResult"/>.
+/// </summary>
+/// <remarks>
+/// An invoker composes exactly one <see cref="IToolCatalog"/> and one
+/// <see cref="IToolAuthorizer"/>; it never re-implements catalog resolution
+/// or authorization policy inline. It never lets a tool's thrown exception
+/// escape as a fault: every reachable failure — unknown tool, denied
+/// authorization, or an unhandled exception from
+/// <see cref="ITool.InvokeAsync"/> — becomes an ordinary
+/// <see cref="ToolInvocationResult"/> whose <see cref="ToolCallOutcome.Kind"/>
+/// classifies which of those happened, so a caller (typically an agent
+/// loop) always receives exactly one terminal result per call regardless of
+/// how it failed.
+/// </remarks>
+public interface IToolInvoker
+{
+    /// <summary>Resolves, authorizes, and invokes one tool call.</summary>
+    /// <param name="request">The call request.</param>
+    /// <param name="cancellationToken">A token used to cancel the call.</param>
+    /// <returns>A task producing the terminal outcome and result content.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    public Task<ToolInvocationResult> InvokeAsync(ToolCallRequest request, CancellationToken cancellationToken = default);
+}

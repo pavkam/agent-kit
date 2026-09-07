@@ -4,10 +4,10 @@
 namespace AgentKit.Providers.OpenAI.Tests.Fakes;
 
 /// <summary>
-/// An <see cref="IOpenAIOAuthTokenProvider"/> test double that always
+/// An <see cref="IOAuthAccessTokenProvider"/> test double that always
 /// resolves to one fixed <see cref="OAuthTokenProviderCredential"/>.
 /// </summary>
-internal sealed class StaticOAuthTokenProvider: IOpenAIOAuthTokenProvider
+internal sealed class StaticOAuthTokenProvider: IOAuthAccessTokenProvider
 {
     private readonly OAuthTokenProviderCredential _credential;
 
@@ -16,6 +16,6 @@ internal sealed class StaticOAuthTokenProvider: IOpenAIOAuthTokenProvider
     public StaticOAuthTokenProvider(OAuthTokenProviderCredential credential) => _credential = credential;
 
     /// <inheritdoc/>
-    public ValueTask<OAuthTokenProviderCredential> GetTokenAsync(CancellationToken cancellationToken = default) =>
+    public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(_credential);
 }

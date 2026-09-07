@@ -81,6 +81,45 @@ public sealed class OpenAIChatCompletionResponseParserBufferedTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenParallelToolCalls_EmitsOneToolCallPartPerCallInOrder()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_parallel_tool_calls.json"));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.Length.ShouldBe(2);
+
+        var first = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
+        first.Tool.Name.ShouldBe("get_weather");
+        first.ProviderCallId.ShouldBe(new ProviderToolCallId("call_alpha"));
+
+        var second = completed.Response.Parts[1].ShouldBeOfType<ToolCallPart>();
+        second.Tool.Name.ShouldBe("get_time");
+        second.ProviderCallId.ShouldBe(new ProviderToolCallId("call_beta"));
+
+        first.CallId.ShouldNotBe(second.CallId);
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenUsageIsAbsent_ReportsEmptyUsageWithoutEmittingUsageEvent()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_no_usage.json"));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Usage.ShouldBeSameAs(ModelUsage.Empty);
+        observer.Events.OfType<ModelUsageUpdated>().ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ParseBufferedAsync_WhenResponseHasNoChoices_FailsWithProtocolViolation()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());

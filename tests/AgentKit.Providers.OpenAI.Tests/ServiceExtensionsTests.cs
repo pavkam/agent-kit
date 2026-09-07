@@ -64,7 +64,7 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
         var source = provider.GetRequiredService<IProviderCredentialSource>();
 
-        _ = source.ShouldBeOfType<OpenAIApiKeyCredentialSource>();
+        _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
         var source = provider.GetRequiredService<IProviderCredentialSource>();
 
-        _ = source.ShouldBeOfType<OpenAIOAuthTokenCredentialSource>();
+        _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }
 
     [Fact]
@@ -113,9 +113,9 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
-    private sealed class StaticOAuthTokenProviderRegistration: IOpenAIOAuthTokenProvider
+    private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
-        public ValueTask<OAuthTokenProviderCredential> GetTokenAsync(CancellationToken cancellationToken = default) =>
+        public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new OAuthTokenProviderCredential("token", null));
     }
 }

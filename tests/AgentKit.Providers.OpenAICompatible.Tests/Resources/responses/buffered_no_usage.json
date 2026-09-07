@@ -1,0 +1,16 @@
+{
+  "id": "chatcmpl-nousage",
+  "object": "chat.completion",
+  "created": 1700000004,
+  "model": "gpt-4o-2024-08-06",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "No usage was reported for this response."
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

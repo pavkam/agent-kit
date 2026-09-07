@@ -60,7 +60,7 @@ public sealed class OpenAICompatibleChatModelBaseTests
             new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
             credentials,
             new HttpClient(handler),
-            timeProvider ?? new FixedTimeProvider(Now));
+            timeProvider ?? new FakeTimeProvider(Now));
 
     [Fact]
     public async Task ExecuteAsync_WhenNonStreamingSuccess_ReturnsCompletedResponseWithAuthorizationHeader()
@@ -245,5 +245,120 @@ public sealed class OpenAICompatibleChatModelBaseTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
         handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenServerError_ReturnsUnavailableFailure()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.InternalServerError, "responses/error_500.json");
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failed.Failure.StatusCode.ShouldBe(500);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenThrottledWithHttpDateRetryAfter_ComputesDeltaFromCurrentTime()
+    {
+        var retryAfterDate = Now.AddSeconds(45);
+        var handler = StubHttpMessageHandler.FromFixture(
+            HttpStatusCode.TooManyRequests,
+            "responses/error_429.json",
+            configureHeaders: response => response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(retryAfterDate));
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(45));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyIsNotJson_FallsBackToGenericSafeMessage()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent("<html>Bad Gateway</html>", Encoding.UTF8, "text/html"),
+        });
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned HTTP status 502.");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenResponseHasNoRequestIdHeader_LeavesProviderRequestIdNull()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Identity.RequestId.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenProviderRequestOptionsCarryExtensionData_ForwardsThemInSentBody()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+
+        var context = new ChatRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.Gpt4O,
+            [TestMessages.User("Hello!")],
+            [],
+            ChatToolChoice.Auto,
+            ChatRequestSettings.Default,
+            ExtensionData.Empty);
+
+        var userIdValue = new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes("end-user-42")]);
+        var options = new ProviderRequestOptions(
+            new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("user", userIdValue)));
+        var request = new ChatModelRequest(context, attempt: 1, Now.AddMinutes(1), options);
+        var observer = new RecordingModelResponseObserver();
+
+        _ = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var sentBody = JsonNode.Parse(handler.RequestBodies[0]!);
+        sentBody!["user"]!.GetValue<string>().ShouldBe("end-user-42");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCancelledMidStream_ReturnsCancelledWithoutEverCompletingTheResponse()
+    {
+        var payload = TestResources.ReadAllBytes("responses/streaming_success.sse");
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new DelayedStream(payload)),
+        });
+        var model = CreateModel(handler, StreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+
+        using var cts = new CancellationTokenSource();
+        var innerObserver = new RecordingModelResponseObserver();
+        var cancelingObserver = new CancelingModelResponseObserver(innerObserver, cts, cancelAfterEventCount: 1);
+
+        var result = await model.ExecuteAsync(request, cancelingObserver, cts.Token);
+
+        var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        innerObserver.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        _ = innerObserver.Events[^1].ShouldBeOfType<ModelResponseCancelled>();
     }
 }

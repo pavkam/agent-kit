@@ -4,16 +4,28 @@
     <Project Path="src/AgentKit/AgentKit.csproj"/>
     <Project Path="src/AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
     <Project Path="src/AgentKit.Providers.OpenAICompatible/AgentKit.Providers.OpenAICompatible.csproj"/>
+    <Project Path="src/AgentKit.Providers.OpenRouter/AgentKit.Providers.OpenRouter.csproj"/>
+    <Project Path="src/AgentKit.Providers.ZAi/AgentKit.Providers.ZAi.csproj"/>
     <Project Path="src/AgentKit.Session/AgentKit.Session.csproj"/>
     <Project Path="src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
     <Project Path="src/AgentKit.Context.Compaction/AgentKit.Context.Compaction.csproj"/>
+    <Project Path="src/AgentKit.Hooks/AgentKit.Hooks.csproj"/>
+    <Project Path="src/AgentKit.Host.FileSystem/AgentKit.Host.FileSystem.csproj"/>
+    <Project Path="src/AgentKit.Tools/AgentKit.Tools.csproj"/>
+    <Project Path="src/AgentKit.Tools.FileSystem/AgentKit.Tools.FileSystem.csproj"/>
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AgentKit.Abstractions.Tests/AgentKit.Abstractions.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.OpenAI.Tests/AgentKit.Providers.OpenAI.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.OpenAICompatible.Tests/AgentKit.Providers.OpenAICompatible.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Providers.OpenRouter.Tests/AgentKit.Providers.OpenRouter.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Providers.ZAi.Tests/AgentKit.Providers.ZAi.Tests.csproj"/>
     <Project Path="tests/AgentKit.Session.Tests/AgentKit.Session.Tests.csproj"/>
     <Project Path="tests/AgentKit.Session.InMemory.Tests/AgentKit.Session.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Context.Compaction.Tests/AgentKit.Context.Compaction.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Hooks.Tests/AgentKit.Hooks.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Host.FileSystem.Tests/AgentKit.Host.FileSystem.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Tools.Tests/AgentKit.Tools.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Tools.FileSystem.Tests/AgentKit.Tools.FileSystem.Tests.csproj"/>
   </Folder>
 </Solution>

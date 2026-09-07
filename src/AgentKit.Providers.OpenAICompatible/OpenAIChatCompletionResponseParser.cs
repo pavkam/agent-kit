@@ -131,8 +131,11 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
         }
 
         var usage = MapUsage(dto.Usage);
-        await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usage), cancellationToken)
-            .ConfigureAwait(false);
+        if (dto.Usage is not null)
+        {
+            await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usage), cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         var response = new ModelResponse(
             requestId,

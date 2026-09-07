@@ -8,6 +8,8 @@ global using System.Text.Json.Nodes;
 
 global using AgentKit.Providers.OpenAICompatible;
 
+global using Microsoft.Extensions.Time.Testing;
+
 global using Shouldly;
 
 global using Xunit;

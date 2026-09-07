@@ -87,6 +87,33 @@ public sealed class OpenAIChatCompletionResponseParserStreamingTests
 
     [Theory]
     [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenParallelToolCallStream_AccumulatesEachCallIndependently(int chunkSize)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+
+        var payload = TestResources.ReadAllBytes("responses/streaming_parallel_tool_calls.sse");
+        await using var stream = new ChunkedStream(payload, chunkSize);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.Length.ShouldBe(2);
+
+        var first = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
+        first.Tool.Name.ShouldBe("get_weather");
+        first.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
+
+        var second = completed.Response.Parts[1].ShouldBeOfType<ToolCallPart>();
+        second.Tool.Name.ShouldBe("get_time");
+        second.Arguments.GetProperty("timezone").GetString().ShouldBe("UTC");
+
+        first.CallId.ShouldNotBe(second.CallId);
+    }
+
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
     public async Task ParseStreamingAsync_WhenStreamTruncatedBeforeFinishReason_FailsWithProtocolViolation(int chunkSize)
     {
         var requestId = new ModelRequestId(Guid.NewGuid());

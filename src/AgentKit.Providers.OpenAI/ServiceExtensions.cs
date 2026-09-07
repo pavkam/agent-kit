@@ -88,7 +88,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            var credentialSource = new OpenAIApiKeyCredentialSource(apiKey);
+            var credentialSource = new StaticApiKeyCredentialSource(apiKey);
             services.TryAddSingleton<IProviderCredentialSource>(credentialSource);
 
             return services;
@@ -112,12 +112,12 @@ public static class ServiceExtensions
         /// <c>AddOpenAIApiKeyCredential</c>) already registered.
         /// </remarks>
         public IServiceCollection AddOpenAIOAuthCredential<TProvider>()
-            where TProvider : class, IOpenAIOAuthTokenProvider
+            where TProvider : class, IOAuthAccessTokenProvider
         {
             ArgumentNullException.ThrowIfNull(services);
 
-            services.TryAddSingleton<IOpenAIOAuthTokenProvider, TProvider>();
-            services.TryAddSingleton<IProviderCredentialSource, OpenAIOAuthTokenCredentialSource>();
+            services.TryAddSingleton<IOAuthAccessTokenProvider, TProvider>();
+            services.TryAddSingleton<IProviderCredentialSource, DelegatingOAuthCredentialSource>();
 
             return services;
         }
