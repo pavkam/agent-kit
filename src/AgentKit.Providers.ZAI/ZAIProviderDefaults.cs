@@ -1,7 +1,7 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Providers.ZAi;
+namespace AgentKit.Providers.ZAI;
 
 using AgentKit.Providers.OpenAICompatible;
 
@@ -17,7 +17,7 @@ using AgentKit.Providers.OpenAICompatible;
 /// contract exposes no embeddings endpoint, so no embedding operation is
 /// registered here.
 /// </remarks>
-public static class ZAiProviderDefaults
+public static class ZAIProviderDefaults
 {
     /// <summary>Gets the stable <see cref="ProviderId"/> for Z.ai.</summary>
     public static ProviderId ProviderId { get; } = new("z-ai");
@@ -69,7 +69,7 @@ public static class ZAiProviderDefaults
     /// <param name="options">The validated Z.ai provider options.</param>
     /// <returns>A compatibility profile configured for Z.ai's Chat Completions endpoint.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
-    public static OpenAICompatibilityProfile CreateProfile(ZAiProviderOptions options)
+    public static OpenAICompatibilityProfile CreateProfile(ZAIProviderOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 

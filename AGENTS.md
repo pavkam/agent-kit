@@ -41,7 +41,7 @@ code being changed and call out any unresolved conflict.
 - `AgentKit.Providers.OpenAICompatible` is shared protocol-family machinery.
   Applications normally select concrete packages such as
   `AgentKit.Providers.OpenAI`, `AgentKit.Providers.OpenRouter`, or
-  `AgentKit.Providers.ZAi` instead of treating compatibility as provider
+  `AgentKit.Providers.ZAI` instead of treating compatibility as provider
   identity.
 - Tests mirror source packages under `tests/`. Shared conformance suites may
   live in a dedicated non-packable test project.
@@ -197,7 +197,7 @@ The architecture index defines document authority and change rules.
   of them.
 - `AgentKit.Providers.OpenAI` registers OpenAI conversational and embedding
   implementations. `AgentKit.Providers.OpenRouter` registers its conversational,
-  embedding, and reranking implementations. `AgentKit.Providers.ZAi` registers
+  embedding, and reranking implementations. `AgentKit.Providers.ZAI` registers
   only the operations supported by its verified API profile.
 - Keep embedding generation separate from conversational generation. Embedding
   model identity, dimensions, modality, and vector-space compatibility are part

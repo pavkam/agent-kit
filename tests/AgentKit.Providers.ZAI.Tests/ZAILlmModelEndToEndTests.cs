@@ -1,19 +1,19 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Providers.ZAi.Tests;
+namespace AgentKit.Providers.ZAI.Tests;
 
 using System.Net;
 
-using AgentKit.Providers.ZAi.Tests.Fakes;
+using AgentKit.Providers.ZAI.Tests.Fakes;
 
 /// <summary>
-/// End-to-end tests for the concrete <see cref="ZAiLlmModel"/>, constructed
+/// End-to-end tests for the concrete <see cref="ZAILlmModel"/>, constructed
 /// directly (bypassing dependency injection) against a stub HTTP handler
 /// serving a fixture response. No test in this class performs a real
 /// network call to Z.ai.
 /// </summary>
-public sealed class ZAiLlmModelEndToEndTests
+public sealed class ZAILlmModelEndToEndTests
 {
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
 
@@ -63,12 +63,12 @@ public sealed class ZAiLlmModelEndToEndTests
     private static ModelDescriptor CreateDescriptor() =>
         new(
             new ModelAlias("chat"),
-            ZAiProviderDefaults.ProviderId,
-            ZAiProviderDefaults.ApiFamily,
+            ZAIProviderDefaults.ProviderId,
+            ZAIProviderDefaults.ApiFamily,
             new ModelId("glm-4.6"),
             deploymentId: null,
-            ZAiProviderDefaults.DefaultCapabilities,
-            ZAiProviderDefaults.DefaultLimits,
+            ZAIProviderDefaults.DefaultCapabilities,
+            ZAIProviderDefaults.DefaultLimits,
             pricing: null,
             ExtensionData.Empty);
 
@@ -76,12 +76,12 @@ public sealed class ZAiLlmModelEndToEndTests
     public async Task ExecuteAsync_WhenUsingApiKeyCredential_SendsBearerHeaderAndTranslatesDeveloperRoleAsSystem()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
-        var options = new ZAiProviderOptions { PreferStreaming = false };
+        var options = new ZAIProviderOptions { PreferStreaming = false };
         var descriptor = CreateDescriptor();
 
-        var model = new ZAiLlmModel(
+        var model = new ZAILlmModel(
             descriptor,
-            ZAiProviderDefaults.CreateProfile(options),
+            ZAIProviderDefaults.CreateProfile(options),
             new OpenAIRequestTranslator(),
             new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
             new StaticApiKeyCredentialSource("zai-real-looking-key"),
@@ -93,7 +93,7 @@ public sealed class ZAiLlmModelEndToEndTests
 
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello from Z.ai!");
-        completed.Response.Identity.ProviderId.ShouldBe(ZAiProviderDefaults.ProviderId);
+        completed.Response.Identity.ProviderId.ShouldBe(ZAIProviderDefaults.ProviderId);
 
         _ = handler.Requests.ShouldHaveSingleItem();
         handler.Requests[0].RequestUri.ShouldBe(new Uri("https://api.z.ai/api/paas/v4/chat/completions"));
@@ -105,13 +105,13 @@ public sealed class ZAiLlmModelEndToEndTests
     public async Task ExecuteAsync_WhenUsingExpiredOAuthCredential_FailsAuthenticationWithoutSendingHttpRequest()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
-        var options = new ZAiProviderOptions { PreferStreaming = false };
+        var options = new ZAIProviderOptions { PreferStreaming = false };
         var descriptor = CreateDescriptor();
         var expiredToken = new OAuthTokenProviderCredential("expired", Now.AddMinutes(-1));
 
-        var model = new ZAiLlmModel(
+        var model = new ZAILlmModel(
             descriptor,
-            ZAiProviderDefaults.CreateProfile(options),
+            ZAIProviderDefaults.CreateProfile(options),
             new OpenAIRequestTranslator(),
             new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
             new DelegatingOAuthCredentialSource(new StaticOAuthTokenProvider(expiredToken)),
@@ -130,11 +130,11 @@ public sealed class ZAiLlmModelEndToEndTests
     public async Task ExecuteAsync_WhenParallelToolCallsAreRequested_FailsCapabilityValidationBeforeSending()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
-        var options = new ZAiProviderOptions { PreferStreaming = false };
+        var options = new ZAIProviderOptions { PreferStreaming = false };
         var descriptor = CreateDescriptor();
-        var model = new ZAiLlmModel(
+        var model = new ZAILlmModel(
             descriptor,
-            ZAiProviderDefaults.CreateProfile(options),
+            ZAIProviderDefaults.CreateProfile(options),
             new OpenAIRequestTranslator(),
             new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
             new StaticApiKeyCredentialSource("zai-real-looking-key"),

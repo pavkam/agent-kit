@@ -1,7 +1,7 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Providers.ZAi;
+namespace AgentKit.Providers.ZAI;
 
 /// <summary>
 /// Configures the Z.ai integration's endpoint and wire-behavior defaults.
@@ -12,22 +12,22 @@ namespace AgentKit.Providers.ZAi;
 /// once at composition time and consumed as an immutable
 /// <see cref="Microsoft.Extensions.Options.IOptions{TOptions}"/> value
 /// afterward. Authentication is configured separately, through
-/// <c>AddZAiApiKeyCredential</c> or <c>AddZAiOAuthCredential</c>, because
+/// <c>AddZAIApiKeyCredential</c> or <c>AddZAIOAuthCredential</c>, because
 /// credential material is never appropriate to bind from ordinary
 /// configuration alongside endpoint options.
 /// </remarks>
-public sealed class ZAiProviderOptions
+public sealed class ZAIProviderOptions
 {
     /// <summary>
     /// Gets or sets the base address of the Z.ai REST API. Defaults to the
     /// general-purpose base; set this to
-    /// <see cref="ZAiProviderDefaults.CodingPlanBaseAddress"/> to use the
+    /// <see cref="ZAIProviderDefaults.CodingPlanBaseAddress"/> to use the
     /// separate coding-plan routing and billing surface instead.
     /// </summary>
-    public Uri BaseAddress { get; set; } = ZAiProviderDefaults.DefaultBaseAddress;
+    public Uri BaseAddress { get; set; } = ZAIProviderDefaults.DefaultBaseAddress;
 
     /// <summary>Gets or sets the chat completions operation path, relative to <see cref="BaseAddress"/>.</summary>
-    public string ChatCompletionsPath { get; set; } = ZAiProviderDefaults.DefaultChatCompletionsPath;
+    public string ChatCompletionsPath { get; set; } = ZAIProviderDefaults.DefaultChatCompletionsPath;
 
     /// <summary>
     /// Gets or sets whether a request should prefer the streaming

@@ -1,19 +1,19 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Providers.ZAi.Tests;
+namespace AgentKit.Providers.ZAI.Tests;
 
 /// <summary>
-/// Verifies <see cref="ZAiProviderDefaults.CreateProfile"/> maps
-/// <see cref="ZAiProviderOptions"/> onto the wire-behavior fields an
+/// Verifies <see cref="ZAIProviderDefaults.CreateProfile"/> maps
+/// <see cref="ZAIProviderOptions"/> onto the wire-behavior fields an
 /// <see cref="OpenAICompatibilityProfile"/> needs.
 /// </summary>
-public sealed class ZAiProviderDefaultsTests
+public sealed class ZAIProviderDefaultsTests
 {
     [Fact]
     public void CreateProfile_WhenGivenOptions_MapsEveryField()
     {
-        var options = new ZAiProviderOptions
+        var options = new ZAIProviderOptions
         {
             BaseAddress = new Uri("https://example.test/"),
             ChatCompletionsPath = "v2/chat",
@@ -21,7 +21,7 @@ public sealed class ZAiProviderDefaultsTests
             IncludeStreamUsage = false,
         };
 
-        var profile = ZAiProviderDefaults.CreateProfile(options);
+        var profile = ZAIProviderDefaults.CreateProfile(options);
 
         profile.BaseAddress.ShouldBe(options.BaseAddress);
         profile.ChatCompletionsPath.ShouldBe(options.ChatCompletionsPath);
@@ -33,13 +33,13 @@ public sealed class ZAiProviderDefaultsTests
     }
 
     [Fact]
-    public void ProviderId_IsStableZAiIdentity() => ZAiProviderDefaults.ProviderId.ShouldBe(new ProviderId("z-ai"));
+    public void ProviderId_IsStableZAIIdentity() => ZAIProviderDefaults.ProviderId.ShouldBe(new ProviderId("z-ai"));
 
     [Fact]
     public void DefaultCapabilities_DoesNotClaimParallelToolCalls() =>
-        ZAiProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeFalse();
+        ZAIProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeFalse();
 
     [Fact]
     public void DefaultBaseAddress_DiffersFromCodingPlanBaseAddress() =>
-        ZAiProviderDefaults.DefaultBaseAddress.ShouldNotBe(ZAiProviderDefaults.CodingPlanBaseAddress);
+        ZAIProviderDefaults.DefaultBaseAddress.ShouldNotBe(ZAIProviderDefaults.CodingPlanBaseAddress);
 }

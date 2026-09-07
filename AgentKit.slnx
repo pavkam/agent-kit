@@ -14,7 +14,7 @@
     <Project Path="src/AgentKit.Providers.GoogleVertexAI/AgentKit.Providers.GoogleVertexAI.csproj"/>
     <Project Path="src/AgentKit.Providers.AwsBedrock/AgentKit.Providers.AwsBedrock.csproj"/>
     <Project Path="src/AgentKit.Providers.OpenRouter/AgentKit.Providers.OpenRouter.csproj"/>
-    <Project Path="src/AgentKit.Providers.ZAi/AgentKit.Providers.ZAi.csproj"/>
+    <Project Path="src/AgentKit.Providers.ZAI/AgentKit.Providers.ZAI.csproj"/>
     <Project Path="src/AgentKit.Providers.DeepSeek/AgentKit.Providers.DeepSeek.csproj"/>
     <Project Path="src/AgentKit.Providers.Groq/AgentKit.Providers.Groq.csproj"/>
     <Project Path="src/AgentKit.Providers.MoonshotKimi/AgentKit.Providers.MoonshotKimi.csproj"/>
@@ -78,7 +78,7 @@
     <Project Path="tests/AgentKit.Providers.GoogleVertexAI.Tests/AgentKit.Providers.GoogleVertexAI.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.AwsBedrock.Tests/AgentKit.Providers.AwsBedrock.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.OpenRouter.Tests/AgentKit.Providers.OpenRouter.Tests.csproj"/>
-    <Project Path="tests/AgentKit.Providers.ZAi.Tests/AgentKit.Providers.ZAi.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Providers.ZAI.Tests/AgentKit.Providers.ZAI.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.DeepSeek.Tests/AgentKit.Providers.DeepSeek.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.Groq.Tests/AgentKit.Providers.Groq.Tests.csproj"/>
     <Project Path="tests/AgentKit.Providers.MoonshotKimi.Tests/AgentKit.Providers.MoonshotKimi.Tests.csproj"/>

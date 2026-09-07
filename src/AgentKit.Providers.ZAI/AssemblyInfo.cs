@@ -3,4 +3,4 @@
 
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("AgentKit.Providers.ZAi.Tests")]
+[assembly: InternalsVisibleTo("AgentKit.Providers.ZAI.Tests")]

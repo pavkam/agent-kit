@@ -4,7 +4,7 @@
 namespace AgentKit.Providers.OpenAI.Tests;
 
 using AgentKit.Providers.OpenRouter;
-using AgentKit.Providers.ZAi;
+using AgentKit.Providers.ZAI;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -123,12 +123,12 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddOpenAIApiKeyCredential("openai-key");
         _ = services.AddOpenRouterApiKeyCredential("openrouter-key");
-        _ = services.AddZAiApiKeyCredential("zai-key");
+        _ = services.AddZAIApiKeyCredential("zai-key");
 
         using var provider = services.BuildServiceProvider();
         var openAI = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId);
         var openRouter = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId);
-        var zAi = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAiProviderDefaults.ProviderId);
+        var zAI = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAIProviderDefaults.ProviderId);
 
         var openAICredential = await openAI.GetCredentialAsync(
             OpenAIProviderDefaults.ProviderId,
@@ -136,13 +136,13 @@ public sealed class ServiceExtensionsTests
         var openRouterCredential = await openRouter.GetCredentialAsync(
             OpenRouterProviderDefaults.ProviderId,
             TestContext.Current.CancellationToken);
-        var zAiCredential = await zAi.GetCredentialAsync(
-            ZAiProviderDefaults.ProviderId,
+        var zAICredential = await zAI.GetCredentialAsync(
+            ZAIProviderDefaults.ProviderId,
             TestContext.Current.CancellationToken);
 
         openAICredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("openai-key");
         openRouterCredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("openrouter-key");
-        zAiCredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("zai-key");
+        zAICredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("zai-key");
     }
 
     [Fact]

@@ -1,7 +1,7 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Providers.ZAi;
+namespace AgentKit.Providers.ZAI;
 
 using AgentKit.Providers.OpenAICompatible;
 
@@ -15,10 +15,10 @@ using Microsoft.Extensions.Options;
 /// </summary>
 /// <remarks>
 /// Endpoint configuration, authentication, and model registration are three
-/// deliberately separate calls: <see cref="AddZAi"/> configures the shared
+/// deliberately separate calls: <see cref="AddZAI"/> configures the shared
 /// endpoint and wire-behavior options, exactly one of
-/// <c>AddZAiApiKeyCredential</c> or <c>AddZAiOAuthCredential</c> configures
-/// authentication, and <c>AddZAiLlmModel</c> is called once per named GLM
+/// <c>AddZAIApiKeyCredential</c> or <c>AddZAIOAuthCredential</c> configures
+/// authentication, and <c>AddZAILlmModel</c> is called once per named GLM
 /// model an application wants to use. No default fabricates an API key,
 /// endpoint, or model an account may not actually have.
 /// </remarks>
@@ -43,17 +43,17 @@ public static class ServiceExtensions
         /// through the ordinary <c>Microsoft.Extensions.Options</c>
         /// configuration pipeline. Authentication and model registrations
         /// are independent calls documented on
-        /// <c>AddZAiApiKeyCredential</c>, <c>AddZAiOAuthCredential</c>, and
-        /// <c>AddZAiLlmModel</c>.
+        /// <c>AddZAIApiKeyCredential</c>, <c>AddZAIOAuthCredential</c>, and
+        /// <c>AddZAILlmModel</c>.
         /// </remarks>
-        public IServiceCollection AddZAi(Action<ZAiProviderOptions>? configureOptions = null)
+        public IServiceCollection AddZAI(Action<ZAIProviderOptions>? configureOptions = null)
         {
             ArgumentNullException.ThrowIfNull(services);
 
             _ = services.AddOpenAICompatibleProvider();
-            _ = services.AddOptions<ZAiProviderOptions>().ValidateOnStart();
+            _ = services.AddOptions<ZAIProviderOptions>().ValidateOnStart();
             services.TryAddEnumerable(
-                ServiceDescriptor.Singleton<IValidateOptions<ZAiProviderOptions>, ZAiProviderOptionsValidator>());
+                ServiceDescriptor.Singleton<IValidateOptions<ZAIProviderOptions>, ZAIProviderOptionsValidator>());
 
             if (configureOptions is not null)
             {
@@ -79,7 +79,7 @@ public static class ServiceExtensions
         /// This registration is singular for the Z.ai provider key: it uses
         /// keyed <c>TryAdd</c> semantics, so it never overrides a Z.ai
         /// credential source an application (or
-        /// <c>AddZAiOAuthCredential</c>) already registered, while remaining
+        /// <c>AddZAIOAuthCredential</c>) already registered, while remaining
         /// isolated from other provider packages. A static API key is Z.ai's
         /// documented primary credential; OAuth support is offered for parity
         /// with the other AgentKit provider integrations and for consoles that
@@ -89,13 +89,13 @@ public static class ServiceExtensions
         /// <paramref name="apiKey"/> is null, empty, or consists only of
         /// whitespace.
         /// </exception>
-        public IServiceCollection AddZAiApiKeyCredential(string apiKey)
+        public IServiceCollection AddZAIApiKeyCredential(string apiKey)
         {
             ArgumentNullException.ThrowIfNull(services);
 
             var credentialSource = new StaticApiKeyCredentialSource(apiKey);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                ZAiProviderDefaults.ProviderId,
+                ZAIProviderDefaults.ProviderId,
                 credentialSource);
 
             return services;
@@ -117,18 +117,18 @@ public static class ServiceExtensions
         /// This registration is singular for the Z.ai provider key: it uses
         /// keyed <c>TryAdd</c> semantics, so it never overrides a Z.ai
         /// credential source an application (or
-        /// <c>AddZAiApiKeyCredential</c>) already registered, while remaining
+        /// <c>AddZAIApiKeyCredential</c>) already registered, while remaining
         /// isolated from other provider packages.
         /// </remarks>
-        public IServiceCollection AddZAiOAuthCredential<TProvider>()
+        public IServiceCollection AddZAIOAuthCredential<TProvider>()
             where TProvider : class, IOAuthAccessTokenProvider
         {
             ArgumentNullException.ThrowIfNull(services);
 
             services.TryAddKeyedSingleton<IOAuthAccessTokenProvider, TProvider>(
-                ZAiProviderDefaults.ProviderId);
+                ZAIProviderDefaults.ProviderId);
             services.TryAddKeyedSingleton<IProviderCredentialSource>(
-                ZAiProviderDefaults.ProviderId,
+                ZAIProviderDefaults.ProviderId,
                 static (provider, key) => new DelegatingOAuthCredentialSource(
                     provider.GetRequiredKeyedService<IOAuthAccessTokenProvider>(key)));
 
@@ -143,11 +143,11 @@ public static class ServiceExtensions
         /// <param name="modelId">Z.ai's own model identifier, such as <c>"glm-4.6"</c>.</param>
         /// <param name="capabilities">
         /// The model's capabilities, or <see langword="null"/> to use
-        /// <see cref="ZAiProviderDefaults.DefaultCapabilities"/>.
+        /// <see cref="ZAIProviderDefaults.DefaultCapabilities"/>.
         /// </param>
         /// <param name="limits">
         /// The model's token limits, or <see langword="null"/> to use
-        /// <see cref="ZAiProviderDefaults.DefaultLimits"/>.
+        /// <see cref="ZAIProviderDefaults.DefaultLimits"/>.
         /// </param>
         /// <returns>
         /// The same <paramref name="services"/> instance, so calls can be
@@ -157,10 +157,10 @@ public static class ServiceExtensions
         /// This registration is additive: calling it more than once with a
         /// distinct <paramref name="alias"/> registers additional models
         /// alongside one another, resolvable together as
-        /// <c>IEnumerable&lt;ILlmModel&gt;</c>. <see cref="AddZAi"/> must
+        /// <c>IEnumerable&lt;ILlmModel&gt;</c>. <see cref="AddZAI"/> must
         /// be called first.
         /// </remarks>
-        public IServiceCollection AddZAiLlmModel(
+        public IServiceCollection AddZAILlmModel(
             ModelAlias alias,
             ModelId modelId,
             ModelCapabilities? capabilities = null,
@@ -170,25 +170,25 @@ public static class ServiceExtensions
 
             _ = services.AddSingleton<ILlmModel>(provider =>
             {
-                var options = provider.GetRequiredService<IOptions<ZAiProviderOptions>>().Value;
+                var options = provider.GetRequiredService<IOptions<ZAIProviderOptions>>().Value;
 
                 var descriptor = new ModelDescriptor(
                     alias,
-                    ZAiProviderDefaults.ProviderId,
-                    ZAiProviderDefaults.ApiFamily,
+                    ZAIProviderDefaults.ProviderId,
+                    ZAIProviderDefaults.ApiFamily,
                     modelId,
                     deploymentId: null,
-                    capabilities ?? ZAiProviderDefaults.DefaultCapabilities,
-                    limits ?? ZAiProviderDefaults.DefaultLimits,
+                    capabilities ?? ZAIProviderDefaults.DefaultCapabilities,
+                    limits ?? ZAIProviderDefaults.DefaultLimits,
                     pricing: null,
                     ExtensionData.Empty);
 
-                return new ZAiLlmModel(
+                return new ZAILlmModel(
                     descriptor,
-                    ZAiProviderDefaults.CreateProfile(options),
+                    ZAIProviderDefaults.CreateProfile(options),
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
-                    provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAiProviderDefaults.ProviderId),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<TimeProvider>());
             });

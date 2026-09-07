@@ -6,7 +6,7 @@ global using System.Text.Json;
 global using System.Text.Json.Nodes;
 
 global using AgentKit.Providers.OpenAICompatible;
-global using AgentKit.Providers.ZAi;
+global using AgentKit.Providers.ZAI;
 
 global using Microsoft.Extensions.Time.Testing;
 

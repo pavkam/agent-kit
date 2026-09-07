@@ -215,7 +215,7 @@ Provider integrations follow AgentKit.Providers.ProviderName:
 | AgentKit.Providers.OpenAICompatible | Reusable Responses, Chat Completions, embeddings, transport, parsing, profiles, and secret-safe credential transport mechanics | AddOpenAICompatibleProvider |
 | AgentKit.Providers.OpenAI           | OpenAI endpoints, credentials, capabilities, conversational models, and embeddings                                             | AddOpenAI                   |
 | AgentKit.Providers.OpenRouter       | OpenRouter routing, metadata, conversational models, embeddings, and reranking                                                 | AddOpenRouter               |
-| AgentKit.Providers.ZAi              | Z.ai endpoints, credentials, Chat Completions profile, and native operations                                                   | AddZAi                      |
+| AgentKit.Providers.ZAI              | Z.ai endpoints, credentials, Chat Completions profile, and native operations                                                   | AddZAI                      |
 
 AgentKit.Providers.OpenAICompatible is a protocol-family toolkit for concrete
 providers and custom compatible endpoints. It is not a brand identity or a claim
@@ -233,7 +233,7 @@ runtime consumes one unkeyed global credential source.
 Each vendor package exposes one ASP.NET-style entry point and registers its
 supported operations independently. AddOpenAI can configure named conversational
 and embedding models. AddOpenRouter can configure named conversational,
-embedding, and reranking models. AddZAi exposes only operations supported by its
+embedding, and reranking models. AddZAI exposes only operations supported by its
 verified profile; it does not manufacture an embedding provider from a chat
 endpoint.
 
@@ -410,7 +410,7 @@ The tests directory mirrors source projects one for one:
 | AgentKit.Providers.OpenAICompatible  | AgentKit.Providers.OpenAICompatible.Tests  |
 | AgentKit.Providers.OpenAI            | AgentKit.Providers.OpenAI.Tests            |
 | AgentKit.Providers.OpenRouter        | AgentKit.Providers.OpenRouter.Tests        |
-| AgentKit.Providers.ZAi               | AgentKit.Providers.ZAi.Tests               |
+| AgentKit.Providers.ZAI               | AgentKit.Providers.ZAI.Tests               |
 | AgentKit.FileSystem                  | AgentKit.FileSystem.Tests                  |
 | AgentKit.FileSystem.InMemory         | AgentKit.FileSystem.InMemory.Tests         |
 | AgentKit.Network                     | AgentKit.Network.Tests                     |

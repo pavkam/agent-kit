@@ -56,7 +56,7 @@ capability-validation, and attempt-coordination behavior.
 `AgentKit.Providers.OpenAICompatible` MAY contain reusable protocol-family base
 classes and services. It MUST NOT replace concrete identity, options, profiles,
 credentials, or registration in packages such as `AgentKit.Providers.OpenAI`,
-`AgentKit.Providers.OpenRouter`, and `AgentKit.Providers.ZAi`.
+`AgentKit.Providers.OpenRouter`, and `AgentKit.Providers.ZAI`.
 
 The shared exporter-free `AgentKit.Observability` package is an explicit
 infrastructure dependency of first-party facade, runtime, and leaf packages. It

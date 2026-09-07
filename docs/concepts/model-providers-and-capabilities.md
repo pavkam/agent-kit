@@ -115,7 +115,7 @@ not a provider identity and MUST NOT decide authentication support, account,
 scheme, audience, scopes, refresh, or rotation policy. Those choices and the
 credential-profile binding remain owned by the concrete branded package.
 `AgentKit.Providers.OpenAI`, `AgentKit.Providers.OpenRouter`, and
-`AgentKit.Providers.ZAi` MUST retain their own profiles and tests even when they
+`AgentKit.Providers.ZAI` MUST retain their own profiles and tests even when they
 reuse that package.
 
 Provider packages register operations independently. OpenAI may provide

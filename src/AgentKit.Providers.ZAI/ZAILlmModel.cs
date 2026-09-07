@@ -1,7 +1,7 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Providers.ZAi;
+namespace AgentKit.Providers.ZAI;
 
 using AgentKit.Providers.OpenAICompatible;
 
@@ -9,9 +9,9 @@ using AgentKit.Providers.OpenAICompatible;
 /// The Z.ai conversational <see cref="ILlmModel"/>, built entirely from the
 /// shared <see cref="OpenAICompatibleLlmModelBase"/> pipeline.
 /// </summary>
-public sealed class ZAiLlmModel: OpenAICompatibleLlmModelBase
+public sealed class ZAILlmModel: OpenAICompatibleLlmModelBase
 {
-    /// <summary>Initializes a new instance of the <see cref="ZAiLlmModel"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="ZAILlmModel"/> class.</summary>
     /// <param name="descriptor">The descriptor of the Z.ai model this instance serves.</param>
     /// <param name="profile">The Z.ai compatibility profile.</param>
     /// <param name="translator">Translates provider-neutral requests into OpenAI-compatible request bodies.</param>
@@ -20,7 +20,7 @@ public sealed class ZAiLlmModel: OpenAICompatibleLlmModelBase
     /// <param name="httpClient">The HTTP client used to send requests.</param>
     /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
-    public ZAiLlmModel(
+    public ZAILlmModel(
         ModelDescriptor descriptor,
         OpenAICompatibilityProfile profile,
         IOpenAIRequestTranslator translator,

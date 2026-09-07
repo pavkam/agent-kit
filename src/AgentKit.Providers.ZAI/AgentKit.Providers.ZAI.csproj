@@ -2,7 +2,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <DebugType>portable</DebugType>
-    <PackageId>AgentKit.Providers.ZAi</PackageId>
+    <PackageId>AgentKit.Providers.ZAI</PackageId>
     <Title>AgentKit Providers Z.ai</Title>
     <Description>Z.ai conversational provider integration for AgentKit, with API key and OAuth credential support.</Description>
     <PackageTags>agents;ai;llm;zai;providers</PackageTags>

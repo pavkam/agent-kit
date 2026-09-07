@@ -25,7 +25,7 @@ Provider support is split deliberately. `AgentKit.Providers` will supply the
 provider-neutral catalog and selector; `AgentKit.Providers.OpenAICompatible`
 will supply reusable wire machinery; and concrete packages such as
 `AgentKit.Providers.OpenAI`, `AgentKit.Providers.OpenRouter`, and
-`AgentKit.Providers.ZAi` will own their actual capabilities and registration.
+`AgentKit.Providers.ZAI` will own their actual capabilities and registration.
 OpenAI and OpenRouter include independent embedding registrations; OpenRouter
 also includes reranking.
 

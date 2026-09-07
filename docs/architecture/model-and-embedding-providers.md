@@ -29,7 +29,7 @@ The initial integration family is:
 | AgentKit.Providers.OpenAICompatible | Reusable Responses, Chat Completions, embeddings, transport, parsing, and tested compatibility profiles | Building blocks for concrete compatible packages and custom endpoints    |
 | AgentKit.Providers.OpenAI           | OpenAI identity, endpoints, credentials, options, descriptors, and registration                         | Conversation and embeddings                                              |
 | AgentKit.Providers.OpenRouter       | OpenRouter routing, upstream provenance, metadata, credentials, options, and registration               | Conversation, embeddings, and reranking                                  |
-| AgentKit.Providers.ZAi              | Z.ai identity, endpoints, credentials, Chat Completions profile, and provider-native operations         | Conversation and only other operations supported by its verified profile |
+| AgentKit.Providers.ZAI              | Z.ai identity, endpoints, credentials, Chat Completions profile, and provider-native operations         | Conversation and only other operations supported by its verified profile |
 
 OpenAICompatible is deliberately not the package applications normally select as
 their provider. OpenAI, OpenRouter, and Z.ai have different authentication,
@@ -37,7 +37,7 @@ extensions, model catalogs, capability claims, errors, and usage even when some
 requests look alike.
 
 Each concrete package exposes an ASP.NET-style registration entry point:
-AddOpenAI, AddOpenRouter, or AddZAi. Registrations may add several named models,
+AddOpenAI, AddOpenRouter, or AddZAI. Registrations may add several named models,
 but conversation, embedding, and reranking capabilities remain independent.
 Adding OpenAI can register both conversational and embedding models. Adding
 OpenRouter can register conversational, embedding, and reranking models. Z.ai
@@ -1547,7 +1547,7 @@ facts fail startup validation rather than receiving fabricated defaults.
 
 Concrete package entry points add only configured operations. `AddOpenAI` may
 add chat and embedding aliases; `AddOpenRouter` may add chat, embedding, and
-reranker aliases; `AddZAi` adds only its verified operations. Each alias is
+reranker aliases; `AddZAI` adds only its verified operations. Each alias is
 registered with one immutable descriptor and one explicit binding to a keyed,
 versioned endpoint profile and a keyed, versioned credential profile. Endpoint
 profiles and credential profiles are independently reusable, replaceable, and

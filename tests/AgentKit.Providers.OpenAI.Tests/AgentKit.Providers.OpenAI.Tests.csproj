@@ -21,6 +21,6 @@
     <ProjectReference Include="../../src/AgentKit.Providers.OpenAICompatible/AgentKit.Providers.OpenAICompatible.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Providers.OpenRouter/AgentKit.Providers.OpenRouter.csproj"/>
-    <ProjectReference Include="../../src/AgentKit.Providers.ZAi/AgentKit.Providers.ZAi.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Providers.ZAI/AgentKit.Providers.ZAI.csproj"/>
   </ItemGroup>
 </Project>

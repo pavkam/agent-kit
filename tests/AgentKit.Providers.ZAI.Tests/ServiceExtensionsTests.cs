@@ -1,48 +1,48 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Providers.ZAi.Tests;
+namespace AgentKit.Providers.ZAI.Tests;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 /// <summary>
-/// Verifies the <c>AddZAi*</c> dependency-injection registration surface:
+/// Verifies the <c>AddZAI*</c> dependency-injection registration surface:
 /// endpoint options, credential source selection, and additive model
 /// registration.
 /// </summary>
 public sealed class ServiceExtensionsTests
 {
     [Fact]
-    public void AddZAi_WhenNoOptionsConfigured_RegistersDefaultOptions()
+    public void AddZAI_WhenNoOptionsConfigured_RegistersDefaultOptions()
     {
         var services = new ServiceCollection();
-        _ = services.AddZAi();
+        _ = services.AddZAI();
 
         using var provider = services.BuildServiceProvider();
-        var options = provider.GetRequiredService<IOptions<ZAiProviderOptions>>().Value;
+        var options = provider.GetRequiredService<IOptions<ZAIProviderOptions>>().Value;
 
-        options.BaseAddress.ShouldBe(ZAiProviderDefaults.DefaultBaseAddress);
-        options.ChatCompletionsPath.ShouldBe(ZAiProviderDefaults.DefaultChatCompletionsPath);
+        options.BaseAddress.ShouldBe(ZAIProviderDefaults.DefaultBaseAddress);
+        options.ChatCompletionsPath.ShouldBe(ZAIProviderDefaults.DefaultChatCompletionsPath);
     }
 
     [Fact]
-    public void AddZAi_WhenConfiguredForCodingPlan_UsesCodingPlanBaseAddress()
+    public void AddZAI_WhenConfiguredForCodingPlan_UsesCodingPlanBaseAddress()
     {
         var services = new ServiceCollection();
-        _ = services.AddZAi(options => options.BaseAddress = ZAiProviderDefaults.CodingPlanBaseAddress);
+        _ = services.AddZAI(options => options.BaseAddress = ZAIProviderDefaults.CodingPlanBaseAddress);
 
         using var provider = services.BuildServiceProvider();
-        var options = provider.GetRequiredService<IOptions<ZAiProviderOptions>>().Value;
+        var options = provider.GetRequiredService<IOptions<ZAIProviderOptions>>().Value;
 
-        options.BaseAddress.ShouldBe(ZAiProviderDefaults.CodingPlanBaseAddress);
+        options.BaseAddress.ShouldBe(ZAIProviderDefaults.CodingPlanBaseAddress);
     }
 
     [Fact]
-    public void AddZAi_WhenBaseAddressIsNotAbsolute_FailsStartupValidation()
+    public void AddZAI_WhenBaseAddressIsNotAbsolute_FailsStartupValidation()
     {
         var services = new ServiceCollection();
-        _ = services.AddZAi(options => options.BaseAddress = new Uri("not-absolute", UriKind.Relative));
+        _ = services.AddZAI(options => options.BaseAddress = new Uri("not-absolute", UriKind.Relative));
 
         using var provider = services.BuildServiceProvider();
 
@@ -53,10 +53,10 @@ public sealed class ServiceExtensionsTests
     [Theory]
     [InlineData("https://evil.example.test/chat")]
     [InlineData("//evil.example.test/chat")]
-    public void AddZAi_WhenChatPathCanReplaceConfiguredEndpoint_FailsStartupValidation(string path)
+    public void AddZAI_WhenChatPathCanReplaceConfiguredEndpoint_FailsStartupValidation(string path)
     {
         var services = new ServiceCollection();
-        _ = services.AddZAi(options => options.ChatCompletionsPath = path);
+        _ = services.AddZAI(options => options.ChatCompletionsPath = path);
 
         using var provider = services.BuildServiceProvider();
 
@@ -65,39 +65,39 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddZAiApiKeyCredential_WhenRegistered_ResolvesApiKeyCredential()
+    public void AddZAIApiKeyCredential_WhenRegistered_ResolvesApiKeyCredential()
     {
         var services = new ServiceCollection();
-        _ = services.AddZAi();
-        _ = services.AddZAiApiKeyCredential("zai-test-key");
+        _ = services.AddZAI();
+        _ = services.AddZAIApiKeyCredential("zai-test-key");
 
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAiProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAIProviderDefaults.ProviderId);
 
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
 
     [Fact]
-    public void AddZAiOAuthCredential_WhenRegistered_ResolvesDelegatingOAuthSource()
+    public void AddZAIOAuthCredential_WhenRegistered_ResolvesDelegatingOAuthSource()
     {
         var services = new ServiceCollection();
-        _ = services.AddZAi();
-        _ = services.AddZAiOAuthCredential<StaticOAuthTokenProviderRegistration>();
+        _ = services.AddZAI();
+        _ = services.AddZAIOAuthCredential<StaticOAuthTokenProviderRegistration>();
 
         using var provider = services.BuildServiceProvider();
-        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAiProviderDefaults.ProviderId);
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAIProviderDefaults.ProviderId);
 
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }
 
     [Fact]
-    public void AddZAiLlmModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    public void AddZAILlmModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
     {
         var services = new ServiceCollection();
-        _ = services.AddZAi();
-        _ = services.AddZAiApiKeyCredential("zai-test-key");
-        _ = services.AddZAiLlmModel(new ModelAlias("fast"), new ModelId("glm-4.6-flash"));
-        _ = services.AddZAiLlmModel(new ModelAlias("smart"), new ModelId("glm-4.6"));
+        _ = services.AddZAI();
+        _ = services.AddZAIApiKeyCredential("zai-test-key");
+        _ = services.AddZAILlmModel(new ModelAlias("fast"), new ModelId("glm-4.6-flash"));
+        _ = services.AddZAILlmModel(new ModelAlias("smart"), new ModelId("glm-4.6"));
 
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
@@ -107,15 +107,15 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddZAiLlmModel_WhenResolved_UsesZAiProviderIdentity()
+    public void AddZAILlmModel_WhenResolved_UsesZAIProviderIdentity()
     {
         var services = new ServiceCollection();
-        _ = services.AddZAi();
-        _ = services.AddZAiApiKeyCredential("zai-test-key");
-        _ = services.AddZAiLlmModel(new ModelAlias("chat"), new ModelId("glm-4.6"));
+        _ = services.AddZAI();
+        _ = services.AddZAIApiKeyCredential("zai-test-key");
+        _ = services.AddZAILlmModel(new ModelAlias("chat"), new ModelId("glm-4.6"));
 
         using var provider = services.BuildServiceProvider();
-        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<ZAiLlmModel>();
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<ZAILlmModel>();
 
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }

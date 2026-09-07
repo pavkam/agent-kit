@@ -4,7 +4,7 @@
 namespace AgentKit.Providers.OpenAI.Tests;
 
 using AgentKit.Providers.OpenRouter;
-using AgentKit.Providers.ZAi;
+using AgentKit.Providers.ZAI;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -24,9 +24,9 @@ public sealed class ProviderCredentialCoexistenceTests
         _ = services.AddOpenRouter();
         _ = services.AddOpenRouterApiKeyCredential("openrouter-key");
         _ = services.AddOpenRouterLlmModel(new ModelAlias("openrouter-chat"), new ModelId("provider/model-test"));
-        _ = services.AddZAi();
-        _ = services.AddZAiApiKeyCredential("zai-key");
-        _ = services.AddZAiLlmModel(new ModelAlias("zai-chat"), new ModelId("glm-test"));
+        _ = services.AddZAI();
+        _ = services.AddZAIApiKeyCredential("zai-key");
+        _ = services.AddZAILlmModel(new ModelAlias("zai-chat"), new ModelId("glm-test"));
 
         await using var provider = services.BuildServiceProvider();
 
@@ -41,13 +41,13 @@ public sealed class ProviderCredentialCoexistenceTests
         var openRouterCredential = await ResolveApiKeyAsync(
             provider,
             OpenRouterProviderDefaults.ProviderId);
-        var zAiCredential = await ResolveApiKeyAsync(
+        var zAICredential = await ResolveApiKeyAsync(
             provider,
-            ZAiProviderDefaults.ProviderId);
+            ZAIProviderDefaults.ProviderId);
 
         openAICredential.ApiKey.ShouldBe("openai-key");
         openRouterCredential.ApiKey.ShouldBe("openrouter-key");
-        zAiCredential.ApiKey.ShouldBe("zai-key");
+        zAICredential.ApiKey.ShouldBe("zai-key");
     }
 
     private static async ValueTask<ApiKeyProviderCredential> ResolveApiKeyAsync(
