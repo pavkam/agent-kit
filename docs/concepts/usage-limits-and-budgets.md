@@ -144,6 +144,15 @@ effect, and settle it or transfer unresolved accounting before returning.
 Out-of-run embedding, reranking, maintenance, or delegation work receives a
 child operation scope; it MUST NOT inject or fabricate an `IRunBudget`.
 
+The capability's address MUST match the authenticated tenant and principal and
+the exact operation correlation. An `InRun` binding also matches the active run.
+`BeforeRun` and `AfterRun` bindings have no active run in their address.
+`AfterRun.CausalRunId` records causality only: subsequent work reserves from a
+new operation child scope under an authorized non-run parent. It MUST NOT reopen
+the settled run's budget. Late corrections retain the original reservation's
+identity and accounting history; they do not authorize new effects. The scope
+creator owns its lifetime; consumers borrow the capability for one invocation.
+
 ## Acceptance scenarios
 
 - Concurrent request reservations cannot oversubscribe one remaining slot.
@@ -161,6 +170,9 @@ child operation scope; it MUST NOT inject or fabricate an `IRunBudget`.
 - A batch rejected on its last dimension starts no effects and reserves nothing.
 - A downward correction changes accounting once without rewinding ledger order.
 - Actual overrun is fully recorded and blocks subsequent reservations.
+- After-run maintenance cannot obtain fresh capacity from a settled causal run.
+- A capability with a different tenant, principal, operation, or active run is
+  rejected before a reservation or effect.
 
 ## Related specifications
 

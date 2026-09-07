@@ -94,6 +94,24 @@ not ask the model to repair its answer or spend output retry budget. A candidate
 that violates an otherwise valid supported schema is a distinct validation
 failure eligible for the definition's bounded retry policy.
 
+Preflight and evaluation use the schema engine captured by the selected
+processor profile. The engine's immutable profile records its identity/version,
+default dialect, supported dialects, and assertion and annotation sets. Missing
+`$schema` selects the recorded default; it does not guess a standard dialect.
+Accepted preflight evidence binds that profile, schema serialization
+fingerprint, and exact processing bounds. Evaluation MUST revalidate that
+evidence; a caller-supplied manifest is not proof that the schema is safe or
+supported.
+
+The first-party structural profile's supported constructs and default bounds are
+specified in the
+[architecture](../architecture/structured-output.md#first-party-structural-profile).
+It rejects duplicate schema keywords, duplicate property-map names, and
+duplicate candidate object members. Unsupported assertions fail even when nested
+or placed in an otherwise unselected union alternative. Annotation content
+counts toward bounds without becoming schema instructions. Exact integer
+validation MUST NOT round a fractional value into acceptance.
+
 ## Validation pipeline
 
 Candidate output MUST pass:
@@ -104,6 +122,12 @@ Candidate output MUST pass:
 4. runtime-type deserialization when requested;
 5. ordered synchronous/asynchronous output validators; and
 6. final output middleware.
+
+Runtime-type conversion produces a provisional value for typed semantic
+validators; it does not publish or accept that value. A deserializer never sees
+a candidate that failed bounds, protocol, or canonical schema validation.
+Conversion failure follows the definition's typed validation/retry policy. Only
+completion of all required stages produces `OutputAccepted`.
 
 Validators receive immutable run context and may accept, transform within the
 declared type/schema, or request a model retry. They MUST NOT perform hidden
@@ -168,6 +192,13 @@ tools.
   declared.
 - Partial stream values never become final before terminal validation.
 - Output-tool names cannot collide with application tool aliases.
+- Unsupported nested assertions and union alternatives reject the definition
+  before provider I/O and consume no model repair attempts.
+- A forged or stale preflight manifest cannot bypass schema validation.
+- One processor profile's custom engine or validators do not affect another
+  profile, even when both use the same output-definition identity/version.
+- Duplicate JSON members cannot hide an invalid earlier value, and large
+  exponents cannot overflow or round their way into integer acceptance.
 
 ## Related specifications
 

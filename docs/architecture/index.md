@@ -164,7 +164,7 @@ an existing ID and never generates a new one as repair.
 | [Budgets and limits](budgets.md)                                  | Hierarchical limits, atomic reservations, accounting, and typed exhaustion                          |
 | [Messages and history](messages-and-history.md)                   | Immutable conversation truth, role trust, result projections, validation, and repair                |
 | [Input and output](input-and-output.md)                           | Input admission, queues, live streams, final-result publication, and channel adapters               |
-| [Structured output](structured-output.md)                         | Output definitions, extraction, validation, repair decisions, retries, and conversion               |
+| [Structured output](structured-output.md)                         | Output definitions, keyed schema engines, preflight, validation, repair, retries, and conversion    |
 | [Context](context.md)                                             | Context contributors, instruction trust, bounded assembly, selection, and request manifests         |
 | [Context compaction](context-compaction.md)                       | Semantic cuts, summarization strategies, validation, reduction, and durable activation              |
 | [Execution identity and tenancy](identity.md)                     | Trusted identity normalization, propagation, delegation chains, and tenant isolation                |

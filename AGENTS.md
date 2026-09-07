@@ -255,6 +255,11 @@ The architecture index defines document authority and change rules.
 - `AgentKit.Output` owns output-definition resolution, extraction, validation,
   repair decisions, and deserialization. It returns typed decisions to the loop;
   it never invokes providers or publishes results itself.
+- Output processors select a versioned `IOutputSchemaEngine` under their
+  explicit DI key. Complete schema and union preflight precedes provider I/O.
+  Unsupported assertions are configuration failures and never consume model
+  repair attempts; accepted preflight evidence is revalidated during candidate
+  evaluation.
 
 ### Identity, budgets, and artifacts
 
@@ -264,6 +269,10 @@ The architecture index defines document authority and change rules.
 - `AgentKit.Budgets` owns hierarchical atomic reservations. Consumers reserve
   through `IBudgetScope`; the budget authority never depends back on loops,
   providers, tools, goals, context, or evaluation.
+- Budget execution capabilities bind the exact identity, operation, and active
+  run. After-run work has no active run in its scope address; causal run
+  identity cannot reopen settled capacity. Scope creators own lifetime and
+  reconciliation, while consumers borrow capabilities for one invocation.
 - `AgentKit.Artifacts` owns durable binary/generated content and references. It
   never appends its own session or tool records; callers coordinate reference
   commitment so artifact and session dependencies remain one-way.

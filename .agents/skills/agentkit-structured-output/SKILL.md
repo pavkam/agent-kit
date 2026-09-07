@@ -31,14 +31,20 @@ read the [modern C# rules](../references/modern-csharp.md).
 2. Resolve one immutable output definition before provider I/O and negotiate
    modes explicitly. A provider-native schema response still needs local checks.
 3. Keep streamed or partially parsed values provisional. Deserialize an
-   application type only after bounds, protocol, schema, and semantic
-   validation.
+   application type only after bounds, protocol, and canonical schema
+   validation. Typed values remain provisional until the selected semantic
+   validators pass; successful deserialization is not output acceptance.
 4. Treat a synthetic output tool as an internal protocol channel, never an
    application tool or permission-bearing external effect.
 5. Return typed accept, retry, or reject decisions. The processor must not call
    the loop, provider, tool executor, or publisher.
 6. Reserve validation retries from their own child budget and keep repair text
    bounded, attributable, and unable to widen the declared output contract.
+7. Select one versioned `IOutputSchemaEngine` under the processor's explicit DI
+   key. Preflight complete schemas and union alternatives before provider I/O;
+   unsupported assertions are configuration failures, never model repairs.
+   Revalidate preflight evidence during evaluation and preserve profile
+   isolation.
 
 Verify each supported mode, ambiguous unions, invalid native output,
 source-order selection, partial streams, retry exhaustion, capability mismatch,

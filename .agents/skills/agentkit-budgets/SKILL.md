@@ -39,6 +39,10 @@ read the [modern C# rules](../references/modern-csharp.md).
    Provider corrections replace provisional accounting rather than double-count.
 6. Return typed exhaustion with boundary and partial-effect certainty. Budget
    events observe immutable facts and cannot call back into the authority.
+7. Validate live capability bindings against tenant, principal, operation, and
+   active run. Before-run and after-run addresses omit an active run; a causal
+   run identifier never reopens settled capacity. New after-run work receives a
+   child operation scope under an authorized non-run parent.
 
 Verify concurrent last-slot reservations, parent/child enforcement, units, batch
 rejection, release and disposal, overrun policy, provider corrections, unknown

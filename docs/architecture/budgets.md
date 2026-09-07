@@ -243,6 +243,40 @@ or durably transfer unresolved accounting before returning. Out-of-run work
 receives a child operation scope from `IBudgetAuthority`; it never fabricates an
 `IRunBudget`.
 
+The capability validates its binding before it can be used. Profile identity,
+positive profile version, scope identity, tenant, principal, and operation must
+be initialized. The address's tenant and principal match the authenticated
+identity; its operation matches `OperationCorrelation.OperationId`. Agent and
+optional session identity remain part of the address and are checked against the
+consumer's request. A valid parent ledger address may omit run or operation
+identity, but an invocation capability always names its operation.
+
+| Correlation stage | Required address binding                                       |
+| ----------------- | -------------------------------------------------------------- |
+| `BeforeRun`       | `RunId` is absent; an established session may be present.      |
+| `InRun`           | `RunId` equals the correlation's active run.                   |
+| `AfterRun`        | `RunId` is absent; `CausalRunId` remains correlation evidence. |
+
+New work after settlement receives an authorized operation child scope under a
+live non-run parent. It cannot reopen the settled run's allowance by copying
+`CausalRunId` into the budget address. A late usage correction identifies and
+reconciles the original reservation through the ledger; it is not a new
+reservation against the old run. The component that creates a scope owns its
+lifetime and reconciliation. Capability consumers borrow it for the invocation
+and never dispose it or retain it in a singleton.
+
+The operation initiator obtains the non-run parent from the selected
+`IBudgetAuthority` using its captured profile, authenticated identity, and
+established agent/session binding. The authority validates parent ownership and
+liveness when admitting the child, and the ledger enforces live ancestor state
+at reservation. A caller-supplied parent identifier or historical capability is
+insufficient to bypass that validation. Every established agent/session
+partition must agree with the new request; absence of a causal run from the
+address does not permit moving work to another partition. Closed or revoked
+parents reject admission or reservation before work starts. Any protected effect
+still requires its separately selected security authority and grant; budget
+capacity does not grant permission.
+
 ```csharp
 namespace AgentKit;
 
