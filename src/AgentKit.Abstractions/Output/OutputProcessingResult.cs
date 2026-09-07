@@ -6,8 +6,8 @@ namespace AgentKit;
 /// <summary>The immutable base for the terminal outcome of one <see cref="OutputProcessingRequest"/>.</summary>
 /// <remarks>
 /// This is a closed discriminated hierarchy. The concrete kinds are
-/// <see cref="OutputAccepted"/>, <see cref="OutputRetryRequired"/>, and
-/// <see cref="OutputRejected"/>. Its constructor is
+/// <see cref="OutputAccepted"/>, <see cref="OutputRetryRequired"/>,
+/// <see cref="OutputRejected"/>, and <see cref="OutputConfigurationRejected"/>. Its constructor is
 /// <see langword="private protected"/>, so no assembly outside
 /// AgentKit.Abstractions can add a fourth kind.
 /// </remarks>

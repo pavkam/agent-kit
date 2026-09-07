@@ -209,6 +209,9 @@ namespace AgentKit
     {
         extension(System.ArgumentException?)
         {
+            public static void ThrowIfInvalidBudgetExecutionBinding(AgentKit.BudgetScopeAddress address, AgentKit.ExecutionIdentity identity, AgentKit.OperationCorrelation correlation, [System.Runtime.CompilerServices.CallerArgumentExpression("address")] string? paramName = null) { }
+            public static void ThrowIfInvalidOutputSchemaProfile(AgentKit.OutputSchemaDialectId defaultDialect, System.Collections.Immutable.ImmutableArray<AgentKit.OutputSchemaDialectId> supportedDialects, System.Collections.Immutable.ImmutableArray<string> assertionKeywords, System.Collections.Immutable.ImmutableArray<string> annotationKeywords, [System.Runtime.CompilerServices.CallerArgumentExpression("defaultDialect")] string? defaultDialectParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("supportedDialects")] string? supportedDialectsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("assertionKeywords")] string? assertionKeywordsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("annotationKeywords")] string? annotationKeywordsParamName = null) { }
+            public static void ThrowIfUnsupportedOutputSchemaDialect(AgentKit.OutputSchemaEngineProfile profile, AgentKit.OutputSchemaDialectId dialect, [System.Runtime.CompilerServices.CallerArgumentExpression("dialect")] string? paramName = null) { }
             public static void ThrowIfDuplicateAgentDefinitionSourceIds(System.Collections.Immutable.ImmutableArray<AgentKit.IAgentDefinitionSource> sources, [System.Runtime.CompilerServices.CallerArgumentExpression("sources")] string? paramName = null) { }
             public static void ThrowIfDuplicateAgentDefinitionSnapshotSourceIds(System.Collections.Immutable.ImmutableArray<AgentKit.AgentDefinitionSourceSnapshot> snapshots, [System.Runtime.CompilerServices.CallerArgumentExpression("snapshots")] string? paramName = null) { }
             public static void ThrowIfUnknownAgentDefinitionSource(System.Collections.Immutable.ImmutableArray<AgentKit.AgentDefinitionSourceSnapshot> snapshots, System.Collections.Immutable.ImmutableArray<AgentKit.IAgentDefinitionSource> sources, [System.Runtime.CompilerServices.CallerArgumentExpression("snapshots")] string? snapshotsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("sources")] string? sourcesParamName = null) { }
@@ -777,6 +780,15 @@ namespace AgentKit
         public static AgentKit.BudgetDimension ToolRetries { get; }
         public static AgentKit.BudgetDimension Turns { get; }
     }
+    public sealed class BudgetExecutionCapability : System.IEquatable<AgentKit.BudgetExecutionCapability>
+    {
+        public BudgetExecutionCapability(AgentKit.BudgetProfileKey profileKey, AgentKit.BudgetProfileVersion profileVersion, AgentKit.ExecutionIdentity identity, AgentKit.OperationCorrelation correlation, AgentKit.IBudgetScope scope) { }
+        public AgentKit.OperationCorrelation Correlation { get; }
+        public AgentKit.ExecutionIdentity Identity { get; }
+        public AgentKit.BudgetProfileKey ProfileKey { get; }
+        public AgentKit.BudgetProfileVersion ProfileVersion { get; }
+        public AgentKit.IBudgetScope Scope { get; }
+    }
     public sealed class BudgetLimit : System.IEquatable<AgentKit.BudgetLimit>
     {
         public BudgetLimit(AgentKit.BudgetDimension dimension, decimal value, AgentKit.BudgetUnit unit, AgentKit.BudgetLimitKind kind) { }
@@ -806,6 +818,12 @@ namespace AgentKit
     {
         public BudgetProfileKey(string value) { }
         public string Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct BudgetProfileVersion : System.IEquatable<AgentKit.BudgetProfileVersion>
+    {
+        public BudgetProfileVersion(long value) { }
+        public long Value { get; }
         public override string ToString() { }
     }
     public sealed class BudgetRejected : AgentKit.BudgetReservationResult, System.IEquatable<AgentKit.BudgetRejected>
@@ -2527,6 +2545,12 @@ namespace AgentKit
     {
         System.Threading.Tasks.ValueTask<AgentKit.OutputProcessingResult> ProcessAsync(AgentKit.OutputProcessingRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IOutputSchemaEngine
+    {
+        AgentKit.OutputSchemaEngineProfile Profile { get; }
+        AgentKit.OutputSchemaEvaluationResult Evaluate(AgentKit.OutputSchemaEvaluationRequest request, System.Threading.CancellationToken cancellationToken = default);
+        AgentKit.OutputSchemaPreflightResult Preflight(AgentKit.OutputSchemaPreflightRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IOutputValidator
     {
         string Name { get; }
@@ -3599,6 +3623,11 @@ namespace AgentKit
         public string Name { get; init; }
         public AgentKit.JsonSchemaDocument Schema { get; init; }
     }
+    public sealed class OutputConfigurationRejected : AgentKit.OutputProcessingResult, System.IEquatable<AgentKit.OutputConfigurationRejected>
+    {
+        public OutputConfigurationRejected(AgentKit.OutputSchemaConfigurationFailure failure) { }
+        public AgentKit.OutputSchemaConfigurationFailure Failure { get; }
+    }
     public sealed class OutputDefinition : System.IEquatable<AgentKit.OutputDefinition>
     {
         public OutputDefinition(AgentKit.OutputDefinitionId id, AgentKit.OutputDefinitionVersion version, string name, AgentKit.OutputMode mode, AgentKit.JsonSchemaDocument? schema, System.Type? runtimeType, System.Collections.Immutable.ImmutableArray<AgentKit.OutputAlternative> alternatives, System.Collections.Immutable.ImmutableArray<AgentKit.OutputValidatorReference> validators, AgentKit.OutputValidationPolicy validationPolicy, AgentKit.OutputRetryPolicy retryPolicy, AgentKit.OutputEndStrategy endStrategy) { }
@@ -3689,6 +3718,115 @@ namespace AgentKit
         public OutputRetryRequired(AgentKit.OutputRepairInstruction repair, AgentKit.OutputValidationFailure failure) { }
         public AgentKit.OutputValidationFailure Failure { get; init; }
         public AgentKit.OutputRepairInstruction Repair { get; init; }
+    }
+    public sealed class OutputSchemaCandidateInvalid : AgentKit.OutputSchemaEvaluationResult, System.IEquatable<AgentKit.OutputSchemaCandidateInvalid>
+    {
+        public OutputSchemaCandidateInvalid(System.Collections.Immutable.ImmutableArray<AgentKit.OutputValidationIssue> issues) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.OutputValidationIssue> Issues { get; }
+        public bool Equals(AgentKit.OutputSchemaCandidateInvalid? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class OutputSchemaConfigurationFailure : System.IEquatable<AgentKit.OutputSchemaConfigurationFailure>
+    {
+        public OutputSchemaConfigurationFailure(AgentKit.OutputSchemaConfigurationFailureKind kind, string safeMessage, System.Collections.Immutable.ImmutableArray<AgentKit.OutputValidationIssue> issues) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.OutputValidationIssue> Issues { get; }
+        public AgentKit.OutputSchemaConfigurationFailureKind Kind { get; }
+        public string SafeMessage { get; }
+        public bool Equals(AgentKit.OutputSchemaConfigurationFailure? other) { }
+        public override int GetHashCode() { }
+    }
+    public enum OutputSchemaConfigurationFailureKind
+    {
+        MalformedSchema = 0,
+        UnsupportedDialect = 1,
+        UnsupportedVocabulary = 2,
+        UnresolvedReference = 3,
+        ResourceLimitExceeded = 4,
+        PreflightEvidenceMismatch = 5,
+    }
+    public readonly struct OutputSchemaDialectId : System.IEquatable<AgentKit.OutputSchemaDialectId>
+    {
+        public OutputSchemaDialectId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class OutputSchemaEngineProfile : System.IEquatable<AgentKit.OutputSchemaEngineProfile>
+    {
+        public OutputSchemaEngineProfile(AgentKit.OutputSchemaProfileId id, AgentKit.OutputSchemaProfileVersion version, AgentKit.OutputSchemaDialectId defaultDialect, System.Collections.Immutable.ImmutableArray<AgentKit.OutputSchemaDialectId> supportedDialects, System.Collections.Immutable.ImmutableArray<string> assertionKeywords, System.Collections.Immutable.ImmutableArray<string> annotationKeywords) { }
+        public System.Collections.Immutable.ImmutableArray<string> AnnotationKeywords { get; }
+        public System.Collections.Immutable.ImmutableArray<string> AssertionKeywords { get; }
+        public AgentKit.OutputSchemaDialectId DefaultDialect { get; }
+        public AgentKit.OutputSchemaProfileId Id { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.OutputSchemaDialectId> SupportedDialects { get; }
+        public AgentKit.OutputSchemaProfileVersion Version { get; }
+        public bool Equals(AgentKit.OutputSchemaEngineProfile? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class OutputSchemaEvaluationConfigurationRejected : AgentKit.OutputSchemaEvaluationResult, System.IEquatable<AgentKit.OutputSchemaEvaluationConfigurationRejected>
+    {
+        public OutputSchemaEvaluationConfigurationRejected(AgentKit.OutputSchemaConfigurationFailure failure) { }
+        public AgentKit.OutputSchemaConfigurationFailure Failure { get; }
+    }
+    public sealed class OutputSchemaEvaluationPassed : AgentKit.OutputSchemaEvaluationResult, System.IEquatable<AgentKit.OutputSchemaEvaluationPassed>
+    {
+        public static AgentKit.OutputSchemaEvaluationPassed Instance { get; }
+    }
+    public sealed class OutputSchemaEvaluationRequest : System.IEquatable<AgentKit.OutputSchemaEvaluationRequest>
+    {
+        public OutputSchemaEvaluationRequest(AgentKit.JsonSchemaDocument schema, System.Text.Json.JsonElement candidate, AgentKit.OutputSchemaPreflightManifest manifest, AgentKit.OutputSchemaProcessingLimits schemaLimits, AgentKit.OutputSchemaProcessingLimits candidateLimits, int maximumIssues) { }
+        public System.Text.Json.JsonElement Candidate { get; }
+        public AgentKit.OutputSchemaProcessingLimits CandidateLimits { get; }
+        public AgentKit.OutputSchemaPreflightManifest Manifest { get; }
+        public int MaximumIssues { get; }
+        public AgentKit.JsonSchemaDocument Schema { get; }
+        public AgentKit.OutputSchemaProcessingLimits SchemaLimits { get; }
+    }
+    public abstract class OutputSchemaEvaluationResult : System.IEquatable<AgentKit.OutputSchemaEvaluationResult> { }
+    public sealed class OutputSchemaPreflightAccepted : AgentKit.OutputSchemaPreflightResult, System.IEquatable<AgentKit.OutputSchemaPreflightAccepted>
+    {
+        public OutputSchemaPreflightAccepted(AgentKit.OutputSchemaPreflightManifest manifest) { }
+        public AgentKit.OutputSchemaPreflightManifest Manifest { get; }
+    }
+    public sealed class OutputSchemaPreflightManifest : System.IEquatable<AgentKit.OutputSchemaPreflightManifest>
+    {
+        public OutputSchemaPreflightManifest(AgentKit.OutputSchemaEngineProfile profile, AgentKit.OutputSchemaDialectId dialect, AgentKit.ContentHash schemaFingerprint, AgentKit.OutputSchemaProcessingLimits limits, int observedDepth, int observedNodes) { }
+        public AgentKit.OutputSchemaDialectId Dialect { get; }
+        public AgentKit.OutputSchemaProcessingLimits Limits { get; }
+        public int ObservedDepth { get; }
+        public int ObservedNodes { get; }
+        public AgentKit.OutputSchemaEngineProfile Profile { get; }
+        public AgentKit.ContentHash SchemaFingerprint { get; }
+    }
+    public sealed class OutputSchemaPreflightRejected : AgentKit.OutputSchemaPreflightResult, System.IEquatable<AgentKit.OutputSchemaPreflightRejected>
+    {
+        public OutputSchemaPreflightRejected(AgentKit.OutputSchemaConfigurationFailure failure) { }
+        public AgentKit.OutputSchemaConfigurationFailure Failure { get; }
+    }
+    public sealed class OutputSchemaPreflightRequest : System.IEquatable<AgentKit.OutputSchemaPreflightRequest>
+    {
+        public OutputSchemaPreflightRequest(AgentKit.JsonSchemaDocument schema, AgentKit.OutputSchemaProcessingLimits limits) { }
+        public AgentKit.OutputSchemaProcessingLimits Limits { get; }
+        public AgentKit.JsonSchemaDocument Schema { get; }
+    }
+    public abstract class OutputSchemaPreflightResult : System.IEquatable<AgentKit.OutputSchemaPreflightResult> { }
+    public sealed class OutputSchemaProcessingLimits : System.IEquatable<AgentKit.OutputSchemaProcessingLimits>
+    {
+        public OutputSchemaProcessingLimits(int maximumUtf8Bytes, int maximumDepth, int maximumNodes) { }
+        public int MaximumDepth { get; }
+        public int MaximumNodes { get; }
+        public int MaximumUtf8Bytes { get; }
+    }
+    public readonly struct OutputSchemaProfileId : System.IEquatable<AgentKit.OutputSchemaProfileId>
+    {
+        public OutputSchemaProfileId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct OutputSchemaProfileVersion : System.IEquatable<AgentKit.OutputSchemaProfileVersion>
+    {
+        public OutputSchemaProfileVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
     }
     public sealed class OutputValidationFailure : System.IEquatable<AgentKit.OutputValidationFailure>
     {

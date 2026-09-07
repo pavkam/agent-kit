@@ -24,6 +24,11 @@ public sealed record BudgetScopeAddress
     /// <param name="sessionId">The session this scope is bound to, when applicable.</param>
     /// <param name="runId">The run this scope is bound to, when applicable.</param>
     /// <param name="operationId">The operation this scope is bound to, when applicable.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="tenantId"/> or <paramref name="principalId"/> is default.</exception>
+    /// <exception cref="ArgumentException"><paramref name="tenantId"/> or <paramref name="principalId"/> is blank.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="agentId"/> is default, or a present optional identity is default.
+    /// </exception>
     public BudgetScopeAddress(
         TenantId tenantId,
         PrincipalId principalId,
@@ -32,6 +37,24 @@ public sealed record BudgetScopeAddress
         RunId? runId,
         OperationId? operationId)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId.Value, nameof(tenantId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(principalId.Value, nameof(principalId));
+        ArgumentOutOfRangeException.ThrowIfEqual(agentId, default, nameof(agentId));
+        if (sessionId is { } session)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(session, default, nameof(sessionId));
+        }
+
+        if (runId is { } run)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(run, default, nameof(runId));
+        }
+
+        if (operationId is { } operation)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(operation, default, nameof(operationId));
+        }
+
         TenantId = tenantId;
         PrincipalId = principalId;
         AgentId = agentId;
@@ -41,20 +64,94 @@ public sealed record BudgetScopeAddress
     }
 
     /// <summary>Gets the tenant this scope belongs to.</summary>
-    public TenantId TenantId { get; init; }
+    /// <value>The required non-blank authenticated tenant partition.</value>
+    /// <exception cref="ArgumentNullException">An initializer assigns a default value.</exception>
+    /// <exception cref="ArgumentException">An initializer assigns blank tenant text.</exception>
+    public TenantId TenantId
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, "tenantId");
+            field = value;
+        }
+    }
 
     /// <summary>Gets the principal this scope belongs to.</summary>
-    public PrincipalId PrincipalId { get; init; }
+    /// <value>The required non-blank authenticated principal.</value>
+    /// <exception cref="ArgumentNullException">An initializer assigns a default value.</exception>
+    /// <exception cref="ArgumentException">An initializer assigns blank principal text.</exception>
+    public PrincipalId PrincipalId
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, "principalId");
+            field = value;
+        }
+    }
 
     /// <summary>Gets the agent this scope belongs to.</summary>
-    public AgentId AgentId { get; init; }
+    /// <value>The required nondefault owning agent.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer assigns a default value.</exception>
+    public AgentId AgentId
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value, default, "agentId");
+            field = value;
+        }
+    }
 
     /// <summary>Gets the session this scope is bound to, when applicable.</summary>
-    public SessionId? SessionId { get; init; }
+    /// <value>A nondefault session identity, or <see langword="null"/> for an address above session scope.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer assigns a present default value.</exception>
+    public SessionId? SessionId
+    {
+        get;
+        init
+        {
+            if (value is { } id)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(id, default, "sessionId");
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the run this scope is bound to, when applicable.</summary>
-    public RunId? RunId { get; init; }
+    /// <value>A nondefault active run identity, or <see langword="null"/> for work outside an active run.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer assigns a present default value.</exception>
+    public RunId? RunId
+    {
+        get;
+        init
+        {
+            if (value is { } id)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(id, default, "runId");
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the operation this scope is bound to, when applicable.</summary>
-    public OperationId? OperationId { get; init; }
+    /// <value>A nondefault operation identity, or <see langword="null"/> for a reusable parent scope.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer assigns a present default value.</exception>
+    public OperationId? OperationId
+    {
+        get;
+        init
+        {
+            if (value is { } id)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(id, default, "operationId");
+            }
+
+            field = value;
+        }
+    }
 }

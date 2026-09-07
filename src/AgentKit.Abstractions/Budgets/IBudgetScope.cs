@@ -14,6 +14,9 @@ namespace AgentKit;
 /// scope is owned by the component that created it through
 /// <see cref="IBudgetAuthority"/> and is never captured by a singleton
 /// consumer.
+/// The <see cref="Id"/> and <see cref="Address"/> values remain immutable for
+/// the lifetime of the handle so callers can bind an invocation once without
+/// observing a different ledger partition later.
 /// </remarks>
 public interface IBudgetScope
 {

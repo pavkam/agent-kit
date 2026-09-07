@@ -25,6 +25,120 @@ public static class ArgumentExceptionExtensions
 {
     extension(ArgumentException)
     {
+        /// <summary>Throws when a budget address cannot bind the supplied identity and operation correlation.</summary>
+        /// <param name="address">The non-null budget address to validate.</param>
+        /// <param name="identity">The non-null authenticated execution identity.</param>
+        /// <param name="correlation">The non-null causal operation correlation.</param>
+        /// <param name="paramName">The address parameter name attributed to a binding mismatch.</param>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="address"/>, <paramref name="identity"/>, or <paramref name="correlation"/> is
+        /// <see langword="null"/>.
+        /// </exception>
+        /// <exception cref="ArgumentException">
+        /// The address differs from the identity, operation, or active-run stage described by the correlation.
+        /// </exception>
+        public static void ThrowIfInvalidBudgetExecutionBinding(
+            BudgetScopeAddress address,
+            ExecutionIdentity identity,
+            OperationCorrelation correlation,
+            [CallerArgumentExpression(nameof(address))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(address);
+            ArgumentNullException.ThrowIfNull(identity);
+            ArgumentNullException.ThrowIfNull(correlation);
+
+            if (address.TenantId != identity.TenantId
+                || address.PrincipalId != identity.PrincipalId
+                || address.OperationId is not { } operationId
+                || operationId != correlation.OperationId
+                || (correlation is BeforeRunOperationCorrelation or AfterRunOperationCorrelation
+                    && address.RunId is not null)
+                || (correlation is InRunOperationCorrelation inRun && address.RunId != inRun.RunId))
+            {
+                throw new ArgumentException("Budget address must exactly bind execution identity and active correlation.", paramName);
+            }
+        }
+        /// <summary>Throws when an output-schema profile has inconsistent dialect or vocabulary sets.</summary>
+        /// <param name="defaultDialect">The default dialect that must be one supported dialect.</param>
+        /// <param name="supportedDialects">The initialized, non-empty unique dialect set.</param>
+        /// <param name="assertionKeywords">The initialized unique assertion-keyword set.</param>
+        /// <param name="annotationKeywords">The initialized unique annotation-keyword set disjoint from assertions.</param>
+        /// <param name="defaultDialectParamName">The parameter name attributed to an invalid default dialect.</param>
+        /// <param name="supportedDialectsParamName">The parameter name attributed to invalid supported dialects.</param>
+        /// <param name="assertionKeywordsParamName">The parameter name attributed to invalid assertions.</param>
+        /// <param name="annotationKeywordsParamName">The parameter name attributed to invalid annotations.</param>
+        /// <exception cref="ArgumentException">A set is default, empty where required, contains blank or duplicate values, overlaps another vocabulary set, or omits its default dialect.</exception>
+        public static void ThrowIfInvalidOutputSchemaProfile(
+            OutputSchemaDialectId defaultDialect,
+            ImmutableArray<OutputSchemaDialectId> supportedDialects,
+            ImmutableArray<string> assertionKeywords,
+            ImmutableArray<string> annotationKeywords,
+            [CallerArgumentExpression(nameof(defaultDialect))] string? defaultDialectParamName = null,
+            [CallerArgumentExpression(nameof(supportedDialects))] string? supportedDialectsParamName = null,
+            [CallerArgumentExpression(nameof(assertionKeywords))] string? assertionKeywordsParamName = null,
+            [CallerArgumentExpression(nameof(annotationKeywords))] string? annotationKeywordsParamName = null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(defaultDialect.Value, defaultDialectParamName);
+            ArgumentException.ThrowIfDefaultOrEmpty(supportedDialects, supportedDialectsParamName);
+            ArgumentException.ThrowIfDefault(assertionKeywords, assertionKeywordsParamName);
+            ArgumentException.ThrowIfDefault(annotationKeywords, annotationKeywordsParamName);
+            var dialects = new HashSet<OutputSchemaDialectId>();
+            foreach (var dialect in supportedDialects)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(dialect.Value, supportedDialectsParamName);
+                if (!dialects.Add(dialect))
+                {
+                    throw new ArgumentException("Supported dialects must be unique.", supportedDialectsParamName);
+                }
+            }
+
+            if (!dialects.Contains(defaultDialect))
+            {
+                throw new ArgumentException("The default dialect must be supported.", defaultDialectParamName);
+            }
+
+            ValidateKeywords(assertionKeywords, assertionKeywordsParamName);
+            ValidateKeywords(annotationKeywords, annotationKeywordsParamName);
+            if (assertionKeywords.Any(annotationKeywords.Contains))
+            {
+                throw new ArgumentException("Assertion and annotation keywords must not overlap.", annotationKeywordsParamName);
+            }
+
+            static void ValidateKeywords(ImmutableArray<string> keywords, string? parameterName)
+            {
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var keyword in keywords)
+                {
+                    ArgumentException.ThrowIfNullOrWhiteSpace(keyword, parameterName);
+                    if (!seen.Add(keyword))
+                    {
+                        throw new ArgumentException("Schema keywords must be unique.", parameterName);
+                    }
+                }
+            }
+        }
+
+        /// <summary>Throws when a dialect is not declared by the supplied schema-engine profile.</summary>
+        /// <param name="profile">The non-null immutable engine profile.</param>
+        /// <param name="dialect">The initialized dialect that must be supported.</param>
+        /// <param name="paramName">The dialect parameter name inferred from the call site when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="profile"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="dialect"/> is default or is absent from <paramref name="profile"/>.
+        /// </exception>
+        public static void ThrowIfUnsupportedOutputSchemaDialect(
+            OutputSchemaEngineProfile profile,
+            OutputSchemaDialectId dialect,
+            [CallerArgumentExpression(nameof(dialect))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(profile);
+            ArgumentException.ThrowIfNullOrWhiteSpace(dialect.Value, paramName);
+            if (!profile.SupportedDialects.Contains(dialect))
+            {
+                throw new ArgumentException("The dialect must be supported by the profile.", paramName);
+            }
+        }
+
         /// <summary>Throws when registered agent-definition sources reuse a source identity.</summary>
         /// <param name="sources">The initialized, non-null source collection to inspect.</param>
         /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
