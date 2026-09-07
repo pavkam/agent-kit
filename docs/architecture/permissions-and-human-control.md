@@ -15,11 +15,13 @@ through dependency injection and may request authorization for a protected
 operation.
 
 `AgentEngine` may host many agents concurrently. Security decisions are never
-engine-global ambient state: each request and every policy snapshot is keyed by
-typed `AgentId`, `SessionId`, and `OperationCorrelation`. The correlation's
+engine-global ambient state: each authorization context and request binds typed
+`AgentId`, optional `SessionId`, and `OperationCorrelation`. The correlation's
 before-run, in-run, and after-run variants never fabricate a `RunId`. A policy
 selected for one agent cannot leak into another agent merely because both share
-the same process or singleton authority.
+the same process or singleton authority. An immutable effective-policy snapshot
+may be shared where the selected configuration explicitly uses the same policy
+set; the snapshot never supplies another operation's scope or identity.
 
 ## Normative minimal contract shape
 
@@ -287,14 +289,16 @@ public interface ISecurityAuthority
 Policies are additive, ordered contributors. They return typed match, abstain,
 deny, require-approval, or bounded-allow proposals; they never issue grants. The
 profile selector captures the effective policy snapshot, profile/configuration
-versions, authority key, and complete immutable execution identity once while
-compiling the run plan. The policy selector thereafter resolves the exact
-snapshot reference carried by the request; a catalog must retain it for the
-maximum grant/approval lifetime or return a typed stale-snapshot denial. The
-authority selected for `SecurityAuthorizationContext.AuthorityKey` evaluates
-that immutable snapshot, applies precedence, records the decision, and alone
-asks the grant issuer to create bounded authority. Direct run work receives that
-selected authority from the compiled run plan; delayed approval resolution uses
+versions, authority key, and complete immutable execution identity for the
+operation being authorized. Run-plan compilation pins the selected
+configuration; it does not create one reusable authorization scope for every
+later operation. The policy selector thereafter resolves the exact snapshot
+reference carried by the request; a catalog must retain it for the maximum
+grant/approval lifetime or return a typed stale-snapshot denial. The authority
+selected for `SecurityAuthorizationContext.AuthorityKey` evaluates that
+immutable snapshot, applies precedence, records the decision, and alone asks the
+grant issuer to create bounded authority. Direct run work receives that selected
+authority from the compiled run plan; delayed approval resolution uses
 `ISecurityAuthoritySelector` and the persisted binding rather than a keyed
 container lookup.
 
@@ -305,6 +309,43 @@ only for truthful before-session or sessionless protected operations; when it is
 present every later boundary requires exact equality, and policy denies an
 operation kind that requires a session when it is absent. No caller fabricates a
 session identity to obtain authority.
+
+### Capture, retention, and operation scope
+
+A capture is a coherent selection from one published configuration revision. The
+selector resolves the requested profile against the exact agent-definition and
+configuration revisions supplied by the caller, then captures its authority key
+and immutable effective-policy snapshot together. It MUST NOT combine a profile
+from one publication with policies from a later publication, or fall back to the
+latest revision when a requested revision cannot be resolved. Unpublished,
+retired, missing, or unavailable required bindings return a typed unsuccessful
+capture; no partial context is returned. Caller cancellation propagates without
+publishing a successful capture.
+
+The captured context is evidence, not authority. Capturing it neither evaluates
+an effect nor issues or consumes a grant. A request must still describe its
+canonical resources, destination, input fingerprint, audience, and bounded
+lifetime before authorization. Possession of a syntactically valid context does
+not prove that its referenced profile or policy snapshot exists.
+
+An unchanged operation may reuse its captured context for distinct security
+requests, each with its own request identity and bounded grant. A new operation,
+changed correlation stage or turn, newly established session, or changed
+execution identity requires a fresh capture with that exact scope and identity.
+The caller preserves the run's pinned definition and configuration revisions
+unless an explicit runtime transition adopts a new configuration. Re-capture is
+not permission to mutate an existing grant or to upgrade a before-run grant into
+authority for in-run work. Existing effects and their receipts retain the
+original evidence.
+
+Publication of a newer configuration does not itself invalidate an older
+retained snapshot. Retention and revocation are separate: exact retained
+bindings remain resolvable for their declared lifetime, while explicit
+retirement or live revocation can stop future grants and consumption. The
+security runtime revalidates captured references; effecting boundaries validate
+the resulting grant's exact context binding, uses, expiry, and live revocation
+immediately before acting. An unavailable validation path fails closed rather
+than substituting a newer policy or treating a cached allow as sufficient.
 
 `HookDispatchContext` is an optional non-persisted invocation dependency. An
 in-run caller passes its active hook lease; before-run work and delayed approval

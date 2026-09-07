@@ -128,6 +128,13 @@ insufficient. Sessionless work is legal only for operation kinds whose policy
 explicitly permits it; session-bound work fails closed rather than fabricating
 an ID.
 
+Run configuration is pinned separately from operation scope. A new operation,
+correlation stage or turn, session binding, or identity requires a fresh capture
+against the selected definition and configuration revisions. Capture grants
+nothing, and cannot silently select newer policy after a hot reload. Exact
+retained snapshots and live revocation follow the
+[capture and retention contract](../architecture/permissions-and-human-control.md#capture-retention-and-operation-scope).
+
 ## Approval request and resolution
 
 An approval request MUST provide a bounded, redacted human explanation plus the
