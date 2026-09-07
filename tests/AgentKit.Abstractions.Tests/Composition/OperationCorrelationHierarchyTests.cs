@@ -92,11 +92,10 @@ public sealed class OperationCorrelationHierarchyTests
         var capabilityId = new CapabilityId("cap");
         var profileId = new CapabilityProfileId("profile");
 
-        var reference = new AgentCapabilityReference(capabilityId, profileId, required: true);
+        var reference = new AgentCapabilityReference(capabilityId, profileId);
 
         reference.CapabilityId.ShouldBe(capabilityId);
         reference.ProfileId.ShouldBe(profileId);
-        reference.Required.ShouldBeTrue();
     }
 
     [Fact]
@@ -105,17 +104,43 @@ public sealed class OperationCorrelationHierarchyTests
         var capabilityId = new CapabilityId("cap");
         var profileId = new CapabilityProfileId("profile");
 
-        new AgentCapabilityReference(capabilityId, profileId, true).ShouldBe(
-            new AgentCapabilityReference(capabilityId, profileId, true));
+        new AgentCapabilityReference(capabilityId, profileId).ShouldBe(
+            new AgentCapabilityReference(capabilityId, profileId));
     }
 
     [Fact]
-    public void AgentCapabilityReference_Equality_WhenDifferentRequired_InstancesAreNotEqual()
+    public void AgentCapabilityReference_Equality_WhenCapabilityDiffers_InstancesAreNotEqual()
     {
-        var capabilityId = new CapabilityId("cap");
         var profileId = new CapabilityProfileId("profile");
 
-        new AgentCapabilityReference(capabilityId, profileId, true).ShouldNotBe(
-            new AgentCapabilityReference(capabilityId, profileId, false));
+        new AgentCapabilityReference(new CapabilityId("first"), profileId).ShouldNotBe(
+            new AgentCapabilityReference(new CapabilityId("second"), profileId));
+    }
+
+    [Fact]
+    public void AgentCapabilityReference_Equality_WhenProfileDiffers_InstancesAreNotEqual()
+    {
+        var capabilityId = new CapabilityId("cap");
+
+        new AgentCapabilityReference(capabilityId, new CapabilityProfileId("first")).ShouldNotBe(
+            new AgentCapabilityReference(capabilityId, new CapabilityProfileId("second")));
+    }
+
+    [Fact]
+    public void AgentCapabilityReference_Constructor_WhenCapabilityIdIsDefault_ThrowsArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(
+            () => new AgentCapabilityReference(default, new CapabilityProfileId("profile")));
+
+        exception.ParamName.ShouldBe("capabilityId");
+    }
+
+    [Fact]
+    public void AgentCapabilityReference_Constructor_WhenProfileIdIsDefault_ThrowsArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(
+            () => new AgentCapabilityReference(new CapabilityId("cap"), default));
+
+        exception.ParamName.ShouldBe("profileId");
     }
 }

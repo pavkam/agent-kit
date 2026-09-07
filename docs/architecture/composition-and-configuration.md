@@ -91,8 +91,7 @@ public readonly record struct AgentDefinitionSourceId(string Value);
 
 public sealed record AgentCapabilityReference(
     CapabilityId CapabilityId,
-    CapabilityProfileId ProfileId,
-    bool Required);
+    CapabilityProfileId ProfileId);
 
 public abstract record OperationCorrelation(OperationId OperationId);
 
@@ -626,12 +625,16 @@ durability, memory, or goal profile and every neutral capability reference must
 resolve to its registered package, profile, implementation, store or transport,
 security policy, and required collaborators. Selection without registration
 fails definition validation; omission means the agent does not have that
-capability. MCP endpoints are selected inside an MCP-owned capability profile,
-so the core definition does not depend on an MCP package type. Tools remain the
-typed `ToolsetReference` collection because tool selection and authorization
-have their own catalog contract; the optional executor key selects the one
-top-level `IToolExecutor` used by the loop. Toolsets without that key, or an
-executor key without toolsets, fail definition validation.
+capability. A capability reference has no `Required` flag: selecting a profile
+is itself the requirement to resolve it completely. The former three-argument
+reference is intentionally removed; callers omit unavailable capabilities before
+publishing a definition rather than tolerate a missing selected profile. MCP
+endpoints are selected inside an MCP-owned capability profile, so the core
+definition does not depend on an MCP package type. Tools remain the typed
+`ToolsetReference` collection because tool selection and authorization have
+their own catalog contract; the optional executor key selects the one top-level
+`IToolExecutor` used by the loop. Toolsets without that key, or an executor key
+without toolsets, fail definition validation.
 
 Embedding and reranking used by memory are configured only by the selected
 `MemoryProfileKey`; their selector, executor, and operation policy are captured
