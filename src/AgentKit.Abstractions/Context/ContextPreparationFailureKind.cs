@@ -1,0 +1,20 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit;
+
+/// <summary>The category of a failure encountered while assembling one provider-ready request.</summary>
+public enum ContextPreparationFailureKind
+{
+    /// <summary>The eligible history contains no messages to send.</summary>
+    EmptyHistory,
+
+    /// <summary>
+    /// A tool call in the eligible history has no matching terminal result,
+    /// or a tool result references a call that is not present.
+    /// </summary>
+    BrokenToolCallCausality,
+
+    /// <summary>An unclassified failure occurred during assembly.</summary>
+    Unknown
+}
