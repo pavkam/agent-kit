@@ -53,6 +53,22 @@ backend revalidates the bounded grant immediately before reading, writing,
 publishing, or deleting content. Redirects and external downloads follow the
 network security boundary rather than bypassing it through artifact storage.
 
+Grant evidence binds the operation and the complete portable reference,
+including its directory, profile/version, tenant and owner, content metadata,
+integrity, classification, and retention decision. Changing a reference after
+authorization requires a new evaluation; retaining only its artifact ID,
+version, and content hash is insufficient. The backend also compares the
+supplied reference with its authoritative stored reference before exposing or
+deleting content. A caller-supplied reference cannot redefine the stored owner
+or hold.
+
+Fingerprint formats are versioned and domain-separated by operation. An upgrade
+that binds previously omitted fields invalidates grants from the incomplete
+format; enforcement MUST NOT fall back to that format. Pending work obtains new
+authority before a new effect. Already committed effects remain committed and
+are reconciled from their recorded evidence rather than repeated to obtain a new
+fingerprint.
+
 ## References in durable state
 
 Messages and session records store immutable artifact references, not incidental

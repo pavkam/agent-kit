@@ -152,6 +152,33 @@ public sealed class InMemoryArtifactStoreTests
     }
 
     [Fact]
+    public async Task ReadAsync_WhenGrantWasBoundToDifferentDirectory_DeniesWithoutChangingContent()
+    {
+        var fixture = new StoreFixture();
+        var reference = await fixture.CommitAsync("complete output"u8.ToArray());
+        var authorized = fixture.CreateRead(reference, fixture.Identity);
+        await fixture.RegisterReadGrantAsync(authorized);
+        var changedReference = new ArtifactReference(
+            reference.Id, reference.Version, new ArtifactDirectoryId("different-directory"),
+            reference.ProfileKey, reference.ProfileVersion, reference.TenantId, reference.OwnerId,
+            reference.CreatedBy, reference.MediaType, reference.Length, reference.Integrity,
+            reference.Classification, reference.Ownership, reference.Mutability, reference.Retention,
+            reference.CreatedAt);
+        var changedRequest = new ArtifactStoreReadRequest(
+            changedReference, authorized.Scope, authorized.Identity, authorized.Grant);
+
+        var rejected = await fixture.Store.ReadAsync(changedRequest, TestContext.Current.CancellationToken);
+        var validRequest = fixture.CreateRead(reference, fixture.Identity);
+        await fixture.RegisterReadGrantAsync(validRequest);
+        var valid = await fixture.Store.ReadAsync(validRequest, TestContext.Current.CancellationToken);
+
+        rejected.ShouldBeOfType<ArtifactReadRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
+        await using var opened = valid.ShouldBeOfType<ArtifactReadOpened>();
+        using var reader = new StreamReader(opened.Content);
+        (await reader.ReadToEndAsync(TestContext.Current.CancellationToken)).ShouldBe("complete output");
+    }
+
+    [Fact]
     public async Task DeleteAsync_WhenCommitted_RemovesContentAndReplaysAsAlreadyAbsent()
     {
         var fixture = new StoreFixture();

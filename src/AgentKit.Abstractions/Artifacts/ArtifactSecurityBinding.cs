@@ -3,20 +3,38 @@
 
 namespace AgentKit;
 
+using System.Diagnostics;
 using System.Security.Cryptography;
 
-/// <summary>Produces exact security evidence for artifact staging and publication.</summary>
+/// <summary>Produces exact, versioned security evidence for artifact lifecycle operations.</summary>
+/// <remarks>
+/// Fingerprint schema version 2 binds every portable artifact-reference field. Version 2 intentionally
+/// invalidates grants produced by the earlier incomplete format so an upgraded effecting boundary fails
+/// closed instead of accepting authority that was bound to fewer inputs.
+/// </remarks>
 public static class ArtifactSecurityBinding
 {
+    private const string _fingerprintSchema = "agentkit.artifact-security-binding/v2";
+
     /// <summary>Names one logical artifact.</summary>
     /// <param name="id">The artifact identity.</param>
     /// <returns>The protected artifact resource.</returns>
-    public static ProtectedResource ArtifactResource(ArtifactId id) => new(ProtectedResourceKind.Artifact, $"artifact:{id}");
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="id"/> is empty.</exception>
+    public static ProtectedResource ArtifactResource(ArtifactId id)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(id, default);
+        return new(ProtectedResourceKind.Artifact, $"artifact:{id}");
+    }
 
     /// <summary>Names one unpublished preparation.</summary>
     /// <param name="id">The preparation identity.</param>
     /// <returns>The protected preparation resource.</returns>
-    public static ProtectedResource PreparationResource(ArtifactPreparationId id) => new(ProtectedResourceKind.Artifact, $"artifact-preparation:{id}");
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="id"/> is empty.</exception>
+    public static ProtectedResource PreparationResource(ArtifactPreparationId id)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(id, default);
+        return new(ProtectedResourceKind.Artifact, $"artifact-preparation:{id}");
+    }
 
     /// <summary>Fingerprints staging intent including declared integrity and lifecycle policy.</summary>
     /// <param name="artifactId">The reserved artifact identity.</param>
@@ -24,11 +42,19 @@ public static class ArtifactSecurityBinding
     /// <param name="directoryId">The logical directory.</param>
     /// <param name="metadata">The exact declared metadata.</param>
     /// <returns>A deterministic SHA-256 fingerprint.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="artifactId"/> or <paramref name="preparationId"/> is empty.</exception>
+    /// <exception cref="ArgumentException"><paramref name="directoryId"/> is blank.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="metadata"/> is null.</exception>
     public static InputFingerprint PrepareFingerprint(ArtifactId artifactId, ArtifactPreparationId preparationId, ArtifactDirectoryId directoryId, ArtifactMetadata metadata)
     {
+        ArgumentOutOfRangeException.ThrowIfEqual(artifactId, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(preparationId, default);
+        ArgumentException.ThrowIfNullOrWhiteSpace(directoryId.Value, nameof(directoryId));
         ArgumentNullException.ThrowIfNull(metadata);
         return Hash(new
         {
+            schema = _fingerprintSchema,
+            action = "prepare",
             artifactId = artifactId.ToString(),
             preparationId = preparationId.ToString(),
             directoryId = directoryId.Value,
@@ -48,17 +74,29 @@ public static class ArtifactSecurityBinding
     /// <summary>Fingerprints publication of one exact preparation.</summary>
     /// <param name="preparationId">The staging identity.</param>
     /// <returns>A deterministic fingerprint.</returns>
-    public static InputFingerprint FinalizeFingerprint(ArtifactPreparationId preparationId) => Hash(new { preparationId = preparationId.ToString(), action = "finalize" });
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="preparationId"/> is empty.</exception>
+    public static InputFingerprint FinalizeFingerprint(ArtifactPreparationId preparationId)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(preparationId, default);
+        return Hash(new { schema = _fingerprintSchema, action = "finalize", preparationId = preparationId.ToString() });
+    }
 
     /// <summary>Fingerprints removal of one exact preparation and reason.</summary>
     /// <param name="preparationId">The staging identity.</param>
     /// <param name="reason">The declared reason.</param>
     /// <returns>A deterministic fingerprint.</returns>
-    public static InputFingerprint AbortFingerprint(ArtifactPreparationId preparationId, ArtifactAbortReason reason) => Hash(new { preparationId = preparationId.ToString(), action = "abort", reason = reason.ToString() });
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="preparationId"/> is empty or <paramref name="reason"/> is undefined.</exception>
+    public static InputFingerprint AbortFingerprint(ArtifactPreparationId preparationId, ArtifactAbortReason reason)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(preparationId, default);
+        ArgumentOutOfRangeException.ThrowIfUndefined(reason);
+        return Hash(new { schema = _fingerprintSchema, action = "abort", preparationId = preparationId.ToString(), reason = reason.ToString() });
+    }
 
     /// <summary>Fingerprints observation of one exact immutable artifact version.</summary>
     /// <param name="reference">The exact portable reference.</param>
     /// <returns>A deterministic fingerprint.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="reference"/> is null.</exception>
     public static InputFingerprint ReadFingerprint(ArtifactReference reference)
     {
         ArgumentNullException.ThrowIfNull(reference);
@@ -68,23 +106,46 @@ public static class ArtifactSecurityBinding
     /// <summary>Fingerprints deletion of one exact immutable artifact version.</summary>
     /// <param name="reference">The exact portable reference.</param>
     /// <returns>A deterministic fingerprint.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="reference"/> is null.</exception>
     public static InputFingerprint DeleteFingerprint(ArtifactReference reference)
     {
         ArgumentNullException.ThrowIfNull(reference);
         return ReferenceFingerprint(reference, "delete");
     }
 
-    private static InputFingerprint ReferenceFingerprint(ArtifactReference reference, string action) => Hash(new
+    private static InputFingerprint ReferenceFingerprint(ArtifactReference reference, string action)
     {
-        action,
-        artifactId = reference.Id.ToString(),
-        version = reference.Version.Value,
-        tenantId = reference.TenantId.Value,
-        length = reference.Length,
-        contentHash = reference.Integrity.ContentHash.Value,
-        profileKey = reference.ProfileKey.Value,
-        profileVersion = reference.ProfileVersion.Value,
-    });
+        Debug.Assert(reference is not null, "The public caller validates the artifact reference.");
+        Debug.Assert(action is "read" or "delete", "Only supported reference operations reach fingerprint generation.");
+        return Hash(new
+        {
+            schema = _fingerprintSchema,
+            action,
+            artifactId = reference.Id.ToString(),
+            version = reference.Version.Value,
+            directoryId = reference.DirectoryId.Value,
+            profileKey = reference.ProfileKey.Value,
+            profileVersion = reference.ProfileVersion.Value,
+            tenantId = reference.TenantId.Value,
+            ownerId = reference.OwnerId.Value,
+            createdBy = reference.CreatedBy.Value,
+            reference.MediaType,
+            length = reference.Length,
+            contentHash = reference.Integrity.ContentHash.Value,
+            integrityVerifiedAt = reference.Integrity.VerifiedAt.ToUniversalTime().ToString("O"),
+            classification = reference.Classification.ToString(),
+            ownership = reference.Ownership.ToString(),
+            mutability = reference.Mutability.ToString(),
+            retentionPolicy = reference.Retention.Policy.Value,
+            retentionExpiresAt = reference.Retention.ExpiresAt?.ToUniversalTime().ToString("O"),
+            reference.Retention.LegalHold,
+            createdAt = reference.CreatedAt.ToUniversalTime().ToString("O"),
+        });
+    }
 
-    private static InputFingerprint Hash<T>(T value) => new(Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value))));
+    private static InputFingerprint Hash<T>(T value)
+    {
+        Debug.Assert(value is not null, "Fingerprint payloads are always constructed values.");
+        return new(Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value))));
+    }
 }
