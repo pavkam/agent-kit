@@ -36,15 +36,24 @@ owning spec.
 | Catalog bootstrap and publication                      | Focused facade/catalog: 91 passed; abstractions: 1,448 passed; full integration: 3,440 passed                                                                     | Verified checkpoint; no-I/O readiness, immutable revision bindings and atomic publication; complete selected graph validation remains open |
 | Selected capability requirements                       | `5148df1`; focused contract tests: 13 passed                                                                                                                      | Removed best-effort resolution of a selected capability; omission is the optionality boundary                                              |
 | Reproducible artifact contract capture                 | Clean archive exposed an ignored source directory; Abstractions build: zero warnings/errors; focused artifact contracts: 10 passed                                | Anchored build-output ignore rule and captured 38 existing contract files plus their tests; artifact conformance remains open              |
+| Typed profile selection identities                     | `438f974`; 31 focused key tests                                                                                                                                   | Six missing profile keys added; complete selected graph remains open                                                                       |
+| Public API baseline                                    | `9d2c6ed`; 60 snapshots, 63 focused checks, 3,415 clean solution tests                                                                                            | Reproducible baseline; behavioral compatibility remains a separate concern                                                                 |
+| Identity narrowing conformance                         | `f053ff3`; full Identity suite: 73 passed, including 15 reusable cases                                                                                            | Prevents subject replacement and successive claim/assurance widening; downstream admission remains open                                    |
+| Artifact grant evidence                                | `50293ac`; 15 helper checks, 9 coordinator tests, 12 store tests                                                                                                  | Versioned complete-reference binding and denial after reference mutation                                                                   |
+| Project graph enforcement                              | `b903457`; 15 checks in Debug and 15 in Release                                                                                                                   | DAG and core inward edges enforced; constructor graphs and leaf-to-leaf ownership remain open                                              |
+| Artifact tombstones and publication                    | `c8131ad`; full InMemory artifact suite: 18 passed                                                                                                                | Exact tenant/reference replay, immutable-version collision rejection and atomic publication winner                                         |
 
 ## Latest integration evidence
 
-An isolated archive of committed `438f974` built with zero warnings or errors
-and passed all 3,352 tests. Adding the public API compatibility harness to that
-archive produced a clean 123-project solution build and 3,415 passing tests,
-with no failures or skips. The harness captures all 60 packable source
-assemblies and passes 63 focused checks. Those exact snapshots were copied back
-and compared with the isolated baseline.
+An isolated archive of committed `c8131ad` built all 124 solution projects with
+zero warnings or errors and passed all 3,467 tests, with no failures or skips.
+This includes the 60-package public API baseline, 63 compatibility checks, 15
+package-graph checks, 73 identity tests, and 18 InMemory artifact store tests.
+The graph suite also passed its 15 checks in Release.
+
+The earlier isolated `438f974` baseline passed 3,352 tests before the
+compatibility harness and 3,415 after it. Those original API snapshots remain
+unchanged by the later behavioral fixes and passed in the final clean archive.
 
 This verifies checkout reproducibility after `83888cc` repaired the broad
 `artifacts/` ignore rule and captured the omitted artifact source and tests. The
@@ -83,7 +92,7 @@ not make that component a mandatory dependency of every engine.
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Architecture index            | End-to-end source-of-truth conformance and complete coverage ledger                                                                                                    |
 | Foundation contracts          | Validated values, behavioral compatibility, versioning and deterministic primitives; emitted API baseline established                                                  |
-| Project structure             | Missing owners, both dependency graphs, required project/test topology                                                                                                 |
+| Project structure             | Missing owners, constructor/factory graph, unchecked leaf protocol ownership and required project/test topology; core project graph enforced                           |
 | Composition and configuration | Full closed runnable graph, catalog publication/reload, keyed selection, scope ownership, readiness                                                                    |
 | Agent runtime                 | Explicit state transitions, waiter cancellation, recovery identity, settlement outcomes                                                                                |
 | Budgets                       | Replaceable ledger/profile/policy/event contracts, consumer integration, durable accounting and full conformance                                                       |
