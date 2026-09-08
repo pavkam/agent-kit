@@ -65,11 +65,29 @@ owning spec.
 
 ## Latest integration evidence
 
-The scripted-language enforcement checkpoint passed `make format`, `make lint`,
-and `make test` in an isolated checkout over `520a9fa`. All 4,480 tests passed
-without skips; the Release build reported zero warnings or errors. The initial
-run failed only the expected additive constructor snapshot, reviewed before the
-final run.
+The human-question and task-delegation receipt checkpoint passed `make format`,
+`make lint`, and `make test` in an isolated checkout over `e927f0a`. All 4,496
+tests passed without skips; the Release build reported zero warnings or errors.
+The initial run failed only two expected additive constructor snapshots, both
+reviewed before final verification. Review also added four captured-context
+mismatch cases before the final run.
+
+Both brokers now retain captured authorization, generate a fresh typed intent,
+and require an exact freshly consumed receipt before invoking their application
+channel. Reconciled, missing, or mismatched receipts cannot publish a question
+or dispatch child work. A captured scope or identity mismatch returns a typed
+rejection before intent generation or grant consumption; cancellation is checked
+immediately after consumption. Existing constructors remain available and intent
+generation is replaceable through DI. The owning IO and Goals suites pass 37 and
+13 tests respectively, including real captured grants and denial without channel
+calls. Required audit delivery, operation instrumentation, and broader IO and
+goals architecture remain open.
+
+The preceding scripted-language enforcement checkpoint passed `make format`,
+`make lint`, and `make test` in an isolated checkout over `520a9fa`. All 4,480
+tests passed without skips; the Release build reported zero warnings or errors.
+The initial run failed only the expected additive constructor snapshot, reviewed
+before the final run.
 
 Scripted language queries now preserve captured authorization and require a
 fresh exact enforcement-intent receipt before delay or result delivery.

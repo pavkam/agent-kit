@@ -8,17 +8,33 @@ public sealed class DefaultHumanQuestionBroker: IHumanQuestionBroker
 {
     private readonly ISecurityGrantStore _grantStore;
     private readonly IHumanQuestionChannel _channel;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
 
-    /// <summary>Initializes the broker over the authoritative grant store and selected application channel.</summary>
-    /// <param name="grantStore">The store that atomically validates and consumes publication grants.</param>
-    /// <param name="channel">The application-owned question presentation and resolution channel.</param>
+    /// <summary>Initializes the broker with a default source of fresh local enforcement-intent identities.</summary>
+    /// <param name="grantStore">The non-null store that atomically validates and consumes publication grants.</param>
+    /// <param name="channel">The non-null application-owned question presentation and resolution channel.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     public DefaultHumanQuestionBroker(ISecurityGrantStore grantStore, IHumanQuestionChannel channel)
+        : this(grantStore, channel, new GuidSecurityEnforcementIntentIdGenerator())
+    {
+    }
+
+    /// <summary>Initializes the broker with a replaceable source of fresh atomic permission-to-start identities.</summary>
+    /// <param name="grantStore">The non-null store that atomically validates and consumes publication grants.</param>
+    /// <param name="channel">The non-null application-owned question presentation and resolution channel.</param>
+    /// <param name="intentIds">The non-null thread-safe source of distinct enforcement-intent identities.</param>
+    /// <exception cref="ArgumentNullException">A dependency is null.</exception>
+    public DefaultHumanQuestionBroker(
+        ISecurityGrantStore grantStore,
+        IHumanQuestionChannel channel,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
     {
         ArgumentNullException.ThrowIfNull(grantStore);
         ArgumentNullException.ThrowIfNull(channel);
+        ArgumentNullException.ThrowIfNull(intentIds);
         _grantStore = grantStore;
         _channel = channel;
+        _intentIds = intentIds;
     }
 
     /// <inheritdoc/>
@@ -31,25 +47,22 @@ public sealed class DefaultHumanQuestionBroker: IHumanQuestionBroker
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
+        if (!HumanQuestionEnforcementReceipt.HasCompatibleCapturedAuthorization(request))
+        {
+            return new HumanQuestionUnavailable(
+                request.Id,
+                "The captured authorization does not match the question publication.");
+        }
+
+        var enforcement = HumanQuestionEnforcementReceipt.Create(request, SecurityAudience);
+        var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
         var consumption = await _grantStore.ValidateAndConsumeAsync(
-            request.Grant,
-            new SecurityEnforcementRequest(
-                new SecurityAuthorizationScope(request.AgentId, request.SessionId, request.Correlation),
-                request.Identity,
-                SecurityAudience,
-                SecurityOperationKind.StateMutation,
-                SecurityEffect.Create,
-                [HumanQuestionSecurityBinding.Resource(request.Id)],
-                HumanQuestionSecurityBinding.Fingerprint(
-                    request.Id,
-                    request.Prompt,
-                    request.Options,
-                    request.AllowsFreeText,
-                    request.Deadline),
-                request.Grant.RevocationVersion),
-            cancellationToken).ConfigureAwait(false);
-        return consumption.Status != GrantConsumptionStatus.Consumed
-            ? new HumanQuestionUnavailable(request.Id, consumption.SafeMessage)
+            request.Grant, enforcement, intent, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return !HumanQuestionEnforcementReceipt.IsFreshExact(consumption, request.Grant, enforcement, intent)
+            ? new HumanQuestionUnavailable(
+                request.Id,
+                HumanQuestionEnforcementReceipt.DenialMessage(consumption))
             : await _channel.AskAsync(
                 new HumanQuestionPrompt(
                     request.Id,

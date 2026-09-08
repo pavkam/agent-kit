@@ -14,7 +14,11 @@ public static class ServiceExtensions
         public IServiceCollection AddAgentDelegation()
         {
             ArgumentNullException.ThrowIfNull(services);
-            services.TryAddSingleton<ITaskDelegationBroker, DefaultTaskDelegationBroker>();
+            services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
+            services.TryAddSingleton<ITaskDelegationBroker>(static provider => new DefaultTaskDelegationBroker(
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<ITaskDelegationChannel>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
             return services;
         }
     }

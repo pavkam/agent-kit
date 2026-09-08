@@ -5,6 +5,7 @@ global using System.Collections.Immutable;
 
 global using AgentKit;
 global using AgentKit.Goals;
+global using AgentKit.Permissions;
 
 global using Microsoft.Extensions.DependencyInjection;
 

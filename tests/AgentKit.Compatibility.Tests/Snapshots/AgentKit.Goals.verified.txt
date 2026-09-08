@@ -6,6 +6,7 @@ namespace AgentKit.Goals
     public sealed class DefaultTaskDelegationBroker : AgentKit.ITaskDelegationBroker
     {
         public DefaultTaskDelegationBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.ITaskDelegationChannel channel) { }
+        public DefaultTaskDelegationBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.ITaskDelegationChannel channel, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.TaskDelegationResult> DelegateAsync(AgentKit.TaskDelegationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

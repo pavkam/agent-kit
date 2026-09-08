@@ -6,6 +6,7 @@ namespace AgentKit.IO
     public sealed class DefaultHumanQuestionBroker : AgentKit.IHumanQuestionBroker
     {
         public DefaultHumanQuestionBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.IHumanQuestionChannel channel) { }
+        public DefaultHumanQuestionBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.IHumanQuestionChannel channel, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.HumanQuestionResult> AskAsync(AgentKit.HumanQuestionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

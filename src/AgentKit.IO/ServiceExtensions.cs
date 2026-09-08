@@ -26,7 +26,11 @@ public static class ServiceExtensions
         public IServiceCollection AddHumanQuestionBroker()
         {
             ArgumentNullException.ThrowIfNull(services);
-            services.TryAddSingleton<IHumanQuestionBroker, DefaultHumanQuestionBroker>();
+            services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
+            services.TryAddSingleton<IHumanQuestionBroker>(static provider => new DefaultHumanQuestionBroker(
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<IHumanQuestionChannel>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
             return services;
         }
     }
