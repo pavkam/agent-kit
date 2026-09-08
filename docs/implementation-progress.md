@@ -65,8 +65,25 @@ owning spec.
 
 ## Latest integration evidence
 
-The artifact-enforcement checkpoint passed `make format`, `make lint`, and
-`make test` in an isolated checkout over `87542cf`. All 4,473 tests passed
+The scripted-language enforcement checkpoint passed `make format`, `make lint`,
+and `make test` in an isolated checkout over `520a9fa`. All 4,480 tests passed
+without skips; the Release build reported zero warnings or errors. The initial
+run failed only the expected additive constructor snapshot, reviewed before the
+final run.
+
+Scripted language queries now preserve captured authorization and require a
+fresh exact enforcement-intent receipt before delay or result delivery.
+Reconciled, missing, or mismatched receipts deny the query, and caller
+cancellation is checked immediately after grant consumption. Intent identity
+generation is replaceable through DI; both existing constructors remain
+available. The 15-test leaf suite includes a real registered captured grant,
+receipt rejection, cancellation, generator replacement, and null-argument
+checks. The downstream language-tool suite passes all 18 tests with explicit
+test-only Abstractions and Options references. Required audit and broader
+language-service architecture requirements remain open.
+
+The preceding artifact-enforcement checkpoint passed `make format`, `make lint`,
+and `make test` in an isolated checkout over `87542cf`. All 4,473 tests passed
 without skips; the Release build reported zero warnings or errors. The initial
 run passed all 4,472 unchanged-API and behavioral tests and failed only the
 expected additive constructor snapshot, which was reviewed before final testing.

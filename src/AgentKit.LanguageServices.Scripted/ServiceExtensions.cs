@@ -20,7 +20,13 @@ public static class ServiceExtensions
             _ = services.AddOptions<ScriptedLanguageOptions>().Configure(configure).ValidateOnStart();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IIdentifierGenerator<LanguageQueryId>, GuidLanguageQueryIdGenerator>();
-            services.TryAddSingleton<ILanguageIntelligenceService, ScriptedLanguageIntelligenceService>();
+            services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
+            services.TryAddSingleton<ILanguageIntelligenceService>(static provider => new ScriptedLanguageIntelligenceService(
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<IOptions<ScriptedLanguageOptions>>(),
+                provider.GetRequiredService<ILogger<ScriptedLanguageIntelligenceService>>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
             return services;
         }
     }

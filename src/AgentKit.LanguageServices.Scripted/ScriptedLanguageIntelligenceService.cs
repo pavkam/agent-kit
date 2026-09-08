@@ -10,6 +10,7 @@ public sealed partial class ScriptedLanguageIntelligenceService: ILanguageIntell
     private readonly TimeProvider _timeProvider;
     private readonly ImmutableDictionary<LanguageQueryId, ScriptedLanguageScenario> _scenarios;
     private readonly ILogger<ScriptedLanguageIntelligenceService> _logger;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
 
     /// <summary>Initializes the deterministic provider from captured scenarios and enforcement dependencies.</summary>
     /// <param name="grantStore">The authoritative exact single-use grant store.</param>
@@ -21,7 +22,12 @@ public sealed partial class ScriptedLanguageIntelligenceService: ILanguageIntell
         ISecurityGrantStore grantStore,
         TimeProvider timeProvider,
         IOptions<ScriptedLanguageOptions> options)
-        : this(grantStore, timeProvider, options, NullLogger<ScriptedLanguageIntelligenceService>.Instance)
+        : this(
+            grantStore,
+            timeProvider,
+            options,
+            NullLogger<ScriptedLanguageIntelligenceService>.Instance,
+            new GuidSecurityEnforcementIntentIdGenerator())
     {
     }
 
@@ -37,14 +43,34 @@ public sealed partial class ScriptedLanguageIntelligenceService: ILanguageIntell
         TimeProvider timeProvider,
         IOptions<ScriptedLanguageOptions> options,
         ILogger<ScriptedLanguageIntelligenceService> logger)
+        : this(grantStore, timeProvider, options, logger, new GuidSecurityEnforcementIntentIdGenerator())
+    {
+    }
+
+    /// <summary>Initializes the deterministic provider with a replaceable source of fresh enforcement-intent identities.</summary>
+    /// <param name="grantStore">The non-null authoritative exact single-use grant store.</param>
+    /// <param name="timeProvider">The non-null clock used for declared delays.</param>
+    /// <param name="options">The non-null captured scenario configuration.</param>
+    /// <param name="logger">The non-null logger receiving safe structural lifecycle events.</param>
+    /// <param name="intentIds">The non-null thread-safe source of distinct atomic permission-to-begin identities.</param>
+    /// <exception cref="ArgumentNullException">A dependency is null.</exception>
+    /// <exception cref="ArgumentException">Scenario query identities collide.</exception>
+    public ScriptedLanguageIntelligenceService(
+        ISecurityGrantStore grantStore,
+        TimeProvider timeProvider,
+        IOptions<ScriptedLanguageOptions> options,
+        ILogger<ScriptedLanguageIntelligenceService> logger,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
     {
         ArgumentNullException.ThrowIfNull(grantStore);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(intentIds);
         _grantStore = grantStore;
         _timeProvider = timeProvider;
         _logger = logger;
+        _intentIds = intentIds;
         try
         {
             _scenarios = options.Value.Scenarios.ToImmutableDictionary(static scenario => scenario.QueryId);
@@ -75,21 +101,19 @@ public sealed partial class ScriptedLanguageIntelligenceService: ILanguageIntell
             return Failure(request.Kind, LanguageQueryStatus.Failed, "The scripted result does not match the requested operation.");
         }
 
-        var consumption = await _grantStore.ValidateAndConsumeAsync(
+        var enforcement = LanguageEnforcementReceipt.Create(
             request.Grant,
-            new SecurityEnforcementRequest(
-                request.Grant.Scope,
-                request.Grant.Identity,
-                SecurityAudience,
-                SecurityOperationKind.FileRead,
-                SecurityEffect.Observe,
-                [LanguageSecurityBinding.Resource(request.Kind, request.Path)],
-                LanguageSecurityBinding.Fingerprint(request),
-                request.Grant.RevocationVersion),
-            cancellationToken).ConfigureAwait(false);
-        if (consumption.Status != GrantConsumptionStatus.Consumed)
+            SecurityAudience,
+            request.Kind,
+            request.Path,
+            LanguageSecurityBinding.Fingerprint(request));
+        var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
+        var consumption = await _grantStore.ValidateAndConsumeAsync(
+            request.Grant, enforcement, intent, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!LanguageEnforcementReceipt.IsFreshExact(consumption, request.Grant, enforcement, intent))
         {
-            return Failure(request.Kind, LanguageQueryStatus.Denied, consumption.SafeMessage);
+            return Failure(request.Kind, LanguageQueryStatus.Denied, LanguageEnforcementReceipt.DenialMessage(consumption));
         }
 
         try

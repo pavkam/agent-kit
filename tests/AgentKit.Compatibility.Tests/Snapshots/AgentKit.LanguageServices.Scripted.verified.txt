@@ -7,6 +7,7 @@ namespace AgentKit.LanguageServices.Scripted
     {
         public ScriptedLanguageIntelligenceService(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.LanguageServices.Scripted.ScriptedLanguageOptions> options) { }
         public ScriptedLanguageIntelligenceService(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.LanguageServices.Scripted.ScriptedLanguageOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.LanguageServices.Scripted.ScriptedLanguageIntelligenceService> logger) { }
+        public ScriptedLanguageIntelligenceService(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.LanguageServices.Scripted.ScriptedLanguageOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.LanguageServices.Scripted.ScriptedLanguageIntelligenceService> logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.LanguageQueryResult> QueryAsync(AgentKit.LanguageQueryRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

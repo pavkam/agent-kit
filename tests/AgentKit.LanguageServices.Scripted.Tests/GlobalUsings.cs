@@ -6,8 +6,10 @@ global using System.Diagnostics;
 global using AgentKit;
 global using AgentKit.LanguageServices.Scripted;
 global using AgentKit.Observability;
+global using AgentKit.Permissions;
 
 global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Logging.Abstractions;
 global using Microsoft.Extensions.Options;
 global using Microsoft.Extensions.Time.Testing;
 

@@ -9,6 +9,21 @@ public sealed class ScriptedLanguageIntelligenceServiceTests
         Guid.Parse("50000000-0000-0000-0000-000000000005"));
 
     [Fact]
+    public void Constructor_WhenIntentIdsIsNull_ThrowsWithExactParameterName()
+    {
+        var options = Options.Create(new ScriptedLanguageOptions());
+
+        var exception = Should.Throw<ArgumentNullException>(() => new ScriptedLanguageIntelligenceService(
+            new TestGrantStore(),
+            TimeProvider.System,
+            options,
+            NullLogger<ScriptedLanguageIntelligenceService>.Instance,
+            null!));
+
+        exception.ParamName.ShouldBe("intentIds");
+    }
+
+    [Fact]
     public async Task QueryAsync_WhenObserved_EmitsContentFreeQueryActivity()
     {
         Activity? stopped = null;
@@ -98,6 +113,72 @@ public sealed class ScriptedLanguageIntelligenceServiceTests
         result.SafeMessage.ShouldBe("Denied.");
     }
 
+    [Theory]
+    [InlineData(GrantConsumptionStatus.Reconciled, true, true)]
+    [InlineData(GrantConsumptionStatus.Consumed, false, true)]
+    [InlineData(GrantConsumptionStatus.Consumed, true, false)]
+    public async Task QueryAsync_WhenReceiptDoesNotAuthorizeFreshIntent_DeniesBeforeScriptedResult(
+        GrantConsumptionStatus status,
+        bool includeReceipt,
+        bool exactReceipt)
+    {
+        var store = new TestGrantStore
+        {
+            Status = status,
+            IncludeReceipt = includeReceipt,
+            ReturnExactReceipt = exactReceipt,
+        };
+        var service = Service(store, [new ScriptedLanguageScenario(
+            _queryId,
+            Success(LanguageQueryKind.Diagnostics),
+            TimeSpan.Zero)]);
+
+        var result = await service.QueryAsync(Request(), TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(LanguageQueryStatus.Denied);
+        _ = store.Intents.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task QueryAsync_WhenCallerCancelsDuringNonCooperativeConsumption_PropagatesWithoutScriptedResult()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var store = new TestGrantStore { OnConsume = cancellation.Cancel };
+        var service = Service(store, [new ScriptedLanguageScenario(
+            _queryId,
+            Success(LanguageQueryKind.Diagnostics),
+            TimeSpan.Zero)]);
+
+        var action = async () => await service.QueryAsync(Request(), cancellation.Token);
+
+        _ = await action.ShouldThrowAsync<OperationCanceledException>();
+        _ = store.Intents.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task QueryAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var grantStore = new InMemorySecurityGrantStore(time);
+        var request = Request(TestGrantStore.CapturedGrant(
+            _queryId,
+            LanguageQueryKind.Diagnostics,
+            new FileSystemPath("src/a.cs"),
+            null,
+            null,
+            10,
+            TimeSpan.FromSeconds(1)));
+        await grantStore.RegisterAsync(request.Grant, TestContext.Current.CancellationToken);
+        var service = Service(
+            grantStore,
+            [new ScriptedLanguageScenario(_queryId, Success(LanguageQueryKind.Diagnostics), TimeSpan.Zero)],
+            time);
+
+        var result = await service.QueryAsync(request, TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(LanguageQueryStatus.Success);
+    }
+
     [Fact]
     public async Task QueryAsync_WhenScenarioExceedsRequestedCount_TruncatesAndMarksIncomplete()
     {
@@ -160,6 +241,29 @@ public sealed class ScriptedLanguageIntelligenceServiceTests
             .Create().Value.ShouldNotBe(Guid.Empty);
     }
 
+    [Fact]
+    public async Task AddScriptedLanguageIntelligence_WhenIntentGeneratorIsHostSupplied_UsesTheReplacement()
+    {
+        var expectedId = new SecurityEnforcementIntentId(Guid.Parse("82000000-0000-0000-0000-000000000008"));
+        var store = new TestGrantStore();
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<ISecurityGrantStore>(store);
+        _ = services.AddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>>(
+            new FixedSecurityEnforcementIntentIdGenerator(expectedId));
+        _ = services.AddScriptedLanguageIntelligence(options => options.Scenarios.Add(new ScriptedLanguageScenario(
+            _queryId,
+            Success(LanguageQueryKind.Diagnostics),
+            TimeSpan.Zero)));
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<ILanguageIntelligenceService>().QueryAsync(
+            Request(),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(LanguageQueryStatus.Success);
+        store.Intents.ShouldHaveSingleItem().Id.ShouldBe(expectedId);
+    }
+
     private static ScriptedLanguageIntelligenceService Service(
         ISecurityGrantStore store,
         IEnumerable<ScriptedLanguageScenario> scenarios,
@@ -173,7 +277,7 @@ public sealed class ScriptedLanguageIntelligenceServiceTests
             Options.Create(options));
     }
 
-    private static LanguageQueryRequest Request(int maximumResults = 10) => new(
+    private static LanguageQueryRequest Request(SecurityGrant? grant = null, int maximumResults = 10) => new(
         _queryId,
         LanguageQueryKind.Diagnostics,
         new FileSystemPath("src/a.cs"),
@@ -181,7 +285,7 @@ public sealed class ScriptedLanguageIntelligenceServiceTests
         null,
         maximumResults,
         TimeSpan.FromSeconds(1),
-        TestGrantStore.Grant());
+        grant ?? TestGrantStore.Grant());
 
     private static LanguageQueryResult Success(LanguageQueryKind kind) => new(
         LanguageQueryStatus.Success,
@@ -195,4 +299,10 @@ public sealed class ScriptedLanguageIntelligenceServiceTests
 
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
         ActivitySamplingResult.AllDataAndRecorded;
+
+    private sealed class FixedSecurityEnforcementIntentIdGenerator(SecurityEnforcementIntentId value)
+        : IIdentifierGenerator<SecurityEnforcementIntentId>
+    {
+        public SecurityEnforcementIntentId Create() => value;
+    }
 }
