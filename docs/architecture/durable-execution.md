@@ -14,6 +14,14 @@ AgentKit.Durability.BackendName, such as a future Temporal or Restate package.
 They register durable operation ownership without changing AgentEngine or the
 loop contract.
 
+Storage adaptation and workflow ownership remain distinct. A
+`AgentKit.Durability.Sqlite` leaf may implement a durable local journal,
+checkpoint store, and only those lease semantics SQLite can prove; it is not a
+workflow engine or distributed owner. An `AgentKit.Durability.InMemory` journal
+is useful for conformance and explicitly ephemeral execution but cannot satisfy
+a crash-recovery profile. Both leaves run the same journal contract suite, and
+the host selects their key and persistence target explicitly.
+
 The optional provider-neutral coordinator lives in AgentKit.Durability.
 `AgentEngine` remains one process-level host for many agents; durability
 selection and every record are keyed by typed `AgentId`, `SessionId`, `RunId`,
@@ -291,6 +299,19 @@ and computes and checks `ExpiresAt` only through `TimeProvider`. Renewal may
 advance expiry but never changes operation identity or reuses an older fencing
 token.
 
+An enforcement intent carries that exact existing fencing generation only when
+its immediate protected action operates under an owner already acquired by this
+worker. Durable writes and renewal therefore require their current fence and
+fail closed when it is absent or stale. An authorized evidence read is unfenced
+only when its selected access contract does not require ownership; acquisition
+atomically seeks a new generation, whether first ownership or takeover, without
+supplying one this worker has not acquired. Lease-store expiry/CAS and
+reconciliation govern takeover, and a stale prior fence never starts a new
+effect. An absent fence is not a claim that backing storage is local and does
+not weaken captured-grant, audience, resource, fingerprint, fresh-receipt, or
+required-audit validation. This describes the intended adapter contract; current
+abstractions do not yet implement those protected ingress checks.
+
 AgentKit.Durability supplies sealed backend catalog/selector, coordinator,
 recovery coordinator, and fenced journal decorator classes. The central
 dependency shape is explicit:
@@ -497,6 +518,13 @@ provider-neutral package supplies no persistence target. Concrete leaf packages
 expose methods such as `AddTemporalDurability` and `AddRestateDurability`; the
 provider-neutral registration never installs a backend or pretends process
 memory is durable.
+
+A SQLite journal registration supplies no invented database path and no hidden
+backend selection. Composition may pair it only with a backend and lease manager
+whose ownership domain is compatible with its local durability and transaction
+capabilities. Atomic journal commits do not include session, grant, budget, or
+external-effect stores unless an adapter explicitly proves one shared
+transaction beneath all participating contracts.
 
 Catalogs, selectors, and the coordinator are thread-safe singletons. The
 profile-selected journal, lease manager, recovery policy, and backend declare

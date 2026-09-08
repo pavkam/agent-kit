@@ -82,6 +82,8 @@ public sealed class ComponentRegistrationSnapshotTests
         snapshot.RepresentsCompleteRunnableGraph.ShouldBeFalse();
         snapshot.UnrepresentedRequiredSpine.ShouldContain(
             ComponentContractReference.Unkeyed<IAgentLoop>());
+        snapshot.UnrepresentedRequiredSpine.ShouldContain(
+            ComponentContractReference.Unkeyed<ISecurityGrantStore>());
         snapshot.Registrations.ShouldBeEmpty();
     }
 

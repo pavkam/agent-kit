@@ -104,11 +104,47 @@ internal static class AgentCompositionValidator
         [
             .. ComponentDependencyGraphValidator.Validate(snapshot.Registrations),
             .. ComponentRegistrationCorrespondenceValidator.Validate(snapshot),
+            .. ValidateRequiredFacadeServices(snapshot),
         ];
         if (!diagnostics.IsEmpty)
         {
             throw new AgentCompositionException(diagnostics);
         }
+    }
+
+    /// <summary>Validates required singular facade services from exact build-local DI descriptors.</summary>
+    /// <param name="snapshot">The non-null build-local registration evidence.</param>
+    /// <returns>Bounded missing or ambiguous service diagnostics without resolving registrations.</returns>
+    private static ImmutableArray<CompositionDiagnostic> ValidateRequiredFacadeServices(
+        ComponentRegistrationSnapshot snapshot)
+    {
+        Debug.Assert(snapshot is not null, "Component registration validation supplies a non-null snapshot.");
+
+        var hasFacade = snapshot.Services.Any(static service =>
+            !service.IsKeyedService && service.ServiceType == typeof(AgentEngine));
+        if (!hasFacade)
+        {
+            return [];
+        }
+
+        var grantStoreCount = snapshot.Services.Count(static service =>
+            !service.IsKeyedService && service.ServiceType == typeof(ISecurityGrantStore));
+        return grantStoreCount switch
+        {
+            0 =>
+            [
+                new CompositionDiagnostic(
+                    "agentkit.security-grant-store.missing",
+                    "No unkeyed ISecurityGrantStore is registered. Select one security grant-store adapter explicitly."),
+            ],
+            1 => [],
+            _ =>
+            [
+                new CompositionDiagnostic(
+                    "agentkit.security-grant-store.ambiguous",
+                    "More than one unkeyed ISecurityGrantStore is registered. Register exactly one security grant-store adapter."),
+            ],
+        };
     }
 
     private static AgentRunProfilePublicationSnapshot? ValidateCatalog(

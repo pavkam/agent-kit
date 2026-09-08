@@ -279,21 +279,7 @@ public sealed class SecurityAuthorityTests
             legacy.Kind, legacy.Effect, legacy.Resources, legacy.InputFingerprint, legacy.Deadline);
     }
 
-    private static SecurityRequest CreateRequest()
-    {
-        var grant = InMemorySecurityGrantStoreTests.CreateGrantForTests();
-        return new SecurityRequest(
-            grant.RequestId,
-            grant.Scope,
-            null,
-            grant.Identity,
-            grant.Audience,
-            grant.Kind,
-            grant.Effect,
-            grant.Resources,
-            grant.InputFingerprint,
-            _now.AddMinutes(10));
-    }
+    private static SecurityRequest CreateRequest() => SecurityAuthorityTestData.CreateRequest(_now);
 
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
         ActivitySamplingResult.AllDataAndRecorded;

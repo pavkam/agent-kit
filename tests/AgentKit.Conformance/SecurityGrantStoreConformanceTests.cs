@@ -222,6 +222,77 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
         remaining.RemainingUses.ShouldBe(0);
     }
 
+    /// <summary>Verifies one globally unique intent identity cannot consume uses from two different grants.</summary>
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenIntentIdentityIsReusedAcrossGrants_RejectsSecondGrantWithoutConsumption()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var firstGrant = CreateGrant(fixture.TimeProvider.GetUtcNow());
+        var secondGrant = CreateGrant(fixture.TimeProvider.GetUtcNow()) with
+        {
+            Id = new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000105")),
+            RequestId = new SecurityRequestId(Guid.Parse("60000000-0000-0000-0000-000000000106")),
+        };
+        var intent = CreateIntent();
+        await store.RegisterAsync(firstGrant, TestContext.Current.CancellationToken);
+        await store.RegisterAsync(secondGrant, TestContext.Current.CancellationToken);
+        var first = await store.ValidateAndConsumeAsync(
+            firstGrant, CreateEnforcement(firstGrant), intent, TestContext.Current.CancellationToken);
+
+        var conflict = await store.ValidateAndConsumeAsync(
+            secondGrant, CreateEnforcement(secondGrant), intent, TestContext.Current.CancellationToken);
+        var fresh = await store.ValidateAndConsumeAsync(
+            secondGrant, CreateEnforcement(secondGrant), CreateIntent(2), TestContext.Current.CancellationToken);
+
+        first.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+        conflict.Status.ShouldBe(GrantConsumptionStatus.Mismatch);
+        conflict.RemainingUses.ShouldBe(1);
+        conflict.IntentReceipt.ShouldBeNull();
+        fresh.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+        fresh.RemainingUses.ShouldBe(0);
+    }
+
+    /// <summary>Verifies simultaneous cross-grant reuse grants authority to one exact attempt and preserves the losing grant.</summary>
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenIntentIdentityRacesAcrossGrants_AuthorizesOneExactGrant()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var firstGrant = CreateGrant(fixture.TimeProvider.GetUtcNow());
+        var secondGrant = CreateGrant(fixture.TimeProvider.GetUtcNow()) with
+        {
+            Id = new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000105")),
+            RequestId = new SecurityRequestId(Guid.Parse("60000000-0000-0000-0000-000000000106")),
+        };
+        var intent = CreateIntent();
+        await store.RegisterAsync(firstGrant, TestContext.Current.CancellationToken);
+        await store.RegisterAsync(secondGrant, TestContext.Current.CancellationToken);
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstTask = ConsumeAfterReleaseAsync(firstGrant);
+        var secondTask = ConsumeAfterReleaseAsync(secondGrant);
+
+        start.SetResult();
+        var results = await Task.WhenAll(firstTask, secondTask);
+
+        results.Count(static result => result.Status == GrantConsumptionStatus.Consumed).ShouldBe(1);
+        results.Count(static result => result.Status == GrantConsumptionStatus.Mismatch).ShouldBe(1);
+        var winningGrantId = results.Single(static result => result.Status == GrantConsumptionStatus.Consumed)
+            .IntentReceipt.ShouldNotBeNull().GrantId;
+        var losingGrant = winningGrantId == firstGrant.Id ? secondGrant : firstGrant;
+        var fresh = await store.ValidateAndConsumeAsync(
+            losingGrant, CreateEnforcement(losingGrant), CreateIntent(2), TestContext.Current.CancellationToken);
+        fresh.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+        fresh.RemainingUses.ShouldBe(0);
+
+        async Task<GrantConsumptionResult> ConsumeAfterReleaseAsync(SecurityGrant grant)
+        {
+            await start.Task.WaitAsync(TestContext.Current.CancellationToken);
+            return await store.ValidateAndConsumeAsync(
+                grant, CreateEnforcement(grant), intent, TestContext.Current.CancellationToken);
+        }
+    }
+
     /// <summary>Verifies expiry or revocation does not turn historical receipt recovery into renewed effect authority.</summary>
     [Theory]
     [InlineData(true)]

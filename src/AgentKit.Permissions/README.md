@@ -9,9 +9,12 @@ identity and tool metadata do not grant permission.
 
 ## Use this project
 
-Start with `AddAgentPermissions`, `AddSecurityProfilePublication`,
-`AddSecurityAuditSink` in [ServiceExtensions.cs](ServiceExtensions.cs). Read the
-overloads and XML documentation for required collaborators, lifetimes, and
+Start with `AddAgentPermissions`, then explicitly select one grant-store adapter
+before registering `AddSecurityProfilePublication` and `AddSecurityAuditSink`.
+For deterministic tests and short-lived hosts, install
+[AgentKit.Permissions.InMemory](../AgentKit.Permissions.InMemory/README.md) and
+call `AddInMemorySecurityGrantStore()`. Read the [runtime](ServiceExtensions.cs)
+and adapter registration XML for required collaborators, lifetimes, and
 duplicate-registration behavior.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable component
@@ -21,6 +24,9 @@ engine composition is described in the
 
 ## Related projects
 
+- [AgentKit.Permissions.InMemory](../AgentKit.Permissions.InMemory/README.md) —
+  explicitly selected process-local grant storage for tests and short-lived
+  hosts.
 - [AgentKit.Identity](../AgentKit.Identity/README.md) — normalize trusted
   ingress identity and derive constrained delegated identities.
 - [AgentKit.Tools](../AgentKit.Tools/README.md) — catalog, validate, authorize,

@@ -20,6 +20,7 @@ public sealed class CoordinatorSecurityIntegrationTests
         _ = services.AddLogging();
         _ = services.AddSingleton<TimeProvider>(timeProvider);
         _ = services.AddAgentPermissions();
+        _ = services.AddInMemorySecurityGrantStore();
         _ = services.AddAgentSession();
         _ = services.AddInMemorySessionStore();
         _ = services.AddInMemorySessionDirectory(new ComponentId("test-directory"));

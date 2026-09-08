@@ -1,7 +1,7 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Permissions.Tests;
+namespace AgentKit.Permissions.InMemory.Tests;
 
 using AgentKit.Conformance;
 
@@ -40,7 +40,7 @@ public sealed class InMemorySecurityGrantStoreConformanceFixture: ISecurityGrant
     {
         var services = new ServiceCollection();
         _ = services.AddSingleton<TimeProvider>(_timeProvider);
-        _ = services.AddAgentPermissions();
+        _ = services.AddInMemorySecurityGrantStore();
         return services.BuildServiceProvider(validateScopes: true);
     }
 }

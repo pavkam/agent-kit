@@ -48,6 +48,14 @@ Storage contracts define consistency, atomicity, optimistic concurrency,
 pagination, duplicate/idempotent writes, deletion, expiry, and failure behavior.
 Provider SDK and database query types stay in integration packages.
 
+The memory runtime MUST NOT install a concrete memory, document, or vector
+store. Hosts explicitly register `AgentKit.Memory.InMemory`,
+`AgentKit.Memory.Sqlite`, or another backend and select its exact keyed
+capabilities. In-memory and SQLite adapters run the same conformance suite for
+shared operations. SQLite persistence does not by itself prove vector search,
+distributed indexing, regional placement, or cross-store transactions; absent
+capabilities remain unavailable at composition.
+
 ## Durable memory lifecycle
 
 Memory writing is a protected policy decision with explicit states:
@@ -150,6 +158,10 @@ physical deletion; backup replay cannot resurrect a logically deleted version.
 - Memory proposal requires policy acceptance before later retrieval.
 - Source update cannot return stale and current chunks as one version.
 - Deletion propagates through index/cache and remains auditable without content.
+- Missing selected storage fails composition without creating an in-memory
+  memory, document, or vector service.
+- SQLite retains committed memory/document versions and tombstones through
+  reopen only for the operations its descriptor advertises.
 
 ## Related specifications
 

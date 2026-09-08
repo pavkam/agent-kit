@@ -145,6 +145,7 @@ builder.Services.AddAgentIO();
 builder.Services.AddAgentSession();
 builder.Services.AddInMemorySessionStore();
 builder.Services.AddAgentPermissions();
+builder.Services.AddInMemorySecurityGrantStore();
 builder.Services.AddAgentProviders();
 builder.Services.AddOpenAI();
 builder.Services.AddReadTool();
@@ -161,6 +162,14 @@ document:
 - idempotency of repeated calls;
 - service lifetimes and disposal owner; and
 - whether configuration is captured or monitored.
+
+Runtime registrations such as `AddAgentSession`, `AddAgentPermissions`,
+`AddAgentBudgets`, `AddAgentArtifacts`, and `AddAgentMemory` MUST NOT install a
+concrete store. A host separately calls an explicit `.InMemory`, `.Sqlite`, or
+other adapter registration and supplies its key and persistence target. The
+in-memory call above is therefore an application choice, not a framework
+default. Multiple adapters may coexist only through a catalog and exact
+selection; registration order never selects persistence.
 
 Multi-provider concepts SHOULD be keyed/named and selected by an injected
 catalog/selector. Runtime code MUST NOT receive `IServiceProvider` as a locator.
@@ -232,8 +241,8 @@ Every behaviorally meaningful mechanism or policy MUST be configurable through
 DI, typed options, engine configuration, an agent definition, or an explicit run
 override. Each first-party feature documents and registers sensible defaults
 with a public replacement path. Security defaults fail closed; credentials,
-remote endpoints, persistence targets, principals, and authority have no
-fabricated defaults.
+remote endpoints, concrete stores, persistence targets, principals, and
+authority have no fabricated defaults.
 
 Credentials use dedicated providers or platform credential abstractions. They
 MUST NOT appear in option display, validation messages, or configuration
@@ -267,6 +276,12 @@ updated conformance packages.
   concurrently without scope or configuration leakage.
 - A result distinguishes deferred, limited, cancelled, and failed without text
   parsing.
+- An enabled storage-backed capability without an explicitly selected adapter
+  fails build; choosing `.InMemory` or `.Sqlite` is visible in application
+  composition.
+- In-memory and SQLite adapters for one contract pass the same common
+  conformance suite, while capability-specific tests prevent local durability
+  from being reported as distributed ownership or cross-store atomicity.
 
 ## Related specifications
 

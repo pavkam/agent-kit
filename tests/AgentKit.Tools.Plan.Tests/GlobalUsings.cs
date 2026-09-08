@@ -5,6 +5,7 @@ global using System.Collections.Immutable;
 global using System.Text.Json;
 
 global using AgentKit;
+global using AgentKit.Permissions.InMemory;
 global using AgentKit.Tools.Plan;
 
 global using Microsoft.Extensions.DependencyInjection;

@@ -463,22 +463,28 @@ session, run, and operation ownership are addresses inside that shared ledger,
 not DI scopes for competing authorities. A run receives one owned `IRunBudget`
 child handle in its compiled plan; child scopes and reservation handles are
 run/operation-owned and asynchronously disposed, and no singleton captures them.
-Durable or distributed ledgers are explicit leaf packages and must provide
-atomic compare-and-reserve semantics across every enforced parent.
+Concrete ledgers are explicit leaf packages. `AgentKit.Budgets.InMemory`
+provides process-local atomic accounting; `AgentKit.Budgets.Sqlite` provides
+durable local accounting; a distributed leaf must provide authoritative fencing
+and atomic compare-and-reserve semantics across every enforced parent. The
+common adapters run the same ledger conformance suite, but each advertises only
+its actual durability and ownership domain.
 
 `AddAgentBudgets` is idempotent and `TryAdd`s one singular, replaceable
-authority, hierarchy policy, profile catalog, event dispatcher, and in-memory
-ledger. It validates and copies binding options into an immutable
-`AgentBudgetOptionsSnapshot`. `AddBudgetProfile` publishes an immutable named
-profile selected by `AgentComponentSelection.BudgetProfile`; its ordered policy
-keys are resolved once when the run plan is compiled. Empty limits mean that
-only the definition/run ceilings apply, not unlimited retries. First-party
-dimension descriptors are registered under the stable `agentkit.*` names above;
-extensions use their own stable namespace and declare aggregation and legal
-units. No currency conversion, price, tenant quota, durable ledger, or
-credential is invented. Duplicate profile, policy, or dimension keys,
-incompatible units, and conflicting policies fail build unless the matching
-replacement API names that exact axis.
+authority, hierarchy policy, profile catalog, and event dispatcher. It expects a
+ledger through explicit DI composition but registers no concrete ledger. The
+host adds one ledger leaf and its persistence target. The runtime validates and
+copies binding options into an immutable `AgentBudgetOptionsSnapshot`.
+`AddBudgetProfile` publishes an immutable named profile selected by
+`AgentComponentSelection.BudgetProfile`; its ordered policy keys are resolved
+once when the run plan is compiled. Empty limits mean that only the
+definition/run ceilings apply, not unlimited retries. First-party dimension
+descriptors are registered under the stable `agentkit.*` names above; extensions
+use their own stable namespace and declare aggregation and legal units. No
+currency conversion, price, tenant quota, durable ledger, or credential is
+invented. Duplicate profile, policy, or dimension keys, incompatible units, and
+conflicting policies fail build unless the matching replacement API names that
+exact axis.
 
 ## Dependency direction and cycle prevention
 
@@ -500,6 +506,14 @@ reservations, singleton capture of run state, and missing identifier or time
 providers. Unknown cost is not zero. A hard cost-only policy with unknown price
 rejects or requires a secondary request/token limit according to explicit
 policy.
+
+An in-memory ledger cannot satisfy crash-safe or multi-process accounting. A
+SQLite ledger must atomically reserve across the complete requested dimension
+set and retain started reservations, settlements, corrections, idempotency, and
+ordering through restart. SQLite remains one durable local ownership domain; it
+does not claim distributed fencing or atomic settlement with a provider charge.
+Composition rejects a profile whose requested durability or concurrency exceeds
+the selected ledger descriptor.
 
 ## Related architecture
 

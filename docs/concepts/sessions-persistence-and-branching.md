@@ -137,6 +137,14 @@ effecting calls. Authority selection uses the captured
 Serialization MUST be provider-neutral and preserve unknown fields needed for
 forward-compatible round trips.
 
+The session runtime MUST NOT register a concrete store or directory as a hidden
+fallback. Hosts explicitly select an `AgentKit.Session.InMemory`,
+`AgentKit.Session.Sqlite`, or other adapter and a compatible directory. The
+in-memory and SQLite leaves run the same store conformance suite. SQLite may
+advertise durable local transactions after restart tests pass, but it MUST NOT
+advertise distributed lane ownership, fencing, or cross-store atomicity merely
+because the session rows share one local database.
+
 ## Discovery and migration
 
 The session profile declares when the first durable record is created. A host
@@ -208,6 +216,10 @@ implemented as an ambient cancellation token stored on the session object.
 - A malformed interior record fails open without rewriting the source.
 - Extracting a branch repairs retained references and excludes open-operation
   state unless a durable handoff protocol is explicitly selected.
+- A missing explicit store or directory fails composition without probing or
+  creating an in-memory session route.
+- In-memory and SQLite stores produce the same ordered/idempotent results for
+  shared operations; only SQLite retains committed local state after reopen.
 
 ## Related specifications
 

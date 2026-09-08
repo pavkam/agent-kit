@@ -172,6 +172,7 @@ public sealed class InMemorySessionRunCoordinatorConformanceFixture:
         _ = services.AddLogging();
         _ = services.AddSingleton<TimeProvider>(_clock);
         _ = services.AddAgentPermissions();
+        _ = services.AddInMemorySecurityGrantStore();
         _ = services.AddAgentSession();
         _ = services.AddInMemorySessionStore();
         _ = services.AddInMemorySessionDirectory(new ComponentId("conformance-directory"));

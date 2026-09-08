@@ -78,13 +78,13 @@ the facade.
 | ------------------------ | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Engine and definitions   | `AgentDefinition`, `IAgentDefinitionCatalog`, typed IDs, `IIdentifierGenerator<TIdentifier>` | AgentKit / `AddAgentKit` or `AgentEngine.CreateBuilder`                                                                                 | Engine-wide singular catalog/validator/generators; additive definition sources; one scope per run                |
 | Loop and run             | `IAgentLoop`, run context/view, limits and outcomes                                          | AgentKit.Loop / `AddAgentLoop`                                                                                                          | Keyed, singular per definition selection; default loop and mutable run services scoped                           |
-| Budgets                  | `IBudgetAuthority`, `IBudgetScope`, reservations, limits, usage                              | AgentKit.Budgets / `AddAgentBudgets`                                                                                                    | Engine/tenant authority with run- and operation-owned child scopes and reservations                              |
+| Budgets                  | `IBudgetAuthority`, `IBudgetScope`, reservations, limits, usage                              | AgentKit.Budgets / `AddAgentBudgets`; explicit `AgentKit.Budgets.InMemory` or `AgentKit.Budgets.Sqlite` ledger leaf                     | Engine/tenant authority with run- and operation-owned child scopes and reservations                              |
 | Input/output and context | I/O coordinator/publisher, queues, context assembler/contributors, compaction contracts      | AgentKit.IO / `AddAgentIO`; AgentKit.Context / `AddAgentContext`; AgentKit.Context.Compaction / `AddAgentContextCompaction`             | Keyed, singular assembler and compactor selections; additive ordered contributors/strategies                     |
 | Structured output        | output definitions, resolver, processor, validators, repair decisions                        | AgentKit.Output / `AddAgentOutput`                                                                                                      | Keyed run-scoped processor; immutable definitions; additive ordered validators                                   |
 | Identity                 | execution identity, issuer mappings, validation and delegation derivation                    | AgentKit.Identity / `AddAgentIdentity`; authentication-specific leaves                                                                  | Scoped ingress resolution; immutable identity values flow downstream without callback                            |
 | Hooks                    | Typed dispatch kernel, closed point definitions, dedicated hook interfaces and `EventArgs`   | AgentKit.Hooks / `AddAgentHooks`; point contracts remain in their owning abstraction package                                            | Engine-wide kernel; stage-selected captured profile/catalog; additive points and hooks with declared lifetimes   |
 | Session                  | coordinator plus `ISessionStore` and typed entries/cursors                                   | AgentKit.Session / `AddAgentSession`; explicit store packages                                                                           | One effective coordinator/store profile per definition; keyed stores normally singleton/thread-safe              |
-| Security                 | authority, policies, approvals, grants, audit contracts                                      | AgentKit.Permissions / `AddAgentPermissions`                                                                                            | One effective authority/policy/approval selection per definition; additive policies/handlers/sinks               |
+| Security                 | authority, policies, approvals, grants, audit contracts                                      | AgentKit.Permissions / `AddAgentPermissions`; explicit `AgentKit.Permissions.InMemory` or `AgentKit.Permissions.Sqlite` store leaves    | One effective authority/policy/approval selection per definition; additive policies/handlers/sinks               |
 | Providers                | model catalog/selector/executor plus endpoint, credential, and keyed operation contracts     | AgentKit.Providers / `AddAgentProviders`; concrete provider `Add...` packages                                                           | Engine-wide catalog; independently keyed captured profiles; additive operations; executor scoped                 |
 | Tools                    | providers/catalog/resolver/validator/scheduler/invoker, terminal recorder, result projector  | AgentKit.Tools and AgentKit.Tools.ToolName / package `Add...Tool`                                                                       | Keyed runtime/toolset/projection policy; additive sources; invocation state operation-owned                      |
 | Memory/goals/durability  | Narrow stores, retrieval, goal/delegation, checkpoint/lease contracts                        | `AgentKit.Memory.*`, AgentKit.Goals; AgentKit.Durability / `AddAgentDurability` plus `AgentKit.Durability.<BackendName>` leaves         | Optional; singular coordinators/catalogs with additive keyed strategies/backends/stores; explicit durable owners |
@@ -94,7 +94,7 @@ the facade.
 | Network                  | `INetworkNameResolver`, `INetworkTransport`, request/response values                         | AgentKit.Network / `AddAgentNetwork`; AgentKit.Network.InMemory / `AddAgentNetworkInMemory`                                             | Singular resolver/transport pair; singleton pools, operation-owned responses                                     |
 | Processes                | resolver, executor, sandbox, handle/output values                                            | AgentKit.Processes / `AddAgentProcesses`; AgentKit.Processes.Scripted / `AddScriptedProcesses`                                          | Singular resolver/executor per key, keyed sandboxes; singleton services, caller-owned handles                    |
 | Language intelligence    | query identities, diagnostics, hover, locations, symbols, document freshness                 | Host-selected leaf; AgentKit.LanguageServices.Scripted / `AddScriptedLanguageIntelligence`; AgentKit.Tools.Language / `AddLanguageTool` | Singular selected service per profile; immutable operation results; tool invocation state operation-owned        |
-| Artifacts                | artifact references, coordinator, store catalog, retention, integrity                        | AgentKit.Artifacts / `AddAgentArtifacts`; explicit backend leaves                                                                       | Keyed coordinators/stores; operation-owned streams; immutable references                                         |
+| Artifacts                | artifact references, coordinator, store catalog, retention, integrity                        | AgentKit.Artifacts / `AddAgentArtifacts`; explicit `.InMemory`, `.Sqlite`, or another backend leaf                                      | Keyed coordinators/stores; operation-owned streams; immutable references                                         |
 | Evaluation               | `IEvaluationRunner`, keyed evaluators, stores, exporters                                     | AgentKit.Evaluation / `AddAgentEvaluation`                                                                                              | Optional singular runner, additive/keyed collaborators; isolated ordinary agent run scopes                       |
 
 Singular defaults use `TryAdd` and have an explicit ordinary-DI replacement
@@ -184,18 +184,48 @@ runtime callbacks respect operation boundaries. Deferred factories, `Lazy<T>`,
 a cycle. A factory is valid only when it is an explicit operation boundary whose
 created graph is independently acyclic and whose lifetime is owned.
 
-## Session storage
+## Storage contracts and adapter leaves
 
-AgentKit.Session does not choose a storage medium. Storage implementations are
-leaf packages:
+Runtime packages do not choose a storage medium. They own domain coordination,
+narrow storage contracts, immutable capability descriptors, catalogs, and
+selection. Concrete implementations are separate leaves:
 
-- AgentKit.Session.InMemory supplies deterministic ephemeral storage for tests,
-  examples, and short-lived applications.
-- AgentKit.Session.Sqlite supplies the first durable local store.
-- Future database or distributed stores follow AgentKit.Session.ProviderName.
+- `AgentKit.<Owner>.InMemory` supplies deterministic ephemeral storage for
+  tests, examples, and deliberately process-local applications;
+- `AgentKit.<Owner>.Sqlite` supplies durable local storage for the subset of the
+  contract SQLite can implement truthfully; and
+- remote, distributed, or specialized stores use
+  `AgentKit.<Owner>.<ProviderName>`.
 
-The session coordinator and store are registered separately. There is no hidden
-production store. Composition fails when a session coordinator has no store.
+`AddAgentSession`, `AddAgentPermissions`, `AddAgentBudgets`,
+`AddAgentArtifacts`, `AddAgentMemory`, and other storage-owning runtime
+registrations install no concrete store. The application registers each adapter
+and persistence target explicitly. Composition validates the selected key and
+declared capabilities; it never chooses the last registration or falls back to
+process memory.
+
+Every storage family supplies one reusable conformance suite. Its in-memory and
+SQLite leaves run the same common behavioral cases, while adapter-specific tests
+prove only advertised durability, transaction, isolation, fencing, pagination,
+and migration guarantees. SQLite is a durable local database, not evidence of a
+distributed lease or atomicity with another database, filesystem, provider, or
+external effect.
+
+Each adapter registration states whether the adapter creates and owns its
+storage client or borrows a host-owned client. The creating container disposes
+owned resources exactly once and never disposes borrowed resources. Caller-owned
+streams, pages, transactions, and leases state their own disposal boundary.
+Disposal never implies deletion. Immutable catalog snapshots, bounded caches,
+deduplication tables derived from durable truth, and process-local locks remain
+runtime mechanics; they are not advertised as persistent stores and do not
+require an adapter split.
+
+A behavioral projection that delegates authoritative state to an already
+selected storage abstraction may remain in its runtime owner. Session-backed
+input queues, plan state, goal state, and settlement/outbox transitions do not
+each need a second SQLite package or database. They must preserve the selected
+session store's transaction and capability evidence and may not open parallel
+storage or choose a concrete session adapter themselves.
 
 ## Provider runtime and integrations
 
@@ -406,6 +436,10 @@ The tests directory mirrors source projects one for one:
 | AgentKit.Session.InMemory            | AgentKit.Session.InMemory.Tests            |
 | AgentKit.Session.Sqlite              | AgentKit.Session.Sqlite.Tests              |
 | AgentKit.Permissions                 | AgentKit.Permissions.Tests                 |
+| AgentKit.Permissions.InMemory        | AgentKit.Permissions.InMemory.Tests        |
+| AgentKit.Permissions.Sqlite          | AgentKit.Permissions.Sqlite.Tests          |
+| AgentKit.Budgets.InMemory            | AgentKit.Budgets.InMemory.Tests            |
+| AgentKit.Budgets.Sqlite              | AgentKit.Budgets.Sqlite.Tests              |
 | AgentKit.Providers                   | AgentKit.Providers.Tests                   |
 | AgentKit.Providers.OpenAICompatible  | AgentKit.Providers.OpenAICompatible.Tests  |
 | AgentKit.Providers.OpenAI            | AgentKit.Providers.OpenAI.Tests            |
@@ -429,6 +463,7 @@ The tests directory mirrors source projects one for one:
 | AgentKit.Goals                       | AgentKit.Goals.Tests                       |
 | AgentKit.Artifacts                   | AgentKit.Artifacts.Tests                   |
 | AgentKit.Artifacts.InMemory          | AgentKit.Artifacts.InMemory.Tests          |
+| AgentKit.Artifacts.Sqlite            | AgentKit.Artifacts.Sqlite.Tests            |
 | AgentKit.Mcp                         | AgentKit.Mcp.Tests                         |
 | AgentKit.Mcp.Client                  | AgentKit.Mcp.Client.Tests                  |
 | AgentKit.Mcp.Server                  | AgentKit.Mcp.Server.Tests                  |

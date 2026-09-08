@@ -7,6 +7,7 @@ global using System.Diagnostics;
 
 global using AgentKit;
 global using AgentKit.Observability;
+global using AgentKit.Permissions.InMemory;
 global using AgentKit.Session.InMemory;
 global using AgentKit.TestSupport;
 

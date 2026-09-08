@@ -526,6 +526,9 @@ not reference behavioral runtime or integration packages. Applications add
 AgentKit.Loop, AgentKit.Budgets, AgentKit.Context, AgentKit.Output,
 AgentKit.Hooks, AgentKit.Session, a session store, the security implementation,
 the provider runtime, the I/O coordinator, and one or more providers explicitly.
+Every storage-owning runtime and its concrete adapter are separate explicit
+registrations; no runtime package contributes an in-memory store or persistence
+target as a convenience default.
 
 Feature packages expose service collection extensions such as AddAgentLoop,
 AddAgentBudgets, AddAgentHooks, AddAgentOutput, AddAgentPermissions, AddAgentIO,
@@ -577,6 +580,13 @@ security authority/profile, model selector, and model request executor, plus at
 least one compatible conversational model. Several keyed implementations and
 profiles may coexist; ambiguity means a definition failed to select one, not
 that the whole process must use one global implementation.
+
+The effective security composition also resolves exactly one grant store, and
+every enabled storage capability resolves its selected adapter and immutable
+capability descriptor. Build rejects missing or ambiguous adapters, absent
+targets, an ephemeral adapter selected for durable work, and transaction or
+fencing requirements stronger than the adapter advertises. It never substitutes
+an in-memory adapter or selects the last registration.
 
 `TimeProvider.System` is a replaceable `TryAdd` default when the host has not
 supplied another instance. The first-party security package registers

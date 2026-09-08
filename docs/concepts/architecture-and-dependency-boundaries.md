@@ -51,6 +51,37 @@ Concrete provider, storage, filesystem, transport, MCP, and durable-backend
 packages are leaves. Foundation and runtime packages MUST NOT reference a
 concrete leaf.
 
+Storage-owning runtimes define narrow contracts, immutable capability
+descriptors, catalogs, selection, and domain coordination. They MUST NOT
+register a concrete store. First-party implementations use
+`AgentKit.<Owner>.InMemory` for deterministic ephemeral behavior and
+`AgentKit.<Owner>.Sqlite` for durable local behavior when SQLite can implement
+the contract honestly; other backends use `AgentKit.<Owner>.<ProviderName>`.
+Every adapter is selected explicitly by key or singular registration. A missing
+selection fails composition rather than falling back to process memory or
+registration order.
+
+Authoritative mutable domain state that survives one operation MUST be accessed
+through its provider-neutral storage contract even when the first implementation
+is process-local. This rule separates coordination from a concrete medium; it
+does not rename immutable catalogs, local gates, or disposable operation state
+as stores.
+
+The in-memory and SQLite leaves MUST run the same reusable conformance suite for
+their shared contract. Adapter descriptors state actual atomicity, isolation,
+durability, concurrency, pagination, fencing, and migration capabilities. SQLite
+durability does not imply distributed ownership, a cross-database transaction,
+or support for an optional operation. Process-local caches, immutable
+publication snapshots, and synchronization gates are implementation mechanics
+rather than persistence adapters unless they expose authoritative domain state
+through a storage contract.
+
+A runtime adapter that projects domain behavior through an already selected
+store contract is allowed and does not create another persistence medium.
+Session-backed input, plan, goal, or settlement behavior reuses the selected
+session transaction boundary; it MUST NOT open its own database or require a
+parallel `<Projection>.Sqlite` package.
+
 `AgentKit.Providers` MUST contain only provider-neutral catalog, selection,
 capability-validation, and attempt-coordination behavior.
 `AgentKit.Providers.OpenAICompatible` MAY contain reusable protocol-family base
@@ -134,8 +165,8 @@ Every behaviorally meaningful mechanism and policy MUST be configurable at one
 named boundary: DI, typed options, engine configuration, immutable agent
 definition, or explicit run override. A first-party feature package SHOULD
 register a sensible documented default with `TryAdd` semantics when a safe
-general default exists. Credentials, external endpoints, persistence targets,
-and granted authority MUST remain explicit.
+general default exists. Concrete stores, credentials, external endpoints,
+persistence targets, and granted authority MUST remain explicit.
 
 `AgentEngine.CreateBuilder()` MUST return a separate mutable builder whose
 `Services` property is the ordinary `IServiceCollection` composition surface.
@@ -217,6 +248,13 @@ behavioral and dependency-graph evidence for these criteria.
 - The facade package dependency graph contains no concrete component package.
 - A compatible provider passes shared wire-family conformance plus its own
   capability and registration suite.
+- Enabling a storage-backed capability without an explicit compatible adapter
+  fails before application work and never creates a hidden in-memory store.
+- In-memory and SQLite adapters pass the same common contract suite; durability,
+  transactions, fencing, and optional operations are tested against only the
+  capabilities each adapter advertises.
+- Disposing a standalone or hosted composition disposes each selected store at
+  its documented owner exactly once, without deleting retained state.
 
 ## Related specifications
 

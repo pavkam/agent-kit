@@ -456,6 +456,16 @@ edge would create session → security → session. A backend may share a databa
 transaction engine, or low-level storage adapter with session storage, but it
 does so beneath both coordinator contracts.
 
+`AgentKit.Permissions` owns these contracts and security coordination but no
+concrete store. `AgentKit.Permissions.InMemory` supplies explicitly ephemeral
+adapters. `AgentKit.Permissions.Sqlite` supplies durable local adapters for the
+security state whose consistency requirements SQLite can meet. Hosts configure
+and register one leaf explicitly; `AddAgentPermissions` never chooses a store,
+connection, database path, or fallback. Both leaves run the same security-store
+conformance suites for shared operations, while durable deferral, required-audit
+acceptance, multi-process access, and transaction claims are tested only when
+the selected adapter advertises them.
+
 The effecting component calls `ValidateAndConsumeAsync` immediately before the
 effect using a fresh `SecurityEnforcementRequest`. File, network, process,
 memory, session, provider-egress, MCP, and delegation implementations all do
@@ -649,12 +659,13 @@ descriptors without building or resolving a service provider.
 `AddAgentPermissions` is idempotent and `TryAddKeyed`s authorities by component
 key, then `TryAdd`s the engine-wide policy catalog, policy and authority
 selectors, security-profile selector, approval broker, approval-handler
-dispatcher, approval store, grant store, decision store, grant issuer, and audit
-dispatcher. It adds a final fail-closed policy and a headless broker path;
-neither is silently removed by additive registration. Explicit replacement APIs
-replace singular-per-key axes. Policies, approval handlers, and audit sinks are
-additive. Duplicate policy IDs or ordering cycles fail build unless an explicit
-replacement names the exact `SecurityPolicyId`.
+dispatcher, grant issuer, and audit dispatcher. It expects the required storage
+contracts through explicit DI composition but registers no concrete approval,
+grant, decision, or audit-outbox store. It adds a final fail-closed policy and a
+headless broker path; neither is silently removed by additive registration.
+Explicit replacement APIs replace singular-per-key axes. Policies, approval
+handlers, and audit sinks are additive. Duplicate policy IDs or ordering cycles
+fail build unless an explicit replacement names the exact `SecurityPolicyId`.
 
 Security profiles are keyed and versioned, select an authority component key,
 and are captured from each agent definition into a
@@ -690,6 +701,15 @@ configuration versions, approval scope/validity/use/revocation equality,
 authenticated-channel evidence, ordering, lifetimes, maximum grant scope, cache
 keys, approval routing, required audit sinks, and durability guarantees
 requested by the host.
+
+An in-memory security store may satisfy explicitly process-local grants and
+inline approvals, but it cannot satisfy crash-safe grant consumption, durable
+deferral, or a required durable audit path. The SQLite leaf must use an atomic
+transaction for each grant-state change: registration/idempotency, revocation,
+or remaining-use decrement with exact enforcement-intent receipt insertion or
+reconciliation. That transaction does not include the later external effect or a
+different database. Missing or weaker storage capability rejects composition
+before an allow-capable authority becomes runnable.
 
 No approval handler is a valid headless configuration only when the explicit
 behavior is deny or durable defer. Unknown operations or effects, missing
@@ -882,6 +902,18 @@ and forward the grant; they do not spend it before the leaf spends it again.
 Separate effects, including directory lookup, store access, credential read,
 provider egress, DNS, and network send, use separately issued audience-bound
 grants. A consumed receipt is recovery evidence, never a reusable grant.
+
+A non-null enforcement-intent fence binds the immediate effect to an exact
+already-acquired distributed ownership generation. Its absence means the
+selected action does not require a generation already held by this worker, such
+as an authorized evidence read whose access contract permits that or an
+acquisition that atomically seeks a new generation. The latter includes
+takeover: lease-store expiry/CAS and reconciliation decide it, and a stale prior
+fence never starts a new effect. Absence never characterizes storage as local or
+widens authority. The selected effect contract declares when existing ownership
+is mandatory, and its adapter fails closed before the effect when that fence is
+missing or differs. Grant, audience, resource, fingerprint, fresh receipt, and
+required-audit validation remain mandatory in both cases.
 
 The consuming boundary records exact attempt, request fingerprint, audience,
 grant use, and any required fence before the effect. Consumption and an external

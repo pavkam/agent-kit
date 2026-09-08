@@ -22,6 +22,7 @@ public sealed class AgentRunProfileCompositionTests
             configured.RunDefaults,
             configured.Extensions);
         var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(legacy);
         _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
@@ -121,6 +122,7 @@ public sealed class AgentRunProfileCompositionTests
         var runIds = new CountingRunIdGenerator();
         var loop = new RecordingAgentLoop();
         var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(definition);
         _ = builder.Services.AddSingleton<IAgentLoop>(loop);
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(selector);
@@ -161,6 +163,7 @@ public sealed class AgentRunProfileCompositionTests
             new AgentRunProfilePublicationFound(replacement));
         var runIds = new CountingRunIdGenerator();
         var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(definition);
         _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
@@ -243,6 +246,7 @@ public sealed class AgentRunProfileCompositionTests
         var runIds = new CountingRunIdGenerator();
         var loop = new RecordingAgentLoop();
         var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(definition);
         _ = builder.Services.AddSingleton<IAgentLoop>(loop);
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(selector);
@@ -289,6 +293,7 @@ public sealed class AgentRunProfileCompositionTests
         IAgentRunProfilePublicationReader reader)
     {
         var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(definition);
         _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());

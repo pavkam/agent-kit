@@ -16,6 +16,7 @@ supplies the catalog, selector, coordinator, integrity validation, retention,
 and orphan reconciliation.
 
 Backends are leaves: AgentKit.Artifacts.InMemory is deterministic for tests;
+AgentKit.Artifacts.Sqlite is the durable local adapter;
 AgentKit.Artifacts.FileSystem uses protected AgentKit.FileSystem contracts;
 cloud packages use protected network contracts and their vendor SDKs. Consumers
 never depend on a concrete backend.
@@ -41,6 +42,14 @@ for deterministic compositions and tests. The package also registers
 stdout/stderr captures into immutable session- or run-owned artifacts. Process
 execution remains independent of the artifact runtime and depends only on the
 optional `IProcessOutputArtifactSink` abstraction.
+
+The SQLite leaf must preserve staging visibility, immutable committed bytes,
+tenant partitioning, replay identity, reference publication, and deletion state
+transactionally across close and reopen. It runs the same artifact-store
+conformance suite as the in-memory leaf. It advertises durable local content,
+not distributed replication, cloud-object retention, or an atomic transaction
+with session history. Payload and database targets remain explicit host
+configuration; no package invents a database path.
 
 ## Normative minimal contract shape
 
@@ -424,6 +433,11 @@ classification support, integrity algorithm, retention policy, security
 authority, event delivery, lifetimes, and reconciliation ownership. Unsupported
 media, overflow, hash mismatch, stale version, missing authority, partial
 upload, backend failure, and retention conflict are typed outcomes.
+
+Registration without an explicit artifact leaf fails when a profile selects
+artifact storage. Common in-memory and SQLite behavior is verified by one
+reusable suite; adapter-specific tests prove restart durability, transaction
+boundaries, streaming limits, and only the capabilities each descriptor claims.
 
 ## Related concept specifications
 

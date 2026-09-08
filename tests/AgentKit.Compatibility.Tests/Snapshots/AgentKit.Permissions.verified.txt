@@ -20,15 +20,6 @@ namespace AgentKit.Permissions
         public DenyAllSecurityAuthority(Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.DenyAllSecurityAuthority> logger) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
-    public sealed class InMemorySecurityGrantStore : AgentKit.ISecurityGrantStore
-    {
-        public InMemorySecurityGrantStore(System.TimeProvider timeProvider) { }
-        public InMemorySecurityGrantStore(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.InMemorySecurityGrantStore>? logger) { }
-        public System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<bool> RevokeAsync(AgentKit.GrantId grantId, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent, System.Threading.CancellationToken cancellationToken = default) { }
-    }
     public sealed class SecurityAuthority : AgentKit.ISecurityAuthority
     {
         public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null) { }

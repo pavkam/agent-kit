@@ -1,7 +1,7 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Permissions;
+namespace AgentKit.Permissions.InMemory;
 
 /// <summary>Provides a process-local, concurrency-safe security grant store for standalone hosts and deterministic tests.</summary>
 /// <remarks>
@@ -12,6 +12,8 @@ namespace AgentKit.Permissions;
 public sealed class InMemorySecurityGrantStore: ISecurityGrantStore
 {
     private readonly ConcurrentDictionary<GrantId, GrantState> _grants = new();
+    private readonly Dictionary<SecurityEnforcementIntentId, SecurityEnforcementIntentReceipt> _intentReceipts = [];
+    private readonly Lock _intentSyncRoot = new();
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<InMemorySecurityGrantStore> _logger;
 
@@ -152,21 +154,21 @@ public sealed class InMemorySecurityGrantStore: ISecurityGrantStore
                     activityScope.Activity.SetFailed(outcome, outcome);
                 }
             });
-            SafeLog(() => SecurityLog.GrantConsumptionCompleted(_logger, grant.RequestId, outcome));
+            SafeLog(() => InMemorySecurityGrantStoreLog.GrantConsumptionCompleted(_logger, grant.RequestId, outcome));
             SafeMetric(outcome);
             return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             SafeSetActivity(() => activityScope.Activity.SetFailed("cancelled", nameof(OperationCanceledException)));
-            SafeLog(() => SecurityLog.GrantConsumptionCancelled(_logger, grant.RequestId));
+            SafeLog(() => InMemorySecurityGrantStoreLog.GrantConsumptionCancelled(_logger, grant.RequestId));
             SafeMetric("cancelled");
             throw;
         }
         catch (Exception exception)
         {
             SafeSetActivity(() => activityScope.Activity.SetFailed("faulted", exception.GetType().Name));
-            SafeLog(() => SecurityLog.GrantConsumptionFaulted(
+            SafeLog(() => InMemorySecurityGrantStoreLog.GrantConsumptionFaulted(
                 _logger, grant.RequestId, exception.GetType().Name));
             SafeMetric("faulted");
             throw;
@@ -195,65 +197,69 @@ public sealed class InMemorySecurityGrantStore: ISecurityGrantStore
             return ValueTask.FromResult(Result(GrantConsumptionStatus.Unknown, 0, "The security grant is unknown."));
         }
 
-        lock (state.SyncRoot)
+        lock (_intentSyncRoot)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!GrantMatches(state.Grant, grant))
+            lock (state.SyncRoot)
             {
-                return ValueTask.FromResult(Result(GrantConsumptionStatus.Tampered, state.RemainingUses,
-                    "The security grant evidence does not match its authoritative record."));
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!GrantMatches(state.Grant, grant))
+                {
+                    return ValueTask.FromResult(Result(GrantConsumptionStatus.Tampered, state.RemainingUses,
+                        "The security grant evidence does not match its authoritative record."));
+                }
 
-            var effectFingerprint = SecurityEnforcementBinding.Fingerprint(enforcement, intent);
-            if (state.IntentReceipts.TryGetValue(intent.Id, out var existing))
-            {
-                return ValueTask.FromResult(existing.GrantId == grant.Id
-                    && existing.RequestId == grant.RequestId
-                    && existing.EffectFingerprint == effectFingerprint
-                    && existing.RequiredFence == intent.RequiredFence
-                    ? Result(GrantConsumptionStatus.Reconciled, state.RemainingUses,
-                        "The enforcement intent receipt was reconciled without granting another effect.", existing)
-                    : Result(GrantConsumptionStatus.Mismatch, state.RemainingUses,
-                        "The enforcement intent identity was reused with different evidence."));
-            }
+                var effectFingerprint = SecurityEnforcementBinding.Fingerprint(enforcement, intent);
+                if (_intentReceipts.TryGetValue(intent.Id, out var existing))
+                {
+                    return ValueTask.FromResult(ReceiptMatches(existing, grant, enforcement, intent, effectFingerprint)
+                        ? Result(GrantConsumptionStatus.Reconciled, state.RemainingUses,
+                            "The enforcement intent receipt was reconciled without granting another effect.", existing)
+                        : Result(GrantConsumptionStatus.Mismatch, state.RemainingUses,
+                            "The enforcement intent identity was reused with different evidence."));
+                }
 
-            if (state.Revoked || enforcement.RevocationVersion != grant.RevocationVersion)
-            {
-                return ValueTask.FromResult(Result(GrantConsumptionStatus.Revoked, state.RemainingUses,
-                    "The security grant is revoked or stale."));
-            }
+                if (state.Revoked || enforcement.RevocationVersion != grant.RevocationVersion)
+                {
+                    return ValueTask.FromResult(Result(GrantConsumptionStatus.Revoked, state.RemainingUses,
+                        "The security grant is revoked or stale."));
+                }
 
-            var now = _timeProvider.GetUtcNow();
-            if (now < grant.NotBefore || now >= grant.ExpiresAt)
-            {
-                return ValueTask.FromResult(Result(GrantConsumptionStatus.Expired, state.RemainingUses,
-                    "The security grant is outside its validity window."));
-            }
+                var now = _timeProvider.GetUtcNow();
+                cancellationToken.ThrowIfCancellationRequested();
+                if (now < grant.NotBefore || now >= grant.ExpiresAt)
+                {
+                    return ValueTask.FromResult(Result(GrantConsumptionStatus.Expired, state.RemainingUses,
+                        "The security grant is outside its validity window."));
+                }
 
-            if (!EnforcementMatches(grant, enforcement))
-            {
-                return ValueTask.FromResult(Result(GrantConsumptionStatus.Mismatch, state.RemainingUses,
-                    "The concrete effect does not match the security grant."));
-            }
+                if (!EnforcementMatches(grant, enforcement))
+                {
+                    return ValueTask.FromResult(Result(GrantConsumptionStatus.Mismatch, state.RemainingUses,
+                        "The concrete effect does not match the security grant."));
+                }
 
-            if (state.RemainingUses == 0)
-            {
-                return ValueTask.FromResult(Result(GrantConsumptionStatus.Exhausted, 0,
-                    "The security grant has no remaining uses."));
-            }
+                if (state.RemainingUses == 0)
+                {
+                    return ValueTask.FromResult(Result(GrantConsumptionStatus.Exhausted, 0,
+                        "The security grant has no remaining uses."));
+                }
 
-            var receipt = new SecurityEnforcementIntentReceipt(
-                intent.Id,
-                grant.Id,
-                grant.RequestId,
-                enforcement,
-                intent.RequiredFence,
-                effectFingerprint,
-                now);
-            state.RemainingUses--;
-            state.IntentReceipts.Add(intent.Id, receipt);
-            return ValueTask.FromResult(Result(GrantConsumptionStatus.Consumed, state.RemainingUses,
-                "The security grant and enforcement intent were consumed.", receipt));
+                var remainingUses = state.RemainingUses - 1;
+                var receipt = new SecurityEnforcementIntentReceipt(
+                    intent.Id,
+                    grant.Id,
+                    grant.RequestId,
+                    enforcement,
+                    intent.RequiredFence,
+                    effectFingerprint,
+                    now);
+                var consumed = Result(GrantConsumptionStatus.Consumed, remainingUses,
+                    "The security grant and enforcement intent were consumed.", receipt);
+                cancellationToken.ThrowIfCancellationRequested();
+                _intentReceipts.Add(intent.Id, receipt);
+                state.RemainingUses = remainingUses;
+                return ValueTask.FromResult(consumed);
+            }
         }
     }
 
@@ -286,6 +292,42 @@ public sealed class InMemorySecurityGrantStore: ISecurityGrantStore
             && grant.Effect == enforcement.Effect
             && grant.InputFingerprint == enforcement.InputFingerprint
             && grant.Resources.SequenceEqual(enforcement.Resources);
+    }
+
+    private static bool ReceiptMatches(
+        SecurityEnforcementIntentReceipt receipt,
+        SecurityGrant grant,
+        SecurityEnforcementRequest enforcement,
+        SecurityEnforcementIntent intent,
+        ContentHash effectFingerprint)
+    {
+        Debug.Assert(receipt is not null, "An authoritative intent receipt is required.");
+        Debug.Assert(grant is not null, "Presented grant evidence is required.");
+        Debug.Assert(enforcement is not null, "Presented enforcement evidence is required.");
+        Debug.Assert(intent is not null, "Presented intent evidence is required.");
+        return receipt.IntentId == intent.Id
+            && receipt.GrantId == grant.Id
+            && receipt.RequestId == grant.RequestId
+            && EnforcementEvidenceMatches(receipt.Enforcement, enforcement)
+            && receipt.RequiredFence == intent.RequiredFence
+            && receipt.EffectFingerprint == effectFingerprint;
+    }
+
+    private static bool EnforcementEvidenceMatches(
+        SecurityEnforcementRequest expected,
+        SecurityEnforcementRequest actual)
+    {
+        Debug.Assert(expected is not null, "Authoritative enforcement evidence is required.");
+        Debug.Assert(actual is not null, "Presented enforcement evidence is required.");
+        return expected.Scope == actual.Scope
+            && expected.Identity == actual.Identity
+            && expected.Authorization == actual.Authorization
+            && expected.Audience == actual.Audience
+            && expected.Kind == actual.Kind
+            && expected.Effect == actual.Effect
+            && expected.Resources.SequenceEqual(actual.Resources)
+            && expected.InputFingerprint == actual.InputFingerprint
+            && expected.RevocationVersion == actual.RevocationVersion;
     }
 
     private static bool GrantMatches(SecurityGrant expected, SecurityGrant actual)
@@ -361,7 +403,7 @@ public sealed class InMemorySecurityGrantStore: ISecurityGrantStore
         Debug.Assert(!string.IsNullOrWhiteSpace(outcome), "A bounded terminal outcome is required.");
         try
         {
-            SecurityMetrics.GrantConsumptions.Add(
+            InMemorySecurityGrantStoreMetrics.GrantConsumptions.Add(
                 1,
                 new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
         }
@@ -385,8 +427,5 @@ public sealed class InMemorySecurityGrantStore: ISecurityGrantStore
         /// <summary>Gets or sets whether future fresh intents are revoked.</summary>
         /// <value><see langword="true"/> after idempotent revocation commits.</value>
         public bool Revoked { get; set; }
-        /// <summary>Gets receipts retained for exact intent reconciliation.</summary>
-        /// <value>The authoritative per-intent receipts mutated only while holding <see cref="SyncRoot"/>.</value>
-        public Dictionary<SecurityEnforcementIntentId, SecurityEnforcementIntentReceipt> IntentReceipts { get; } = [];
     }
 }

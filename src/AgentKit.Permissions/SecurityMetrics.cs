@@ -54,12 +54,6 @@ internal static class SecurityMetrics
         unit: "s",
         description: "Duration of security-audit dispatch.");
 
-    /// <summary>Gets the counter for terminal grant-consumption outcomes.</summary>
-    internal static Counter<long> GrantConsumptions { get; } = AgentKitDiagnostics.Metrics.CreateCounter<long>(
-        AgentKitMetricNames.SecurityGrantConsumptionCount,
-        unit: "{consumption}",
-        description: "Number of terminal grant-consumption outcomes.");
-
     /// <summary>Records one bounded profile-capture outcome and any trustworthy measured duration.</summary>
     /// <param name="outcome">The defined terminal capture outcome.</param>
     /// <param name="elapsed">A nonnegative duration, or <see langword="null"/> when observation could not measure it.</param>

@@ -1,7 +1,7 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Permissions.Tests;
+namespace AgentKit.Permissions.InMemory.Tests;
 
 using System.Diagnostics.Metrics;
 
@@ -257,6 +257,26 @@ public sealed class InMemorySecurityGrantStoreTests
 
         exception.CancellationToken.ShouldBe(source.Token);
         later.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+    }
+
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenClockCancelsCaller_RollsBackUseAndIntentReceipt()
+    {
+        using var source = new CancellationTokenSource();
+        var store = new InMemorySecurityGrantStore(new CancellingTimeProvider(_now, source));
+        var grant = CreateGrant();
+        var enforcement = CreateEnforcement(grant);
+        var intent = CreateIntent();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await store.ValidateAndConsumeAsync(grant, enforcement, intent, source.Token));
+        var later = await store.ValidateAndConsumeAsync(
+            grant, enforcement, intent, TestContext.Current.CancellationToken);
+
+        exception.CancellationToken.ShouldBe(source.Token);
+        later.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+        later.RemainingUses.ShouldBe(0);
     }
 
     [Fact]
@@ -631,6 +651,17 @@ public sealed class InMemorySecurityGrantStoreTests
         }
 
         throw new InvalidOperationException("Grant-consumption metric omitted its bounded outcome.");
+    }
+
+    private sealed class CancellingTimeProvider(
+        DateTimeOffset utcNow,
+        CancellationTokenSource cancellationSource): TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow()
+        {
+            cancellationSource.Cancel();
+            return utcNow;
+        }
     }
 
     private sealed class ThrowingLogger: ILogger<InMemorySecurityGrantStore>

@@ -3,8 +3,6 @@
 
 namespace AgentKit.Tools.Plan.Tests;
 
-using AgentKit.Permissions;
-
 public sealed class SessionPlanStateStoreTests
 {
     [Fact]

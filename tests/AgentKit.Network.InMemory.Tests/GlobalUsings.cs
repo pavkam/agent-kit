@@ -9,6 +9,7 @@ global using AgentKit;
 global using AgentKit.Network.InMemory;
 global using AgentKit.Observability;
 global using AgentKit.Permissions;
+global using AgentKit.Permissions.InMemory;
 
 global using Microsoft.Extensions.DependencyInjection;
 

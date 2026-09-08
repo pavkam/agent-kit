@@ -19,6 +19,7 @@
     <ProjectReference Include="../../src/AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Artifacts.InMemory/AgentKit.Artifacts.InMemory.csproj" />
     <ProjectReference Include="../../src/AgentKit.Permissions/AgentKit.Permissions.csproj" />
+    <ProjectReference Include="../../src/AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../AgentKit.Conformance/AgentKit.Conformance.csproj" />

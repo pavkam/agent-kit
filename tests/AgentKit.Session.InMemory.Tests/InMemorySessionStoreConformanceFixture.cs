@@ -4,7 +4,6 @@
 namespace AgentKit.Session.InMemory.Tests;
 
 using AgentKit.Conformance;
-using AgentKit.Permissions;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;

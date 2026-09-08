@@ -31,9 +31,49 @@ public sealed class AgentEngineBuilderTests
     }
 
     [Fact]
+    public void Build_WhenRequiredSecurityGrantStoreWasRemoved_RejectsBeforeApplicationFactories()
+    {
+        var applicationFactoryCalls = 0;
+        var builder = CompositionTestData.RunnableBuilder();
+        _ = builder.Services.RemoveAll<ISecurityGrantStore>();
+        _ = builder.Services.AddSingleton(
+            _ =>
+            {
+                applicationFactoryCalls++;
+                return new ScopedDependency();
+            });
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(
+            static diagnostic => diagnostic.Code == "agentkit.security-grant-store.missing");
+        applicationFactoryCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Build_WhenSecurityGrantStoreIsDuplicated_RejectsInsteadOfUsingLastRegistration()
+    {
+        var storeFactoryCalls = 0;
+        var builder = CompositionTestData.RunnableBuilder();
+        _ = builder.Services.AddSingleton<ISecurityGrantStore>(
+            _ =>
+            {
+                storeFactoryCalls++;
+                throw new InvalidOperationException("Composition validation must not invoke a duplicate store factory.");
+            });
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(
+            static diagnostic => diagnostic.Code == "agentkit.security-grant-store.ambiguous");
+        storeFactoryCalls.ShouldBe(0);
+    }
+
+    [Fact]
     public void Build_WhenNoAgentIsPublished_ThrowsWithAnEmptyCatalogDiagnostic()
     {
         var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
 
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
@@ -46,6 +86,7 @@ public sealed class AgentEngineBuilderTests
     public void Build_WhenNoLoopIsRegistered_ThrowsWithAnUnresolvableLoopDiagnostic()
     {
         var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(CompositionTestData.Definition());
 
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
@@ -58,6 +99,7 @@ public sealed class AgentEngineBuilderTests
     public void Build_WhenSeveralProblemsExist_ReportsAllOfThem()
     {
         var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
 
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
 

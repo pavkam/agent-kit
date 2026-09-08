@@ -48,6 +48,15 @@ Capability-based skipping is permitted only when an implementation explicitly
 reports the capability unsupported before use. A surprise
 `NotSupportedException` is a failure.
 
+Every first-party storage contract runs one reusable suite against its explicit
+in-memory and SQLite leaves. The common suite proves identical domain outcomes,
+guards, ordering, idempotency, cancellation, concurrency, disposal, and typed
+failure behavior. Adapter-specific suites prove only declared capabilities:
+SQLite restart durability, schema migration, transaction rollback and competing
+connections; in-memory ephemerality; and distributed fencing only for a backend
+that actually supplies it. Tests use isolated temporary targets and never a
+developer database.
+
 ## Required suites
 
 The required suites mirror the lifecycle boundaries: the
@@ -69,6 +78,9 @@ behavior that every implementation must preserve.
   reentrancy, replacement bounds, short-circuiting, and failure.
 - Security request canonicalization, approval and grant binding, single-use
   consumption, expiry, revocation, and denial before protected effects.
+- Storage registration with no adapter, duplicate adapter keys, explicit target
+  validation, reopen durability, transaction-cut cancellation, and capability
+  mismatch before effects.
 - File-system, network, and process grant enforcement plus deterministic fake
   parity.
 - MCP lifecycle, capability, correlation, transport cleanup, and content.
@@ -123,6 +135,12 @@ composition, comparison, and report model. It MUST operate through public
 AgentEngine, event, session, and diagnostic contracts rather than friend access
 to runtime internals. External result stores and report exporters remain leaf
 integrations.
+
+The evaluation runtime installs no result store. A plan explicitly selects an
+in-memory, SQLite, or external leaf; in-memory and SQLite implementations run
+the same result-store conformance suite, and SQLite advertises only its proven
+local retention and transaction guarantees. Report publication remains a
+separate effect.
 
 One evaluation runner is bound through DI to exactly one built `AgentEngine`.
 `RunAsync` accepts a plan, not an arbitrary engine, and the runner MUST NOT pair

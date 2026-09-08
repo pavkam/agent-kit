@@ -3,14 +3,20 @@
 
 namespace AgentKit.Permissions;
 
-/// <summary>Registers the first-party AgentKit permission and grant-lifecycle services.</summary>
+/// <summary>Registers the first-party AgentKit security runtime without selecting persistent grant storage.</summary>
 public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
-        /// <summary>Adds the concurrency-safe process-local security grant store without replacing a host-supplied implementation.</summary>
+        /// <summary>Adds the first-party security runtime without selecting a security-grant storage backend.</summary>
+        /// <param name="configure">An optional configuration delegate applied to the validated runtime options.</param>
         /// <returns>The same service collection for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// This registration supplies policy, authority, profile, audit, identifier, and clock services. It deliberately
+        /// does not register <see cref="ISecurityGrantStore"/>. The host must explicitly select exactly one store adapter
+        /// before resolving an authority that can issue grants; missing storage fails composition before protected work.
+        /// </remarks>
         public IServiceCollection AddAgentPermissions(Action<AgentPermissionOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
@@ -32,7 +38,6 @@ public static class ServiceExtensions
             }
 
             services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<ISecurityGrantStore, InMemorySecurityGrantStore>();
             services.TryAddSingleton<IIdentifierGenerator<GrantId>, GuidGrantIdGenerator>();
             services.TryAddSingleton<IIdentifierGenerator<SecurityRequestId>, GuidSecurityRequestIdGenerator>();
             services.TryAddSingleton<ISecurityAuthority, SecurityAuthority>();

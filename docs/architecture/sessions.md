@@ -774,7 +774,10 @@ and consistency boundaries.
 
 Both the in-memory and SQLite stores run through the same session-store
 conformance suite for ordering, idempotency, optimistic concurrency, branching,
-pagination, cancellation, and disposal.
+pagination, cancellation, and disposal. SQLite additionally proves committed
+state survives close and reopen. It advertises durable local transactions, not
+distributed lane fencing or atomicity with a security, budget, artifact, or
+provider store; profiles requiring those guarantees select a capable backend.
 
 ## Related concept specifications
 

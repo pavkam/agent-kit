@@ -539,8 +539,12 @@ deny-unless-authorized delegation policy, goal-event dispatcher, and built-in
 join-strategy selector. The policy pipeline evaluates only the additive policies
 selected by the captured profile in deterministic order. The documented
 session-record goal store and local dispatcher are replaceable defaults; they
-create no separate hidden history. Explicit replacement methods replace singular
-axes.
+create no separate hidden history. The session-record store is a behavioral
+projection over the explicitly selected session contracts, not a concrete
+storage medium or persistence target; it therefore does not imply a separate
+`AgentKit.Goals.Sqlite` database. An independently persistent goal-store
+implementation remains an explicit leaf and must follow the common in-memory /
+SQLite adapter policy. Explicit replacement methods replace singular axes.
 
 Goal stores, target providers, dispatchers, policies, join strategies, and event
 sinks are additive. Stores, dispatchers, profiles, and join strategies use typed

@@ -33,8 +33,9 @@ code being changed and call out any unresolved conflict.
   `AgentKit.Session`, `AgentKit.Permissions`, `AgentKit.Providers`, and
   `AgentKit.Tools`.
 - Tool features use `AgentKit.Tools.<ToolName>`. Provider integrations use
-  `AgentKit.Providers.<ProviderName>`. Session stores use
-  `AgentKit.Session.<ProviderName>`.
+  `AgentKit.Providers.<ProviderName>`. Storage adapters use
+  `AgentKit.<Owner>.InMemory`, `AgentKit.<Owner>.Sqlite`, or
+  `AgentKit.<Owner>.<ProviderName>`.
 - Concrete providers, storage, transports, filesystem implementations, and
   hosting integrations are leaves; foundation and runtime packages never
   reference them.
@@ -118,6 +119,9 @@ The architecture index defines document authority and change rules.
   provide sensible documented defaults through replaceable registrations;
   credentials, endpoints, persistence targets, and authority are external facts
   and are never fabricated as defaults.
+- Runtime packages register storage contracts, catalogs, selectors, and
+  coordinators but no concrete store. Applications select every store adapter
+  explicitly; registration order never chooses a store or persistence target.
 - Provider operations bind independently keyed, versioned endpoint/service-
   surface and credential/account profiles to one operation/model registration.
   Capture those bindings before an attempt; never pair providers or accounts
@@ -342,11 +346,27 @@ The architecture index defines document authority and change rules.
 
 ### Memory and storage
 
+- Authoritative mutable state that outlives one operation lives behind a narrow
+  provider-neutral storage contract, even when the first implementation is
+  in-memory.
 - Distinguish conversation history, working context, durable memory, document
   storage, vector indexing, and retrieval. Do not hide them behind one
   all-purpose memory interface.
 - Storage contracts state ownership, consistency, concurrency, pagination,
-  deletion, and failure semantics.
+  transactions, durability, deletion, and failure semantics. Capability claims
+  describe guarantees the selected adapter actually provides.
+- Concrete storage lives in leaf packages. Each first-party persistent store
+  family provides explicit `.InMemory` and `.Sqlite` adapters where SQLite can
+  satisfy the contract, and both run the same reusable conformance suite for
+  their shared capabilities. In-memory storage is explicitly ephemeral; SQLite
+  is durable local storage and does not imply distributed leases, fencing, or
+  cross-store atomicity.
+- Process-local caches, immutable snapshots, and synchronization gates are not
+  persistence adapters. They must not be presented as durable stores, but need
+  not be externalized merely because they retain transient state.
+- Behavioral projections may reuse an explicitly selected store abstraction and
+  its transaction boundary. Do not create a parallel SQLite database for
+  session-backed input, plan, goal, or settlement state.
 - Retrieval is a policy-controlled context source. Treat retrieved content as
   untrusted data, enforce context budgets, and record provenance.
 
@@ -440,7 +460,9 @@ The architecture index defines document authority and change rules.
   project under `tests/`, following the Sharp Vision test-project setup.
 - Name tests `MethodName_WhenThis_ThatIsExpected`.
 - Write reusable conformance suites for every swappable contract, then run the
-  same suite against the default implementation and each adapter.
+  same suite against every adapter. Storage suites must cover the common
+  contract for both `.InMemory` and `.Sqlite`, with separate capability tests
+  for guarantees only one adapter advertises.
 - Unit tests do not call live model, embedding, MCP, or storage services. Use
   deterministic fakes, loopback HTTP handlers, recorded protocol fixtures, and
   controllable clocks.

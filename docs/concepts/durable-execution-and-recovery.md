@@ -22,6 +22,14 @@ orchestrator. The core MUST NOT depend on a specific backend SDK.
 Durability is a capability. In-memory execution MUST NOT imply crash recovery,
 and a local per-session lock MUST NOT imply distributed ownership.
 
+The durability runtime MUST NOT install a concrete journal, checkpoint, lease,
+or workflow backend. A SQLite leaf may provide durable local journal/checkpoint
+storage where its descriptor proves the required transactions; it cannot stand
+in for a distributed workflow owner or fencing service. An in-memory journal and
+SQLite journal run the same common store conformance suite, while only the
+SQLite adapter may claim restart persistence and only a separately capable
+backend may claim distributed ownership.
+
 ## Recoverable operation model
 
 Each durable operation MUST have:
@@ -118,6 +126,19 @@ expiration, renewal, owner ID, and a monotonically increasing fencing token. The
 lease service is authoritative for expiry; worker wall clocks cannot extend
 ownership. Every durable write verifies the current token.
 
+For grant consumption, that current token is the required fence for an immediate
+action performed under the acquired owner, including durable writes and renewal.
+Before this worker acquires a generation, it does not supply a current token it
+does not hold. Acquisition atomically seeks a new generation for either first
+ownership or takeover; lease-store expiry/CAS and reconciliation rules decide
+whether takeover is safe, and a stale prior fence never authorizes a new effect.
+An authorized read-only evidence lookup is unfenced only when its selected
+access contract does not require existing ownership. The selected effect
+contract decides whether existing ownership is required and MUST fail closed if
+a required current fence is missing or differs. In every case the effecting
+adapter still requires its exact captured grant, audience, canonical resource
+and fingerprint, fresh consumption receipt, and required audit.
+
 A storage fence does not cancel an external effect. Takeover MUST require
 receiver fencing, idempotency, or reconciliation before another invocation;
 otherwise the operation remains unknown and requires action. Session, journal,
@@ -168,6 +189,11 @@ arbitrary external effect executed exactly once.
   was durably staged remains an unknown-effect case and follows reconciliation
   or idempotency policy.
 - A stale fenced worker cannot append after lease takeover.
+- A durable write or renewal rejects an absent or stale required fence. An
+  authorized evidence read is unfenced only when its selected contract does not
+  require ownership; acquisition atomically seeks a new generation without
+  inventing one this worker has not acquired, while retaining grant, receipt,
+  and audit checks.
 - Duplicate wake signals produce one drain of durable admitted input.
 - Replay with changed operation schema stops or migrates explicitly.
 - A non-idempotent unknown-outcome call requires reconciliation.
@@ -179,6 +205,10 @@ arbitrary external effect executed exactly once.
 - Attaching an open operation performs no effect until an explicit drive.
 - Every persisted state leaf advances, waits, terminates, or faults; no leaf can
   spin without a durable transition.
+- Selecting durability without explicit compatible journal, lease, and backend
+  adapters fails composition without creating process-local substitutes.
+- A SQLite journal retains committed total state through reopen but does not
+  authorize a second worker or prove an external effect stopped.
 
 ## Related specifications
 

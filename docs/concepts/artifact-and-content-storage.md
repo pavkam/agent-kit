@@ -184,6 +184,14 @@ stable locator.
 Externally owned URIs remain references to external content. AgentKit MUST NOT
 claim durability, immutability, or deletion of content it does not own.
 
+The artifact runtime MUST NOT register a concrete store. Hosts explicitly select
+an `AgentKit.Artifacts.InMemory`, `AgentKit.Artifacts.Sqlite`, or other backend
+leaf and configure its persistence target. In-memory and SQLite adapters run the
+same prepare/finalize/abort/read/delete conformance suite. SQLite may claim
+durable local commits only after close/reopen tests pass; it does not make
+session-reference publication part of the same transaction or imply
+distributed/object-store capabilities.
+
 ## Failure behavior
 
 Unsupported media, size overflow, hash mismatch, classification conflict,
@@ -203,6 +211,10 @@ raw sensitive content is not copied into exceptions or telemetry.
   than invisible permanent storage.
 - Deletion honors retention and legal hold and cannot replace old bytes under a
   stale reference.
+- A selected SQLite store retains finalized bytes and authoritative metadata
+  after reopen, while an in-memory store is explicitly process-local.
+- Missing artifact storage fails profile readiness without creating a hidden
+  in-memory backend or persistence target.
 
 ## Related specifications
 

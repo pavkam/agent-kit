@@ -65,6 +65,54 @@ owning spec.
 
 ## Latest integration evidence
 
+The Permissions storage checkpoint passed formatting, lint, Release build, and
+all 4,949 tests in an isolated checkout over `05fdae4`.
+
+The Permissions storage checkpoint separates `InMemorySecurityGrantStore` into
+`AgentKit.Permissions.InMemory`, with its own test project and explicit
+`AddInMemorySecurityGrantStore()` registration. `AgentKit.Permissions` now
+consumes `ISecurityGrantStore` without registering a concrete backend or
+referencing a storage leaf. Application and test compositions select storage
+explicitly; the grant-store conformance fixture uses the public leaf
+registration. Grant consumption keeps the existing shared observation names and
+event IDs.
+
+Facade composition rejects missing or multiple unkeyed grant stores from its
+captured service descriptors before building the provider or invoking any
+application factory. Keyed-only stores do not satisfy this singular contract; a
+null DI key follows actual unkeyed DI semantics. This adds required-store
+cardinality validation while complete runnable graph validation remains open.
+
+One enforcement intent can consume one exact grant only. A store-wide atomic
+receipt index rejects reuse across grants, including concurrent callers, while
+retaining the losing grant's capacity. Historical reconciliation validates the
+presented grant and complete enforcement evidence. Cancellation observed after
+the injected clock leaves both the use and receipt unchanged. Shared conformance
+now covers the cross-grant cases for the upcoming SQLite adapter as well.
+
+This intentionally moves the public implementation type and its namespace. Hosts
+add the new package and registration, or supply another `ISecurityGrantStore`.
+The old package contains no forwarding type or dependency on the new leaf.
+Public API snapshots record the removed core type and the new adapter surface.
+
+The storage policy now applies across the architecture and linked concepts:
+concrete stores live in explicit `.InMemory`, `.Sqlite`, or other backend
+leaves. Shared conformance proves common behavior; capability-specific checks
+must prove restart durability and transaction guarantees. Immutable catalogs,
+invocation caches, and local gates remain runtime mechanics. Session-backed
+plan, input, goal, and settlement projections reuse the selected session
+abstraction and its transaction boundary.
+
+Enforcement-fence documentation now binds the fence to ownership required by the
+selected action. An absent fence does not describe storage locality or weaken
+grant, receipt, or audit enforcement. Protected journal ingress remains
+unimplemented; this clarification does not claim otherwise.
+
+SQLite grant storage is the next implementation checkpoint. Budget ledger
+extraction and SQLite adapters for the other required storage families remain
+open; the architecture policy does not imply those implementations already
+exist.
+
 The durability payload checkpoint passed complete formatting, lint, Release
 build, and test gates in an isolated checkout over `43501c0`. Its additive API
 snapshot change exposes the source-authored equality and hash members that now
@@ -101,16 +149,6 @@ registration order remain intact. No dependency or test-runner workaround was
 needed: the unchanged standalone Permissions test project builds and runs from a
 fresh archive. Full captured-authority enforcement at every protected boundary,
 required-audit settlement, and durable recovery remain open.
-
-The next storage-boundary work follows the explicit project requirement that
-runtime packages consume storage abstractions and concrete implementations live
-in separate adapter packages. Permissions in-memory persistence must move into
-`AgentKit.Permissions.InMemory`, with a SQLite adapter and shared contract
-conformance. The same separation and SQLite coverage apply across persistent
-framework storage; storage selection is explicit in application DI. Transient
-invocation caches and local synchronization are distinct from persistent stores.
-The current Permissions package still bundles its in-memory grant store; this
-security repair preserves its behavior before the required extraction.
 
 The protected session-coordinator and lane-ownership checkpoint passed complete
 formatting, lint, Release build, and test gates in an isolated checkout over
@@ -781,7 +819,7 @@ not make that component a mandatory dependency of every engine.
 | Project structure             | Missing owners, declared graph activation, unchecked leaf protocol ownership and required project/test topology; project and pure component graph checks established   |
 | Composition and configuration | Full closed runnable graph, catalog publication/reload, keyed selection, scope ownership, readiness                                                                    |
 | Agent runtime                 | Explicit state transitions, waiter cancellation, recovery identity, settlement outcomes                                                                                |
-| Budgets                       | Replaceable ledger/profile/policy/event contracts, consumer integration, durable accounting and full conformance                                                       |
+| Budgets                       | Explicit ledger abstraction and InMemory/Sqlite leaves; profile/policy/event contracts, consumer integration and full conformance                                      |
 | Messages and history          | Immutable/loss-aware values, non-elevation, correlation and shared round-trip conformance                                                                              |
 | Input and output              | Admission, durable promotion, lane routing, fan-out, final publication and channel contracts                                                                           |
 | Structured output             | Complete candidate extraction, validation, repair decisions and conversion conformance                                                                                 |
@@ -790,7 +828,7 @@ not make that component a mandatory dependency of every engine.
 | Identity                      | Verified normalization/derivation baseline; downstream revalidation, ingress integration and reusable conformance                                                      |
 | Model and embedding providers | All advertised operation/capability mappings, endpoint/account bindings, terminal/error/usage semantics                                                                |
 | Tools                         | Authoritative terminal records, rejection projections, scheduling, retries and focused feature contracts                                                               |
-| Permissions and human control | Policy algebra, grants, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap                                                    |
+| Permissions and human control | SQLite grant storage, policy algebra, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap                                      |
 | Sessions                      | Lifecycle after accepted state, complete lane coordination, branch fencing, retention/export/import; missing SQLite backend                                            |
 | Durable execution             | Missing runtime and explicit backend; journals, codecs, leases, checkpoints, evidence and recovery                                                                     |
 | Memory and retrieval          | Missing runtime/storage ownership; documents/vectors, retrieval provenance, tombstones and purge                                                                       |

@@ -196,7 +196,7 @@ public sealed class DefaultSecurityAuthoritySelectorTests
             TestContext.Current.CancellationToken);
 
         _ = result.ShouldBeOfType<SecurityAuthoritySelectionUnavailable>();
-        _ = provider.GetServices<ISecurityAuthority>().ShouldHaveSingleItem();
+        services.Count(static descriptor => descriptor.ServiceType == typeof(ISecurityAuthority)).ShouldBe(1);
     }
 
     [Fact]

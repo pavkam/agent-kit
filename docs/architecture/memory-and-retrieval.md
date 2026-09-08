@@ -699,11 +699,15 @@ all three while the runtime lease captures the matching catalog version.
 Supplying only part of a triple is a build error; no global/default semantic
 operation is discovered at runtime.
 
-Backends use leaf packages such as `AgentKit.Memory.Sqlite` or
-`AgentKit.Memory.Qdrant` and register each supported state operation
-independently. `AddAgentMemory` installs no hidden durable store or vector
-service. Runtime components receive typed catalogs/selectors, never the service
-provider as a locator.
+Backends use leaf packages such as `AgentKit.Memory.InMemory`,
+`AgentKit.Memory.Sqlite`, or `AgentKit.Memory.Qdrant` and register each
+supported state operation independently. The in-memory and SQLite leaves run the
+same conformance suites for their shared memory and document contracts. SQLite
+does not advertise vector search merely because it stores vector bytes; a
+verified index implementation or extension must satisfy the vector capability
+suite. `AddAgentMemory` installs no hidden durable store or vector service.
+Runtime components receive typed catalogs/selectors, never the service provider
+as a locator.
 
 Catalogs, selectors, policies proven thread-safe, and store clients may be
 singletons. Mutable proposal, retrieval, ranking, and budget state is run- or
@@ -737,6 +741,12 @@ policy results before I/O. Cross-agent, tenant, principal, or namespace access;
 missing or stale grants; untrusted instructions; and unavailable exposure audit
 fail closed. The pipeline never silently drops provenance, stringifies
 unsupported media, mixes vector spaces, or treats provider output as authority.
+
+Every selected store has an explicit persistence target and descriptor.
+In-memory storage is process-local. SQLite may advertise durable local atomic
+source publication, tombstones, and restart recovery only for operations its
+tests prove; it does not imply distributed indexing, remote replication, or an
+atomic transaction with artifact or session storage.
 
 ## Durable memory
 

@@ -40,6 +40,14 @@ as verified; `Lazy<T>`, `Func<T>`, or nested scopes do not excuse a declared
 reverse edge. Tests cannot prove what arbitrary executable callbacks will do;
 review and conformance enforce their declared boundaries.
 
+Storage conformance is adapter-neutral. Every `.InMemory` and `.Sqlite` leaf for
+one contract runs the same common suite through its public DI registration.
+SQLite-specific cases use an isolated temporary target and cover close/reopen,
+schema migration, concurrent connections, rollback at transaction cuts, and
+declared durability. In-memory cases prove ephemerality. Neither suite may skip
+a common operation or infer distributed fencing, cross-store transactions, or
+external-effect atomicity from local database durability.
+
 Regression fixtures cover the dangerous seams explicitly: session/security
 stores never call session coordination, output processors never call provider
 execution, compaction summary generators never call context assembly, artifact
@@ -345,6 +353,13 @@ are additive and keyed. Identical repeated registration is idempotent, while
 conflicting key reuse fails startup rather than choosing the last registration.
 Deterministic built-ins have documented keys and can be replaced deliberately
 without replacing unrelated evaluators.
+
+Evaluation result persistence uses explicit `AgentKit.Evaluation.InMemory`,
+`AgentKit.Evaluation.Sqlite`, or external store leaves. Both first-party leaves
+run the same result-store conformance suite; SQLite may claim durable local
+result retention only after reopen and migration tests pass. Exporters remain
+separate effects and are never inferred to share a transaction with the result
+store.
 
 AgentKit.Conformance is a non-packable test library and has no production DI
 registration. Each implementation test project supplies its fixture through the

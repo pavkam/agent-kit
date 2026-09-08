@@ -72,6 +72,7 @@ internal sealed record ComponentRegistrationSnapshot
             ComponentContractReference.Unkeyed<IAgentDefinitionCatalog>(),
             ComponentContractReference.Unkeyed<IAgentRunProfilePublicationReader>(),
             ComponentContractReference.Unkeyed<ISecurityProfileSelector>(),
+            ComponentContractReference.Unkeyed<ISecurityGrantStore>(),
             ComponentContractReference.Unkeyed<TimeProvider>(),
             ComponentContractReference.Unkeyed<IIdentifierGenerator<RunId>>(),
             ComponentContractReference.Unkeyed<IIdentifierGenerator<OperationId>>(),

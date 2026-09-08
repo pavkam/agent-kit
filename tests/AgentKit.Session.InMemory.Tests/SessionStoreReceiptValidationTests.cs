@@ -3,8 +3,6 @@
 
 namespace AgentKit.Session.InMemory.Tests;
 
-using AgentKit.Permissions;
-
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 

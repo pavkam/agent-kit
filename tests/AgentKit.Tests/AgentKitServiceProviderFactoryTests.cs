@@ -261,6 +261,28 @@ public sealed class AgentKitServiceProviderFactoryTests
     }
 
     [Fact]
+    public void CreateServiceProvider_WhenFacadeGrantStoreIsMissing_RejectsBeforeApplicationFactories()
+    {
+        var applicationFactoryCalls = 0;
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+        _ = services.AddSingleton<ILeaf>(
+            _ =>
+            {
+                applicationFactoryCalls++;
+                return new Leaf();
+            });
+        var factory = new AgentKitServiceProviderFactory();
+
+        var exception = Should.Throw<AgentCompositionException>(() =>
+            factory.CreateServiceProvider(factory.CreateBuilder(services)));
+
+        exception.Diagnostics.ShouldContain(
+            static diagnostic => diagnostic.Code == "agentkit.security-grant-store.missing");
+        applicationFactoryCalls.ShouldBe(0);
+    }
+
+    [Fact]
     public void CreateServiceProvider_WhenMicrosoftDiBuildFails_EmitsBoundedFailureDiagnostics()
     {
         using var parent = new Activity("provider-failure-parent").Start();

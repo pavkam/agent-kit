@@ -7,6 +7,7 @@ global using AgentKit;
 global using AgentKit.LanguageServices.Scripted;
 global using AgentKit.Observability;
 global using AgentKit.Permissions;
+global using AgentKit.Permissions.InMemory;
 
 global using Microsoft.Extensions.DependencyInjection;
 global using Microsoft.Extensions.Logging.Abstractions;

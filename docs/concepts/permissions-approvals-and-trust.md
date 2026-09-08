@@ -109,6 +109,18 @@ shared transaction. A consumed use with no terminal record is unknown, not proof
 of success or permission to retry. Expiry or revocation stops future use but
 does not rewrite completed effects.
 
+A non-null required fence is the exact existing distributed ownership generation
+for the immediate protected action. It is required for an action whose selected
+effect contract operates under an acquired owner, and a missing or mismatched
+fence fails closed before that action. An authorized read whose selected access
+contract does not require ownership, or lease acquisition that atomically seeks
+a new generation, need not supply a generation this worker has not acquired.
+This applies to both first acquisition and takeover; lease-store expiry/CAS and
+reconciliation rules still decide takeover, and a stale prior fence never starts
+a new effect. An absent fence does not claim that backing storage or the effect
+is local, and it does not relax the exact grant, audience, canonical resource,
+fingerprint, receipt, or required-audit requirements.
+
 Only the effecting boundary consumes the use. An orchestrating coordinator may
 validate and forward it; it MUST NOT consume it a second time. Each separate
 lower-boundary effect receives a distinct grant.
@@ -118,6 +130,16 @@ The authority's own persistence and audit infrastructure follow the
 They MUST NOT recursively authorize the storage of their own grant or audit
 decision. The host supplies fixed, bounded infrastructure capabilities that
 ordinary requests cannot select or reuse. Bootstrap failure fails closed.
+
+Security runtime registration MUST NOT install an in-memory grant, approval,
+decision, or audit-outbox store. The host explicitly selects a
+`AgentKit.Permissions.InMemory`, `AgentKit.Permissions.Sqlite`, or other leaf
+and supplies its fixed persistence target through trusted bootstrap
+configuration. In-memory selection is ephemeral evidence and cannot satisfy a
+durable deferral, crash-safe grant, or required durable-audit policy. A SQLite
+selection claims only the transactions and concurrency its adapter descriptor
+and shared conformance results prove; it does not make the external protected
+effect part of the database transaction.
 
 Every authorization context captures one immutable scope: typed agent, optional
 session, and operation correlation. Requests, approvals, grants, caches, and
@@ -236,11 +258,23 @@ or best-effort delivery policy and can never convert denial into allow.
 - A provider-egress grant cannot read a credential source, and a credential-read
   grant cannot authorize network send.
 - Two concurrent operations cannot consume one single-use grant.
+- A protected write under a lease rejects an absent or stale fence. An
+  authorized read whose selected contract does not require ownership, and an
+  acquisition that atomically seeks a new generation, do not invent a fence this
+  worker has not acquired and still validate their exact grant and receipt.
 - Human-edited input returns through validation and policy.
 - A headless host denies or defers instead of waiting forever.
 - Approval resolution cannot recurse on its own unresolved approval.
 - A hook cannot change a denial into an allow.
 - Sandbox absence fails closed and does not silently run unsandboxed.
+- Registering `AgentKit.Permissions` without an explicit security-store adapter
+  fails readiness instead of creating process-local grant state.
+- The in-memory and SQLite grant stores pass the same registration, revocation,
+  exact-consumption, idempotency, and reconciliation suite; only SQLite may
+  advertise durable local commits after its restart tests pass.
+- A crash after SQLite commits a consumption receipt but before the protected
+  effect is recorded remains unknown and never refunds or silently reuses the
+  grant.
 
 ## Related specifications
 

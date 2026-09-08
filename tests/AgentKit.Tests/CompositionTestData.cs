@@ -71,9 +71,14 @@ internal static class CompositionTestData
     public static AgentRunOptions RunOptions(int? maxTurns = null, TimeSpan? attemptTimeout = null) =>
         new(SessionId, BranchId, Identity(), maxTurns, attemptTimeout);
 
+    public static void AddRequiredSecurityGrantStore(IServiceCollection services) =>
+        services.TryAddSingleton<ISecurityGrantStore>(static _ =>
+            throw new InvalidOperationException("The reduced facade fixture must not activate security grant storage."));
+
     public static void AddRunProfiles(IServiceCollection services, params AgentDefinition[] definitions)
     {
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
+        AddRequiredSecurityGrantStore(services);
         foreach (var definition in definitions)
         {
             _ = services.AddAgentRunProfilePublication(RunProfile(definition));

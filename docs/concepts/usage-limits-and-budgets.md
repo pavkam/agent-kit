@@ -153,6 +153,13 @@ the settled run's budget. Late corrections retain the original reservation's
 identity and accounting history; they do not authorize new effects. The scope
 creator owns its lifetime; consumers borrow the capability for one invocation.
 
+The budget runtime MUST NOT hide an in-memory reservation ledger. Hosts select
+an `AgentKit.Budgets.InMemory`, `AgentKit.Budgets.Sqlite`, or other ledger leaf
+explicitly. The in-memory and SQLite adapters run the same atomic reservation,
+settlement, correction, and idempotency conformance suite. Only a restart-tested
+SQLite adapter may advertise durable local accounting, and neither local adapter
+may advertise distributed fencing without separate evidence.
+
 ## Acceptance scenarios
 
 - Concurrent request reservations cannot oversubscribe one remaining slot.
@@ -173,6 +180,10 @@ creator owns its lifetime; consumers borrow the capability for one invocation.
 - After-run maintenance cannot obtain fresh capacity from a settled causal run.
 - A capability with a different tenant, principal, operation, or active run is
   rejected before a reservation or effect.
+- Registering the budget runtime without a ledger fails readiness instead of
+  creating process-local capacity state.
+- A committed SQLite reservation survives restart; an explicitly in-memory
+  reservation is reported as process-local and never used for durable recovery.
 
 ## Related specifications
 
