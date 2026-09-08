@@ -251,19 +251,20 @@ public sealed partial class SandboxedFileSystem
             _ => throw new UnreachableException(),
         };
 
-        var result = await _grantStore.ValidateAndConsumeAsync(
+        var enforcement = FileSystemEnforcementReceipt.Create(
             entry.Grant,
-            new SecurityEnforcementRequest(
-                entry.Grant.Scope,
-                entry.Grant.Identity,
-                SecurityAudience,
-                SecurityOperationKind.FileWrite,
-                effect,
-                resources,
-                fingerprint,
-                entry.Grant.RevocationVersion),
-            cancellationToken).ConfigureAwait(false);
-        return result.Status == GrantConsumptionStatus.Consumed ? null : result.SafeMessage;
+            SecurityAudience,
+            SecurityOperationKind.FileWrite,
+            effect,
+            resources,
+            fingerprint);
+        var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
+        var result = await _grantStore.ValidateAndConsumeAsync(
+            entry.Grant, enforcement, enforcementIntent, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return FileSystemEnforcementReceipt.IsFreshExact(result, entry.Grant, enforcement, enforcementIntent)
+            ? null
+            : FileSystemEnforcementReceipt.DenialMessage(result);
     }
 
     private async ValueTask<(PreparedPatchEntry? Item, string? Failure)> PreparePatchEntryAsync(

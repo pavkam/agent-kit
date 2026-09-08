@@ -22,21 +22,20 @@ public sealed partial class SandboxedFileSystem
         ArgumentNullException.ThrowIfNull(request.Grant);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+        var enforcement = FileSystemEnforcementReceipt.Create(
             request.Grant,
-            new SecurityEnforcementRequest(
-                request.Grant.Scope,
-                request.Grant.Identity,
-                SecurityAudience,
-                SecurityOperationKind.FileRead,
-                SecurityEffect.Observe,
-                [FileSecurityBinding.Resource(request.Path)],
-                FileSecurityBinding.SnapshotFingerprint(request.Path, request.MaximumBytes),
-                request.Grant.RevocationVersion),
-            cancellationToken).ConfigureAwait(false);
-        if (grantResult.Status != GrantConsumptionStatus.Consumed)
+            SecurityAudience,
+            SecurityOperationKind.FileRead,
+            SecurityEffect.Observe,
+            [FileSecurityBinding.Resource(request.Path)],
+            FileSecurityBinding.SnapshotFingerprint(request.Path, request.MaximumBytes));
+        var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
+        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            request.Grant, enforcement, enforcementIntent, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, enforcementIntent))
         {
-            return SnapshotFailure(FileSnapshotStatus.Denied, grantResult.SafeMessage);
+            return SnapshotFailure(FileSnapshotStatus.Denied, FileSystemEnforcementReceipt.DenialMessage(grantResult));
         }
 
         if (request.MaximumBytes > _maximumReadBytes)
@@ -105,22 +104,21 @@ public sealed partial class SandboxedFileSystem
 
         using (await AcquireMutationLockAsync(request.Path.Value, cancellationToken).ConfigureAwait(false))
         {
-            var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            var enforcement = FileSystemEnforcementReceipt.Create(
                 request.Grant,
-                new SecurityEnforcementRequest(
-                    request.Grant.Scope,
-                    request.Grant.Identity,
-                    SecurityAudience,
-                    SecurityOperationKind.FileWrite,
-                    SecurityEffect.Replace,
-                    FileSecurityBinding.AtomicReplaceResources(request.Id, request.Path),
-                    FileSecurityBinding.AtomicReplaceFingerprint(
-                        request.Id, request.Path, request.ExpectedContentFingerprint, request.Content),
-                    request.Grant.RevocationVersion),
-                cancellationToken).ConfigureAwait(false);
-            if (grantResult.Status != GrantConsumptionStatus.Consumed)
+                SecurityAudience,
+                SecurityOperationKind.FileWrite,
+                SecurityEffect.Replace,
+                FileSecurityBinding.AtomicReplaceResources(request.Id, request.Path),
+                FileSecurityBinding.AtomicReplaceFingerprint(
+                    request.Id, request.Path, request.ExpectedContentFingerprint, request.Content));
+            var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
+            var grantResult = await _grantStore.ValidateAndConsumeAsync(
+                request.Grant, enforcement, enforcementIntent, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, enforcementIntent))
             {
-                return ReplaceFailure(AtomicFileReplaceStatus.Denied, grantResult.SafeMessage);
+                return ReplaceFailure(AtomicFileReplaceStatus.Denied, FileSystemEnforcementReceipt.DenialMessage(grantResult));
             }
 
             if (!TryOpenParentDirectory(

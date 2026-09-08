@@ -5,6 +5,7 @@ namespace AgentKit.FileSystem;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 /// <summary>Dependency-injection registration for the sandboxed file system.</summary>
 public static class ServiceExtensions
@@ -57,7 +58,13 @@ public static class ServiceExtensions
                 _ = optionsBuilder.Configure(configure);
             }
 
-            services.TryAddSingleton<SandboxedFileSystem>();
+            services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
+            services.TryAddSingleton<SandboxedFileSystem>(static provider => new(
+                provider.GetRequiredService<IOptions<SandboxedFileSystemOptions>>(),
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetService<ILogger<SandboxedFileSystem>>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
             services.TryAddSingleton<IFileSystem>(static provider =>
                 provider.GetRequiredService<SandboxedFileSystem>());
             services.TryAddSingleton(TimeProvider.System);

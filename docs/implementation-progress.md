@@ -65,13 +65,33 @@ owning spec.
 
 ## Latest integration evidence
 
-The process-enforcement checkpoint passed `make format`, `make lint`, and
-`make test` in an isolated checkout containing the verified network checkpoint.
-All 4,455 tests passed without skips; the Release build reported zero warnings
-or errors. The initial run over `2e4e164` passed all 4,426 behavioral and
-unchanged-API tests, with only two expected API snapshot failures. Those
-additive constructor changes were reviewed before final integration. Direct
-null-intent-generator checks cover both new process constructor overloads.
+The filesystem-enforcement checkpoint passed `make format`, `make lint`, and
+`make test` in an isolated checkout containing the verified network and process
+checkpoints. All 4,464 tests passed without skips; the Release build reported
+zero warnings or errors. The initial run exposed one expected API comparison and
+two read/write end-to-end fixtures that still used legacy grant consumption. The
+fixture receipts and additive constructor snapshot were reviewed before the
+final run, which includes direct validation of the new intent-generator
+argument.
+
+All eight existing sandboxed filesystem enforcement sites now generate a fresh
+typed intent, preserve captured authorization, require an exact freshly consumed
+receipt, and recheck cancellation before effects. Reconciled, unsupported,
+missing, or mismatched receipts cannot start filesystem work. Read and write
+integration uses real captured in-memory grants. Existing write dispositions,
+parent-directory behavior, patch checks, and public constructor compatibility
+remain covered. Receipt retention is atomic; persistence depends on the selected
+grant store. Required audit coverage and the remaining filesystem architecture
+requirements stay open.
+
+The preceding process-enforcement checkpoint passed `make format`, `make lint`,
+and `make test` in an isolated checkout containing the verified network
+checkpoint. All 4,455 tests passed without skips; the Release build reported
+zero warnings or errors. The initial run over `2e4e164` passed all 4,426
+behavioral and unchanged-API tests, with only two expected API snapshot
+failures. Those additive constructor changes were reviewed before final
+integration. Direct null-intent-generator checks cover both new process
+constructor overloads.
 
 The operating-system and scripted process runners now require a freshly consumed
 grant with an exact enforcement-intent receipt before starting a process. They

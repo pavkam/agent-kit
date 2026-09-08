@@ -86,6 +86,28 @@ internal static class TestFactory
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed by test store."));
 
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+            SecurityGrant grant,
+            SecurityEnforcementRequest enforcement,
+            SecurityEnforcementIntent intent,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var receipt = new SecurityEnforcementIntentReceipt(
+                intent.Id,
+                grant.Id,
+                grant.RequestId,
+                enforcement,
+                intent.RequiredFence,
+                SecurityEnforcementBinding.Fingerprint(enforcement, intent),
+                DateTimeOffset.UnixEpoch);
+            return ValueTask.FromResult(new GrantConsumptionResult(
+                GrantConsumptionStatus.Consumed,
+                0,
+                "Consumed by test store.",
+                receipt));
+        }
+
         public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
     }
 }

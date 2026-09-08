@@ -68,6 +68,36 @@ public sealed class ServiceExtensionsTests
         provider.GetServices<IFileSystem>().Count().ShouldBe(1);
     }
 
+    [Fact]
+    public async Task AddSandboxedFileSystem_WhenIntentGeneratorIsHostSupplied_UsesTheReplacement()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "agentkit-fs-di-" + Guid.NewGuid().ToString("N"));
+        _ = Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "source.txt"), "source", TestContext.Current.CancellationToken);
+            var expectedId = new SecurityEnforcementIntentId(
+                Guid.Parse("82000000-0000-0000-0000-000000000008"));
+            var store = new TestSecurity.RecordingGrantStore();
+            var services = new ServiceCollection();
+            _ = services.AddSingleton<ISecurityGrantStore>(store);
+            _ = services.AddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>>(
+                new SequenceSecurityEnforcementIntentIdGenerator(expectedId.Value));
+            _ = services.AddSandboxedFileSystem(root);
+            using var provider = services.BuildServiceProvider();
+
+            _ = await provider.GetRequiredService<IFileSystem>().ReadAsync(
+                new FileReadRequest(new FileSystemPath("source.txt"), TestSecurity.Grant()),
+                TestContext.Current.CancellationToken);
+
+            store.LastIntent.ShouldNotBeNull().Id.ShouldBe(expectedId);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

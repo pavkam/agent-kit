@@ -6,6 +6,7 @@ namespace AgentKit.FileSystem
     public sealed class SandboxedFileSystem : AgentKit.IAtomicFileReplacer, AgentKit.IDirectoryReader, AgentKit.IFileContentSearcher, AgentKit.IFileGlobber, AgentKit.IFileSnapshotReader, AgentKit.IFileSystem, AgentKit.IWorkspacePatchApplier
     {
         public SandboxedFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.SandboxedFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.SandboxedFileSystem>? logger = null) { }
+        public SandboxedFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.SandboxedFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.SandboxedFileSystem>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.WorkspacePatchResult> ApplyPatchAsync(AgentKit.WorkspacePatchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.DirectoryEnumerationResult> EnumerateAsync(AgentKit.DirectoryEnumerationRequest request, System.Threading.CancellationToken cancellationToken = default) { }

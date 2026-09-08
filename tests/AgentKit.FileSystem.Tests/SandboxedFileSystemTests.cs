@@ -55,6 +55,31 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    public void Constructor_WhenLegacyLoggerArgumentIsNull_RetainsUnambiguousSourceCompatibility()
+    {
+        _ = Directory.CreateDirectory(_root);
+        _ = new SandboxedFileSystem(
+            Options.Create(new SandboxedFileSystemOptions { RootDirectory = _root }),
+            TestSecurity.GrantStore(),
+            TimeProvider.System,
+            null);
+    }
+
+    [Fact]
+    public void Constructor_WhenIntentIdsNull_ThrowsWithExactParameterName()
+    {
+        _ = Directory.CreateDirectory(_root);
+        var exception = Should.Throw<ArgumentNullException>(() => new SandboxedFileSystem(
+            Options.Create(new SandboxedFileSystemOptions { RootDirectory = _root }),
+            TestSecurity.GrantStore(),
+            TimeProvider.System,
+            null,
+            null!));
+
+        exception.ParamName.ShouldBe("intentIds");
+    }
+
+    [Fact]
     public async Task ReadAsync_WhenRequestNull_ThrowsArgumentNullException()
     {
         var fs = CreateFileSystem();
@@ -101,6 +126,63 @@ public sealed class SandboxedFileSystemTests: IDisposable
 
         _ = result.ShouldBeOfType<FileWriteFailed>();
         Directory.Exists(Path.Combine(_root, "sub")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenStoreReconcilesAnEarlierIntent_DoesNotCreateTheTarget()
+    {
+        var store = new TestSecurity.RecordingGrantStore
+        {
+            Result = new GrantConsumptionResult(GrantConsumptionStatus.Reconciled, 0, "Reconciled."),
+        };
+        var fs = CreateFileSystem(grantStore: store);
+        var path = new FileSystemPath("reconciled.txt");
+
+        var result = await fs.WriteAsync(
+            new FileWriteRequest(path, "protected", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileWriteDenied>();
+        File.Exists(Path.Combine(_root, path.Value)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenCallerCancelsDuringNonCooperativeConsumption_DoesNotCreateTheTarget()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var store = new TestSecurity.RecordingGrantStore { OnIntentConsumption = cancellation.Cancel };
+        var fs = CreateFileSystem(grantStore: store);
+        var path = new FileSystemPath("cancelled-before-write.txt");
+
+        var action = async () => await fs.WriteAsync(
+            new FileWriteRequest(path, "protected", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()),
+            cancellation.Token);
+
+        _ = await action.ShouldThrowAsync<OperationCanceledException>();
+        File.Exists(Path.Combine(_root, path.Value)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
+    {
+        const string text = "captured";
+        var store = new InMemorySecurityGrantStore(TimeProvider.System);
+        var fs = CreateFileSystem(grantStore: store);
+        var path = new FileSystemPath("captured-write.txt");
+        var grant = TestSecurity.CapturedGrant(
+            fs.SecurityAudience,
+            SecurityOperationKind.FileWrite,
+            FileSecurityBinding.WriteEffect(FileWriteMode.CreateOrOverwrite),
+            [FileSecurityBinding.Resource(path)],
+            FileSecurityBinding.WriteFingerprint(path, text, FileWriteMode.CreateOrOverwrite));
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+
+        var result = await fs.WriteAsync(
+            new FileWriteRequest(path, text, FileWriteMode.CreateOrOverwrite, grant),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileWritten>();
+        File.ReadAllText(Path.Combine(_root, path.Value)).ShouldBe(text);
     }
 
     [Fact]
@@ -152,6 +234,58 @@ public sealed class SandboxedFileSystemTests: IDisposable
         var enforcement = store.LastEnforcement.ShouldNotBeNull();
         enforcement.Resources.ShouldBe([FileSecurityBinding.Resource(new FileSystemPath("possibly-secret.txt"))]);
         enforcement.InputFingerprint.ShouldBe(FileSecurityBinding.ReadFingerprint(new FileSystemPath("possibly-secret.txt")));
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenConsumedReceiptIsMissing_DoesNotReadTheTarget()
+    {
+        _ = Directory.CreateDirectory(_root);
+        File.WriteAllText(Path.Combine(_root, "receipt-missing.txt"), "protected");
+        var store = new TestSecurity.RecordingGrantStore { IncludeIntentReceipt = false };
+        var fs = CreateFileSystem(grantStore: store);
+
+        var result = await fs.ReadAsync(
+            new FileReadRequest(new FileSystemPath("receipt-missing.txt"), TestSecurity.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<FileReadDenied>().SafeMessage.ShouldContain("enforcement-intent receipt");
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenReceiptReferencesAnotherIntent_DoesNotReadTheTarget()
+    {
+        _ = Directory.CreateDirectory(_root);
+        File.WriteAllText(Path.Combine(_root, "receipt-mismatch.txt"), "protected");
+        var store = new TestSecurity.RecordingGrantStore { ReturnExactIntentReceipt = false };
+        var fs = CreateFileSystem(grantStore: store);
+
+        var result = await fs.ReadAsync(
+            new FileReadRequest(new FileSystemPath("receipt-mismatch.txt"), TestSecurity.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<FileReadDenied>().SafeMessage.ShouldContain("enforcement-intent receipt");
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
+    {
+        const string path = "captured-read.txt";
+        _ = Directory.CreateDirectory(_root);
+        File.WriteAllText(Path.Combine(_root, path), "captured");
+        var store = new InMemorySecurityGrantStore(TimeProvider.System);
+        var fs = CreateFileSystem(grantStore: store);
+        var filePath = new FileSystemPath(path);
+        var grant = TestSecurity.CapturedGrant(
+            fs.SecurityAudience,
+            SecurityOperationKind.FileRead,
+            SecurityEffect.Observe,
+            [FileSecurityBinding.Resource(filePath)],
+            FileSecurityBinding.ReadFingerprint(filePath));
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+
+        var result = await fs.ReadAsync(new FileReadRequest(filePath, grant), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<FileRead>().Content.ShouldBe("captured");
     }
 
     [Fact]

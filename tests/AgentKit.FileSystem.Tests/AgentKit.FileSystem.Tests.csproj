@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.FileSystem/AgentKit.FileSystem.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Permissions/AgentKit.Permissions.csproj"/>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj" />

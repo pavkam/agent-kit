@@ -30,32 +30,31 @@ public sealed partial class SandboxedFileSystem
         ArgumentNullException.ThrowIfNull(request.Grant);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+        var enforcement = FileSystemEnforcementReceipt.Create(
             request.Grant,
-            new SecurityEnforcementRequest(
-                request.Grant.Scope,
-                request.Grant.Identity,
-                SecurityAudience,
-                SecurityOperationKind.FileSearch,
-                SecurityEffect.Observe,
-                [FileSearchSecurityBinding.Resource(request.BasePath)],
-                FileSearchSecurityBinding.Fingerprint(
-                    request.BasePath,
-                    request.Pattern,
-                    request.PathPattern,
-                    request.CaseSensitive,
-                    request.IncludeHidden,
-                    request.MaximumDepth,
-                    request.MaximumFiles,
-                    request.MaximumBytes,
-                    request.MaximumMatches,
-                    request.MaximumLineBytes,
-                    request.MaximumDuration),
-                request.Grant.RevocationVersion),
-            cancellationToken).ConfigureAwait(false);
-        if (grantResult.Status != GrantConsumptionStatus.Consumed)
+            SecurityAudience,
+            SecurityOperationKind.FileSearch,
+            SecurityEffect.Observe,
+            [FileSearchSecurityBinding.Resource(request.BasePath)],
+            FileSearchSecurityBinding.Fingerprint(
+                request.BasePath,
+                request.Pattern,
+                request.PathPattern,
+                request.CaseSensitive,
+                request.IncludeHidden,
+                request.MaximumDepth,
+                request.MaximumFiles,
+                request.MaximumBytes,
+                request.MaximumMatches,
+                request.MaximumLineBytes,
+                request.MaximumDuration));
+        var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
+        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            request.Grant, enforcement, enforcementIntent, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, enforcementIntent))
         {
-            return Failure(FileSearchStatus.Denied, grantResult.SafeMessage);
+            return Failure(FileSearchStatus.Denied, FileSystemEnforcementReceipt.DenialMessage(grantResult));
         }
 
         if (request.MaximumDepth > _maximumSearchDepth

@@ -60,6 +60,7 @@ public sealed partial class SandboxedFileSystem:
     private readonly long _maximumPatchBytes;
     private readonly ISecurityGrantStore _grantStore;
     private readonly TimeProvider _timeProvider;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly ILogger<SandboxedFileSystem> _logger;
 
     /// <inheritdoc/>
@@ -77,10 +78,29 @@ public sealed partial class SandboxedFileSystem:
         ISecurityGrantStore grantStore,
         TimeProvider timeProvider,
         ILogger<SandboxedFileSystem>? logger = null)
+        : this(options, grantStore, timeProvider, logger, new GuidSecurityEnforcementIntentIdGenerator())
+    {
+    }
+
+    /// <summary>Initializes the sandboxed filesystem with a source of fresh per-effect enforcement-intent identities.</summary>
+    /// <param name="options">The validated sandbox configuration.</param>
+    /// <param name="grantStore">The authoritative store that atomically consumes a grant and records permission to start.</param>
+    /// <param name="timeProvider">The monotonic time source used for elapsed search bounds.</param>
+    /// <param name="logger">The optional structured logger; a null value selects a null logger.</param>
+    /// <param name="intentIds">The non-null thread-safe source of fresh filesystem enforcement intent identities.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/>, <paramref name="grantStore"/>, <paramref name="timeProvider"/>, or <paramref name="intentIds"/> is null.</exception>
+    /// <exception cref="ArgumentException"><see cref="SandboxedFileSystemOptions.RootDirectory"/> is blank or not an absolute path.</exception>
+    public SandboxedFileSystem(
+        IOptions<SandboxedFileSystemOptions> options,
+        ISecurityGrantStore grantStore,
+        TimeProvider timeProvider,
+        ILogger<SandboxedFileSystem>? logger,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(grantStore);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(intentIds);
 
         var root = options.Value.RootDirectory;
         if (string.IsNullOrWhiteSpace(root) || !Path.IsPathRooted(root))
@@ -103,6 +123,7 @@ public sealed partial class SandboxedFileSystem:
         _maximumPatchBytes = options.Value.MaximumPatchBytes;
         _grantStore = grantStore;
         _timeProvider = timeProvider;
+        _intentIds = intentIds;
         _logger = logger ?? NullLogger<SandboxedFileSystem>.Instance;
     }
 
@@ -112,21 +133,20 @@ public sealed partial class SandboxedFileSystem:
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+        var enforcement = FileSystemEnforcementReceipt.Create(
             request.Grant,
-            new SecurityEnforcementRequest(
-                request.Grant.Scope,
-                request.Grant.Identity,
-                SecurityAudience,
-                SecurityOperationKind.FileRead,
-                SecurityEffect.Observe,
-                [FileSecurityBinding.Resource(request.Path)],
-                FileSecurityBinding.ReadFingerprint(request.Path),
-                request.Grant.RevocationVersion),
-            cancellationToken).ConfigureAwait(false);
-        if (grantResult.Status != GrantConsumptionStatus.Consumed)
+            SecurityAudience,
+            SecurityOperationKind.FileRead,
+            SecurityEffect.Observe,
+            [FileSecurityBinding.Resource(request.Path)],
+            FileSecurityBinding.ReadFingerprint(request.Path));
+        var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
+        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            request.Grant, enforcement, enforcementIntent, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, enforcementIntent))
         {
-            return new FileReadDenied(grantResult.SafeMessage);
+            return new FileReadDenied(FileSystemEnforcementReceipt.DenialMessage(grantResult));
         }
 
         if (!IsSecureTraversalSupported)
@@ -217,21 +237,20 @@ public sealed partial class SandboxedFileSystem:
                 $"Content is {contentBytes} bytes, exceeding the configured maximum of {_maximumWriteBytes}.");
         }
 
-        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+        var enforcement = FileSystemEnforcementReceipt.Create(
             request.Grant,
-            new SecurityEnforcementRequest(
-                request.Grant.Scope,
-                request.Grant.Identity,
-                SecurityAudience,
-                SecurityOperationKind.FileWrite,
-                FileSecurityBinding.WriteEffect(request.Mode),
-                [FileSecurityBinding.Resource(request.Path)],
-                FileSecurityBinding.WriteFingerprint(request.Path, request.Content, request.Mode),
-                request.Grant.RevocationVersion),
-            cancellationToken).ConfigureAwait(false);
-        if (grantResult.Status != GrantConsumptionStatus.Consumed)
+            SecurityAudience,
+            SecurityOperationKind.FileWrite,
+            FileSecurityBinding.WriteEffect(request.Mode),
+            [FileSecurityBinding.Resource(request.Path)],
+            FileSecurityBinding.WriteFingerprint(request.Path, request.Content, request.Mode));
+        var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
+        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            request.Grant, enforcement, enforcementIntent, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, enforcementIntent))
         {
-            return new FileWriteDenied(grantResult.SafeMessage);
+            return new FileWriteDenied(FileSystemEnforcementReceipt.DenialMessage(grantResult));
         }
 
         try
@@ -299,21 +318,20 @@ public sealed partial class SandboxedFileSystem:
         ArgumentNullException.ThrowIfNull(request.Grant);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+        var enforcement = FileSystemEnforcementReceipt.Create(
             request.Grant,
-            new SecurityEnforcementRequest(
-                request.Grant.Scope,
-                request.Grant.Identity,
-                SecurityAudience,
-                SecurityOperationKind.DirectoryRead,
-                SecurityEffect.Observe,
-                [DirectorySecurityBinding.Resource(request.Path)],
-                DirectorySecurityBinding.Fingerprint(request.Path, request.MaximumEntries, request.Continuation),
-                request.Grant.RevocationVersion),
-            cancellationToken).ConfigureAwait(false);
-        if (grantResult.Status != GrantConsumptionStatus.Consumed)
+            SecurityAudience,
+            SecurityOperationKind.DirectoryRead,
+            SecurityEffect.Observe,
+            [DirectorySecurityBinding.Resource(request.Path)],
+            DirectorySecurityBinding.Fingerprint(request.Path, request.MaximumEntries, request.Continuation));
+        var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
+        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            request.Grant, enforcement, enforcementIntent, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, enforcementIntent))
         {
-            return DirectoryFailure(DirectoryEnumerationStatus.Denied, grantResult.SafeMessage);
+            return DirectoryFailure(DirectoryEnumerationStatus.Denied, FileSystemEnforcementReceipt.DenialMessage(grantResult));
         }
 
         if (!IsSecureTraversalSupported)
@@ -406,28 +424,27 @@ public sealed partial class SandboxedFileSystem:
         ArgumentNullException.ThrowIfNull(request.Grant);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+        var enforcement = FileSystemEnforcementReceipt.Create(
             request.Grant,
-            new SecurityEnforcementRequest(
-                request.Grant.Scope,
-                request.Grant.Identity,
-                SecurityAudience,
-                SecurityOperationKind.DirectoryRead,
-                SecurityEffect.Observe,
-                [GlobSecurityBinding.Resource(request.BasePath)],
-                GlobSecurityBinding.Fingerprint(
-                    request.BasePath,
-                    request.Pattern,
-                    request.CaseSensitive,
-                    request.IncludeHidden,
-                    request.MaximumDepth,
-                    request.MaximumVisitedEntries,
-                    request.MaximumResults),
-                request.Grant.RevocationVersion),
-            cancellationToken).ConfigureAwait(false);
-        if (grantResult.Status != GrantConsumptionStatus.Consumed)
+            SecurityAudience,
+            SecurityOperationKind.DirectoryRead,
+            SecurityEffect.Observe,
+            [GlobSecurityBinding.Resource(request.BasePath)],
+            GlobSecurityBinding.Fingerprint(
+                request.BasePath,
+                request.Pattern,
+                request.CaseSensitive,
+                request.IncludeHidden,
+                request.MaximumDepth,
+                request.MaximumVisitedEntries,
+                request.MaximumResults));
+        var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
+        var grantResult = await _grantStore.ValidateAndConsumeAsync(
+            request.Grant, enforcement, enforcementIntent, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!FileSystemEnforcementReceipt.IsFreshExact(grantResult, request.Grant, enforcement, enforcementIntent))
         {
-            return new GlobResult(GlobStatus.Denied, [], 0, false, grantResult.SafeMessage);
+            return new GlobResult(GlobStatus.Denied, [], 0, false, FileSystemEnforcementReceipt.DenialMessage(grantResult));
         }
 
         if (!IsSecureTraversalSupported)

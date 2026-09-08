@@ -7,6 +7,7 @@ global using System.Diagnostics;
 global using AgentKit;
 global using AgentKit.FileSystem;
 global using AgentKit.Observability;
+global using AgentKit.Permissions;
 
 global using Microsoft.Extensions.DependencyInjection;
 global using Microsoft.Extensions.Options;
