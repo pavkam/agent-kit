@@ -393,12 +393,12 @@ public sealed class PinnedAgentAdmissionTests
             new ToolId("test-tool"),
             "test_tool",
             "A test tool.",
-            ParseSchema("{ \"name\": \"\\u0061\", \"count\": 1.0 }"));
+            ParseSchema(/*lang=json,strict*/ "{ \"name\": \"\\u0061\", \"count\": 1.0 }"));
         var second = new LlmToolDefinition(
             first.Id,
             first.Name,
             first.Description,
-            ParseSchema("{\"count\":1,\"name\":\"a\"}"));
+            ParseSchema(/*lang=json,strict*/ "{\"count\":1,\"name\":\"a\"}"));
 
         first.ShouldBe(second);
         first.GetHashCode().ShouldBe(second.GetHashCode());
@@ -490,7 +490,7 @@ public sealed class PinnedAgentAdmissionTests
         new ToolId("test-tool"),
         "test_tool",
         "A test tool.",
-        ParseSchema("{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}}}"));
+        ParseSchema(/*lang=json,strict*/ "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}}}"));
 
     private static JsonElement ParseSchema(string json)
     {

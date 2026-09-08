@@ -13,7 +13,7 @@ internal static class SecurityTestData
             null,
             new BeforeRunOperationCorrelation(
                 new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000004")), null)),
-        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human),
+        TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human),
         new ComponentId("test"),
         SecurityOperationKind.FileRead,
         SecurityEffect.Observe,

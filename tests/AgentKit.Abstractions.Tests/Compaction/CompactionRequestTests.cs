@@ -61,7 +61,7 @@ public sealed class CompactionRequestTests
                 new OperationId(Guid.NewGuid()),
                 new RunId(Guid.NewGuid()),
                 null),
-            AgentKit.TestSupport.TestExecutionIdentity.Create(
+            TestSupport.TestExecutionIdentity.Create(
                 new TenantId("tenant"),
                 new PrincipalId("principal"),
                 ExecutionSubjectKind.Human)),

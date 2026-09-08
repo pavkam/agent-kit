@@ -160,6 +160,6 @@ public sealed class ArtifactContractsTests
     private static InRunOperationCorrelation Correlation() => new(
         new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
         new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")), null);
-    private static ExecutionIdentity Identity() => AgentKit.TestSupport.TestExecutionIdentity.Create(
+    private static ExecutionIdentity Identity() => TestSupport.TestExecutionIdentity.Create(
         new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
 }

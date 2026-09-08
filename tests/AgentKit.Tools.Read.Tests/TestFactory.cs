@@ -17,7 +17,7 @@ internal static class TestFactory
     public static ISecurityAuthority DenyingAuthority() => new DenyingSecurityAuthority();
 
     public static ExecutionIdentity Identity() =>
-        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId("tenant-1"), new PrincipalId("user-1"), ExecutionSubjectKind.Human);
+        TestSupport.TestExecutionIdentity.Create(new TenantId("tenant-1"), new PrincipalId("user-1"), ExecutionSubjectKind.Human);
 
     public static OperationCorrelation Correlation() =>
         new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null);

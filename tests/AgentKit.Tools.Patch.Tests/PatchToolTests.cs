@@ -245,7 +245,7 @@ public sealed class PatchToolTests
                 new OperationId(Guid.Parse("71000000-0000-0000-0000-000000000007")),
                 new RunId(Guid.Parse("81000000-0000-0000-0000-000000000008")),
                 null),
-            AgentKit.TestSupport.TestExecutionIdentity.Create(
+            TestSupport.TestExecutionIdentity.Create(
                 new TenantId("tenant"),
                 new PrincipalId("principal"),
                 ExecutionSubjectKind.Human)),

@@ -12,7 +12,7 @@ internal static class TestFactory
         timeProvider ?? TimeProvider.System);
 
     public static ExecutionIdentity Identity(string tenant = "tenant-1", string principal = "user-1") =>
-        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human);
+        TestExecutionIdentity.Create(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human);
 
     public static SessionCreateRequest CreateRequest(
         AgentId? agentId = null,

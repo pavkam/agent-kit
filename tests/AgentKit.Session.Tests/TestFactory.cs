@@ -6,7 +6,7 @@ namespace AgentKit.Session.Tests;
 internal static class TestFactory
 {
     public static ExecutionIdentity Identity(string tenant = "tenant-1", string principal = "user-1") =>
-        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human);
+        TestSupport.TestExecutionIdentity.Create(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human);
 
     public static SessionCreateRequest CreateRequest(AgentId? agentId = null, IdempotencyKey? idempotencyKey = null) => new(
         agentId ?? new AgentId(Guid.NewGuid()),

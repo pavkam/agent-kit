@@ -84,12 +84,12 @@ public sealed class TenantIsolationAndIdempotencyTests
         var store = TestFactory.CreateStore();
         var descriptor = await TestFactory.CreateSessionAsync(store);
         var context = TestFactory.OperationContext(descriptor.Address);
-        var extensions = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("test.payload", new ExtensionValue([.. "{\"nested\":[1,2]}"u8])));
+        var extensions = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("test.payload", new ExtensionValue([.. /*lang=json,strict*/ "{\"nested\":[1,2]}"u8])));
         var message = new UserMessage(new MessageId(Guid.NewGuid()), descriptor.Address.AgentId, descriptor.Address.SessionId, null, descriptor.ActiveBranchId, null, null, DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("payload", TextSemantics.Plain, extensions)], extensions);
         var entry = new MessageSessionEntry(new SessionEntryId(Guid.NewGuid()), descriptor.Address, TestFactory.Correlation(), descriptor.ActiveBranchId, new SessionSequence(1), null, DateTimeOffset.UnixEpoch, new SchemaVersion("1"), message);
         var key = new IdempotencyKey("reconstructed");
         var first = (SessionAppended) await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(0), key, [entry]), TestContext.Current.CancellationToken);
-        var rebuiltExtensions = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("test.payload", new ExtensionValue([.. "{\"nested\":[1,2]}"u8])));
+        var rebuiltExtensions = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("test.payload", new ExtensionValue([.. /*lang=json,strict*/ "{\"nested\":[1,2]}"u8])));
         var rebuiltMessage = new UserMessage(message.Id, descriptor.Address.AgentId, descriptor.Address.SessionId, null, descriptor.ActiveBranchId, null, null, DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("payload", TextSemantics.Plain, rebuiltExtensions)], rebuiltExtensions);
         var rebuiltEntry = new MessageSessionEntry(entry.Id, descriptor.Address, entry.Correlation, descriptor.ActiveBranchId, new SessionSequence(1), null, DateTimeOffset.UnixEpoch, new SchemaVersion("1"), rebuiltMessage);
 

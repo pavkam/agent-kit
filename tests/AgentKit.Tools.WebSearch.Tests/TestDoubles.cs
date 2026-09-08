@@ -108,7 +108,7 @@ internal static class TestData
             new OperationId(Guid.Parse("70000000-0000-0000-0000-000000000007")),
             new RunId(Guid.Parse("80000000-0000-0000-0000-000000000008")),
             null),
-        AgentKit.TestSupport.TestExecutionIdentity.Create(
+        TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
             ExecutionSubjectKind.Human));

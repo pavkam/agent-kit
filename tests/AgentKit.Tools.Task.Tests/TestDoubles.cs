@@ -83,5 +83,5 @@ internal static class TestData
     internal static GoalAttemptId AttemptId { get; } = new(Guid.Parse("b0000000-0000-0000-0000-00000000000b"));
     internal static ToolCallId ToolCallId { get; } = new(Guid.Parse("c0000000-0000-0000-0000-00000000000c"));
     internal static OperationId OperationId { get; } = new(Guid.Parse("d0000000-0000-0000-0000-00000000000d"));
-    internal static ExecutionIdentity Identity { get; } = AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+    internal static ExecutionIdentity Identity { get; } = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
 }

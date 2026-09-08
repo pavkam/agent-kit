@@ -33,7 +33,7 @@ internal sealed class TestGrantStore: ISecurityGrantStore
             new AgentId(Guid.NewGuid()),
             null,
             new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null)),
-        AgentKit.TestSupport.TestExecutionIdentity.Create(
+        TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
             ExecutionSubjectKind.Human),

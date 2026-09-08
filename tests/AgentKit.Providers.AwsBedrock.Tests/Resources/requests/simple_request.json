@@ -1,7 +1,5 @@
 {
-  "messages": [
-    { "role": "user", "content": [{ "text": "Hello!" }] }
-  ],
+  "messages": [{ "role": "user", "content": [{ "text": "Hello!" }] }],
   "system": [{ "text": "You are a helpful assistant." }],
   "inferenceConfig": {
     "maxTokens": 100,

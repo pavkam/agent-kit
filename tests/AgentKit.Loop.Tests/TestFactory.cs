@@ -6,7 +6,7 @@ namespace AgentKit.Loop.Tests;
 internal static class TestFactory
 {
     public static ExecutionIdentity Identity() =>
-        AgentKit.TestSupport.TestExecutionIdentity.Create(new TenantId("tenant-1"), new PrincipalId("user-1"), ExecutionSubjectKind.Human);
+        TestSupport.TestExecutionIdentity.Create(new TenantId("tenant-1"), new PrincipalId("user-1"), ExecutionSubjectKind.Human);
 
     public static ModelDescriptor Model(string alias = "chat")
     {

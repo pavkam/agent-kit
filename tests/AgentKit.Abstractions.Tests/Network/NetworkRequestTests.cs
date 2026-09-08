@@ -114,7 +114,7 @@ public sealed class NetworkRequestTests
             null,
             new BeforeRunOperationCorrelation(
                 new OperationId(Guid.Parse("50000000-0000-0000-0000-000000000005")), null)),
-        AgentKit.TestSupport.TestExecutionIdentity.Create(
+        TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
             ExecutionSubjectKind.Human),

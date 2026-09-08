@@ -81,7 +81,7 @@ public sealed class HumanQuestionContractsTests
         new BeforeRunOperationCorrelation(
             new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
             null),
-        AgentKit.TestSupport.TestExecutionIdentity.Create(
+        TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
             ExecutionSubjectKind.Human),

@@ -5,8 +5,8 @@ global using System.Collections.Immutable;
 global using System.Diagnostics;
 
 global using AgentKit;
-global using AgentKit.Permissions;
 global using AgentKit.Observability;
+global using AgentKit.Permissions;
 
 global using Microsoft.Extensions.DependencyInjection;
 global using Microsoft.Extensions.Time.Testing;
