@@ -229,6 +229,62 @@ public static class ArgumentExceptionExtensions
                 throw new ArgumentException("Budget address must exactly bind execution identity and active correlation.", paramName);
             }
         }
+        /// <summary>Throws when a durable operation address and captured context do not name one exact in-run or after-run operation.</summary>
+        /// <param name="address">The durable operation coordinates to validate.</param>
+        /// <param name="executionContext">The captured durability and full authorization context to validate.</param>
+        /// <param name="paramName">The parameter attributed to inconsistent captured context.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="address"/> or <paramref name="executionContext"/> is null.</exception>
+        /// <exception cref="ArgumentException">The scope differs from the address or uses before-run/sessionless correlation that the current address cannot represent.</exception>
+        public static void ThrowIfInvalidDurableOperationBinding(
+            DurableOperationAddress address,
+            DurableExecutionContext executionContext,
+            [CallerArgumentExpression(nameof(executionContext))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(address);
+            ArgumentNullException.ThrowIfNull(executionContext);
+            var scope = executionContext.Authorization.Scope;
+            if (scope.SessionId is not { } sessionId)
+            {
+                throw new ArgumentException("The current durable address cannot represent sessionless authorization.", paramName);
+            }
+
+            ArgumentException.ThrowIfNotEqual(address.AgentId, scope.AgentId, paramName);
+            ArgumentException.ThrowIfNotEqual(address.SessionId, sessionId, paramName);
+            ArgumentException.ThrowIfNotEqual(address.OperationId, scope.Correlation.OperationId, paramName);
+            switch (scope.Correlation)
+            {
+                case InRunOperationCorrelation inRun:
+                    ArgumentException.ThrowIfNotEqual(address.RunId, inRun.RunId, paramName);
+                    ArgumentException.ThrowIfNotEqual(address.TurnId, inRun.TurnId, paramName);
+                    return;
+                case AfterRunOperationCorrelation afterRun:
+                    ArgumentException.ThrowIfNotEqual(address.RunId, afterRun.CausalRunId, paramName);
+                    ArgumentException.ThrowIfNotEqual(address.TurnId, null, paramName);
+                    return;
+                default:
+                    throw new ArgumentException("The current durable address requires in-run or after-run authorization correlation.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a recovery evidence checkpoint belongs to a different durable binding.</summary>
+        /// <param name="binding">The non-null exact binding retained by the recovery evidence.</param>
+        /// <param name="latestCheckpoint">The optional checkpoint that must retain structurally equal coordinates and captured context.</param>
+        /// <param name="paramName">The parameter attributed to a checkpoint that does not belong to <paramref name="binding"/>.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="binding"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">A supplied <paramref name="latestCheckpoint"/> has a different address, durability selection, authorization selection, scope, or authenticated identity.</exception>
+        public static void ThrowIfRecoveryEvidenceCheckpointDoesNotMatchBinding(
+            DurableOperationBinding binding,
+            DurableCheckpoint? latestCheckpoint,
+            [CallerArgumentExpression(nameof(latestCheckpoint))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(binding);
+
+            if (latestCheckpoint is not null && latestCheckpoint.Binding != binding)
+            {
+                throw new ArgumentException("The checkpoint must retain the recovery evidence binding exactly.", paramName);
+            }
+        }
+
         /// <summary>Throws when an output-schema profile has inconsistent dialect or vocabulary sets.</summary>
         /// <param name="defaultDialect">The default dialect that must be one supported dialect.</param>
         /// <param name="supportedDialects">The initialized, non-empty unique dialect set.</param>

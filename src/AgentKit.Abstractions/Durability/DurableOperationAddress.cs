@@ -94,7 +94,12 @@ public sealed record DurableOperationAddress
         }
     }
 
-    /// <summary>Gets the run that created the operation.</summary>
+    /// <summary>Gets the run retained by this durable operation address.</summary>
+    /// <value>
+    /// The active run only when the paired authorization correlation is in-run;
+    /// for after-run follow-up it is the causal run and does not claim active
+    /// ownership. The binding establishes which meaning applies.
+    /// </value>
     /// <exception cref="ArgumentOutOfRangeException">
     /// An initializer attempts to set the default, empty identity.
     /// </exception>

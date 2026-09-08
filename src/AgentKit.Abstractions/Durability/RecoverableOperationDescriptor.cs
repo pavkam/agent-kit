@@ -29,8 +29,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record RecoverableOperationDescriptor
 {
-    private readonly DurableOperationAddress _address;
-    private readonly DurableExecutionContext _executionContext;
     private readonly OperationPayload _input;
     private readonly ExtensionData _extensions;
 
@@ -76,6 +74,10 @@ public sealed record RecoverableOperationDescriptor
     /// <paramref name="address"/>, <paramref name="executionContext"/>, or
     /// <paramref name="input"/> is <see langword="null"/>.
     /// </exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="address"/> and <paramref name="executionContext"/> do not
+    /// describe one exact supported in-run or after-run durable operation.
+    /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="retryOwner"/>, <paramref name="timeoutOwner"/>,
     /// <paramref name="cancellation"/>, <paramref name="effect"/>, or
@@ -98,9 +100,42 @@ public sealed record RecoverableOperationDescriptor
         DateTimeOffset deadline,
         OperationId? causalParentId = null,
         ExtensionData? extensions = null)
+        : this(new DurableOperationBinding(address, executionContext), name, version, idempotencyKey, input, retryOwner, timeoutOwner, cancellation, effect, idempotency, deadline, causalParentId, extensions)
     {
-        ArgumentNullException.ThrowIfNull(address);
-        ArgumentNullException.ThrowIfNull(executionContext);
+    }
+
+    /// <summary>Initializes a recoverable operation declaration from one exact immutable durable binding.</summary>
+    /// <param name="binding">The non-null binding that preserves matching durable coordinates and authorization evidence.</param>
+    /// <param name="name">The deterministic operation name used by recovery selection.</param>
+    /// <param name="version">The serialized contract version for this operation shape.</param>
+    /// <param name="idempotencyKey">The key the effect owner uses to collapse repeated attempts.</param>
+    /// <param name="input">The non-null versioned serialized input retained for recovery.</param>
+    /// <param name="retryOwner">The defined component responsible for retry attempts.</param>
+    /// <param name="timeoutOwner">The defined component responsible for deadline enforcement.</param>
+    /// <param name="cancellation">The defined semantics of caller cancellation.</param>
+    /// <param name="effect">The defined material security effect that this operation performs.</param>
+    /// <param name="idempotency">The defined classification governing safe effect repetition.</param>
+    /// <param name="deadline">The injected-clock deadline interpreted by <paramref name="timeoutOwner"/>.</param>
+    /// <param name="causalParentId">The allocated parent operation identity, or <see langword="null"/> for a root operation.</param>
+    /// <param name="extensions">Host-specific durable data, or <see langword="null"/> to retain <see cref="ExtensionData.Empty"/>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="binding"/> or <paramref name="input"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">An enum is undefined or a supplied <paramref name="causalParentId"/> is default.</exception>
+    public RecoverableOperationDescriptor(
+        DurableOperationBinding binding,
+        DurableOperationName name,
+        DurableOperationVersion version,
+        IdempotencyKey idempotencyKey,
+        OperationPayload input,
+        DurableRetryOwner retryOwner,
+        DurableTimeoutOwner timeoutOwner,
+        CancellationSemantics cancellation,
+        SecurityEffect effect,
+        IdempotencyClassification idempotency,
+        DateTimeOffset deadline,
+        OperationId? causalParentId = null,
+        ExtensionData? extensions = null)
+    {
+        ArgumentNullException.ThrowIfNull(binding);
         ArgumentNullException.ThrowIfNull(input);
         ArgumentOutOfRangeException.ThrowIfUndefined(retryOwner);
         ArgumentOutOfRangeException.ThrowIfUndefined(timeoutOwner);
@@ -109,8 +144,7 @@ public sealed record RecoverableOperationDescriptor
         ArgumentOutOfRangeException.ThrowIfUndefined(idempotency);
         ThrowIfDefaultParent(causalParentId, nameof(causalParentId));
 
-        _address = address;
-        _executionContext = executionContext;
+        Binding = binding;
         Name = name;
         Version = version;
         IdempotencyKey = idempotencyKey;
@@ -125,33 +159,17 @@ public sealed record RecoverableOperationDescriptor
         _extensions = extensions ?? ExtensionData.Empty;
     }
 
-    /// <summary>Gets the operation's durable coordinates.</summary>
-    /// <exception cref="ArgumentNullException">
-    /// An initializer attempts to set <see langword="null"/>.
-    /// </exception>
-    public DurableOperationAddress Address
-    {
-        get => _address;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(Address));
-            _address = value;
-        }
-    }
+    /// <summary>Gets the exact immutable binding for this durable record.</summary>
+    /// <value>The inseparable address and captured context selected when this record was created.</value>
+    public DurableOperationBinding Binding { get; }
 
-    /// <summary>Gets the captured durability composition.</summary>
-    /// <exception cref="ArgumentNullException">
-    /// An initializer attempts to set <see langword="null"/>.
-    /// </exception>
-    public DurableExecutionContext ExecutionContext
-    {
-        get => _executionContext;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(ExecutionContext));
-            _executionContext = value;
-        }
-    }
+    /// <summary>Gets the operation coordinates derived from <see cref="Binding"/>.</summary>
+    /// <value>The exact immutable address validated with this record's captured context; it cannot be replaced independently.</value>
+    public DurableOperationAddress Address => Binding.Address;
+
+    /// <summary>Gets the captured durability context derived from <see cref="Binding"/>.</summary>
+    /// <value>The exact immutable selection and authorization evidence validated with this record's address; it cannot be replaced independently.</value>
+    public DurableExecutionContext ExecutionContext => Binding.ExecutionContext;
 
     /// <summary>Gets the deterministic operation name.</summary>
     public DurableOperationName Name { get; init; }

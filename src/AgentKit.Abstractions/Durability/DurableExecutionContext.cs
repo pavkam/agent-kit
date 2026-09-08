@@ -24,15 +24,14 @@ namespace AgentKit;
 /// falling back to an available alternative.
 /// </para>
 /// <para>
-/// The context holds selection identity only. It never carries live services,
-/// scopes, credentials, or a hook dispatch context, because it is serialized
-/// into durable records that outlive the process that created them.
+/// The context holds immutable selection and authorization evidence only. It
+/// never carries live services, credentials, or a hook dispatch context,
+/// because it is serialized into durable records that outlive the process
+/// that created them.
 /// </para>
 /// </remarks>
 public sealed record DurableExecutionContext
 {
-    private readonly SecurityAuthorizationScope _authorization;
-
     /// <summary>
     /// Initializes a new instance of the
     /// <see cref="DurableExecutionContext"/> record.
@@ -52,7 +51,7 @@ public sealed record DurableExecutionContext
     /// The policy that classifies evidence into a recovery decision.
     /// </param>
     /// <param name="authorization">
-    /// The authorization scope protected durability operations run under.
+    /// The complete captured authorization evidence protected durability operations run under.
     /// Journal access, external handoff, and reconciliation are protected
     /// effects and revalidate their grant at the effecting adapter.
     /// </param>
@@ -69,7 +68,7 @@ public sealed record DurableExecutionContext
         DurableJournalKey journalKey,
         DurableLeaseManagerKey leaseManagerKey,
         RecoveryPolicyKey recoveryPolicyKey,
-        SecurityAuthorizationScope authorization)
+        SecurityAuthorizationContext authorization)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileKey.Value, nameof(profileKey));
         ArgumentException.ThrowIfNullOrWhiteSpace(backendKey.Value, nameof(backendKey));
@@ -84,7 +83,7 @@ public sealed record DurableExecutionContext
         JournalKey = journalKey;
         LeaseManagerKey = leaseManagerKey;
         RecoveryPolicyKey = recoveryPolicyKey;
-        _authorization = authorization;
+        Authorization = authorization;
     }
 
     /// <summary>Gets the selected non-default durability profile.</summary>
@@ -164,20 +163,20 @@ public sealed record DurableExecutionContext
         }
     }
 
-    /// <summary>
-    /// Gets the authorization scope protected durability operations run
-    /// under.
-    /// </summary>
-    /// <exception cref="ArgumentNullException">
-    /// An initializer attempts to set <see langword="null"/>.
-    /// </exception>
-    public SecurityAuthorizationScope Authorization
-    {
-        get => _authorization;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(Authorization));
-            _authorization = value;
-        }
-    }
+    /// <summary>Gets the complete captured authorization evidence for protected durability work.</summary>
+    /// <value>The immutable authority, policy, configuration, scope, and identity selected at operation acceptance; it is evidence rather than a grant.</value>
+    public SecurityAuthorizationContext Authorization { get; }
+
+    /// <summary>Gets the exact authorization scope derived from <see cref="Authorization"/>.</summary>
+    /// <value>The agent, session, and causal correlation without duplicating the captured authority evidence.</value>
+    public SecurityAuthorizationScope AuthorizationScope => Authorization.Scope;
+
+    /// <summary>Gets the agent-definition revision derived from <see cref="Authorization"/>.</summary>
+    /// <value>The captured nonnegative definition revision.</value>
+    public AgentDefinitionRevision AgentDefinitionRevision => Authorization.AgentDefinitionRevision;
+
+    /// <summary>Gets the effective configuration revision derived from <see cref="Authorization"/>.</summary>
+    /// <value>The captured positive configuration revision.</value>
+    public ConfigurationVersion ConfigurationVersion => Authorization.ConfigurationVersion;
+
 }

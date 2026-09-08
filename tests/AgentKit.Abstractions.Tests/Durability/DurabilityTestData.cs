@@ -4,6 +4,7 @@
 namespace AgentKit.Abstractions.Tests.Durability;
 
 using AgentKit;
+using AgentKit.TestSupport;
 
 /// <summary>
 /// Deterministic builders for durability contract values. Every identity is a
@@ -42,8 +43,32 @@ internal static class DurabilityTestData
     public static DurableOperationAddress Address() =>
         new(AgentId, SessionId, RunId, OperationId, TurnId);
 
-    public static SecurityAuthorizationScope Authorization() =>
-        new(AgentId, SessionId, new BeforeRunOperationCorrelation(OperationId, null));
+    public static SecurityAuthorizationContext Authorization() =>
+        Authorization(
+            AgentId,
+            SessionId,
+            new InRunOperationCorrelation(OperationId, RunId, TurnId));
+
+    public static SecurityAuthorizationContext Authorization(
+        AgentId agentId,
+        SessionId? sessionId,
+        OperationCorrelation correlation,
+        ExecutionIdentity? identity = null) =>
+        new(
+            new SecurityProfileKey("security"),
+            new SecurityProfileVersion(1),
+            new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(Guid.Parse("c1000000-0000-0000-0000-000000000009")),
+                new SecurityPolicyVersion(1),
+                new ContentHash("sha256:policy")),
+            new ComponentKey<ISecurityAuthority>("authority"),
+            new AgentDefinitionRevision(0),
+            new ConfigurationVersion(1),
+            new SecurityAuthorizationScope(agentId, sessionId, correlation),
+            identity ?? TestExecutionIdentity.Create(
+                new TenantId("tenant"),
+                new PrincipalId("principal"),
+                ExecutionSubjectKind.Human));
 
     public static DurableExecutionContext Context() =>
         new(
@@ -54,6 +79,16 @@ internal static class DurabilityTestData
             new DurableLeaseManagerKey("leases"),
             new RecoveryPolicyKey("policy"),
             Authorization());
+
+    public static DurableExecutionContext Context(SecurityAuthorizationContext authorization) =>
+        new(
+            new DurabilityProfileKey("profile"),
+            new DurabilityProfileVersion(1),
+            new DurableBackendKey("backend"),
+            new DurableJournalKey("journal"),
+            new DurableLeaseManagerKey("leases"),
+            new RecoveryPolicyKey("policy"),
+            authorization);
 
     public static OperationPayload Payload() =>
         new(new SchemaVersion("v1"), [1, 2, 3]);

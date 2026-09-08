@@ -88,12 +88,14 @@ public sealed class DurableRecordsTests
     }
 
     [Fact]
-    public void DurableExecutionContext_With_WhenAuthorizationIsNull_Throws()
+    public void DurableExecutionContext_Constructor_WhenAuthorizationIsCaptured_ExposesOnlyDerivedAuthorizationValues()
     {
-        var exception = Should.Throw<ArgumentNullException>(
-            () => DurabilityTestData.Context() with { Authorization = null! });
+        var context = DurabilityTestData.Context();
 
-        exception.ParamName.ShouldBe(nameof(DurableExecutionContext.Authorization));
+        context.Authorization.ShouldBe(DurabilityTestData.Authorization());
+        context.AuthorizationScope.ShouldBe(context.Authorization.Scope);
+        context.AgentDefinitionRevision.ShouldBe(context.Authorization.AgentDefinitionRevision);
+        context.ConfigurationVersion.ShouldBe(context.Authorization.ConfigurationVersion);
     }
 
     [Fact]

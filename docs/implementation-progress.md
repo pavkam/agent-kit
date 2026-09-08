@@ -65,6 +65,34 @@ owning spec.
 
 ## Latest integration evidence
 
+The durable-authorization binding checkpoint passed complete formatting, lint,
+Release build, and test gates in an isolated checkout over `6a9d02c`. Its
+reviewed API migration replaces scope-only durability authorization with the
+complete captured `SecurityAuthorizationContext`. Agent-definition and
+configuration revisions derive from that capture rather than independent fields.
+
+`DurableOperationBinding` validates agent, session, operation, run, and optional
+turn coordinates against the captured scope. In-run bindings retain the exact
+active correlation. After-run bindings retain the causal run with no turn and
+never reclaim active-run ownership. The current address cannot represent
+before-run or sessionless work; those shapes reject explicitly. Zero-valued
+durability-profile and agent-definition revisions remain valid.
+
+Descriptors, checkpoints, results, and recovery evidence retain a single
+binding. Their existing address/context constructor pairs now validate that
+binding; new overloads accept it directly. Independent address/context
+initializers and the old scope-only context constructor intentionally break
+compatibility because they could retain mismatched or incomplete authorization
+evidence. Callers must supply the complete accepted capture and construct a new
+binding when coordinates change. Recovery evidence also rejects a checkpoint
+from another binding, including a different tenant or durability selection, in
+construction and copies. Reconstructed structurally equal bindings remain
+accepted.
+
+This verifies durable value contracts only. Protected journal and lease ingress,
+trusted recovery admission, runtime activation, concrete journal
+implementations, and required-audit settlement remain open.
+
 The optional-dependency cardinality checkpoint passed complete formatting, lint,
 Release build, and test gates in an isolated checkout over `d985f6e`. The
 reviewed API change adds `OptionalSingular = 2` while preserving existing enum
@@ -96,9 +124,10 @@ including unknown effects after failure or cancellation.
 lease-manager, and recovery-policy string keys in construction and copies.
 Durability profile revision zero remains valid under its owning contract. Tests
 cover exact exception types and parameter names, all permitted result states,
-failed copies, and preservation of the original value. Complete captured
-authorization, address/correlation coherence, runtime activation, journal
-implementation, and required-audit settlement remain open.
+failed copies, and preservation of the original value. Captured authorization
+and address/correlation coherence are addressed by the later binding checkpoint;
+runtime activation, journal implementation, and required-audit settlement remain
+open.
 
 The provider-bound component-registration checkpoint passed complete formatting,
 lint, Release build, and test gates in an isolated checkout over `aa81185`.

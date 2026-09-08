@@ -343,6 +343,8 @@ namespace AgentKit
             public static void ThrowIfDoesNotContain<T>(System.Collections.Immutable.ImmutableArray<T> values, T required, [System.Runtime.CompilerServices.CallerArgumentExpression("values")] string? paramName = null)
                 where T : System.IEquatable<T> { }
             public static void ThrowIfInvalidBudgetExecutionBinding(AgentKit.BudgetScopeAddress address, AgentKit.ExecutionIdentity identity, AgentKit.OperationCorrelation correlation, [System.Runtime.CompilerServices.CallerArgumentExpression("address")] string? paramName = null) { }
+            public static void ThrowIfInvalidDurableOperationBinding(AgentKit.DurableOperationAddress address, AgentKit.DurableExecutionContext executionContext, [System.Runtime.CompilerServices.CallerArgumentExpression("executionContext")] string? paramName = null) { }
+            public static void ThrowIfRecoveryEvidenceCheckpointDoesNotMatchBinding(AgentKit.DurableOperationBinding binding, AgentKit.DurableCheckpoint? latestCheckpoint, [System.Runtime.CompilerServices.CallerArgumentExpression("latestCheckpoint")] string? paramName = null) { }
             public static void ThrowIfInvalidOutputSchemaProfile(AgentKit.OutputSchemaDialectId defaultDialect, System.Collections.Immutable.ImmutableArray<AgentKit.OutputSchemaDialectId> supportedDialects, System.Collections.Immutable.ImmutableArray<string> assertionKeywords, System.Collections.Immutable.ImmutableArray<string> annotationKeywords, [System.Runtime.CompilerServices.CallerArgumentExpression("defaultDialect")] string? defaultDialectParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("supportedDialects")] string? supportedDialectsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("assertionKeywords")] string? assertionKeywordsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("annotationKeywords")] string? annotationKeywordsParamName = null) { }
             public static void ThrowIfUnsupportedOutputSchemaDialect(AgentKit.OutputSchemaEngineProfile profile, AgentKit.OutputSchemaDialectId dialect, [System.Runtime.CompilerServices.CallerArgumentExpression("dialect")] string? paramName = null) { }
             public static void ThrowIfDuplicateAgentDefinitionSourceIds(System.Collections.Immutable.ImmutableArray<AgentKit.IAgentDefinitionSource> sources, [System.Runtime.CompilerServices.CallerArgumentExpression("sources")] string? paramName = null) { }
@@ -1765,9 +1767,11 @@ namespace AgentKit
     }
     public sealed class DurableCheckpoint : System.IEquatable<AgentKit.DurableCheckpoint>
     {
+        public DurableCheckpoint(AgentKit.CheckpointId id, AgentKit.DurableOperationBinding binding, AgentKit.DurableCheckpointKind kind, AgentKit.OperationPayload state, AgentKit.FencingToken fencingToken, System.DateTimeOffset recordedAt) { }
         public DurableCheckpoint(AgentKit.CheckpointId id, AgentKit.DurableOperationAddress address, AgentKit.DurableExecutionContext executionContext, AgentKit.DurableCheckpointKind kind, AgentKit.OperationPayload state, AgentKit.FencingToken fencingToken, System.DateTimeOffset recordedAt) { }
-        public AgentKit.DurableOperationAddress Address { get; init; }
-        public AgentKit.DurableExecutionContext ExecutionContext { get; init; }
+        public AgentKit.DurableOperationAddress Address { get; }
+        public AgentKit.DurableOperationBinding Binding { get; }
+        public AgentKit.DurableExecutionContext ExecutionContext { get; }
         public AgentKit.FencingToken FencingToken { get; init; }
         public AgentKit.CheckpointId Id { get; init; }
         public AgentKit.DurableCheckpointKind Kind { get; init; }
@@ -1799,9 +1803,12 @@ namespace AgentKit
     }
     public sealed class DurableExecutionContext : System.IEquatable<AgentKit.DurableExecutionContext>
     {
-        public DurableExecutionContext(AgentKit.DurabilityProfileKey profileKey, AgentKit.DurabilityProfileVersion profileVersion, AgentKit.DurableBackendKey backendKey, AgentKit.DurableJournalKey journalKey, AgentKit.DurableLeaseManagerKey leaseManagerKey, AgentKit.RecoveryPolicyKey recoveryPolicyKey, AgentKit.SecurityAuthorizationScope authorization) { }
-        public AgentKit.SecurityAuthorizationScope Authorization { get; init; }
+        public DurableExecutionContext(AgentKit.DurabilityProfileKey profileKey, AgentKit.DurabilityProfileVersion profileVersion, AgentKit.DurableBackendKey backendKey, AgentKit.DurableJournalKey journalKey, AgentKit.DurableLeaseManagerKey leaseManagerKey, AgentKit.RecoveryPolicyKey recoveryPolicyKey, AgentKit.SecurityAuthorizationContext authorization) { }
+        public AgentKit.AgentDefinitionRevision AgentDefinitionRevision { get; }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public AgentKit.SecurityAuthorizationScope AuthorizationScope { get; }
         public AgentKit.DurableBackendKey BackendKey { get; init; }
+        public AgentKit.ConfigurationVersion ConfigurationVersion { get; }
         public AgentKit.DurableJournalKey JournalKey { get; init; }
         public AgentKit.DurableLeaseManagerKey LeaseManagerKey { get; init; }
         public AgentKit.DurabilityProfileKey ProfileKey { get; init; }
@@ -1829,6 +1836,12 @@ namespace AgentKit
         public AgentKit.SessionId SessionId { get; init; }
         public AgentKit.TurnId? TurnId { get; init; }
     }
+    public sealed class DurableOperationBinding : System.IEquatable<AgentKit.DurableOperationBinding>
+    {
+        public DurableOperationBinding(AgentKit.DurableOperationAddress address, AgentKit.DurableExecutionContext executionContext) { }
+        public AgentKit.DurableOperationAddress Address { get; }
+        public AgentKit.DurableExecutionContext ExecutionContext { get; }
+    }
     public readonly struct DurableOperationName : System.IEquatable<AgentKit.DurableOperationName>
     {
         public DurableOperationName(string value) { }
@@ -1837,10 +1850,12 @@ namespace AgentKit
     }
     public sealed class DurableOperationResult : System.IEquatable<AgentKit.DurableOperationResult>
     {
+        public DurableOperationResult(AgentKit.DurableOperationBinding binding, AgentKit.DurableOperationState state, AgentKit.SideEffectCertainty sideEffectCertainty, AgentKit.OperationPayload output, AgentKit.FencingToken fencingToken, System.DateTimeOffset completedAt, string? safeFailureMessage = null) { }
         public DurableOperationResult(AgentKit.DurableOperationAddress address, AgentKit.DurableExecutionContext executionContext, AgentKit.DurableOperationState state, AgentKit.SideEffectCertainty sideEffectCertainty, AgentKit.OperationPayload output, AgentKit.FencingToken fencingToken, System.DateTimeOffset completedAt, string? safeFailureMessage = null) { }
-        public AgentKit.DurableOperationAddress Address { get; init; }
+        public AgentKit.DurableOperationAddress Address { get; }
+        public AgentKit.DurableOperationBinding Binding { get; }
         public System.DateTimeOffset CompletedAt { get; init; }
-        public AgentKit.DurableExecutionContext ExecutionContext { get; init; }
+        public AgentKit.DurableExecutionContext ExecutionContext { get; }
         public AgentKit.FencingToken FencingToken { get; init; }
         public AgentKit.OperationPayload Output { get; init; }
         public string? SafeFailureMessage { get; init; }
@@ -4877,13 +4892,15 @@ namespace AgentKit
     }
     public sealed class RecoverableOperationDescriptor : System.IEquatable<AgentKit.RecoverableOperationDescriptor>
     {
+        public RecoverableOperationDescriptor(AgentKit.DurableOperationBinding binding, AgentKit.DurableOperationName name, AgentKit.DurableOperationVersion version, AgentKit.IdempotencyKey idempotencyKey, AgentKit.OperationPayload input, AgentKit.DurableRetryOwner retryOwner, AgentKit.DurableTimeoutOwner timeoutOwner, AgentKit.CancellationSemantics cancellation, AgentKit.SecurityEffect effect, AgentKit.IdempotencyClassification idempotency, System.DateTimeOffset deadline, AgentKit.OperationId? causalParentId = default, AgentKit.ExtensionData? extensions = null) { }
         public RecoverableOperationDescriptor(AgentKit.DurableOperationAddress address, AgentKit.DurableExecutionContext executionContext, AgentKit.DurableOperationName name, AgentKit.DurableOperationVersion version, AgentKit.IdempotencyKey idempotencyKey, AgentKit.OperationPayload input, AgentKit.DurableRetryOwner retryOwner, AgentKit.DurableTimeoutOwner timeoutOwner, AgentKit.CancellationSemantics cancellation, AgentKit.SecurityEffect effect, AgentKit.IdempotencyClassification idempotency, System.DateTimeOffset deadline, AgentKit.OperationId? causalParentId = default, AgentKit.ExtensionData? extensions = null) { }
-        public AgentKit.DurableOperationAddress Address { get; init; }
+        public AgentKit.DurableOperationAddress Address { get; }
+        public AgentKit.DurableOperationBinding Binding { get; }
         public AgentKit.CancellationSemantics Cancellation { get; init; }
         public AgentKit.OperationId? CausalParentId { get; init; }
         public System.DateTimeOffset Deadline { get; init; }
         public AgentKit.SecurityEffect Effect { get; init; }
-        public AgentKit.DurableExecutionContext ExecutionContext { get; init; }
+        public AgentKit.DurableExecutionContext ExecutionContext { get; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.IdempotencyClassification Idempotency { get; init; }
         public AgentKit.IdempotencyKey IdempotencyKey { get; init; }
@@ -4901,9 +4918,11 @@ namespace AgentKit
     public abstract class RecoveryDecision : System.IEquatable<AgentKit.RecoveryDecision> { }
     public sealed class RecoveryEvidence : System.IEquatable<AgentKit.RecoveryEvidence>
     {
+        public RecoveryEvidence(AgentKit.DurableOperationBinding binding, AgentKit.DurableOperationState state, AgentKit.SideEffectCertainty sideEffectCertainty, bool startDefinitelyAbsent, bool terminalResultRecorded, AgentKit.DurableCheckpoint? latestCheckpoint = null, AgentKit.ExternalOperationReference? externalReference = null, AgentKit.IdempotencyKey? externalIdempotencyKey = default, AgentKit.FencingToken? lastWriterToken = default) { }
         public RecoveryEvidence(AgentKit.DurableOperationAddress address, AgentKit.DurableExecutionContext executionContext, AgentKit.DurableOperationState state, AgentKit.SideEffectCertainty sideEffectCertainty, bool startDefinitelyAbsent, bool terminalResultRecorded, AgentKit.DurableCheckpoint? latestCheckpoint = null, AgentKit.ExternalOperationReference? externalReference = null, AgentKit.IdempotencyKey? externalIdempotencyKey = default, AgentKit.FencingToken? lastWriterToken = default) { }
-        public AgentKit.DurableOperationAddress Address { get; init; }
-        public AgentKit.DurableExecutionContext ExecutionContext { get; init; }
+        public AgentKit.DurableOperationAddress Address { get; }
+        public AgentKit.DurableOperationBinding Binding { get; }
+        public AgentKit.DurableExecutionContext ExecutionContext { get; }
         public AgentKit.IdempotencyKey? ExternalIdempotencyKey { get; init; }
         public AgentKit.ExternalOperationReference? ExternalReference { get; init; }
         public AgentKit.FencingToken? LastWriterToken { get; init; }

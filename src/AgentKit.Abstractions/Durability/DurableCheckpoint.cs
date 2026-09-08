@@ -29,8 +29,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record DurableCheckpoint
 {
-    private readonly DurableOperationAddress _address;
-    private readonly DurableExecutionContext _executionContext;
     private readonly OperationPayload _state;
 
     /// <summary>
@@ -56,6 +54,10 @@ public sealed record DurableCheckpoint
     /// <paramref name="address"/>, <paramref name="executionContext"/>, or
     /// <paramref name="state"/> is <see langword="null"/>.
     /// </exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="address"/> and <paramref name="executionContext"/> do not
+    /// describe one exact supported in-run or after-run durable operation.
+    /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="id"/> or <paramref name="fencingToken"/> is its
     /// default, unallocated value, or <paramref name="kind"/> is not a
@@ -69,17 +71,35 @@ public sealed record DurableCheckpoint
         OperationPayload state,
         FencingToken fencingToken,
         DateTimeOffset recordedAt)
+        : this(id, new DurableOperationBinding(address, executionContext), kind, state, fencingToken, recordedAt)
+    {
+    }
+
+    /// <summary>Initializes a checkpoint from one exact immutable durable binding.</summary>
+    /// <param name="id">The allocated identity for this complete checkpoint.</param>
+    /// <param name="binding">The non-null binding that preserves matching durable coordinates and authorization evidence.</param>
+    /// <param name="kind">The defined semantic boundary that the checkpoint records.</param>
+    /// <param name="state">The non-null complete serialized state at that boundary.</param>
+    /// <param name="fencingToken">The allocated ownership generation that permits this write.</param>
+    /// <param name="recordedAt">The injected-clock instant at which the checkpoint was produced.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="binding"/> or <paramref name="state"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="id"/> or <paramref name="fencingToken"/> is default, or <paramref name="kind"/> is undefined.</exception>
+    public DurableCheckpoint(
+        CheckpointId id,
+        DurableOperationBinding binding,
+        DurableCheckpointKind kind,
+        OperationPayload state,
+        FencingToken fencingToken,
+        DateTimeOffset recordedAt)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(id, default, nameof(id));
-        ArgumentNullException.ThrowIfNull(address);
-        ArgumentNullException.ThrowIfNull(executionContext);
+        ArgumentNullException.ThrowIfNull(binding);
         ArgumentOutOfRangeException.ThrowIfUndefined(kind);
         ArgumentNullException.ThrowIfNull(state);
         ArgumentOutOfRangeException.ThrowIfEqual(fencingToken, default, nameof(fencingToken));
 
         Id = id;
-        _address = address;
-        _executionContext = executionContext;
+        Binding = binding;
         Kind = kind;
         _state = state;
         FencingToken = fencingToken;
@@ -100,33 +120,17 @@ public sealed record DurableCheckpoint
         }
     }
 
-    /// <summary>Gets the operation these coordinates belong to.</summary>
-    /// <exception cref="ArgumentNullException">
-    /// An initializer attempts to set <see langword="null"/>.
-    /// </exception>
-    public DurableOperationAddress Address
-    {
-        get => _address;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(Address));
-            _address = value;
-        }
-    }
+    /// <summary>Gets the exact immutable binding for this durable record.</summary>
+    /// <value>The inseparable address and captured context selected when this record was created.</value>
+    public DurableOperationBinding Binding { get; }
 
-    /// <summary>Gets the captured durability composition.</summary>
-    /// <exception cref="ArgumentNullException">
-    /// An initializer attempts to set <see langword="null"/>.
-    /// </exception>
-    public DurableExecutionContext ExecutionContext
-    {
-        get => _executionContext;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(ExecutionContext));
-            _executionContext = value;
-        }
-    }
+    /// <summary>Gets the operation coordinates derived from <see cref="Binding"/>.</summary>
+    /// <value>The exact immutable address validated with this record's captured context; it cannot be replaced independently.</value>
+    public DurableOperationAddress Address => Binding.Address;
+
+    /// <summary>Gets the captured durability context derived from <see cref="Binding"/>.</summary>
+    /// <value>The exact immutable selection and authorization evidence validated with this record's address; it cannot be replaced independently.</value>
+    public DurableExecutionContext ExecutionContext => Binding.ExecutionContext;
 
     /// <summary>Gets the semantic boundary this checkpoint marks.</summary>
     /// <exception cref="ArgumentOutOfRangeException">

@@ -66,17 +66,19 @@ public sealed record DurableExecutionContext(
     DurableJournalKey JournalKey,
     DurableLeaseManagerKey LeaseManagerKey,
     RecoveryPolicyKey RecoveryPolicyKey,
-    AgentDefinitionRevision AgentDefinitionRevision,
-    ConfigurationVersion ConfigurationVersion,
-    SecurityAuthorizationContext Authorization);
+    SecurityAuthorizationContext Authorization)
+{
+    public SecurityAuthorizationScope AuthorizationScope => Authorization.Scope;
+    public AgentDefinitionRevision AgentDefinitionRevision => Authorization.AgentDefinitionRevision;
+    public ConfigurationVersion ConfigurationVersion => Authorization.ConfigurationVersion;
+}
+
+public sealed record DurableOperationBinding(
+    DurableOperationAddress Address,
+    DurableExecutionContext ExecutionContext);
 
 public sealed record RecoverableOperationDescriptor(
-    AgentId AgentId,
-    SessionId SessionId,
-    RunId RunId,
-    TurnId? TurnId,
-    OperationId OperationId,
-    DurableExecutionContext ExecutionContext,
+    DurableOperationBinding Binding,
     OperationId? CausalParentId,
     DurableOperationName Name,
     DurableOperationVersion Version,
@@ -92,12 +94,7 @@ public sealed record RecoverableOperationDescriptor(
 
 public sealed record DurableCheckpoint(
     CheckpointId Id,
-    AgentId AgentId,
-    SessionId SessionId,
-    RunId RunId,
-    TurnId? TurnId,
-    OperationId OperationId,
-    DurableExecutionContext ExecutionContext,
+    DurableOperationBinding Binding,
     DurableCheckpointKind Kind,
     OperationPayload State,
     FencingToken FencingToken,
@@ -105,12 +102,7 @@ public sealed record DurableCheckpoint(
     SchemaVersion SchemaVersion);
 
 public sealed record RecoveryEvidence(
-    AgentId AgentId,
-    SessionId SessionId,
-    RunId RunId,
-    TurnId? TurnId,
-    OperationId OperationId,
-    DurableExecutionContext ExecutionContext,
+    DurableOperationBinding Binding,
     DurableOperationState State,
     bool StartDefinitelyAbsent,
     bool TerminalResultRecorded,
@@ -287,10 +279,17 @@ their effecting adapters validate the supplied grant again.
 
 Turn identity is causal and optional because some durable work occurs between
 turns; it is persisted unchanged on descriptors, checkpoints, evidence, and
-leases whenever present. The lease manager allocates fencing tokens atomically,
-records the injected `WorkerId`, and computes and checks `ExpiresAt` only
-through `TimeProvider`. Renewal may advance expiry but never changes operation
-identity or reuses an older fencing token.
+leases whenever present. A durable binding accepts an
+`InRunOperationCorrelation` only when agent, session, operation, run, and
+optional turn match exactly. It also accepts an `AfterRunOperationCorrelation`
+when the address run is its causal run and the address has no turn; that causal
+relationship never claims an active run. The present address shape cannot
+represent `BeforeRunOperationCorrelation` or sessionless work, so those cases
+are rejected until a future typed address evolves the contract. The lease
+manager allocates fencing tokens atomically, records the injected `WorkerId`,
+and computes and checks `ExpiresAt` only through `TimeProvider`. Renewal may
+advance expiry but never changes operation identity or reuses an older fencing
+token.
 
 AgentKit.Durability supplies sealed backend catalog/selector, coordinator,
 recovery coordinator, and fenced journal decorator classes. The central

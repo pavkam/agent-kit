@@ -29,8 +29,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record DurableOperationResult
 {
-    private readonly DurableOperationAddress _address;
-    private readonly DurableExecutionContext _executionContext;
     private readonly OperationPayload _output;
 
     /// <summary>
@@ -70,6 +68,10 @@ public sealed record DurableOperationResult
     /// <paramref name="address"/>, <paramref name="executionContext"/>, or
     /// <paramref name="output"/> is <see langword="null"/>.
     /// </exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="address"/> and <paramref name="executionContext"/> do not
+    /// describe one exact supported in-run or after-run durable operation.
+    /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="state"/> is undefined or does not retain a complete
     /// result, <paramref name="sideEffectCertainty"/> is undefined, or
@@ -84,16 +86,36 @@ public sealed record DurableOperationResult
         FencingToken fencingToken,
         DateTimeOffset completedAt,
         string? safeFailureMessage = null)
+        : this(new DurableOperationBinding(address, executionContext), state, sideEffectCertainty, output, fencingToken, completedAt, safeFailureMessage)
     {
-        ArgumentNullException.ThrowIfNull(address);
-        ArgumentNullException.ThrowIfNull(executionContext);
+    }
+
+    /// <summary>Initializes a terminal delivery-result record from one exact immutable durable binding.</summary>
+    /// <param name="binding">The non-null binding that preserves matching durable coordinates and authorization evidence.</param>
+    /// <param name="state">The defined terminal lifecycle state: outcome ready, completed, or faulted.</param>
+    /// <param name="sideEffectCertainty">The defined certainty actually known for the completed effect attempt.</param>
+    /// <param name="output">The non-null versioned serialized result payload.</param>
+    /// <param name="fencingToken">The allocated ownership generation that committed the result.</param>
+    /// <param name="completedAt">The injected-clock instant at which the terminal result was produced.</param>
+    /// <param name="safeFailureMessage">Redacted failure text, or <see langword="null"/> when no safe failure description is retained.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="binding"/> or <paramref name="output"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="state"/> is not terminal, <paramref name="sideEffectCertainty"/> is undefined, or <paramref name="fencingToken"/> is default.</exception>
+    public DurableOperationResult(
+        DurableOperationBinding binding,
+        DurableOperationState state,
+        SideEffectCertainty sideEffectCertainty,
+        OperationPayload output,
+        FencingToken fencingToken,
+        DateTimeOffset completedAt,
+        string? safeFailureMessage = null)
+    {
+        ArgumentNullException.ThrowIfNull(binding);
         ArgumentOutOfRangeException.ThrowIfNotTerminalDurableOperationState(state);
         ArgumentOutOfRangeException.ThrowIfUndefined(sideEffectCertainty);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentOutOfRangeException.ThrowIfEqual(fencingToken, default, nameof(fencingToken));
 
-        _address = address;
-        _executionContext = executionContext;
+        Binding = binding;
         State = state;
         SideEffectCertainty = sideEffectCertainty;
         _output = output;
@@ -102,33 +124,17 @@ public sealed record DurableOperationResult
         SafeFailureMessage = safeFailureMessage;
     }
 
-    /// <summary>Gets the operation this result belongs to.</summary>
-    /// <exception cref="ArgumentNullException">
-    /// An initializer attempts to set <see langword="null"/>.
-    /// </exception>
-    public DurableOperationAddress Address
-    {
-        get => _address;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(Address));
-            _address = value;
-        }
-    }
+    /// <summary>Gets the exact immutable binding for this durable record.</summary>
+    /// <value>The inseparable address and captured context selected when this record was created.</value>
+    public DurableOperationBinding Binding { get; }
 
-    /// <summary>Gets the captured durability composition.</summary>
-    /// <exception cref="ArgumentNullException">
-    /// An initializer attempts to set <see langword="null"/>.
-    /// </exception>
-    public DurableExecutionContext ExecutionContext
-    {
-        get => _executionContext;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(ExecutionContext));
-            _executionContext = value;
-        }
-    }
+    /// <summary>Gets the operation coordinates derived from <see cref="Binding"/>.</summary>
+    /// <value>The exact immutable address validated with this record's captured context; it cannot be replaced independently.</value>
+    public DurableOperationAddress Address => Binding.Address;
+
+    /// <summary>Gets the captured durability context derived from <see cref="Binding"/>.</summary>
+    /// <value>The exact immutable selection and authorization evidence validated with this record's address; it cannot be replaced independently.</value>
+    public DurableExecutionContext ExecutionContext => Binding.ExecutionContext;
 
     /// <summary>
     /// Gets the complete-result lifecycle position, which may be staged

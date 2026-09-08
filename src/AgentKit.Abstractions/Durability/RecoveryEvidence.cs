@@ -25,8 +25,6 @@ namespace AgentKit;
 /// </remarks>
 public sealed record RecoveryEvidence
 {
-    private readonly DurableOperationAddress _address;
-    private readonly DurableExecutionContext _executionContext;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RecoveryEvidence"/>
@@ -64,6 +62,11 @@ public sealed record RecoveryEvidence
     /// <paramref name="address"/> or <paramref name="executionContext"/> is
     /// <see langword="null"/>.
     /// </exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="address"/> and <paramref name="executionContext"/>
+    /// cannot form one exact durable binding, or a supplied
+    /// <paramref name="latestCheckpoint"/> does not retain that binding.
+    /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="state"/> or <paramref name="sideEffectCertainty"/> is
     /// not a defined enumeration value, or <paramref name="lastWriterToken"/>
@@ -80,15 +83,41 @@ public sealed record RecoveryEvidence
         ExternalOperationReference? externalReference = null,
         IdempotencyKey? externalIdempotencyKey = null,
         FencingToken? lastWriterToken = null)
+        : this(new DurableOperationBinding(address, executionContext), state, sideEffectCertainty, startDefinitelyAbsent, terminalResultRecorded, latestCheckpoint, externalReference, externalIdempotencyKey, lastWriterToken)
     {
-        ArgumentNullException.ThrowIfNull(address);
-        ArgumentNullException.ThrowIfNull(executionContext);
+    }
+
+    /// <summary>Initializes recovery evidence from one exact immutable durable binding.</summary>
+    /// <param name="binding">The non-null binding that preserves matching durable coordinates and authorization evidence.</param>
+    /// <param name="state">The defined lifecycle state persisted by the journal.</param>
+    /// <param name="sideEffectCertainty">The defined certainty actually known for the external effect.</param>
+    /// <param name="startDefinitelyAbsent">Whether durable evidence proves dispatch never began.</param>
+    /// <param name="terminalResultRecorded">Whether a complete result is available without reinvoking the effect.</param>
+    /// <param name="latestCheckpoint">The latest complete checkpoint, or <see langword="null"/> when none exists.</param>
+    /// <param name="externalReference">The external-owner reference, or <see langword="null"/> when no handoff occurred.</param>
+    /// <param name="externalIdempotencyKey">The external idempotency key, or <see langword="null"/> when none was established.</param>
+    /// <param name="lastWriterToken">The last allocated write token, or <see langword="null"/> when no durable write occurred.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="binding"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">A supplied <paramref name="latestCheckpoint"/> does not retain <paramref name="binding"/> exactly.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="state"/> or <paramref name="sideEffectCertainty"/> is undefined, or a supplied <paramref name="lastWriterToken"/> is default.</exception>
+    public RecoveryEvidence(
+        DurableOperationBinding binding,
+        DurableOperationState state,
+        SideEffectCertainty sideEffectCertainty,
+        bool startDefinitelyAbsent,
+        bool terminalResultRecorded,
+        DurableCheckpoint? latestCheckpoint = null,
+        ExternalOperationReference? externalReference = null,
+        IdempotencyKey? externalIdempotencyKey = null,
+        FencingToken? lastWriterToken = null)
+    {
+        ArgumentNullException.ThrowIfNull(binding);
+        ArgumentException.ThrowIfRecoveryEvidenceCheckpointDoesNotMatchBinding(binding, latestCheckpoint);
         ArgumentOutOfRangeException.ThrowIfUndefined(state);
         ArgumentOutOfRangeException.ThrowIfUndefined(sideEffectCertainty);
         ThrowIfDefaultToken(lastWriterToken, nameof(lastWriterToken));
 
-        _address = address;
-        _executionContext = executionContext;
+        Binding = binding;
         State = state;
         SideEffectCertainty = sideEffectCertainty;
         StartDefinitelyAbsent = startDefinitelyAbsent;
@@ -99,33 +128,17 @@ public sealed record RecoveryEvidence
         LastWriterToken = lastWriterToken;
     }
 
-    /// <summary>Gets the operation the evidence describes.</summary>
-    /// <exception cref="ArgumentNullException">
-    /// An initializer attempts to set <see langword="null"/>.
-    /// </exception>
-    public DurableOperationAddress Address
-    {
-        get => _address;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(Address));
-            _address = value;
-        }
-    }
+    /// <summary>Gets the exact immutable binding for this durable record.</summary>
+    /// <value>The inseparable address and captured context selected when this record was created.</value>
+    public DurableOperationBinding Binding { get; }
 
-    /// <summary>Gets the captured durability composition.</summary>
-    /// <exception cref="ArgumentNullException">
-    /// An initializer attempts to set <see langword="null"/>.
-    /// </exception>
-    public DurableExecutionContext ExecutionContext
-    {
-        get => _executionContext;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(ExecutionContext));
-            _executionContext = value;
-        }
-    }
+    /// <summary>Gets the operation coordinates derived from <see cref="Binding"/>.</summary>
+    /// <value>The exact immutable address validated with this record's captured context; it cannot be replaced independently.</value>
+    public DurableOperationAddress Address => Binding.Address;
+
+    /// <summary>Gets the captured durability context derived from <see cref="Binding"/>.</summary>
+    /// <value>The exact immutable selection and authorization evidence validated with this record's address; it cannot be replaced independently.</value>
+    public DurableExecutionContext ExecutionContext => Binding.ExecutionContext;
 
     /// <summary>Gets the persisted lifecycle position.</summary>
     /// <exception cref="ArgumentOutOfRangeException">
@@ -177,7 +190,17 @@ public sealed record RecoveryEvidence
     /// Gets the most recent complete state snapshot, or
     /// <see langword="null"/> when none was recorded.
     /// </summary>
-    public DurableCheckpoint? LatestCheckpoint { get; init; }
+    /// <value>A checkpoint with the exact same <see cref="Binding"/>, so its state cannot be attributed to another operation or authorization capture.</value>
+    /// <exception cref="ArgumentException">An initializer supplies a checkpoint with a different durable binding.</exception>
+    public DurableCheckpoint? LatestCheckpoint
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfRecoveryEvidenceCheckpointDoesNotMatchBinding(Binding, value, nameof(LatestCheckpoint));
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Gets the external owner's handle, or <see langword="null"/> when no
