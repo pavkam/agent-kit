@@ -82,6 +82,9 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for completing all run-owned settlement work.</summary>
     public const string RunSettle = "run.settle";
 
+    /// <summary>Gets the name for capturing one exact security profile and authorization scope.</summary>
+    public const string SecurityProfileCapture = "security.profile.capture";
+
     /// <summary>Gets the name for a security authorization decision.</summary>
     public const string SecurityAuthorize = "security.authorize";
 

@@ -30,5 +30,26 @@ internal static class ArgumentExceptionExtensions
                 }
             }
         }
+
+        /// <summary>Throws when exact security-profile publication coordinates are duplicated.</summary>
+        /// <param name="publications">The fully materialized publication registrations.</param>
+        /// <param name="paramName">The registration collection parameter attributed to an invalid entry.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="publications"/> or an entry is null.</exception>
+        /// <exception cref="ArgumentException">Two publications have equal agent, definition, configuration, and profile coordinates.</exception>
+        public static void ThrowIfDuplicateSecurityProfilePublication(
+            IReadOnlyList<SecurityProfilePublication> publications,
+            [CallerArgumentExpression(nameof(publications))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(publications, paramName);
+            var coordinates = new HashSet<(AgentId, AgentDefinitionRevision, ConfigurationVersion, SecurityProfileKey)>();
+            foreach (var publication in publications)
+            {
+                ArgumentNullException.ThrowIfNull(publication, paramName);
+                if (!coordinates.Add((publication.AgentId, publication.AgentDefinitionRevision, publication.ConfigurationVersion, publication.ProfileKey)))
+                {
+                    throw new ArgumentException("Security-profile publication coordinates must be unique.", paramName);
+                }
+            }
+        }
     }
 }

@@ -65,13 +65,36 @@ owning spec.
 
 ## Latest integration evidence
 
-The security audit-dispatch checkpoint passed `make format`, `make lint`, and
-`make test` in an isolated checkout over `a3fd03b`. All 4,275 tests passed
-without skips; the Release build reported zero warnings or errors. The three
-reviewed API snapshots are additive: typed audit records, dispatch and sink
-contracts, safe audit values, explicit sink registration, delivery policy, and
-shared diagnostic names. The initial test run failed only those three expected
-snapshot comparisons; no behavioral test failed.
+The exact security-profile capture checkpoint passed `make format`, `make lint`,
+and `make test` in an isolated checkout over `8af9a62`. All 4,324 tests passed
+without skips; the Release build reported zero warnings or errors. Three
+reviewed API snapshots add publication reading, authorization capture, explicit
+publication registration, typed results, and shared diagnostic names.
+
+The default reader freezes publications by agent identity, definition revision,
+configuration revision, and profile key. The selector checks every returned
+coordinate before binding a fresh immutable context to the supplied operation
+scope and authenticated identity. Missing or mismatched publications return
+unavailable without selecting a newer profile. Capture grants no authority.
+Coverage includes duplicate registration, argument validation, replacement,
+cancellation, safe diagnostics, and hostile logging, meter, and activity
+listeners. The initial full run failed only the three expected API snapshots.
+
+Host-supplied publications still need integration with validated agent component
+selections and the run-plan compiler. Policy activation and retirement,
+authorization capture at every protected operation, complete grant binding, and
+routed session coordination remain open. C# record copy constructors permit
+external derivation despite restricted normal construction; selectors reject
+unknown result variants rather than relying on a closed hierarchy.
+
+The preceding security audit-dispatch checkpoint (`8af9a62`) passed
+`make format`, `make lint`, and `make test` in an isolated checkout over
+`a3fd03b`. All 4,275 tests passed without skips; the Release build reported zero
+warnings or errors. The three reviewed API snapshots are additive: typed audit
+records, dispatch and sink contracts, safe audit values, explicit sink
+registration, delivery policy, and shared diagnostic names. The initial test run
+failed only those three expected snapshot comparisons; no behavioral test
+failed.
 
 The replaceable dispatcher captures additive host-owned sinks. Required delivery
 fails closed unless a suitable sink successfully accepts the record durably;
@@ -263,14 +286,15 @@ and explicit coordination.
 - Anthropic and Gemini HTTP failures and cancellation are corrected in
   `c765ee8`. Broader provider capability and protocol conformance remain open;
   the external embedding implementation has its own ownership and review.
-- Security capture values and explicit keyed authority selection (`a3fd03b`) are
-  implemented. Audit dispatch has a verified checkpoint; profile/policy
-  publication and capture, retained activation, and downstream request/grant
-  binding remain open. `6b0bb98` distinguishes pinned run configuration from
-  exact per-operation authorization scope; possessing a context does not grant
-  an effect. `260bf5b` specifies publication and activation ownership. A default
-  selection reader depends on validated agent component selections and cannot be
-  replaced by an unchecked profile-key registry.
+- Security capture values, explicit keyed authority selection (`a3fd03b`), audit
+  dispatch (`8af9a62`), and configured exact profile publication/capture have
+  verified checkpoints. Integration with validated agent selections, retained
+  policy activation, and downstream request/grant binding remain open. `6b0bb98`
+  distinguishes pinned run configuration from exact per-operation authorization
+  scope; possessing a context does not grant an effect. `260bf5b` specifies
+  publication and activation ownership. A default selection reader depends on
+  validated agent component selections and cannot be replaced by an unchecked
+  profile-key registry.
 - Output diagnostic bounds are corrected in `4737dcd`, text is bounded before
   parsing in `de4910b`, and schema values own detached JSON in `ad7ce18`.
   `11e80f9` adds declared vocabulary/dialect capabilities, keyed schema-engine

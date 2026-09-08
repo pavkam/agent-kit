@@ -4,7 +4,7 @@
 namespace AgentKit;
 
 /// <summary>Requests capture of an effective security profile and policy snapshot for one authenticated operation.</summary>
-/// <remarks>The request contains no grant and does not authorize an effect. A future profile selector resolves it without fabricating missing configuration or identity.</remarks>
+/// <remarks>The request contains no grant and does not authorize an effect. A profile selector resolves it only against an exact immutable publication, without fabricating missing configuration or identity.</remarks>
 public sealed record SecurityAuthorizationCaptureRequest
 {
     /// <summary>Initializes an authorization-capture request.</summary>

@@ -100,4 +100,69 @@ internal static partial class SecurityLog
     /// <remarks>The failure is observationally recorded while the configured best-effort delivery continues.</remarks>
     [LoggerMessage(5015, LogLevel.Warning, "Best-effort delivery of security audit record {SecurityAuditRecordId} failed with error type {ErrorType}.")]
     internal static partial void BestEffortAuditDispatchFailed(ILogger logger, SecurityAuditRecordId securityAuditRecordId, string errorType);
+
+    /// <summary>Logs the start of exact security-profile capture without policy or identity content.</summary>
+    /// <param name="logger">The content-free logger that receives the structured event.</param>
+    /// <param name="securityProfileKey">The explicit profile key requested from the immutable publication.</param>
+    /// <remarks>The event excludes policy fingerprints, execution identity, and publication content.</remarks>
+    [LoggerMessage(5016, LogLevel.Debug, "Capturing exact security profile {SecurityProfileKey}.")]
+    internal static partial void ProfileCaptureStarted(ILogger logger, SecurityProfileKey securityProfileKey);
+
+    /// <summary>Logs successful exact security-profile capture without granting authority.</summary>
+    /// <param name="logger">The content-free logger that receives the structured event.</param>
+    /// <param name="securityProfileKey">The exact profile key captured into authorization evidence.</param>
+    /// <remarks>Capture reports immutable evidence only; it does not report an allow decision or grant.</remarks>
+    [LoggerMessage(5017, LogLevel.Debug, "Captured exact security profile {SecurityProfileKey}.")]
+    internal static partial void ProfileCaptured(ILogger logger, SecurityProfileKey securityProfileKey);
+
+    /// <summary>Logs fail-closed publication unavailability with a bounded diagnostic outcome.</summary>
+    /// <param name="logger">The content-free logger that receives the structured event.</param>
+    /// <param name="securityProfileKey">The exact profile key whose publication could not be captured.</param>
+    /// <param name="outcome">The bounded unavailable or mismatched-publication outcome.</param>
+    /// <remarks>The event does not include reader reasons or mismatched publication coordinates.</remarks>
+    [LoggerMessage(5018, LogLevel.Information, "Exact security profile {SecurityProfileKey} is unavailable with outcome {Outcome}.")]
+    internal static partial void ProfileCaptureUnavailable(
+        ILogger logger,
+        SecurityProfileKey securityProfileKey,
+        string outcome);
+
+    /// <summary>Logs caller cancellation before exact security-profile capture completes.</summary>
+    /// <param name="logger">The content-free logger that receives the structured event.</param>
+    /// <param name="securityProfileKey">The exact profile key whose capture was cancelled.</param>
+    [LoggerMessage(5019, LogLevel.Information, "Capturing exact security profile {SecurityProfileKey} was cancelled.")]
+    internal static partial void ProfileCaptureCancelled(ILogger logger, SecurityProfileKey securityProfileKey);
+
+    /// <summary>Logs an unexpected profile-capture failure without policy or identity content.</summary>
+    /// <param name="logger">The content-free logger that receives the structured event.</param>
+    /// <param name="securityProfileKey">The exact profile key whose capture faulted.</param>
+    /// <param name="errorType">The normalized exception type name without its message or protected content.</param>
+    [LoggerMessage(5020, LogLevel.Error, "Capturing exact security profile {SecurityProfileKey} faulted with error type {ErrorType}.")]
+    internal static partial void ProfileCaptureFaulted(
+        ILogger logger,
+        SecurityProfileKey securityProfileKey,
+        string errorType);
+
+    /// <summary>Logs that an exact publication read found its immutable publication.</summary>
+    /// <param name="logger">The content-free logger that receives the structured event.</param>
+    /// <param name="securityProfileKey">The exact profile key requested from the frozen publication map.</param>
+    [LoggerMessage(5021, LogLevel.Debug, "Found exact security-profile publication {SecurityProfileKey}.")]
+    internal static partial void ProfilePublicationFound(
+        ILogger logger,
+        SecurityProfileKey securityProfileKey);
+
+    /// <summary>Logs that an exact publication read found no matching immutable publication.</summary>
+    /// <param name="logger">The content-free logger that receives the structured event.</param>
+    /// <param name="securityProfileKey">The exact profile key unavailable from the frozen publication map.</param>
+    [LoggerMessage(5022, LogLevel.Information, "Exact security-profile publication {SecurityProfileKey} is unavailable.")]
+    internal static partial void ProfilePublicationUnavailable(
+        ILogger logger,
+        SecurityProfileKey securityProfileKey);
+
+    /// <summary>Logs caller cancellation before an exact publication read completes.</summary>
+    /// <param name="logger">The content-free logger that receives the structured event.</param>
+    /// <param name="securityProfileKey">The exact profile key whose publication read was cancelled.</param>
+    [LoggerMessage(5023, LogLevel.Information, "Reading exact security-profile publication {SecurityProfileKey} was cancelled.")]
+    internal static partial void ProfilePublicationReadCancelled(
+        ILogger logger,
+        SecurityProfileKey securityProfileKey);
 }

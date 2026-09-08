@@ -34,8 +34,29 @@ public static class ServiceExtensions
             services.TryAddSingleton<ISecurityAuthority, SecurityAuthority>();
             services.TryAddSingleton<ISecurityAuthoritySelector, DefaultSecurityAuthoritySelector>();
             services.TryAddSingleton<ISecurityAuditDispatcher, DefaultSecurityAuditDispatcher>();
+            services.TryAddSingleton<ISecurityProfilePublicationReader, DefaultSecurityProfilePublicationReader>();
+            services.TryAddSingleton<ISecurityProfileSelector, DefaultSecurityProfileSelector>();
             return services;
         }
+
+        /// <summary>Registers one immutable security-profile publication for its exact composition coordinates.</summary>
+        /// <param name="publication">The non-null publication selected by the host composition.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="publication"/> is null.</exception>
+        /// <remarks>
+        /// Registrations are additive and the host retains ownership of the supplied immutable publication instance.
+        /// The default reader freezes the registered references and rejects duplicate exact agent, definition-revision,
+        /// configuration-version, and profile-key coordinates when it is activated; callers must register each complete
+        /// coordinate at most once.
+        /// </remarks>
+        public IServiceCollection AddSecurityProfilePublication(SecurityProfilePublication publication)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(publication);
+            _ = services.AddSingleton(publication);
+            return services;
+        }
+
 
         /// <summary>Registers one host-owned audit sink with explicit supported-event and durability semantics.</summary>
         /// <param name="registration">The immutable event support, delivery, and durable-acceptance declaration.</param>

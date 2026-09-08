@@ -76,6 +76,9 @@ public static class AgentKitTagNames
     /// <summary>Gets the captured security-authority component key for traces and logs.</summary>
     public const string SecurityAuthorityKey = "agentkit.security.authority.key";
 
+    /// <summary>Gets the selected security-profile key for traces and structured logs.</summary>
+    public const string SecurityProfileKey = "agentkit.security.profile.key";
+
     /// <summary>Gets the normalized protected-effect class attribute.</summary>
     public const string SecurityEffect = "agentkit.security.effect";
 

@@ -43,6 +43,15 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal security authorization decisions.</summary>
     public const string SecurityDecisionCount = "agentkit.security.decision.count";
 
+    /// <summary>Gets the counter for terminal security-profile capture outcomes.</summary>
+    public const string SecurityProfileCaptureCount = "agentkit.security.profile.capture.count";
+
+    /// <summary>Gets the histogram for security-profile capture duration in seconds.</summary>
+    public const string SecurityProfileCaptureDuration = "agentkit.security.profile.capture.duration";
+
+    /// <summary>Gets the counter for exact security-profile publication-read outcomes.</summary>
+    public const string SecurityProfilePublicationReadCount = "agentkit.security.profile.publication.read.count";
+
     /// <summary>Gets the counter for terminal captured security-authority selection outcomes.</summary>
     public const string SecurityAuthoritySelectionCount = "agentkit.security.authority.selection.count";
 

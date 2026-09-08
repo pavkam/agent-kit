@@ -2842,6 +2842,14 @@ namespace AgentKit
     {
         System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicyResult> EvaluateAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface ISecurityProfilePublicationReader
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.SecurityProfilePublicationResult> ReadAsync(AgentKit.AgentId agentId, AgentKit.AgentDefinitionRevision agentDefinitionRevision, AgentKit.ConfigurationVersion configurationVersion, AgentKit.SecurityProfileKey profileKey, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface ISecurityProfileSelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.SecurityAuthorizationCaptureResult> SelectAsync(AgentKit.SecurityAuthorizationCaptureRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface ISessionCoordinator
     {
         System.Threading.Tasks.ValueTask<AgentKit.SessionAppendResult> AppendAsync(AgentKit.SessionAppendRequest request, System.Threading.CancellationToken cancellationToken = default);
@@ -5007,6 +5015,17 @@ namespace AgentKit
         public AgentKit.SecurityProfileKey ProfileKey { get; }
         public AgentKit.SecurityAuthorizationScope Scope { get; }
     }
+    public abstract class SecurityAuthorizationCaptureResult : System.IEquatable<AgentKit.SecurityAuthorizationCaptureResult> { }
+    public sealed class SecurityAuthorizationCaptureUnavailable : AgentKit.SecurityAuthorizationCaptureResult, System.IEquatable<AgentKit.SecurityAuthorizationCaptureUnavailable>
+    {
+        public SecurityAuthorizationCaptureUnavailable(string safeReason) { }
+        public string SafeReason { get; }
+    }
+    public sealed class SecurityAuthorizationCaptured : AgentKit.SecurityAuthorizationCaptureResult, System.IEquatable<AgentKit.SecurityAuthorizationCaptured>
+    {
+        public SecurityAuthorizationCaptured(AgentKit.SecurityAuthorizationContext authorization) { }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+    }
     public sealed class SecurityAuthorizationContext : System.IEquatable<AgentKit.SecurityAuthorizationContext>
     {
         public SecurityAuthorizationContext(AgentKit.SecurityProfileKey profileKey, AgentKit.SecurityProfileVersion profileVersion, AgentKit.SecurityPolicySnapshotReference policySnapshot, AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey, AgentKit.AgentDefinitionRevision agentDefinitionRevision, AgentKit.ConfigurationVersion configurationVersion, AgentKit.SecurityAuthorizationScope scope, AgentKit.ExecutionIdentity identity) { }
@@ -5145,6 +5164,28 @@ namespace AgentKit
         public SecurityProfileKey(string value) { }
         public string Value { get; }
         public override string ToString() { }
+    }
+    public sealed class SecurityProfilePublication : System.IEquatable<AgentKit.SecurityProfilePublication>
+    {
+        public SecurityProfilePublication(AgentKit.AgentId agentId, AgentKit.AgentDefinitionRevision agentDefinitionRevision, AgentKit.ConfigurationVersion configurationVersion, AgentKit.SecurityProfileKey profileKey, AgentKit.SecurityProfileVersion profileVersion, AgentKit.SecurityPolicySnapshotReference policySnapshot, AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey) { }
+        public AgentKit.AgentDefinitionRevision AgentDefinitionRevision { get; }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.ComponentKey<AgentKit.ISecurityAuthority> AuthorityKey { get; }
+        public AgentKit.ConfigurationVersion ConfigurationVersion { get; }
+        public AgentKit.SecurityPolicySnapshotReference PolicySnapshot { get; }
+        public AgentKit.SecurityProfileKey ProfileKey { get; }
+        public AgentKit.SecurityProfileVersion ProfileVersion { get; }
+    }
+    public sealed class SecurityProfilePublicationFound : AgentKit.SecurityProfilePublicationResult, System.IEquatable<AgentKit.SecurityProfilePublicationFound>
+    {
+        public SecurityProfilePublicationFound(AgentKit.SecurityProfilePublication publication) { }
+        public AgentKit.SecurityProfilePublication Publication { get; }
+    }
+    public abstract class SecurityProfilePublicationResult : System.IEquatable<AgentKit.SecurityProfilePublicationResult> { }
+    public sealed class SecurityProfilePublicationUnavailable : AgentKit.SecurityProfilePublicationResult, System.IEquatable<AgentKit.SecurityProfilePublicationUnavailable>
+    {
+        public SecurityProfilePublicationUnavailable(string safeReason) { }
+        public string SafeReason { get; }
     }
     public readonly struct SecurityProfileVersion : System.IEquatable<AgentKit.SecurityProfileVersion>
     {

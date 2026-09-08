@@ -50,6 +50,7 @@ namespace AgentKit.Observability
         public const string SecurityAuditDispatch = "security.audit.dispatch";
         public const string SecurityAuthoritySelect = "security.authority.select";
         public const string SecurityAuthorize = "security.authorize";
+        public const string SecurityProfileCapture = "security.profile.capture";
         public const string SessionBranch = "session.branch";
         public const string SessionCommit = "session.commit";
         public const string SessionCreate = "session.create";
@@ -107,6 +108,9 @@ namespace AgentKit.Observability
         public const string SecurityAuthoritySelectionCount = "agentkit.security.authority.selection.count";
         public const string SecurityAuthoritySelectionDuration = "agentkit.security.authority.selection.duration";
         public const string SecurityDecisionCount = "agentkit.security.decision.count";
+        public const string SecurityProfileCaptureCount = "agentkit.security.profile.capture.count";
+        public const string SecurityProfileCaptureDuration = "agentkit.security.profile.capture.duration";
+        public const string SecurityProfilePublicationReadCount = "agentkit.security.profile.publication.read.count";
         public const string SessionOperationCount = "agentkit.session.operation.count";
         public const string SessionStoreOperationCount = "agentkit.session.store.operation.count";
         public const string ToolCallCount = "agentkit.tool.call.count";
@@ -159,6 +163,7 @@ namespace AgentKit.Observability
         public const string SecurityAuthorityKey = "agentkit.security.authority.key";
         public const string SecurityEffect = "agentkit.security.effect";
         public const string SecurityOperationKind = "agentkit.security.operation.kind";
+        public const string SecurityProfileKey = "agentkit.security.profile.key";
         public const string SecurityRequestId = "agentkit.security_request.id";
         public const string SessionId = "agentkit.session.id";
         public const string SessionOperation = "agentkit.session.operation";

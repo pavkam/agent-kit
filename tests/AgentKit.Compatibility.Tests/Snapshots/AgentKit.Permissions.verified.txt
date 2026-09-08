@@ -35,6 +35,7 @@ namespace AgentKit.Permissions
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentPermissions(System.Action<AgentKit.Permissions.AgentPermissionOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityProfilePublication(AgentKit.SecurityProfilePublication publication) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuditSink(AgentKit.SecurityAuditSinkRegistration registration, AgentKit.ISecurityAuditSink sink) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuthority(AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey, AgentKit.ISecurityAuthority authority) { }
         }
