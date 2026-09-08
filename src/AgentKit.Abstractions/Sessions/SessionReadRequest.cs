@@ -18,9 +18,8 @@ public sealed record SessionReadRequest
     /// <param name="context">The operation context for this read.</param>
     /// <param name="branchId">The branch to read from.</param>
     /// <param name="fromSequenceExclusive">
-    /// Read entries strictly after this sequence. Branch sequences are
-    /// 1-indexed (the first entry ever appended to a branch has sequence 1),
-    /// so <c>new SessionSequence(0)</c> reads from the very beginning
+    /// Read entries strictly after this whole-session sequence. Sequences are
+    /// positive when allocated, so <c>new SessionSequence(0)</c> reads from the very beginning
     /// without requiring a negative "before all" sentinel.
     /// </param>
     /// <param name="pageSize">The maximum number of entries to return.</param>
@@ -44,14 +43,14 @@ public sealed record SessionReadRequest
     }
 
     /// <summary>Gets the operation context for this read.</summary>
-    public SessionOperationContext Context { get; init; }
+    public SessionOperationContext Context { get; }
 
     /// <summary>Gets the branch to read from.</summary>
-    public BranchId BranchId { get; init; }
+    public BranchId BranchId { get; }
 
     /// <summary>Gets the sequence after which entries are read.</summary>
-    public SessionSequence FromSequenceExclusive { get; init; }
+    public SessionSequence FromSequenceExclusive { get; }
 
     /// <summary>Gets the maximum number of entries to return.</summary>
-    public int PageSize { get; init; }
+    public int PageSize { get; }
 }

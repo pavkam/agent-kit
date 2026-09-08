@@ -33,6 +33,7 @@ namespace AgentKit.Tools.Plan
     public sealed class SessionPlanStateStore : AgentKit.IPlanStateStore
     {
         public SessionPlanStateStore(AgentKit.ISessionCoordinator sessions, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.PlanId> planIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds, System.TimeProvider timeProvider) { }
+        public SessionPlanStateStore(AgentKit.ISessionCoordinator sessions, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.PlanId> planIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider timeProvider) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.PlanStateResult> ReadAsync(AgentKit.PlanReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.PlanStateResult> ReplaceAsync(AgentKit.PlanReplaceRequest request, System.Threading.CancellationToken cancellationToken = default) { }

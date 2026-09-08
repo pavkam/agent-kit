@@ -56,6 +56,7 @@ namespace AgentKit.Observability
         public const string SessionCommit = "session.commit";
         public const string SessionCreate = "session.create";
         public const string SessionDelete = "session.delete";
+        public const string SessionDirectoryOperation = "session.directory.operation";
         public const string SessionEventPublish = "session.event.publish";
         public const string SessionLeaseAcquire = "session.lease.acquire";
         public const string SessionLoad = "session.load";
@@ -81,6 +82,7 @@ namespace AgentKit.Observability
         public const string AgentAdmissionCount = "agentkit.agent.admission.count";
         public const string AgentRunCount = "agentkit.agent.run.count";
         public const string AgentRunDuration = "agentkit.agent.run.duration";
+        public const string AgentRunProfilePublicationReadCount = "agentkit.agent.run_profile.read.count";
         public const string BudgetCorrectionCount = "agentkit.budget.correction.count";
         public const string BudgetReservationCount = "agentkit.budget.reservation.count";
         public const string BudgetSettlementCount = "agentkit.budget.settlement.count";
@@ -113,6 +115,7 @@ namespace AgentKit.Observability
         public const string SecurityProfileCaptureCount = "agentkit.security.profile.capture.count";
         public const string SecurityProfileCaptureDuration = "agentkit.security.profile.capture.duration";
         public const string SecurityProfilePublicationReadCount = "agentkit.security.profile.publication.read.count";
+        public const string SessionDirectoryOperationCount = "agentkit.session.directory.operation.count";
         public const string SessionOperationCount = "agentkit.session.operation.count";
         public const string SessionStoreOperationCount = "agentkit.session.store.operation.count";
         public const string ToolCallCount = "agentkit.tool.call.count";

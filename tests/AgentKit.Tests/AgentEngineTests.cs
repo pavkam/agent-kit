@@ -9,9 +9,19 @@ public sealed class AgentEngineTests
     public void Constructor_WhenServicesIsNull_ThrowsBeforeAssignment()
     {
         var exception = Should.Throw<ArgumentNullException>(
-            () => new AgentEngine(null!, ownedProvider: null));
+            () => new AgentEngine(
+                null!, ownedProvider: null, new AgentRunProfilePublicationSnapshot([])));
 
         exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void Constructor_WhenValidatedRunProfilesIsNull_ThrowsBeforeResolvingServices()
+    {
+        var exception = Should.Throw<ArgumentNullException>(
+            () => new AgentEngine(MinimalProvider(), ownedProvider: null, null!));
+
+        exception.ParamName.ShouldBe("validatedRunProfiles");
     }
 
     [Fact]
@@ -47,6 +57,7 @@ public sealed class AgentEngineTests
         var second = CompositionTestData.Definition(new AgentId(Guid.NewGuid()), "second");
         var builder = CompositionTestData.RunnableBuilder();
         _ = builder.Services.AddAgent(second);
+        _ = builder.Services.AddAgentRunProfilePublication(CompositionTestData.RunProfile(second));
 
         await using var engine = builder.Build();
 
@@ -161,7 +172,8 @@ public sealed class AgentEngineTests
     public async Task DisposeAsync_WhenCalledConcurrently_DisposesOwnerOnceAndSharesCompletion()
     {
         var owner = new BlockingAsyncDisposable();
-        var engine = new AgentEngine(MinimalProvider(), owner);
+        var engine = new AgentEngine(
+            MinimalProvider(), owner, new AgentRunProfilePublicationSnapshot([]));
 
         var firstDisposal = engine.DisposeAsync().AsTask();
         var secondDisposal = engine.DisposeAsync().AsTask();
@@ -180,7 +192,8 @@ public sealed class AgentEngineTests
     public async Task DisposeAsync_WhenOwnerThrowsSynchronously_CachesFailureWithoutRetrying()
     {
         var owner = new ThrowingAsyncDisposable();
-        var engine = new AgentEngine(MinimalProvider(), owner);
+        var engine = new AgentEngine(
+            MinimalProvider(), owner, new AgentRunProfilePublicationSnapshot([]));
 
         _ = await Should.ThrowAsync<InvalidOperationException>(async () => await engine.DisposeAsync());
         _ = await Should.ThrowAsync<InvalidOperationException>(async () => await engine.DisposeAsync());
@@ -188,8 +201,13 @@ public sealed class AgentEngineTests
         owner.DisposeCount.ShouldBe(1);
     }
 
-    private static ServiceProvider MinimalProvider() =>
-        new ServiceCollection().AddAgentKit().BuildServiceProvider();
+    private static ServiceProvider MinimalProvider()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+        _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
+        return services.BuildServiceProvider();
+    }
 
     private sealed class BlockingAsyncDisposable: IAsyncDisposable
     {

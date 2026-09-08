@@ -138,7 +138,7 @@ public sealed class SearchToolTests
         Options.Create(new SearchToolOptions()));
 
     private static ToolInvocationRequest Request(string json) => new(
-        new ToolExecutionContext(
+        TestSupport.TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
             new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
             new ToolCallId(Guid.Parse("50000000-0000-0000-0000-000000000005")),

@@ -14,7 +14,7 @@ namespace AgentKit;
 /// This is a deliberately reduced stand-in for the fuller
 /// <c>AgentRunInvocation</c> described by the agent-runtime architecture,
 /// which additionally carries an <c>AgentDefinition</c>, an agent catalog
-/// version, a <c>SecurityAuthorizationContext</c>, a hook dispatch context,
+/// version, a hook dispatch context,
 /// a compiled <c>AgentRunServices</c> bundle, an effective-configuration
 /// snapshot, and a run policy snapshot. Until those packages exist, this
 /// request carries the model, tool, and turn-limit choices directly, and
@@ -31,6 +31,8 @@ public sealed record AgentRunRequest
     /// <param name="branchId">The branch this run reads from and commits to.</param>
     /// <param name="runId">The stable identity of this run.</param>
     /// <param name="identity">The identity on whose behalf this run is performed.</param>
+    /// <param name="authorization">The captured run-start authorization and configuration evidence.</param>
+    /// <param name="sessionProfile">The immutable session profile selected for this invocation.</param>
     /// <param name="modelPolicy">The candidate and fallback policy used to choose this run's model.</param>
     /// <param name="modelRequirements">The portable behaviors this run's requests need.</param>
     /// <param name="instructions">The system and developer instructions to place first in every request.</param>
@@ -41,13 +43,15 @@ public sealed record AgentRunRequest
     /// <param name="attemptTimeout">The maximum duration allowed for a single model attempt.</param>
     /// <param name="extensions">Caller-specific or forward-compatible request data.</param>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="identity"/>, <paramref name="modelPolicy"/>,
+    /// <paramref name="identity"/>, <paramref name="authorization"/>,
+    /// <paramref name="sessionProfile"/>, <paramref name="modelPolicy"/>,
     /// <paramref name="modelRequirements"/>, <paramref name="toolChoice"/>,
     /// <paramref name="settings"/>, or <paramref name="extensions"/> is null.
     /// </exception>
     /// <exception cref="ArgumentException">
     /// <paramref name="instructions"/> or <paramref name="tools"/> is a
-    /// default, uninitialized array.
+    /// default, uninitialized array, or <paramref name="authorization"/> does
+    /// not exactly match the supplied agent, session, run, and complete identity.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="maxTurns"/> is not positive, or
@@ -59,6 +63,8 @@ public sealed record AgentRunRequest
         BranchId branchId,
         RunId runId,
         ExecutionIdentity identity,
+        SecurityAuthorizationContext authorization,
+        SessionProfileSnapshot sessionProfile,
         ModelSelectionPolicy modelPolicy,
         ModelRequirements modelRequirements,
         ImmutableArray<AgentMessage> instructions,
@@ -70,6 +76,9 @@ public sealed record AgentRunRequest
         ExtensionData extensions)
     {
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentException.ThrowIfInvalidRunAuthorization(identity, agentId, sessionId, runId, authorization);
+        ArgumentNullException.ThrowIfNull(sessionProfile);
         ArgumentNullException.ThrowIfNull(modelPolicy);
         ArgumentNullException.ThrowIfNull(modelRequirements);
         ArgumentException.ThrowIfDefault(instructions);
@@ -85,6 +94,8 @@ public sealed record AgentRunRequest
         BranchId = branchId;
         RunId = runId;
         Identity = identity;
+        Authorization = authorization;
+        SessionProfile = sessionProfile;
         ModelPolicy = modelPolicy;
         ModelRequirements = modelRequirements;
         Instructions = instructions;
@@ -97,19 +108,27 @@ public sealed record AgentRunRequest
     }
 
     /// <summary>Gets the agent this run belongs to.</summary>
-    public AgentId AgentId { get; init; }
+    public AgentId AgentId { get; }
 
     /// <summary>Gets the session this run reads from and commits to.</summary>
-    public SessionId SessionId { get; init; }
+    public SessionId SessionId { get; }
 
     /// <summary>Gets the branch this run reads from and commits to.</summary>
     public BranchId BranchId { get; init; }
 
     /// <summary>Gets the stable identity of this run.</summary>
-    public RunId RunId { get; init; }
+    public RunId RunId { get; }
 
     /// <summary>Gets the identity on whose behalf this run is performed.</summary>
-    public ExecutionIdentity Identity { get; init; }
+    public ExecutionIdentity Identity { get; }
+
+    /// <summary>Gets the captured run-start authorization evidence.</summary>
+    /// <value>Immutable evidence matching this request's identity, agent, session, and run.</value>
+    public SecurityAuthorizationContext Authorization { get; }
+
+    /// <summary>Gets the immutable session profile selected for this invocation.</summary>
+    /// <value>The exact compiled profile supplied to session coordination.</value>
+    public SessionProfileSnapshot SessionProfile { get; }
 
     /// <summary>Gets the candidate and fallback policy used to choose this run's model.</summary>
     /// <value>
@@ -155,6 +174,8 @@ public sealed record AgentRunRequest
         && BranchId.Equals(other.BranchId)
         && RunId.Equals(other.RunId)
         && Identity.Equals(other.Identity)
+        && Authorization.Equals(other.Authorization)
+        && SessionProfile.Equals(other.SessionProfile)
         && ModelPolicy.Equals(other.ModelPolicy)
         && ModelRequirements.Equals(other.ModelRequirements)
         && Instructions.SequenceEqual(other.Instructions)
@@ -174,6 +195,8 @@ public sealed record AgentRunRequest
         hash.Add(BranchId);
         hash.Add(RunId);
         hash.Add(Identity);
+        hash.Add(Authorization);
+        hash.Add(SessionProfile);
         hash.Add(ModelPolicy);
         hash.Add(ModelRequirements);
         foreach (var message in Instructions)

@@ -3,8 +3,76 @@
 
 namespace AgentKit.Session.InMemory.Tests;
 
+using System.Text.Json;
+
 public sealed class AppendAsyncTests
 {
+    [Fact]
+    public async Task AppendAsync_WhenContentChangesUnderIssuedGrant_DeniesBeforeSessionAccess()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var originalEntry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1, "allowed");
+        var original = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("content-bound"), [originalEntry]);
+        var security = TestSecurityHarness.For(store);
+        var authorized = security.Authorize(store, original, SecurityOperationKind.StateMutation, SecurityEffect.Append);
+        var changedEntry = originalEntry with
+        {
+            Message = originalEntry.Message with
+            {
+                Parts = [new TextPart("changed", TextSemantics.Plain, ExtensionData.Empty)],
+            },
+        };
+        var changed = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, original.IdempotencyKey, [changedEntry]);
+        var tampered = new AuthorizedSessionStoreRequest<SessionAppendRequest>(
+            changed, authorized.StoreKey, authorized.Grant, authorized.Intent);
+
+        var result = await store.AppendAsync(tampered, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionAppendFailed>();
+        var page = (SessionPage) await store.ReadAsync(
+            new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10),
+            TestContext.Current.CancellationToken);
+        page.Entries.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AppendAsync_WhenJsonPayloadChangesUnderIssuedGrant_DeniesBeforeSessionAccess(bool toolArguments)
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var originalEntry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1);
+        var callId = new ToolCallId(Guid.NewGuid());
+        var originalPart = JsonPart(toolArguments, callId, "allowed");
+        originalEntry = originalEntry with { Message = originalEntry.Message with { Parts = [originalPart] } };
+        var original = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("json-bound"), [originalEntry]);
+        var security = TestSecurityHarness.For(store);
+        var authorized = security.Authorize(store, original, SecurityOperationKind.StateMutation, SecurityEffect.Append);
+        var changedEntry = originalEntry with
+        {
+            Message = originalEntry.Message with { Parts = [JsonPart(toolArguments, callId, "changed")] },
+        };
+        var changed = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, original.IdempotencyKey, [changedEntry]);
+        var tampered = new AuthorizedSessionStoreRequest<SessionAppendRequest>(
+            changed, authorized.StoreKey, authorized.Grant, authorized.Intent);
+
+        var result = await store.AppendAsync(tampered, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionAppendFailed>();
+        var page = (SessionPage) await store.ReadAsync(
+            new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10),
+            TestContext.Current.CancellationToken);
+        page.Entries.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task AppendAsync_WhenExpectedVersionMatches_AdvancesVersionAndCommitsEntries()
     {
@@ -47,6 +115,15 @@ public sealed class AppendAsyncTests
         page.Entries.Length.ShouldBe(2);
         ((MessageSessionEntry) page.Entries[0]).Message.Parts.OfType<TextPart>().Single().Text.ShouldBe("first");
         ((MessageSessionEntry) page.Entries[1]).Message.Parts.OfType<TextPart>().Single().Text.ShouldBe("second");
+    }
+
+    private static ContentPart JsonPart(bool toolArguments, ToolCallId callId, string target)
+    {
+        using var document = JsonDocument.Parse($$"""{"target":"{{target}}"}""");
+        var value = document.RootElement.Clone();
+        return toolArguments
+            ? new ToolCallPart(callId, new ToolReference(new ToolId("test"), null, "test"), value, null, ExtensionData.Empty)
+            : new StructuredDataPart(value, null, ExtensionData.Empty);
     }
 
     [Fact]

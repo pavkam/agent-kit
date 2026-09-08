@@ -14,6 +14,7 @@ public sealed class DefaultAgentLoopTests
     {
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultAgentLoop(
             null!,
+            new FakeSecurityProfileSelector(),
             new DefaultContextAssembler(),
             new FakeToolInvoker(_ => TestFactory.SuccessResult()),
             new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
@@ -35,6 +36,7 @@ public sealed class DefaultAgentLoopTests
     {
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultAgentLoop(
             new FakeSessionCoordinator(_branchId),
+            new FakeSecurityProfileSelector(),
             new DefaultContextAssembler(),
             new FakeToolInvoker(_ => TestFactory.SuccessResult()),
             new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
@@ -407,6 +409,7 @@ public sealed class DefaultAgentLoopTests
 
         return new DefaultAgentLoop(
             coordinator,
+            new FakeSecurityProfileSelector(),
             new DefaultContextAssembler(),
             toolInvoker,
             new FakeModelCatalog(TestFactory.Catalog(descriptor)),
@@ -428,6 +431,7 @@ public sealed class DefaultAgentLoopTests
         ILlmModelResolver resolver) =>
         new(
             coordinator,
+            new FakeSecurityProfileSelector(),
             new DefaultContextAssembler(),
             new FakeToolInvoker(_ => TestFactory.SuccessResult()),
             catalog,

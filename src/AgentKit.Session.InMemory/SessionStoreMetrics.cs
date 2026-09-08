@@ -13,7 +13,7 @@ internal static class SessionStoreMetrics
 
     /// <summary>Records one store outcome with bounded operation and result dimensions.</summary>
     /// <param name="operation">The bounded store operation name.</param>
-    /// <param name="outcome">The normalized terminal result kind.</param>
+    /// <param name="outcome">The bounded terminal success, rejection, cancellation, or failure classification.</param>
     internal static void Record(string operation, string outcome) =>
         _operations.Add(
             1,

@@ -23,38 +23,60 @@ public sealed record ToolExecutionContext
     /// <param name="toolCallId">The call this invocation answers.</param>
     /// <param name="correlation">The causal operation performing this invocation.</param>
     /// <param name="identity">The identity on whose behalf this invocation is performed.</param>
+    /// <param name="authorization">The exact captured authorization for this tool invocation.</param>
+    /// <param name="sessionProfile">The immutable session profile when this invocation may access a session; null for sessionless tools.</param>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="correlation"/> or <paramref name="identity"/> is null.
+    /// <paramref name="correlation"/>, <paramref name="identity"/>, or
+    /// <paramref name="authorization"/> is null.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="authorization"/> does not exactly match the supplied agent,
+    /// optional session, correlation, and complete execution identity.
     /// </exception>
     public ToolExecutionContext(
         AgentId agentId,
         SessionId? sessionId,
         ToolCallId toolCallId,
         OperationCorrelation correlation,
-        ExecutionIdentity identity)
+        ExecutionIdentity identity,
+        SecurityAuthorizationContext authorization,
+        SessionProfileSnapshot? sessionProfile)
     {
         ArgumentNullException.ThrowIfNull(correlation);
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentException.ThrowIfInvalidOperationAuthorization(identity, agentId, sessionId, correlation,
+            authorization);
 
         AgentId = agentId;
         SessionId = sessionId;
         ToolCallId = toolCallId;
         Correlation = correlation;
         Identity = identity;
+        Authorization = authorization;
+        SessionProfile = sessionProfile;
     }
 
     /// <summary>Gets the agent this invocation occurred for.</summary>
-    public AgentId AgentId { get; init; }
+    public AgentId AgentId { get; }
 
     /// <summary>Gets the session this invocation occurred within, when applicable.</summary>
-    public SessionId? SessionId { get; init; }
+    public SessionId? SessionId { get; }
 
     /// <summary>Gets the call this invocation answers.</summary>
-    public ToolCallId ToolCallId { get; init; }
+    public ToolCallId ToolCallId { get; }
 
     /// <summary>Gets the causal operation performing this invocation.</summary>
-    public OperationCorrelation Correlation { get; init; }
+    public OperationCorrelation Correlation { get; }
 
     /// <summary>Gets the identity on whose behalf this invocation is performed.</summary>
-    public ExecutionIdentity Identity { get; init; }
+    public ExecutionIdentity Identity { get; }
+
+    /// <summary>Gets the exact authorization captured for this tool invocation.</summary>
+    /// <value>Immutable evidence matching the complete identity, address, and causal correlation.</value>
+    public SecurityAuthorizationContext Authorization { get; }
+
+    /// <summary>Gets the immutable session profile available to session-backed tools.</summary>
+    /// <value>The compiled profile for session access, or null for a sessionless invocation.</value>
+    public SessionProfileSnapshot? SessionProfile { get; }
 }

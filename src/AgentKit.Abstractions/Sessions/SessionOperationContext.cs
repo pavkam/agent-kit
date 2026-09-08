@@ -5,8 +5,8 @@ namespace AgentKit;
 
 /// <summary>
 /// The immutable operation context threaded through every session
-/// coordinator and store call: which session, whose causal operation, and
-/// on whose behalf.
+/// coordinator and store call: which session and optional lane, whose causal
+/// operation, on whose behalf, and under which captured authorization.
 /// </summary>
 /// <remarks>
 /// This type is an immutable value object with structural equality over its
@@ -22,38 +22,73 @@ public sealed record SessionOperationContext
     /// <summary>Initializes a new instance of the <see cref="SessionOperationContext"/> record.</summary>
     /// <param name="agentId">The agent that owns the session.</param>
     /// <param name="sessionId">The session this operation targets.</param>
+    /// <param name="executionLaneId">The lane for lane-owned work, or <see langword="null"/> for truthful session-wide work.</param>
     /// <param name="correlation">The causal operation performing this call.</param>
     /// <param name="identity">The identity on whose behalf this operation is performed.</param>
+    /// <param name="authorization">The captured authorization evidence matching the identity, address, and operation.</param>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="correlation"/> or <paramref name="identity"/> is null.
+    /// <paramref name="correlation"/>, <paramref name="identity"/>, or <paramref name="authorization"/> is null.
     /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">A supplied identity is default.</exception>
+    /// <exception cref="ArgumentException">The authorization evidence does not match the request.</exception>
     public SessionOperationContext(
         AgentId agentId,
         SessionId sessionId,
+        ExecutionLaneId? executionLaneId,
         OperationCorrelation correlation,
-        ExecutionIdentity identity)
+        ExecutionIdentity identity,
+        SecurityAuthorizationContext authorization)
     {
+        ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
+        if (executionLaneId is { } laneId)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(laneId, default, nameof(executionLaneId));
+        }
         ArgumentNullException.ThrowIfNull(correlation);
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentException.ThrowIfInvalidInputAdmissionAuthorization(
+            identity,
+            agentId,
+            sessionId,
+            correlation,
+            authorization,
+            nameof(authorization));
 
         AgentId = agentId;
         SessionId = sessionId;
+        ExecutionLaneId = executionLaneId;
         Correlation = correlation;
         Identity = identity;
+        Authorization = authorization;
     }
 
     /// <summary>Gets the agent that owns the session.</summary>
-    public AgentId AgentId { get; init; }
+    /// <value>The non-default agent identity bound into authorization.</value>
+    public AgentId AgentId { get; }
 
     /// <summary>Gets the session this operation targets.</summary>
-    public SessionId SessionId { get; init; }
+    /// <value>The non-default session identity bound into authorization.</value>
+    public SessionId SessionId { get; }
+
+    /// <summary>Gets the lane for lane-owned work.</summary>
+    /// <value>A non-default lane identity, or <see langword="null"/> for truthful session-wide work.</value>
+    public ExecutionLaneId? ExecutionLaneId { get; }
 
     /// <summary>Gets the causal operation performing this call.</summary>
-    public OperationCorrelation Correlation { get; init; }
+    /// <value>The immutable before-, in-, or after-run correlation captured for authorization and audit.</value>
+    public OperationCorrelation Correlation { get; }
 
     /// <summary>Gets the identity on whose behalf this operation is performed.</summary>
-    public ExecutionIdentity Identity { get; init; }
+    /// <value>The complete immutable trusted-ingress identity matching authorization evidence.</value>
+    public ExecutionIdentity Identity { get; }
 
-    /// <summary>Gets this context's session as a complete <see cref="SessionAddress"/>.</summary>
+    /// <summary>Gets the captured authorization evidence for this operation.</summary>
+    /// <value>Evidence matching this context's identity, address, and causal operation; it is not a consumable grant.</value>
+    public SecurityAuthorizationContext Authorization { get; }
+
+    /// <summary>Builds this context's complete session address.</summary>
+    /// <returns>The validated agent/session pair used by authorized store routing.</returns>
     public SessionAddress ToAddress() => new(AgentId, SessionId);
 }

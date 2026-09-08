@@ -8,6 +8,7 @@ public sealed record PlanStatusRequest
 {
     /// <summary>Initializes a protected item-status transition.</summary>
     /// <param name="context">The target session and authenticated operation context.</param>
+    /// <param name="sessionProfile">The exact immutable session profile for coordinator access.</param>
     /// <param name="toolCallId">The causing tool call.</param>
     /// <param name="itemId">The item to update.</param>
     /// <param name="status">The requested status.</param>
@@ -17,6 +18,7 @@ public sealed record PlanStatusRequest
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="status"/> is undefined.</exception>
     public PlanStatusRequest(
         SessionOperationContext context,
+        SessionProfileSnapshot sessionProfile,
         ToolCallId toolCallId,
         PlanItemId itemId,
         PlanItemStatus status,
@@ -24,9 +26,11 @@ public sealed record PlanStatusRequest
         SecurityGrant grant)
     {
         ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(sessionProfile);
         ArgumentOutOfRangeException.ThrowIfUndefined(status);
         ArgumentNullException.ThrowIfNull(grant);
         Context = context;
+        SessionProfile = sessionProfile;
         ToolCallId = toolCallId;
         ItemId = itemId;
         Status = status;
@@ -35,15 +39,17 @@ public sealed record PlanStatusRequest
     }
 
     /// <summary>Gets the target session and operation context.</summary>
-    public SessionOperationContext Context { get; init; }
+    public SessionOperationContext Context { get; }
+    /// <summary>Gets the immutable session profile used for coordinator access.</summary>
+    public SessionProfileSnapshot SessionProfile { get; }
     /// <summary>Gets the causing tool call.</summary>
-    public ToolCallId ToolCallId { get; init; }
+    public ToolCallId ToolCallId { get; }
     /// <summary>Gets the item to update.</summary>
-    public PlanItemId ItemId { get; init; }
+    public PlanItemId ItemId { get; }
     /// <summary>Gets the requested status.</summary>
-    public PlanItemStatus Status { get; init; }
+    public PlanItemStatus Status { get; }
     /// <summary>Gets the expected current revision.</summary>
-    public PlanRevision ExpectedRevision { get; init; }
+    public PlanRevision ExpectedRevision { get; }
     /// <summary>Gets the exact mutation grant.</summary>
-    public SecurityGrant Grant { get; init; }
+    public SecurityGrant Grant { get; }
 }

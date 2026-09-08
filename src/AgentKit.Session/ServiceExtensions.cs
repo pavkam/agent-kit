@@ -12,13 +12,11 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 /// Dependency-injection registration for session coordination.
 /// </summary>
 /// <remarks>
-/// This is a reduced registration surface compared to the full sessions
-/// architecture: it registers one singular <see cref="ISessionCoordinator"/>
-/// and <see cref="ISessionRunCoordinator"/> rather than a keyed
-/// per-agent-definition selection, and one directly injected
-/// <see cref="ISessionStore"/> rather than a multi-store directory and
-/// selector. Keyed, multi-agent selection arrives with the AgentKit facade;
-/// this shape is what a standalone application or test host needs today.
+/// The package registers singular coordinator, run-coordinator, directory,
+/// catalog, and selector axes. Store implementations are additive and selected
+/// by their immutable descriptors and exact keys. The run's captured session
+/// profile chooses among that frozen store set; registration order never acts
+/// as an implicit default-store selection.
 /// </remarks>
 public static class ServiceExtensions
 {
@@ -30,11 +28,12 @@ public static class ServiceExtensions
         /// <param name="configure">Optional configuration for <see cref="AgentSessionOptions"/>.</param>
         /// <returns>The same service collection, for chaining.</returns>
         /// <remarks>
-        /// Idempotent: every registration here uses <c>TryAdd</c> semantics,
-        /// so calling this more than once keeps the first registration.
-        /// This method does not register an <see cref="ISessionStore"/>;
-        /// composition is incomplete until <c>AddSessionStore</c> (or an
-        /// equivalent leaf package registration) supplies one.
+        /// Singular runtime defaults use <c>TryAdd</c> semantics, so hosts may
+        /// replace them before or after this call. Repeated configuration
+        /// delegates remain additive under the options pattern. This method
+        /// registers routing services but no concrete <see cref="ISessionStore"/>;
+        /// each selected store must be added explicitly through
+        /// <see cref="AddSessionStore{TStore}"/> or a leaf package.
         /// </remarks>
         public IServiceCollection AddAgentSession(Action<AgentSessionOptions>? configure = null)
         {
@@ -42,6 +41,10 @@ public static class ServiceExtensions
             var optionsBuilder = services.AddOptions<AgentSessionOptions>()
                 .Validate(o => o.MaximumAppendEntries > 0, "MaximumAppendEntries must be positive.")
                 .Validate(o => o.MaximumPageSize > 0, "MaximumPageSize must be positive.")
+                .Validate(o => o.SecurityRequestLifetime > TimeSpan.Zero,
+                    "SecurityRequestLifetime must be positive.")
+                .Validate(o => o.SecurityRequestLifetime <= TimeSpan.FromHours(1),
+                    "SecurityRequestLifetime must not exceed one hour.")
                 .Validate(o => o.BusyWaitTimeout >= TimeSpan.Zero, "BusyWaitTimeout must not be negative.");
 
             if (configure is not null)
@@ -52,7 +55,19 @@ public static class ServiceExtensions
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IIdentifierGenerator<SessionLeaseId>>(
                 _ => new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)));
+            services.TryAddSingleton<IIdentifierGenerator<SessionId>>(
+                _ => new GuidIdentifierGenerator<SessionId>(static value => new SessionId(value)));
+            services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>>(
+                _ => new GuidIdentifierGenerator<SecurityEnforcementIntentId>(
+                    static value => new SecurityEnforcementIntentId(value)));
             services.TryAddSingleton<ISessionRetentionPolicy, NeverRetireSessionRetentionPolicy>();
+            services.TryAddSingleton<SessionStoreBindingSnapshot>();
+            services.TryAddSingleton<ISessionStoreCatalog>(provider =>
+                new DefaultSessionStoreCatalog(provider.GetRequiredService<SessionStoreBindingSnapshot>()));
+            services.TryAddSingleton<ISessionStoreSelector>(provider =>
+                new DefaultSessionStoreSelector(
+                    provider.GetRequiredService<SessionStoreBindingSnapshot>(),
+                    provider.GetRequiredService<ILogger<DefaultSessionStoreSelector>>()));
             services.TryAddSingleton<ISessionCoordinator, DefaultSessionCoordinator>();
             services.TryAddSingleton<ISessionRunCoordinator, DefaultSessionRunCoordinator>();
 
@@ -60,16 +75,21 @@ public static class ServiceExtensions
         }
 
         /// <summary>
-        /// Registers <typeparamref name="TStore"/> as the singular session
-        /// store used by the default coordinator, unless a store is already
-        /// registered.
+        /// Adds <typeparamref name="TStore"/> to the explicitly composed session-store set.
         /// </summary>
         /// <typeparam name="TStore">The store implementation to register.</typeparam>
         /// <returns>The same service collection, for chaining.</returns>
+        /// <remarks>
+        /// Registrations are additive, including repeated registrations of the
+        /// same implementation type. The immutable binding snapshot rejects
+        /// different store instances that publish the same descriptor key,
+        /// preventing ambiguous exact-key selection.
+        /// </remarks>
         public IServiceCollection AddSessionStore<TStore>()
             where TStore : class, ISessionStore
         {
-            services.TryAddSingleton<ISessionStore, TStore>();
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddSingleton<ISessionStore, TStore>();
             return services;
         }
 

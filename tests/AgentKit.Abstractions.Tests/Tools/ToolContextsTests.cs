@@ -13,7 +13,8 @@ public sealed class ToolContextsTests
     public void ToolExecutionContext_Constructor_WhenCorrelationNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(
-            () => new ToolExecutionContext(AgentId(), SessionId(), ToolCallId(), null!, Identity()));
+            () => new ToolExecutionContext(
+                AgentId(), SessionId(), ToolCallId(), null!, Identity(), null!, null));
 
         exception.ParamName.ShouldBe("correlation");
     }
@@ -22,7 +23,8 @@ public sealed class ToolContextsTests
     public void ToolExecutionContext_Constructor_WhenIdentityNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(
-            () => new ToolExecutionContext(AgentId(), SessionId(), ToolCallId(), Correlation(), null!));
+            () => new ToolExecutionContext(
+                AgentId(), SessionId(), ToolCallId(), Correlation(), null!, null!, null));
 
         exception.ParamName.ShouldBe("identity");
     }
@@ -36,7 +38,11 @@ public sealed class ToolContextsTests
         var correlation = Correlation();
         var identity = Identity();
 
-        var context = new ToolExecutionContext(agentId, sessionId, callId, correlation, identity);
+        var authorization = TestSupport.TestSecurityEvidence.Authorization(
+            agentId, sessionId, correlation, identity);
+        var context = new ToolExecutionContext(
+            agentId, sessionId, callId, correlation, identity, authorization,
+            TestSupport.TestSecurityEvidence.SessionProfile());
 
         context.AgentId.ShouldBe(agentId);
         context.SessionId.ShouldBe(sessionId);
@@ -54,8 +60,14 @@ public sealed class ToolContextsTests
         var correlation = Correlation();
         var identity = Identity();
 
-        new ToolExecutionContext(agentId, sessionId, callId, correlation, identity)
-            .ShouldBe(new ToolExecutionContext(agentId, sessionId, callId, correlation, identity));
+        var authorization = TestSupport.TestSecurityEvidence.Authorization(
+            agentId, sessionId, correlation, identity);
+        new ToolExecutionContext(
+            agentId, sessionId, callId, correlation, identity, authorization,
+            TestSupport.TestSecurityEvidence.SessionProfile())
+            .ShouldBe(new ToolExecutionContext(
+                agentId, sessionId, callId, correlation, identity, authorization,
+                TestSupport.TestSecurityEvidence.SessionProfile()));
     }
 
     [Fact]
@@ -143,7 +155,8 @@ public sealed class ToolContextsTests
         TestSupport.TestExecutionIdentity.Create(new TenantId("t"), new PrincipalId("p"), ExecutionSubjectKind.Human);
 
     private static ToolExecutionContext ExecutionContext() =>
-        new(AgentId(), SessionId(), ToolCallId(), Correlation(), Identity());
+        TestSupport.TestSecurityEvidence.ToolContext(
+            AgentId(), SessionId(), ToolCallId(), Correlation(), Identity());
 
     private static ToolDescriptor Descriptor() => new(
         new ToolId("t"), null, "tool", "description", default, ToolEffect.ReadOnly, ExtensionData.Empty);

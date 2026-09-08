@@ -13,10 +13,11 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
 
         _ = services.AddAgentSession().AddInMemorySessionStore();
-        using var provider = services.BuildServiceProvider();
 
-        _ = provider.GetRequiredService<ISessionCoordinator>().ShouldBeOfType<DefaultSessionCoordinator>();
-        _ = provider.GetRequiredService<ISessionRunCoordinator>().ShouldBeOfType<DefaultSessionRunCoordinator>();
+        services.ShouldContain(static descriptor => descriptor.ServiceType == typeof(ISessionCoordinator)
+            && descriptor.ImplementationType == typeof(DefaultSessionCoordinator));
+        services.ShouldContain(static descriptor => descriptor.ServiceType == typeof(ISessionRunCoordinator)
+            && descriptor.ImplementationType == typeof(DefaultSessionRunCoordinator));
     }
 
     [Fact]
@@ -27,10 +28,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddAgentSession();
         _ = services.AddAgentSession();
         _ = services.AddInMemorySessionStore();
-        using var provider = services.BuildServiceProvider();
 
-        // No duplicate-registration exception, and exactly one coordinator resolves.
-        provider.GetServices<ISessionCoordinator>().Count().ShouldBe(1);
+        services.Count(static descriptor => descriptor.ServiceType == typeof(ISessionCoordinator)).ShouldBe(1);
     }
 
     [Fact]
@@ -55,17 +54,30 @@ public sealed class ServiceExtensionsTests
             () => provider.GetRequiredService<IOptions<AgentSessionOptions>>().Value);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3601)]
+    public void AddAgentSession_WhenSecurityRequestLifetimeIsOutsideBounds_FailsValidationOnAccess(int seconds)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentSession(
+            options => options.SecurityRequestLifetime = TimeSpan.FromSeconds(seconds));
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<AgentSessionOptions>>().Value);
+    }
+
     [Fact]
     public void AddSessionStore_WhenCalled_RegistersProvidedStore()
     {
         var services = new ServiceCollection();
 
-        _ = services.AddSessionStore<InMemorySessionStore>();
-        _ = services.AddInMemorySessionStore();
+        _ = services.AddSessionStore<FakeSessionStore>();
+        _ = services.AddSessionStore<FakeSessionStore>();
         using var provider = services.BuildServiceProvider();
 
-        // TryAdd keeps the first registration.
-        provider.GetServices<ISessionStore>().Count().ShouldBe(1);
+        provider.GetServices<ISessionStore>().Count().ShouldBe(2);
     }
 
     [Fact]

@@ -100,6 +100,11 @@ public sealed class PlanTool: ITool
             return Failure("The plan tool requires a session.", "SessionRequired");
         }
 
+        if (request.Context.SessionProfile is not { } sessionProfile)
+        {
+            return Failure("The plan tool requires a captured session profile.", "SessionProfileRequired");
+        }
+
         if (!TryParse(
                 request.Arguments,
                 out var action,
@@ -117,8 +122,10 @@ public sealed class PlanTool: ITool
         var operationContext = new SessionOperationContext(
             context.AgentId,
             sessionId,
+            executionLaneId: null,
             context.Correlation,
-            context.Identity);
+            context.Identity,
+            context.Authorization);
         var address = operationContext.ToAddress();
         var kind = action == "get" ? SecurityOperationKind.StateRead : SecurityOperationKind.StateMutation;
         var effect = action == "get" ? SecurityEffect.Observe : SecurityEffect.Mutate;
@@ -135,6 +142,7 @@ public sealed class PlanTool: ITool
                 new SecurityAuthorizationScope(context.AgentId, sessionId, context.Correlation),
                 context.ToolCallId,
                 context.Identity,
+                context.Authorization,
                 _store.SecurityAudience,
                 kind,
                 effect,
@@ -155,11 +163,12 @@ public sealed class PlanTool: ITool
         var result = action switch
         {
             "get" => await _store.ReadAsync(
-                new PlanReadRequest(operationContext, context.ToolCallId, allowed.Grant),
+                new PlanReadRequest(operationContext, sessionProfile, context.ToolCallId, allowed.Grant),
                 cancellationToken).ConfigureAwait(false),
             "replace" => await _store.ReplaceAsync(
                 new PlanReplaceRequest(
                     operationContext,
+                    sessionProfile,
                     context.ToolCallId,
                     title!,
                     items,
@@ -169,6 +178,7 @@ public sealed class PlanTool: ITool
             "set_status" => await _store.SetStatusAsync(
                 new PlanStatusRequest(
                     operationContext,
+                    sessionProfile,
                     context.ToolCallId,
                     itemId,
                     status,

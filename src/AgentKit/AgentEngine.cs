@@ -33,6 +33,10 @@ public sealed class AgentEngine: IAsyncDisposable
     private readonly IAsyncDisposable? _ownedProvider;
     private readonly IAgentDefinitionCatalog _catalog;
     private readonly IIdentifierGenerator<RunId> _runIds;
+    private readonly IIdentifierGenerator<OperationId> _operationIds;
+    private readonly IAgentRunProfilePublicationReader _runProfiles;
+    private readonly ISecurityProfileSelector _securityProfiles;
+    private readonly ImmutableDictionary<(AgentId, AgentDefinitionRevision), AgentRunProfilePublication> _pinnedRunProfiles;
     private readonly ILogger<AgentEngine> _logger;
     private Task? _disposeTask;
 
@@ -46,22 +50,38 @@ public sealed class AgentEngine: IAsyncDisposable
     /// The standalone provider owned by this engine, or <see langword="null"/>
     /// when an external host owns the provider.
     /// </param>
+    /// <param name="validatedRunProfiles">
+    /// The exact immutable snapshot already inspected by composition validation. Engine
+    /// construction pins this supplied value without consulting the replaceable reader again.
+    /// </param>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="services"/> is <see langword="null"/>.
+    /// <paramref name="services"/> or <paramref name="validatedRunProfiles"/> is
+    /// <see langword="null"/>.
     /// </exception>
     /// <exception cref="InvalidOperationException">
     /// The composition does not contain the engine-wide services the facade
     /// requires.
     /// </exception>
-    internal AgentEngine(IServiceProvider services, IAsyncDisposable? ownedProvider)
+    internal AgentEngine(
+        IServiceProvider services,
+        IAsyncDisposable? ownedProvider,
+        AgentRunProfilePublicationSnapshot validatedRunProfiles)
     {
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(validatedRunProfiles);
 
         _services = services;
         _ownedProvider = ownedProvider;
         TimeProvider = services.GetRequiredService<TimeProvider>();
         _catalog = services.GetRequiredService<IAgentDefinitionCatalog>();
         _runIds = services.GetRequiredService<IIdentifierGenerator<RunId>>();
+        _operationIds = services.GetRequiredService<IIdentifierGenerator<OperationId>>();
+        _runProfiles = services.GetRequiredService<IAgentRunProfilePublicationReader>();
+        _securityProfiles = services.GetRequiredService<ISecurityProfileSelector>();
+        _pinnedRunProfiles = validatedRunProfiles.Publications.ToImmutableDictionary(
+            static publication => (
+                publication.SecurityProfile.AgentId,
+                publication.SecurityProfile.AgentDefinitionRevision));
         _logger = services.GetService<ILogger<AgentEngine>>() ?? NullLogger<AgentEngine>.Instance;
     }
 
@@ -212,6 +232,44 @@ public sealed class AgentEngine: IAsyncDisposable
             var maxTurns = ResolveMaxTurns(definition, options);
             var attemptTimeout = ResolveAttemptTimeout(definition, options);
 
+            if (!_pinnedRunProfiles.TryGetValue((definition.Id, definition.Revision), out var pinnedPublication))
+            {
+                throw AdmissionRejected(
+                    definition, snapshot.Version,
+                    "The built composition has no pinned run-profile publication for this definition.");
+            }
+
+            var publicationResult = await _runProfiles.ReadAsync(
+                definition.Id, definition.Revision, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (publicationResult is not AgentRunProfilePublicationFound found
+                || found.Publication != pinnedPublication)
+            {
+                throw AdmissionRejected(
+                    definition, snapshot.Version,
+                    "The exact run-profile publication changed after composition validation.");
+            }
+
+            var runId = _runIds.Create();
+            var runCorrelation = new InRunOperationCorrelation(_operationIds.Create(), runId, turnId: null);
+            var security = pinnedPublication.SecurityProfile;
+            var authorizationResult = await _securityProfiles.SelectAsync(
+                new SecurityAuthorizationCaptureRequest(
+                    new SecurityAuthorizationScope(definition.Id, options.SessionId, runCorrelation),
+                    security.ProfileKey,
+                    security.AgentDefinitionRevision,
+                    security.ConfigurationVersion,
+                    options.Identity),
+                cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (authorizationResult is not SecurityAuthorizationCaptured captured
+                || !Matches(captured.Authorization, security, runCorrelation, options))
+            {
+                throw AdmissionRejected(
+                    definition, snapshot.Version,
+                    "Fresh run-start authorization did not match the pinned security publication.");
+            }
+
             await using var scope = _services.CreateAsyncScope();
             var loop = scope.ServiceProvider.GetRequiredService<IAgentLoop>();
 
@@ -219,8 +277,10 @@ public sealed class AgentEngine: IAsyncDisposable
                 definition.Id,
                 options.SessionId,
                 options.BranchId,
-                _runIds.Create(),
+                runId,
                 options.Identity,
+                captured.Authorization,
+                pinnedPublication.SessionProfile,
                 definition.Models,
                 definition.ModelRequirements,
                 definition.Instructions,
@@ -242,12 +302,47 @@ public sealed class AgentEngine: IAsyncDisposable
             AgentAdmissionObservability.LogCancelled(_logger);
             throw;
         }
+        catch (AgentAdmissionRejectedException) when (!admissionCompleted)
+        {
+            AgentAdmissionObservability.Complete(
+                activity, _logger, "rejected", nameof(AgentAdmissionRejectedException));
+            activity = null;
+            admissionCompleted = true;
+            throw;
+        }
         catch (Exception exception) when (!admissionCompleted)
         {
             AgentAdmissionObservability.Complete(activity, _logger, "failed", exception.GetType().Name);
             AgentAdmissionObservability.LogFailed(_logger, exception.GetType().Name);
             throw;
         }
+    }
+
+    private static AgentAdmissionRejectedException AdmissionRejected(
+        AgentDefinition definition,
+        AgentCatalogVersion catalogVersion,
+        string reason) => new(new AgentAdmissionRejection(definition.Id, definition.Revision, catalogVersion, reason));
+
+    private static bool Matches(
+        SecurityAuthorizationContext authorization,
+        SecurityProfilePublication publication,
+        InRunOperationCorrelation correlation,
+        AgentRunOptions options)
+    {
+        Debug.Assert(authorization is not null, "Captured authorization is required for evidence matching.");
+        Debug.Assert(publication is not null, "Pinned security publication is required for evidence matching.");
+        Debug.Assert(options is not null, "Validated run options are required for evidence matching.");
+
+        return authorization.Scope.AgentId == publication.AgentId
+            && authorization.Scope.SessionId == options.SessionId
+            && authorization.Scope.Correlation == correlation
+            && authorization.Identity == options.Identity
+            && authorization.ProfileKey == publication.ProfileKey
+            && authorization.ProfileVersion == publication.ProfileVersion
+            && authorization.PolicySnapshot == publication.PolicySnapshot
+            && authorization.AuthorityKey == publication.AuthorityKey
+            && authorization.AgentDefinitionRevision == publication.AgentDefinitionRevision
+            && authorization.ConfigurationVersion == publication.ConfigurationVersion;
     }
 
     private static int ResolveMaxTurns(AgentDefinition definition, AgentRunOptions options) =>

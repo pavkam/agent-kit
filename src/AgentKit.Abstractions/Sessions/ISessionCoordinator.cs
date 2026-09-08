@@ -21,18 +21,22 @@ public interface ISessionCoordinator
     /// created by an identical prior request.
     /// </summary>
     /// <param name="request">The creation request.</param>
+    /// <param name="profile">The exact immutable session profile selected for this operation.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A task producing the terminal outcome.</returns>
     public ValueTask<SessionCreateResult> CreateAsync(
         SessionCreateRequest request,
+        SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default);
 
     /// <summary>Loads one session's current descriptor.</summary>
     /// <param name="context">The operation context identifying the session.</param>
+    /// <param name="profile">The exact immutable session profile selected for this operation.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A task producing the terminal outcome.</returns>
     public ValueTask<SessionLoadResult> LoadAsync(
         SessionOperationContext context,
+        SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -40,18 +44,22 @@ public interface ISessionCoordinator
     /// version.
     /// </summary>
     /// <param name="request">The append request.</param>
+    /// <param name="profile">The exact immutable session profile selected for this operation.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A task producing the terminal outcome.</returns>
     public ValueTask<SessionAppendResult> AppendAsync(
         SessionAppendRequest request,
+        SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default);
 
     /// <summary>Reads one forward page of entries from a branch.</summary>
     /// <param name="request">The read request.</param>
+    /// <param name="profile">The exact immutable session profile selected for this operation.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A task producing the terminal outcome.</returns>
     public ValueTask<SessionPageResult> ReadAsync(
         SessionReadRequest request,
+        SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -59,17 +67,21 @@ public interface ISessionCoordinator
     /// branch.
     /// </summary>
     /// <param name="request">The branch creation request.</param>
+    /// <param name="profile">The exact immutable session profile selected for this operation.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A task producing the terminal outcome.</returns>
     public ValueTask<SessionBranchResult> BranchAsync(
         SessionBranchRequest request,
+        SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default);
 
     /// <summary>Deletes one session and its entire record.</summary>
     /// <param name="request">The deletion request.</param>
+    /// <param name="profile">The exact immutable session profile selected for this operation.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A task producing the terminal outcome.</returns>
     public ValueTask<SessionDeleteResult> DeleteAsync(
         SessionDeleteRequest request,
+        SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default);
 }

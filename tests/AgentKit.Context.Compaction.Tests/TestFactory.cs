@@ -13,12 +13,19 @@ internal static class TestFactory
         new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), runId ?? new RunId(Guid.NewGuid()), null);
 
     public static CompactionOperationContext CompactionContext(
-        AgentId? agentId = null, SessionId? sessionId = null, CompactionId? compactionId = null) => new(
-        compactionId ?? new CompactionId(Guid.NewGuid()),
-        agentId ?? new AgentId(Guid.NewGuid()),
-        sessionId ?? new SessionId(Guid.NewGuid()),
-        Correlation(),
-        Identity());
+        AgentId? agentId = null, SessionId? sessionId = null, CompactionId? compactionId = null)
+    {
+        var selectedAgentId = agentId ?? new AgentId(Guid.NewGuid());
+        var selectedSessionId = sessionId ?? new SessionId(Guid.NewGuid());
+        var correlation = Correlation();
+        var identity = Identity();
+        return TestSupport.TestSecurityEvidence.CompactionContext(
+            compactionId ?? new CompactionId(Guid.NewGuid()),
+            selectedAgentId,
+            selectedSessionId,
+            correlation,
+            identity);
+    }
 
     public static MessageSessionEntry MessageEntry(
         SessionAddress address,

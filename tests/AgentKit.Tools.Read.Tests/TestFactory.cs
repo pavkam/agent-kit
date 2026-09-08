@@ -22,13 +22,40 @@ internal static class TestFactory
     public static OperationCorrelation Correlation() =>
         new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null);
 
-    public static ToolExecutionContext ExecutionContext() => new(
-        new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), new ToolCallId(Guid.NewGuid()), Correlation(), Identity());
+    public static ToolExecutionContext ExecutionContext()
+    {
+        var agentId = new AgentId(Guid.NewGuid());
+        var sessionId = new SessionId(Guid.NewGuid());
+        var correlation = Correlation();
+        var identity = Identity();
+        var scope = new SecurityAuthorizationScope(agentId, sessionId, correlation);
+        return new ToolExecutionContext(
+            agentId,
+            sessionId,
+            new ToolCallId(Guid.NewGuid()),
+            correlation,
+            identity,
+            Authorization(scope, identity),
+            null);
+    }
 
     public static ToolInvocationRequest Request(string json) => new(
         ExecutionContext(), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
 
     public static string ReadText(ToolInvocationResult result) => ((TextPart) result.Content[0]).Text;
+
+    private static SecurityAuthorizationContext Authorization(SecurityAuthorizationScope scope, ExecutionIdentity identity) => new(
+        new SecurityProfileKey("test"),
+        new SecurityProfileVersion(1),
+        new SecurityPolicySnapshotReference(
+            new SecurityPolicySnapshotId(Guid.Parse("11000000-0000-0000-0000-000000000011")),
+            new SecurityPolicyVersion(1),
+            new ContentHash("sha256:test-policy")),
+        new ComponentKey<ISecurityAuthority>("test"),
+        new AgentDefinitionRevision(0),
+        new ConfigurationVersion(1),
+        scope,
+        identity);
 
     public static IServiceCollection AddSecurityDependencies(IServiceCollection services) => services
         .AddSingleton<ISecurityAuthority, AllowingSecurityAuthority>()

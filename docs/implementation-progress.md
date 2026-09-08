@@ -65,12 +65,73 @@ owning spec.
 
 ## Latest integration evidence
 
-The human-question and task-delegation receipt checkpoint passed `make format`,
-`make lint`, and `make test` in an isolated checkout over `e927f0a`. All 4,496
-tests passed without skips; the Release build reported zero warnings or errors.
-The initial run failed only two expected additive constructor snapshots, both
-reviewed before final verification. Review also added four captured-context
-mismatch cases before the final run.
+The session/facade checkpoint passed `make format`, `make lint`, and `make test`
+in an isolated checkout over `bb4a2d4`. All 4,710 tests passed without skips;
+the Release build reported zero warnings or errors. The initial complete run
+passed 4,682 tests and failed only seven expected API snapshots, all reviewed.
+The final run also includes descriptor-construction and copy-invariant
+regressions, accepted-state coherence checks, and scoped diagnostic listeners
+that cannot interfere with parallel receipt tests. Source integration used
+verified frozen bundles; earlier language, artifact, and broker checkpoint bytes
+were retained.
+
+Session operations now carry immutable captured authorization and an explicit
+session profile. Creation resolves an authorized sessionless directory route
+before allocating the addressed store operation. The directory and store require
+fresh exact enforcement receipts and accepted pre-access audit; a consumed grant
+is never treated as atomic with an arbitrary external effect. Store routing
+captures descriptors once, preserves exact keys, and rejects incompatible
+capabilities without fallback. Constructor guards precede enumeration, and
+invalid record copies cannot bypass descriptor validation.
+
+The in-memory store adds explicit lane provisioning, idempotent input admission,
+and atomic promotion plus accepted-run state. Whole-session versions, lane
+revisions, branch cursors, identity, and reserved entry/message IDs participate
+in the transaction checks. The start request must match the initiating
+admission’s before-run correlation and bind consistent authorization and
+configuration evidence. The trigger identity survives promotion and
+accepted-state loading. Recovery values reject reused history identities,
+unchanged committed tips, and self-parenting entries. Accepted state can be
+loaded with its retained evidence. This process-local implementation does not
+establish process-loss recovery, distributed fencing, or complete run
+settlement. Reusable store conformance and real captured-grant integration
+scenarios are included.
+
+Facade readiness captures one exact profile-publication snapshot and revalidates
+it before admission. The validated snapshot is reused without a second read;
+cancellation after publication/capture prevents dependent work. Loop, tool,
+compaction, and Plan callers carry the captured evidence. Plan receipt
+validation accepts reconstructed value-equal resources and rejects changed
+authority or resources. Post-commit observational failures preserve committed
+session results. Full keyed runnable composition, the remaining lifecycle
+transitions, durable recovery, and complete required-audit settlement remain
+open.
+
+This checkpoint intentionally changes caller and adapter contracts to match the
+[session](architecture/sessions.md) and
+[composition](architecture/composition-and-configuration.md) architecture:
+
+| Affected surface                                                        | Required migration                                                                                                                                                                                   |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runnable `AgentDefinition`                                              | Select security and session profile keys and publish the exact agent/revision binding. The legacy constructor remains available for catalog-only values but no longer yields a runnable definition.  |
+| `AgentRunRequest`, `ToolExecutionContext`, `CompactionOperationContext` | Supply captured authorization and the compiled session profile; only sessionless tool contexts may omit that profile. Reconstruct protected causal coordinates instead of changing them with `with`. |
+| `SessionOperationContext`, `SessionCreateRequest`                       | Supply exact captured authority and an optional lane where appropriate. Creation requires sessionless BeforeRun evidence, followed by a fresh addressed context.                                     |
+| `ISessionCoordinator`                                                   | Pass the selected immutable profile to every operation; update custom implementations to the new signatures.                                                                                         |
+| `ISessionStore`                                                         | Accept authorized wrappers, advertise an audience, enforce fresh receipts and required audit, and implement lane, admission, run-acceptance, and accepted-state operations.                          |
+| `SessionStoreDescriptor`                                                | Declare real capabilities, consistency, durability, and fencing support through the replacement constructor. Constructor and init assignments both validate their values.                            |
+| Session append/read/branch/delete requests                              | Use validating constructors instead of init mutation; preserve whole-session CAS versions independently from branch cursors.                                                                         |
+| Plan request records                                                    | Supply the exact session profile and reconstruct requests for new mutations. The existing Plan store constructor remains available.                                                                  |
+| `SessionBusyBehavior`                                                   | Use `AgentKit.SessionBusyBehavior` from Abstractions; the former Session-package type is removed. `Reject` and `Wait` retain their meanings.                                                         |
+| `AddSessionStore<TStore>`                                               | Register each intended store once with a unique key. Registrations are additive; duplicate effective keys fail validation.                                                                           |
+| `DefaultAgentLoop` construction                                         | Supply the selected `ISecurityProfileSelector` required for fresh operation-scoped captures.                                                                                                         |
+| `InMemorySessionStore` construction                                     | Supply the audit ID source, audit dispatcher, grant store, branch ID source, and clock. Session ID allocation now belongs to coordinated creation.                                                   |
+
+The preceding human-question and task-delegation receipt checkpoint passed
+`make format`, `make lint`, and `make test` in an isolated checkout over
+`e927f0a`. All 4,496 tests passed without skips; the Release build reported zero
+warnings or errors. The initial run failed only two expected additive
+constructor snapshots, both reviewed before final verification. Review also
+added four captured-context mismatch cases before the final run.
 
 Both brokers now retain captured authorization, generate a fresh typed intent,
 and require an exact freshly consumed receipt before invoking their application
@@ -453,9 +514,11 @@ and explicit coordination.
 - Declared component graph validation and deterministic continuation/input
   policies are verified in `bd1101c`. Descriptor co-registration, complete
   component/profile selections, run-plan compilation and activation remain open.
-  `IInputCoordinator` and `IInputQueue` currently describe contracts; authorized
-  replay before preprocessing and atomic session-backed admission and promotion
-  still need implementations.
+  `IInputCoordinator` and `IInputQueue` still need their runtime
+  implementations, including authorized replay before preprocessing. The
+  in-memory session store now implements lane provisioning, idempotent
+  admission, and atomic promotion into accepted-run state; connecting this state
+  to actual execution remains open.
 - Continuation distinguishes the previous committed turn from the next target
   turn, retains every pending cause, and requires authoritative terminal tool
   references and consistent active compaction evidence. The session owner must
@@ -469,8 +532,10 @@ and explicit coordination.
   the external embedding implementation has its own ownership and review.
 - Security capture values, explicit keyed authority selection (`a3fd03b`), audit
   dispatch (`8af9a62`), and configured exact profile publication/capture have
-  verified checkpoints. Integration with validated agent selections, retained
-  policy activation, and downstream request/grant binding remain open. `6b0bb98`
+  verified checkpoints. Facade admission now pins exact security/session
+  publications and downstream session, loop, tool, compaction, and Plan requests
+  carry captured evidence. Complete selected-graph activation, retained-policy
+  lifetime, and remaining downstream binding coverage remain open. `6b0bb98`
   distinguishes pinned run configuration from exact per-operation authorization
   scope; possessing a context does not grant an effect. `260bf5b` specifies
   publication and activation ownership. A default selection reader depends on
@@ -517,7 +582,7 @@ not make that component a mandatory dependency of every engine.
 | Model and embedding providers | All advertised operation/capability mappings, endpoint/account bindings, terminal/error/usage semantics                                                                |
 | Tools                         | Authoritative terminal records, rejection projections, scheduling, retries and focused feature contracts                                                               |
 | Permissions and human control | Policy algebra, grants, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap                                                    |
-| Sessions                      | Lane operations, receipt-before-conflict replay, branch fencing, retention/export/import; missing SQLite backend                                                       |
+| Sessions                      | Lifecycle after accepted state, complete lane coordination, branch fencing, retention/export/import; missing SQLite backend                                            |
 | Durable execution             | Missing runtime and explicit backend; journals, codecs, leases, checkpoints, evidence and recovery                                                                     |
 | Memory and retrieval          | Missing runtime/storage ownership; documents/vectors, retrieval provenance, tombstones and purge                                                                       |
 | Goals and delegation          | Durable goals/attempts/intents, joins, communication, parent occupancy and missing hosting worker                                                                      |

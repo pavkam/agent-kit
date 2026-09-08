@@ -76,8 +76,8 @@ public sealed class AgentEngineBuilder
                     ValidateScopes = true,
                 });
 
-            AgentCompositionValidator.Validate(provider);
-            return new AgentEngine(provider, provider);
+            var runProfiles = AgentCompositionValidator.Validate(provider);
+            return new AgentEngine(provider, provider, runProfiles);
         }
         catch
         {

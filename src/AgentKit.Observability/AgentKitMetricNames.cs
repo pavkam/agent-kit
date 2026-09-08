@@ -10,6 +10,9 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal pinned-agent admission outcomes.</summary>
     public const string AgentAdmissionCount = "agentkit.agent.admission.count";
 
+    /// <summary>Gets the counter for exact run-profile publication reads.</summary>
+    public const string AgentRunProfilePublicationReadCount = "agentkit.agent.run_profile.read.count";
+
     /// <summary>Gets the counter for terminal identity-resolution outcomes.</summary>
     public const string IdentityResolutionCount = "agentkit.identity.resolution.count";
 
@@ -72,6 +75,9 @@ public static class AgentKitMetricNames
 
     /// <summary>Gets the counter for terminal concrete session-store outcomes.</summary>
     public const string SessionStoreOperationCount = "agentkit.session.store.operation.count";
+
+    /// <summary>Gets the counter for terminal authoritative session-directory outcomes.</summary>
+    public const string SessionDirectoryOperationCount = "agentkit.session.directory.operation.count";
 
     /// <summary>Gets the counter for terminal budget reservation outcomes.</summary>
     public const string BudgetReservationCount = "agentkit.budget.reservation.count";

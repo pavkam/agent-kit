@@ -29,8 +29,10 @@ public sealed class CatalogBootstrapTests
         _ = services.AddAgentKit();
         _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
         _ = services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
+        var definition = CompositionTestData.Definition();
         _ = services.AddAgentDefinitionSnapshot(new AgentDefinitionSourceSnapshot(
-            new AgentDefinitionSourceId("test-source"), new AgentDefinitionSourceVersion(1), 0, [CompositionTestData.Definition()]));
+            new AgentDefinitionSourceId("test-source"), new AgentDefinitionSourceVersion(1), 0, [definition]));
+        CompositionTestData.AddRunProfiles(services, definition);
         await using var provider = services.BuildServiceProvider();
 
         var engine = provider.GetRequiredService<AgentEngine>();
@@ -63,6 +65,7 @@ public sealed class CatalogBootstrapTests
         _ = builder.Services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
         _ = builder.Services.AddAgentDefinitionSnapshot(new AgentDefinitionSourceSnapshot(
             new AgentDefinitionSourceId("test-source"), new AgentDefinitionSourceVersion(1), 0, [definition]));
+        CompositionTestData.AddRunProfiles(builder.Services, definition);
 
         await using var engine = builder.Build();
 
@@ -75,7 +78,9 @@ public sealed class CatalogBootstrapTests
     {
         var builder = AgentEngine.CreateBuilder();
         _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
-        _ = builder.Services.AddAgent(CompositionTestData.Definition());
+        var definition = CompositionTestData.Definition();
+        _ = builder.Services.AddAgent(definition);
+        CompositionTestData.AddRunProfiles(builder.Services, definition);
 
         await using var engine = builder.Build();
 

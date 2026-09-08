@@ -44,19 +44,19 @@ public sealed record SessionBranchRequest
     }
 
     /// <summary>Gets the operation context for this branch creation.</summary>
-    public SessionOperationContext Context { get; init; }
+    public SessionOperationContext Context { get; }
 
     /// <summary>Gets the existing branch to fork from.</summary>
-    public BranchId ParentBranchId { get; init; }
+    public BranchId ParentBranchId { get; }
 
     /// <summary>
     /// Gets the exact sequence in <see cref="ParentBranchId"/> the new
     /// branch forks from.
     /// </summary>
-    public SessionSequence AtSequence { get; init; }
+    public SessionSequence AtSequence { get; }
 
     /// <summary>
     /// Gets the key that makes repeating this exact request safe.
     /// </summary>
-    public IdempotencyKey IdempotencyKey { get; init; }
+    public IdempotencyKey IdempotencyKey { get; }
 }

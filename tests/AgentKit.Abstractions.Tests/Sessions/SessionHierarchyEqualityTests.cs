@@ -24,7 +24,7 @@ public sealed class SessionHierarchyEqualityTests
     public void SessionOperationContext_Constructor_WhenCorrelationNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(
-            () => new SessionOperationContext(AgentId, SessionId, null!, Identity()));
+            () => new SessionOperationContext(AgentId, SessionId, null, null!, Identity(), Authorization(Correlation(), SessionId)));
 
         exception.ParamName.ShouldBe("correlation");
     }
@@ -33,7 +33,7 @@ public sealed class SessionHierarchyEqualityTests
     public void SessionOperationContext_Constructor_WhenIdentityNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(
-            () => new SessionOperationContext(AgentId, SessionId, Correlation(), null!));
+            () => new SessionOperationContext(AgentId, SessionId, null, Correlation(), null!, Authorization(Correlation(), SessionId)));
 
         exception.ParamName.ShouldBe("identity");
     }
@@ -275,15 +275,18 @@ public sealed class SessionHierarchyEqualityTests
     [Fact]
     public void SessionStoreDescriptor_Constructor_WhenDurableTrueOrFalse_RoundTrips()
     {
-        var descriptor = new SessionStoreDescriptor(new SessionStoreKey("store"), durable: true);
+        var descriptor = new SessionStoreDescriptor(new SessionStoreKey("store"), SessionStoreCapabilities.None,
+            SessionConsistencyModel.Strong, durable: true, supportsDistributedFencing: false);
 
         descriptor.Durable.ShouldBeTrue();
     }
 
     [Fact]
     public void SessionStoreDescriptor_Equality_WhenSameValues_InstancesAreEqual() =>
-        new SessionStoreDescriptor(new SessionStoreKey("store"), true).ShouldBe(
-            new SessionStoreDescriptor(new SessionStoreKey("store"), true));
+        new SessionStoreDescriptor(new SessionStoreKey("store"), SessionStoreCapabilities.None,
+            SessionConsistencyModel.Strong, true, false).ShouldBe(
+            new SessionStoreDescriptor(new SessionStoreKey("store"), SessionStoreCapabilities.None,
+                SessionConsistencyModel.Strong, true, false));
 
     private static AgentId AgentId => new(_agentGuid);
 
@@ -297,13 +300,27 @@ public sealed class SessionHierarchyEqualityTests
     private static InRunOperationCorrelation Correlation() =>
         new(new OperationId(_operationGuid), new RunId(_runGuid), null);
 
+    private static BeforeRunOperationCorrelation CreationCorrelation() =>
+        new(new OperationId(_operationGuid), null);
+
     private static SessionAddress Address() => new(AgentId, SessionId);
 
     private static SessionOperationContext OperationContext() =>
-        new(AgentId, SessionId, Correlation(), Identity());
+        new(AgentId, SessionId, null, Correlation(), Identity(), Authorization(Correlation(), SessionId));
 
     private static SessionCreateRequest CreateRequest() => new(
-        AgentId, Identity(), null, new IdempotencyKey("key"), ExtensionData.Empty);
+        AgentId, Identity(), Authorization(CreationCorrelation(), null), null, new IdempotencyKey("key"), ExtensionData.Empty);
+
+    private static SecurityAuthorizationContext Authorization(OperationCorrelation correlation, SessionId? sessionId) => new(
+        new SecurityProfileKey("security"),
+        new SecurityProfileVersion(1),
+        new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("77777777-7777-7777-7777-777777777777")),
+            new SecurityPolicyVersion(1), new ContentHash("sha256:policy")),
+        new ComponentKey<ISecurityAuthority>("authority"),
+        new AgentDefinitionRevision(1),
+        new ConfigurationVersion(1),
+        new SecurityAuthorizationScope(AgentId, sessionId, correlation),
+        Identity());
 
     private static SessionDescriptor Descriptor() => new(
         Address(),

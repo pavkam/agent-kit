@@ -51,6 +51,7 @@ namespace AgentKit
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentKit() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgent(AgentKit.AgentDefinition definition, int precedence = 0) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentRunProfilePublication(AgentKit.AgentRunProfilePublication publication) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentDefinitionSnapshot(AgentKit.AgentDefinitionSourceSnapshot snapshot) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentDefinitionSource<TSource>()
                 where TSource :  class, AgentKit.IAgentDefinitionSource { }

@@ -12,12 +12,19 @@ internal static class TestFactory
     public static OperationCorrelation Correlation() =>
         new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null);
 
-    public static ToolExecutionContext ExecutionContext(ToolCallId? callId = null) => new(
-        new AgentId(Guid.NewGuid()),
-        new SessionId(Guid.NewGuid()),
-        callId ?? new ToolCallId(Guid.NewGuid()),
-        Correlation(),
-        Identity());
+    public static ToolExecutionContext ExecutionContext(ToolCallId? callId = null)
+    {
+        var agentId = new AgentId(Guid.NewGuid());
+        var sessionId = new SessionId(Guid.NewGuid());
+        var correlation = Correlation();
+        var identity = Identity();
+        return TestSupport.TestSecurityEvidence.ToolContext(
+            agentId,
+            sessionId,
+            callId ?? new ToolCallId(Guid.NewGuid()),
+            correlation,
+            identity);
+    }
 
     public static ToolDescriptor Descriptor(string id = "test-tool", ToolEffect effect = ToolEffect.ReadOnly) => new(
         new ToolId(id),

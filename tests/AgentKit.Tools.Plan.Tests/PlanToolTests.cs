@@ -163,6 +163,8 @@ public sealed class PlanToolTests
         services.Count(descriptor => descriptor.ServiceType == typeof(IPlanStateStore)).ShouldBe(1);
         services.Count(descriptor => descriptor.ServiceType == typeof(IIdentifierGenerator<PlanId>)).ShouldBe(1);
         services.Count(descriptor => descriptor.ServiceType == typeof(IIdentifierGenerator<SessionEntryId>)).ShouldBe(1);
+        services.Count(descriptor =>
+            descriptor.ServiceType == typeof(IIdentifierGenerator<SecurityEnforcementIntentId>)).ShouldBe(1);
     }
 
     [Fact]
@@ -199,7 +201,7 @@ public sealed class PlanToolTests
             Options.Create(new PlanToolOptions()));
 
     private static ToolInvocationRequest Request(string json, bool includeSession = true) => new(
-        new ToolExecutionContext(
+        TestSupport.TestSecurityEvidence.ToolContext(
             TestData.AgentId,
             includeSession ? TestData.SessionId : null,
             TestData.ToolCallId,

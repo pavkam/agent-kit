@@ -91,6 +91,7 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddSingleton<ISessionCoordinator>(new FakeSessionCoordinator(new BranchId(Guid.NewGuid())));
+        _ = services.AddSingleton<ISecurityProfileSelector, FakeSecurityProfileSelector>();
         _ = services.AddSingleton<IContextAssembler, DefaultContextAssembler>();
         _ = services.AddSingleton<IToolInvoker>(new FakeToolInvoker(_ => TestFactory.SuccessResult()));
 

@@ -63,6 +63,12 @@ internal sealed class SessionRecord
     /// <summary>Gets or sets the session's lifecycle state.</summary>
     public SessionLifecycleState State { get; set; } = SessionLifecycleState.Active;
 
+    /// <summary>Gets or sets the canonical whole-session compare-and-swap version.</summary>
+    public long Version { get; set; }
+
+    /// <summary>Gets or sets the last allocated whole-session entry sequence.</summary>
+    public long NextSequence { get; set; }
+
     /// <summary>Gets every branch this session has ever forked, keyed by branch identity.</summary>
     public Dictionary<BranchId, BranchRecord> Branches { get; } = [];
 
@@ -71,4 +77,28 @@ internal sealed class SessionRecord
     /// by idempotency key.
     /// </summary>
     public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionBranchRequest, SessionBranched>> BranchIdempotency { get; } = [];
+
+    /// <summary>Gets canonical admitted inputs keyed by caller idempotency identity.</summary>
+    public Dictionary<InputId, StoredAdmission> AdmissionsByInput { get; } = [];
+
+    /// <summary>Gets canonical admitted inputs keyed by runtime admission identity.</summary>
+    public Dictionary<AdmissionId, StoredAdmission> AdmissionsById { get; } = [];
+
+    /// <summary>Gets exact input-admission commit receipts keyed by transaction idempotency identity.</summary>
+    public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionInputAdmissionRequest, AcceptedInput>> AdmissionIdempotency { get; } = [];
+
+    /// <summary>Gets lane state keyed by resolved execution lane.</summary>
+    public Dictionary<ExecutionLaneId, LaneRecord> Lanes { get; } = [];
+
+    /// <summary>Gets successful lane-provision receipts keyed by their exact idempotency key.</summary>
+    public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionExecutionLaneProvisionRequest, SessionExecutionLaneProvisioned>> LaneProvisionIdempotency { get; } = [];
+
+    /// <summary>Gets every globally reserved session-entry identity.</summary>
+    public HashSet<SessionEntryId> EntryIds { get; } = [];
+
+    /// <summary>Gets every globally reserved message identity materialized in session history.</summary>
+    public HashSet<MessageId> MessageIds { get; } = [];
+
+    /// <summary>Gets successful run-start receipts keyed by start idempotency identity.</summary>
+    public Dictionary<IdempotencyKey, RunStartReceipt> RunStartIdempotency { get; } = [];
 }

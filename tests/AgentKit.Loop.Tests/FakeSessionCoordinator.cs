@@ -73,7 +73,7 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
 
     /// <inheritdoc/>
     public ValueTask<SessionAppendResult> AppendAsync(
-        SessionAppendRequest request, CancellationToken cancellationToken = default)
+        SessionAppendRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         _receivedAppends.Add(request);
@@ -107,7 +107,7 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
 
     /// <inheritdoc/>
     public ValueTask<SessionPageResult> ReadAsync(
-        SessionReadRequest request, CancellationToken cancellationToken = default)
+        SessionReadRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -131,21 +131,21 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
 
     /// <inheritdoc/>
     public ValueTask<SessionCreateResult> CreateAsync(
-        SessionCreateRequest request, CancellationToken cancellationToken = default) =>
+        SessionCreateRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("This fake does not support session creation.");
 
     /// <inheritdoc/>
     public ValueTask<SessionLoadResult> LoadAsync(
-        SessionOperationContext context, CancellationToken cancellationToken = default) =>
+        SessionOperationContext context, SessionProfileSnapshot profile, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("This fake does not support session loading.");
 
     /// <inheritdoc/>
     public ValueTask<SessionBranchResult> BranchAsync(
-        SessionBranchRequest request, CancellationToken cancellationToken = default) =>
+        SessionBranchRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("This fake does not support branching.");
 
     /// <inheritdoc/>
     public ValueTask<SessionDeleteResult> DeleteAsync(
-        SessionDeleteRequest request, CancellationToken cancellationToken = default) =>
+        SessionDeleteRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("This fake does not support deletion.");
 }

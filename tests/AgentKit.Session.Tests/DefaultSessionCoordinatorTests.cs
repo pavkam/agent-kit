@@ -3,311 +3,484 @@
 
 namespace AgentKit.Session.Tests;
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 public sealed class DefaultSessionCoordinatorTests
 {
-    private static DefaultSessionCoordinator CreateCoordinator(
-        ISessionStore store,
-        IEnumerable<ISessionEventSink>? sinks = null,
-        TimeProvider? timeProvider = null,
-        AgentSessionOptions? options = null) =>
-        new(store, sinks ?? [], timeProvider ?? new FakeTimeProvider(), Options.Create(options ?? new AgentSessionOptions()));
-
     [Fact]
-    public void Constructor_WhenStoreIsNull_ThrowsArgumentNullException()
+    public void Constructor_WhenDirectoryIsNull_ThrowsExactArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new DefaultSessionCoordinator(
-            null!, [], new FakeTimeProvider(), Options.Create(new AgentSessionOptions())));
+        var harness = new Harness();
 
-        exception.ParamName.ShouldBe("store");
+        var exception = Should.Throw<ArgumentNullException>(() => harness.CreateCoordinator(directory: null!));
+
+        exception.ParamName.ShouldBe("directory");
     }
 
     [Fact]
-    public async Task CreateAsync_WhenStoreReturnsCreated_PublishesSessionCreatedEvent()
+    public async Task CreateAsync_WhenRouteIsNew_LocatesBeforeAllocationAndSeparatelyAuthorizesEveryEffect()
     {
-        var store = new FakeSessionStore();
-        var descriptor = TestFactory.Descriptor();
-        store.OnCreate = _ => new SessionCreated(descriptor, existing: false);
-        var sink = new FakeSessionEventSink();
-        var coordinator = CreateCoordinator(store, [sink]);
+        var order = new List<string>();
+        var harness = new Harness(order);
+        harness.Directory.OnLocateCreate = _ =>
+        {
+            harness.SessionIds.Count.ShouldBe(0);
+            order.Add("locate");
+            return new SessionCreationLocationNotFound();
+        };
+        harness.Directory.OnRecordCreate = wrapper =>
+        {
+            order.Add("record");
+            return new SessionLocationRecorded(wrapper.Request.Location, existing: false);
+        };
+        harness.Store.OnCreate = request =>
+        {
+            order.Add("store");
+            return new SessionCreated(TestFactory.Descriptor(request.Address), existing: false);
+        };
+        var coordinator = harness.CreateCoordinator();
+        var request = TestFactory.CreateRequest(idempotencyKey: new IdempotencyKey("create"));
 
-        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestContext.Current.CancellationToken);
+        var result = await coordinator.CreateAsync(request, TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        var created = result.ShouldBeOfType<SessionCreated>();
+        harness.SessionIds.Count.ShouldBe(1);
+        order.ShouldBe(["locate", "record", "capture", "store"]);
+        harness.Authority.Requests.Select(static item => (item.Audience, item.Kind, item.Effect)).ShouldBe([
+            (harness.Directory.SecurityAudience, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            (harness.Directory.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            (harness.Store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+        ]);
+        harness.Directory.LocateCreateRequests.ShouldHaveSingleItem().Grant
+            .ShouldNotBeSameAs(harness.Directory.RecordCreateRequests.ShouldHaveSingleItem().Grant);
+        var storeRequest = harness.Store.ReceivedCreates.ShouldHaveSingleItem();
+        storeRequest.Request.Address.ShouldBe(created.Descriptor.Address);
+        storeRequest.Request.Context.Authorization.Scope.SessionId.ShouldBe(created.Descriptor.Address.SessionId);
+        storeRequest.Grant.ShouldBeSameAs(harness.Authority.Grants[^1]);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenRouteAlreadyExists_DoesNotAllocateOrProbeDefaultStore()
+    {
+        var winner = Location("other-store");
+        var harness = new Harness(stores: [new FakeSessionStore(), new FakeSessionStoreWithKey("other-store")]);
+        harness.Directory.OnLocateCreate = _ => new SessionCreationLocationLocated(winner);
+        var winningStore = (FakeSessionStoreWithKey) harness.Stores[1];
+        winningStore.OnCreate = request => new SessionCreated(TestFactory.Descriptor(request.Address) with
+        {
+            StoreKey = new SessionStoreKey("other-store"),
+        }, existing: true);
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(winner.Address.AgentId),
+            TestFactory.Profile("fake"), TestContext.Current.CancellationToken);
 
         _ = result.ShouldBeOfType<SessionCreated>();
-        var published = sink.Received.ShouldHaveSingleItem().ShouldBeOfType<SessionCreatedEvent>();
-        published.Descriptor.ShouldBe(descriptor);
+        harness.SessionIds.Count.ShouldBe(0);
+        harness.Directory.RecordCreateRequests.ShouldBeEmpty();
+        harness.Store.ReceivedCreates.ShouldBeEmpty();
+        winningStore.ReceivedCreates.ShouldHaveSingleItem().Request.Address.ShouldBe(winner.Address);
     }
 
     [Fact]
-    public async Task CreateAsync_WhenStoreReturnsFailed_DoesNotPublishEvent()
+    public async Task LoadAsync_WhenRouteIsLocated_ForwardsDistinctDirectoryAndStoreGrantsWithoutConsuming()
     {
-        var store = new FakeSessionStore { OnCreate = _ => new SessionCreateFailed("boom") };
-        var sink = new FakeSessionEventSink();
-        var coordinator = CreateCoordinator(store, [sink]);
-
-        _ = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestContext.Current.CancellationToken);
-
-        sink.Received.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public async Task AppendAsync_WhenEntryCountExceedsMaximum_ReturnsFailedWithoutCallingStore()
-    {
-        var store = new FakeSessionStore();
-        var coordinator = CreateCoordinator(store, options: new AgentSessionOptions { MaximumAppendEntries = 1 });
-        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
-        var context = TestFactory.OperationContext(address);
-        var branchId = new BranchId(Guid.NewGuid());
-        var entries = ImmutableArray.Create<SessionEntry>(
-            TestFactory.MessageEntry(address, branchId, 1),
-            TestFactory.MessageEntry(address, branchId, 2));
-
-        var result = await coordinator.AppendAsync(
-            new SessionAppendRequest(context, branchId, new SessionVersion(0), new IdempotencyKey("k"), entries),
-            TestContext.Current.CancellationToken);
-
-        _ = result.ShouldBeOfType<SessionAppendFailed>();
-        store.ReceivedAppends.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public async Task AppendAsync_WhenStoreReturnsAppended_PublishesSessionAppendedEvent()
-    {
-        var store = new FakeSessionStore
-        {
-            OnAppend = _ => new SessionAppended(new SessionVersion(1), [TestFactory.MessageEntry(
-                new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid())), new BranchId(Guid.NewGuid()), 1)]),
-        };
-        var sink = new FakeSessionEventSink();
-        var coordinator = CreateCoordinator(store, [sink]);
-        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
-        var context = TestFactory.OperationContext(address);
-        var branchId = new BranchId(Guid.NewGuid());
-
-        _ = await coordinator.AppendAsync(
-            new SessionAppendRequest(context, branchId, new SessionVersion(0), new IdempotencyKey("k"), [TestFactory.MessageEntry(address, branchId, 1)]),
-            TestContext.Current.CancellationToken);
-
-        var published = sink.Received.ShouldHaveSingleItem().ShouldBeOfType<SessionAppendedEvent>();
-        published.NewVersion.Value.ShouldBe(1);
-    }
-
-    [Fact]
-    public async Task AppendAsync_WhenStoreReturnsConflict_DoesNotPublishEvent()
-    {
-        var store = new FakeSessionStore { OnAppend = _ => new SessionAppendConflict(new SessionVersion(0), new SessionVersion(1)) };
-        var sink = new FakeSessionEventSink();
-        var coordinator = CreateCoordinator(store, [sink]);
-        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
-        var context = TestFactory.OperationContext(address);
-        var branchId = new BranchId(Guid.NewGuid());
-
-        var result = await coordinator.AppendAsync(
-            new SessionAppendRequest(context, branchId, new SessionVersion(0), new IdempotencyKey("k"), [TestFactory.MessageEntry(address, branchId, 1)]),
-            TestContext.Current.CancellationToken);
-
-        _ = result.ShouldBeOfType<SessionAppendConflict>();
-        sink.Received.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public async Task ReadAsync_WhenPageSizeExceedsMaximum_ReturnsFailedWithoutCallingStore()
-    {
-        var readCalled = false;
-        var store = new FakeSessionStore { OnRead = _ => { readCalled = true; return new SessionPage([], new SessionSequence(0), false); } };
-        var coordinator = CreateCoordinator(store, options: new AgentSessionOptions { MaximumPageSize = 10 });
-        var context = TestFactory.OperationContext(new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid())));
-
-        var result = await coordinator.ReadAsync(
-            new SessionReadRequest(context, new BranchId(Guid.NewGuid()), new SessionSequence(0), 20),
-            TestContext.Current.CancellationToken);
-
-        _ = result.ShouldBeOfType<SessionReadFailed>();
-        readCalled.ShouldBeFalse();
-    }
-
-    [Fact]
-    public async Task ReadAsync_WhenWithinLimit_DelegatesToStore()
-    {
-        var store = new FakeSessionStore { OnRead = _ => new SessionPage([], new SessionSequence(0), false) };
-        var coordinator = CreateCoordinator(store);
-        var context = TestFactory.OperationContext(new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid())));
-
-        var result = await coordinator.ReadAsync(
-            new SessionReadRequest(context, new BranchId(Guid.NewGuid()), new SessionSequence(0), 5),
-            TestContext.Current.CancellationToken);
-
-        _ = result.ShouldBeOfType<SessionPage>();
-    }
-
-    [Fact]
-    public async Task LoadAsync_DelegatesDirectlyToStoreWithoutPublishing()
-    {
+        var harness = new Harness();
         var descriptor = TestFactory.Descriptor();
-        var store = new FakeSessionStore { OnLoad = _ => new SessionLoaded(descriptor) };
-        var sink = new FakeSessionEventSink();
-        var coordinator = CreateCoordinator(store, [sink]);
+        var context = TestFactory.OperationContext(descriptor.Address);
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        harness.Store.OnLoad = _ => new SessionLoaded(descriptor);
+        var coordinator = harness.CreateCoordinator();
 
-        var result = await coordinator.LoadAsync(
-            TestFactory.OperationContext(descriptor.Address), TestContext.Current.CancellationToken);
+        var result = await coordinator.LoadAsync(context, TestFactory.Profile(), TestContext.Current.CancellationToken);
 
         _ = result.ShouldBeOfType<SessionLoaded>();
-        sink.Received.ShouldBeEmpty();
+        harness.Authority.Requests.Count.ShouldBe(2);
+        harness.Directory.LocateRequests.ShouldHaveSingleItem().Grant.ShouldBeSameAs(harness.Authority.Grants[0]);
+        harness.Store.ReceivedLoads.ShouldHaveSingleItem().Grant.ShouldBeSameAs(harness.Authority.Grants[1]);
+        harness.Authority.Grants[0].ShouldNotBeSameAs(harness.Authority.Grants[1]);
     }
 
     [Fact]
-    public async Task LoadAsync_WhenObserved_EmitsCorrelatedSuccessfulActivity()
+    public async Task LoadAsync_WhenDirectoryAuthorizationIsDenied_DoesNotTouchDirectoryOrStore()
     {
-        Activity? stopped = null;
-        using var listener = new ActivityListener
-        {
-            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = SampleAllData,
-            ActivityStopped = activity => stopped = activity,
-        };
-        ActivitySource.AddActivityListener(listener);
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
         var descriptor = TestFactory.Descriptor();
-        var store = new FakeSessionStore { OnLoad = _ => new SessionLoaded(descriptor) };
-        var coordinator = CreateCoordinator(store);
 
-        _ = await coordinator.LoadAsync(
-            TestFactory.OperationContext(descriptor.Address),
-            TestContext.Current.CancellationToken);
+        var result = await coordinator.LoadAsync(TestFactory.OperationContext(descriptor.Address),
+            TestFactory.Profile(), TestContext.Current.CancellationToken);
 
-        var activity = stopped.ShouldNotBeNull();
-        activity.OperationName.ShouldBe(AgentKitActivityNames.SessionLoad);
-        activity.Status.ShouldBe(ActivityStatusCode.Ok);
-        activity.GetTagItem(AgentKitTagNames.SessionId).ShouldBe(descriptor.Address.SessionId.ToString());
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage.ShouldBe("Session route lookup was not authorized.");
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+        harness.Store.ReceivedLoads.ShouldBeEmpty();
     }
 
     [Fact]
-    public async Task BranchAsync_WhenStoreReturnsBranched_PublishesSessionBranchedEvent()
+    public async Task AppendAsync_WhenProfileLimitIsExceeded_ValidatesBeforeAuthorizationOrRouting()
     {
-        var newBranchId = new BranchId(Guid.NewGuid());
-        var store = new FakeSessionStore { OnBranch = _ => new SessionBranched(newBranchId, new SessionSequence(3)) };
-        var sink = new FakeSessionEventSink();
-        var coordinator = CreateCoordinator(store, [sink]);
-        var context = TestFactory.OperationContext(new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid())));
-
-        _ = await coordinator.BranchAsync(
-            new SessionBranchRequest(context, new BranchId(Guid.NewGuid()), new SessionSequence(3), new IdempotencyKey("b")),
-            TestContext.Current.CancellationToken);
-
-        var published = sink.Received.ShouldHaveSingleItem().ShouldBeOfType<SessionBranchedEvent>();
-        published.NewBranchId.ShouldBe(newBranchId);
-    }
-
-    [Fact]
-    public async Task DeleteAsync_WhenStoreReturnsDeleted_PublishesSessionDeletedEvent()
-    {
-        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
-        var store = new FakeSessionStore { OnDelete = _ => new SessionDeleted(address) };
-        var sink = new FakeSessionEventSink();
-        var coordinator = CreateCoordinator(store, [sink]);
-        var context = TestFactory.OperationContext(address);
-
-        _ = await coordinator.DeleteAsync(
-            new SessionDeleteRequest(context, new IdempotencyKey("d")), TestContext.Current.CancellationToken);
-
-        _ = sink.Received.ShouldHaveSingleItem().ShouldBeOfType<SessionDeletedEvent>();
-    }
-
-    [Fact]
-    public async Task AppendAsync_WhenMultipleSinksRegistered_AllReceiveEventInOrder()
-    {
-        var store = new FakeSessionStore
-        {
-            OnAppend = _ => new SessionAppended(new SessionVersion(1), []),
-        };
-        var first = new FakeSessionEventSink();
-        var second = new FakeSessionEventSink();
-        var coordinator = CreateCoordinator(store, [first, second]);
-        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
-        var context = TestFactory.OperationContext(address);
-        var branchId = new BranchId(Guid.NewGuid());
-
-        _ = await coordinator.AppendAsync(
-            new SessionAppendRequest(context, branchId, new SessionVersion(0), new IdempotencyKey("k"), [TestFactory.MessageEntry(address, branchId, 1)]),
-            TestContext.Current.CancellationToken);
-
-        _ = first.Received.ShouldHaveSingleItem();
-        _ = second.Received.ShouldHaveSingleItem();
-    }
-
-    [Fact]
-    public async Task AppendAsync_WhenSinkFailsAfterCommit_ReturnsCommittedResultAndContinuesDelivery()
-    {
-        var store = new FakeSessionStore
-        {
-            OnAppend = _ => new SessionAppended(new SessionVersion(1), []),
-        };
-        var failing = new FakeSessionEventSink
-        {
-            OnPublish = static (_, _) => ValueTask.FromException(new InvalidOperationException("observer failed")),
-        };
-        var succeeding = new FakeSessionEventSink();
-        var coordinator = CreateCoordinator(store, [failing, succeeding]);
-        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
-        var branchId = new BranchId(Guid.NewGuid());
-        var request = new SessionAppendRequest(
-            TestFactory.OperationContext(address),
-            branchId,
-            new SessionVersion(0),
-            new IdempotencyKey("append"),
-            [TestFactory.MessageEntry(address, branchId, 1)]);
-
-        var result = await coordinator.AppendAsync(request, TestContext.Current.CancellationToken);
-
-        _ = result.ShouldBeOfType<SessionAppended>();
-        store.ReceivedAppends.ShouldHaveSingleItem().ShouldBe(request);
-        _ = failing.Received.ShouldHaveSingleItem();
-        _ = succeeding.Received.ShouldHaveSingleItem();
-    }
-
-    [Fact]
-    public async Task AppendAsync_WhenCallerCancelsDuringPostCommitDelivery_ReturnsCommittedResultAndPreservesState()
-    {
-        var services = new ServiceCollection();
-        _ = services.AddInMemorySessionStore();
-        using var provider = services.BuildServiceProvider(new ServiceProviderOptions
-        {
-            ValidateOnBuild = true,
-            ValidateScopes = true,
-        });
-        var store = provider.GetRequiredService<ISessionStore>();
-        var created = (SessionCreated) await store.CreateAsync(TestFactory.CreateRequest(), CancellationToken.None);
-        using var cancellation = new CancellationTokenSource();
-        var sink = new FakeSessionEventSink
-        {
-            OnPublish = (_, token) =>
-            {
-                cancellation.Cancel();
-                token.ThrowIfCancellationRequested();
-                return ValueTask.CompletedTask;
-            },
-        };
-        var coordinator = CreateCoordinator(store, [sink]);
-        var descriptor = created.Descriptor;
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
         var context = TestFactory.OperationContext(descriptor.Address);
-        var entry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1);
-        var request = new SessionAppendRequest(
-            context,
-            descriptor.ActiveBranchId,
-            descriptor.Version,
-            new IdempotencyKey("append"),
-            [entry]);
+        var request = new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version,
+            new IdempotencyKey("append"), [
+                TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1),
+                TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 2),
+            ]);
 
-        var result = await coordinator.AppendAsync(request, cancellation.Token);
+        var result = await coordinator.AppendAsync(request,
+            TestFactory.Profile(maximumAppendEntries: 1), TestContext.Current.CancellationToken);
 
-        _ = result.ShouldBeOfType<SessionAppended>();
-        var page = await store.ReadAsync(
-            new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10),
-            CancellationToken.None);
-        page.ShouldBeOfType<SessionPage>().Entries.ShouldHaveSingleItem().ShouldBe(entry);
+        _ = result.ShouldBeOfType<SessionAppendFailed>();
+        harness.Authority.Requests.ShouldBeEmpty();
+        harness.Directory.LocateRequests.ShouldBeEmpty();
     }
 
-    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
-        ActivitySamplingResult.AllDataAndRecorded;
+    [Fact]
+    public async Task AppendAsync_WhenProfileLimitIsExceededAndAlreadyCancelled_PreservesCancellationBeforeEffects()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var request = new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version,
+            new IdempotencyKey("append"), [
+                TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1),
+                TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 2),
+            ]);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await coordinator.AppendAsync(
+                request, TestFactory.Profile(maximumAppendEntries: 1), cancellation.Token));
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+        harness.Authority.Requests.ShouldBeEmpty();
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenOptionsMutateAfterConstruction_UsesCapturedSecurityRequestLifetime()
+    {
+        var options = new AgentSessionOptions { SecurityRequestLifetime = TimeSpan.FromSeconds(10) };
+        var harness = new Harness();
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        harness.Store.OnLoad = _ => new SessionLoaded(descriptor);
+        var coordinator = harness.CreateCoordinator(options);
+        options.SecurityRequestLifetime = TimeSpan.FromSeconds(20);
+
+        _ = await coordinator.LoadAsync(TestFactory.OperationContext(descriptor.Address),
+            TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        harness.Authority.Requests.ShouldAllBe(
+            request => request.Deadline == DateTimeOffset.UnixEpoch.AddSeconds(10));
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenPostCommitEventSinkThrows_PreservesCommittedSuccess()
+    {
+        var harness = new Harness(eventSinks: [new ThrowingSessionEventSink()]);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        harness.Store.OnAppend = request => new SessionAppended(
+            new SessionVersion(request.ExpectedVersion.Value + request.Entries.Length), request.Entries);
+        var request = new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version,
+            new IdempotencyKey("append"), [TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1)]);
+
+        var result = await harness.CreateCoordinator().AppendAsync(
+            request, TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionAppended>();
+        harness.Store.ReceivedAppends.ShouldHaveSingleItem().ShouldBeSameAs(request);
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenPostCommitEventClockThrows_PreservesCommittedSuccess()
+    {
+        var timeProvider = new ArmableThrowingTimeProvider();
+        var harness = new Harness(timeProvider: timeProvider);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        harness.Store.OnAppend = request =>
+        {
+            timeProvider.Arm();
+            return new SessionAppended(
+                new SessionVersion(request.ExpectedVersion.Value + request.Entries.Length),
+                request.Entries);
+        };
+        var request = new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version,
+            new IdempotencyKey("append"), [TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1)]);
+
+        var result = await harness.CreateCoordinator().AppendAsync(
+            request, TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionAppended>();
+        timeProvider.ArmedReadAttempted.ShouldBeTrue();
+        harness.Store.ReceivedAppends.ShouldHaveSingleItem().ShouldBeSameAs(request);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenAlreadyCancelled_PreservesCancellationBeforeEffects()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await coordinator.LoadAsync(TestFactory.OperationContext(TestFactory.Descriptor().Address),
+                TestFactory.Profile(), cancellation.Token));
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+        harness.Authority.Requests.ShouldBeEmpty();
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenLoggerThrows_PreservesSuccessfulResult()
+    {
+        var harness = new Harness();
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        harness.Store.OnLoad = _ => new SessionLoaded(descriptor);
+        var coordinator = harness.CreateCoordinator(logger: new ThrowingLogger());
+
+        var result = await coordinator.LoadAsync(TestFactory.OperationContext(descriptor.Address),
+            TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionLoaded>();
+    }
+
+    private static SessionLocation Location(string storeKey, SessionAddress? address = null) => new(
+        address ?? new SessionAddress(new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111")),
+            new SessionId(Guid.Parse("22222222-2222-2222-2222-222222222222"))),
+        new TenantId("tenant-1"), new SessionStoreKey(storeKey), new SessionDirectoryRevision(1),
+        DateTimeOffset.UnixEpoch, new SchemaVersion("v1"));
+
+    private sealed class Harness
+    {
+        private readonly TimeProvider _time;
+        private readonly RecordingProfileSelector _profileSelector;
+        private readonly RecordingAuthoritySelector _authoritySelector;
+
+        public Harness(List<string>? order = null, IReadOnlyList<ISessionStore>? stores = null,
+            IReadOnlyList<ISessionEventSink>? eventSinks = null, TimeProvider? timeProvider = null)
+        {
+            _time = timeProvider ?? new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+            Stores = stores ?? [new FakeSessionStore()];
+            Store = (FakeSessionStore) Stores[0];
+            Directory = new RecordingDirectory();
+            Authority = new RecordingAuthority(_time);
+            _profileSelector = new RecordingProfileSelector(order);
+            _authoritySelector = new RecordingAuthoritySelector(Authority);
+            EventSinks = eventSinks ?? [];
+        }
+
+        public RecordingDirectory Directory { get; }
+        public RecordingAuthority Authority { get; }
+        public SequenceGenerator<SessionId> SessionIds { get; } = new(static value => new SessionId(value));
+        public FakeSessionStore Store { get; }
+        public IReadOnlyList<ISessionStore> Stores { get; }
+        public IReadOnlyList<ISessionEventSink> EventSinks { get; }
+
+        public DefaultSessionCoordinator CreateCoordinator(ILogger<DefaultSessionCoordinator>? logger = null) =>
+            CreateCoordinator(Directory, new AgentSessionOptions(), logger);
+
+        public DefaultSessionCoordinator CreateCoordinator(AgentSessionOptions options,
+            ILogger<DefaultSessionCoordinator>? logger = null) => CreateCoordinator(Directory, options, logger);
+
+        public DefaultSessionCoordinator CreateCoordinator(ISessionDirectory directory,
+            ILogger<DefaultSessionCoordinator>? logger = null) =>
+            CreateCoordinator(directory, new AgentSessionOptions(), logger);
+
+        private DefaultSessionCoordinator CreateCoordinator(ISessionDirectory directory, AgentSessionOptions options,
+            ILogger<DefaultSessionCoordinator>? logger) => new(
+            directory,
+            new DefaultSessionStoreSelector(Stores, NullLogger<DefaultSessionStoreSelector>.Instance),
+            _profileSelector,
+            _authoritySelector,
+            SessionIds,
+            new SequenceGenerator<SecurityRequestId>(static value => new SecurityRequestId(value)),
+            new SequenceGenerator<SecurityEnforcementIntentId>(static value => new SecurityEnforcementIntentId(value)),
+            EventSinks, _time, Options.Create(options), logger);
+    }
+
+    private sealed class RecordingDirectory: ISessionDirectory
+    {
+        public bool Durable => false;
+        public ComponentId SecurityAudience { get; } = new("agentkit.session.tests.directory");
+        public List<AuthorizedSessionDirectoryRequest<SessionOperationContext>> LocateRequests { get; } = [];
+        public List<AuthorizedSessionDirectoryRequest<SessionCreateRequest>> LocateCreateRequests { get; } = [];
+        public List<AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>> RecordCreateRequests { get; } = [];
+        public Func<AuthorizedSessionDirectoryRequest<SessionOperationContext>, SessionLocationResult>? OnLocate { get; set; }
+        public Func<AuthorizedSessionDirectoryRequest<SessionCreateRequest>, SessionCreationLocationResult>? OnLocateCreate { get; set; }
+        public Func<AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>, SessionDirectoryWriteResult>? OnRecordCreate { get; set; }
+
+        public ValueTask<SessionLocationResult> LocateAsync(
+            AuthorizedSessionDirectoryRequest<SessionOperationContext> request, CancellationToken cancellationToken = default)
+        {
+            LocateRequests.Add(request);
+            return ValueTask.FromResult(OnLocate?.Invoke(request) ?? new SessionLocationNotFound(request.Request.ToAddress()));
+        }
+
+        public ValueTask<SessionCreationLocationResult> LocateForCreateAsync(
+            AuthorizedSessionDirectoryRequest<SessionCreateRequest> request, CancellationToken cancellationToken = default)
+        {
+            LocateCreateRequests.Add(request);
+            return ValueTask.FromResult(OnLocateCreate?.Invoke(request) ?? new SessionCreationLocationNotFound());
+        }
+
+        public ValueTask<SessionDirectoryWriteResult> RecordAsync(
+            AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest> request, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<SessionDirectoryWriteResult>(new SessionDirectoryWriteUnavailable("not configured"));
+
+        public ValueTask<SessionDirectoryWriteResult> RecordCreateAsync(
+            AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest> request,
+            CancellationToken cancellationToken = default)
+        {
+            RecordCreateRequests.Add(request);
+            return ValueTask.FromResult(OnRecordCreate?.Invoke(request)
+                ?? new SessionDirectoryWriteUnavailable("not configured"));
+        }
+    }
+
+    private sealed class RecordingProfileSelector(List<string>? order): ISecurityProfileSelector
+    {
+        public ValueTask<SecurityAuthorizationCaptureResult> SelectAsync(SecurityAuthorizationCaptureRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            order?.Add("capture");
+            return ValueTask.FromResult<SecurityAuthorizationCaptureResult>(new SecurityAuthorizationCaptured(
+                new SecurityAuthorizationContext(request.ProfileKey, new SecurityProfileVersion(1),
+                    new SecurityPolicySnapshotReference(
+                        new SecurityPolicySnapshotId(Guid.Parse("55555555-5555-5555-5555-555555555555")),
+                        new SecurityPolicyVersion(1), new ContentHash("sha256:policy")),
+                    new ComponentKey<ISecurityAuthority>("authority"), request.AgentDefinitionRevision,
+                    request.ConfigurationVersion, request.Scope, request.Identity)));
+        }
+    }
+
+    private sealed class RecordingAuthoritySelector(RecordingAuthority authority): ISecurityAuthoritySelector
+    {
+        public ValueTask<SecurityAuthoritySelectionResult> SelectAsync(SecurityAuthorizationContext authorization,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<SecurityAuthoritySelectionResult>(new SecurityAuthoritySelected(authorization, authority));
+    }
+
+    private sealed class RecordingAuthority(TimeProvider time): ISecurityAuthority
+    {
+        public bool Allow { get; set; } = true;
+        public List<SecurityRequest> Requests { get; } = [];
+        public List<SecurityGrant> Grants { get; } = [];
+
+        public ValueTask<SecurityDecision> AuthorizeAsync(SecurityRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Requests.Add(request);
+            if (!Allow)
+            {
+                return ValueTask.FromResult<SecurityDecision>(new SecurityDenied(request.Id,
+                    new SecurityPolicyVersion(1), new SecurityDenial("policy_denied", "denied")));
+            }
+            var grant = new SecurityGrant(new GrantId(Guid.NewGuid()), request.Id, request.Scope, request.Identity,
+                request.Authorization!, request.Audience, request.Kind, request.Effect, request.Resources,
+                request.InputFingerprint, new SecurityPolicyVersion(1), new SecurityRevocationVersion(1),
+                time.GetUtcNow(), time.GetUtcNow().AddMinutes(1), 1);
+            Grants.Add(grant);
+            return ValueTask.FromResult<SecurityDecision>(new SecurityAllowed(request.Id, new SecurityPolicyVersion(1), grant));
+        }
+    }
+
+    private sealed class SequenceGenerator<T>(Func<Guid, T> factory): IIdentifierGenerator<T>
+        where T : struct
+    {
+        public int Count { get; private set; }
+        public T Create()
+        {
+            Count++;
+            return factory(new Guid(Count, 0, 0, [0, 0, 0, 0, 0, 0, 0, 0]));
+        }
+    }
+
+    private sealed class FakeSessionStoreWithKey: ISessionStore
+    {
+        public FakeSessionStoreWithKey(string key)
+        {
+            Descriptor = new SessionStoreDescriptor(new SessionStoreKey(key), SessionStoreCapabilities.None,
+                SessionConsistencyModel.Strong, durable: false, supportsDistributedFencing: false);
+        }
+        public ComponentId SecurityAudience { get; } = new("agentkit.session.tests.other-store");
+        public SessionStoreDescriptor Descriptor { get; }
+        public Func<SessionStoreCreateRequest, SessionCreateResult>? OnCreate { get; set; }
+        public List<AuthorizedSessionStoreRequest<SessionStoreCreateRequest>> ReceivedCreates { get; } = [];
+        public ValueTask<SessionCreateResult> CreateAsync(AuthorizedSessionStoreRequest<SessionStoreCreateRequest> request,
+            CancellationToken cancellationToken = default)
+        {
+            ReceivedCreates.Add(request);
+            return ValueTask.FromResult(OnCreate?.Invoke(request.Request) ?? new SessionCreateFailed("not configured"));
+        }
+        public ValueTask<SessionLoadResult> LoadAsync(AuthorizedSessionStoreRequest<SessionOperationContext> context,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AuthorizedSessionStoreRequest<SessionExecutionLaneProvisionRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionAppendResult> AppendAsync(AuthorizedSessionStoreRequest<SessionAppendRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionPageResult> ReadAsync(AuthorizedSessionStoreRequest<SessionReadRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionBranchResult> CreateBranchAsync(AuthorizedSessionStoreRequest<SessionBranchRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionDeleteResult> DeleteAsync(AuthorizedSessionStoreRequest<SessionDeleteRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionInputLookupResult> LookupInputAsync(AuthorizedSessionStoreRequest<SessionInputLookupRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<InputAdmissionResult> AdmitInputAsync(AuthorizedSessionStoreRequest<SessionInputAdmissionRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionRunStartResult> AcceptRunAsync(AuthorizedSessionStoreRequest<SessionRunStartRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionRunStateResult> LoadRunStateAsync(AuthorizedSessionStoreRequest<SessionRunStateRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class ThrowingLogger: ILogger<DefaultSessionCoordinator>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => throw new InvalidOperationException("observer");
+    }
+
+    private sealed class ThrowingSessionEventSink: ISessionEventSink
+    {
+        public ValueTask PublishAsync(SessionEvent sessionEvent, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("observer");
+    }
+
+    private sealed class ArmableThrowingTimeProvider: TimeProvider
+    {
+        private bool _armed;
+
+        public bool ArmedReadAttempted { get; private set; }
+
+        public void Arm() => _armed = true;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            if (_armed)
+            {
+                ArmedReadAttempted = true;
+                throw new InvalidOperationException("Event clock failed.");
+            }
+
+            return DateTimeOffset.UnixEpoch;
+        }
+    }
 }

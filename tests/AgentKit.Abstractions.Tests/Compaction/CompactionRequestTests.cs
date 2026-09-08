@@ -53,7 +53,7 @@ public sealed class CompactionRequestTests
     }
 
     private static CompactionRequest CreateRequest(double minimumReductionRatio) => new(
-        new CompactionOperationContext(
+        TestSupport.TestSecurityEvidence.CompactionContext(
             new CompactionId(Guid.NewGuid()),
             new AgentId(Guid.NewGuid()),
             new SessionId(Guid.NewGuid()),

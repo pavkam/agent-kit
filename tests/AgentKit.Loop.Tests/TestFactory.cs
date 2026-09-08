@@ -47,21 +47,30 @@ internal static class TestFactory
         RunId? runId = null,
         ModelSelectionPolicy? policy = null,
         ModelRequirements? requirements = null,
-        int maxTurns = 8) => new(
-        agentId,
-        sessionId,
-        branchId,
-        runId ?? new RunId(Guid.NewGuid()),
-        Identity(),
-        policy ?? Policy(),
-        requirements ?? ModelRequirements.None,
-        instructions: [],
-        tools: [],
-        LlmToolChoice.Auto,
-        LlmRequestSettings.Default,
-        maxTurns,
-        TimeSpan.FromMinutes(1),
-        ExtensionData.Empty);
+        int maxTurns = 8)
+    {
+        var selectedRunId = runId ?? new RunId(Guid.NewGuid());
+        var identity = Identity();
+        var correlation = new InRunOperationCorrelation(
+            new OperationId(Guid.NewGuid()), selectedRunId, turnId: null);
+        return new AgentRunRequest(
+            agentId,
+            sessionId,
+            branchId,
+            selectedRunId,
+            identity,
+            TestSupport.TestSecurityEvidence.Authorization(agentId, sessionId, correlation, identity),
+            TestSupport.TestSecurityEvidence.SessionProfile(),
+            policy ?? Policy(),
+            requirements ?? ModelRequirements.None,
+            instructions: [],
+            tools: [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            maxTurns,
+            TimeSpan.FromMinutes(1),
+            ExtensionData.Empty);
+    }
 
     public static OperationCorrelation Correlation(RunId? runId = null) =>
         new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), runId ?? new RunId(Guid.NewGuid()), null);

@@ -25,6 +25,29 @@ public static class ArgumentExceptionExtensions
 {
     extension(ArgumentException)
     {
+        /// <summary>Throws when run-profile publications contain a null item or duplicate agent-definition coordinates.</summary>
+        /// <param name="publications">The initialized immutable publication sequence to inspect.</param>
+        /// <param name="paramName">The sequence parameter name inferred from the call site when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="publications"/> is default, contains null, or repeats an agent and definition-revision pair.</exception>
+        public static void ThrowIfDuplicateAgentRunProfileCoordinates(
+            ImmutableArray<AgentRunProfilePublication> publications,
+            [CallerArgumentExpression(nameof(publications))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfContainsNull(publications, paramName);
+            var coordinates = new HashSet<(AgentId, AgentDefinitionRevision)>();
+            foreach (var publication in publications)
+            {
+                if (!coordinates.Add((
+                    publication.SecurityProfile.AgentId,
+                    publication.SecurityProfile.AgentDefinitionRevision)))
+                {
+                    throw new ArgumentException(
+                        "Run-profile publications must have unique agent and definition-revision coordinates.",
+                        paramName);
+                }
+            }
+        }
+
         /// <summary>Throws when an audit event-kind sequence is uninitialized, contains an undefined kind, or declares one kind more than once.</summary>
         /// <param name="eventKinds">The initialized audit event-kind sequence to inspect.</param>
         /// <param name="paramName">The parameter attributed to a duplicate event kind.</param>
@@ -79,6 +102,97 @@ public static class ArgumentExceptionExtensions
                 throw new ArgumentException(
                     "Only a newly consumed or reconciled result may carry an enforcement-intent receipt.",
                     paramName);
+            }
+        }
+
+        /// <summary>Throws when an immutable identity sequence is default, empty, or contains a default or duplicate identity.</summary>
+        /// <typeparam name="T">The non-nullable value identity type.</typeparam>
+        /// <param name="values">The candidate ordered identity sequence.</param>
+        /// <param name="paramName">The sequence parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="values"/> is default or empty, or contains a default or duplicate value.</exception>
+        public static void ThrowIfDefaultEmptyOrDuplicate<T>(
+            ImmutableArray<T> values,
+            [CallerArgumentExpression(nameof(values))] string? paramName = null)
+            where T : struct
+        {
+            ArgumentException.ThrowIfDefaultOrEmpty(values, paramName);
+            var seen = new HashSet<T>();
+            foreach (var value in values)
+            {
+                if (EqualityComparer<T>.Default.Equals(value, default) || !seen.Add(value))
+                {
+                    throw new ArgumentException("Identity values must be initialized and unique.", paramName);
+                }
+            }
+        }
+
+        /// <summary>Throws when a session operation context does not identify one execution lane.</summary>
+        /// <param name="context">The non-null session context to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="context"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="context"/> has no execution lane.</exception>
+        public static void ThrowIfSessionContextNotLaneBound(
+            SessionOperationContext context,
+            [CallerArgumentExpression(nameof(context))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(context, paramName);
+            if (context.ExecutionLaneId is null)
+            {
+                throw new ArgumentException("The session operation must identify an execution lane.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a session operation context is not a before-run operation.</summary>
+        /// <param name="context">The non-null session context to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="context"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="context"/> does not carry <see cref="BeforeRunOperationCorrelation"/>.</exception>
+        public static void ThrowIfSessionContextNotBeforeRun(
+            SessionOperationContext context,
+            [CallerArgumentExpression(nameof(context))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(context, paramName);
+            if (context.Correlation is not BeforeRunOperationCorrelation)
+            {
+                throw new ArgumentException("The session operation must carry before-run correlation.", paramName);
+            }
+        }
+
+        /// <summary>Throws when captured authority cannot describe session creation before a session identity exists.</summary>
+        /// <param name="authorization">The non-null captured authorization context to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="authorization"/> is null.</exception>
+        /// <exception cref="ArgumentException">The scope already identifies a session or does not carry <see cref="BeforeRunOperationCorrelation"/>.</exception>
+        public static void ThrowIfInvalidSessionCreationAuthorization(
+            SecurityAuthorizationContext authorization,
+            [CallerArgumentExpression(nameof(authorization))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(authorization, paramName);
+            if (authorization.Scope.SessionId is not null
+                || authorization.Scope.Correlation is not BeforeRunOperationCorrelation)
+            {
+                throw new ArgumentException(
+                    "Session creation authorization must be sessionless and carry before-run correlation.",
+                    paramName);
+            }
+        }
+
+        /// <summary>Throws when an initialized immutable sequence does not contain a required value.</summary>
+        /// <typeparam name="T">The equatable value type carried by the sequence.</typeparam>
+        /// <param name="values">The initialized immutable sequence to inspect.</param>
+        /// <param name="required">The value that must occur.</param>
+        /// <param name="paramName">The parameter name inferred from the sequence expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="values"/> is default or does not contain <paramref name="required"/>.</exception>
+        public static void ThrowIfDoesNotContain<T>(
+            ImmutableArray<T> values,
+            T required,
+            [CallerArgumentExpression(nameof(values))] string? paramName = null)
+            where T : IEquatable<T>
+        {
+            ArgumentException.ThrowIfDefault(values, paramName);
+            if (!values.Contains(required))
+            {
+                throw new ArgumentException("The sequence must contain the required value.", paramName);
             }
         }
 
@@ -978,7 +1092,7 @@ public static class ArgumentExceptionExtensions
             ImmutableArray<AdmissionId> admissionIds,
             [CallerArgumentExpression(nameof(admissionIds))] string? paramName = null)
         {
-            ArgumentException.ThrowIfDefault(admissionIds, paramName);
+            ArgumentException.ThrowIfDefaultOrEmpty(admissionIds, paramName);
             var seen = new HashSet<AdmissionId>();
             foreach (var admissionId in admissionIds)
             {
@@ -1030,6 +1144,66 @@ public static class ArgumentExceptionExtensions
             if (identity != authorization.Identity)
             {
                 throw new ArgumentException("Input identity must equal authorization identity evidence.", paramName);
+            }
+        }
+
+        /// <summary>Throws when authorization does not exactly bind an operation's identity, agent, optional session, and causal correlation.</summary>
+        /// <param name="identity">The complete authenticated caller identity.</param><param name="agentId">The addressed agent.</param>
+        /// <param name="sessionId">The addressed session, or null for truthful sessionless work.</param><param name="correlation">The exact causal operation.</param>
+        /// <param name="authorization">The captured authorization evidence.</param><param name="paramName">The authorization parameter name.</param>
+        /// <exception cref="ArgumentNullException">A required reference is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentId"/> or a supplied <paramref name="sessionId"/> is default.</exception>
+        /// <exception cref="ArgumentException">Identity, address, or correlation differs from authorization scope.</exception>
+        public static void ThrowIfInvalidOperationAuthorization(
+            ExecutionIdentity identity,
+            AgentId agentId,
+            SessionId? sessionId,
+            OperationCorrelation correlation,
+            SecurityAuthorizationContext authorization,
+            [CallerArgumentExpression(nameof(authorization))] string? paramName = null)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(agentId, default, nameof(agentId));
+            if (sessionId is { } value)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(sessionId));
+            }
+            ArgumentException.ThrowIfInputAuthorizationIdentityMismatch(identity, authorization, paramName);
+            ArgumentNullException.ThrowIfNull(correlation);
+            if (authorization.Scope.AgentId != agentId
+                || authorization.Scope.SessionId != sessionId
+                || authorization.Scope.Correlation != correlation)
+            {
+                throw new ArgumentException(
+                    "Authorization must exactly bind the operation identity, address, and causal correlation.", paramName);
+            }
+        }
+
+        /// <summary>Throws when captured authorization does not bind the requested agent, session, identity, and active run.</summary>
+        /// <param name="identity">The complete authenticated identity.</param><param name="agentId">The run's agent.</param>
+        /// <param name="sessionId">The run's session.</param><param name="runId">The active run identity.</param>
+        /// <param name="authorization">The captured run-start authorization.</param><param name="paramName">The authorization parameter name.</param>
+        /// <exception cref="ArgumentNullException">A required reference is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A supplied domain identity is default.</exception>
+        /// <exception cref="ArgumentException">Identity, address, or active-run evidence differs.</exception>
+        public static void ThrowIfInvalidRunAuthorization(
+            ExecutionIdentity identity,
+            AgentId agentId,
+            SessionId sessionId,
+            RunId runId,
+            SecurityAuthorizationContext authorization,
+            [CallerArgumentExpression(nameof(authorization))] string? paramName = null)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(agentId, default, nameof(agentId));
+            ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default, nameof(sessionId));
+            ArgumentOutOfRangeException.ThrowIfEqual(runId, default, nameof(runId));
+            ArgumentException.ThrowIfInputAuthorizationIdentityMismatch(identity, authorization, paramName);
+            if (authorization.Scope.AgentId != agentId
+                || authorization.Scope.SessionId != sessionId
+                || authorization.Scope.Correlation is not InRunOperationCorrelation correlation
+                || correlation.RunId != runId)
+            {
+                throw new ArgumentException(
+                    "Run authorization must bind the requested identity, agent, session, and active run.", paramName);
             }
         }
 
@@ -1177,6 +1351,44 @@ public static class ArgumentExceptionExtensions
             if (contractType != typeof(IDisposable) && contractType != typeof(IAsyncDisposable))
             {
                 throw new ArgumentException("Contract must be IDisposable or IAsyncDisposable.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a directory write location does not exactly bind the requesting session context.</summary>
+        /// <param name="context">The non-null operation context expected to own the location.</param>
+        /// <param name="location">The non-null candidate location whose address and tenant must match <paramref name="context"/>.</param>
+        /// <param name="paramName">The location parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="context"/> or <paramref name="location"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="location"/> has a different address or tenant from <paramref name="context"/>.</exception>
+        public static void ThrowIfInvalidSessionDirectoryWriteBinding(
+            SessionOperationContext context,
+            SessionLocation location,
+            [CallerArgumentExpression(nameof(location))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(location);
+            if (context.ToAddress() != location.Address || context.Identity.TenantId != location.TenantId)
+            {
+                throw new ArgumentException("The location address and tenant must match the operation context.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a creation-route location does not exactly bind the canonical outer creation request.</summary>
+        /// <param name="request">The non-null sessionless outer creation request expected to own the route.</param>
+        /// <param name="location">The non-null candidate location whose agent and tenant must match <paramref name="request"/>.</param>
+        /// <param name="paramName">The location parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="location"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="location"/> has a different agent or tenant from <paramref name="request"/>.</exception>
+        public static void ThrowIfInvalidSessionDirectoryCreationBinding(
+            SessionCreateRequest request,
+            SessionLocation location,
+            [CallerArgumentExpression(nameof(location))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(location);
+            if (location.Address.AgentId != request.AgentId || location.TenantId != request.Identity.TenantId)
+            {
+                throw new ArgumentException("The candidate location must match the creation request's agent and tenant.", paramName);
             }
         }
     }

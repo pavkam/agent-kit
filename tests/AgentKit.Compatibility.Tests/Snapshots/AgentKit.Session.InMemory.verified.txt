@@ -3,22 +3,39 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Session.InMemory
 {
+    public sealed class InMemorySessionDirectory : AgentKit.ISessionDirectory
+    {
+        public InMemorySessionDirectory(AgentKit.ComponentId securityAudience, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.InMemory.InMemorySessionDirectory>? logger = null) { }
+        public bool Durable { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionLocationResult> LocateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionOperationContext> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionCreationLocationResult> LocateForCreateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionCreateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryWriteResult> RecordAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryWriteRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryWriteResult> RecordCreateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryCreateRecordRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class InMemorySessionStore : AgentKit.ISessionStore
     {
-        public InMemorySessionStore(AgentKit.IIdentifierGenerator<AgentKit.SessionId> sessionIds, AgentKit.IIdentifierGenerator<AgentKit.BranchId> branchIds, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.InMemory.InMemorySessionStore>? logger = null) { }
+        public InMemorySessionStore(AgentKit.IIdentifierGenerator<AgentKit.BranchId> branchIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grants, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.InMemory.InMemorySessionStore>? logger = null) { }
         public AgentKit.SessionStoreDescriptor Descriptor { get; }
-        public System.Threading.Tasks.ValueTask<AgentKit.SessionAppendResult> AppendAsync(AgentKit.SessionAppendRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.SessionCreateResult> CreateAsync(AgentKit.SessionCreateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.SessionBranchResult> CreateBranchAsync(AgentKit.SessionBranchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.SessionDeleteResult> DeleteAsync(AgentKit.SessionDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.SessionLoadResult> LoadAsync(AgentKit.SessionOperationContext context, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.ValueTask<AgentKit.SessionPageResult> ReadAsync(AgentKit.SessionReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionRunStartResult> AcceptRunAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunStartRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.InputAdmissionResult> AdmitInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputAdmissionRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionAppendResult> AppendAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionAppendRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionCreateResult> CreateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionStoreCreateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionBranchResult> CreateBranchAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionBranchRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDeleteResult> DeleteAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionDeleteRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionLoadResult> LoadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionOperationContext> context, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionRunStateResult> LoadRunStateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunStateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputLookupRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionExecutionLaneProvisionRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionPageResult> ReadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionReadRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemorySessionStore() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemorySessionDirectory(AgentKit.ComponentId securityAudience) { }
         }
     }
 }

@@ -52,8 +52,6 @@ public sealed class CompactionRetryContinuationCauseTests
     [InlineData("manifestContext")]
     [InlineData("checkpoint")]
     [InlineData("activatedVersion")]
-    [InlineData("correlation")]
-    [InlineData("identity")]
     public void Constructor_WhenRetainedEvidenceIsMalformed_ThrowsExactArgumentException(string part)
     {
         var malformed = WithMalformedPart(Compaction(), part);
@@ -95,9 +93,6 @@ public sealed class CompactionRetryContinuationCauseTests
     }
 
     [Theory]
-    [InlineData("compactionId")]
-    [InlineData("agentId")]
-    [InlineData("sessionId")]
     [InlineData("manifestId")]
     [InlineData("branchId")]
     public void Constructor_WhenRetainedIdentityIsDefault_ThrowsExactArgumentException(string identity)
@@ -163,71 +158,37 @@ public sealed class CompactionRetryContinuationCauseTests
 
     private static CompactionSucceeded WithDefaultIdentity(CompactionSucceeded compaction, string identity)
     {
-        var context = compaction.Context with
-        {
-            CompactionId = identity == "compactionId" ? default : compaction.Context.CompactionId,
-            AgentId = identity == "agentId" ? default : compaction.Context.AgentId,
-            SessionId = identity == "sessionId" ? default : compaction.Context.SessionId,
-        };
         var manifest = compaction.Record.Manifest with
         {
             Id = identity == "manifestId" ? default : compaction.Record.Manifest.Id,
-            Context = context,
             BranchId = identity == "branchId" ? default : compaction.Record.Manifest.BranchId,
         };
         return compaction with
         {
-            Context = context,
-            Record = compaction.Record with { Context = context, Manifest = manifest },
+            Record = compaction.Record with { Manifest = manifest },
         };
     }
 
     private static CompactionSucceeded WithMalformedPart(CompactionSucceeded compaction, string part)
-    {
-        if (part == "resultContext")
+        => part switch
         {
-            return compaction with { Context = null! };
-        }
-        if (part == "recordContext")
-        {
-            return compaction with { Record = compaction.Record with { Context = null! } };
-        }
-        if (part == "manifest")
-        {
-            return compaction with { Record = compaction.Record with { Manifest = null! } };
-        }
-        if (part == "manifestContext")
-        {
-            return compaction with
+            "resultContext" => compaction with { Context = null! },
+            "recordContext" => compaction with { Record = compaction.Record with { Context = null! } },
+            "manifest" => compaction with { Record = compaction.Record with { Manifest = null! } },
+            "manifestContext" => compaction with
             {
                 Record = compaction.Record with
                 {
                     Manifest = compaction.Record.Manifest with { Context = null! },
                 },
-            };
-        }
-        if (part == "checkpoint")
-        {
-            return compaction with { Record = compaction.Record with { Checkpoint = null } };
-        }
-        if (part == "activatedVersion")
-        {
-            return compaction with { Record = compaction.Record with { ActivatedSessionVersion = null } };
-        }
-
-        var context = part == "correlation"
-            ? compaction.Context with { Correlation = null! }
-            : compaction.Context with { Identity = null! };
-        return compaction with
-        {
-            Context = context,
-            Record = compaction.Record with
-            {
-                Context = context,
-                Manifest = compaction.Record.Manifest with { Context = context },
             },
+            "checkpoint" => compaction with { Record = compaction.Record with { Checkpoint = null } },
+            "activatedVersion" => compaction with
+            {
+                Record = compaction.Record with { ActivatedSessionVersion = null },
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(part)),
         };
-    }
 
     private static CompactionSucceeded Compaction()
     {
@@ -263,7 +224,7 @@ public sealed class CompactionRetryContinuationCauseTests
     }
 
     private static CompactionOperationContext ContextValue() =>
-        new(
+        TestSecurityEvidence.CompactionContext(
             new CompactionId(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc")),
             _agentId,
             _sessionId,
@@ -271,7 +232,7 @@ public sealed class CompactionRetryContinuationCauseTests
             TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human));
 
     private static CompactionOperationContext OtherContext() =>
-        new(
+        TestSecurityEvidence.CompactionContext(
             new CompactionId(Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd")),
             _agentId,
             _sessionId,

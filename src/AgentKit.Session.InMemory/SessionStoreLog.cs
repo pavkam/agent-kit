@@ -11,7 +11,7 @@ internal static partial class SessionStoreLog
     /// <param name="operation">The bounded store operation name.</param>
     /// <param name="agentId">The owning agent identity.</param>
     /// <param name="sessionId">The session identity when already established.</param>
-    /// <param name="outcome">The normalized terminal result kind.</param>
+    /// <param name="outcome">The bounded terminal success, rejection, cancellation, or failure classification.</param>
     [LoggerMessage(16000, LogLevel.Debug, "In-memory session operation {Operation} for agent {AgentId} and session {SessionId} completed with outcome {Outcome}.")]
     internal static partial void Completed(
         ILogger logger,

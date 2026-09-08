@@ -104,7 +104,9 @@ public sealed class TenantIsolationAndIdempotencyTests
         var agentId = new AgentId(Guid.NewGuid());
         var key = new IdempotencyKey("tenant-scoped");
         var first = (SessionCreated) await store.CreateAsync(TestFactory.CreateRequest(agentId, key), TestContext.Current.CancellationToken);
-        var second = (SessionCreated) await store.CreateAsync(new SessionCreateRequest(agentId, TestFactory.Identity("tenant-2"), null, key, ExtensionData.Empty), TestContext.Current.CancellationToken);
+        var second = (SessionCreated) await store.CreateAsync(
+            TestFactory.CreateRequest(agentId, key, identity: TestFactory.Identity("tenant-2")),
+            TestContext.Current.CancellationToken);
 
         second.Descriptor.Address.ShouldNotBe(first.Descriptor.Address);
     }

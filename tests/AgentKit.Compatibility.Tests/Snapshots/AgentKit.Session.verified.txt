@@ -6,10 +6,22 @@ namespace AgentKit.Session
     public sealed class AgentSessionOptions
     {
         public AgentSessionOptions() { }
-        public AgentKit.Session.SessionBusyBehavior BusyBehavior { get; set; }
+        public AgentKit.SessionBusyBehavior BusyBehavior { get; set; }
         public System.TimeSpan BusyWaitTimeout { get; set; }
         public int MaximumAppendEntries { get; set; }
         public int MaximumPageSize { get; set; }
+        public System.TimeSpan SecurityRequestLifetime { get; set; }
+    }
+    public sealed class DefaultSessionStoreCatalog : AgentKit.ISessionStoreCatalog
+    {
+        public DefaultSessionStoreCatalog(System.Collections.Generic.IEnumerable<AgentKit.ISessionStore> stores) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.SessionStoreDescriptor> GetDescriptors() { }
+    }
+    public sealed class DefaultSessionStoreSelector : AgentKit.ISessionStoreSelector
+    {
+        public DefaultSessionStoreSelector(System.Collections.Generic.IEnumerable<AgentKit.ISessionStore> stores, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.DefaultSessionStoreSelector> logger) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionStoreSelectionResult> ResolveExistingAsync(AgentKit.SessionStoreSelectionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionStoreSelectionResult> SelectForCreateAsync(AgentKit.SessionStoreCreateSelectionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class NeverRetireSessionRetentionPolicy : AgentKit.ISessionRetentionPolicy
     {
@@ -28,10 +40,5 @@ namespace AgentKit.Session
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceSessionRetentionPolicy<TPolicy>()
                 where TPolicy :  class, AgentKit.ISessionRetentionPolicy { }
         }
-    }
-    public enum SessionBusyBehavior
-    {
-        Reject = 0,
-        Wait = 1,
     }
 }

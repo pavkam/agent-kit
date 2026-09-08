@@ -17,54 +17,69 @@ namespace AgentKit.Session.InMemory;
 /// <see cref="Descriptor"/> reports <c>Durable: false</c> accordingly.
 /// </para>
 /// <para>
-/// Branch sequences are 1-indexed: the first entry ever appended to a
-/// branch has sequence 1, and a branch's <see cref="SessionVersion"/> always
-/// equals its committed entry count. Branching copies the referenced
-/// entries (by value; the copied <see cref="SessionEntry"/> instances keep
-/// their original identity and branch provenance) into the new branch's own
-/// list, so appends to either branch afterward never affect the other.
+/// Session sequences and optimistic-concurrency versions are allocated across
+/// the whole record. A branch cursor remains separate from that canonical
+/// session version. Branching copies the referenced entries (by value; the
+/// copied <see cref="SessionEntry"/> instances keep their original identity
+/// and branch provenance) into the new branch's own list, so appends to either
+/// branch afterward never affect the other.
 /// </para>
 /// </remarks>
 public sealed partial class InMemorySessionStore: ISessionStore
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<SessionAddress, SessionRecord> _sessions = [];
-    private readonly Dictionary<(TenantId TenantId, AgentId AgentId, IdempotencyKey Key), IdempotencyReceipt<SessionCreateRequest, SessionCreated>> _createIdempotency = [];
-    private readonly Dictionary<(TenantId TenantId, AgentId AgentId, IdempotencyKey Key), SessionCreateRequest> _deletedCreateIdempotency = [];
+    private readonly Dictionary<(TenantId TenantId, AgentId AgentId, IdempotencyKey Key), IdempotencyReceipt<SessionStoreCreateRequest, SessionCreated>> _createIdempotency = [];
+    private readonly Dictionary<(TenantId TenantId, AgentId AgentId, IdempotencyKey Key), SessionStoreCreateRequest> _deletedCreateIdempotency = [];
     private readonly Dictionary<(TenantId TenantId, SessionAddress Address, IdempotencyKey Key), IdempotencyReceipt<SessionDeleteRequest, SessionDeleted>> _deleteIdempotency = [];
-    private readonly IIdentifierGenerator<SessionId> _sessionIds;
     private readonly IIdentifierGenerator<BranchId> _branchIds;
+    private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds;
+    private readonly ISecurityAuditDispatcher _auditDispatcher;
+    private readonly ISecurityGrantStore _grants;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<InMemorySessionStore> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="InMemorySessionStore"/> class.</summary>
-    /// <param name="sessionIds">Generates the identity of each newly created session.</param>
     /// <param name="branchIds">Generates the identity of each newly created branch.</param>
+    /// <param name="auditRecordIds">Generates stable identities for required audit intents.</param>
+    /// <param name="auditDispatcher">The required audit dispatcher that must accept each consumed access intent.</param>
+    /// <param name="grants">The authoritative store that validates and consumes exact session-access grants.</param>
     /// <param name="timeProvider">The clock used to timestamp created and updated sessions.</param>
     /// <param name="logger">The optional content-free diagnostic logger.</param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public InMemorySessionStore(
-        IIdentifierGenerator<SessionId> sessionIds,
         IIdentifierGenerator<BranchId> branchIds,
+        IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
+        ISecurityAuditDispatcher auditDispatcher,
+        ISecurityGrantStore grants,
         TimeProvider timeProvider,
         ILogger<InMemorySessionStore>? logger = null)
     {
-        ArgumentNullException.ThrowIfNull(sessionIds);
         ArgumentNullException.ThrowIfNull(branchIds);
+        ArgumentNullException.ThrowIfNull(auditRecordIds);
+        ArgumentNullException.ThrowIfNull(auditDispatcher);
+        ArgumentNullException.ThrowIfNull(grants);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
-        _sessionIds = sessionIds;
         _branchIds = branchIds;
+        _auditRecordIds = auditRecordIds;
+        _auditDispatcher = auditDispatcher;
+        _grants = grants;
         _timeProvider = timeProvider;
         _logger = logger ?? NullLogger<InMemorySessionStore>.Instance;
     }
 
     /// <inheritdoc/>
-    public SessionStoreDescriptor Descriptor { get; } = new(new SessionStoreKey("agentkit.in-memory"), durable: false);
+    public SessionStoreDescriptor Descriptor { get; } = new(
+        new SessionStoreKey("agentkit.in-memory"),
+        SessionStoreCapabilities.Branching | SessionStoreCapabilities.Transactions,
+        SessionConsistencyModel.Strong,
+        durable: false,
+        supportsDistributedFencing: false);
 
     /// <inheritdoc/>
     private ValueTask<SessionCreateResult> CreateCoreAsync(
-        SessionCreateRequest request,
+        SessionStoreCreateRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -72,7 +87,8 @@ public sealed partial class InMemorySessionStore: ISessionStore
 
         using (_gate.EnterScope())
         {
-            var idempotencyEntry = (request.Identity.TenantId, request.AgentId, request.IdempotencyKey);
+            var logical = request.Request;
+            var idempotencyEntry = (logical.Identity.TenantId, logical.AgentId, logical.IdempotencyKey);
             if (_deletedCreateIdempotency.TryGetValue(idempotencyEntry, out var deletedRequest))
             {
                 return ValueTask.FromResult<SessionCreateResult>(
@@ -89,21 +105,27 @@ public sealed partial class InMemorySessionStore: ISessionStore
                         : new SessionCreateFailed("The idempotency key was previously used with different request evidence."));
             }
 
+            if (_sessions.ContainsKey(request.Address))
+            {
+                return ValueTask.FromResult<SessionCreateResult>(new SessionCreateFailed(
+                    "The allocated session address is already present."));
+            }
+
             var now = _timeProvider.GetUtcNow();
             var branchId = _branchIds.Create();
-            var address = new SessionAddress(request.AgentId, _sessionIds.Create());
+            var address = request.Address;
             var record = new SessionRecord(
                 address,
-                request.ConversationId,
-                request.Identity.TenantId,
-                request.Identity.PrincipalId,
+                logical.ConversationId,
+                logical.Identity.TenantId,
+                logical.Identity.PrincipalId,
                 branchId,
                 now);
             record.Branches[branchId] = new BranchRecord();
 
             _sessions[address] = record;
             var created = new SessionCreated(ToDescriptor(record), existing: false);
-            _createIdempotency[idempotencyEntry] = new IdempotencyReceipt<SessionCreateRequest, SessionCreated>(request, created);
+            _createIdempotency[idempotencyEntry] = new IdempotencyReceipt<SessionStoreCreateRequest, SessionCreated>(request, created);
 
             return ValueTask.FromResult<SessionCreateResult>(created);
         }
@@ -125,6 +147,84 @@ public sealed partial class InMemorySessionStore: ISessionStore
                 : record.TenantId != context.Identity.TenantId
                     ? ValueTask.FromResult<SessionLoadResult>(new SessionNotFound(address))
                     : ValueTask.FromResult<SessionLoadResult>(new SessionLoaded(ToDescriptor(record)));
+        }
+    }
+
+    private ValueTask<SessionExecutionLaneProvisionResult> ProvisionLaneCoreAsync(
+        SessionExecutionLaneProvisionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.EnterScope())
+        {
+            if (!TryGetAuthorizedRecord(request.Context, out var record))
+            {
+                return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(
+                    new SessionExecutionLaneProvisionRejected("The session is unavailable."));
+            }
+
+            if (record.LaneProvisionIdempotency.TryGetValue(request.IdempotencyKey, out var replay))
+            {
+                return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(replay.Request == request
+                    ? new SessionExecutionLaneProvisioned(replay.Result.ExecutionLaneId, replay.Result.BranchCursor,
+                        replay.Result.LaneRevision, replay.Result.SessionVersion, existing: true)
+                    : new SessionExecutionLaneProvisionConflict(
+                        "The provisioning idempotency key was reused with different evidence."));
+            }
+
+            var laneId = request.Context.ExecutionLaneId!.Value;
+            if (record.Lanes.ContainsKey(laneId))
+            {
+                return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(
+                    new SessionExecutionLaneProvisionConflict("The execution lane is already provisioned."));
+            }
+
+            if (record.Version != request.ExpectedVersion.Value)
+            {
+                return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(
+                    new SessionExecutionLaneProvisionConflict("The expected session version is stale."));
+            }
+
+            if (!record.Branches.TryGetValue(request.BranchCursor.BranchId, out var branch)
+                || BranchCursor(request.BranchCursor.BranchId, branch) != request.BranchCursor)
+            {
+                return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(
+                    new SessionExecutionLaneProvisionConflict("The branch cursor is stale or unavailable."));
+            }
+
+            if (record.Lanes.Values.Any(lane => lane.BranchCursor.BranchId == request.BranchCursor.BranchId))
+            {
+                return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(
+                    new SessionExecutionLaneProvisionConflict("The branch is already owned by another execution lane."));
+            }
+
+            if (record.EntryIds.Contains(request.EntryId))
+            {
+                return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(
+                    new SessionExecutionLaneProvisionConflict("The provisioning entry identity is already reserved."));
+            }
+
+            var laneRevision = new SessionLaneRevision(1);
+            var sequence = new SessionSequence(record.NextSequence + 1);
+            var entry = new ExecutionLaneProvisionedSessionEntry(
+                request.EntryId, request.Context.ToAddress(), (BeforeRunOperationCorrelation) request.Context.Correlation,
+                request.BranchCursor.BranchId, sequence, request.BranchCursor.LastEntryId, request.ProvisionedAt,
+                new SchemaVersion("1"), laneId, laneRevision, request.SessionProfile, request.Configuration);
+            var committedCursor = new SessionBranchCursor(request.BranchCursor.BranchId, request.EntryId);
+            var sessionVersion = new SessionVersion(record.Version + 1);
+            var result = new SessionExecutionLaneProvisioned(
+                laneId, committedCursor, laneRevision, sessionVersion, existing: false);
+
+            branch.Entries.Add(entry);
+            _ = record.EntryIds.Add(entry.Id);
+            record.Lanes.Add(laneId, new LaneRecord(committedCursor, laneRevision));
+            record.LaneProvisionIdempotency.Add(request.IdempotencyKey,
+                new IdempotencyReceipt<SessionExecutionLaneProvisionRequest, SessionExecutionLaneProvisioned>(request, result));
+            record.NextSequence = sequence.Value;
+            record.Version = sessionVersion.Value;
+            record.UpdatedAt = request.ProvisionedAt;
+            return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(result);
         }
     }
 
@@ -162,7 +262,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
                         : new SessionAppendFailed("The idempotency key was previously used with different request evidence."));
             }
 
-            var currentVersion = new SessionVersion(branch.Entries.Count);
+            var currentVersion = new SessionVersion(record.Version);
             if (currentVersion.Value != request.ExpectedVersion.Value)
             {
                 return ValueTask.FromResult<SessionAppendResult>(
@@ -171,7 +271,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
 
             for (var i = 0; i < request.Entries.Length; i++)
             {
-                var expectedSequence = request.ExpectedVersion.Value + i + 1;
+                var expectedSequence = record.NextSequence + i + 1;
                 if (request.Entries[i].Sequence.Value != expectedSequence)
                 {
                     return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(
@@ -179,10 +279,33 @@ public sealed partial class InMemorySessionStore: ISessionStore
                 }
             }
 
+            var proposedEntryIds = request.Entries.Select(static entry => entry.Id).ToArray();
+            if (proposedEntryIds.Distinct().Count() != proposedEntryIds.Length
+                || proposedEntryIds.Any(record.EntryIds.Contains))
+            {
+                return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(
+                    "An appended entry identity is already reserved."));
+            }
+
+            var proposedMessageIds = request.Entries
+                .OfType<MessageSessionEntry>()
+                .Select(static entry => entry.Message.Id)
+                .ToArray();
+            if (proposedMessageIds.Distinct().Count() != proposedMessageIds.Length
+                || proposedMessageIds.Any(record.MessageIds.Contains))
+            {
+                return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(
+                    "An appended message identity is already reserved."));
+            }
+
             branch.Entries.AddRange(request.Entries);
+            record.EntryIds.UnionWith(proposedEntryIds);
+            record.MessageIds.UnionWith(proposedMessageIds);
+            record.NextSequence += request.Entries.Length;
+            record.Version++;
             record.UpdatedAt = _timeProvider.GetUtcNow();
 
-            var newVersion = new SessionVersion(branch.Entries.Count);
+            var newVersion = new SessionVersion(record.Version);
             var appended = new SessionAppended(newVersion, request.Entries);
             branch.AppendIdempotency[request.IdempotencyKey] = new IdempotencyReceipt<SessionAppendRequest, SessionAppended>(request, appended);
 
@@ -208,15 +331,14 @@ public sealed partial class InMemorySessionStore: ISessionStore
                 return ValueTask.FromResult<SessionPageResult>(new SessionReadNotFound(address));
             }
 
-            var startIndex = (int) request.FromSequenceExclusive.Value;
             var pageEntries = branch.Entries
-                .Skip(startIndex)
+                .Where(entry => entry.Sequence.Value > request.FromSequenceExclusive.Value)
                 .Take(request.PageSize)
                 .ToImmutableArray();
             var throughSequence = pageEntries.IsEmpty
                 ? request.FromSequenceExclusive
-                : new SessionSequence(startIndex + pageEntries.Length);
-            var hasMore = startIndex + pageEntries.Length < branch.Entries.Count;
+                : pageEntries[^1].Sequence;
+            var hasMore = branch.Entries.Any(entry => entry.Sequence.Value > throughSequence.Value);
 
             return ValueTask.FromResult<SessionPageResult>(new SessionPage(pageEntries, throughSequence, hasMore));
         }
@@ -249,7 +371,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
                         : new SessionBranchFailed("The idempotency key was previously used with different request evidence."));
             }
 
-            if (request.AtSequence.Value > parentBranch.Entries.Count)
+            if (request.AtSequence.Value > record.NextSequence)
             {
                 return ValueTask.FromResult<SessionBranchResult>(
                     new SessionBranchParentNotFound(request.ParentBranchId, request.AtSequence));
@@ -257,12 +379,13 @@ public sealed partial class InMemorySessionStore: ISessionStore
 
             var newBranchId = _branchIds.Create();
             var newBranch = new BranchRecord();
-            newBranch.Entries.AddRange(parentBranch.Entries.Take((int) request.AtSequence.Value));
+            newBranch.Entries.AddRange(parentBranch.Entries.Where(entry => entry.Sequence.Value <= request.AtSequence.Value));
 
             record.Branches[newBranchId] = newBranch;
             var branched = new SessionBranched(newBranchId, request.AtSequence);
             record.BranchIdempotency[request.IdempotencyKey] = new IdempotencyReceipt<SessionBranchRequest, SessionBranched>(request, branched);
             record.UpdatedAt = _timeProvider.GetUtcNow();
+            record.Version++;
 
             return ValueTask.FromResult<SessionBranchResult>(branched);
         }
@@ -311,6 +434,398 @@ public sealed partial class InMemorySessionStore: ISessionStore
         }
     }
 
+    private ValueTask<SessionInputLookupResult> LookupInputCoreAsync(
+        SessionInputLookupRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.EnterScope())
+        {
+            return !TryGetAuthorizedRecord(request.Context, out var record)
+                ? ValueTask.FromResult<SessionInputLookupResult>(new SessionInputNotFound())
+                : !record.AdmissionsByInput.TryGetValue(request.Input.Id, out var stored)
+                ? ValueTask.FromResult<SessionInputLookupResult>(new SessionInputNotFound())
+                : !EquivalentAdmission(stored, request.Context, request.Input, request.OriginalFingerprint)
+                ? ValueTask.FromResult<SessionInputLookupResult>(new SessionInputLookupConflict(
+                    request.Input.Id, "The input identity was already admitted with different immutable evidence."))
+                : ValueTask.FromResult<SessionInputLookupResult>(new SessionInputReplayFound(
+                stored.Input, stored.Correlation, ExistingReceipt(stored.Receipt)));
+        }
+    }
+
+    private ValueTask<InputAdmissionResult> AdmitInputCoreAsync(
+        SessionInputAdmissionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.EnterScope())
+        {
+            if (!TryGetAuthorizedRecord(request.Context, out var record))
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(new RejectedInput(
+                    new InputRejection(InputRejectionKind.AddressNotFound, "The session is unavailable.")));
+            }
+
+            if (record.AdmissionIdempotency.TryGetValue(request.IdempotencyKey, out var replay))
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(
+                    SessionStoreSecurityBinding.Fingerprint(replay.Request) == SessionStoreSecurityBinding.Fingerprint(request)
+                        ? new AcceptedInput(ExistingReceipt(replay.Result.Receipt))
+                        : new InputConflict(request.OriginalPayload.Id,
+                            "The admission idempotency key was reused with different evidence."));
+            }
+
+            if (record.AdmissionsByInput.TryGetValue(request.OriginalPayload.Id, out var stored))
+            {
+                if (!EquivalentAdmission(stored, request.Context, request.OriginalPayload, request.Preprocessing.OriginalFingerprint))
+                {
+                    return ValueTask.FromResult<InputAdmissionResult>(new InputConflict(
+                        request.OriginalPayload.Id, "The input identity was already admitted with different immutable evidence."));
+                }
+
+                var acceptedReplay = new AcceptedInput(ExistingReceipt(stored.Receipt));
+                record.AdmissionIdempotency.Add(request.IdempotencyKey,
+                    new IdempotencyReceipt<SessionInputAdmissionRequest, AcceptedInput>(request, acceptedReplay));
+                return ValueTask.FromResult<InputAdmissionResult>(acceptedReplay);
+            }
+
+            if (record.Version != request.ExpectedVersion.Value)
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(new RejectedInput(
+                    new InputRejection(InputRejectionKind.StaleVersion, "The expected session version is stale.")));
+            }
+
+            var laneId = request.Context.ExecutionLaneId!.Value;
+            if (!record.Lanes.TryGetValue(laneId, out var lane))
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(new RejectedInput(
+                    new InputRejection(InputRejectionKind.AddressNotFound, "The execution lane is not provisioned.")));
+            }
+
+            if (lane.Revision != request.ExpectedLaneRevision || lane.BranchCursor != request.BranchCursor)
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(new RejectedInput(
+                    new InputRejection(InputRejectionKind.StaleVersion, "The expected lane revision or branch cursor is stale.")));
+            }
+
+            if (record.AdmissionsById.ContainsKey(request.AdmissionId))
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(new InputConflict(
+                    request.OriginalPayload.Id, "The admission identity is already reserved."));
+            }
+
+            if (record.EntryIds.Contains(request.EntryId))
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(new InputConflict(
+                    request.OriginalPayload.Id, "The admission entry identity is already reserved."));
+            }
+
+            var pendingCount = record.AdmissionsById.Values.Count(static admission => admission.Input.PromotedSequence is null);
+            if (pendingCount >= request.MaximumPendingInputs)
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(new QueueCapacityExceeded(
+                    new InputCapacityLimit(request.MaximumPendingInputs, pendingCount), retryAfter: null));
+            }
+
+            var branch = record.Branches[lane.BranchCursor.BranchId];
+            var sequence = new SessionSequence(record.NextSequence + 1);
+            var admitted = new AdmittedInput(
+                request.AdmissionId, request.Context.AgentId, request.Context.SessionId, laneId,
+                request.Context.Identity, sequence, request.OriginalPayload, request.EffectivePayload,
+                request.Preprocessing, request.AdmittedAt);
+            SessionEntryId? parent = branch.Entries.Count == 0 ? null : branch.Entries[^1].Id;
+            var entry = new InputAdmittedSessionEntry(
+                request.EntryId, request.Context.ToAddress(), (BeforeRunOperationCorrelation) request.Context.Correlation,
+                lane.BranchCursor.BranchId, sequence, parent, request.AdmittedAt, new SchemaVersion("1"), admitted);
+            var receipt = new AdmissionReceipt(
+                admitted.AdmissionId, admitted.OriginalPayload.Id, admitted.AgentId, admitted.SessionId,
+                admitted.ExecutionLaneId, admitted.AdmittedSequence, existing: false);
+            var retained = new StoredAdmission(admitted, (BeforeRunOperationCorrelation) request.Context.Correlation, request.EntryId, receipt);
+            var accepted = new AcceptedInput(receipt);
+            record.AdmissionsByInput.Add(admitted.OriginalPayload.Id, retained);
+            record.AdmissionsById.Add(admitted.AdmissionId, retained);
+            record.AdmissionIdempotency.Add(request.IdempotencyKey,
+                new IdempotencyReceipt<SessionInputAdmissionRequest, AcceptedInput>(request, accepted));
+            _ = record.EntryIds.Add(entry.Id);
+            branch.Entries.Add(entry);
+            lane.BranchCursor = new SessionBranchCursor(lane.BranchCursor.BranchId, entry.Id);
+            lane.Revision = new SessionLaneRevision(lane.Revision.Value + 1);
+            record.NextSequence = sequence.Value;
+            record.Version++;
+            record.UpdatedAt = request.AdmittedAt;
+            return ValueTask.FromResult<InputAdmissionResult>(accepted);
+        }
+    }
+
+    private ValueTask<SessionRunStartResult> AcceptRunCoreAsync(
+        SessionRunStartRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.EnterScope())
+        {
+            if (!TryGetAuthorizedRecord(request.Context, out var record))
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartRejected("The session is unavailable."));
+            }
+
+            if (record.RunStartIdempotency.TryGetValue(request.IdempotencyKey, out var replay))
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(EquivalentStart(replay.Request, request)
+                    ? new SessionRunAccepted(replay.Result.State, replay.Result.SessionVersion, existing: true)
+                    : new SessionRunStartConflict(SessionRunStartConflictKind.Idempotency,
+                        "The start idempotency key was reused with different evidence."));
+            }
+
+            if (request.ExpectedFencingToken is not null)
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartFenced(
+                    "The in-memory store provides process-local coordination and does not accept distributed fences."));
+            }
+
+            var laneId = request.Context.ExecutionLaneId!.Value;
+            if (!record.Lanes.TryGetValue(laneId, out var lane))
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartConflict(
+                    SessionRunStartConflictKind.LaneRevision, "The selected lane does not exist."));
+            }
+
+            if (lane.AcceptedState is { } active)
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartBusy(
+                    active.Correlation.OperationId, active.Correlation.RunId));
+            }
+
+            if (lane.Revision != request.ExpectedLaneRevision)
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartConflict(
+                    SessionRunStartConflictKind.LaneRevision, "The selected lane revision is stale."));
+            }
+
+            var branch = record.Branches[lane.BranchCursor.BranchId];
+            if (lane.BranchCursor != request.BranchCursor
+                || BranchCursor(lane.BranchCursor.BranchId, branch) != request.BranchCursor)
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartConflict(
+                    SessionRunStartConflictKind.BranchCursor, "The selected branch cursor is stale."));
+            }
+
+            if (record.Version != request.ExpectedVersion.Value)
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartConflict(
+                    SessionRunStartConflictKind.SessionVersion, "The expected session version is stale."));
+            }
+
+            if (request.SelectedAdmissionIds.Any(admissionId =>
+                    record.AdmissionsById.TryGetValue(admissionId, out var admission)
+                    && admission.Input.Identity != request.Context.Identity))
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartConflict(
+                    SessionRunStartConflictKind.AdmissionIdentity,
+                    "Every promoted admission must retain the exact authorized run identity."));
+            }
+
+            if (!TrySelectAdmissions(record, request, out var selected))
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartConflict(
+                    SessionRunStartConflictKind.PromotionPlan, "The exact promotion plan is no longer eligible."));
+            }
+
+            var initiating = selected.FirstOrDefault(stored =>
+                stored.Input.AdmissionId == request.InitiatingAdmissionId);
+            if (initiating is null || initiating.Correlation != request.Context.Correlation)
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartConflict(
+                    SessionRunStartConflictKind.AdmissionCorrelation,
+                    "The initiating admission correlation differs from the proposed run."));
+            }
+
+            var reservedEntryIds = request.EntryIds
+                .Insert(0, request.PromotionEntryId)
+                .Add(request.AcceptedEntryId);
+            if (reservedEntryIds.Any(record.EntryIds.Contains))
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartConflict(
+                    SessionRunStartConflictKind.PromotionPlan, "A reserved session-entry identity is already in use."));
+            }
+
+            if (request.MessageIds.Any(record.MessageIds.Contains))
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartConflict(
+                    SessionRunStartConflictKind.PromotionPlan, "A reserved message identity is already in use."));
+            }
+
+            var correlation = new InRunOperationCorrelation(
+                request.Context.Correlation.OperationId, request.RunId, request.InitialTurnId);
+            var promotionSequence = new SessionSequence(record.NextSequence + 1);
+            SessionEntryId? priorTip = branch.Entries.Count == 0 ? null : branch.Entries[^1].Id;
+            var promotionEntry = new InputPromotedSessionEntry(
+                request.PromotionEntryId, request.Context.ToAddress(), correlation, lane.BranchCursor.BranchId,
+                promotionSequence, priorTip, request.AcceptedAt, new SchemaVersion("1"), laneId,
+                request.InitiatingAdmissionId, request.PromotionCutoff, request.SelectedAdmissionIds);
+            var appended = new List<SessionEntry>(selected.Length + 2) { promotionEntry };
+            var parent = promotionEntry.Id;
+            for (var index = 0; index < selected.Length; index++)
+            {
+                var stored = selected[index];
+                var entrySequence = new SessionSequence(record.NextSequence + index + 2);
+                var message = new UserMessage(
+                    request.MessageIds[index], request.Context.AgentId, request.Context.SessionId,
+                    record.ConversationId, lane.BranchCursor.BranchId, request.RunId, request.InitialTurnId,
+                    request.AcceptedAt, MessageState.Complete, stored.Input.EffectivePayload.Parts,
+                    stored.Input.EffectivePayload.Extensions);
+                var entry = new MessageSessionEntry(
+                    request.EntryIds[index], request.Context.ToAddress(), correlation, lane.BranchCursor.BranchId,
+                    entrySequence, parent, request.AcceptedAt, new SchemaVersion("1"), message);
+                appended.Add(entry);
+                parent = entry.Id;
+            }
+
+            var acceptedSequence = new SessionSequence(record.NextSequence + selected.Length + 2);
+            var committedCursor = new SessionBranchCursor(lane.BranchCursor.BranchId, request.AcceptedEntryId);
+            var installedLaneRevision = new SessionLaneRevision(lane.Revision.Value + 1);
+            var state = new SessionAcceptedRunState(
+                request.Context.ToAddress(), laneId, installedLaneRevision, correlation,
+                request.OperationStateRevision, request.Context.Identity, request.InRunAuthorization,
+                request.SessionProfile, request.Configuration, request.BranchCursor, committedCursor,
+                request.PromotionCutoff, request.InitiatingAdmissionId, request.SelectedAdmissionIds, request.EntryIds,
+                request.MessageIds, request.InitialTurnId, request.AcceptedAt);
+            appended.Add(new OperationAcceptedSessionEntry(
+                request.AcceptedEntryId, request.Context.ToAddress(), correlation, lane.BranchCursor.BranchId,
+                acceptedSequence, parent, request.AcceptedAt, new SchemaVersion("1"), state));
+
+            branch.Entries.AddRange(appended);
+            record.EntryIds.UnionWith(reservedEntryIds);
+            record.MessageIds.UnionWith(request.MessageIds);
+            foreach (var stored in selected)
+            {
+                stored.Input = new AdmittedInput(
+                    stored.Input.AdmissionId, stored.Input.AgentId, stored.Input.SessionId,
+                    stored.Input.ExecutionLaneId, stored.Input.Identity, stored.Input.AdmittedSequence,
+                    stored.Input.OriginalPayload, stored.Input.EffectivePayload, stored.Input.Preprocessing,
+                    stored.Input.AdmittedAt, promotionSequence);
+            }
+            record.NextSequence += appended.Count;
+            record.Version++;
+            record.UpdatedAt = request.AcceptedAt;
+            lane.Revision = installedLaneRevision;
+            lane.BranchCursor = committedCursor;
+            lane.AcceptedState = state;
+            var result = new SessionRunAccepted(state, new SessionVersion(record.Version), existing: false);
+            record.RunStartIdempotency.Add(request.IdempotencyKey, new RunStartReceipt(request, result));
+            return ValueTask.FromResult<SessionRunStartResult>(result);
+        }
+    }
+
+    private ValueTask<SessionRunStateResult> LoadRunStateCoreAsync(
+        SessionRunStateRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.EnterScope())
+        {
+            return !TryGetAuthorizedRecord(request.Context, out var record)
+                || !record.Lanes.TryGetValue(request.Context.ExecutionLaneId!.Value, out var lane)
+                || lane.AcceptedState is not { } state
+                || state.Correlation != request.Context.Correlation
+                || state.Identity != request.Context.Identity
+                ? ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateUnavailable(
+                    "The requested operation state is unavailable."))
+                : ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateLoaded(state));
+        }
+    }
+
+    private bool TryGetAuthorizedRecord(SessionOperationContext context, [NotNullWhen(true)] out SessionRecord? record)
+    {
+        Debug.Assert(context is not null, "A validated session operation context is required.");
+        return _sessions.TryGetValue(context.ToAddress(), out record)
+            && record.TenantId == context.Identity.TenantId;
+    }
+
+    private static bool EquivalentAdmission(StoredAdmission stored, SessionOperationContext context,
+        AgentInput original, InputFingerprint originalFingerprint)
+    {
+        Debug.Assert(stored is not null, "A retained admission is required.");
+        Debug.Assert(context is not null, "A validated context is required.");
+        Debug.Assert(original is not null, "An original input is required.");
+        return stored.Input.AgentId == context.AgentId
+            && stored.Input.SessionId == context.SessionId
+            && stored.Input.ExecutionLaneId == context.ExecutionLaneId
+            && stored.Input.Identity == context.Identity
+            && stored.Correlation == context.Correlation
+            && stored.Input.OriginalPayload.Id == original.Id
+            && stored.Input.OriginalPayload.Delivery == original.Delivery
+            && stored.Input.OriginalPayload.Parts.SequenceEqual(original.Parts)
+            && stored.Input.OriginalPayload.Extensions == original.Extensions
+            && stored.Input.Preprocessing.OriginalFingerprint == originalFingerprint;
+    }
+
+    private static AdmissionReceipt ExistingReceipt(AdmissionReceipt receipt)
+    {
+        Debug.Assert(receipt is not null, "A retained admission receipt is required.");
+        return new AdmissionReceipt(receipt.AdmissionId, receipt.InputId, receipt.AgentId, receipt.SessionId,
+            receipt.ExecutionLaneId, receipt.AdmittedSequence, existing: true);
+    }
+
+    private static SessionBranchCursor BranchCursor(BranchId branchId, BranchRecord branch)
+    {
+        Debug.Assert(branch is not null, "A loaded branch is required.");
+        return new SessionBranchCursor(branchId, branch.Entries.Count == 0 ? null : branch.Entries[^1].Id);
+    }
+
+    private static bool TrySelectAdmissions(SessionRecord record, SessionRunStartRequest request,
+        out ImmutableArray<StoredAdmission> selected)
+    {
+        Debug.Assert(record is not null, "A loaded session is required.");
+        Debug.Assert(request is not null, "A validated start request is required.");
+        var builder = ImmutableArray.CreateBuilder<StoredAdmission>(request.SelectedAdmissionIds.Length);
+        foreach (var admissionId in request.SelectedAdmissionIds)
+        {
+            if (!record.AdmissionsById.TryGetValue(admissionId, out var stored)
+                || stored.Input.PromotedSequence is not null
+                || stored.Input.ExecutionLaneId != request.Context.ExecutionLaneId
+                || stored.Input.Identity != request.Context.Identity
+                || stored.Input.AdmittedSequence.Value > request.PromotionCutoff.Value)
+            {
+                selected = [];
+                return false;
+            }
+            builder.Add(stored);
+        }
+
+        selected = builder.MoveToImmutable();
+        return selected.Select(static value => value.Input.AdmittedSequence.Value).SequenceEqual(
+                selected.Select(static value => value.Input.AdmittedSequence.Value).Order());
+    }
+
+    private static bool EquivalentStart(SessionRunStartRequest left, SessionRunStartRequest right)
+    {
+        Debug.Assert(left is not null && right is not null, "Start requests are required.");
+        return left.Context == right.Context
+            && left.InitiatingAdmissionId == right.InitiatingAdmissionId
+            && left.SelectedAdmissionIds.SequenceEqual(right.SelectedAdmissionIds)
+            && left.PromotionCutoff == right.PromotionCutoff
+            && left.ExpectedLaneRevision == right.ExpectedLaneRevision
+            && left.ExpectedVersion == right.ExpectedVersion
+            && left.BranchCursor == right.BranchCursor
+            && left.ExpectedFencingToken == right.ExpectedFencingToken
+            && left.RunId == right.RunId
+            && left.InitialTurnId == right.InitialTurnId
+            && left.PromotionEntryId == right.PromotionEntryId
+            && left.EntryIds.SequenceEqual(right.EntryIds)
+            && left.MessageIds.SequenceEqual(right.MessageIds)
+            && left.AcceptedEntryId == right.AcceptedEntryId
+            && left.OperationStateRevision == right.OperationStateRevision
+            && left.SessionProfile == right.SessionProfile
+            && left.Configuration == right.Configuration
+            && left.InRunAuthorization == right.InRunAuthorization
+            && left.AcceptedAt == right.AcceptedAt;
+    }
+
     private SessionDescriptor ToDescriptor(SessionRecord record) => new(
         record.Address,
         record.ConversationId,
@@ -318,7 +833,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
         record.OwnerId,
         Descriptor.Key,
         record.ActiveBranchId,
-        new SessionVersion(record.Branches[record.ActiveBranchId].Entries.Count),
+        new SessionVersion(record.Version),
         record.State,
         record.CreatedAt,
         record.UpdatedAt,

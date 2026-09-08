@@ -139,7 +139,7 @@ public sealed class TaskToolTests
         broker, authority, new FixedSecurityRequestIdGenerator(), ids ?? new FixedDelegationIdGenerator(), new FixedTimeProvider(), Options.Create(new TaskToolOptions()));
 
     private static ToolInvocationRequest Request(string json, bool withSession = true) => new(
-        new ToolExecutionContext(
+        TestSupport.TestSecurityEvidence.ToolContext(
             TestData.ParentAgentId,
             withSession ? TestData.ParentSessionId : null,
             TestData.ToolCallId,

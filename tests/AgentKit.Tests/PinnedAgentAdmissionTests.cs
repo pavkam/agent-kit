@@ -136,7 +136,9 @@ public sealed class PinnedAgentAdmissionTests
             definition.ToolChoice,
             definition.Settings,
             definition.RunDefaults,
-            new ExtensionData([.. definition.Extensions.Values]));
+            new ExtensionData([.. definition.Extensions.Values]),
+            definition.SecurityProfile,
+            definition.SessionProfile);
 
         catalog.Publish(2, reconstructed);
 
@@ -184,7 +186,7 @@ public sealed class PinnedAgentAdmissionTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenScopeFactoryThrowsAfterSuccessfulBuild_FailsBeforeAllocatingRunId()
+    public async Task RunAsync_WhenScopeFactoryThrowsAfterRunStartCapture_FailsWithoutLoopWork()
     {
         var definition = CompositionTestData.Definition(new AgentId(Guid.NewGuid()));
         var catalog = new MutableAgentDefinitionCatalog(definition);
@@ -193,9 +195,13 @@ public sealed class PinnedAgentAdmissionTests
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentDefinitionCatalog>(catalog));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
         _ = builder.Services.AddScoped<IAgentLoop>(_ => new ScopedRecordingAgentLoop(new AdmissionRunEffects()));
+        CompositionTestData.AddRunProfiles(builder.Services, definition);
         await using var successfullyBuilt = builder.Build();
         await using var provider = builder.Services.BuildServiceProvider();
-        await using var engine = new AgentEngine(new ThrowingScopeServiceProvider(provider), ownedProvider: null);
+        await using var engine = new AgentEngine(
+            new ThrowingScopeServiceProvider(provider),
+            ownedProvider: null,
+            new AgentRunProfilePublicationSnapshot([CompositionTestData.RunProfile(definition)]));
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
         using var activities = AdmissionActivities(definition.Id);
         using var metrics = new AdmissionMetricCollector();
@@ -203,7 +209,7 @@ public sealed class PinnedAgentAdmissionTests
         _ = await Should.ThrowAsync<InvalidOperationException>(
             async () => await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));
 
-        runIds.Created.ShouldBe(0);
+        runIds.Created.ShouldBe(1);
         activities.Snapshot().ShouldHaveSingleItem().GetTagItem(AgentKitTagNames.Outcome).ShouldBe("failed");
         metrics.Snapshot().ShouldBe(["failed"], ignoreOrder: false);
     }
@@ -321,7 +327,9 @@ public sealed class PinnedAgentAdmissionTests
             definition.ToolChoice,
             definition.Settings,
             definition.RunDefaults,
-            definition.Extensions);
+            definition.Extensions,
+            definition.SecurityProfile,
+            definition.SessionProfile);
 
         catalog.Publish(2, changed);
 
@@ -428,6 +436,11 @@ public sealed class PinnedAgentAdmissionTests
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentDefinitionCatalog>(catalog));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
         _ = builder.Services.AddScoped<IAgentLoop>(_ => new ScopedRecordingAgentLoop(effects));
+        var snapshot = catalog.CurrentSnapshot
+            ?? throw new InvalidOperationException("The test catalog must be ready before engine construction.");
+        CompositionTestData.AddRunProfiles(
+            builder.Services,
+            [.. snapshot.Definitions]);
         if (logger is not null)
         {
             _ = builder.Services.AddSingleton(logger);
@@ -462,7 +475,9 @@ public sealed class PinnedAgentAdmissionTests
         LlmToolChoice.Auto,
         LlmRequestSettings.Default,
         new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)),
-        ExtensionData.Empty);
+        ExtensionData.Empty,
+        new SecurityProfileKey("security"),
+        new SessionProfileKey("session"));
 
     private static AgentMessage CloneMessage(AgentMessage message) => new SystemMessage(
         message.Id,

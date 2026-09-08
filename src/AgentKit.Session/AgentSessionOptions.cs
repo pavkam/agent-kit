@@ -27,6 +27,12 @@ public sealed class AgentSessionOptions
     public int MaximumPageSize { get; set; } = 256;
 
     /// <summary>
+    /// Gets or sets the lifetime of each security request issued by the
+    /// coordinator. Defaults to one minute and cannot exceed one hour.
+    /// </summary>
+    public TimeSpan SecurityRequestLifetime { get; set; } = TimeSpan.FromMinutes(1);
+
+    /// <summary>
     /// Gets or sets what happens when a run requests the active-run lease
     /// for a session that already has one. Defaults to
     /// <see cref="SessionBusyBehavior.Reject"/>.

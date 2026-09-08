@@ -100,7 +100,7 @@ internal sealed class FixedTimeProvider: TimeProvider
 internal static class TestData
 {
     internal static WebSearchRequestId SearchId { get; } = new(Guid.Parse("30000000-0000-0000-0000-000000000003"));
-    internal static ToolExecutionContext Context { get; } = new(
+    internal static ToolExecutionContext Context { get; } = TestSupport.TestSecurityEvidence.ToolContext(
         new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
         new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
         new ToolCallId(Guid.Parse("60000000-0000-0000-0000-000000000006")),

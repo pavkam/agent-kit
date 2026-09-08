@@ -12,7 +12,7 @@ namespace AgentKit;
 /// fields. It carries no mutable state and is safe to share across threads
 /// without synchronization. All entries in one request commit atomically
 /// against <see cref="ExpectedVersion"/>: either every entry is appended and
-/// the branch advances to one new version, or none are appended and the
+/// the canonical session advances to one new version, or none are appended and the
 /// caller observes a conflict.
 /// </remarks>
 public sealed record SessionAppendRequest
@@ -21,8 +21,8 @@ public sealed record SessionAppendRequest
     /// <param name="context">The operation context for this append.</param>
     /// <param name="branchId">The branch to append to.</param>
     /// <param name="expectedVersion">
-    /// The version the caller last observed for <paramref name="branchId"/>.
-    /// The append is rejected with a conflict if the branch has since
+    /// The canonical whole-session version the caller last observed.
+    /// The append is rejected with a conflict if the session has since
     /// advanced.
     /// </param>
     /// <param name="idempotencyKey">
@@ -45,11 +45,8 @@ public sealed record SessionAppendRequest
         ImmutableArray<SessionEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentException.ThrowIfDefault(entries);
-        if (entries.IsEmpty)
-        {
-            throw new ArgumentException("An append request must carry at least one entry.", nameof(entries));
-        }
+        ArgumentException.ThrowIfDefaultOrEmpty(entries);
+        ArgumentException.ThrowIfContainsNull(entries);
 
         Context = context;
         BranchId = branchId;
@@ -59,23 +56,23 @@ public sealed record SessionAppendRequest
     }
 
     /// <summary>Gets the operation context for this append.</summary>
-    public SessionOperationContext Context { get; init; }
+    public SessionOperationContext Context { get; }
 
     /// <summary>Gets the branch to append to.</summary>
-    public BranchId BranchId { get; init; }
+    public BranchId BranchId { get; }
 
     /// <summary>
-    /// Gets the version the caller last observed for <see cref="BranchId"/>.
+    /// Gets the canonical whole-session version the caller last observed.
     /// </summary>
-    public SessionVersion ExpectedVersion { get; init; }
+    public SessionVersion ExpectedVersion { get; }
 
     /// <summary>
     /// Gets the key that makes repeating this exact request safe.
     /// </summary>
-    public IdempotencyKey IdempotencyKey { get; init; }
+    public IdempotencyKey IdempotencyKey { get; }
 
     /// <summary>Gets the entries to append, in commit order.</summary>
-    public ImmutableArray<SessionEntry> Entries { get; init; }
+    public ImmutableArray<SessionEntry> Entries { get; }
 
     /// <inheritdoc/>
     public bool Equals(SessionAppendRequest? other) =>

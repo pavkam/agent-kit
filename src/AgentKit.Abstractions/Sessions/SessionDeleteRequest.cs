@@ -27,10 +27,10 @@ public sealed record SessionDeleteRequest
     }
 
     /// <summary>Gets the operation context for this deletion.</summary>
-    public SessionOperationContext Context { get; init; }
+    public SessionOperationContext Context { get; }
 
     /// <summary>
     /// Gets the key that makes repeating this exact request safe.
     /// </summary>
-    public IdempotencyKey IdempotencyKey { get; init; }
+    public IdempotencyKey IdempotencyKey { get; }
 }

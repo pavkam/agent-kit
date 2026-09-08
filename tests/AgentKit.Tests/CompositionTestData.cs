@@ -36,10 +36,49 @@ internal static class CompositionTestData
             LlmToolChoice.Auto,
             LlmRequestSettings.Default,
             new RunPolicyDefaults(maxTurns, TimeSpan.FromMinutes(1)),
-            ExtensionData.Empty);
+            ExtensionData.Empty,
+            new SecurityProfileKey("security"),
+            new SessionProfileKey("session"));
+
+    public static AgentRunProfilePublication RunProfile(AgentDefinition definition) => new(
+        new SecurityProfilePublication(
+            definition.Id,
+            definition.Revision,
+            new ConfigurationVersion(1),
+            definition.SecurityProfile,
+            new SecurityProfileVersion(1),
+            new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(Guid.Parse("d0000000-0000-0000-0000-000000000004")),
+                new SecurityPolicyVersion(1),
+                new ContentHash("sha256:test-policy")),
+            new ComponentKey<ISecurityAuthority>("authority")),
+        new SessionProfileSnapshot(
+            new SessionProfileReference(definition.SessionProfile, new SessionProfileVersion(1)),
+            new ComponentKey<ISessionCoordinator>("coordinator"),
+            new ComponentKey<ISessionRunCoordinator>("run-coordinator"),
+            new SessionStoreKey("store"),
+            SessionStoreCapabilities.None,
+            requiresDurableStore: false,
+            requiresDistributedFencing: false,
+            new SessionRetentionProfileKey("retention"),
+            SessionBusyBehavior.Reject,
+            maximumAppendEntries: 128,
+            maximumPageSize: 256,
+            verifySnapshotHashes: true,
+            deleteOnDispose: false,
+            new ContentHash("sha256:test-session-profile")));
 
     public static AgentRunOptions RunOptions(int? maxTurns = null, TimeSpan? attemptTimeout = null) =>
         new(SessionId, BranchId, Identity(), maxTurns, attemptTimeout);
+
+    public static void AddRunProfiles(IServiceCollection services, params AgentDefinition[] definitions)
+    {
+        _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
+        foreach (var definition in definitions)
+        {
+            _ = services.AddAgentRunProfilePublication(RunProfile(definition));
+        }
+    }
 
     /// <summary>
     /// Builds a composition that satisfies engine validation: the facade
@@ -51,7 +90,9 @@ internal static class CompositionTestData
     {
         var builder = AgentEngine.CreateBuilder();
         _ = builder.Services.AddSingleton<IAgentLoop>(loop ?? new RecordingAgentLoop());
-        _ = builder.Services.AddAgent(definition ?? Definition());
+        var selectedDefinition = definition ?? Definition();
+        AddRunProfiles(builder.Services, selectedDefinition);
+        _ = builder.Services.AddAgent(selectedDefinition);
         return builder;
     }
 }

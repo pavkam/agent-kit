@@ -45,12 +45,15 @@ public static class ServiceExtensions
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IIdentifierGenerator<RunId>>(
                 new DelegateIdentifierGenerator<RunId>(static () => new RunId(Guid.NewGuid())));
+            services.TryAddSingleton<IIdentifierGenerator<OperationId>>(
+                new DelegateIdentifierGenerator<OperationId>(static () => new OperationId(Guid.NewGuid())));
             services.TryAddSingleton<IAgentDefinitionCatalog, DefaultAgentDefinitionCatalog>();
+            services.TryAddSingleton<IAgentRunProfilePublicationReader, DefaultAgentRunProfilePublicationReader>();
             services.TryAddSingleton(
                 static provider =>
                 {
-                    AgentCompositionValidator.Validate(provider);
-                    return new AgentEngine(provider, ownedProvider: null);
+                    var runProfiles = AgentCompositionValidator.Validate(provider);
+                    return new AgentEngine(provider, ownedProvider: null, runProfiles);
                 });
 
             return services;
@@ -113,6 +116,20 @@ public static class ServiceExtensions
                         precedence));
             }
 
+            return services;
+        }
+
+        /// <summary>Publishes one immutable exact run-profile binding to the built composition.</summary>
+        /// <param name="publication">The non-null host-owned immutable security and session profile binding.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="publication"/> is null.</exception>
+        /// <remarks>Registrations are additive. The default reader rejects duplicate agent and definition-revision coordinates during activation. The contained security publication is registered from the same instance for the exact security-profile reader.</remarks>
+        public IServiceCollection AddAgentRunProfilePublication(AgentRunProfilePublication publication)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(publication);
+            _ = services.AddSingleton(publication);
+            _ = services.AddSingleton(publication.SecurityProfile);
             return services;
         }
 

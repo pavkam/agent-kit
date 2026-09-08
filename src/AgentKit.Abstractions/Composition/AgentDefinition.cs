@@ -79,6 +79,12 @@ public sealed record AgentDefinition
     /// <paramref name="runDefaults"/>, or <paramref name="extensions"/> is
     /// <see langword="null"/>.
     /// </exception>
+    /// <remarks>
+    /// This compatibility constructor creates an explicitly unconfigured definition. The
+    /// resulting value can still be cataloged and inspected, but composition validation
+    /// rejects it as unrunnable until a revised definition selects both profiles through
+    /// the profile-aware constructor.
+    /// </remarks>
     public AgentDefinition(
         AgentId id,
         AgentDefinitionRevision revision,
@@ -116,6 +122,46 @@ public sealed record AgentDefinition
         _extensions = extensions;
     }
 
+    /// <summary>Initializes a runnable definition with explicit security and session profile selections.</summary>
+    /// <param name="id">The agent's stable identity.</param>
+    /// <param name="revision">This definition's content revision.</param>
+    /// <param name="displayName">The human-readable diagnostic name.</param>
+    /// <param name="models">The candidate and fallback model policy.</param>
+    /// <param name="modelRequirements">The portable model behaviors required.</param>
+    /// <param name="instructions">The ordered system and developer instructions.</param>
+    /// <param name="tools">The tools this agent may call.</param>
+    /// <param name="toolChoice">The tool-call selection policy.</param>
+    /// <param name="settings">The effective model request settings.</param>
+    /// <param name="runDefaults">The default bounded run limits.</param>
+    /// <param name="extensions">Application-specific immutable definition data.</param>
+    /// <param name="securityProfile">The explicitly selected nonblank security profile key.</param>
+    /// <param name="sessionProfile">The explicitly selected nonblank session profile key.</param>
+    /// <exception cref="ArgumentException">A profile key is blank, or an inherited definition constraint is invalid.</exception>
+    /// <exception cref="ArgumentNullException">An inherited required reference is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="id"/> is default.</exception>
+    public AgentDefinition(
+        AgentId id,
+        AgentDefinitionRevision revision,
+        string displayName,
+        ModelSelectionPolicy models,
+        ModelRequirements modelRequirements,
+        ImmutableArray<AgentMessage> instructions,
+        ImmutableArray<LlmToolDefinition> tools,
+        LlmToolChoice toolChoice,
+        LlmRequestSettings settings,
+        RunPolicyDefaults runDefaults,
+        ExtensionData extensions,
+        SecurityProfileKey securityProfile,
+        SessionProfileKey sessionProfile)
+        : this(id, revision, displayName, models, modelRequirements, instructions, tools, toolChoice, settings,
+            runDefaults, extensions)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(securityProfile.Value, nameof(securityProfile));
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionProfile.Value, nameof(sessionProfile));
+        SecurityProfile = securityProfile;
+        SessionProfile = sessionProfile;
+    }
+
     /// <summary>Gets the agent's stable identity.</summary>
     /// <exception cref="ArgumentOutOfRangeException">
     /// An initializer attempts to set the default, empty identity.
@@ -132,6 +178,14 @@ public sealed record AgentDefinition
 
     /// <summary>Gets this definition's content revision.</summary>
     public AgentDefinitionRevision Revision { get; init; }
+
+    /// <summary>Gets the explicitly selected security profile key.</summary>
+    /// <value>A nonblank key for runnable definitions; default only on the retained legacy unrunnable shape.</value>
+    public SecurityProfileKey SecurityProfile { get; }
+
+    /// <summary>Gets the explicitly selected session profile key.</summary>
+    /// <value>A nonblank key for runnable definitions; default only on the retained legacy unrunnable shape.</value>
+    public SessionProfileKey SessionProfile { get; }
 
     /// <summary>Gets the human-readable name used in diagnostics.</summary>
     /// <exception cref="ArgumentException">
@@ -279,6 +333,8 @@ public sealed record AgentDefinition
         other is not null
         && Id.Equals(other.Id)
         && Revision.Equals(other.Revision)
+        && SecurityProfile.Equals(other.SecurityProfile)
+        && SessionProfile.Equals(other.SessionProfile)
         && string.Equals(DisplayName, other.DisplayName, StringComparison.Ordinal)
         && Models.Equals(other.Models)
         && ModelRequirements.Equals(other.ModelRequirements)
@@ -301,6 +357,8 @@ public sealed record AgentDefinition
         var hash = new HashCode();
         hash.Add(Id);
         hash.Add(Revision);
+        hash.Add(SecurityProfile);
+        hash.Add(SessionProfile);
         hash.Add(DisplayName, StringComparer.Ordinal);
         hash.Add(Models);
         hash.Add(ModelRequirements);

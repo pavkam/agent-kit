@@ -15,22 +15,28 @@ public sealed class InMemorySessionStoreTests
     }
 
     [Fact]
-    public void Constructor_WhenSessionIdsIsNull_ThrowsArgumentNullException()
+    public void Constructor_WhenAuditRecordIdsIsNull_ThrowsArgumentNullException()
     {
+        var security = new TestSecurityHarness();
         var exception = Should.Throw<ArgumentNullException>(() => new InMemorySessionStore(
-            null!,
             new GuidIdentifierGenerator<BranchId>(static v => new BranchId(v)),
+            null!,
+            security,
+            security,
             TimeProvider.System));
 
-        exception.ParamName.ShouldBe("sessionIds");
+        exception.ParamName.ShouldBe("auditRecordIds");
     }
 
     [Fact]
     public void Constructor_WhenBranchIdsIsNull_ThrowsArgumentNullException()
     {
+        var security = new TestSecurityHarness();
         var exception = Should.Throw<ArgumentNullException>(() => new InMemorySessionStore(
-            new GuidIdentifierGenerator<SessionId>(static v => new SessionId(v)),
             null!,
+            new GuidIdentifierGenerator<SecurityAuditRecordId>(static v => new SecurityAuditRecordId(v)),
+            security,
+            security,
             TimeProvider.System));
 
         exception.ParamName.ShouldBe("branchIds");
@@ -39,9 +45,12 @@ public sealed class InMemorySessionStoreTests
     [Fact]
     public void Constructor_WhenTimeProviderIsNull_ThrowsArgumentNullException()
     {
+        var security = new TestSecurityHarness();
         var exception = Should.Throw<ArgumentNullException>(() => new InMemorySessionStore(
-            new GuidIdentifierGenerator<SessionId>(static v => new SessionId(v)),
             new GuidIdentifierGenerator<BranchId>(static v => new BranchId(v)),
+            new GuidIdentifierGenerator<SecurityAuditRecordId>(static v => new SecurityAuditRecordId(v)),
+            security,
+            security,
             null!));
 
         exception.ParamName.ShouldBe("timeProvider");

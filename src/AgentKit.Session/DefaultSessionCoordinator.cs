@@ -5,326 +5,547 @@ namespace AgentKit.Session;
 
 using Microsoft.Extensions.Options;
 
-/// <summary>
-/// The default <see cref="ISessionCoordinator"/>: enforces the configured
-/// request-size ceilings, delegates every operation to the single
-/// registered <see cref="ISessionStore"/>, and publishes a semantic event
-/// for every operation that mutated durable state.
-/// </summary>
-/// <remarks>
-/// This class never implements storage itself and never invokes the agent
-/// loop, input coordinator, or context assembler. Publishing to
-/// <see cref="ISessionEventSink"/> instances happens after the store call
-/// returns a successful outcome and cannot influence or veto that outcome;
-/// sink delivery is best-effort and settlement-safe: after a successful store
-/// mutation, each sink is attempted independently, and sink failure or caller
-/// cancellation cannot replace the already-committed result. Required durable
-/// delivery belongs to the not-yet-implemented observability integration.
-/// </remarks>
+/// <summary>Routes logical session operations through separately authorized directory and selected-store effects.</summary>
+/// <remarks>The coordinator forwards grants without consuming them. Directory and store implementations remain the effecting boundaries that validate required audit and consume each exact grant.</remarks>
 internal sealed class DefaultSessionCoordinator: ISessionCoordinator
 {
-    private readonly ISessionStore _store;
+    private static readonly SchemaVersion _directorySchemaVersion = new("agentkit.session-directory/v1");
+    private readonly ISessionDirectory _directory;
+    private readonly ISessionStoreSelector _storeSelector;
+    private readonly ISecurityProfileSelector _profileSelector;
+    private readonly ISecurityAuthoritySelector _authoritySelector;
+    private readonly IIdentifierGenerator<SessionId> _sessionIds;
+    private readonly IIdentifierGenerator<SecurityRequestId> _securityRequestIds;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly ImmutableArray<ISessionEventSink> _eventSinks;
     private readonly TimeProvider _timeProvider;
-    private readonly AgentSessionOptions _options;
+    private readonly int _maximumAppendEntries;
+    private readonly int _maximumPageSize;
+    private readonly TimeSpan _securityRequestLifetime;
     private readonly ILogger<DefaultSessionCoordinator> _logger;
 
-    /// <summary>Initializes a new instance of the <see cref="DefaultSessionCoordinator"/> class.</summary>
-    /// <param name="store">The single registered session store this coordinator delegates to.</param>
-    /// <param name="eventSinks">The additive, ordered set of registered event sinks.</param>
-    /// <param name="timeProvider">The clock used to timestamp published events.</param>
-    /// <param name="options">The validated session coordination options.</param>
-    /// <param name="logger">
-    /// The optional logger that receives safe session diagnostics; a Microsoft
-    /// null logger is used when omitted.
-    /// </param>
-    /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
+    /// <summary>Initializes a stateless default coordinator over explicit routing and security collaborators.</summary>
+    /// <param name="directory">The authoritative protected session-route directory.</param>
+    /// <param name="storeSelector">The exact-key selector over explicitly composed stores.</param>
+    /// <param name="profileSelector">Captures fresh session-bound authorization after create routing establishes a session identity.</param>
+    /// <param name="authoritySelector">Activates only the authority retained by captured authorization evidence.</param>
+    /// <param name="sessionIds">Allocates session identities only after a creation-route miss and successful initial store selection.</param>
+    /// <param name="securityRequestIds">Creates identities for independently authorized directory and store requests.</param>
+    /// <param name="intentIds">Creates stable consumption-intent identities forwarded to effecting boundaries.</param>
+    /// <param name="eventSinks">The additive ordered best-effort semantic-event sinks.</param>
+    /// <param name="timeProvider">The clock used for authorization deadlines, route evidence, and semantic events.</param>
+    /// <param name="options">The validated process-wide hard ceilings.</param>
+    /// <param name="logger">The optional content-free diagnostics logger.</param>
+    /// <exception cref="ArgumentNullException">A required collaborator is null.</exception>
     public DefaultSessionCoordinator(
-        ISessionStore store,
+        ISessionDirectory directory,
+        ISessionStoreSelector storeSelector,
+        ISecurityProfileSelector profileSelector,
+        ISecurityAuthoritySelector authoritySelector,
+        IIdentifierGenerator<SessionId> sessionIds,
+        IIdentifierGenerator<SecurityRequestId> securityRequestIds,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds,
         IEnumerable<ISessionEventSink> eventSinks,
         TimeProvider timeProvider,
         IOptions<AgentSessionOptions> options,
         ILogger<DefaultSessionCoordinator>? logger = null)
     {
-        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(directory);
+        ArgumentNullException.ThrowIfNull(storeSelector);
+        ArgumentNullException.ThrowIfNull(profileSelector);
+        ArgumentNullException.ThrowIfNull(authoritySelector);
+        ArgumentNullException.ThrowIfNull(sessionIds);
+        ArgumentNullException.ThrowIfNull(securityRequestIds);
+        ArgumentNullException.ThrowIfNull(intentIds);
         ArgumentNullException.ThrowIfNull(eventSinks);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
-
-        _store = store;
+        _directory = directory;
+        _storeSelector = storeSelector;
+        _profileSelector = profileSelector;
+        _authoritySelector = authoritySelector;
+        _sessionIds = sessionIds;
+        _securityRequestIds = securityRequestIds;
+        _intentIds = intentIds;
         _eventSinks = [.. eventSinks];
         _timeProvider = timeProvider;
-        _options = options.Value;
+        _maximumAppendEntries = options.Value.MaximumAppendEntries;
+        _maximumPageSize = options.Value.MaximumPageSize;
+        _securityRequestLifetime = options.Value.SecurityRequestLifetime;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultSessionCoordinator>.Instance;
     }
 
     /// <inheritdoc/>
-    public async ValueTask<SessionCreateResult> CreateAsync(
-        SessionCreateRequest request,
+    public ValueTask<SessionCreateResult> CreateAsync(SessionCreateRequest request, SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        return await ObserveAsync(
-            AgentKitActivityNames.SessionCreate,
-            request.AgentId,
-            sessionId: null,
-            operationId: null,
-            async () =>
-            {
-                var result = await _store.CreateAsync(request, cancellationToken).ConfigureAwait(false);
-                if (result is SessionCreated created)
-                {
-                    await PublishBestEffortAsync(
-                        new SessionCreatedEvent(created.Descriptor.Address, _timeProvider.GetUtcNow(), created.Descriptor),
-                        cancellationToken).ConfigureAwait(false);
-                }
-
-                return result;
-            },
-            cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(profile);
+        return ObserveAsync(AgentKitActivityNames.SessionCreate, request.AgentId, null,
+            request.Authorization.Scope.Correlation.OperationId,
+            () => CreateCoreAsync(request, profile, cancellationToken), cancellationToken);
     }
 
     /// <inheritdoc/>
-    public async ValueTask<SessionLoadResult> LoadAsync(
-        SessionOperationContext context,
+    public ValueTask<SessionLoadResult> LoadAsync(SessionOperationContext context, SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        return await ObserveAsync(
-            AgentKitActivityNames.SessionLoad,
-            context.AgentId,
-            context.SessionId,
+        ArgumentNullException.ThrowIfNull(profile);
+        return ObserveAsync(AgentKitActivityNames.SessionLoad, context.AgentId, context.SessionId,
             context.Correlation.OperationId,
-            () => _store.LoadAsync(context, cancellationToken),
-            cancellationToken).ConfigureAwait(false);
+            () => ExecuteExistingAsync(context, context, profile, SecurityOperationKind.StateRead, SecurityEffect.Observe,
+                SessionStoreSecurityBinding.Fingerprint(context),
+                static (store, wrapper, token) => store.LoadAsync(wrapper, token),
+                static reason => new SessionLoadFailed(reason), cancellationToken), cancellationToken);
     }
 
     /// <inheritdoc/>
-    public async ValueTask<SessionAppendResult> AppendAsync(
-        SessionAppendRequest request,
+    public ValueTask<SessionAppendResult> AppendAsync(SessionAppendRequest request, SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        return await ObserveAsync(
-            AgentKitActivityNames.SessionCommit,
-            request.Context.AgentId,
-            request.Context.SessionId,
-            request.Context.Correlation.OperationId,
-            async () =>
+        ArgumentNullException.ThrowIfNull(profile);
+        var maximum = Math.Min(_maximumAppendEntries, profile.MaximumAppendEntries);
+        return ObserveAsync(AgentKitActivityNames.SessionCommit, request.Context.AgentId, request.Context.SessionId,
+            request.Context.Correlation.OperationId, async () =>
             {
-                if (request.Entries.Length > _options.MaximumAppendEntries)
+                if (request.Entries.Length > maximum)
                 {
                     return new SessionAppendFailed(
-                        $"Append request carries {request.Entries.Length} entries, exceeding the configured maximum of {_options.MaximumAppendEntries}.");
+                        $"Append request carries {request.Entries.Length} entries, exceeding the configured maximum of {maximum}.");
                 }
 
-                var result = await _store.AppendAsync(request, cancellationToken).ConfigureAwait(false);
+                var result = await ExecuteExistingAsync(request, request.Context, profile,
+                    SecurityOperationKind.StateMutation, SecurityEffect.Append,
+                    SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.AppendAsync(wrapper, token),
+                    static reason => new SessionAppendFailed(reason), cancellationToken).ConfigureAwait(false);
                 if (result is SessionAppended appended)
                 {
                     await PublishBestEffortAsync(
-                        new SessionAppendedEvent(
-                            request.Context.ToAddress(),
-                            _timeProvider.GetUtcNow(),
-                            request.BranchId,
-                            appended.NewVersion,
-                            appended.CommittedEntries.Length),
+                        () => new SessionAppendedEvent(
+                            request.Context.ToAddress(), _timeProvider.GetUtcNow(), request.BranchId,
+                            appended.NewVersion, appended.CommittedEntries.Length),
                         cancellationToken).ConfigureAwait(false);
                 }
-
                 return result;
-            },
-            cancellationToken).ConfigureAwait(false);
+            }, cancellationToken);
     }
 
     /// <inheritdoc/>
-    public async ValueTask<SessionPageResult> ReadAsync(
-        SessionReadRequest request,
+    public ValueTask<SessionPageResult> ReadAsync(SessionReadRequest request, SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        return await ObserveAsync(
-            AgentKitActivityNames.SessionRead,
-            request.Context.AgentId,
-            request.Context.SessionId,
+        ArgumentNullException.ThrowIfNull(profile);
+        var maximum = Math.Min(_maximumPageSize, profile.MaximumPageSize);
+        return ObserveAsync(AgentKitActivityNames.SessionRead, request.Context.AgentId, request.Context.SessionId,
             request.Context.Correlation.OperationId,
-            () => request.PageSize > _options.MaximumPageSize
+            () => request.PageSize > maximum
                 ? ValueTask.FromResult<SessionPageResult>(new SessionReadFailed(
-                    $"Requested page size {request.PageSize} exceeds the configured maximum of {_options.MaximumPageSize}."))
-                : _store.ReadAsync(request, cancellationToken),
-            cancellationToken).ConfigureAwait(false);
+                    $"Requested page size {request.PageSize} exceeds the configured maximum of {maximum}."))
+                : ExecuteExistingAsync(request, request.Context, profile, SecurityOperationKind.StateRead,
+                    SecurityEffect.Observe, SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.ReadAsync(wrapper, token),
+                    static reason => new SessionReadFailed(reason), cancellationToken), cancellationToken);
     }
 
     /// <inheritdoc/>
-    public async ValueTask<SessionBranchResult> BranchAsync(
-        SessionBranchRequest request,
+    public ValueTask<SessionBranchResult> BranchAsync(SessionBranchRequest request, SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        return await ObserveAsync(
-            AgentKitActivityNames.SessionBranch,
-            request.Context.AgentId,
-            request.Context.SessionId,
-            request.Context.Correlation.OperationId,
-            async () =>
+        ArgumentNullException.ThrowIfNull(profile);
+        return ObserveAsync(AgentKitActivityNames.SessionBranch, request.Context.AgentId, request.Context.SessionId,
+            request.Context.Correlation.OperationId, async () =>
             {
-                var result = await _store.CreateBranchAsync(request, cancellationToken).ConfigureAwait(false);
+                var result = await ExecuteExistingAsync(request, request.Context, profile,
+                    SecurityOperationKind.StateMutation, SecurityEffect.Create,
+                    SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.CreateBranchAsync(wrapper, token),
+                    static reason => new SessionBranchFailed(reason), cancellationToken).ConfigureAwait(false);
                 if (result is SessionBranched branched)
                 {
                     await PublishBestEffortAsync(
-                        new SessionBranchedEvent(
-                            request.Context.ToAddress(),
-                            _timeProvider.GetUtcNow(),
-                            request.ParentBranchId,
-                            branched.NewBranchId,
-                            branched.ForkedAtSequence),
+                        () => new SessionBranchedEvent(
+                            request.Context.ToAddress(), _timeProvider.GetUtcNow(), request.ParentBranchId,
+                            branched.NewBranchId, branched.ForkedAtSequence),
                         cancellationToken).ConfigureAwait(false);
                 }
-
                 return result;
-            },
-            cancellationToken).ConfigureAwait(false);
+            }, cancellationToken);
     }
 
     /// <inheritdoc/>
-    public async ValueTask<SessionDeleteResult> DeleteAsync(
-        SessionDeleteRequest request,
+    public ValueTask<SessionDeleteResult> DeleteAsync(SessionDeleteRequest request, SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        return await ObserveAsync(
-            AgentKitActivityNames.SessionDelete,
-            request.Context.AgentId,
-            request.Context.SessionId,
-            request.Context.Correlation.OperationId,
-            async () =>
+        ArgumentNullException.ThrowIfNull(profile);
+        return ObserveAsync(AgentKitActivityNames.SessionDelete, request.Context.AgentId, request.Context.SessionId,
+            request.Context.Correlation.OperationId, async () =>
             {
-                var result = await _store.DeleteAsync(request, cancellationToken).ConfigureAwait(false);
+                var result = await ExecuteExistingAsync(request, request.Context, profile,
+                    SecurityOperationKind.StateMutation, SecurityEffect.Delete,
+                    SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.DeleteAsync(wrapper, token),
+                    static reason => new SessionDeleteFailed(reason), cancellationToken).ConfigureAwait(false);
                 if (result is SessionDeleted)
                 {
                     await PublishBestEffortAsync(
-                        new SessionDeletedEvent(request.Context.ToAddress(), _timeProvider.GetUtcNow()),
+                        () => new SessionDeletedEvent(request.Context.ToAddress(), _timeProvider.GetUtcNow()),
                         cancellationToken).ConfigureAwait(false);
                 }
-
                 return result;
-            },
-            cancellationToken).ConfigureAwait(false);
+            }, cancellationToken);
     }
 
-    private async ValueTask<TResult> ObserveAsync<TResult>(
-        string operation,
-        AgentId agentId,
-        SessionId? sessionId,
-        OperationId? operationId,
-        Func<ValueTask<TResult>> action,
-        CancellationToken cancellationToken)
-        where TResult : class
+    private async ValueTask<SessionCreateResult> CreateCoreAsync(SessionCreateRequest request,
+        SessionProfileSnapshot profile, CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "The public create boundary validates the request.");
+        Debug.Assert(profile is not null, "The public create boundary validates the profile.");
+        if (profile.RequiresDurableStore && !_directory.Durable)
+        {
+            return new SessionCreateFailed("The session directory cannot satisfy the profile's durability requirement.");
+        }
+
+        var creationResource = SessionDirectorySecurityBinding.CreationResource(
+            request.Identity.TenantId, request.AgentId, request.IdempotencyKey);
+        var lookupGrant = await AuthorizeAsync(request.Authorization, _directory.SecurityAudience,
+            SecurityOperationKind.StateRead, SecurityEffect.Observe, creationResource,
+            SessionDirectorySecurityBinding.LocateForCreateFingerprint(request), cancellationToken).ConfigureAwait(false);
+        if (lookupGrant is null)
+        {
+            return new SessionCreateFailed("Session creation-route lookup was not authorized.");
+        }
+
+        var lookup = await _directory.LocateForCreateAsync(DirectoryRequest(request, lookupGrant),
+            cancellationToken).ConfigureAwait(false);
+        SessionLocation location;
+        if (lookup is SessionCreationLocationLocated located)
+        {
+            location = located.Location;
+        }
+        else if (lookup is SessionCreationLocationNotFound)
+        {
+            var initialSelection = await _storeSelector.SelectForCreateAsync(
+                new SessionStoreCreateSelectionRequest(request, profile), cancellationToken).ConfigureAwait(false);
+            if (initialSelection is not SessionStoreSelected initialStore)
+            {
+                return new SessionCreateFailed(SafeSelectionReason(initialSelection));
+            }
+
+            var address = new SessionAddress(request.AgentId, _sessionIds.Create());
+            var candidate = new SessionLocation(address, request.Identity.TenantId, initialStore.Descriptor.Key,
+                new SessionDirectoryRevision(1), _timeProvider.GetUtcNow(), _directorySchemaVersion);
+            var record = new SessionDirectoryCreateRecordRequest(request, candidate);
+            var recordGrant = await AuthorizeAsync(request.Authorization, _directory.SecurityAudience,
+                SecurityOperationKind.StateMutation, SecurityEffect.Mutate, creationResource,
+                SessionDirectorySecurityBinding.RecordCreateFingerprint(record), cancellationToken).ConfigureAwait(false);
+            if (recordGrant is null)
+            {
+                return new SessionCreateFailed("Session creation-route recording was not authorized.");
+            }
+
+            var recorded = await _directory.RecordCreateAsync(DirectoryRequest(record, recordGrant),
+                cancellationToken).ConfigureAwait(false);
+            if (recorded is not SessionLocationRecorded winner)
+            {
+                return new SessionCreateFailed(SafeDirectoryWriteReason(recorded));
+            }
+            location = winner.Location;
+        }
+        else
+        {
+            return new SessionCreateFailed(SafeCreationLookupReason(lookup));
+        }
+
+        var context = await CaptureCreateContextAsync(request, location, cancellationToken).ConfigureAwait(false);
+        if (context is null)
+        {
+            return new SessionCreateFailed("Session-bound authorization capture is unavailable.");
+        }
+
+        var selection = await _storeSelector.ResolveExistingAsync(
+            new SessionStoreSelectionRequest(context, profile, location), cancellationToken).ConfigureAwait(false);
+        if (selection is not SessionStoreSelected selected)
+        {
+            return new SessionCreateFailed(SafeSelectionReason(selection));
+        }
+
+        var storeRequest = new SessionStoreCreateRequest(request, location.Address, context);
+        var storeGrant = await AuthorizeAsync(context.Authorization, selected.Store.SecurityAudience,
+            SecurityOperationKind.StateMutation, SecurityEffect.Create,
+            SessionStoreSecurityBinding.Resource(selected.Descriptor.Key, location.Address),
+            SessionStoreSecurityBinding.Fingerprint(storeRequest), cancellationToken).ConfigureAwait(false);
+        if (storeGrant is null)
+        {
+            return new SessionCreateFailed("Session store creation was not authorized.");
+        }
+
+        var result = await selected.Store.CreateAsync(StoreRequest(storeRequest, selected.Descriptor.Key, storeGrant),
+            cancellationToken).ConfigureAwait(false);
+        if (result is SessionCreated created)
+        {
+            await PublishBestEffortAsync(
+                () => new SessionCreatedEvent(
+                    created.Descriptor.Address, _timeProvider.GetUtcNow(), created.Descriptor),
+                cancellationToken).ConfigureAwait(false);
+        }
+        return result;
+    }
+
+    private async ValueTask<TResult> ExecuteExistingAsync<TRequest, TResult>(TRequest request,
+        SessionOperationContext context, SessionProfileSnapshot profile, SecurityOperationKind kind,
+        SecurityEffect effect, InputFingerprint fingerprint,
+        Func<ISessionStore, AuthorizedSessionStoreRequest<TRequest>, CancellationToken, ValueTask<TResult>> operation,
+        Func<string, TResult> failed, CancellationToken cancellationToken)
+        where TRequest : class where TResult : class
+    {
+        Debug.Assert(request is not null, "A validated immutable session request is required.");
+        Debug.Assert(context is not null, "A validated session context is required.");
+        Debug.Assert(profile is not null, "A validated immutable profile is required.");
+        Debug.Assert(operation is not null, "A store operation delegate is required.");
+        Debug.Assert(failed is not null, "A typed failure factory is required.");
+        if (profile.RequiresDurableStore && !_directory.Durable)
+        {
+            return failed("The session directory cannot satisfy the profile's durability requirement.");
+        }
+
+        var directoryGrant = await AuthorizeAsync(context.Authorization, _directory.SecurityAudience,
+            SecurityOperationKind.StateRead, SecurityEffect.Observe,
+            SessionDirectorySecurityBinding.Resource(context.Identity.TenantId, context.ToAddress()),
+            SessionDirectorySecurityBinding.LocateFingerprint(context), cancellationToken).ConfigureAwait(false);
+        if (directoryGrant is null)
+        {
+            return failed("Session route lookup was not authorized.");
+        }
+        var route = await _directory.LocateAsync(DirectoryRequest(context, directoryGrant),
+            cancellationToken).ConfigureAwait(false);
+        if (route is not SessionLocated located)
+        {
+            return failed(SafeLocationReason(route));
+        }
+
+        var selection = await _storeSelector.ResolveExistingAsync(
+            new SessionStoreSelectionRequest(context, profile, located.Location), cancellationToken).ConfigureAwait(false);
+        if (selection is not SessionStoreSelected selected)
+        {
+            return failed(SafeSelectionReason(selection));
+        }
+
+        var storeGrant = await AuthorizeAsync(context.Authorization, selected.Store.SecurityAudience, kind, effect,
+            SessionStoreSecurityBinding.Resource(selected.Descriptor.Key, context.ToAddress()), fingerprint,
+            cancellationToken).ConfigureAwait(false);
+        return storeGrant is null
+            ? failed("Session store access was not authorized.")
+            : await operation(selected.Store, StoreRequest(request, selected.Descriptor.Key, storeGrant),
+                cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask<SessionOperationContext?> CaptureCreateContextAsync(SessionCreateRequest request,
+        SessionLocation location, CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "A validated logical create request is required.");
+        Debug.Assert(location is not null, "An authoritative creation route is required.");
+        var scope = new SecurityAuthorizationScope(request.AgentId, location.Address.SessionId,
+            request.Authorization.Scope.Correlation);
+        var captured = await _profileSelector.SelectAsync(new SecurityAuthorizationCaptureRequest(scope,
+            request.Authorization.ProfileKey, request.Authorization.AgentDefinitionRevision,
+            request.Authorization.ConfigurationVersion, request.Identity), cancellationToken).ConfigureAwait(false);
+        if (captured is not SecurityAuthorizationCaptured successful)
+        {
+            return null;
+        }
+
+        var authorization = successful.Authorization;
+        return authorization.Scope == scope
+            && authorization.Identity == request.Identity
+            && authorization.ProfileKey == request.Authorization.ProfileKey
+            && authorization.ProfileVersion == request.Authorization.ProfileVersion
+            && authorization.PolicySnapshot == request.Authorization.PolicySnapshot
+            && authorization.AuthorityKey == request.Authorization.AuthorityKey
+            && authorization.AgentDefinitionRevision == request.Authorization.AgentDefinitionRevision
+            && authorization.ConfigurationVersion == request.Authorization.ConfigurationVersion
+            ? new SessionOperationContext(request.AgentId, location.Address.SessionId, null,
+                request.Authorization.Scope.Correlation, request.Identity, authorization)
+            : null;
+    }
+
+    private async ValueTask<SecurityGrant?> AuthorizeAsync(SecurityAuthorizationContext authorization,
+        ComponentId audience, SecurityOperationKind kind, SecurityEffect effect, ProtectedResource resource,
+        InputFingerprint fingerprint, CancellationToken cancellationToken)
+    {
+        Debug.Assert(authorization is not null, "A validated captured authorization is required.");
+        var activated = await _authoritySelector.SelectAsync(authorization, cancellationToken).ConfigureAwait(false);
+        if (activated is not SecurityAuthoritySelected selected || selected.Authorization != authorization)
+        {
+            return null;
+        }
+
+        var requestId = _securityRequestIds.Create();
+        var decision = await selected.Authority.AuthorizeAsync(new SecurityRequest(requestId, authorization.Scope, null,
+            authorization.Identity, authorization, audience, kind, effect, [resource], fingerprint,
+            _timeProvider.GetUtcNow().Add(_securityRequestLifetime)), cancellationToken).ConfigureAwait(false);
+        return decision is SecurityAllowed allowed
+            && allowed.RequestId == requestId
+            && allowed.Grant.RequestId == requestId
+            ? allowed.Grant
+            : null;
+    }
+
+    private AuthorizedSessionDirectoryRequest<TRequest> DirectoryRequest<TRequest>(TRequest request,
+        SecurityGrant grant) where TRequest : class =>
+        new(request, grant, new SecurityEnforcementIntent(_intentIds.Create(), null));
+
+    private AuthorizedSessionStoreRequest<TRequest> StoreRequest<TRequest>(TRequest request, SessionStoreKey key,
+        SecurityGrant grant) where TRequest : class =>
+        new(request, key, grant, new SecurityEnforcementIntent(_intentIds.Create(), null));
+
+    private async ValueTask<TResult> ObserveAsync<TResult>(string operation, AgentId agentId, SessionId? sessionId,
+        OperationId? operationId, Func<ValueTask<TResult>> action, CancellationToken cancellationToken) where TResult : class
     {
         Debug.Assert(!string.IsNullOrWhiteSpace(operation), "A stable session operation name is required.");
         Debug.Assert(action is not null, "A session operation delegate is required.");
-        using var activity = AgentKitDiagnostics.Activities.StartActivity(
-            operation,
-            ActivityKind.Internal,
-            parentContext: Activity.Current?.Context ?? default,
-            tags: new ActivityTagsCollection
+        Activity? activity = null;
+        TryObserve(() => activity = AgentKitDiagnostics.Activities.StartActivity(operation, ActivityKind.Internal,
+            Activity.Current?.Context ?? default, tags: new ActivityTagsCollection
             {
                 { AgentKitTagNames.GenAiOperationName, operation },
                 { AgentKitTagNames.AgentId, agentId.ToString() },
                 { AgentKitTagNames.SessionId, sessionId?.ToString() },
                 { AgentKitTagNames.OperationId, operationId?.ToString() },
                 { AgentKitTagNames.SessionOperation, operation },
-            });
-        SessionLog.OperationStarted(_logger, operation, agentId, sessionId);
-
+            }));
+        TryObserve(() => SessionLog.OperationStarted(_logger, operation, agentId, sessionId));
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var result = await action().ConfigureAwait(false);
-            var outcome = result.GetType().Name;
-            if (result is SessionCreated or SessionLoaded or SessionAppended or SessionPage or SessionBranched or SessionDeleted)
+            var outcome = Outcome(result);
+            TryObserve(() =>
             {
-                activity.SetSuccessful(outcome);
-            }
-            else
-            {
-                activity.SetFailed(outcome, outcome);
-            }
-
-            SessionMetrics.Operations.Add(
-                1,
+                if (outcome == "success")
+                {
+                    activity.SetSuccessful(outcome);
+                }
+                else
+                {
+                    activity.SetFailed(outcome, outcome);
+                }
+            });
+            TryObserve(() => SessionMetrics.Operations.Add(1,
                 new KeyValuePair<string, object?>(AgentKitTagNames.SessionOperation, operation),
-                new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
-            SessionLog.OperationCompleted(_logger, operation, agentId, sessionId, outcome);
+                new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
+            TryObserve(() => SessionLog.OperationCompleted(_logger, operation, agentId, sessionId, outcome));
             return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            activity.SetFailed("cancelled", "cancellation");
-            SessionMetrics.Operations.Add(
-                1,
-                new KeyValuePair<string, object?>(AgentKitTagNames.SessionOperation, operation),
-                new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "cancelled"));
-            SessionLog.OperationCancelled(_logger, operation, agentId, sessionId);
+            TryObserve(() => activity.SetFailed("cancelled", "cancellation"));
+            RecordOperationMetric(operation, "cancelled");
+            TryObserve(() => SessionLog.OperationCancelled(_logger, operation, agentId, sessionId));
             throw;
         }
         catch (Exception exception)
         {
             var errorType = exception.GetType().FullName ?? exception.GetType().Name;
-            activity.SetFailed("faulted", errorType);
-            SessionMetrics.Operations.Add(
-                1,
-                new KeyValuePair<string, object?>(AgentKitTagNames.SessionOperation, operation),
-                new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "faulted"));
-            SessionLog.OperationFaulted(
-                _logger,
-                operation,
-                agentId,
-                sessionId,
-                exception.GetType().FullName ?? exception.GetType().Name);
+            TryObserve(() => activity.SetFailed("faulted", errorType));
+            RecordOperationMetric(operation, "faulted");
+            TryObserve(() => SessionLog.OperationFaulted(_logger, operation, agentId, sessionId, errorType));
             throw;
+        }
+        finally
+        {
+            TryObserve(() => activity?.Dispose());
         }
     }
 
+    private static string Outcome<TResult>(TResult result) where TResult : class => result switch
+    {
+        SessionCreated or SessionLoaded or SessionAppended or SessionPage or SessionBranched or SessionDeleted =>
+            "success",
+        SessionCreateFailed or SessionNotFound or SessionLoadFailed or SessionAppendConflict or
+            SessionAppendNotFound or SessionAppendFailed or SessionReadNotFound or SessionReadFailed or
+            SessionBranchParentNotFound or SessionBranchFailed or SessionDeleteFailed => "failed",
+        _ => "unknown",
+    };
+
+    private static void RecordOperationMetric(string operation, string outcome) =>
+        TryObserve(() => SessionMetrics.Operations.Add(1,
+            new KeyValuePair<string, object?>(AgentKitTagNames.SessionOperation, operation),
+            new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
+
     private async ValueTask PublishBestEffortAsync(
-        SessionEvent sessionEvent,
+        Func<SessionEvent> eventFactory,
         CancellationToken cancellationToken)
     {
+        Debug.Assert(eventFactory is not null, "A committed semantic-event factory is required.");
+        SessionEvent sessionEvent;
+        try
+        {
+            sessionEvent = eventFactory();
+        }
+        catch
+        {
+            // The protected effect is already committed; event construction is observational.
+            return;
+        }
+
         foreach (var sink in _eventSinks)
         {
-            var sinkName = sink.GetType().FullName ?? sink.GetType().Name;
-            using var activity = AgentKitDiagnostics.Activities.StartActivity(
-                AgentKitActivityNames.SessionEventPublish,
-                ActivityKind.Internal,
-                parentContext: Activity.Current?.Context ?? default,
-                tags: new ActivityTagsCollection
-                {
-                    { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.SessionEventPublish },
-                    { AgentKitTagNames.AgentId, sessionEvent.Address.AgentId.ToString() },
-                    { AgentKitTagNames.SessionId, sessionEvent.Address.SessionId.ToString() },
-                    { AgentKitTagNames.ObserverName, sinkName },
-                });
             try
             {
                 await sink.PublishAsync(sessionEvent, cancellationToken).ConfigureAwait(false);
-                activity.SetSuccessful("published");
             }
-            catch (Exception exception)
+            catch
             {
-                var errorType = exception.GetType().FullName ?? exception.GetType().Name;
-                activity.SetFailed("failed", errorType);
-                SessionLog.EventSinkFailed(
-                    _logger,
-                    sinkName,
-                    sessionEvent.Address.SessionId,
-                    exception.GetType().FullName ?? exception.GetType().Name);
-                // Durable state has already committed. Best-effort observation
-                // cannot change or obscure that result, and one failed sink
-                // cannot prevent later sinks from receiving the same event.
+                // The protected effect is already committed; event observation cannot replace its result.
             }
+        }
+    }
+
+    private static string SafeCreationLookupReason(SessionCreationLocationResult result) => result switch
+    {
+        SessionCreationLocationConflict conflict => conflict.SafeMessage,
+        SessionDirectoryCreationLookupDenied denied => denied.SafeMessage,
+        SessionDirectoryCreationLookupUnavailable unavailable => unavailable.SafeMessage,
+        _ => "Session creation-route lookup returned an unsupported result.",
+    };
+
+    private static string SafeDirectoryWriteReason(SessionDirectoryWriteResult result) => result switch
+    {
+        SessionLocationConflict => "The session creation route conflicts with an existing route.",
+        SessionDirectoryWriteDenied denied => denied.SafeMessage,
+        SessionDirectoryWriteUnavailable unavailable => unavailable.SafeMessage,
+        _ => "Session creation-route recording returned an unsupported result.",
+    };
+
+    private static string SafeLocationReason(SessionLocationResult result) => result switch
+    {
+        SessionLocationNotFound => "The session route is unavailable.",
+        SessionDirectoryLookupDenied denied => denied.SafeMessage,
+        SessionDirectoryLookupUnavailable unavailable => unavailable.SafeMessage,
+        _ => "Session route lookup returned an unsupported result.",
+    };
+
+    private static string SafeSelectionReason(SessionStoreSelectionResult result) =>
+        result is SessionStoreSelectionRejected rejected
+            ? rejected.SafeMessage
+            : "Session store selection returned an unsupported result.";
+
+    private static void TryObserve(Action observation)
+    {
+        Debug.Assert(observation is not null, "An observational delegate is required.");
+        try
+        {
+            observation();
+        }
+        catch
+        {
+            // Diagnostics cannot affect routing, authorization, or protected effects.
         }
     }
 }

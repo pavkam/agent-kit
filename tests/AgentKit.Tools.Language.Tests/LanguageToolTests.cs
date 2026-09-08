@@ -195,7 +195,7 @@ public sealed class LanguageToolTests
         null);
 
     private static ToolInvocationRequest Request(string json) => new(
-        new ToolExecutionContext(
+        TestSupport.TestSecurityEvidence.ToolContext(
             new AgentId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
             new SessionId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
             new ToolCallId(Guid.Parse("60000000-0000-0000-0000-000000000006")),

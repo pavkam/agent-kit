@@ -31,6 +31,7 @@ internal static class ArgumentExceptionExtensions
             }
         }
 
+
         /// <summary>Throws when exact security-profile publication coordinates are duplicated.</summary>
         /// <param name="publications">The fully materialized publication registrations.</param>
         /// <param name="paramName">The registration collection parameter attributed to an invalid entry.</param>

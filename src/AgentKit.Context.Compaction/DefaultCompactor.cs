@@ -148,7 +148,12 @@ public sealed class DefaultCompactor: ICompactor
 
         var context = request.Context;
         var sessionContext = new SessionOperationContext(
-            context.AgentId, context.SessionId, context.Correlation, context.Identity);
+            context.AgentId,
+            context.SessionId,
+            executionLaneId: null,
+            context.Correlation,
+            context.Identity,
+            context.Authorization);
 
         var loadResult = await LoadSourceAsync(sessionContext, request, cancellationToken).ConfigureAwait(false);
         if (loadResult is not { } source)
@@ -254,6 +259,7 @@ public sealed class DefaultCompactor: ICompactor
         {
             var pageResult = await _coordinator.ReadAsync(
                 new SessionReadRequest(sessionContext, request.BranchId, cursor, _sourceReadPageSize),
+                request.Context.SessionProfile,
                 cancellationToken).ConfigureAwait(false);
 
             if (pageResult is not SessionPage page)
@@ -315,6 +321,7 @@ public sealed class DefaultCompactor: ICompactor
                 request.SourceVersion,
                 new IdempotencyKey($"compaction:{context.CompactionId}"),
                 [entry]),
+            request.Context.SessionProfile,
             cancellationToken).ConfigureAwait(false);
 
         return appendResult switch

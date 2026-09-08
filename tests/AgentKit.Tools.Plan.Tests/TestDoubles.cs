@@ -53,7 +53,11 @@ internal sealed class RecordingSecurityAuthority(bool allow = true): ISecurityAu
 internal sealed class RecordingGrantStore: ISecurityGrantStore
 {
     internal List<SecurityEnforcementRequest> Enforcements { get; } = [];
+    internal List<SecurityEnforcementIntent> Intents { get; } = [];
     internal GrantConsumptionStatus Status { get; set; } = GrantConsumptionStatus.Consumed;
+    internal bool ReturnWrongReceipt { get; set; }
+    internal CancellationTokenSource? CancelBeforeReturn { get; set; }
+    internal Func<SecurityEnforcementRequest, SecurityEnforcementRequest>? ReceiptEnforcement { get; set; }
 
     public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 
@@ -74,6 +78,42 @@ internal sealed class RecordingGrantStore: ISecurityGrantStore
         return ValueTask.FromResult(new GrantConsumptionResult(status, 0, $"Grant {status}."));
     }
 
+    public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+        SecurityGrant grant,
+        SecurityEnforcementRequest enforcement,
+        SecurityEnforcementIntent intent,
+        CancellationToken cancellationToken = default)
+    {
+        Enforcements.Add(enforcement);
+        Intents.Add(intent);
+        var matches = grant.Scope == enforcement.Scope
+            && grant.Identity == enforcement.Identity
+            && grant.Authorization == enforcement.Authorization
+            && grant.Audience == enforcement.Audience
+            && grant.Kind == enforcement.Kind
+            && grant.Effect == enforcement.Effect
+            && grant.Resources.SequenceEqual(enforcement.Resources)
+            && grant.InputFingerprint == enforcement.InputFingerprint;
+        var status = matches ? Status : GrantConsumptionStatus.Mismatch;
+        var receiptIntent = ReturnWrongReceipt
+            ? new SecurityEnforcementIntent(
+                new SecurityEnforcementIntentId(Guid.Parse("f0000000-0000-0000-0000-00000000000f")), null)
+            : intent;
+        var receiptEnforcement = ReceiptEnforcement?.Invoke(enforcement) ?? enforcement;
+        var receipt = status is GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled
+            ? new SecurityEnforcementIntentReceipt(
+                receiptIntent.Id,
+                grant.Id,
+                grant.RequestId,
+                receiptEnforcement,
+                receiptIntent.RequiredFence,
+                SecurityEnforcementBinding.Fingerprint(enforcement, receiptIntent),
+                DateTimeOffset.UnixEpoch)
+            : null;
+        CancelBeforeReturn?.Cancel();
+        return ValueTask.FromResult(new GrantConsumptionResult(status, 0, $"Grant {status}.", receipt));
+    }
+
     public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
 }
 
@@ -85,16 +125,19 @@ internal sealed class RecordingSessionCoordinator: ISessionCoordinator
     internal List<SessionAppendRequest> Appends { get; } = [];
     internal int LoadCalls { get; private set; }
 
-    public ValueTask<SessionCreateResult> CreateAsync(SessionCreateRequest request, CancellationToken cancellationToken = default) =>
+    public ValueTask<SessionCreateResult> CreateAsync(SessionCreateRequest request, SessionProfileSnapshot profile,
+        CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public ValueTask<SessionLoadResult> LoadAsync(SessionOperationContext context, CancellationToken cancellationToken = default)
+    public ValueTask<SessionLoadResult> LoadAsync(SessionOperationContext context, SessionProfileSnapshot profile,
+        CancellationToken cancellationToken = default)
     {
         LoadCalls++;
         return ValueTask.FromResult(LoadResult);
     }
 
-    public ValueTask<SessionAppendResult> AppendAsync(SessionAppendRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<SessionAppendResult> AppendAsync(SessionAppendRequest request, SessionProfileSnapshot profile,
+        CancellationToken cancellationToken = default)
     {
         Appends.Add(request);
         return ValueTask.FromResult(AppendResult ?? new SessionAppended(
@@ -102,15 +145,18 @@ internal sealed class RecordingSessionCoordinator: ISessionCoordinator
             request.Entries));
     }
 
-    public ValueTask<SessionPageResult> ReadAsync(SessionReadRequest request, CancellationToken cancellationToken = default) =>
+    public ValueTask<SessionPageResult> ReadAsync(SessionReadRequest request, SessionProfileSnapshot profile,
+        CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(Pages.Count == 0
             ? new SessionPage([], request.FromSequenceExclusive, false)
             : Pages.Dequeue());
 
-    public ValueTask<SessionBranchResult> BranchAsync(SessionBranchRequest request, CancellationToken cancellationToken = default) =>
+    public ValueTask<SessionBranchResult> BranchAsync(SessionBranchRequest request, SessionProfileSnapshot profile,
+        CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
-    public ValueTask<SessionDeleteResult> DeleteAsync(SessionDeleteRequest request, CancellationToken cancellationToken = default) =>
+    public ValueTask<SessionDeleteResult> DeleteAsync(SessionDeleteRequest request, SessionProfileSnapshot profile,
+        CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 }
 
@@ -134,6 +180,18 @@ internal sealed class FixedEntryIdGenerator: IIdentifierGenerator<SessionEntryId
     public SessionEntryId Create() => new(Guid.Parse("20000000-0000-0000-0000-000000000002"));
 }
 
+internal sealed class FixedIntentIdGenerator: IIdentifierGenerator<SecurityEnforcementIntentId>
+{
+    internal int Calls { get; private set; }
+
+    public SecurityEnforcementIntentId Create()
+    {
+        Calls++;
+        return new SecurityEnforcementIntentId(
+            Guid.Parse("c0000000-0000-0000-0000-00000000000c"));
+    }
+}
+
 internal sealed class FixedTimeProvider: TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch;
@@ -154,7 +212,16 @@ internal static class TestData
         new TenantId("tenant"),
         new PrincipalId("principal"),
         ExecutionSubjectKind.Human);
-    internal static SessionOperationContext Context { get; } = new(AgentId, SessionId, Correlation, Identity);
+    internal static SessionOperationContext Context { get; } = new(
+        AgentId,
+        SessionId,
+        executionLaneId: null,
+        Correlation,
+        Identity,
+        TestSupport.TestSecurityEvidence.Authorization(AgentId, SessionId, Correlation, Identity));
+
+    internal static SessionProfileSnapshot SessionProfile { get; } =
+        TestSupport.TestSecurityEvidence.SessionProfile("test");
 
     internal static ImmutableArray<WorkPlanItem> Items(PlanItemStatus first = PlanItemStatus.Pending) =>
     [
@@ -195,6 +262,7 @@ internal static class TestData
         request.Id,
         request.Scope,
         request.Identity,
+        request.Authorization!,
         request.Audience,
         request.Kind,
         request.Effect,
@@ -215,6 +283,7 @@ internal static class TestData
         new SecurityRequestId(Guid.Parse("10000000-0000-0000-0000-000000000001")),
         new SecurityAuthorizationScope(AgentId, SessionId, Correlation),
         Identity,
+        Context.Authorization,
         audience,
         kind,
         effect,

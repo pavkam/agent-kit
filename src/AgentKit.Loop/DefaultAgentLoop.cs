@@ -37,6 +37,7 @@ using Microsoft.Extensions.Options;
 public sealed class DefaultAgentLoop: IAgentLoop
 {
     private readonly ISessionCoordinator _sessionCoordinator;
+    private readonly ISecurityProfileSelector _securityProfileSelector;
     private readonly IContextAssembler _contextAssembler;
     private readonly IToolInvoker _toolInvoker;
     private readonly IModelCatalog _modelCatalog;
@@ -53,6 +54,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     /// <summary>Initializes a new instance of the <see cref="DefaultAgentLoop"/> class.</summary>
     /// <param name="sessionCoordinator">Loads eligible history and commits every produced message.</param>
+    /// <param name="securityProfileSelector">Captures fresh authorization for each newly identified run operation.</param>
     /// <param name="contextAssembler">Assembles the provider-ready request for each turn.</param>
     /// <param name="toolInvoker">Resolves, authorizes, and invokes every requested tool call.</param>
     /// <param name="modelCatalog">Supplies the engine-wide versioned view of configured models.</param>
@@ -72,6 +74,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
     public DefaultAgentLoop(
         ISessionCoordinator sessionCoordinator,
+        ISecurityProfileSelector securityProfileSelector,
         IContextAssembler contextAssembler,
         IToolInvoker toolInvoker,
         IModelCatalog modelCatalog,
@@ -87,6 +90,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ILogger<DefaultAgentLoop>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(sessionCoordinator);
+        ArgumentNullException.ThrowIfNull(securityProfileSelector);
         ArgumentNullException.ThrowIfNull(contextAssembler);
         ArgumentNullException.ThrowIfNull(toolInvoker);
         ArgumentNullException.ThrowIfNull(modelCatalog);
@@ -101,6 +105,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ArgumentNullException.ThrowIfNull(options);
 
         _sessionCoordinator = sessionCoordinator;
+        _securityProfileSelector = securityProfileSelector;
         _contextAssembler = contextAssembler;
         _toolInvoker = toolInvoker;
         _modelCatalog = modelCatalog;
@@ -179,9 +184,28 @@ public sealed class DefaultAgentLoop: IAgentLoop
     {
         Debug.Assert(request is not null, "A validated run request is required by the loop core.");
         var runCorrelation = new InRunOperationCorrelation(operationId, request.RunId, turnId: null);
-        var sessionContext = new SessionOperationContext(request.AgentId, request.SessionId, runCorrelation, request.Identity);
+        var (runAuthorization, runCaptureFailure) = await CaptureAuthorizationAsync(
+            request, runCorrelation, cancellationToken)
+            .ConfigureAwait(false);
+        if (runAuthorization is null)
+        {
+            return BuildResult(
+                request,
+                new AgentRunSessionOperationFailed(runCaptureFailure!),
+                [],
+                new SessionVersion(0));
+        }
 
-        var historyLoad = await LoadHistoryAsync(sessionContext, request.BranchId, cancellationToken).ConfigureAwait(false);
+        var sessionContext = new SessionOperationContext(
+            request.AgentId,
+            request.SessionId,
+            executionLaneId: null,
+            runCorrelation,
+            request.Identity,
+            runAuthorization);
+
+        var historyLoad = await LoadHistoryAsync(
+            sessionContext, request.SessionProfile, request.BranchId, cancellationToken).ConfigureAwait(false);
         if (historyLoad is not var (initialEntries, loadedVersion))
         {
             return BuildResult(
@@ -319,7 +343,22 @@ public sealed class DefaultAgentLoop: IAgentLoop
     {
         var turnId = _turnIds.Create();
         var turnCorrelation = new InRunOperationCorrelation(operationId, request.RunId, turnId);
-        var turnSessionContext = new SessionOperationContext(request.AgentId, request.SessionId, turnCorrelation, request.Identity);
+        var (turnAuthorization, turnCaptureFailure) = await CaptureAuthorizationAsync(
+            request, turnCorrelation, cancellationToken)
+            .ConfigureAwait(false);
+        if (turnAuthorization is null)
+        {
+            return TurnOutcome.Settled(
+                new AgentRunSessionOperationFailed(turnCaptureFailure!), currentVersion);
+        }
+
+        var turnSessionContext = new SessionOperationContext(
+            request.AgentId,
+            request.SessionId,
+            executionLaneId: null,
+            turnCorrelation,
+            request.Identity,
+            turnAuthorization);
         var modelRequestId = _modelRequestIds.Create();
         using var turnActivity = AgentKitDiagnostics.Activities.StartActivity(
             AgentKitActivityNames.AgentTurn,
@@ -491,6 +530,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 currentVersion,
                 new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:assistant"),
                 [assistantEntry]),
+            request.SessionProfile,
             cancellationToken).ConfigureAwait(false);
 
         if (appendResult is not SessionAppended appended)
@@ -546,7 +586,13 @@ public sealed class DefaultAgentLoop: IAgentLoop
         foreach (var toolCall in toolCalls)
         {
             var toolContext = new ToolExecutionContext(
-                request.AgentId, request.SessionId, toolCall.CallId, turnCorrelation, request.Identity);
+                request.AgentId,
+                request.SessionId,
+                toolCall.CallId,
+                turnCorrelation,
+                request.Identity,
+                turnSessionContext.Authorization,
+                request.SessionProfile);
 
             var invocationResult = await _toolInvoker.InvokeAsync(
                 new ToolCallRequest(toolCall.Tool.Id, toolContext, toolCall.Arguments, _timeProvider.GetUtcNow()),
@@ -588,6 +634,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 currentVersion,
                 new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:tools"),
                 [toolEntry]),
+            request.SessionProfile,
             cancellationToken).ConfigureAwait(false);
 
         if (appendResult is not SessionAppended appended)
@@ -606,6 +653,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     private async ValueTask<SessionAppendResult> AppendWithDiagnosticsAsync(
         SessionAppendRequest request,
+        SessionProfileSnapshot sessionProfile,
         CancellationToken cancellationToken)
     {
         Debug.Assert(request is not null, "A validated append request is required for session diagnostics.");
@@ -621,7 +669,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 { AgentKitTagNames.OperationId, request.Context.Correlation.OperationId.ToString() },
             });
 
-        var result = await _sessionCoordinator.AppendAsync(request, cancellationToken).ConfigureAwait(false);
+        var result = await _sessionCoordinator.AppendAsync(
+            request, sessionProfile, cancellationToken).ConfigureAwait(false);
         if (result is SessionAppended)
         {
             activity.SetSuccessful("committed");
@@ -700,6 +749,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 currentVersion,
                 new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:interrupted"),
                 [entry]),
+            request.SessionProfile,
             cancellationToken).ConfigureAwait(false);
 
         if (appendResult is not SessionAppended appended)
@@ -713,7 +763,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
     }
 
     private async Task<(ImmutableArray<SessionEntry> Entries, SessionVersion Version)?> LoadHistoryAsync(
-        SessionOperationContext sessionContext, BranchId branchId, CancellationToken cancellationToken)
+        SessionOperationContext sessionContext,
+        SessionProfileSnapshot sessionProfile,
+        BranchId branchId,
+        CancellationToken cancellationToken)
     {
         var entries = ImmutableArray.CreateBuilder<SessionEntry>();
         var cursor = new SessionSequence(0);
@@ -721,7 +774,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
         while (true)
         {
             var pageResult = await _sessionCoordinator.ReadAsync(
-                new SessionReadRequest(sessionContext, branchId, cursor, _historyReadPageSize), cancellationToken)
+                new SessionReadRequest(sessionContext, branchId, cursor, _historyReadPageSize),
+                sessionProfile,
+                cancellationToken)
                 .ConfigureAwait(false);
 
             if (pageResult is not SessionPage page)
@@ -739,6 +794,49 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         return (entries.ToImmutable(), new SessionVersion(cursor.Value));
+    }
+
+    private async ValueTask<(SecurityAuthorizationContext? Authorization, string? SafeFailure)>
+        CaptureAuthorizationAsync(
+            AgentRunRequest request,
+            InRunOperationCorrelation correlation,
+            CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "A validated run request is required for authorization capture.");
+        Debug.Assert(correlation is not null, "A concrete in-run correlation is required for authorization capture.");
+
+        var baseline = request.Authorization;
+        var scope = new SecurityAuthorizationScope(request.AgentId, request.SessionId, correlation);
+        var result = await _securityProfileSelector.SelectAsync(
+            new SecurityAuthorizationCaptureRequest(
+                scope,
+                baseline.ProfileKey,
+                baseline.AgentDefinitionRevision,
+                baseline.ConfigurationVersion,
+                request.Identity),
+            cancellationToken).ConfigureAwait(false);
+
+        if (result is not SecurityAuthorizationCaptured captured)
+        {
+            return (null, result is SecurityAuthorizationCaptureUnavailable unavailable
+                ? unavailable.SafeReason
+                : "The security profile could not be captured for this operation.");
+        }
+
+        var authorization = captured.Authorization;
+        if (authorization.Scope != scope
+            || authorization.Identity != request.Identity
+            || authorization.ProfileKey != baseline.ProfileKey
+            || authorization.ProfileVersion != baseline.ProfileVersion
+            || authorization.PolicySnapshot != baseline.PolicySnapshot
+            || authorization.AuthorityKey != baseline.AuthorityKey
+            || authorization.AgentDefinitionRevision != baseline.AgentDefinitionRevision
+            || authorization.ConfigurationVersion != baseline.ConfigurationVersion)
+        {
+            return (null, "The captured security profile differs from the run-start evidence.");
+        }
+
+        return (authorization, null);
     }
 
     private void RecordRunMetrics(string outcome, long startedTimestamp)

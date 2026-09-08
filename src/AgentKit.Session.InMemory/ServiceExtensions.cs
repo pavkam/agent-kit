@@ -17,7 +17,7 @@ public static class ServiceExtensions
         /// <summary>
         /// Registers <see cref="InMemorySessionStore"/> as the singular
         /// <see cref="ISessionStore"/>, along with default GUID-based
-        /// generators for <see cref="SessionId"/> and <see cref="BranchId"/>.
+        /// generators for <see cref="BranchId"/> and <see cref="SecurityAuditRecordId"/>.
         /// </summary>
         /// <returns>The same service collection, for chaining.</returns>
         /// <remarks>
@@ -31,11 +31,36 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
             _ = services.AddAgentKitObservability();
             services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<IIdentifierGenerator<SessionId>>(
-                _ => new GuidIdentifierGenerator<SessionId>(static value => new SessionId(value)));
             services.TryAddSingleton<IIdentifierGenerator<BranchId>>(
                 _ => new GuidIdentifierGenerator<BranchId>(static value => new BranchId(value)));
-            services.TryAddSingleton<ISessionStore, InMemorySessionStore>();
+            services.TryAddSingleton<IIdentifierGenerator<SecurityAuditRecordId>>(
+                _ => new GuidIdentifierGenerator<SecurityAuditRecordId>(static value => new SecurityAuditRecordId(value)));
+            _ = services.AddSingleton<ISessionStore, InMemorySessionStore>();
+
+            return services;
+        }
+
+        /// <summary>Registers the protected process-local session directory with an explicit consuming component identity.</summary>
+        /// <param name="securityAudience">The nonblank identity that will consume directory-specific grants.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <remarks>The registration does not create an audit dispatcher or grant store. Composition must provide those required security boundaries before resolving the directory.</remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="securityAudience"/> is blank.</exception>
+        public IServiceCollection AddInMemorySessionDirectory(ComponentId securityAudience)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentException.ThrowIfNullOrWhiteSpace(securityAudience.Value, nameof(securityAudience));
+            _ = services.AddAgentKitObservability();
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IIdentifierGenerator<SecurityAuditRecordId>>(
+                _ => new GuidIdentifierGenerator<SecurityAuditRecordId>(static value => new SecurityAuditRecordId(value)));
+            services.TryAddSingleton<ISessionDirectory>(provider => new InMemorySessionDirectory(
+                securityAudience,
+                provider.GetRequiredService<ISecurityAuditDispatcher>(),
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<ILogger<InMemorySessionDirectory>>()));
 
             return services;
         }

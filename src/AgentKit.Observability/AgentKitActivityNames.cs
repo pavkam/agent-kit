@@ -73,6 +73,9 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for one concrete session-store operation.</summary>
     public const string SessionStoreOperation = "session.store.operation";
 
+    /// <summary>Gets the name for one authoritative session-directory operation.</summary>
+    public const string SessionDirectoryOperation = "session.directory.operation";
+
     /// <summary>Gets the name for acquiring process-local run ownership.</summary>
     public const string SessionLeaseAcquire = "session.lease.acquire";
 

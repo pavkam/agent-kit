@@ -11,7 +11,10 @@ public sealed class ServiceExtensionsTests
     public void AddInMemorySessionStore_WhenCalled_RegistersOneValidStoreGraph()
     {
         var services = new ServiceCollection();
+        var security = new TestSecurityHarness();
 
+        _ = services.AddSingleton<ISecurityGrantStore>(security);
+        _ = services.AddSingleton<ISecurityAuditDispatcher>(security);
         _ = services.AddInMemorySessionStore();
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions
         {
@@ -21,8 +24,8 @@ public sealed class ServiceExtensionsTests
 
         _ = provider.GetRequiredService<ISessionStore>().ShouldBeOfType<InMemorySessionStore>();
         provider.GetServices<ISessionStore>().Count().ShouldBe(1);
-        _ = provider.GetRequiredService<IIdentifierGenerator<SessionId>>();
         _ = provider.GetRequiredService<IIdentifierGenerator<BranchId>>();
+        _ = provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>();
         _ = provider.GetRequiredService<TimeProvider>();
     }
 }
