@@ -10,6 +10,73 @@ namespace AgentKit.Providers.OpenAICompatible.Tests;
 public sealed class OpenAICompatibilityProfileTests
 {
     [Fact]
+    public void Constructor_WhenExistingEightParameterSignatureIsInspected_RemainsAvailableWithItsDefault()
+    {
+        var constructor = typeof(OpenAICompatibilityProfile).GetConstructor([
+            typeof(Uri),
+            typeof(string),
+            typeof(bool),
+            typeof(bool),
+            typeof(bool),
+            typeof(bool),
+            typeof(ImmutableDictionary<string, string>),
+            typeof(string),
+        ]).ShouldNotBeNull();
+
+        var parameters = constructor.GetParameters();
+        parameters.Length.ShouldBe(8);
+        parameters.Single(parameter => parameter.Name == "embeddingsPath").HasDefaultValue.ShouldBeTrue();
+        parameters[^1].DefaultValue.ShouldBeNull();
+
+        var profile = new OpenAICompatibilityProfile(
+            new Uri("https://api.example.test/v1/"),
+            "chat/completions",
+            sendDeveloperRoleAsSystem: false,
+            preferStreaming: true,
+            includeStreamUsage: true,
+            useMaxCompletionTokensField: true,
+            []);
+
+        profile.SupportsEmbeddingPurpose.ShouldBeFalse();
+        profile.EmbeddingsPath.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Constructor_WhenNewNineParameterSignatureIsInspected_RequiresPurposeCapabilityDeclaration()
+    {
+        var constructor = typeof(OpenAICompatibilityProfile).GetConstructor([
+            typeof(Uri),
+            typeof(string),
+            typeof(bool),
+            typeof(bool),
+            typeof(bool),
+            typeof(bool),
+            typeof(ImmutableDictionary<string, string>),
+            typeof(string),
+            typeof(bool),
+        ]).ShouldNotBeNull();
+
+        var parameters = constructor.GetParameters();
+        parameters.Length.ShouldBe(9);
+        parameters[7].HasDefaultValue.ShouldBeFalse();
+        parameters[^1].HasDefaultValue.ShouldBeFalse();
+
+        var profile = new OpenAICompatibilityProfile(
+            new Uri("https://api.example.test/v1/"),
+            "chat/completions",
+            sendDeveloperRoleAsSystem: false,
+            preferStreaming: true,
+            includeStreamUsage: true,
+            useMaxCompletionTokensField: true,
+            [],
+            embeddingsPath: "embeddings",
+            supportsEmbeddingPurpose: true);
+
+        profile.SupportsEmbeddingPurpose.ShouldBeTrue();
+        profile.EmbeddingsPath.ShouldBe("embeddings");
+    }
+
+    [Fact]
     public void Constructor_WhenChatCompletionsPathIsAbsolute_ThrowsArgumentException()
     {
         var exception = Should.Throw<ArgumentException>(() => CreateProfile("https://evil.example.test/chat"));

@@ -57,12 +57,6 @@ public sealed record OpenAICompatibilityProfile
     /// existing chat-only caller of this constructor keeps compiling
     /// unchanged.
     /// </param>
-    /// <param name="supportsEmbeddingPurpose">
-    /// Whether the embeddings endpoint accepts an <c>input_type</c> field
-    /// carrying a portable <see cref="EmbeddingPurpose"/> (as OpenRouter
-    /// does), rather than having no purpose/task-type parameter at all (as
-    /// plain OpenAI does).
-    /// </param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="baseAddress"/>, <paramref name="chatCompletionsPath"/>,
     /// or <paramref name="defaultRequestHeaders"/> is null.
@@ -82,8 +76,42 @@ public sealed record OpenAICompatibilityProfile
         bool includeStreamUsage,
         bool useMaxCompletionTokensField,
         ImmutableDictionary<string, string> defaultRequestHeaders,
-        string? embeddingsPath = null,
-        bool supportsEmbeddingPurpose = false)
+        string? embeddingsPath = null)
+        : this(
+            baseAddress,
+            chatCompletionsPath,
+            sendDeveloperRoleAsSystem,
+            preferStreaming,
+            includeStreamUsage,
+            useMaxCompletionTokensField,
+            defaultRequestHeaders,
+            embeddingsPath,
+            supportsEmbeddingPurpose: false)
+    {
+    }
+
+    /// <summary>Initializes a new profile with the embedding-purpose capability explicitly declared.</summary>
+    /// <param name="baseAddress">The absolute base address of the provider's OpenAI-compatible endpoint.</param>
+    /// <param name="chatCompletionsPath">The path, relative to <paramref name="baseAddress"/>, of the chat completions operation.</param>
+    /// <param name="sendDeveloperRoleAsSystem">Whether developer messages use the legacy <c>"system"</c> role.</param>
+    /// <param name="preferStreaming">Whether the adapter requests streaming by default.</param>
+    /// <param name="includeStreamUsage">Whether streaming requests ask for a final usage-only chunk.</param>
+    /// <param name="useMaxCompletionTokensField">Whether output limits use <c>max_completion_tokens</c>.</param>
+    /// <param name="defaultRequestHeaders">Additional non-authentication headers sent with every request.</param>
+    /// <param name="embeddingsPath">The optional path, relative to <paramref name="baseAddress"/>, of the embeddings operation.</param>
+    /// <param name="supportsEmbeddingPurpose">Whether the embedding endpoint accepts <c>input_type</c> for a portable <see cref="EmbeddingPurpose"/>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="baseAddress"/>, <paramref name="chatCompletionsPath"/>, or <paramref name="defaultRequestHeaders"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="baseAddress"/> is not absolute, or either supplied operation path is not a relative path.</exception>
+    public OpenAICompatibilityProfile(
+        Uri baseAddress,
+        string chatCompletionsPath,
+        bool sendDeveloperRoleAsSystem,
+        bool preferStreaming,
+        bool includeStreamUsage,
+        bool useMaxCompletionTokensField,
+        ImmutableDictionary<string, string> defaultRequestHeaders,
+        string? embeddingsPath,
+        bool supportsEmbeddingPurpose)
     {
         ArgumentException.ThrowIfNotAbsoluteUri(baseAddress);
         ArgumentException.ThrowIfNotRelativeUriPath(chatCompletionsPath);
