@@ -30,6 +30,7 @@ public sealed class AzureOpenAIProviderDefaultsTests
         profile.IncludeStreamUsage.ShouldBeFalse();
         profile.UseMaxCompletionTokensField.ShouldBeFalse();
         profile.ChatCompletionsUri.ShouldBe(new Uri("https://my-resource.openai.azure.test/openai/v1/chat/completions"));
+        profile.EmbeddingsUri.ShouldBe(new Uri("https://my-resource.openai.azure.test/openai/v1/embeddings"));
     }
 
     [Fact]
@@ -45,10 +46,22 @@ public sealed class AzureOpenAIProviderDefaultsTests
         AzureOpenAIProviderDefaults.ProviderId.ShouldBe(new ProviderId("azure-openai"));
 
     [Fact]
+    public void EmbeddingApiFamily_IsStableAzureOpenAIEmbeddingsIdentity() =>
+        AzureOpenAIProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("azure-openai-embeddings"));
+
+    [Fact]
     public void DefaultCapabilities_SupportsToolCallsAndStreaming()
     {
         AzureOpenAIProviderDefaults.DefaultCapabilities.SupportsToolCalls.ShouldBeTrue();
         AzureOpenAIProviderDefaults.DefaultCapabilities.SupportsStreaming.ShouldBeTrue();
         AzureOpenAIProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void DefaultEmbeddingCapabilities_SupportsDimensionsAndEncodingSelection()
+    {
+        AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsDimensions.ShouldBeTrue();
+        AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsEncodingSelection.ShouldBeTrue();
+        AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsPurpose.ShouldBeFalse();
     }
 }

@@ -36,6 +36,12 @@ public sealed class AzureOpenAIProviderOptions
     public string ChatCompletionsPath { get; set; } = AzureOpenAIProviderDefaults.DefaultChatCompletionsPath;
 
     /// <summary>
+    /// Gets or sets the GA v1 embeddings operation path, relative to
+    /// <see cref="ResourceEndpoint"/>.
+    /// </summary>
+    public string EmbeddingsPath { get; set; } = AzureOpenAIProviderDefaults.DefaultEmbeddingsPath;
+
+    /// <summary>
     /// Gets or sets whether a request should prefer the streaming
     /// (<c>stream: true</c>) operation when the selected model supports
     /// streaming.

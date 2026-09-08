@@ -106,6 +106,36 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
+    [Fact]
+    public void AddCohereEmbeddingModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddCohere();
+        _ = services.AddCohereApiKeyCredential("cohere-test-key");
+        _ = services.AddCohereEmbeddingModel(new EmbeddingModelAlias("primary"), new ModelId("embed-v4.0"));
+        _ = services.AddCohereEmbeddingModel(new EmbeddingModelAlias("secondary"), new ModelId("embed-english-v3.0"));
+
+        using var provider = services.BuildServiceProvider();
+        var models = provider.GetServices<IEmbeddingModel>().ToArray();
+
+        models.Length.ShouldBe(2);
+        models.Select(m => m.Alias.Value).ShouldBe(["primary", "secondary"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void AddCohereEmbeddingModel_WhenResolved_UsesCohereEmbeddingModelType()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddCohere();
+        _ = services.AddCohereApiKeyCredential("cohere-test-key");
+        _ = services.AddCohereEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("embed-v4.0"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<CohereEmbeddingModel>();
+
+        model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

@@ -23,8 +23,7 @@ public sealed class EmbeddingRequestAggregateTests
         EmbeddingPurpose.Document,
         dimensions: null,
         encoding: null,
-        EmbeddingTruncation.ProviderDefault,
-        ExtensionData.Empty);
+        EmbeddingTruncation.ProviderDefault, ExtensionData.Empty);
 
     private static EmbeddingModelRequest CreateRequest()
     {

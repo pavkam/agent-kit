@@ -1,0 +1,4 @@
+{
+  "model": "mistral-embed",
+  "input": ["first", "second"]
+}

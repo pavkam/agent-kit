@@ -23,6 +23,13 @@ internal sealed class StubHttpMessageHandler: HttpMessageHandler
     public List<HttpRequestMessage> Requests { get; } = [];
 
     /// <summary>
+    /// Gets the request body text captured for each received request, in
+    /// receipt order, read eagerly before the caller disposes its
+    /// <see cref="HttpRequestMessage"/>.
+    /// </summary>
+    public List<string?> RequestBodies { get; } = [];
+
+    /// <summary>
     /// Creates a handler that always serves the given fixture file as a
     /// buffered JSON response body.
     /// </summary>
@@ -41,10 +48,12 @@ internal sealed class StubHttpMessageHandler: HttpMessageHandler
         });
 
     /// <inheritdoc/>
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         Requests.Add(request);
+        RequestBodies.Add(
+            request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(_responder(request));
+        return _responder(request);
     }
 }

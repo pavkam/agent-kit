@@ -29,6 +29,9 @@ public static class GoogleVertexAIProviderDefaults
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Vertex's native generateContent wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("google-vertex-ai-generate-content");
 
+    /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Vertex's generic predict wire format used by text-embedding models.</summary>
+    public static ApiFamilyId EmbeddingApiFamily { get; } = new("google-vertex-ai-predict-embedding");
+
     /// <summary>Gets the default REST API version path segment.</summary>
     public const string DefaultApiVersion = "v1";
 
@@ -51,6 +54,35 @@ public static class GoogleVertexAIProviderDefaults
     /// Vertex AI chat model unless the caller supplies its own.
     /// </summary>
     public static ModelLimits DefaultLimits { get; } = new(maxContextTokens: null, maxOutputTokens: null);
+
+    /// <summary>
+    /// Gets the default capability set applied to a registered Vertex AI
+    /// text-embedding model unless the caller supplies its own.
+    /// </summary>
+    /// <remarks>
+    /// Vertex's <c>:predict</c> text-embedding instance schema accepts a
+    /// <c>task_type</c> and a caller-selectable <c>outputDimensionality</c>,
+    /// but always returns floating-point vectors, so encoding selection is
+    /// not meaningful. Per-request input limits vary sharply by model
+    /// (some models accept only a single input per request); a caller
+    /// registering a specific model supplies its own
+    /// <see cref="EmbeddingLimits"/> rather than relying on this shared,
+    /// unbounded default.
+    /// </remarks>
+    public static EmbeddingCapabilities DefaultEmbeddingCapabilities { get; } = new(
+        supportsBatchInput: true,
+        supportsDimensions: true,
+        supportsPurpose: true,
+        supportsEncodingSelection: false,
+        supportsTruncationControl: true,
+        ExtensionData.Empty);
+
+    /// <summary>
+    /// Gets the default, unbounded embedding limits applied to a registered
+    /// Vertex AI text-embedding model unless the caller supplies its own.
+    /// </summary>
+    public static EmbeddingLimits DefaultEmbeddingLimits { get; } =
+        new(maxInputsPerRequest: null, maxInputTokensPerInput: null, defaultDimensions: null, maxDimensions: null);
 
     /// <summary>Gets the regional base address for the given location, such as <c>us-central1</c>.</summary>
     /// <param name="location">The Google Cloud region hosting the request.</param>
@@ -97,5 +129,31 @@ public static class GoogleVertexAIProviderDefaults
         var uri = new Uri(baseAddress, $"{options.ApiVersion}/{resource}:{operation}");
 
         return useStreaming ? new Uri($"{uri}?alt=sse") : uri;
+    }
+
+    /// <summary>
+    /// Builds the absolute generic <c>:predict</c> operation URI for the
+    /// given options, model, and optional deployed-endpoint override.
+    /// </summary>
+    /// <param name="options">The validated Vertex AI provider options.</param>
+    /// <param name="modelId">The publisher model identifier to embed in the operation path.</param>
+    /// <param name="deploymentId">
+    /// When set, the ID of a deployed/custom Vertex AI endpoint to call
+    /// instead of the shared publisher-model resource.
+    /// </param>
+    /// <returns>The absolute URI of the predict operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public static Uri BuildPredictUri(GoogleVertexAIProviderOptions options, ModelId modelId, DeploymentId? deploymentId)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.ProjectId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Location);
+
+        var resource = deploymentId is { } deployment
+            ? $"projects/{options.ProjectId}/locations/{options.Location}/endpoints/{deployment.Value}"
+            : $"projects/{options.ProjectId}/locations/{options.Location}/publishers/{options.Publisher}/models/{modelId.Value}";
+
+        var baseAddress = BuildRegionalBaseAddress(options.Location);
+        return new Uri(baseAddress, $"{options.ApiVersion}/{resource}:predict");
     }
 }

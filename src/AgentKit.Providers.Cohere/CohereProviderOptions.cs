@@ -29,6 +29,12 @@ public sealed class CohereProviderOptions
     public string ChatPath { get; set; } = CohereProviderDefaults.DefaultChatPath;
 
     /// <summary>
+    /// Gets or sets the path, relative to <see cref="BaseAddress"/>, of the
+    /// embed operation.
+    /// </summary>
+    public string EmbedPath { get; set; } = CohereProviderDefaults.DefaultEmbedPath;
+
+    /// <summary>
     /// Gets or sets whether a request should prefer the streaming chat
     /// operation when the selected model supports streaming.
     /// </summary>

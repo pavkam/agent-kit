@@ -30,6 +30,12 @@ public sealed class MistralAIProviderOptions
     public string ChatCompletionsPath { get; set; } = MistralAIProviderDefaults.DefaultChatCompletionsPath;
 
     /// <summary>
+    /// Gets or sets the path, relative to <see cref="BaseAddress"/>, of the
+    /// embeddings operation.
+    /// </summary>
+    public string EmbeddingsPath { get; set; } = MistralAIProviderDefaults.DefaultEmbeddingsPath;
+
+    /// <summary>
     /// Gets or sets whether a request should prefer the streaming chat
     /// completions operation when the selected model supports streaming.
     /// </summary>

@@ -14,8 +14,7 @@ internal sealed class StubTool: ITool
         "stub",
         "A no-op tool used by dependency-injection registration tests.",
         _inputSchema,
-        ToolEffect.ReadOnly,
-        ExtensionData.Empty);
+        ToolEffect.ReadOnly, ExtensionData.Empty);
 
     public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,

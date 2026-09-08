@@ -67,6 +67,8 @@ public static class ServiceExtensions
             services.TryAddSingleton<IGoogleGeminiContentTranslator, GoogleGeminiContentTranslator>();
             services.TryAddSingleton<IIdentifierGenerator<ToolCallId>, DefaultToolCallIdGenerator>();
             services.TryAddSingleton<IGoogleGeminiResponseParser, GoogleGeminiResponseParser>();
+            services.TryAddSingleton<IGoogleVertexAIEmbeddingRequestTranslator, GoogleVertexAIEmbeddingRequestTranslator>();
+            services.TryAddSingleton<IGoogleVertexAIEmbeddingResponseParser, GoogleVertexAIEmbeddingResponseParser>();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton(_ => new HttpClient());
 
@@ -166,6 +168,79 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IGoogleGeminiContentTranslator>(),
                     provider.GetRequiredService<IGoogleGeminiResponseParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleVertexAIProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>());
+            });
+
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one Vertex AI text-embedding model as an additional
+        /// <see cref="IEmbeddingModel"/> implementation.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">
+        /// Vertex's own embedding model identifier, such as
+        /// <c>"text-embedding-005"</c> or <c>"gemini-embedding-001"</c>.
+        /// </param>
+        /// <param name="deploymentId">
+        /// When set, the ID of a deployed/custom Vertex AI endpoint to call
+        /// instead of the shared publisher-model resource.
+        /// </param>
+        /// <param name="capabilities">
+        /// The model's capabilities, or <see langword="null"/> to use
+        /// <see cref="GoogleVertexAIProviderDefaults.DefaultEmbeddingCapabilities"/>.
+        /// </param>
+        /// <param name="limits">
+        /// The model's input/output limits, or <see langword="null"/> to use
+        /// <see cref="GoogleVertexAIProviderDefaults.DefaultEmbeddingLimits"/>.
+        /// A caller registering <c>gemini-embedding-001</c> should supply
+        /// <c>maxInputsPerRequest: 1</c>, since that model accepts only a
+        /// single input per request unlike Vertex's other embedding
+        /// models.
+        /// </param>
+        /// <returns>
+        /// The same <paramref name="services"/> instance, so calls can be
+        /// chained with other registration methods.
+        /// </returns>
+        /// <remarks>
+        /// This registration is additive: calling it more than once with a
+        /// distinct <paramref name="alias"/> registers additional models
+        /// alongside one another, resolvable together as
+        /// <c>IEnumerable&lt;IEmbeddingModel&gt;</c>.
+        /// <see cref="AddGoogleVertexAI"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddGoogleVertexAIEmbeddingModel(
+            EmbeddingModelAlias alias,
+            ModelId modelId,
+            DeploymentId? deploymentId = null,
+            EmbeddingCapabilities? capabilities = null,
+            EmbeddingLimits? limits = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            _ = services.AddSingleton<IEmbeddingModel>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<GoogleVertexAIProviderOptions>>().Value;
+
+                var descriptor = new EmbeddingModelDescriptor(
+                    alias,
+                    GoogleVertexAIProviderDefaults.ProviderId,
+                    GoogleVertexAIProviderDefaults.EmbeddingApiFamily,
+                    modelId,
+                    deploymentId,
+                    capabilities ?? GoogleVertexAIProviderDefaults.DefaultEmbeddingCapabilities,
+                    limits ?? GoogleVertexAIProviderDefaults.DefaultEmbeddingLimits,
+                    pricing: null,
+                    ExtensionData.Empty);
+
+                return new GoogleVertexAIEmbeddingModel(
+                    descriptor,
+                    options,
+                    provider.GetRequiredService<IGoogleVertexAIEmbeddingRequestTranslator>(),
+                    provider.GetRequiredService<IGoogleVertexAIEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleVertexAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<TimeProvider>());

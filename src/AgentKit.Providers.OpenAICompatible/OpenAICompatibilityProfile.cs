@@ -57,6 +57,12 @@ public sealed record OpenAICompatibilityProfile
     /// existing chat-only caller of this constructor keeps compiling
     /// unchanged.
     /// </param>
+    /// <param name="supportsEmbeddingPurpose">
+    /// Whether the embeddings endpoint accepts an <c>input_type</c> field
+    /// carrying a portable <see cref="EmbeddingPurpose"/> (as OpenRouter
+    /// does), rather than having no purpose/task-type parameter at all (as
+    /// plain OpenAI does).
+    /// </param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="baseAddress"/>, <paramref name="chatCompletionsPath"/>,
     /// or <paramref name="defaultRequestHeaders"/> is null.
@@ -76,7 +82,8 @@ public sealed record OpenAICompatibilityProfile
         bool includeStreamUsage,
         bool useMaxCompletionTokensField,
         ImmutableDictionary<string, string> defaultRequestHeaders,
-        string? embeddingsPath = null)
+        string? embeddingsPath = null,
+        bool supportsEmbeddingPurpose = false)
     {
         ArgumentException.ThrowIfNotAbsoluteUri(baseAddress);
         ArgumentException.ThrowIfNotRelativeUriPath(chatCompletionsPath);
@@ -94,6 +101,7 @@ public sealed record OpenAICompatibilityProfile
         UseMaxCompletionTokensField = useMaxCompletionTokensField;
         DefaultRequestHeaders = defaultRequestHeaders;
         EmbeddingsPath = embeddingsPath;
+        SupportsEmbeddingPurpose = supportsEmbeddingPurpose;
     }
 
     /// <summary>Gets the absolute base address of the provider's OpenAI-compatible endpoint.</summary>
@@ -148,4 +156,10 @@ public sealed record OpenAICompatibilityProfile
     /// configured.
     /// </summary>
     public Uri? EmbeddingsUri => EmbeddingsPath is null ? null : new Uri(BaseAddress, EmbeddingsPath);
+
+    /// <summary>
+    /// Gets whether the embeddings endpoint accepts an <c>input_type</c>
+    /// field carrying a portable <see cref="EmbeddingPurpose"/>.
+    /// </summary>
+    public bool SupportsEmbeddingPurpose { get; }
 }

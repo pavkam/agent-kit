@@ -64,6 +64,8 @@ public static class ServiceExtensions
             services.TryAddSingleton<IOpenAIRequestTranslator, OpenAIRequestTranslator>();
             services.TryAddSingleton<IIdentifierGenerator<ToolCallId>, DefaultToolCallIdGenerator>();
             services.TryAddSingleton<IOpenAIStreamParser, OpenAIChatCompletionResponseParser>();
+            services.TryAddSingleton<IOpenAIEmbeddingRequestTranslator, OpenAIEmbeddingRequestTranslator>();
+            services.TryAddSingleton<IOpenAIEmbeddingResponseParser, OpenAIEmbeddingResponseParser>();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton(_ => new HttpClient());
 
@@ -199,6 +201,77 @@ public static class ServiceExtensions
                     profile,
                     provider.GetRequiredService<IOpenAIRequestTranslator>(),
                     provider.GetRequiredService<IOpenAIStreamParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(AzureOpenAIProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>());
+            });
+
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one Azure OpenAI embedding deployment as an additional
+        /// <see cref="IEmbeddingModel"/> implementation.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">
+        /// The underlying OpenAI embedding model identity the deployment
+        /// hosts, such as <c>"text-embedding-3-small"</c>, used for
+        /// AgentKit's own bookkeeping and selection.
+        /// </param>
+        /// <param name="deploymentId">
+        /// The Azure deployment name, sent as the wire <c>model</c> field
+        /// in place of <paramref name="modelId"/>.
+        /// </param>
+        /// <param name="capabilities">
+        /// The model's capabilities, or <see langword="null"/> to use
+        /// <see cref="AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities"/>.
+        /// </param>
+        /// <param name="limits">
+        /// The model's input/output limits, or <see langword="null"/> to use
+        /// <see cref="AzureOpenAIProviderDefaults.DefaultEmbeddingLimits"/>.
+        /// </param>
+        /// <returns>
+        /// The same <paramref name="services"/> instance, so calls can be
+        /// chained with other registration methods.
+        /// </returns>
+        /// <remarks>
+        /// This registration is additive: calling it more than once with a
+        /// distinct <paramref name="alias"/> registers additional
+        /// deployments alongside one another, resolvable together as
+        /// <c>IEnumerable&lt;IEmbeddingModel&gt;</c>.
+        /// <see cref="AddAzureOpenAI"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddAzureOpenAIEmbeddingModel(
+            EmbeddingModelAlias alias,
+            ModelId modelId,
+            DeploymentId deploymentId,
+            EmbeddingCapabilities? capabilities = null,
+            EmbeddingLimits? limits = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            _ = services.AddSingleton<IEmbeddingModel>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<AzureOpenAIProviderOptions>>().Value;
+                var profile = AzureOpenAIProviderDefaults.CreateProfile(options);
+
+                var descriptor = new EmbeddingModelDescriptor(
+                    alias,
+                    AzureOpenAIProviderDefaults.ProviderId,
+                    AzureOpenAIProviderDefaults.EmbeddingApiFamily,
+                    modelId,
+                    deploymentId,
+                    capabilities ?? AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities,
+                    limits ?? AzureOpenAIProviderDefaults.DefaultEmbeddingLimits,
+                    pricing: null,
+                    ExtensionData.Empty);
+
+                return new AzureOpenAIEmbeddingModel(
+                    descriptor,
+                    profile,
+                    provider.GetRequiredService<IOpenAIEmbeddingRequestTranslator>(),
+                    provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(AzureOpenAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<TimeProvider>());

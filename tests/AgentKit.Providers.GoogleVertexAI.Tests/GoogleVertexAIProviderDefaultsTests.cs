@@ -70,10 +70,46 @@ public sealed class GoogleVertexAIProviderDefaultsTests
     }
 
     [Fact]
+    public void BuildPredictUri_WhenNoDeployment_UsesPublisherModelResource()
+    {
+        var options = CreateOptions();
+
+        var uri = GoogleVertexAIProviderDefaults.BuildPredictUri(options, new ModelId("text-embedding-005"), deploymentId: null);
+
+        uri.ShouldBe(new Uri(
+            "https://us-central1-aiplatform.googleapis.com/v1/projects/my-project/locations/us-central1/" +
+            "publishers/google/models/text-embedding-005:predict"));
+    }
+
+    [Fact]
+    public void BuildPredictUri_WhenDeploymentIdSupplied_UsesEndpointResourceInstead()
+    {
+        var options = CreateOptions();
+
+        var uri = GoogleVertexAIProviderDefaults.BuildPredictUri(options, new ModelId("text-embedding-005"), new DeploymentId("my-endpoint"));
+
+        uri.ShouldBe(new Uri(
+            "https://us-central1-aiplatform.googleapis.com/v1/projects/my-project/locations/us-central1/" +
+            "endpoints/my-endpoint:predict"));
+    }
+
+    [Fact]
     public void ProviderId_IsStableGoogleVertexAIIdentity() =>
         GoogleVertexAIProviderDefaults.ProviderId.ShouldBe(new ProviderId("google-vertex-ai"));
 
     [Fact]
+    public void EmbeddingApiFamily_IsStableGoogleVertexAIPredictEmbeddingIdentity() =>
+        GoogleVertexAIProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("google-vertex-ai-predict-embedding"));
+
+    [Fact]
     public void DefaultCapabilities_MatchesGeminiDefaults() =>
         GoogleVertexAIProviderDefaults.DefaultCapabilities.ShouldBe(GoogleGeminiProviderDefaults.DefaultCapabilities);
+
+    [Fact]
+    public void DefaultEmbeddingCapabilities_SupportsPurposeAndDimensionsButNotEncodingSelection()
+    {
+        GoogleVertexAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsPurpose.ShouldBeTrue();
+        GoogleVertexAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsDimensions.ShouldBeTrue();
+        GoogleVertexAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsEncodingSelection.ShouldBeFalse();
+    }
 }

@@ -105,6 +105,36 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
+    [Fact]
+    public void AddGoogleGeminiEmbeddingModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddGoogleGemini();
+        _ = services.AddGoogleGeminiApiKeyCredential("AIza-test-key");
+        _ = services.AddGoogleGeminiEmbeddingModel(new EmbeddingModelAlias("small"), new ModelId("text-embedding-004"));
+        _ = services.AddGoogleGeminiEmbeddingModel(new EmbeddingModelAlias("large"), new ModelId("gemini-embedding-001"));
+
+        using var provider = services.BuildServiceProvider();
+        var models = provider.GetServices<IEmbeddingModel>().ToArray();
+
+        models.Length.ShouldBe(2);
+        models.Select(m => m.Alias.Value).ShouldBe(["small", "large"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void AddGoogleGeminiEmbeddingModel_WhenResolved_UsesGoogleGeminiEmbeddingModelType()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddGoogleGemini();
+        _ = services.AddGoogleGeminiApiKeyCredential("AIza-test-key");
+        _ = services.AddGoogleGeminiEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("text-embedding-004"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<GoogleGeminiEmbeddingModel>();
+
+        model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

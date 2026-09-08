@@ -102,6 +102,5 @@ public sealed class MessageHierarchyEqualityTests
         ResponseIdentity(),
         NormalizedStopReason.Completed,
         null,
-        ModelUsage.Empty,
-        ExtensionData.Empty);
+        ModelUsage.Empty, ExtensionData.Empty);
 }

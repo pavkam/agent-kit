@@ -133,6 +133,36 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
+    [Fact]
+    public void AddXAIEmbeddingModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddXAI();
+        _ = services.AddXAIApiKeyCredential("test-key");
+        _ = services.AddXAIEmbeddingModel(new EmbeddingModelAlias("primary"), new ModelId("xai-embed-1"));
+        _ = services.AddXAIEmbeddingModel(new EmbeddingModelAlias("secondary"), new ModelId("xai-embed-2"));
+
+        using var provider = services.BuildServiceProvider();
+        var models = provider.GetServices<IEmbeddingModel>().ToArray();
+
+        models.Length.ShouldBe(2);
+        models.Select(m => m.Alias.Value).ShouldBe(["primary", "secondary"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void AddXAIEmbeddingModel_WhenResolved_UsesXAIEmbeddingModelType()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddXAI();
+        _ = services.AddXAIApiKeyCredential("test-key");
+        _ = services.AddXAIEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("xai-embed-1"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<XAIEmbeddingModel>();
+
+        model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

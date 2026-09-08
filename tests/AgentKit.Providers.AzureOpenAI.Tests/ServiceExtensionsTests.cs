@@ -107,6 +107,39 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
+    [Fact]
+    public void AddAzureOpenAIEmbeddingModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAzureOpenAI(options => options.ResourceEndpoint = ResourceEndpoint);
+        _ = services.AddAzureOpenAIApiKeyCredential("azure-resource-key");
+        _ = services.AddAzureOpenAIEmbeddingModel(
+            new EmbeddingModelAlias("small"), new ModelId("text-embedding-3-small"), new DeploymentId("small-deployment"));
+        _ = services.AddAzureOpenAIEmbeddingModel(
+            new EmbeddingModelAlias("large"), new ModelId("text-embedding-3-large"), new DeploymentId("large-deployment"));
+
+        using var provider = services.BuildServiceProvider();
+        var models = provider.GetServices<IEmbeddingModel>().ToArray();
+
+        models.Length.ShouldBe(2);
+        models.Select(m => m.Alias.Value).ShouldBe(["small", "large"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void AddAzureOpenAIEmbeddingModel_WhenResolved_UsesAzureOpenAIEmbeddingModelType()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAzureOpenAI(options => options.ResourceEndpoint = ResourceEndpoint);
+        _ = services.AddAzureOpenAIApiKeyCredential("azure-resource-key");
+        _ = services.AddAzureOpenAIEmbeddingModel(
+            new EmbeddingModelAlias("embed"), new ModelId("text-embedding-3-small"), new DeploymentId("prod-embed"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<AzureOpenAIEmbeddingModel>();
+
+        model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

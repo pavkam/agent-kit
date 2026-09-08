@@ -12,8 +12,9 @@ using AgentKit.Providers.OpenAICompatible;
 /// <remarks>
 /// This package covers only Ollama's OpenAI compatibility Chat
 /// Completions endpoint (<c>POST /v1/chat/completions</c> on the local
-/// or cloud OpenAI-compatible base). Ollama's native
-/// <c>/api/chat</c>, <c>/api/generate</c>, and <c>/api/embed</c>
+/// or cloud OpenAI-compatible base) and its corresponding OpenAI
+/// compatibility embeddings alias (<c>POST /v1/embeddings</c>). Ollama's
+/// native <c>/api/chat</c>, <c>/api/generate</c>, and <c>/api/embed</c>
 /// endpoints, its Anthropic Messages compatibility surface, and its
 /// model-management endpoints (pull/push/create/copy/delete) are
 /// separate contracts not covered by this package.
@@ -26,11 +27,17 @@ public static class OllamaProviderDefaults
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Ollama's Chat Completions wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("ollama-openai-compatible");
 
+    /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Ollama's OpenAI-compatible embeddings wire format.</summary>
+    public static ApiFamilyId EmbeddingApiFamily { get; } = new("ollama-openai-compatible-embeddings");
+
     /// <summary>Gets Ollama's REST API base address.</summary>
     public static Uri DefaultBaseAddress { get; } = new("http://localhost:11434/v1/");
 
     /// <summary>Gets the default chat completions operation path.</summary>
     public const string DefaultChatCompletionsPath = "chat/completions";
+
+    /// <summary>Gets the default embeddings operation path.</summary>
+    public const string DefaultEmbeddingsPath = "embeddings";
 
     /// <summary>
     /// Gets the default capability set applied to a registered Ollama
@@ -63,6 +70,33 @@ public static class OllamaProviderDefaults
     public static ModelLimits DefaultLimits { get; } = new(maxContextTokens: null, maxOutputTokens: null);
 
     /// <summary>
+    /// Gets the default capability set applied to a registered Ollama
+    /// embedding model unless the caller supplies its own.
+    /// </summary>
+    /// <remarks>
+    /// Ollama's OpenAI-compatible embeddings alias accepts a
+    /// caller-selectable <c>dimensions</c> value and batched text input,
+    /// but has no task-type/purpose parameter. A caller registering a
+    /// model with materially different capabilities supplies its own
+    /// <see cref="EmbeddingCapabilities"/> rather than relying on this
+    /// shared default.
+    /// </remarks>
+    public static EmbeddingCapabilities DefaultEmbeddingCapabilities { get; } = new(
+        supportsBatchInput: true,
+        supportsDimensions: true,
+        supportsPurpose: false,
+        supportsEncodingSelection: true,
+        supportsTruncationControl: false,
+        ExtensionData.Empty);
+
+    /// <summary>
+    /// Gets the default, unbounded embedding limits applied to a registered
+    /// Ollama embedding model unless the caller supplies its own.
+    /// </summary>
+    public static EmbeddingLimits DefaultEmbeddingLimits { get; } =
+        new(maxInputsPerRequest: null, maxInputTokensPerInput: null, defaultDimensions: null, maxDimensions: null);
+
+    /// <summary>
     /// Creates the <see cref="OpenAICompatibilityProfile"/> for the current
     /// <paramref name="options"/>.
     /// </summary>
@@ -80,6 +114,7 @@ public static class OllamaProviderDefaults
             preferStreaming: options.PreferStreaming,
             includeStreamUsage: options.IncludeStreamUsage,
             useMaxCompletionTokensField: false,
-            []);
+            [],
+            embeddingsPath: options.EmbeddingsPath);
     }
 }

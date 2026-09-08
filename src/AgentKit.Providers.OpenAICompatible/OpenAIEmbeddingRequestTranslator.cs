@@ -3,17 +3,22 @@
 
 namespace AgentKit.Providers.OpenAICompatible;
 
+using System.Diagnostics;
+
 /// <summary>
 /// The default <see cref="IOpenAIEmbeddingRequestTranslator"/>, covering the
-/// text input, dimensions, and encoding options supported by the
-/// OpenAI-compatible <c>POST /embeddings</c> wire format.
+/// text input, dimensions, encoding, and (where the endpoint supports it)
+/// purpose options of the OpenAI-compatible <c>POST /embeddings</c> wire
+/// format.
 /// </summary>
 /// <remarks>
-/// The OpenAI-compatible embeddings dialect has no purpose/task-type
-/// parameter and no explicit truncation-policy control, unlike Cohere's or
-/// Google's embedding APIs; a request that asks for a specific
-/// <see cref="EmbeddingPurpose"/> other than <see cref="EmbeddingPurpose.Unspecified"/>
-/// or a <see cref="EmbeddingTruncation"/> other than
+/// Plain OpenAI's embeddings dialect has no purpose/task-type parameter,
+/// while OpenRouter's compatible dialect accepts one as <c>input_type</c>;
+/// <see cref="OpenAICompatibilityProfile.SupportsEmbeddingPurpose"/>
+/// selects which behavior this translator applies for a given endpoint. No
+/// OpenAI-compatible dialect this repository targets exposes an explicit
+/// truncation-policy control; a request that asks for a
+/// <see cref="EmbeddingTruncation"/> other than
 /// <see cref="EmbeddingTruncation.ProviderDefault"/> is rejected rather than
 /// silently ignored, per this repository's semantic-operation adapter
 /// rules.
@@ -29,11 +34,11 @@ public sealed class OpenAIEmbeddingRequestTranslator: IOpenAIEmbeddingRequestTra
         var context = request.Context;
         var embeddingRequest = context.Request;
 
-        if (embeddingRequest.Purpose != EmbeddingPurpose.Unspecified)
+        if (embeddingRequest.Purpose != EmbeddingPurpose.Unspecified && !profile.SupportsEmbeddingPurpose)
         {
             throw new NotSupportedException(
-                "The OpenAI-compatible embeddings API has no task-type/purpose parameter; a purpose other " +
-                "than Unspecified is not supported by this translator.");
+                "This OpenAI-compatible embeddings endpoint has no task-type/purpose parameter; a purpose " +
+                "other than Unspecified is not supported by this translator.");
         }
 
         if (embeddingRequest.Truncation != EmbeddingTruncation.ProviderDefault)
@@ -57,6 +62,11 @@ public sealed class OpenAIEmbeddingRequestTranslator: IOpenAIEmbeddingRequestTra
         if (embeddingRequest.Encoding is { } encoding)
         {
             body["encoding_format"] = TranslateEncoding(encoding);
+        }
+
+        if (embeddingRequest.Purpose != EmbeddingPurpose.Unspecified)
+        {
+            body["input_type"] = TranslatePurpose(embeddingRequest.Purpose);
         }
 
         ApplyExtensions(body, embeddingRequest.Extensions);
@@ -94,6 +104,24 @@ public sealed class OpenAIEmbeddingRequestTranslator: IOpenAIEmbeddingRequestTra
                     "API, which only returns floating-point or base64-encoded floating-point vectors."),
             _ => throw new NotSupportedException(
                 $"Embedding encoding '{encoding}' is not supported by the OpenAI-compatible embeddings " +
+                "request translator."),
+        };
+
+    private static string TranslatePurpose(EmbeddingPurpose purpose) =>
+        purpose switch
+        {
+            EmbeddingPurpose.Query => "search_query",
+            EmbeddingPurpose.Document => "search_document",
+            EmbeddingPurpose.Classification => "classification",
+            EmbeddingPurpose.Clustering => "clustering",
+            EmbeddingPurpose.Unspecified =>
+                throw new UnreachableException("The caller must not translate an Unspecified purpose."),
+            EmbeddingPurpose.Similarity or EmbeddingPurpose.QuestionAnswering or EmbeddingPurpose.CodeRetrieval =>
+                throw new NotSupportedException(
+                    $"Embedding purpose '{purpose}' has no known 'input_type' equivalent supported by this " +
+                    "translator."),
+            _ => throw new NotSupportedException(
+                $"Embedding purpose '{purpose}' is not supported by the OpenAI-compatible embeddings " +
                 "request translator."),
         };
 

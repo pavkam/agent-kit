@@ -100,6 +100,36 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
+    [Fact]
+    public void AddGoogleVertexAIEmbeddingModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddGoogleVertexAI(ConfigureOptions);
+        _ = services.AddGoogleVertexAIOAuthCredential<StaticOAuthTokenProviderRegistration>();
+        _ = services.AddGoogleVertexAIEmbeddingModel(new EmbeddingModelAlias("small"), new ModelId("text-embedding-005"));
+        _ = services.AddGoogleVertexAIEmbeddingModel(new EmbeddingModelAlias("gemini"), new ModelId("gemini-embedding-001"));
+
+        using var provider = services.BuildServiceProvider();
+        var models = provider.GetServices<IEmbeddingModel>().ToArray();
+
+        models.Length.ShouldBe(2);
+        models.Select(m => m.Alias.Value).ShouldBe(["small", "gemini"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void AddGoogleVertexAIEmbeddingModel_WhenResolved_UsesGoogleVertexAIEmbeddingModelType()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddGoogleVertexAI(ConfigureOptions);
+        _ = services.AddGoogleVertexAIOAuthCredential<StaticOAuthTokenProviderRegistration>();
+        _ = services.AddGoogleVertexAIEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("text-embedding-005"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<GoogleVertexAIEmbeddingModel>();
+
+        model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

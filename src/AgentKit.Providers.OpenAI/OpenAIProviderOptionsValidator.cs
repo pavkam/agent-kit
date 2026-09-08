@@ -25,6 +25,11 @@ public sealed class OpenAIProviderOptionsValidator: IValidateOptions<OpenAIProvi
                 options.ChatCompletionsPath[0] is '/' or '\\'
             ? ValidateOptionsResult.Fail(
                 $"{nameof(OpenAIProviderOptions.ChatCompletionsPath)} must be a non-rooted relative URI path.")
+            : string.IsNullOrWhiteSpace(options.EmbeddingsPath) ||
+                !Uri.TryCreate(options.EmbeddingsPath, UriKind.Relative, out _) ||
+                options.EmbeddingsPath[0] is '/' or '\\'
+            ? ValidateOptionsResult.Fail(
+                $"{nameof(OpenAIProviderOptions.EmbeddingsPath)} must be a non-rooted relative URI path.")
             : ValidateOptionsResult.Success;
     }
 }

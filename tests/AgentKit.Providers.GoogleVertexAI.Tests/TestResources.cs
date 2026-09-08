@@ -19,6 +19,11 @@ internal static class TestResources
     /// <returns>The absolute path to the fixture file.</returns>
     public static string GetPath(string relativePath) => Path.Combine(ResourcesDirectory, relativePath);
 
+    /// <summary>Reads a fixture file's full text content.</summary>
+    /// <param name="relativePath">The fixture path, relative to the <c>Resources</c> directory.</param>
+    /// <returns>The fixture file's text content.</returns>
+    public static string ReadAllText(string relativePath) => File.ReadAllText(GetPath(relativePath));
+
     private static string ComputeResourcesDirectory([CallerFilePath] string thisFilePath = "") =>
         Path.Combine(Path.GetDirectoryName(thisFilePath)!, "Resources");
 }

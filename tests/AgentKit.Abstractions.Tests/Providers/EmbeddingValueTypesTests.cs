@@ -310,6 +310,5 @@ public sealed class EmbeddingValueTypesTests
         null,
         Capabilities(),
         EmptyLimits(),
-        null,
-        ExtensionData.Empty);
+        null, ExtensionData.Empty);
 }

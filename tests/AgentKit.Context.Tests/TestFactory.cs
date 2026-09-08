@@ -54,8 +54,7 @@ internal static class TestFactory
         DateTimeOffset.UnixEpoch,
         state,
         parts,
-        ResponseMetadata(),
-        ExtensionData.Empty);
+        ResponseMetadata(), ExtensionData.Empty);
 
     public static ToolMessage ToolMessageWithParts(
         ImmutableArray<ContentPart> parts, MessageState state = MessageState.Complete) => new(
@@ -68,15 +67,13 @@ internal static class TestFactory
         null,
         DateTimeOffset.UnixEpoch,
         state,
-        parts,
-        ExtensionData.Empty);
+        parts, ExtensionData.Empty);
 
     public static ToolCallPart ToolCall(ToolCallId callId, string toolName = "search") => new(
         callId,
         new ToolReference(new ToolId(toolName), null, toolName),
         default,
-        null,
-        ExtensionData.Empty);
+        null, ExtensionData.Empty);
 
     public static ToolResultPart ToolResult(ToolCallId callId, string toolName = "search") => new(
         callId,

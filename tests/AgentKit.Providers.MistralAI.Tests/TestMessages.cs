@@ -51,8 +51,7 @@ internal static class TestMessages
             Turn,
             CreatedAt,
             state,
-            [.. parts],
-            ExtensionData.Empty);
+            [.. parts], ExtensionData.Empty);
 
     /// <summary>Builds an <see cref="AssistantMessage"/> containing the given parts.</summary>
     public static AssistantMessage Assistant(params ContentPart[] parts) =>
@@ -96,6 +95,5 @@ internal static class TestMessages
             Turn,
             CreatedAt,
             MessageState.Complete,
-            [.. parts],
-            ExtensionData.Empty);
+            [.. parts], ExtensionData.Empty);
 }

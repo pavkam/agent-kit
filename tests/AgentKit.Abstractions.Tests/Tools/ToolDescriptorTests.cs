@@ -80,6 +80,5 @@ public sealed class ToolDescriptorTests
             name!,
             description!,
             schema is null ? default : JsonDocument.Parse(schema).RootElement,
-            ToolEffect.ReadOnly,
-            ExtensionData.Empty);
+            ToolEffect.ReadOnly, ExtensionData.Empty);
 }

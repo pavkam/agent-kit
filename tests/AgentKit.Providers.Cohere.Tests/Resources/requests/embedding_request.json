@@ -1,0 +1,7 @@
+{
+  "model": "embed-v4.0",
+  "texts": ["hello world"],
+  "input_type": "search_document",
+  "embedding_types": ["float"],
+  "output_dimension": 512
+}

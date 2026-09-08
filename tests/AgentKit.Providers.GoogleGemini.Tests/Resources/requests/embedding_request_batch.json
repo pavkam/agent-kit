@@ -1,0 +1,12 @@
+{
+  "requests": [
+    {
+      "model": "models/text-embedding-004",
+      "content": { "parts": [{ "text": "first" }] }
+    },
+    {
+      "model": "models/text-embedding-004",
+      "content": { "parts": [{ "text": "second" }] }
+    }
+  ]
+}

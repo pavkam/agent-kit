@@ -23,11 +23,17 @@ public static class CohereProviderDefaults
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Cohere's v2 Chat wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("cohere-chat-v2");
 
+    /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Cohere's v2 Embed wire format.</summary>
+    public static ApiFamilyId EmbeddingApiFamily { get; } = new("cohere-embed-v2");
+
     /// <summary>Gets the Cohere API's base address.</summary>
     public static Uri DefaultBaseAddress { get; } = new("https://api.cohere.com/");
 
     /// <summary>Gets the default path, relative to <see cref="DefaultBaseAddress"/>, of the chat operation.</summary>
     public const string DefaultChatPath = "v2/chat";
+
+    /// <summary>Gets the default path, relative to <see cref="DefaultBaseAddress"/>, of the embed operation.</summary>
+    public const string DefaultEmbedPath = "v2/embed";
 
     /// <summary>
     /// Gets the default capability set applied to a registered Cohere chat
@@ -62,6 +68,44 @@ public static class CohereProviderDefaults
     /// </summary>
     public static ModelLimits DefaultLimits { get; } = new(maxContextTokens: null, maxOutputTokens: null);
 
+    /// <summary>
+    /// Gets the default capability set applied to a registered Cohere
+    /// embedding model unless the caller supplies its own.
+    /// </summary>
+    /// <remarks>
+    /// The v2 embed endpoint accepts a batch of texts per call, an
+    /// optional <c>output_dimension</c> for Matryoshka-capable models, a
+    /// required <c>input_type</c> (so <see cref="EmbeddingCapabilities.SupportsPurpose"/>
+    /// is <see langword="true"/>), a selectable <c>embedding_types</c>
+    /// encoding, and a <c>truncate</c> policy supporting all four portable
+    /// truncation values. A caller registering a model with materially
+    /// different capabilities supplies its own <see cref="EmbeddingCapabilities"/>
+    /// rather than relying on this shared default.
+    /// </remarks>
+    public static EmbeddingCapabilities DefaultEmbeddingCapabilities { get; } = new(
+        supportsBatchInput: true,
+        supportsDimensions: true,
+        supportsPurpose: true,
+        supportsEncodingSelection: true,
+        supportsTruncationControl: true,
+        ExtensionData.Empty);
+
+    /// <summary>
+    /// Gets the default embedding limits applied to a registered Cohere
+    /// embedding model unless the caller supplies its own.
+    /// </summary>
+    /// <remarks>
+    /// Cohere's documented v2 embed limit is up to 96 text inputs per
+    /// request; per-input token and dimension limits are model-specific
+    /// and not asserted here, so those fields remain unknown rather than
+    /// unlimited.
+    /// </remarks>
+    public static EmbeddingLimits DefaultEmbeddingLimits { get; } = new(
+        maxInputsPerRequest: 96,
+        maxInputTokensPerInput: null,
+        defaultDimensions: null,
+        maxDimensions: null);
+
     /// <summary>Builds the absolute chat operation URI for the given options.</summary>
     /// <param name="options">The validated Cohere provider options.</param>
     /// <returns>The absolute URI of the chat operation.</returns>
@@ -71,5 +115,16 @@ public static class CohereProviderDefaults
         ArgumentNullException.ThrowIfNull(options);
 
         return new Uri(options.BaseAddress, options.ChatPath);
+    }
+
+    /// <summary>Builds the absolute embed operation URI for the given options.</summary>
+    /// <param name="options">The validated Cohere provider options.</param>
+    /// <returns>The absolute URI of the embed operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public static Uri BuildEmbedUri(CohereProviderOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return new Uri(options.BaseAddress, options.EmbedPath);
     }
 }

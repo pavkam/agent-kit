@@ -21,6 +21,17 @@ public sealed class OpenAIEmbeddingRequestTranslatorTests
         [],
         embeddingsPath: "v1/embeddings");
 
+    private static readonly OpenAICompatibilityProfile ProfileWithPurposeSupport = new(
+        Profile.BaseAddress,
+        Profile.ChatCompletionsPath,
+        Profile.SendDeveloperRoleAsSystem,
+        Profile.PreferStreaming,
+        Profile.IncludeStreamUsage,
+        Profile.UseMaxCompletionTokensField,
+        Profile.DefaultRequestHeaders,
+        Profile.EmbeddingsPath,
+        supportsEmbeddingPurpose: true);
+
     private static EmbeddingModelRequest CreateRequest(EmbeddingRequest embeddingRequest) =>
         new(
             new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), TestModels.TextEmbedding3Small, embeddingRequest),
@@ -75,6 +86,75 @@ public sealed class OpenAIEmbeddingRequestTranslatorTests
 
         _ = Should.Throw<NotSupportedException>(
             () => new OpenAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest), Profile));
+    }
+
+    [Theory]
+    [InlineData(EmbeddingPurpose.Query, "search_query")]
+    [InlineData(EmbeddingPurpose.Document, "search_document")]
+    [InlineData(EmbeddingPurpose.Classification, "classification")]
+    [InlineData(EmbeddingPurpose.Clustering, "clustering")]
+    public void Translate_WhenProfileSupportsPurposeAndPurposeIsMapped_SerializesInputType(EmbeddingPurpose purpose, string expected)
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)],
+            purpose,
+            null,
+            null,
+            EmbeddingTruncation.ProviderDefault,
+            ExtensionData.Empty);
+
+        var body = new OpenAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest), ProfileWithPurposeSupport);
+
+        body["input_type"]!.GetValue<string>().ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Translate_WhenProfileDoesNotSupportPurpose_ThrowsNotSupportedException()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)],
+            EmbeddingPurpose.Document,
+            null,
+            null,
+            EmbeddingTruncation.ProviderDefault,
+            ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(
+            () => new OpenAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest), Profile));
+    }
+
+    [Fact]
+    public void Translate_WhenProfileSupportsPurposeButUnspecified_OmitsInputType()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)],
+            EmbeddingPurpose.Unspecified,
+            null,
+            null,
+            EmbeddingTruncation.ProviderDefault,
+            ExtensionData.Empty);
+
+        var body = new OpenAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest), ProfileWithPurposeSupport);
+
+        body.AsObject().ContainsKey("input_type").ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(EmbeddingPurpose.Similarity)]
+    [InlineData(EmbeddingPurpose.QuestionAnswering)]
+    [InlineData(EmbeddingPurpose.CodeRetrieval)]
+    public void Translate_WhenProfileSupportsPurposeButPurposeIsUnmapped_ThrowsNotSupportedException(EmbeddingPurpose purpose)
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)],
+            purpose,
+            null,
+            null,
+            EmbeddingTruncation.ProviderDefault,
+            ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(
+            () => new OpenAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest), ProfileWithPurposeSupport));
     }
 
     [Fact]

@@ -197,5 +197,69 @@ public static class ServiceExtensions
 
             return services;
         }
+
+        /// <summary>
+        /// Registers one named, OpenRouter-routed embedding model as an
+        /// additional <see cref="IEmbeddingModel"/> implementation.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">
+        /// OpenRouter's embedding model slug, such as
+        /// <c>"openai/text-embedding-3-small"</c>.
+        /// </param>
+        /// <param name="capabilities">
+        /// The model's capabilities, or <see langword="null"/> to use
+        /// <see cref="OpenRouterProviderDefaults.DefaultEmbeddingCapabilities"/>.
+        /// </param>
+        /// <param name="limits">
+        /// The model's input/output limits, or <see langword="null"/> to use
+        /// <see cref="OpenRouterProviderDefaults.DefaultEmbeddingLimits"/>.
+        /// </param>
+        /// <returns>
+        /// The same <paramref name="services"/> instance, so calls can be
+        /// chained with other registration methods.
+        /// </returns>
+        /// <remarks>
+        /// This registration is additive: calling it more than once with a
+        /// distinct <paramref name="alias"/> registers additional models
+        /// alongside one another, resolvable together as
+        /// <c>IEnumerable&lt;IEmbeddingModel&gt;</c>.
+        /// <see cref="AddOpenRouter"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddOpenRouterEmbeddingModel(
+            EmbeddingModelAlias alias,
+            ModelId modelId,
+            EmbeddingCapabilities? capabilities = null,
+            EmbeddingLimits? limits = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            _ = services.AddSingleton<IEmbeddingModel>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<OpenRouterProviderOptions>>().Value;
+
+                var descriptor = new EmbeddingModelDescriptor(
+                    alias,
+                    OpenRouterProviderDefaults.ProviderId,
+                    OpenRouterProviderDefaults.EmbeddingApiFamily,
+                    modelId,
+                    deploymentId: null,
+                    capabilities ?? OpenRouterProviderDefaults.DefaultEmbeddingCapabilities,
+                    limits ?? OpenRouterProviderDefaults.DefaultEmbeddingLimits,
+                    pricing: null,
+                    ExtensionData.Empty);
+
+                return new OpenRouterEmbeddingModel(
+                    descriptor,
+                    OpenRouterProviderDefaults.CreateProfile(options),
+                    provider.GetRequiredService<IOpenAIEmbeddingRequestTranslator>(),
+                    provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>());
+            });
+
+            return services;
+        }
     }
 }

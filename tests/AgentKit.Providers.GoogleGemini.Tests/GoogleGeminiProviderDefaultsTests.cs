@@ -40,8 +40,22 @@ public sealed class GoogleGeminiProviderDefaultsTests
     }
 
     [Fact]
+    public void BuildBatchEmbedContentsUri_WhenGivenOptions_BuildsBatchEmbedContentsOperationUri()
+    {
+        var options = new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://example.test/") };
+
+        var uri = GoogleGeminiProviderDefaults.BuildBatchEmbedContentsUri(options, new ModelId("text-embedding-004"));
+
+        uri.ShouldBe(new Uri("https://example.test/v1beta/models/text-embedding-004:batchEmbedContents"));
+    }
+
+    [Fact]
     public void ProviderId_IsStableGoogleGeminiIdentity() =>
         GoogleGeminiProviderDefaults.ProviderId.ShouldBe(new ProviderId("google-gemini"));
+
+    [Fact]
+    public void EmbeddingApiFamily_IsStableGoogleGeminiEmbeddingsIdentity() =>
+        GoogleGeminiProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("google-gemini-embed-content"));
 
     [Fact]
     public void DefaultCapabilities_SupportsReasoningButNotVisionOrStructuredOutput()
@@ -50,5 +64,14 @@ public sealed class GoogleGeminiProviderDefaultsTests
         GoogleGeminiProviderDefaults.DefaultCapabilities.SupportsVisionInput.ShouldBeFalse();
         GoogleGeminiProviderDefaults.DefaultCapabilities.SupportsStructuredOutput.ShouldBeFalse();
         GoogleGeminiProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void DefaultEmbeddingCapabilities_SupportsPurposeAndTruncationControlButNotEncodingSelection()
+    {
+        GoogleGeminiProviderDefaults.DefaultEmbeddingCapabilities.SupportsPurpose.ShouldBeTrue();
+        GoogleGeminiProviderDefaults.DefaultEmbeddingCapabilities.SupportsTruncationControl.ShouldBeTrue();
+        GoogleGeminiProviderDefaults.DefaultEmbeddingCapabilities.SupportsEncodingSelection.ShouldBeFalse();
+        GoogleGeminiProviderDefaults.DefaultEmbeddingCapabilities.SupportsDimensions.ShouldBeTrue();
     }
 }

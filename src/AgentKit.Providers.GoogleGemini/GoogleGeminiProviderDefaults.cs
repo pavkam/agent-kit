@@ -8,15 +8,15 @@ namespace AgentKit.Providers.GoogleGemini;
 /// Gemini Developer API integration.
 /// </summary>
 /// <remarks>
-/// This package covers only the API-key based Gemini Developer API's
+/// This package covers the API-key based Gemini Developer API's
 /// <c>GenerateContent</c>/<c>StreamGenerateContent</c> operations
 /// (<c>POST /v1beta/models/{model}:generateContent</c> and
-/// <c>:streamGenerateContent?alt=sse</c>). The newer, server-stateful
-/// Interactions API, embeddings, Live WebSocket, Files, cached content, and
-/// batch generation are separate contracts not covered by this package.
-/// Google Vertex AI hosts many of the same models under Google Cloud IAM
-/// with different resource names and is a separate provider integration,
-/// not this package.
+/// <c>:streamGenerateContent?alt=sse</c>) and its <c>batchEmbedContents</c>
+/// embeddings operation. The newer, server-stateful Interactions API, Live
+/// WebSocket, Files, cached content, and batch generation are separate
+/// contracts not covered by this package. Google Vertex AI hosts many of
+/// the same models under Google Cloud IAM with different resource names
+/// and is a separate provider integration, not this package.
 /// </remarks>
 public static class GoogleGeminiProviderDefaults
 {
@@ -25,6 +25,9 @@ public static class GoogleGeminiProviderDefaults
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Gemini's GenerateContent wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("google-gemini-generate-content");
+
+    /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Gemini's embeddings wire format.</summary>
+    public static ApiFamilyId EmbeddingApiFamily { get; } = new("google-gemini-embed-content");
 
     /// <summary>Gets the Gemini Developer API's base address.</summary>
     public static Uri DefaultBaseAddress { get; } = new("https://generativelanguage.googleapis.com/");
@@ -65,6 +68,31 @@ public static class GoogleGeminiProviderDefaults
     public static ModelLimits DefaultLimits { get; } = new(maxContextTokens: null, maxOutputTokens: null);
 
     /// <summary>
+    /// Gets the default capability set applied to a registered Gemini
+    /// embedding model unless the caller supplies its own.
+    /// </summary>
+    /// <remarks>
+    /// This package's embedding translator round-trips Gemini's full
+    /// <c>taskType</c> vocabulary and supports requesting a reduced
+    /// <c>outputDimensionality</c>, but the embeddings API always returns
+    /// floating-point vectors, so encoding selection is not meaningful.
+    /// </remarks>
+    public static EmbeddingCapabilities DefaultEmbeddingCapabilities { get; } = new(
+        supportsBatchInput: true,
+        supportsDimensions: true,
+        supportsPurpose: true,
+        supportsEncodingSelection: false,
+        supportsTruncationControl: true,
+        ExtensionData.Empty);
+
+    /// <summary>
+    /// Gets the default, unbounded embedding limits applied to a registered
+    /// Gemini embedding model unless the caller supplies its own.
+    /// </summary>
+    public static EmbeddingLimits DefaultEmbeddingLimits { get; } =
+        new(maxInputsPerRequest: null, maxInputTokensPerInput: null, defaultDimensions: null, maxDimensions: null);
+
+    /// <summary>
     /// Builds the absolute <c>generateContent</c> or
     /// <c>streamGenerateContent</c> operation URI for the given model and
     /// streaming preference.
@@ -83,5 +111,21 @@ public static class GoogleGeminiProviderDefaults
         var uri = new Uri(options.BaseAddress, path);
 
         return useStreaming ? new Uri($"{uri}?alt=sse") : uri;
+    }
+
+    /// <summary>
+    /// Builds the absolute <c>batchEmbedContents</c> operation URI for the
+    /// given model.
+    /// </summary>
+    /// <param name="options">The validated Gemini provider options.</param>
+    /// <param name="modelId">The model identifier to embed in the operation path.</param>
+    /// <returns>The absolute URI of the batchEmbedContents operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public static Uri BuildBatchEmbedContentsUri(GoogleGeminiProviderOptions options, ModelId modelId)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var path = $"{options.ApiVersion}/models/{modelId.Value}:batchEmbedContents";
+        return new Uri(options.BaseAddress, path);
     }
 }

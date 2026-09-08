@@ -30,9 +30,14 @@ public sealed class OllamaProviderDefaultsTests
         profile.UseMaxCompletionTokensField.ShouldBeFalse();
         profile.SendDeveloperRoleAsSystem.ShouldBeTrue();
         profile.ChatCompletionsUri.ShouldBe(new Uri("https://example.test/v2/chat"));
+        profile.EmbeddingsUri.ShouldBe(new Uri("https://example.test/embeddings"));
     }
 
     [Fact]
     public void ProviderId_IsStableOllamaIdentity() =>
         OllamaProviderDefaults.ProviderId.ShouldBe(new ProviderId("ollama"));
+
+    [Fact]
+    public void EmbeddingApiFamily_IsStableOllamaEmbeddingsIdentity() =>
+        OllamaProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("ollama-openai-compatible-embeddings"));
 }

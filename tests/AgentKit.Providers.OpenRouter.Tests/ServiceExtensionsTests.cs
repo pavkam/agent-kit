@@ -130,6 +130,36 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
+    [Fact]
+    public void AddOpenRouterEmbeddingModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOpenRouter();
+        _ = services.AddOpenRouterApiKeyCredential("sk-or-test-key");
+        _ = services.AddOpenRouterEmbeddingModel(new EmbeddingModelAlias("small"), new ModelId("openai/text-embedding-3-small"));
+        _ = services.AddOpenRouterEmbeddingModel(new EmbeddingModelAlias("large"), new ModelId("openai/text-embedding-3-large"));
+
+        using var provider = services.BuildServiceProvider();
+        var models = provider.GetServices<IEmbeddingModel>().ToArray();
+
+        models.Length.ShouldBe(2);
+        models.Select(m => m.Alias.Value).ShouldBe(["small", "large"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void AddOpenRouterEmbeddingModel_WhenResolved_UsesOpenRouterEmbeddingModelType()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOpenRouter();
+        _ = services.AddOpenRouterApiKeyCredential("sk-or-test-key");
+        _ = services.AddOpenRouterEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("openai/text-embedding-3-small"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<OpenRouterEmbeddingModel>();
+
+        model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

@@ -1,0 +1,9 @@
+{
+  "id": "embd-4",
+  "object": "list",
+  "model": "mistral-embed",
+  "data": [
+    { "object": "embedding", "index": 0, "embedding": [0.4, 0.5, 0.6] }
+  ],
+  "usage": { "prompt_tokens": 4, "total_tokens": 4 }
+}

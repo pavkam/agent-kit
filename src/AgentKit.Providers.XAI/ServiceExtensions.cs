@@ -192,5 +192,68 @@ public static class ServiceExtensions
 
             return services;
         }
+
+        /// <summary>
+        /// Registers one named xAI embedding model as an additional
+        /// <see cref="IEmbeddingModel"/> implementation.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">xAI's own embedding model identifier.</param>
+        /// <param name="capabilities">
+        /// The model's capabilities, or <see langword="null"/> to use
+        /// <see cref="XAIProviderDefaults.DefaultEmbeddingCapabilities"/>.
+        /// </param>
+        /// <param name="limits">
+        /// The model's input/output limits, or <see langword="null"/> to use
+        /// <see cref="XAIProviderDefaults.DefaultEmbeddingLimits"/>.
+        /// </param>
+        /// <returns>
+        /// The same <paramref name="services"/> instance, so calls can be
+        /// chained with other registration methods.
+        /// </returns>
+        /// <remarks>
+        /// This registration is additive: calling it more than once with a
+        /// distinct <paramref name="alias"/> registers additional models
+        /// alongside one another, resolvable together as
+        /// <c>IEnumerable&lt;IEmbeddingModel&gt;</c>. <see cref="AddXAI"/>
+        /// must be called first. Embedding model availability is
+        /// account/model-specific for xAI; this method never fabricates
+        /// support the calling account may not actually have.
+        /// </remarks>
+        public IServiceCollection AddXAIEmbeddingModel(
+            EmbeddingModelAlias alias,
+            ModelId modelId,
+            EmbeddingCapabilities? capabilities = null,
+            EmbeddingLimits? limits = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            _ = services.AddSingleton<IEmbeddingModel>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<XAIProviderOptions>>().Value;
+
+                var descriptor = new EmbeddingModelDescriptor(
+                    alias,
+                    XAIProviderDefaults.ProviderId,
+                    XAIProviderDefaults.EmbeddingApiFamily,
+                    modelId,
+                    deploymentId: null,
+                    capabilities ?? XAIProviderDefaults.DefaultEmbeddingCapabilities,
+                    limits ?? XAIProviderDefaults.DefaultEmbeddingLimits,
+                    pricing: null,
+                    ExtensionData.Empty);
+
+                return new XAIEmbeddingModel(
+                    descriptor,
+                    XAIProviderDefaults.CreateProfile(options),
+                    provider.GetRequiredService<IOpenAIEmbeddingRequestTranslator>(),
+                    provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(XAIProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>());
+            });
+
+            return services;
+        }
     }
 }

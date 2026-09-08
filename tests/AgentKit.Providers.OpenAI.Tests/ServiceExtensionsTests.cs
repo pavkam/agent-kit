@@ -159,6 +159,63 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
+    [Fact]
+    public void AddOpenAI_WhenEmbeddingsPathCanReplaceConfiguredEndpoint_FailsStartupValidation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOpenAI(options => options.EmbeddingsPath = "https://evil.example.test/embeddings");
+
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
+    [Fact]
+    public void AddOpenAIEmbeddingModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOpenAI();
+        _ = services.AddOpenAIApiKeyCredential("sk-test-key");
+        _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("small"), new ModelId("text-embedding-3-small"));
+        _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("large"), new ModelId("text-embedding-3-large"));
+
+        using var provider = services.BuildServiceProvider();
+        var models = provider.GetServices<IEmbeddingModel>().ToArray();
+
+        models.Length.ShouldBe(2);
+        models.Select(m => m.Alias.Value).ShouldBe(["small", "large"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void AddOpenAIEmbeddingModel_WhenResolved_UsesOpenAIEmbeddingModelType()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOpenAI();
+        _ = services.AddOpenAIApiKeyCredential("sk-test-key");
+        _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("text-embedding-3-small"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<OpenAIEmbeddingModel>();
+
+        model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
+    }
+
+    [Fact]
+    public void AddOpenAIEmbeddingModel_AndAddOpenAILlmModel_CoexistIndependently()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOpenAI();
+        _ = services.AddOpenAIApiKeyCredential("sk-test-key");
+        _ = services.AddOpenAILlmModel(new ModelAlias("chat"), new ModelId("gpt-4o"));
+        _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("chat"), new ModelId("text-embedding-3-small"));
+
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<ILlmModel>().Alias.ShouldBe(new ModelAlias("chat"));
+        provider.GetRequiredService<IEmbeddingModel>().Alias.ShouldBe(new EmbeddingModelAlias("chat"));
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

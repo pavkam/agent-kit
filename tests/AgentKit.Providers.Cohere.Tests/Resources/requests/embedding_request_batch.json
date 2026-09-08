@@ -1,0 +1,6 @@
+{
+  "model": "embed-v4.0",
+  "texts": ["first", "second"],
+  "input_type": "search_query",
+  "embedding_types": ["float"]
+}

@@ -30,10 +30,29 @@ public sealed class OpenAIProviderDefaultsTests
         profile.IncludeStreamUsage.ShouldBeFalse();
         profile.UseMaxCompletionTokensField.ShouldBeFalse();
         profile.ChatCompletionsUri.ShouldBe(new Uri("https://example.test/v2/chat"));
+        profile.EmbeddingsUri.ShouldBe(new Uri("https://example.test/v1/embeddings"));
+    }
+
+    [Fact]
+    public void CreateProfile_WhenEmbeddingsPathOverridden_MapsEmbeddingsUri()
+    {
+        var options = new OpenAIProviderOptions
+        {
+            BaseAddress = new Uri("https://example.test/"),
+            EmbeddingsPath = "v2/embeddings",
+        };
+
+        var profile = OpenAIProviderDefaults.CreateProfile(options);
+
+        profile.EmbeddingsUri.ShouldBe(new Uri("https://example.test/v2/embeddings"));
     }
 
     [Fact]
     public void ProviderId_IsStableOpenAIIdentity() => OpenAIProviderDefaults.ProviderId.ShouldBe(new ProviderId("openai"));
+
+    [Fact]
+    public void EmbeddingApiFamily_IsStableOpenAIEmbeddingsIdentity() =>
+        OpenAIProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("openai-embeddings"));
 
     [Fact]
     public void DefaultCapabilities_SupportsToolCallsAndStreaming()
@@ -41,5 +60,15 @@ public sealed class OpenAIProviderDefaultsTests
         OpenAIProviderDefaults.DefaultCapabilities.SupportsToolCalls.ShouldBeTrue();
         OpenAIProviderDefaults.DefaultCapabilities.SupportsStreaming.ShouldBeTrue();
         OpenAIProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void DefaultEmbeddingCapabilities_SupportsDimensionsAndEncodingSelectionButNotPurpose()
+    {
+        OpenAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsDimensions.ShouldBeTrue();
+        OpenAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsEncodingSelection.ShouldBeTrue();
+        OpenAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsBatchInput.ShouldBeTrue();
+        OpenAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsPurpose.ShouldBeFalse();
+        OpenAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsTruncationControl.ShouldBeFalse();
     }
 }

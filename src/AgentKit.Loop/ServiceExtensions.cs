@@ -52,7 +52,26 @@ public static class ServiceExtensions
             services.TryAddSingleton<IIdentifierGenerator<SessionEntryId>>(
                 _ => new GuidIdentifierGenerator<SessionEntryId>(static value => new SessionEntryId(value)));
             services.TryAddSingleton<IAgentLoop, DefaultAgentLoop>();
+            services.TryAddKeyedSingleton<IRunContinuationPolicy, DefaultRunContinuationPolicy>(
+                AgentLoopDefaults.ContinuationPolicyKey.Value);
+            services.TryAddSingleton(provider =>
+                provider.GetRequiredKeyedService<IRunContinuationPolicy>(AgentLoopDefaults.ContinuationPolicyKey.Value));
 
+            return services;
+        }
+
+        /// <summary>Additively registers a singleton continuation policy under an explicit key.</summary>
+        /// <typeparam name="TPolicy">The stateless, thread-safe policy implementation.</typeparam>
+        /// <param name="key">The stable policy key selected by an agent definition.</param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="key"/> is uninitialized.</exception>
+        public IServiceCollection AddRunContinuationPolicy<TPolicy>(ComponentKey<IRunContinuationPolicy> key)
+            where TPolicy : class, IRunContinuationPolicy
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentException.ThrowIfNullOrWhiteSpace(key.Value, nameof(key));
+            services.TryAddKeyedSingleton<IRunContinuationPolicy, TPolicy>(key.Value);
             return services;
         }
     }

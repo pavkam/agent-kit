@@ -10,11 +10,12 @@ using AgentKit.Providers.OpenAICompatible;
 /// integration.
 /// </summary>
 /// <remarks>
-/// This package covers only xAI's OpenAI-shaped Chat Completions
-/// endpoint (<c>POST /v1/chat/completions</c>). xAI's Responses API,
-/// embeddings, files/collections search, image/video generation,
-/// speech, realtime voice, batch, and first-party gRPC surface are
-/// separate contracts not covered by this package.
+/// This package covers xAI's OpenAI-shaped Chat Completions endpoint
+/// (<c>POST /v1/chat/completions</c>) and its OpenAI-shaped embeddings
+/// endpoint (<c>POST /v1/embeddings</c>), where enabled for the calling
+/// account. xAI's Responses API, files/collections search, image/video
+/// generation, speech, realtime voice, batch, and first-party gRPC surface
+/// are separate contracts not covered by this package.
 /// </remarks>
 public static class XAIProviderDefaults
 {
@@ -24,11 +25,17 @@ public static class XAIProviderDefaults
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for xAI's Chat Completions wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("xai-chat-completions");
 
+    /// <summary>Gets the stable <see cref="ApiFamilyId"/> for xAI's embeddings wire format.</summary>
+    public static ApiFamilyId EmbeddingApiFamily { get; } = new("xai-embeddings");
+
     /// <summary>Gets xAI's REST API base address.</summary>
     public static Uri DefaultBaseAddress { get; } = new("https://api.x.ai/v1/");
 
     /// <summary>Gets the default chat completions operation path.</summary>
     public const string DefaultChatCompletionsPath = "chat/completions";
+
+    /// <summary>Gets the default embeddings operation path.</summary>
+    public const string DefaultEmbeddingsPath = "embeddings";
 
     /// <summary>
     /// Gets the default capability set applied to a registered xAI
@@ -60,6 +67,33 @@ public static class XAIProviderDefaults
     public static ModelLimits DefaultLimits { get; } = new(maxContextTokens: null, maxOutputTokens: null);
 
     /// <summary>
+    /// Gets the default capability set applied to a registered xAI
+    /// embedding model unless the caller supplies its own.
+    /// </summary>
+    /// <remarks>
+    /// Embedding model availability is account/model-specific for xAI;
+    /// discover actual support through xAI's model-listing surface rather
+    /// than assuming every account can embed. A caller registering a model
+    /// with materially different capabilities supplies its own
+    /// <see cref="EmbeddingCapabilities"/> rather than relying on this
+    /// shared default.
+    /// </remarks>
+    public static EmbeddingCapabilities DefaultEmbeddingCapabilities { get; } = new(
+        supportsBatchInput: true,
+        supportsDimensions: true,
+        supportsPurpose: false,
+        supportsEncodingSelection: true,
+        supportsTruncationControl: false,
+        ExtensionData.Empty);
+
+    /// <summary>
+    /// Gets the default, unbounded embedding limits applied to a registered
+    /// xAI embedding model unless the caller supplies its own.
+    /// </summary>
+    public static EmbeddingLimits DefaultEmbeddingLimits { get; } =
+        new(maxInputsPerRequest: null, maxInputTokensPerInput: null, defaultDimensions: null, maxDimensions: null);
+
+    /// <summary>
     /// Creates the <see cref="OpenAICompatibilityProfile"/> for the current
     /// <paramref name="options"/>.
     /// </summary>
@@ -77,6 +111,7 @@ public static class XAIProviderDefaults
             preferStreaming: options.PreferStreaming,
             includeStreamUsage: options.IncludeStreamUsage,
             useMaxCompletionTokensField: false,
-            []);
+            [],
+            embeddingsPath: options.EmbeddingsPath);
     }
 }

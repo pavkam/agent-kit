@@ -133,6 +133,36 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
+    [Fact]
+    public void AddOllamaEmbeddingModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOllama();
+        _ = services.AddOllamaApiKeyCredential("test-key");
+        _ = services.AddOllamaEmbeddingModel(new EmbeddingModelAlias("primary"), new ModelId("nomic-embed-text"));
+        _ = services.AddOllamaEmbeddingModel(new EmbeddingModelAlias("secondary"), new ModelId("mxbai-embed-large"));
+
+        using var provider = services.BuildServiceProvider();
+        var models = provider.GetServices<IEmbeddingModel>().ToArray();
+
+        models.Length.ShouldBe(2);
+        models.Select(m => m.Alias.Value).ShouldBe(["primary", "secondary"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void AddOllamaEmbeddingModel_WhenResolved_UsesOllamaEmbeddingModelType()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOllama();
+        _ = services.AddOllamaApiKeyCredential("test-key");
+        _ = services.AddOllamaEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("nomic-embed-text"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<OllamaEmbeddingModel>();
+
+        model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

@@ -55,9 +55,22 @@ public sealed class OpenRouterProviderDefaultsTests
         profile.PreferStreaming.ShouldBeFalse();
         profile.IncludeStreamUsage.ShouldBeFalse();
         profile.ChatCompletionsUri.ShouldBe(new Uri("https://example.test/v2/chat"));
+        profile.EmbeddingsUri.ShouldBe(new Uri("https://example.test/embeddings"));
     }
+
+    [Fact]
+    public void CreateProfile_WhenGivenOptions_EnablesEmbeddingPurposeSupport() =>
+        OpenRouterProviderDefaults.CreateProfile(new OpenRouterProviderOptions()).SupportsEmbeddingPurpose.ShouldBeTrue();
 
     [Fact]
     public void ProviderId_IsStableOpenRouterIdentity() =>
         OpenRouterProviderDefaults.ProviderId.ShouldBe(new ProviderId("openrouter"));
+
+    [Fact]
+    public void EmbeddingApiFamily_IsStableOpenRouterEmbeddingsIdentity() =>
+        OpenRouterProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("openrouter-embeddings"));
+
+    [Fact]
+    public void DefaultEmbeddingCapabilities_SupportsPurposeUnlikePlainOpenAI() =>
+        OpenRouterProviderDefaults.DefaultEmbeddingCapabilities.SupportsPurpose.ShouldBeTrue();
 }

@@ -25,6 +25,9 @@ public sealed class XAIProviderOptions
     /// <summary>Gets or sets the chat completions operation path, relative to <see cref="BaseAddress"/>.</summary>
     public string ChatCompletionsPath { get; set; } = XAIProviderDefaults.DefaultChatCompletionsPath;
 
+    /// <summary>Gets or sets the embeddings operation path, relative to <see cref="BaseAddress"/>.</summary>
+    public string EmbeddingsPath { get; set; } = XAIProviderDefaults.DefaultEmbeddingsPath;
+
     /// <summary>
     /// Gets or sets whether a request should prefer the streaming
     /// (<c>stream: true</c>) operation when the selected model supports

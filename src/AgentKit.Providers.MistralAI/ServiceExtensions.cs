@@ -62,6 +62,8 @@ public static class ServiceExtensions
             services.TryAddSingleton<IMistralAIRequestTranslator, MistralAIRequestTranslator>();
             services.TryAddSingleton<IIdentifierGenerator<ToolCallId>, DefaultToolCallIdGenerator>();
             services.TryAddSingleton<IMistralAIResponseParser, MistralAIResponseParser>();
+            services.TryAddSingleton<IMistralAIEmbeddingRequestTranslator, MistralAIEmbeddingRequestTranslator>();
+            services.TryAddSingleton<IMistralAIEmbeddingResponseParser, MistralAIEmbeddingResponseParser>();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton(_ => new HttpClient());
 
@@ -187,6 +189,67 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IMistralAIRequestTranslator>(),
                     provider.GetRequiredService<IMistralAIResponseParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(MistralAIProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>());
+            });
+
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one named Mistral AI embedding model as an additional
+        /// <see cref="IEmbeddingModel"/> implementation.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">Mistral's own embedding model identifier, such as <c>"mistral-embed"</c>.</param>
+        /// <param name="capabilities">
+        /// The model's capabilities, or <see langword="null"/> to use
+        /// <see cref="MistralAIProviderDefaults.DefaultEmbeddingCapabilities"/>.
+        /// </param>
+        /// <param name="limits">
+        /// The model's input/output limits, or <see langword="null"/> to use
+        /// <see cref="MistralAIProviderDefaults.DefaultEmbeddingLimits"/>.
+        /// </param>
+        /// <returns>
+        /// The same <paramref name="services"/> instance, so calls can be
+        /// chained with other registration methods.
+        /// </returns>
+        /// <remarks>
+        /// This registration is additive: calling it more than once with a
+        /// distinct <paramref name="alias"/> registers additional models
+        /// alongside one another, resolvable together as
+        /// <c>IEnumerable&lt;IEmbeddingModel&gt;</c>.
+        /// <see cref="AddMistralAI"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddMistralAIEmbeddingModel(
+            EmbeddingModelAlias alias,
+            ModelId modelId,
+            EmbeddingCapabilities? capabilities = null,
+            EmbeddingLimits? limits = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            _ = services.AddSingleton<IEmbeddingModel>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<MistralAIProviderOptions>>().Value;
+
+                var descriptor = new EmbeddingModelDescriptor(
+                    alias,
+                    MistralAIProviderDefaults.ProviderId,
+                    MistralAIProviderDefaults.EmbeddingApiFamily,
+                    modelId,
+                    deploymentId: null,
+                    capabilities ?? MistralAIProviderDefaults.DefaultEmbeddingCapabilities,
+                    limits ?? MistralAIProviderDefaults.DefaultEmbeddingLimits,
+                    pricing: null,
+                    ExtensionData.Empty);
+
+                return new MistralAIEmbeddingModel(
+                    descriptor,
+                    options,
+                    provider.GetRequiredService<IMistralAIEmbeddingRequestTranslator>(),
+                    provider.GetRequiredService<IMistralAIEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(MistralAIProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<TimeProvider>());

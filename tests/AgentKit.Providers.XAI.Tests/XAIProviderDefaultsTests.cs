@@ -30,9 +30,14 @@ public sealed class XAIProviderDefaultsTests
         profile.UseMaxCompletionTokensField.ShouldBeFalse();
         profile.SendDeveloperRoleAsSystem.ShouldBeTrue();
         profile.ChatCompletionsUri.ShouldBe(new Uri("https://example.test/v2/chat"));
+        profile.EmbeddingsUri.ShouldBe(new Uri("https://example.test/embeddings"));
     }
 
     [Fact]
     public void ProviderId_IsStableXAIIdentity() =>
         XAIProviderDefaults.ProviderId.ShouldBe(new ProviderId("xai"));
+
+    [Fact]
+    public void EmbeddingApiFamily_IsStableXAIEmbeddingsIdentity() =>
+        XAIProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("xai-embeddings"));
 }

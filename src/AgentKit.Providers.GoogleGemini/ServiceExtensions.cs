@@ -62,6 +62,8 @@ public static class ServiceExtensions
             services.TryAddSingleton<IGoogleGeminiContentTranslator, GoogleGeminiContentTranslator>();
             services.TryAddSingleton<IIdentifierGenerator<ToolCallId>, DefaultToolCallIdGenerator>();
             services.TryAddSingleton<IGoogleGeminiResponseParser, GoogleGeminiResponseParser>();
+            services.TryAddSingleton<IGoogleGeminiEmbeddingRequestTranslator, GoogleGeminiEmbeddingRequestTranslator>();
+            services.TryAddSingleton<IGoogleGeminiEmbeddingResponseParser, GoogleGeminiEmbeddingResponseParser>();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton(_ => new HttpClient());
 
@@ -187,6 +189,67 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<IGoogleGeminiContentTranslator>(),
                     provider.GetRequiredService<IGoogleGeminiResponseParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleGeminiProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>());
+            });
+
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one named Gemini embedding model as an additional
+        /// <see cref="IEmbeddingModel"/> implementation.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">Gemini's own embedding model identifier, such as <c>"text-embedding-004"</c>.</param>
+        /// <param name="capabilities">
+        /// The model's capabilities, or <see langword="null"/> to use
+        /// <see cref="GoogleGeminiProviderDefaults.DefaultEmbeddingCapabilities"/>.
+        /// </param>
+        /// <param name="limits">
+        /// The model's input/output limits, or <see langword="null"/> to use
+        /// <see cref="GoogleGeminiProviderDefaults.DefaultEmbeddingLimits"/>.
+        /// </param>
+        /// <returns>
+        /// The same <paramref name="services"/> instance, so calls can be
+        /// chained with other registration methods.
+        /// </returns>
+        /// <remarks>
+        /// This registration is additive: calling it more than once with a
+        /// distinct <paramref name="alias"/> registers additional models
+        /// alongside one another, resolvable together as
+        /// <c>IEnumerable&lt;IEmbeddingModel&gt;</c>.
+        /// <see cref="AddGoogleGemini"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddGoogleGeminiEmbeddingModel(
+            EmbeddingModelAlias alias,
+            ModelId modelId,
+            EmbeddingCapabilities? capabilities = null,
+            EmbeddingLimits? limits = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            _ = services.AddSingleton<IEmbeddingModel>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<GoogleGeminiProviderOptions>>().Value;
+
+                var descriptor = new EmbeddingModelDescriptor(
+                    alias,
+                    GoogleGeminiProviderDefaults.ProviderId,
+                    GoogleGeminiProviderDefaults.EmbeddingApiFamily,
+                    modelId,
+                    deploymentId: null,
+                    capabilities ?? GoogleGeminiProviderDefaults.DefaultEmbeddingCapabilities,
+                    limits ?? GoogleGeminiProviderDefaults.DefaultEmbeddingLimits,
+                    pricing: null,
+                    ExtensionData.Empty);
+
+                return new GoogleGeminiEmbeddingModel(
+                    descriptor,
+                    options,
+                    provider.GetRequiredService<IGoogleGeminiEmbeddingRequestTranslator>(),
+                    provider.GetRequiredService<IGoogleGeminiEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(GoogleGeminiProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<TimeProvider>());

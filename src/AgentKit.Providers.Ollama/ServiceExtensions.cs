@@ -198,5 +198,66 @@ public static class ServiceExtensions
 
             return services;
         }
+
+        /// <summary>
+        /// Registers one named Ollama embedding model as an additional
+        /// <see cref="IEmbeddingModel"/> implementation.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">Ollama's own embedding model identifier, such as <c>"nomic-embed-text"</c>.</param>
+        /// <param name="capabilities">
+        /// The model's capabilities, or <see langword="null"/> to use
+        /// <see cref="OllamaProviderDefaults.DefaultEmbeddingCapabilities"/>.
+        /// </param>
+        /// <param name="limits">
+        /// The model's input/output limits, or <see langword="null"/> to use
+        /// <see cref="OllamaProviderDefaults.DefaultEmbeddingLimits"/>.
+        /// </param>
+        /// <returns>
+        /// The same <paramref name="services"/> instance, so calls can be
+        /// chained with other registration methods.
+        /// </returns>
+        /// <remarks>
+        /// This registration is additive: calling it more than once with a
+        /// distinct <paramref name="alias"/> registers additional models
+        /// alongside one another, resolvable together as
+        /// <c>IEnumerable&lt;IEmbeddingModel&gt;</c>. <see cref="AddOllama"/>
+        /// must be called first.
+        /// </remarks>
+        public IServiceCollection AddOllamaEmbeddingModel(
+            EmbeddingModelAlias alias,
+            ModelId modelId,
+            EmbeddingCapabilities? capabilities = null,
+            EmbeddingLimits? limits = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            _ = services.AddSingleton<IEmbeddingModel>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<OllamaProviderOptions>>().Value;
+
+                var descriptor = new EmbeddingModelDescriptor(
+                    alias,
+                    OllamaProviderDefaults.ProviderId,
+                    OllamaProviderDefaults.EmbeddingApiFamily,
+                    modelId,
+                    deploymentId: null,
+                    capabilities ?? OllamaProviderDefaults.DefaultEmbeddingCapabilities,
+                    limits ?? OllamaProviderDefaults.DefaultEmbeddingLimits,
+                    pricing: null,
+                    ExtensionData.Empty);
+
+                return new OllamaEmbeddingModel(
+                    descriptor,
+                    OllamaProviderDefaults.CreateProfile(options),
+                    provider.GetRequiredService<IOpenAIEmbeddingRequestTranslator>(),
+                    provider.GetRequiredService<IOpenAIEmbeddingResponseParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OllamaProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>());
+            });
+
+            return services;
+        }
     }
 }

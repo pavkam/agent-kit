@@ -34,4 +34,34 @@ public sealed class CohereProviderDefaultsTests
         CohereProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeTrue();
         CohereProviderDefaults.DefaultCapabilities.SupportsToolCalls.ShouldBeTrue();
     }
+
+    [Fact]
+    public void BuildEmbedUri_WhenGivenOptions_CombinesBaseAddressAndPath()
+    {
+        var options = new CohereProviderOptions
+        {
+            BaseAddress = new Uri("https://example.test/"),
+            EmbedPath = "v3/embed",
+        };
+
+        CohereProviderDefaults.BuildEmbedUri(options).ShouldBe(new Uri("https://example.test/v3/embed"));
+    }
+
+    [Fact]
+    public void EmbeddingApiFamily_IsStableCohereEmbedIdentity() =>
+        CohereProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("cohere-embed-v2"));
+
+    [Fact]
+    public void DefaultEmbeddingCapabilities_SupportsBatchDimensionsPurposeEncodingAndTruncation()
+    {
+        CohereProviderDefaults.DefaultEmbeddingCapabilities.SupportsBatchInput.ShouldBeTrue();
+        CohereProviderDefaults.DefaultEmbeddingCapabilities.SupportsDimensions.ShouldBeTrue();
+        CohereProviderDefaults.DefaultEmbeddingCapabilities.SupportsPurpose.ShouldBeTrue();
+        CohereProviderDefaults.DefaultEmbeddingCapabilities.SupportsEncodingSelection.ShouldBeTrue();
+        CohereProviderDefaults.DefaultEmbeddingCapabilities.SupportsTruncationControl.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void DefaultEmbeddingLimits_CapsInputsAtNinetySix() =>
+        CohereProviderDefaults.DefaultEmbeddingLimits.MaxInputsPerRequest.ShouldBe(96);
 }

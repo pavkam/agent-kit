@@ -1,0 +1,8 @@
+{
+  "instances": [
+    { "content": "hello world", "task_type": "RETRIEVAL_DOCUMENT" }
+  ],
+  "parameters": {
+    "outputDimensionality": 256
+  }
+}

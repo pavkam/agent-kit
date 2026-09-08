@@ -23,6 +23,9 @@ public sealed class MistralAIProviderOptionsValidator: IValidateOptions<MistralA
             : string.IsNullOrWhiteSpace(options.ChatCompletionsPath)
             ? ValidateOptionsResult.Fail(
                 $"{nameof(MistralAIProviderOptions.ChatCompletionsPath)} must not be null, empty, or whitespace.")
+            : string.IsNullOrWhiteSpace(options.EmbeddingsPath)
+            ? ValidateOptionsResult.Fail(
+                $"{nameof(MistralAIProviderOptions.EmbeddingsPath)} must not be null, empty, or whitespace.")
             : ValidateOptionsResult.Success;
     }
 }

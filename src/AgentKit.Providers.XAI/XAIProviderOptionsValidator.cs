@@ -23,6 +23,9 @@ public sealed class XAIProviderOptionsValidator: IValidateOptions<XAIProviderOpt
             : string.IsNullOrWhiteSpace(options.ChatCompletionsPath)
             ? ValidateOptionsResult.Fail(
                 $"{nameof(XAIProviderOptions.ChatCompletionsPath)} must not be null, empty, or whitespace.")
+            : string.IsNullOrWhiteSpace(options.EmbeddingsPath)
+            ? ValidateOptionsResult.Fail(
+                $"{nameof(XAIProviderOptions.EmbeddingsPath)} must not be null, empty, or whitespace.")
             : ValidateOptionsResult.Success;
     }
 }

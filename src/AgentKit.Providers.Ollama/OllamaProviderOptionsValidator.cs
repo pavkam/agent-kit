@@ -23,6 +23,9 @@ public sealed class OllamaProviderOptionsValidator: IValidateOptions<OllamaProvi
             : string.IsNullOrWhiteSpace(options.ChatCompletionsPath)
             ? ValidateOptionsResult.Fail(
                 $"{nameof(OllamaProviderOptions.ChatCompletionsPath)} must not be null, empty, or whitespace.")
+            : string.IsNullOrWhiteSpace(options.EmbeddingsPath)
+            ? ValidateOptionsResult.Fail(
+                $"{nameof(OllamaProviderOptions.EmbeddingsPath)} must not be null, empty, or whitespace.")
             : ValidateOptionsResult.Success;
     }
 }

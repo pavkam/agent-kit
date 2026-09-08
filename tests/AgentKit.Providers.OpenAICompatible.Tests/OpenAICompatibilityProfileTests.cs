@@ -54,6 +54,7 @@ public sealed class OpenAICompatibilityProfileTests
     [InlineData(nameof(OpenAICompatibilityProfile.UseMaxCompletionTokensField))]
     [InlineData(nameof(OpenAICompatibilityProfile.DefaultRequestHeaders))]
     [InlineData(nameof(OpenAICompatibilityProfile.EmbeddingsPath))]
+    [InlineData(nameof(OpenAICompatibilityProfile.SupportsEmbeddingPurpose))]
     public void Properties_WhenInspected_AreConstructionOnly(string propertyName)
     {
         var property = typeof(OpenAICompatibilityProfile).GetProperty(propertyName).ShouldNotBeNull();

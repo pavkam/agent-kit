@@ -60,6 +60,8 @@ public static class ServiceExtensions
             services.TryAddSingleton<ICohereRequestTranslator, CohereRequestTranslator>();
             services.TryAddSingleton<IIdentifierGenerator<ToolCallId>, DefaultToolCallIdGenerator>();
             services.TryAddSingleton<ICohereResponseParser, CohereResponseParser>();
+            services.TryAddSingleton<ICohereEmbeddingRequestTranslator, CohereEmbeddingRequestTranslator>();
+            services.TryAddSingleton<ICohereEmbeddingResponseParser, CohereEmbeddingResponseParser>();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton(_ => new HttpClient());
 
@@ -184,6 +186,67 @@ public static class ServiceExtensions
                     options,
                     provider.GetRequiredService<ICohereRequestTranslator>(),
                     provider.GetRequiredService<ICohereResponseParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(CohereProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>());
+            });
+
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one named Cohere embedding model as an additional
+        /// <see cref="IEmbeddingModel"/> implementation.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">Cohere's own model identifier, such as <c>"embed-v4.0"</c>.</param>
+        /// <param name="capabilities">
+        /// The model's capabilities, or <see langword="null"/> to use
+        /// <see cref="CohereProviderDefaults.DefaultEmbeddingCapabilities"/>.
+        /// </param>
+        /// <param name="limits">
+        /// The model's input limits, or <see langword="null"/> to use
+        /// <see cref="CohereProviderDefaults.DefaultEmbeddingLimits"/>.
+        /// </param>
+        /// <returns>
+        /// The same <paramref name="services"/> instance, so calls can be
+        /// chained with other registration methods.
+        /// </returns>
+        /// <remarks>
+        /// This registration is additive: calling it more than once with a
+        /// distinct <paramref name="alias"/> registers additional models
+        /// alongside one another, resolvable together as
+        /// <c>IEnumerable&lt;IEmbeddingModel&gt;</c>. <see cref="AddCohere"/>
+        /// must be called first.
+        /// </remarks>
+        public IServiceCollection AddCohereEmbeddingModel(
+            EmbeddingModelAlias alias,
+            ModelId modelId,
+            EmbeddingCapabilities? capabilities = null,
+            EmbeddingLimits? limits = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            _ = services.AddSingleton<IEmbeddingModel>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<CohereProviderOptions>>().Value;
+
+                var descriptor = new EmbeddingModelDescriptor(
+                    alias,
+                    CohereProviderDefaults.ProviderId,
+                    CohereProviderDefaults.EmbeddingApiFamily,
+                    modelId,
+                    deploymentId: null,
+                    capabilities ?? CohereProviderDefaults.DefaultEmbeddingCapabilities,
+                    limits ?? CohereProviderDefaults.DefaultEmbeddingLimits,
+                    pricing: null,
+                    ExtensionData.Empty);
+
+                return new CohereEmbeddingModel(
+                    descriptor,
+                    options,
+                    provider.GetRequiredService<ICohereEmbeddingRequestTranslator>(),
+                    provider.GetRequiredService<ICohereEmbeddingResponseParser>(),
                     provider.GetRequiredKeyedService<IProviderCredentialSource>(CohereProviderDefaults.ProviderId),
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<TimeProvider>());

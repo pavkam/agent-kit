@@ -1,0 +1,253 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Providers.GoogleVertexAI;
+
+using System.Net.Http;
+
+using AgentKit.Providers.GoogleVertexAI.Wire;
+
+/// <summary>
+/// The Google Vertex AI embedding <see cref="IEmbeddingModel"/>, performing
+/// Vertex-specific credential resolution, resource-qualified endpoint
+/// construction, transport, and response parsing for the generic
+/// <c>:predict</c> operation against a text-embedding model.
+/// </summary>
+public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
+{
+    private readonly EmbeddingModelDescriptor _descriptor;
+    private readonly GoogleVertexAIProviderOptions _options;
+    private readonly IGoogleVertexAIEmbeddingRequestTranslator _translator;
+    private readonly IGoogleVertexAIEmbeddingResponseParser _responseParser;
+    private readonly IProviderCredentialSource _credentials;
+    private readonly HttpClient _httpClient;
+    private readonly TimeProvider _timeProvider;
+
+    /// <summary>Initializes a new instance of the <see cref="GoogleVertexAIEmbeddingModel"/> class.</summary>
+    /// <param name="descriptor">The descriptor of the model this instance serves.</param>
+    /// <param name="options">The validated Vertex AI provider options.</param>
+    /// <param name="translator">Translates provider-neutral requests into Vertex AI predict request bodies.</param>
+    /// <param name="responseParser">Parses Vertex AI predict responses into normalized results.</param>
+    /// <param name="credentials">Resolves the current credential for <paramref name="descriptor"/>'s provider.</param>
+    /// <param name="httpClient">The HTTP client used to send requests.</param>
+    /// <param name="timeProvider">The clock used for deadline and credential-expiry evaluation.</param>
+    /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
+    public GoogleVertexAIEmbeddingModel(
+        EmbeddingModelDescriptor descriptor,
+        GoogleVertexAIProviderOptions options,
+        IGoogleVertexAIEmbeddingRequestTranslator translator,
+        IGoogleVertexAIEmbeddingResponseParser responseParser,
+        IProviderCredentialSource credentials,
+        HttpClient httpClient,
+        TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(translator);
+        ArgumentNullException.ThrowIfNull(responseParser);
+        ArgumentNullException.ThrowIfNull(credentials);
+        ArgumentNullException.ThrowIfNull(httpClient);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
+        Alias = descriptor.Alias;
+        _descriptor = descriptor;
+        _options = options;
+        _translator = translator;
+        _responseParser = responseParser;
+        _credentials = credentials;
+        _httpClient = httpClient;
+        _timeProvider = timeProvider;
+    }
+
+    /// <inheritdoc/>
+    public EmbeddingModelAlias Alias { get; }
+
+    /// <inheritdoc/>
+    public async Task<EmbeddingAttemptResult> GenerateAsync(
+        EmbeddingModelRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        EmbeddingAttemptResult FailWithKind(ProviderFailureKind kind, string safeMessage, Exception? cause = null) =>
+            new EmbeddingAttemptFailed(new ProviderFailure(
+                kind,
+                _descriptor.ProviderId,
+                requestId: null,
+                statusCode: null,
+                providerCode: null,
+                retryAfter: null,
+                safeMessage,
+                cause,
+                ExtensionData.Empty));
+
+        static EmbeddingAttemptResult Cancel(ProviderId providerId) =>
+            new EmbeddingAttemptCancelled(new ProviderFailure(
+                ProviderFailureKind.Cancellation,
+                providerId,
+                requestId: null,
+                statusCode: null,
+                providerCode: null,
+                retryAfter: null,
+                "The attempt was cancelled.",
+                diagnosticCause: null,
+                ExtensionData.Empty));
+
+        var remaining = request.Deadline - _timeProvider.GetUtcNow();
+        if (remaining <= TimeSpan.Zero)
+        {
+            return FailWithKind(
+                ProviderFailureKind.Timeout,
+                "The request deadline had already elapsed before the attempt could be sent.");
+        }
+
+        ProviderCredential credential;
+        try
+        {
+            credential = await _credentials.GetCredentialAsync(_descriptor.ProviderId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return Cancel(_descriptor.ProviderId);
+        }
+
+        var authorization = GoogleVertexAIAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
+        if (authorization is GoogleVertexAIAuthorizationDenied denied)
+        {
+            return new EmbeddingAttemptFailed(denied.Failure);
+        }
+
+        var granted = (GoogleVertexAIAuthorizationGranted) authorization;
+
+        JsonObject payload;
+        try
+        {
+            payload = _translator.Translate(request);
+        }
+        catch (NotSupportedException exception)
+        {
+            return FailWithKind(
+                ProviderFailureKind.InvalidRequest,
+                "The request could not be translated for the Vertex AI predict wire format.",
+                exception);
+        }
+
+        using var httpRequest = CreateHttpRequest(payload, granted);
+        using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
+        using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient
+                .SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, linkedSource.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return Cancel(_descriptor.ProviderId);
+        }
+        catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
+        {
+            return FailWithKind(
+                ProviderFailureKind.Timeout,
+                "The request did not complete before its deadline.",
+                exception);
+        }
+        catch (HttpRequestException exception)
+        {
+            return FailWithKind(
+                ProviderFailureKind.Unavailable,
+                "The provider could not be reached.",
+                exception);
+        }
+
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                return new EmbeddingAttemptFailed(await BuildHttpFailureAsync(response, linkedSource.Token).ConfigureAwait(false));
+            }
+
+            var parseContext = new GoogleVertexAIEmbeddingResponseParseContext(
+                request.Context.RequestId,
+                _descriptor.ProviderId,
+                _descriptor.ApiFamily,
+                _descriptor.ModelId,
+                _descriptor.DeploymentId);
+
+            try
+            {
+                var body = await response.Content.ReadAsStreamAsync(linkedSource.Token).ConfigureAwait(false);
+                await using (body.ConfigureAwait(false))
+                {
+                    return await _responseParser
+                        .ParseAsync(body, parseContext, request.Context.Request.Inputs, linkedSource.Token)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return Cancel(_descriptor.ProviderId);
+            }
+            catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
+            {
+                return FailWithKind(
+                    ProviderFailureKind.Timeout,
+                    "The response was not fully received before the request's deadline.",
+                    exception);
+            }
+        }
+    }
+
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, GoogleVertexAIAuthorizationGranted authorization)
+    {
+        var uri = GoogleVertexAIProviderDefaults.BuildPredictUri(_options, _descriptor.ModelId, _descriptor.DeploymentId);
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri)
+        {
+            Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
+        };
+
+        _ = httpRequest.Headers.TryAddWithoutValidation(authorization.HeaderName, authorization.HeaderValue);
+
+        return httpRequest;
+    }
+
+    private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        string? safeMessage = null;
+        string? status = null;
+
+        try
+        {
+            var body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            await using (body.ConfigureAwait(false))
+            {
+                var envelope = await JsonSerializer
+                    .DeserializeAsync<GoogleVertexAIErrorEnvelopeDto>(body, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                safeMessage = envelope?.Error?.Message;
+                status = envelope?.Error?.Status;
+            }
+        }
+        catch (JsonException)
+        {
+            // The error body was not valid JSON; fall back to a generic message below.
+        }
+
+        var kind = status is not null
+            ? GoogleVertexAIErrorMapping.MapStatus(status)
+            : GoogleVertexAIErrorMapping.MapStatusCode(response.StatusCode);
+
+        return new ProviderFailure(
+            kind,
+            _descriptor.ProviderId,
+            requestId: null,
+            (int) response.StatusCode,
+            status,
+            response.Headers.RetryAfter?.Delta,
+            safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
+            diagnosticCause: null,
+            ExtensionData.Empty);
+    }
+}

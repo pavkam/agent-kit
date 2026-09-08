@@ -561,5 +561,398 @@ public static class ArgumentExceptionExtensions
                 throw new ArgumentException("Stream must be readable.", paramName);
             }
         }
+
+        /// <summary>Throws when an outcome cannot support successful continuation completion.</summary>
+        /// <param name="outcome">The non-null semantic run outcome to classify.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="outcome"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="outcome"/> is neither successful output completion nor idle completion.</exception>
+        public static void ThrowIfNotSuccessfulRunOutcome(
+            AgentRunOutcome outcome,
+            [CallerArgumentExpression(nameof(outcome))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(outcome, paramName);
+            if (outcome is not AgentRunCompleted and not AgentRunIdle)
+            {
+                throw new ArgumentException("Outcome must represent successful output or idle completion.", paramName);
+            }
+
+            if (outcome is AgentRunCompleted { FinalMessage: not { State: MessageState.Complete, RunId: { } runId, TurnId: { } turnId } }
+                || outcome is AgentRunCompleted
+                    && (runId == default || turnId == default))
+            {
+                throw new ArgumentException("Successful output completion requires a complete message with initialized run and turn identities.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a halt proposal is given a successful semantic outcome.</summary>
+        /// <param name="outcome">The non-null semantic run outcome to classify.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="outcome"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="outcome"/> represents successful output or idle completion.</exception>
+        public static void ThrowIfSuccessfulRunOutcome(
+            AgentRunOutcome outcome,
+            [CallerArgumentExpression(nameof(outcome))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(outcome, paramName);
+            if (outcome is AgentRunCompleted or AgentRunIdle)
+            {
+                throw new ArgumentException("A halt proposal cannot carry a successful outcome.", paramName);
+            }
+        }
+
+        /// <summary>Throws when committed tool references do not correlate exactly with a complete assistant response.</summary>
+        /// <param name="response">The non-null committed assistant response.</param>
+        /// <param name="toolResults">The initialized references to validate.</param>
+        /// <param name="paramName">The parameter name inferred from the reference-array expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="response"/> is null.</exception>
+        /// <exception cref="ArgumentException">The response or reference correlation is incomplete, duplicate, or inconsistent.</exception>
+        public static void ThrowIfInvalidCommittedToolReferences(
+            AssistantMessage response,
+            ImmutableArray<CommittedToolResultReference> toolResults,
+            [CallerArgumentExpression(nameof(toolResults))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(response);
+            ArgumentException.ThrowIfContainsNull(toolResults, paramName);
+            if (response.State != MessageState.Complete
+                || response.RunId is not { } runId
+                || runId == default
+                || response.TurnId is not { } turnId
+                || turnId == default)
+            {
+                throw new ArgumentException("Committed-turn evidence requires a complete response with run and turn identity.", paramName);
+            }
+
+            var callIds = response.Parts.OfType<ToolCallPart>().Select(static part => part.CallId).ToImmutableArray();
+            if (callIds.Any(static callId => callId == default)
+                || callIds.Distinct().Count() != callIds.Length
+                || toolResults.Select(static reference => reference.ToolCallId).SequenceEqual(callIds) is false
+                || toolResults.Any(reference => reference.TurnId != turnId)
+                || toolResults.Select(static reference => reference.ToolCallId).Distinct().Count() != toolResults.Length
+                || toolResults.Select(static reference => reference.SessionEntryId).Distinct().Count() != toolResults.Length)
+            {
+                throw new ArgumentException("Committed tool references must uniquely match calls and the turn in the assistant response.", paramName);
+            }
+        }
+
+        /// <summary>Throws when committed tool-result references repeat a call or terminal session entry.</summary>
+        /// <param name="toolResults">The initialized non-null references to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="toolResults"/> is default, contains null, or contains duplicate call or entry identities.</exception>
+        public static void ThrowIfDuplicateCommittedToolReferences(
+            ImmutableArray<CommittedToolResultReference> toolResults,
+            [CallerArgumentExpression(nameof(toolResults))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfContainsNull(toolResults, paramName);
+            if (toolResults.Select(static reference => reference.ToolCallId).Distinct().Count() != toolResults.Length
+                || toolResults.Select(static reference => reference.SessionEntryId).Distinct().Count() != toolResults.Length)
+            {
+                throw new ArgumentException("Committed tool references must have unique call and terminal-entry identities.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a claimed successful compaction no longer carries active checkpoint evidence.</summary>
+        /// <param name="compaction">The non-null successful result to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="compaction"/> is null.</exception>
+        /// <exception cref="ArgumentException">The retained record is not active or lacks its activated checkpoint/version.</exception>
+        public static void ThrowIfCompactionNotActive(
+            CompactionSucceeded compaction,
+            [CallerArgumentExpression(nameof(compaction))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(compaction, paramName);
+            if (compaction.Record is null
+                || compaction.Context is null
+                || compaction.Record.Context is null
+                || compaction.Record.Status != CompactionRecordStatus.Active
+                || compaction.Record.Checkpoint is null
+                || compaction.Record.ActivatedSessionVersion is null)
+            {
+                throw new ArgumentException("Compaction continuation requires an active checkpoint record.", paramName);
+            }
+        }
+
+        /// <summary>Throws when pending causes repeat the cause already selected by policy.</summary>
+        /// <param name="selectedCause">The non-null selected cause.</param>
+        /// <param name="otherPendingCauses">The initialized non-null pending causes.</param>
+        /// <param name="paramName">The parameter name inferred from the pending-cause expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="selectedCause"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="otherPendingCauses"/> is default, contains null, or contains the selected instance.</exception>
+        public static void ThrowIfContainsSelectedCause(
+            RunContinuationCause selectedCause,
+            ImmutableArray<RunContinuationCause> otherPendingCauses,
+            [CallerArgumentExpression(nameof(otherPendingCauses))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(selectedCause);
+            ArgumentException.ThrowIfContainsNull(otherPendingCauses, paramName);
+            if (otherPendingCauses.Any(cause => ReferenceEquals(cause, selectedCause)))
+            {
+                throw new ArgumentException("Pending causes must not repeat the selected cause instance.", paramName);
+            }
+        }
+
+        /// <summary>Throws when continuation boundary or cause evidence does not correlate with its owning run snapshot.</summary>
+        /// <param name="agentId">The owning agent.</param>
+        /// <param name="sessionId">The owning session.</param>
+        /// <param name="executionLaneId">The owning lane.</param>
+        /// <param name="operationId">The installed operation.</param>
+        /// <param name="runId">The open run.</param>
+        /// <param name="operationStateRevision">The captured operation revision.</param>
+        /// <param name="branchCursor">The captured branch tip.</param>
+        /// <param name="boundary">The safe evaluation boundary.</param>
+        /// <param name="causes">The initialized pending causes.</param>
+        /// <exception cref="ArgumentException">Any evidence names another run, operation, revision, cursor, request, or turn.</exception>
+        public static void ThrowIfInconsistentContinuationEvidence(
+            AgentId agentId,
+            SessionId sessionId,
+            ExecutionLaneId executionLaneId,
+            OperationId operationId,
+            RunId runId,
+            OperationStateRevision operationStateRevision,
+            SessionBranchCursor branchCursor,
+            SessionSequence inputPromotionCutoff,
+            RunContinuationBoundary boundary,
+            ImmutableArray<RunContinuationCause> causes)
+        {
+            ArgumentNullException.ThrowIfNull(branchCursor);
+            ArgumentNullException.ThrowIfNull(boundary);
+            ArgumentException.ThrowIfContainsNull(causes);
+            if (causes.Distinct(ReferenceEqualityComparer.Instance).Count() != causes.Length)
+            {
+                throw new ArgumentException("Continuation causes must not repeat the same evidence instance.", nameof(causes));
+            }
+
+            if (boundary is CommittedTurnContinuationBoundary committed
+                && (committed.Response.AgentId != agentId
+                    || committed.Response.SessionId != sessionId
+                    || committed.Response.BranchId != branchCursor.BranchId
+                    || committed.Response.RunId != runId))
+            {
+                throw new ArgumentException("Committed response correlation must match the continuation snapshot.", nameof(boundary));
+            }
+
+            foreach (var cause in causes)
+            {
+                if (cause is PromotedInputContinuationCause promoted
+                    && (promoted.Snapshot.AgentId != agentId
+                        || promoted.Snapshot.SessionId != sessionId
+                        || promoted.Snapshot.ExecutionLaneId != executionLaneId
+                        || promoted.Snapshot.ExpectedOperation.OperationId != operationId
+                        || promoted.Snapshot.ExpectedOperation.RunId != runId
+                        || promoted.Snapshot.OperationStateRevision != operationStateRevision
+                        || promoted.Snapshot.BranchCursor != branchCursor
+                        || promoted.Snapshot.CutoffSequence != inputPromotionCutoff
+                        || !PromotionMatchesBoundary(promoted.Snapshot, boundary)))
+                {
+                    throw new ArgumentException("Promoted input evidence must match the continuation snapshot.", nameof(causes));
+                }
+
+                if (cause is CommittedToolResultsContinuationCause tools
+                    && (boundary is not CommittedTurnContinuationBoundary toolBoundary
+                        || !tools.ToolResults.SequenceEqual(toolBoundary.ToolResults)))
+                {
+                    throw new ArgumentException("Committed tool continuation requires the same committed-turn references.", nameof(causes));
+                }
+
+                if (cause is OutputRepairContinuationCause repair
+                    && (boundary is not CommittedTurnContinuationBoundary { OutputDecision: OutputRetryRequired decision }
+                        || !repair.Decision.Equals(decision)))
+                {
+                    throw new ArgumentException("Output repair continuation requires the same committed-turn retry decision.", nameof(causes));
+                }
+
+                if (cause is CompactionRetryContinuationCause compaction
+                    && (boundary is not RetryContinuationBoundary retry
+                        || retry.ModelRequestId != compaction.ModelRequestId
+                        || compaction.Compaction.Context.AgentId != agentId
+                        || compaction.Compaction.Context.SessionId != sessionId
+                        || compaction.Compaction.Context.Correlation is not InRunOperationCorrelation compactionCorrelation
+                        || compactionCorrelation.RunId != runId
+                        || compactionCorrelation.OperationId == default
+                        || compactionCorrelation.TurnId != retry.TurnId))
+                {
+                    throw new ArgumentException("Compaction retry evidence must match the retry boundary and run.", nameof(causes));
+                }
+
+                if (cause is DeferredCompletionContinuationCause deferred
+                    && (boundary is not DeferredContinuationBoundary deferredBoundary
+                        || deferredBoundary.DeferredOperationId != deferred.OperationId))
+                {
+                    throw new ArgumentException("Deferred completion evidence must match the deferred boundary.", nameof(causes));
+                }
+            }
+        }
+
+        private static bool PromotionMatchesBoundary(
+            InputPromotionSnapshot snapshot,
+            RunContinuationBoundary boundary) => boundary switch
+        {
+            CommittedTurnContinuationBoundary committed =>
+                snapshot.Boundary == PromotionBoundary.AfterTurnCommitted
+                && snapshot.TargetTurnId == committed.Response.TurnId,
+            RetryContinuationBoundary retry =>
+                snapshot.Boundary == PromotionBoundary.AfterContinuationCheckpoint
+                && snapshot.TargetTurnId == retry.TurnId,
+            DeferredContinuationBoundary deferred =>
+                snapshot.Boundary == PromotionBoundary.AfterContinuationCheckpoint
+                && snapshot.TargetTurnId == deferred.TurnId,
+            IdleContinuationBoundary => snapshot.Boundary == PromotionBoundary.OtherwiseIdle,
+            _ => false,
+        };
+
+        /// <summary>Throws when a type cannot name one closed service contract.</summary>
+        /// <param name="type">The non-null type that must not contain unbound generic parameters.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="type"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="type"/> is an open generic type or otherwise contains unbound generic parameters.</exception>
+        public static void ThrowIfNotClosedType(
+            Type type,
+            [CallerArgumentExpression(nameof(type))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(type, paramName);
+            if (type.ContainsGenericParameters)
+            {
+                throw new ArgumentException("Type must be closed and cannot contain unbound generic parameters.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a type cannot construct a concrete closed implementation.</summary>
+        /// <param name="type">The non-null implementation type that must be closed, non-abstract, and non-interface.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="type"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="type"/> is open, abstract, or an interface.</exception>
+        public static void ThrowIfNotConcreteClosedType(
+            Type type,
+            [CallerArgumentExpression(nameof(type))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfNotClosedType(type, paramName);
+            if (type.IsAbstract || type.IsInterface)
+            {
+                throw new ArgumentException("Type must be a concrete, non-interface implementation.", paramName);
+            }
+        }
+
+        /// <summary>Throws when original and effective admitted payload evidence cannot describe one idempotent input.</summary>
+        /// <param name="originalPayload">The non-null original caller payload.</param>
+        /// <param name="effectivePayload">The non-null captured effective payload.</param>
+        /// <param name="preprocessing">The non-null preprocessing evidence.</param>
+        /// <param name="paramName">The effective-payload parameter name attributed to a mismatch.</param>
+        /// <exception cref="ArgumentNullException">A supplied reference is null.</exception>
+        /// <exception cref="ArgumentException">Payload identities or delivery classes differ, or preprocessing fingerprints are default.</exception>
+        public static void ThrowIfInvalidAdmittedInputPayloads(
+            AgentInput originalPayload,
+            AgentInput effectivePayload,
+            InputPreprocessingManifest preprocessing,
+            [CallerArgumentExpression(nameof(effectivePayload))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(originalPayload);
+            ArgumentNullException.ThrowIfNull(effectivePayload, paramName);
+            ArgumentNullException.ThrowIfNull(preprocessing);
+            if (originalPayload.Id != effectivePayload.Id
+                || originalPayload.Delivery != effectivePayload.Delivery
+                || preprocessing.OriginalFingerprint == default
+                || preprocessing.EffectiveFingerprint == default)
+            {
+                throw new ArgumentException("Original and effective payloads must preserve input identity and delivery with initialized preprocessing evidence.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a promotion selection is uninitialized or repeats an admission identity.</summary>
+        /// <param name="admissionIds">The initialized ordered admission identities.</param>
+        /// <param name="paramName">The selection parameter name.</param>
+        /// <exception cref="ArgumentException">The array is default or contains a default or duplicate identity.</exception>
+        public static void ThrowIfInvalidPromotionAdmissions(
+            ImmutableArray<AdmissionId> admissionIds,
+            [CallerArgumentExpression(nameof(admissionIds))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfDefault(admissionIds, paramName);
+            var seen = new HashSet<AdmissionId>();
+            foreach (var admissionId in admissionIds)
+            {
+                if (admissionId == default || !seen.Add(admissionId))
+                {
+                    throw new ArgumentException("Promotion admission identities must be initialized and unique.", paramName);
+                }
+            }
+        }
+
+        /// <summary>Throws when eligible input is not a pending item for the captured address, lane, and cutoff.</summary>
+        /// <param name="eligible">The initialized eligible snapshot.</param><param name="agentId">The expected agent.</param>
+        /// <param name="sessionId">The expected session.</param><param name="executionLaneId">The expected lane.</param>
+        /// <param name="cutoffSequence">The inclusive admission cutoff.</param><param name="paramName">The eligible parameter name.</param>
+        /// <exception cref="ArgumentException">The snapshot is default, contains null, repeats admissions, or contains a mismatched, promoted, or post-cutoff item.</exception>
+        public static void ThrowIfInvalidPromotionEligibleInputs(
+            ImmutableArray<AdmittedInput> eligible,
+            AgentId agentId,
+            SessionId sessionId,
+            ExecutionLaneId executionLaneId,
+            SessionSequence cutoffSequence,
+            [CallerArgumentExpression(nameof(eligible))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfContainsNull(eligible, paramName);
+            var seen = new HashSet<AdmissionId>();
+            foreach (var input in eligible)
+            {
+                if (input.AgentId != agentId || input.SessionId != sessionId || input.ExecutionLaneId != executionLaneId
+                    || input.AdmittedSequence.Value > cutoffSequence.Value || input.PromotedSequence is not null
+                    || !seen.Add(input.AdmissionId))
+                {
+                    throw new ArgumentException("Eligible input must be unique, pending, and match the captured address, lane, and cutoff.", paramName);
+                }
+            }
+        }
+
+        /// <summary>Throws when authenticated identity differs from the identity captured by authorization evidence.</summary>
+        /// <param name="identity">The non-null authenticated identity.</param><param name="authorization">The non-null authorization context.</param>
+        /// <param name="paramName">The authorization parameter name.</param>
+        /// <exception cref="ArgumentNullException">A supplied reference is null.</exception>
+        /// <exception cref="ArgumentException">The immutable identities are not equal.</exception>
+        public static void ThrowIfInputAuthorizationIdentityMismatch(
+            ExecutionIdentity identity,
+            SecurityAuthorizationContext authorization,
+            [CallerArgumentExpression(nameof(authorization))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(identity);
+            ArgumentNullException.ThrowIfNull(authorization, paramName);
+            if (identity != authorization.Identity)
+            {
+                throw new ArgumentException("Input identity must equal authorization identity evidence.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a concrete implementation cannot satisfy its declared service or disposal contract.</summary>
+        /// <param name="implementationType">The non-null closed implementation type to test.</param>
+        /// <param name="contractType">The non-null closed contract the implementation must satisfy.</param>
+        /// <param name="paramName">The parameter name inferred from the implementation expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="implementationType"/> or <paramref name="contractType"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="implementationType"/> is not assignable to <paramref name="contractType"/>.</exception>
+        public static void ThrowIfNotAssignableTo(
+            Type implementationType,
+            Type contractType,
+            [CallerArgumentExpression(nameof(implementationType))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(implementationType, paramName);
+            ArgumentNullException.ThrowIfNull(contractType);
+            if (!contractType.IsAssignableFrom(implementationType))
+            {
+                throw new ArgumentException("Implementation type must be assignable to the declared contract.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a factory boundary claims a contract that cannot dispose an owned operation.</summary>
+        /// <param name="contractType">The non-null closed contract used to dispose the operation root.</param>
+        /// <param name="paramName">The parameter name inferred from the contract expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="contractType"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="contractType"/> is open or is neither <see cref="IDisposable"/> nor <see cref="IAsyncDisposable"/>.</exception>
+        public static void ThrowIfNotDisposalContract(
+            Type contractType,
+            [CallerArgumentExpression(nameof(contractType))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfNotClosedType(contractType, paramName);
+            if (contractType != typeof(IDisposable) && contractType != typeof(IAsyncDisposable))
+            {
+                throw new ArgumentException("Contract must be IDisposable or IAsyncDisposable.", paramName);
+            }
+        }
     }
 }

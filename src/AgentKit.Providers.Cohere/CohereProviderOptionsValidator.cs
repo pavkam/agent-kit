@@ -23,6 +23,9 @@ public sealed class CohereProviderOptionsValidator: IValidateOptions<CohereProvi
             : string.IsNullOrWhiteSpace(options.ChatPath)
             ? ValidateOptionsResult.Fail(
                 $"{nameof(CohereProviderOptions.ChatPath)} must not be null, empty, or whitespace.")
+            : string.IsNullOrWhiteSpace(options.EmbedPath)
+            ? ValidateOptionsResult.Fail(
+                $"{nameof(CohereProviderOptions.EmbedPath)} must not be null, empty, or whitespace.")
             : ValidateOptionsResult.Success;
     }
 }

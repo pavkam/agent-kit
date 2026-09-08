@@ -105,6 +105,36 @@ public sealed class ServiceExtensionsTests
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
+    [Fact]
+    public void AddMistralAIEmbeddingModel_WhenCalledMultipleTimes_RegistersAdditiveModels()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddMistralAI();
+        _ = services.AddMistralAIApiKeyCredential("mistral-test-key");
+        _ = services.AddMistralAIEmbeddingModel(new EmbeddingModelAlias("primary"), new ModelId("mistral-embed"));
+        _ = services.AddMistralAIEmbeddingModel(new EmbeddingModelAlias("secondary"), new ModelId("codestral-embed"));
+
+        using var provider = services.BuildServiceProvider();
+        var models = provider.GetServices<IEmbeddingModel>().ToArray();
+
+        models.Length.ShouldBe(2);
+        models.Select(m => m.Alias.Value).ShouldBe(["primary", "secondary"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void AddMistralAIEmbeddingModel_WhenResolved_UsesMistralAIEmbeddingModelType()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddMistralAI();
+        _ = services.AddMistralAIApiKeyCredential("mistral-test-key");
+        _ = services.AddMistralAIEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("mistral-embed"));
+
+        using var provider = services.BuildServiceProvider();
+        var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<MistralAIEmbeddingModel>();
+
+        model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
+    }
+
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
         public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>

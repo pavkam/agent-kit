@@ -31,4 +31,16 @@ internal static class TestModels
             supportsVisionInput: false,
             ExtensionData.Empty),
     };
+
+    /// <summary>Gets a representative descriptor for Gemini's <c>text-embedding-004</c> model.</summary>
+    public static EmbeddingModelDescriptor TextEmbedding004 { get; } = new(
+        new EmbeddingModelAlias("embed"),
+        GoogleGeminiProviderDefaults.ProviderId,
+        GoogleGeminiProviderDefaults.EmbeddingApiFamily,
+        new ModelId("text-embedding-004"),
+        deploymentId: null,
+        GoogleGeminiProviderDefaults.DefaultEmbeddingCapabilities,
+        GoogleGeminiProviderDefaults.DefaultEmbeddingLimits,
+        pricing: null,
+        ExtensionData.Empty);
 }
