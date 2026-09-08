@@ -60,10 +60,26 @@ owning spec.
 | Declared component graph validation                    | `bd1101c`; exact-key cardinality, cycles, factory ownership/disposal, captive scopes and a 10,000-node chain exercised                                            | Pure graph validation verified; registration capture and runnable-graph activation remain open                                                        |
 | Continuation and input-promotion evidence              | `bd1101c`; Abstractions: 1,867 passed; Loop: 51 passed; IO: 29 passed; reusable policy cases included                                                             | Safe-boundary proposals, complete ordered evidence, cutoff checks, typed outcomes and constructor constraints verified                                |
 | Diagnostic failure isolation                           | `bd1101c`; Observability: 17 passed; policy suites cover throwing listeners/loggers/meters, cancellation and failed clock measurements                            | Policy outcomes survive observer failures; unavailable timing emits no fabricated zero duration                                                       |
+| GUID execution-lane identity                           | Isolated Release solution: 4,193 passed; full lint passed; GUID identity conformance and exact empty-value rejection                                              | Intentional constructor/property API correction to the normative session identity; lane runtime integration remains open                              |
 
 ## Latest integration evidence
 
-An isolated checkout matching committed `bd1101c` passed `make format`,
+The execution-lane identity correction passed `make test` and `make lint` in an
+isolated checkout containing only this checkpoint over `b78e0e6`. The Release
+build reported zero warnings or errors; all 4,193 tests passed with no skips.
+The public API snapshot records the intentional breaking change from
+`ExecutionLaneId(string)` and a string `Value` to a validated GUID constructor
+and property, as required by the session architecture. Callers must supply
+nonempty GUIDs and keep display names separate. Existing fixtures now use
+explicit deterministic GUIDs; identity conformance selects the GUID cases.
+
+The session migration is still in progress. Existing store calls need mandatory
+authorized wrappers, while the coordinator must authorize a directory effect
+before separately authorizing the selected store effect. Exact authority
+selection, protected routing, required audit, grant-consumption intent receipts,
+and atomic accepted operation state remain outside this verified checkpoint.
+
+An earlier isolated checkout matching committed `bd1101c` passed `make format`,
 `make lint`, and `make test` (including the Release build), with zero build
 warnings or errors. All 4,194 tests passed with no skips. All 2,690 committed
 files were compared byte-for-byte with the verified checkout. The final

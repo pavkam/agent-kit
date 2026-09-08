@@ -26,7 +26,7 @@ public sealed class DefaultInputPromotionPolicyConformanceFixture: IInputPromoti
     public void Dispose() => _provider.Dispose();
 
     private static InputPromotionContext Context(int maximumPromotions, params AdmittedInput[] inputs) =>
-        new(Agent(), Session(), new ExecutionLaneId("primary"), Operation(), new OperationStateRevision(2),
+        new(Agent(), Session(), Lane(), Operation(), new OperationStateRevision(2),
             new SessionBranchCursor(Branch(), Entry(9)), new SessionSequence(10), new SessionVersion(4), null,
             PromotionBoundary.AfterTurnCommitted, Turn(), NextTurn(), [.. inputs], maximumPromotions);
 
@@ -34,7 +34,7 @@ public sealed class DefaultInputPromotionPolicyConformanceFixture: IInputPromoti
     {
         var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var input = new AgentInput(Input(sequence), delivery, [new TextPart("input", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
-        return new AdmittedInput(Admission(sequence), Agent(), Session(), new ExecutionLaneId("primary"), identity,
+        return new AdmittedInput(Admission(sequence), Agent(), Session(), Lane(), identity,
             new SessionSequence(sequence), input, input,
             new InputPreprocessingManifest(new ConfigurationVersion(1), new InputFingerprint($"o:{sequence}"), new InputFingerprint($"e:{sequence}")),
             DateTimeOffset.UnixEpoch);
@@ -45,6 +45,7 @@ public sealed class DefaultInputPromotionPolicyConformanceFixture: IInputPromoti
     private static SessionEntryId Entry(long value) => new(Guid.Parse($"20000000-0000-0000-0000-{value:000000000000}"));
     private static AgentId Agent() => new(Guid.Parse("30000000-0000-0000-0000-000000000001"));
     private static SessionId Session() => new(Guid.Parse("40000000-0000-0000-0000-000000000001"));
+    private static ExecutionLaneId Lane() => new(Guid.Parse("45000000-0000-0000-0000-000000000001"));
     private static BranchId Branch() => new(Guid.Parse("50000000-0000-0000-0000-000000000001"));
     private static TurnId Turn() => new(Guid.Parse("60000000-0000-0000-0000-000000000001"));
     private static TurnId NextTurn() => new(Guid.Parse("60000000-0000-0000-0000-000000000002"));

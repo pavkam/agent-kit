@@ -7,7 +7,7 @@ public sealed class RunContinuationContextTests
 {
     private static readonly AgentId _agentId = new(Guid.Parse("11111111-1111-1111-1111-111111111111"));
     private static readonly SessionId _sessionId = new(Guid.Parse("22222222-2222-2222-2222-222222222222"));
-    private static readonly ExecutionLaneId _laneId = new("main");
+    private static readonly ExecutionLaneId _laneId = new(Guid.Parse("33333333-3333-3333-3333-333333333333"));
     private static readonly OperationId _operationId = new(Guid.Parse("33333333-3333-3333-3333-333333333333"));
     private static readonly RunId _runId = new(Guid.Parse("44444444-4444-4444-4444-444444444444"));
     private static readonly BranchId _branchId = new(Guid.Parse("55555555-5555-5555-5555-555555555555"));
@@ -44,7 +44,8 @@ public sealed class RunContinuationContextTests
     [Fact]
     public void Constructor_WhenPromotionLaneDiffers_ThrowsExactArgumentException()
     {
-        var cause = new PromotedInputContinuationCause(PromotionSnapshot(laneId: new ExecutionLaneId("other")));
+        var cause = new PromotedInputContinuationCause(PromotionSnapshot(
+            laneId: new ExecutionLaneId(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"))));
 
         var exception = Should.Throw<ArgumentException>(() => Context(CommittedBoundary(), [cause]));
 

@@ -1997,8 +1997,8 @@ namespace AgentKit
     }
     public readonly struct ExecutionLaneId : System.IEquatable<AgentKit.ExecutionLaneId>
     {
-        public ExecutionLaneId(string value) { }
-        public string Value { get; }
+        public ExecutionLaneId(System.Guid value) { }
+        public System.Guid Value { get; }
         public override string ToString() { }
     }
     public sealed class ExecutionLeaseAcquired : AgentKit.ExecutionLeaseResult, System.IEquatable<AgentKit.ExecutionLeaseAcquired>

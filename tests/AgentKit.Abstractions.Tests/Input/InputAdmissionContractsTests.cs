@@ -7,19 +7,20 @@ namespace AgentKit.Abstractions.Tests.Input;
 public sealed class InputAdmissionContractsTests
 {
     [Fact]
-    public void ExecutionLaneId_WhenValueIsBlank_ThrowsArgumentExceptionWithParamName()
+    public void ExecutionLaneId_WhenValueIsEmpty_ThrowsArgumentOutOfRangeExceptionWithParamName()
     {
-        var exception = ShouldThrowExactly<ArgumentException>(() => new ExecutionLaneId(" "));
+        var exception = ShouldThrowExactly<ArgumentOutOfRangeException>(() => new ExecutionLaneId(Guid.Empty));
         exception.ParamName.ShouldBe("value");
     }
 
     [Fact]
-    public void ExecutionLaneId_WhenValueIsPresent_RetainsTheValidatedValue()
+    public void ExecutionLaneId_WhenValueIsPresent_RetainsTheValidatedValueAndCanonicalText()
     {
-        var lane = new ExecutionLaneId("primary");
+        var value = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var lane = new ExecutionLaneId(value);
 
-        lane.Value.ShouldBe("primary");
-        lane.ToString().ShouldBe("primary");
+        lane.Value.ShouldBe(value);
+        lane.ToString().ShouldBe("10000000-0000-0000-0000-000000000001");
     }
 
     [Fact]
@@ -98,7 +99,7 @@ public sealed class InputAdmissionContractsTests
     public void InputPromotionContext_WhenEligibleInputTargetsAnotherLane_ThrowsArgumentExceptionWithParamName()
     {
         var payload = Payload(1, InputDelivery.Steer);
-        var input = new AdmittedInput(Admission(1), Agent(), Session(), new ExecutionLaneId("other"), Identity(),
+        var input = new AdmittedInput(Admission(1), Agent(), Session(), OtherLane(), Identity(),
             new SessionSequence(1), payload, payload, Manifest(), DateTimeOffset.UnixEpoch);
         var exception = ShouldThrowExactly<ArgumentException>(() => new InputPromotionContext(
             Agent(), Session(), Lane(), Operation(), new OperationStateRevision(1), new SessionBranchCursor(Branch(), null),
@@ -139,7 +140,7 @@ public sealed class InputAdmissionContractsTests
     public void InputPromoted_WhenRecordTargetsAnotherLane_ThrowsArgumentExceptionWithParamName()
     {
         var payload = Payload(1, InputDelivery.Steer);
-        var promoted = new AdmittedInput(Admission(1), Agent(), Session(), new ExecutionLaneId("other"), Identity(),
+        var promoted = new AdmittedInput(Admission(1), Agent(), Session(), OtherLane(), Identity(),
             new SessionSequence(1), payload, payload, Manifest(), DateTimeOffset.UnixEpoch, new SessionSequence(2));
 
         var exception = ShouldThrowExactly<ArgumentException>(() => new InputPromoted(
@@ -525,7 +526,8 @@ public sealed class InputAdmissionContractsTests
     private static TextPart Part() => new("input", TextSemantics.Plain, ExtensionData.Empty);
     private static InputPreprocessingManifest Manifest() => new(new ConfigurationVersion(1), new InputFingerprint("original:1"), new InputFingerprint("effective:1"));
     private static ExecutionIdentity Identity() => TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
-    private static ExecutionLaneId Lane() => new("primary");
+    private static ExecutionLaneId Lane() => new(Guid.Parse("40000000-0000-0000-0000-000000000001"));
+    private static ExecutionLaneId OtherLane() => new(Guid.Parse("40000000-0000-0000-0000-000000000002"));
     private static AdmissionId Admission(long value) => new(Guid.Parse($"00000000-0000-0000-0000-{value:000000000000}"));
     private static InputId Input(long value) => new(Guid.Parse($"10000000-0000-0000-0000-{value:000000000000}"));
     private static AgentId Agent() => new(Guid.Parse("20000000-0000-0000-0000-000000000001"));
