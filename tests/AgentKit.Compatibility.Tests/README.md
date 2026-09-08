@@ -33,3 +33,23 @@ guesses that a package was removed: when exact-set coverage reports stale
 `*.verified.txt` files, delete exactly the reported files and rerun the updater.
 Received files are excluded from coverage and cleared before every generation
 attempt.
+
+## Run this project
+
+From the repository root:
+
+```sh
+dotnet test --project tests/AgentKit.Compatibility.Tests/AgentKit.Compatibility.Tests.csproj --configuration Release --timeout 300s
+```
+
+## Related projects and documentation
+
+- [AgentKit.Abstractions](../../src/AgentKit.Abstractions/README.md) — shared
+  consumer contracts.
+- [AgentKit](../../src/AgentKit/README.md) — engine composition and lifecycle.
+- [AgentKit.Conformance](../AgentKit.Conformance/README.md) — reusable
+  behavioral evidence.
+- [Testing guide](../../docs/testing/index.md) — test layers and repository
+  commands.
+- [Project catalog](../../docs/packages/index.md) — all source and test
+  projects.

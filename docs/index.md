@@ -1,16 +1,39 @@
 # AgentKit documentation
 
-This index is the entry point for AgentKit's documentation. Each documentation
-area has its own `index.md`; documentation folders use `index.md`, not
-`README.md`, for navigation.
+Start with a working component, then follow the parts your application needs.
+AgentKit is in alpha; the guides describe current entry points, while the
+architecture and concept specifications define the complete intended design.
 
-## Documentation areas
+## Build with AgentKit
 
-- [Architecture](architecture/index.md) describes package ownership, dependency
-  direction, composition, and runtime component boundaries.
-- [Concept specifications](concepts/index.md) defines the normative behavior and
-  acceptance scenarios for AgentKit's extension points.
-- [Application profiles](profiles/index.md) describe optional product-level
-  compositions without expanding AgentKit's core ownership boundaries.
-- [Provider API contracts](providers/index.md) records the verified wire
-  contracts and capability profiles used to design provider adapters.
+| You want to…                                   | Start here                                          |
+| ---------------------------------------------- | --------------------------------------------------- |
+| Set up a checkout and run your first component | [Getting started](getting-started.md)               |
+| Understand engines, agents, sessions, and runs | [Composing an application](guides/composition.md)   |
+| Find a package and its related projects        | [Project catalog](packages/index.md)                |
+| Select a provider and check its wire behavior  | [Provider reference](providers/index.md)            |
+| Check what still needs implementation or proof | [Current status](getting-started.md#current-status) |
+| Run focused tests or add a regression          | [Testing guide](testing/index.md)                   |
+
+## Go deeper
+
+- [Architecture](architecture/index.md) explains package ownership, dependency
+  direction, composition, and runtime boundaries.
+- [Concept specifications](concepts/index.md) define observable behavior and
+  acceptance scenarios for each extension point.
+- [Application profiles](profiles/index.md) show how those components fit
+  particular products, including a
+  [coding harness](profiles/coding-harness/index.md).
+- [Provider API contracts](providers/index.md) record protocol and capability
+  details for adapter authors.
+
+The architecture index explains
+[document authority](architecture/index.md#authority-and-change-rules). Examples
+and implementation notes do not override normative requirements.
+
+## Contribute
+
+Read [Contributing](../CONTRIBUTING.md) and the
+[Code of Conduct](../CODE_OF_CONDUCT.md). Each source and test project has a
+README linking its purpose, collaborators, and relevant evidence. Documentation
+folders use `index.md` as their navigation page.

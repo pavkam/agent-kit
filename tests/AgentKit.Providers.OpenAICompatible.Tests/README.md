@@ -1,0 +1,42 @@
+# AgentKit.Providers.OpenAICompatible.Tests
+
+Focused tests for
+[AgentKit.Providers.OpenAICompatible](../../src/AgentKit.Providers.OpenAICompatible/README.md).
+
+**Component purpose:** implement shared OpenAI-compatible request translation,
+transport, and streaming mechanics.
+
+Use this suite when changing that component or investigating a regression. It is
+a non-packable .NET 10 test project using xUnit v3 and Shouldly.
+
+## Start with these tests
+
+- [DelegatingOAuthCredentialSourceTests](Authorization/DelegatingOAuthCredentialSourceTests.cs)
+- [OpenAIAuthorizationHeaderFactoryTests](Authorization/OpenAIAuthorizationHeaderFactoryTests.cs)
+- [OpenAIChatCompletionResponseParserBufferedTests](Parsing/OpenAIChatCompletionResponseParserBufferedTests.cs)
+- [OpenAIChatCompletionResponseParserStreamingTests](Parsing/OpenAIChatCompletionResponseParserStreamingTests.cs)
+- [OpenAICompatibilityProfileTests](OpenAICompatibilityProfileTests.cs)
+
+These are entry points into the suite, not a claim of complete architectural
+conformance. Provider pipeline tests use controlled fixtures; `EndToEndTests`
+does not mean a live provider account is required.
+
+## Run this project
+
+From the repository root:
+
+```sh
+dotnet test --project tests/AgentKit.Providers.OpenAICompatible.Tests/AgentKit.Providers.OpenAICompatible.Tests.csproj --configuration Release --timeout 300s
+```
+
+## Related projects and documentation
+
+- [AgentKit.Providers.OpenAICompatible](../../src/AgentKit.Providers.OpenAICompatible/README.md)
+  — implementation and registration entry points.
+- [Component specification](../../docs/architecture/model-and-embedding-providers.md)
+  — intended contract and ownership.
+- [Testing guide](../../docs/testing/index.md) — focused runs, coverage, and API
+  compatibility.
+
+[Project catalog](../../docs/packages/index.md) ·
+[Contributing](../../CONTRIBUTING.md)
