@@ -10,6 +10,7 @@ public sealed class InMemoryArtifactStore: IArtifactStore
     private readonly Lock _lock = new();
     private readonly ISecurityGrantStore _grants;
     private readonly TimeProvider _time;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly Dictionary<TenantArtifactPreparationKey, PreparedState> _prepared = [];
     private readonly Dictionary<TenantArtifactPreparationKey, FinalizedState> _finalized = [];
     private readonly Dictionary<TenantArtifactKey, FinalizedState> _committed = [];
@@ -22,11 +23,26 @@ public sealed class InMemoryArtifactStore: IArtifactStore
     /// <param name="time">The clock used for expiry and publication evidence.</param>
     /// <exception cref="ArgumentNullException">A dependency is null.</exception>
     public InMemoryArtifactStore(ISecurityGrantStore grants, TimeProvider time)
+        : this(grants, time, new GuidSecurityEnforcementIntentIdGenerator())
+    {
+    }
+
+    /// <summary>Initializes the store with a replaceable source of fresh atomic enforcement-intent identities.</summary>
+    /// <param name="grants">The non-null authoritative store that atomically consumes a grant and retains permission to begin.</param>
+    /// <param name="time">The non-null clock used for expiry and publication evidence.</param>
+    /// <param name="intentIds">The non-null thread-safe source of unique per-operation enforcement intent identities.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="grants"/>, <paramref name="time"/>, or <paramref name="intentIds"/> is null.</exception>
+    public InMemoryArtifactStore(
+        ISecurityGrantStore grants,
+        TimeProvider time,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
     {
         ArgumentNullException.ThrowIfNull(grants);
         ArgumentNullException.ThrowIfNull(time);
+        ArgumentNullException.ThrowIfNull(intentIds);
         _grants = grants;
         _time = time;
+        _intentIds = intentIds;
     }
 
     /// <inheritdoc/>
@@ -295,11 +311,29 @@ public sealed class InMemoryArtifactStore: IArtifactStore
 
     private async ValueTask<ArtifactFailure?> ConsumeAsync(SecurityGrant grant, SecurityAuthorizationScope scope, ExecutionIdentity identity, SecurityEffect effect, ImmutableArray<ProtectedResource> resources, InputFingerprint fingerprint, CancellationToken cancellationToken)
     {
-        var result = await _grants.ValidateAndConsumeAsync(grant, new SecurityEnforcementRequest(
-            scope, identity, SecurityAudience, SecurityOperationKind.Artifact, effect, resources, fingerprint, grant.RevocationVersion), cancellationToken).ConfigureAwait(false);
-        return result.Status == GrantConsumptionStatus.Consumed
+        if (grant.Authorization is { } authorization
+            && (authorization.Scope != scope || authorization.Identity != identity))
+        {
+            return new ArtifactFailure(
+                ArtifactFailureKind.Denied,
+                "The captured authorization does not match the artifact operation.");
+        }
+
+        var enforcement = ArtifactEnforcementReceipt.Create(
+            grant,
+            scope,
+            identity,
+            SecurityAudience,
+            effect,
+            resources,
+            fingerprint);
+        var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
+        var result = await _grants.ValidateAndConsumeAsync(
+            grant, enforcement, intent, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ArtifactEnforcementReceipt.IsFreshExact(result, grant, enforcement, intent)
             ? null
-            : new ArtifactFailure(ArtifactFailureKind.Denied, result.SafeMessage);
+            : new ArtifactFailure(ArtifactFailureKind.Denied, ArtifactEnforcementReceipt.DenialMessage(result));
     }
 
     private static bool Equivalent(PreparedSnapshot left, ArtifactStorePrepareRequest right) =>

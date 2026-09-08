@@ -7,6 +7,138 @@ public sealed class InMemoryArtifactStoreTests
 {
     private static readonly DateTimeOffset _now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public void Constructor_WhenIntentIdsIsNull_ThrowsWithExactParameterName()
+    {
+        var fixture = new StoreFixture();
+
+        var exception = Should.Throw<ArgumentNullException>(
+            () => new InMemoryArtifactStore(fixture.Grants, fixture.Clock, null!));
+
+        exception.ParamName.ShouldBe("intentIds");
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenStoreReconcilesEarlierIntent_DoesNotCreateState()
+    {
+        var fixture = new StoreFixture();
+        var grants = new IntentReceiptGrantStore { Status = GrantConsumptionStatus.Reconciled };
+        var store = new InMemoryArtifactStore(grants, fixture.Clock);
+        var request = fixture.CreatePrepare("content"u8.ToArray());
+
+        var rejected = await store.PrepareAsync(request, TestContext.Current.CancellationToken);
+        grants.Status = GrantConsumptionStatus.Consumed;
+        var accepted = await store.PrepareAsync(request, TestContext.Current.CancellationToken);
+
+        rejected.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
+        _ = accepted.ShouldBeOfType<ArtifactPrepared>();
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenConsumedReceiptIsMissing_DoesNotCreateState()
+    {
+        var fixture = new StoreFixture();
+        var grants = new IntentReceiptGrantStore { IncludeReceipt = false };
+        var store = new InMemoryArtifactStore(grants, fixture.Clock);
+        var request = fixture.CreatePrepare("content"u8.ToArray());
+
+        var rejected = await store.PrepareAsync(request, TestContext.Current.CancellationToken);
+        grants.IncludeReceipt = true;
+        var accepted = await store.PrepareAsync(request, TestContext.Current.CancellationToken);
+
+        rejected.ShouldBeOfType<ArtifactPrepareRejected>().Failure.SafeMessage.ShouldContain("enforcement-intent receipt");
+        _ = accepted.ShouldBeOfType<ArtifactPrepared>();
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenReceiptReferencesAnotherIntent_DoesNotCreateState()
+    {
+        var fixture = new StoreFixture();
+        var grants = new IntentReceiptGrantStore { ReturnExactReceipt = false };
+        var store = new InMemoryArtifactStore(grants, fixture.Clock);
+        var request = fixture.CreatePrepare("content"u8.ToArray());
+
+        var rejected = await store.PrepareAsync(request, TestContext.Current.CancellationToken);
+        grants.ReturnExactReceipt = true;
+        var accepted = await store.PrepareAsync(request, TestContext.Current.CancellationToken);
+
+        rejected.ShouldBeOfType<ArtifactPrepareRejected>().Failure.SafeMessage.ShouldContain("enforcement-intent receipt");
+        _ = accepted.ShouldBeOfType<ArtifactPrepared>();
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenCallerCancelsDuringNonCooperativeConsumption_DoesNotCreateState()
+    {
+        var fixture = new StoreFixture();
+        using var cancellation = new CancellationTokenSource();
+        var grants = new IntentReceiptGrantStore { OnConsumption = cancellation.Cancel };
+        var store = new InMemoryArtifactStore(grants, fixture.Clock);
+        var request = fixture.CreatePrepare("content"u8.ToArray());
+
+        var action = async () => await store.PrepareAsync(request, cancellation.Token);
+
+        _ = await action.ShouldThrowAsync<OperationCanceledException>();
+        grants.OnConsumption = null;
+        var accepted = await store.PrepareAsync(request, TestContext.Current.CancellationToken);
+
+        _ = accepted.ShouldBeOfType<ArtifactPrepared>();
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
+    {
+        var fixture = new StoreFixture();
+        var request = fixture.CreatePrepare("captured"u8.ToArray(), capturedAuthorization: true);
+        await fixture.RegisterPrepareGrantAsync(request);
+
+        var result = await fixture.Store.PrepareAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ArtifactPrepared>();
+    }
+
+    [Theory]
+    [InlineData("scope")]
+    [InlineData("identity")]
+    public async Task PrepareAsync_WhenCapturedAuthorizationDoesNotMatch_DeniesBeforeGrantConsumptionOrState(string mismatch)
+    {
+        var fixture = new StoreFixture();
+        var grants = new IntentReceiptGrantStore();
+        var store = new InMemoryArtifactStore(grants, fixture.Clock);
+        var request = fixture.CreatePrepare("content"u8.ToArray(), capturedAuthorization: true);
+        var mismatched = mismatch == "scope"
+            ? WithScope(request, fixture.CreateScope())
+            : WithIdentity(request, StoreFixture.CreateIdentity("other-tenant", "other-principal"));
+
+        var rejected = await store.PrepareAsync(mismatched, TestContext.Current.CancellationToken);
+        var accepted = await store.PrepareAsync(request, TestContext.Current.CancellationToken);
+
+        rejected.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
+        grants.ConsumptionCount.ShouldBe(1);
+        _ = accepted.ShouldBeOfType<ArtifactPrepared>();
+    }
+
+    [Fact]
+    public async Task AddInMemoryArtifactStore_WhenIntentGeneratorIsHostSupplied_UsesTheReplacement()
+    {
+        var fixture = new StoreFixture();
+        var expectedId = new SecurityEnforcementIntentId(Guid.Parse("82000000-0000-0000-0000-000000000008"));
+        var grants = new IntentReceiptGrantStore();
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<TimeProvider>(fixture.Clock);
+        _ = services.AddSingleton<ISecurityGrantStore>(grants);
+        _ = services.AddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>>(
+            new SequenceSecurityEnforcementIntentIdGenerator(expectedId.Value));
+        _ = services.AddInMemoryArtifactStore();
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IArtifactStore>().PrepareAsync(
+            fixture.CreatePrepare("content"u8.ToArray()),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ArtifactPrepared>();
+        grants.LastIntent.ShouldNotBeNull().Id.ShouldBe(expectedId);
+    }
+
     [Theory]
     [InlineData("version")]
     [InlineData("profile-key")]
@@ -513,7 +645,8 @@ public sealed class InMemoryArtifactStoreTests
             ExecutionIdentity? identity = null,
             TenantId? tenantId = null,
             PrincipalId? createdBy = null,
-            DateTimeOffset? createdAt = null)
+            DateTimeOffset? createdAt = null,
+            bool capturedAuthorization = false)
         {
             var selectedArtifactId = artifactId ?? new ArtifactId(NextGuid());
             var selectedPreparationId = preparationId ?? new ArtifactPreparationId(NextGuid());
@@ -535,7 +668,8 @@ public sealed class InMemoryArtifactStoreTests
                     selectedArtifactId, selectedPreparationId, version ?? new ArtifactVersion("1"),
                     new ArtifactProfileKey("test"), new ArtifactProfileVersion(1), selectedTenantId,
                     selectedCreatedBy, new ArtifactDirectoryId("tool-output"), metadata,
-                    selectedCreatedAt, selectedExpiresAt));
+                    selectedCreatedAt, selectedExpiresAt),
+                capturedAuthorization);
             return new ArtifactStorePrepareRequest(
                 selectedArtifactId, selectedPreparationId, version ?? new ArtifactVersion("1"), new ArtifactProfileKey("test"),
                 new ArtifactProfileVersion(1), selectedTenantId, selectedCreatedBy,
@@ -589,10 +723,57 @@ public sealed class InMemoryArtifactStoreTests
             ExecutionIdentity identity,
             SecurityEffect effect,
             ImmutableArray<ProtectedResource> resources,
-            InputFingerprint fingerprint) => new(
-                new GrantId(NextGuid()), new SecurityRequestId(NextGuid()), scope, identity, Store.SecurityAudience,
-                SecurityOperationKind.Artifact, effect, resources, fingerprint, new SecurityPolicyVersion(1),
-                new SecurityRevocationVersion(1), _now, _now.AddHours(1), 1);
+            InputFingerprint fingerprint,
+            bool capturedAuthorization = false)
+        {
+            var id = new GrantId(NextGuid());
+            var requestId = new SecurityRequestId(NextGuid());
+            var policyVersion = new SecurityPolicyVersion(1);
+            var revocationVersion = new SecurityRevocationVersion(1);
+            return capturedAuthorization
+                ? new SecurityGrant(
+                    id,
+                    requestId,
+                    scope,
+                    identity,
+                    new SecurityAuthorizationContext(
+                        new SecurityProfileKey("test"),
+                        new SecurityProfileVersion(1),
+                        new SecurityPolicySnapshotReference(
+                            new SecurityPolicySnapshotId(Guid.Parse("11000000-0000-0000-0000-000000000011")),
+                            policyVersion,
+                            new ContentHash("sha256:test-policy")),
+                        new ComponentKey<ISecurityAuthority>("test"),
+                        new AgentDefinitionRevision(0),
+                        new ConfigurationVersion(1),
+                        scope,
+                        identity),
+                    Store.SecurityAudience,
+                    SecurityOperationKind.Artifact,
+                    effect,
+                    resources,
+                    fingerprint,
+                    policyVersion,
+                    revocationVersion,
+                    _now,
+                    _now.AddHours(1),
+                    1)
+                : new SecurityGrant(
+                    id,
+                    requestId,
+                    scope,
+                    identity,
+                    Store.SecurityAudience,
+                    SecurityOperationKind.Artifact,
+                    effect,
+                    resources,
+                    fingerprint,
+                    policyVersion,
+                    revocationVersion,
+                    _now,
+                    _now.AddHours(1),
+                    1);
+        }
 
         internal ValueTask RegisterPrepareGrantAsync(ArtifactStorePrepareRequest request) =>
             Grants.RegisterAsync(request.Grant, TestContext.Current.CancellationToken);
@@ -609,7 +790,7 @@ public sealed class InMemoryArtifactStoreTests
         internal ValueTask RegisterDeleteGrantAsync(ArtifactStoreDeleteRequest request) =>
             Grants.RegisterAsync(request.Grant, TestContext.Current.CancellationToken);
 
-        private SecurityAuthorizationScope CreateScope() => new(
+        internal SecurityAuthorizationScope CreateScope() => new(
             new AgentId(NextGuid()), new SessionId(NextGuid()),
             new InRunOperationCorrelation(new OperationId(NextGuid()), new RunId(NextGuid()), null));
 
@@ -623,6 +804,73 @@ public sealed class InMemoryArtifactStoreTests
             _ = BitConverter.TryWriteBytes(bytes, _sequence);
             return new Guid(bytes);
         }
+    }
+
+    private sealed class IntentReceiptGrantStore: ISecurityGrantStore
+    {
+        internal GrantConsumptionStatus Status { get; set; } = GrantConsumptionStatus.Consumed;
+        internal bool IncludeReceipt { get; set; } = true;
+        internal bool ReturnExactReceipt { get; set; } = true;
+        internal Action? OnConsumption { get; set; }
+        internal SecurityEnforcementIntent? LastIntent { get; private set; }
+        internal int ConsumptionCount { get; private set; }
+
+        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default)
+        {
+            _ = grant;
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+            SecurityGrant grant,
+            SecurityEnforcementRequest enforcement,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new GrantConsumptionResult(GrantConsumptionStatus.Unknown, 0, "Legacy consumption is unsupported."));
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+            SecurityGrant grant,
+            SecurityEnforcementRequest enforcement,
+            SecurityEnforcementIntent intent,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ConsumptionCount++;
+            LastIntent = intent;
+            OnConsumption?.Invoke();
+            var receipt = IncludeReceipt && (Status is GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled)
+                ? new SecurityEnforcementIntentReceipt(
+                    ReturnExactReceipt
+                        ? intent.Id
+                        : new SecurityEnforcementIntentId(Guid.Parse("90000000-0000-0000-0000-000000000009")),
+                    grant.Id,
+                    grant.RequestId,
+                    enforcement,
+                    intent.RequiredFence,
+                    SecurityEnforcementBinding.Fingerprint(enforcement, intent),
+                    _now)
+                : null;
+            return ValueTask.FromResult(new GrantConsumptionResult(
+                Status,
+                0,
+                Status == GrantConsumptionStatus.Consumed ? "Consumed." : "Denied.",
+                receipt));
+        }
+
+        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default)
+        {
+            _ = grantId;
+            _ = cancellationToken;
+            return ValueTask.FromResult(true);
+        }
+    }
+
+    private sealed class SequenceSecurityEnforcementIntentIdGenerator(params Guid[] values)
+        : IIdentifierGenerator<SecurityEnforcementIntentId>
+    {
+        private readonly Queue<Guid> _values = new(values);
+
+        public SecurityEnforcementIntentId Create() => new(_values.Dequeue());
     }
 
     private static ArtifactStorePrepareRequest ChangeAttemptField(ArtifactStorePrepareRequest request, string field) => new(
@@ -640,6 +888,46 @@ public sealed class InMemoryArtifactStoreTests
         field == "expires-at" ? request.ExpiresAt.AddSeconds(1) : request.ExpiresAt,
         request.Scope,
         request.Identity,
+        request.Grant,
+        request.IdempotencyKey);
+
+    private static ArtifactStorePrepareRequest WithScope(
+        ArtifactStorePrepareRequest request,
+        SecurityAuthorizationScope scope) => new(
+        request.ArtifactId,
+        request.PreparationId,
+        request.Version,
+        request.ProfileKey,
+        request.ProfileVersion,
+        request.TenantId,
+        request.CreatedBy,
+        request.DirectoryId,
+        request.Metadata,
+        request.Content,
+        request.CreatedAt,
+        request.ExpiresAt,
+        scope,
+        request.Identity,
+        request.Grant,
+        request.IdempotencyKey);
+
+    private static ArtifactStorePrepareRequest WithIdentity(
+        ArtifactStorePrepareRequest request,
+        ExecutionIdentity identity) => new(
+        request.ArtifactId,
+        request.PreparationId,
+        request.Version,
+        request.ProfileKey,
+        request.ProfileVersion,
+        request.TenantId,
+        request.CreatedBy,
+        request.DirectoryId,
+        request.Metadata,
+        request.Content,
+        request.CreatedAt,
+        request.ExpiresAt,
+        request.Scope,
+        identity,
         request.Grant,
         request.IdempotencyKey);
 }

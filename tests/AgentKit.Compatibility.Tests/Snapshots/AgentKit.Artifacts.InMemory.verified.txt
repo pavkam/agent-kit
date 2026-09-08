@@ -7,6 +7,7 @@ namespace AgentKit.Artifacts.InMemory
     public sealed class InMemoryArtifactStore : AgentKit.IArtifactStore
     {
         public InMemoryArtifactStore(AgentKit.ISecurityGrantStore grants, System.TimeProvider time) { }
+        public InMemoryArtifactStore(AgentKit.ISecurityGrantStore grants, System.TimeProvider time, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.ArtifactAbortResult> AbortAsync(AgentKit.ArtifactStoreAbortRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ArtifactDeleteResult> DeleteAsync(AgentKit.ArtifactStoreDeleteRequest request, System.Threading.CancellationToken cancellationToken = default) { }

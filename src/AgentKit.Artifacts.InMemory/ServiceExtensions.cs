@@ -14,7 +14,11 @@ public static class ServiceExtensions
         public IServiceCollection AddInMemoryArtifactStore()
         {
             ArgumentNullException.ThrowIfNull(services);
-            services.TryAddSingleton<IArtifactStore, InMemoryArtifactStore>();
+            services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
+            services.TryAddSingleton<IArtifactStore>(static provider => new InMemoryArtifactStore(
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
             return services;
         }
     }

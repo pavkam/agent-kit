@@ -65,14 +65,31 @@ owning spec.
 
 ## Latest integration evidence
 
-The filesystem-enforcement checkpoint passed `make format`, `make lint`, and
-`make test` in an isolated checkout containing the verified network and process
-checkpoints. All 4,464 tests passed without skips; the Release build reported
-zero warnings or errors. The initial run exposed one expected API comparison and
-two read/write end-to-end fixtures that still used legacy grant consumption. The
-fixture receipts and additive constructor snapshot were reviewed before the
-final run, which includes direct validation of the new intent-generator
-argument.
+The artifact-enforcement checkpoint passed `make format`, `make lint`, and
+`make test` in an isolated checkout over `87542cf`. All 4,473 tests passed
+without skips; the Release build reported zero warnings or errors. The initial
+run passed all 4,472 unchanged-API and behavioral tests and failed only the
+expected additive constructor snapshot, which was reviewed before final testing.
+
+The in-memory artifact store now requires a fresh exact enforcement receipt
+before prepare, finalize, abort, read, or delete accesses state or content.
+Captured authorization is retained, and a scope or identity mismatch returns a
+typed denial before grant consumption. Reconciled, missing, or mismatched
+receipts cannot authorize a new operation; cancellation is checked immediately
+after consumption. Intent generation is replaceable through DI, while the
+original constructor remains available. The 48-test artifact suite includes
+actual captured grants, denial without state changes, cancellation, generator
+replacement, and constructor validation. Artifact persistence, lifecycle, audit,
+and broader architecture conformance remain separate open requirements.
+
+The preceding filesystem-enforcement checkpoint passed `make format`,
+`make lint`, and `make test` in an isolated checkout containing the verified
+network and process checkpoints. All 4,464 tests passed without skips; the
+Release build reported zero warnings or errors. The initial run exposed one
+expected API comparison and two read/write end-to-end fixtures that still used
+legacy grant consumption. The fixture receipts and additive constructor snapshot
+were reviewed before the final run, which includes direct validation of the new
+intent-generator argument.
 
 All eight existing sandboxed filesystem enforcement sites now generate a fresh
 typed intent, preserve captured authorization, require an exact freshly consumed
