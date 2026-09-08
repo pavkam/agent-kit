@@ -65,6 +65,44 @@ owning spec.
 
 ## Latest integration evidence
 
+The protected session-coordinator and lane-ownership checkpoint passed complete
+formatting, lint, Release build, and test gates in an isolated checkout over
+`f943730c`. Two public API snapshots were reviewed, including the intentional
+migration from session-wide process ownership to exact tenant/lane ownership.
+
+`SessionExecutionCapability` retains the selected session profile and exact
+coordinator instances for an invocation. Protected input lookup, lane provision,
+admission, run acceptance, and state loading require that capability and verify
+the receiving coordinator. Each transaction uses the protected directory and a
+distinct fresh store authorization. Cancellation is checked after asynchronous
+boundaries, including noncooperative collaborators. Legacy implementations get
+guarded, cancellation-preserving unsupported results for the five new methods.
+
+The default run coordinator keys local ownership by tenant, session address, and
+execution lane. It validates canonical accepted state after obtaining a
+provisional gate and publishes an owner only after the complete capture matches.
+Busy requests also pass protected state validation before receiving identities;
+another principal, stale capture, or provisional owner cannot disclose active
+operation IDs. Other lanes and tenant partitions proceed independently. Exact
+lease disposal cannot release a successor, and distributed-fencing requirements
+reject before local ownership changes.
+
+`ISessionRunCoordinator.AcquireAsync` now requires the compiled capability.
+Lease requests carry the lane-bound in-run context and expected state revision;
+leases expose immutable tenant/lane/operation/run/revision evidence. Busy
+results require both operation and run identities. These intentional contract
+changes require callers and replacement coordinators to migrate together. A
+selected profile controls wait/reject behavior under the configured wait
+ceiling. Zero wait is an immediate probe driven without a timer. Reusable
+conformance covers same-lane exclusion, exact reacquisition, separate lanes, and
+tenant collisions.
+
+The capability is selection evidence, never a security grant. Actual keyed
+capability compilation, legacy history/branch coordinator migration, transitions
+beyond accepted state, loop driving, required-audit settlement, and distributed
+ownership remain open. This checkpoint does not attest to complete
+runnable-agent composition or crash-safe ownership from a process-local lease.
+
 The durable-authorization binding checkpoint passed complete formatting, lint,
 Release build, and test gates in an isolated checkout over `6a9d02c`. Its
 reviewed API migration replaces scope-only durability authorization with the

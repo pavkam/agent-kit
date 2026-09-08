@@ -60,9 +60,14 @@ namespace AgentKit.Observability
         public const string SessionDelete = "session.delete";
         public const string SessionDirectoryOperation = "session.directory.operation";
         public const string SessionEventPublish = "session.event.publish";
+        public const string SessionInputAdmit = "session.input.admit";
+        public const string SessionInputLookup = "session.input.lookup";
+        public const string SessionLaneProvision = "session.lane.provision";
         public const string SessionLeaseAcquire = "session.lease.acquire";
         public const string SessionLoad = "session.load";
         public const string SessionRead = "session.read";
+        public const string SessionRunAccept = "session.run.accept";
+        public const string SessionRunStateLoad = "session.run.state.load";
         public const string SessionStoreOperation = "session.store.operation";
         public const string TaskDelegationDispatch = "task.delegation.dispatch";
         public const string ToolBatch = "tool.batch";

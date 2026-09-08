@@ -82,6 +82,21 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for acquiring process-local run ownership.</summary>
     public const string SessionLeaseAcquire = "session.lease.acquire";
 
+    /// <summary>Names protected admitted-input lookup.</summary>
+    public const string SessionInputLookup = "session.input.lookup";
+
+    /// <summary>Names protected execution-lane provisioning.</summary>
+    public const string SessionLaneProvision = "session.lane.provision";
+
+    /// <summary>Names protected input admission.</summary>
+    public const string SessionInputAdmit = "session.input.admit";
+
+    /// <summary>Names atomic accepted-run installation.</summary>
+    public const string SessionRunAccept = "session.run.accept";
+
+    /// <summary>Names protected accepted-run-state loading.</summary>
+    public const string SessionRunStateLoad = "session.run.state.load";
+
     /// <summary>Gets the name for publishing a session event to one sink.</summary>
     public const string SessionEventPublish = "session.event.publish";
 

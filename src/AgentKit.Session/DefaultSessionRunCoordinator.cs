@@ -7,144 +7,374 @@ using System.Collections.Concurrent;
 
 using Microsoft.Extensions.Options;
 
-/// <summary>
-/// The default, process-local <see cref="ISessionRunCoordinator"/>: one
-/// mutating run may hold a session's lease at a time, enforced by an
-/// in-process semaphore per session address.
-/// </summary>
-/// <remarks>
-/// This implementation makes no distributed-safety claim: two instances of
-/// this class running in two different processes have no way to observe
-/// each other's leases. A durable execution adapter that needs cross-process
-/// ownership replaces this registration with one backed by fenced,
-/// distributed leases.
-/// </remarks>
+/// <summary>Coordinates exact process-local ownership independently for each accepted session execution lane.</summary>
+/// <remarks>Local ownership becomes acquired only after the protected session coordinator revalidates complete canonical accepted state. This implementation has no distributed-fencing capability.</remarks>
 internal sealed class DefaultSessionRunCoordinator: ISessionRunCoordinator
 {
-    private readonly ConcurrentDictionary<SessionAddress, Slot> _slots = new();
+    private readonly ConcurrentDictionary<(TenantId TenantId, SessionAddress Address, ExecutionLaneId LaneId),
+        SessionRunSlot> _slots = new();
     private readonly IIdentifierGenerator<SessionLeaseId> _leaseIds;
-    private readonly AgentSessionOptions _options;
+    private readonly TimeProvider _timeProvider;
+    private readonly TimeSpan _busyWaitTimeout;
     private readonly ILogger<DefaultSessionRunCoordinator> _logger;
 
-    /// <summary>Initializes a new instance of the <see cref="DefaultSessionRunCoordinator"/> class.</summary>
-    /// <param name="leaseIds">Generates the identity of each acquired lease.</param>
-    /// <param name="options">The validated session coordination options.</param>
-    /// <param name="logger">
-    /// The optional logger that receives safe lease diagnostics; a Microsoft
-    /// null logger is used when omitted.
-    /// </param>
-    /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
+    /// <summary>Initializes the process-local coordinator over protected canonical state.</summary>
+    /// <param name="leaseIds">Generates unique lease identities.</param>
+    /// <param name="timeProvider">Controls bounded local waiting deterministically.</param>
+    /// <param name="options">The validated process-wide coordination ceilings.</param>
+    /// <param name="logger">The optional content-free diagnostics logger.</param>
+    /// <exception cref="ArgumentNullException">A required collaborator is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The configured busy-wait timeout is negative or exceeds the platform timer ceiling.</exception>
     public DefaultSessionRunCoordinator(
         IIdentifierGenerator<SessionLeaseId> leaseIds,
+        TimeProvider timeProvider,
         IOptions<AgentSessionOptions> options,
         ILogger<DefaultSessionRunCoordinator>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(leaseIds);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
-
+        var configuredOptions = options.Value;
+        ArgumentNullException.ThrowIfNull(configuredOptions, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfLessThan(configuredOptions.BusyWaitTimeout, TimeSpan.Zero, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(configuredOptions.BusyWaitTimeout,
+            AgentSessionOptions.MaximumBusyWaitTimeout, nameof(options));
         _leaseIds = leaseIds;
-        _options = options.Value;
+        _timeProvider = timeProvider;
+        _busyWaitTimeout = configuredOptions.BusyWaitTimeout;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultSessionRunCoordinator>.Instance;
     }
 
     /// <inheritdoc/>
     public async ValueTask<SessionRunLeaseResult> AcquireAsync(
         SessionRunLeaseRequest request,
+        SessionExecutionCapability session,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        using var activity = AgentKitDiagnostics.Activities.StartActivity(
-            AgentKitActivityNames.SessionLeaseAcquire,
-            ActivityKind.Internal,
-            parentContext: Activity.Current?.Context ?? default,
-            tags: new ActivityTagsCollection
-            {
-                { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.SessionLeaseAcquire },
-                { AgentKitTagNames.AgentId, request.AgentId.ToString() },
-                { AgentKitTagNames.SessionId, request.SessionId.ToString() },
-                { AgentKitTagNames.RunId, request.RunId.ToString() },
-                { AgentKitTagNames.SessionOperation, AgentKitActivityNames.SessionLeaseAcquire },
-            });
-        SessionLog.OperationStarted(
-            _logger,
-            AgentKitActivityNames.SessionLeaseAcquire,
-            request.AgentId,
-            request.SessionId);
-
-        var address = new SessionAddress(request.AgentId, request.SessionId);
-        var slot = _slots.GetOrAdd(address, static _ => new Slot());
-
-        var waitTimeout = _options.BusyBehavior == SessionBusyBehavior.Wait
-            ? _options.BusyWaitTimeout
-            : TimeSpan.Zero;
-        bool acquired;
+        ArgumentNullException.ThrowIfNull(session);
+        var profile = session.Profile;
+        using var activity = AgentKitActivityScope.Start(AgentKitActivityNames.SessionLeaseAcquire,
+            ActivityKind.Internal, SafeTags(request));
+        ObserveStarted(request);
         try
         {
-            acquired = await slot.Semaphore.WaitAsync(waitTimeout, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(session.RunCoordinator, this))
+            {
+                return Complete(activity.Activity, request,
+                    new SessionRunLeaseConflict(SessionRunLeaseConflictKind.SessionProfile,
+                        "The compiled session capability selected a different run coordinator."));
+            }
+            if (profile.RequiresDistributedFencing)
+            {
+                return Complete(activity.Activity, request,
+                    new SessionRunLeaseUnavailable("The selected profile requires distributed fencing unavailable from the local coordinator."));
+            }
+
+            var key = (request.Context.Identity.TenantId,
+                Address: new SessionAddress(request.AgentId, request.SessionId), LaneId: request.ExecutionLaneId);
+            var slot = _slots.GetOrAdd(key, static _ => new SessionRunSlot());
+            var entered = await EnterAsync(slot, profile.BusyBehavior, cancellationToken).ConfigureAwait(false);
+            if (!entered)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                SessionRunSlotOwner? activeOwner;
+                lock (slot.SyncRoot)
+                {
+                    activeOwner = slot.Owner;
+                }
+                if (activeOwner is null)
+                {
+                    return Complete(activity.Activity, request,
+                        new SessionRunLeaseUnavailable("The local lane is still validating a provisional owner."));
+                }
+
+                var loaded = await session.Coordinator.LoadRunStateAsync(
+                    new SessionRunStateRequest(request.Context), session, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                var validation = ValidateLoadedState(request, profile, loaded);
+                if (validation is not null)
+                {
+                    return Complete(activity.Activity, request, validation);
+                }
+
+                lock (slot.SyncRoot)
+                {
+                    activeOwner = slot.Owner;
+                }
+                return activeOwner is null
+                    ? Complete(activity.Activity, request,
+                        new SessionRunLeaseUnavailable("The local lane wait ended without an observable owner."))
+                    : activeOwner.OperationId == request.OperationId
+                        && activeOwner.RunId == request.RunId
+                        && activeOwner.StateRevision == request.ExpectedStateRevision
+                        ? Complete(activity.Activity, request,
+                            new SessionRunBusy(request.OperationId, request.RunId))
+                        : Complete(activity.Activity, request,
+                            new SessionRunLeaseConflict(SessionRunLeaseConflictKind.AcceptedState,
+                                "The validated accepted operation does not own the occupied local lane."));
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                ReleaseUnownedGate(slot);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            try
+            {
+                var loaded = await session.Coordinator.LoadRunStateAsync(
+                    new SessionRunStateRequest(request.Context), session, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                var validation = ValidateLoadedState(request, profile, loaded);
+                if (validation is not null)
+                {
+                    ReleaseUnownedGate(slot);
+                    return Complete(activity.Activity, request, validation);
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                var leaseId = _leaseIds.Create();
+                var owner = new SessionRunSlotOwner(leaseId, request.OperationId, request.RunId,
+                    request.ExpectedStateRevision);
+                var lease = new SessionRunLease(this, request, leaseId);
+                lock (slot.SyncRoot)
+                {
+                    Debug.Assert(slot.Owner is null, "Canonical validation completes before the exact owner is published.");
+                    slot.Owner = owner;
+                }
+                return Complete(activity.Activity, request,
+                    new SessionRunLeaseAcquired(lease));
+            }
+            catch
+            {
+                ReleaseUnownedGate(slot);
+                throw;
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            activity.SetFailed("cancelled", "cancellation");
-            SessionMetrics.Operations.Add(
-                1,
-                new KeyValuePair<string, object?>(AgentKitTagNames.SessionOperation, AgentKitActivityNames.SessionLeaseAcquire),
-                new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "cancelled"));
-            SessionLog.OperationCancelled(
-                _logger,
-                AgentKitActivityNames.SessionLeaseAcquire,
-                request.AgentId,
-                request.SessionId);
+            ObserveTerminal(activity.Activity, request, "cancelled", false);
+            ObserveCancelled(request);
+            throw new OperationCanceledException(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            ObserveTerminal(activity.Activity, request, "faulted", false);
+            var errorType = exception.GetType().FullName ?? exception.GetType().Name;
+            ObserveFaulted(request, errorType);
             throw;
         }
-
-        if (!acquired)
-        {
-            activity.SetFailed("busy", "session_busy");
-            SessionMetrics.Operations.Add(
-                1,
-                new KeyValuePair<string, object?>(AgentKitTagNames.SessionOperation, AgentKitActivityNames.SessionLeaseAcquire),
-                new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "busy"));
-            SessionLog.OperationCompleted(
-                _logger,
-                AgentKitActivityNames.SessionLeaseAcquire,
-                request.AgentId,
-                request.SessionId,
-                "busy");
-            return new SessionRunBusy(slot.ActiveRunId ?? request.RunId);
-        }
-
-        slot.ActiveRunId = request.RunId;
-        activity.SetSuccessful("acquired");
-        SessionMetrics.Operations.Add(
-            1,
-            new KeyValuePair<string, object?>(AgentKitTagNames.SessionOperation, AgentKitActivityNames.SessionLeaseAcquire),
-            new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "acquired"));
-        SessionLog.OperationCompleted(
-            _logger,
-            AgentKitActivityNames.SessionLeaseAcquire,
-            request.AgentId,
-            request.SessionId,
-            "acquired");
-        return new SessionRunLeaseAcquired(
-            new SessionRunLease(this, _leaseIds.Create(), request.AgentId, request.SessionId, request.RunId));
     }
 
-    /// <summary>Releases the active-run slot for <paramref name="address"/>.</summary>
-    /// <param name="address">The session whose slot should be released.</param>
-    internal void Release(SessionAddress address)
+    /// <summary>Releases a lane only when the disposing lease remains its exact owner.</summary>
+    /// <param name="tenantId">The tenant partition that owns the session address.</param>
+    /// <param name="address">The owning session address.</param>
+    /// <param name="laneId">The exact execution lane.</param>
+    /// <param name="leaseId">The lease identity attempting release.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="address"/> is null, or <paramref name="tenantId"/> is default and has no value.</exception>
+    /// <exception cref="ArgumentException"><paramref name="tenantId"/> has an empty or whitespace value.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="laneId"/> or <paramref name="leaseId"/> is default.</exception>
+    internal void Release(TenantId tenantId, SessionAddress address, ExecutionLaneId laneId, SessionLeaseId leaseId)
     {
-        if (_slots.TryGetValue(address, out var slot))
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId.Value, nameof(tenantId));
+        ArgumentNullException.ThrowIfNull(address);
+        ArgumentOutOfRangeException.ThrowIfEqual(laneId, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(leaseId, default);
+        if (!_slots.TryGetValue((tenantId, address, laneId), out var slot))
         {
-            slot.ActiveRunId = null;
-            _ = slot.Semaphore.Release();
+            return;
+        }
+
+        lock (slot.SyncRoot)
+        {
+            if (slot.Owner?.LeaseId != leaseId)
+            {
+                return;
+            }
+            slot.Owner = null;
+            _ = slot.Gate.Release();
         }
     }
 
-    private sealed class Slot
+    private async ValueTask<bool> EnterAsync(SessionRunSlot slot, SessionBusyBehavior behavior,
+        CancellationToken cancellationToken)
     {
-        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+        Debug.Assert(slot is not null, "A materialized lane slot is required.");
+        if (behavior == SessionBusyBehavior.Reject || _busyWaitTimeout == TimeSpan.Zero)
+        {
+            return slot.Gate.Wait(0, cancellationToken);
+        }
 
-        public RunId? ActiveRunId { get; set; }
+        using var deadline = new CancellationTokenSource(_busyWaitTimeout, _timeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        try
+        {
+            await slot.Gate.WaitAsync(linked.Token).ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested)
+        {
+            return slot.Gate.Wait(0, cancellationToken);
+        }
+    }
+
+    private static void ReleaseUnownedGate(SessionRunSlot slot)
+    {
+        Debug.Assert(slot is not null, "A materialized lane slot is required.");
+        lock (slot.SyncRoot)
+        {
+            Debug.Assert(slot.Owner is null, "Only a gate without an installed owner can use provisional release.");
+            _ = slot.Gate.Release();
+        }
+    }
+
+    private static SessionRunLeaseResult? ValidateLoadedState(SessionRunLeaseRequest request,
+        SessionProfileSnapshot profile, SessionRunStateResult loaded)
+    {
+        Debug.Assert(request is not null, "The public boundary validated the request.");
+        Debug.Assert(profile is not null, "The public boundary validated the profile.");
+        Debug.Assert(loaded is not null, "A coordinator result cannot be null by contract.");
+        if (loaded is SessionRunStateUnavailable unavailable)
+        {
+            return new SessionRunLeaseUnavailable(unavailable.SafeReason);
+        }
+        if (loaded is not SessionRunStateLoaded successful)
+        {
+            return new SessionRunLeaseUnavailable("The session coordinator returned an unsupported run-state result.");
+        }
+
+        var state = successful.State;
+        if (state.OperationStateRevision != request.ExpectedStateRevision)
+        {
+            return new SessionRunLeaseConflict(SessionRunLeaseConflictKind.OperationStateRevision,
+                "The accepted operation-state revision changed before local ownership was acquired.");
+        }
+        var ownerMismatch = state.Address != request.Context.ToAddress()
+            || state.ExecutionLaneId != request.ExecutionLaneId
+            || state.Correlation != request.Context.Correlation
+            || state.Identity != request.Context.Identity
+            || state.Authorization != request.Context.Authorization;
+        return state.SessionProfile != profile.Reference
+            ? new SessionRunLeaseConflict(SessionRunLeaseConflictKind.SessionProfile,
+                "The retained accepted session profile differs from the selected profile.")
+            : ownerMismatch
+                ? new SessionRunLeaseConflict(SessionRunLeaseConflictKind.AcceptedState,
+                "The retained accepted owner differs from the requested operation.")
+                : null;
+    }
+
+    private SessionRunLeaseResult Complete(Activity? activity, SessionRunLeaseRequest request,
+        SessionRunLeaseResult result)
+    {
+        Debug.Assert(request is not null, "A validated lease request is required.");
+        Debug.Assert(result is not null, "A terminal lease result is required.");
+        var outcome = result switch
+        {
+            SessionRunLeaseAcquired => "acquired",
+            SessionRunBusy => "busy",
+            SessionRunLeaseConflict => "conflict",
+            SessionRunLeaseUnavailable => "unavailable",
+            _ => "unsupported",
+        };
+        ObserveTerminal(activity, request, outcome, result is SessionRunLeaseAcquired);
+        ObserveCompleted(request, outcome);
+        return result;
+    }
+
+    private void ObserveStarted(SessionRunLeaseRequest request)
+    {
+        Debug.Assert(request is not null, "A validated lease request is required.");
+        var correlation = (InRunOperationCorrelation) request.Context.Correlation;
+        TryObserve(() => SessionLog.CorrelatedOperationStarted(_logger,
+            AgentKitActivityNames.SessionLeaseAcquire, request.Context.Identity.TenantId,
+            request.AgentId, request.SessionId, request.ExecutionLaneId, request.OperationId,
+            request.RunId, correlation.TurnId));
+    }
+
+    private void ObserveCompleted(SessionRunLeaseRequest request, string outcome)
+    {
+        Debug.Assert(request is not null, "A validated lease request is required.");
+        Debug.Assert(!string.IsNullOrWhiteSpace(outcome), "A bounded outcome is required.");
+        var correlation = (InRunOperationCorrelation) request.Context.Correlation;
+        TryObserve(() => SessionLog.CorrelatedOperationCompleted(_logger,
+            AgentKitActivityNames.SessionLeaseAcquire, request.Context.Identity.TenantId,
+            request.AgentId, request.SessionId, request.ExecutionLaneId, request.OperationId,
+            request.RunId, correlation.TurnId, outcome));
+    }
+
+    private void ObserveCancelled(SessionRunLeaseRequest request)
+    {
+        Debug.Assert(request is not null, "A validated lease request is required.");
+        var correlation = (InRunOperationCorrelation) request.Context.Correlation;
+        TryObserve(() => SessionLog.CorrelatedOperationCancelled(_logger,
+            AgentKitActivityNames.SessionLeaseAcquire, request.Context.Identity.TenantId,
+            request.AgentId, request.SessionId, request.ExecutionLaneId, request.OperationId,
+            request.RunId, correlation.TurnId));
+    }
+
+    private void ObserveFaulted(SessionRunLeaseRequest request, string errorType)
+    {
+        Debug.Assert(request is not null, "A validated lease request is required.");
+        Debug.Assert(!string.IsNullOrWhiteSpace(errorType), "A bounded error type is required.");
+        var correlation = (InRunOperationCorrelation) request.Context.Correlation;
+        TryObserve(() => SessionLog.CorrelatedOperationFaulted(_logger,
+            AgentKitActivityNames.SessionLeaseAcquire, request.Context.Identity.TenantId,
+            request.AgentId, request.SessionId, request.ExecutionLaneId, request.OperationId,
+            request.RunId, correlation.TurnId, errorType));
+    }
+
+    private static void ObserveTerminal(Activity? activity, SessionRunLeaseRequest request, string outcome,
+        bool successful)
+    {
+        Debug.Assert(request is not null, "A validated lease request is required.");
+        Debug.Assert(!string.IsNullOrWhiteSpace(outcome), "A bounded outcome is required.");
+        TryObserve(() =>
+        {
+            if (successful)
+            {
+                activity.SetSuccessful(outcome);
+            }
+            else
+            {
+                activity.SetFailed(outcome, outcome);
+            }
+        });
+        TryObserve(() => SessionMetrics.Operations.Add(1,
+            new KeyValuePair<string, object?>(AgentKitTagNames.SessionOperation,
+                AgentKitActivityNames.SessionLeaseAcquire),
+            new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
+    }
+
+    private static IEnumerable<KeyValuePair<string, object?>> SafeTags(SessionRunLeaseRequest request)
+    {
+        Debug.Assert(request is not null, "A validated lease request is required.");
+        return
+        [
+            new(AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.SessionLeaseAcquire),
+            new(AgentKitTagNames.TenantId, request.Context.Identity.TenantId.ToString()),
+            new(AgentKitTagNames.AgentId, request.AgentId.ToString()),
+            new(AgentKitTagNames.SessionId, request.SessionId.ToString()),
+            new(AgentKitTagNames.ExecutionLaneId, request.ExecutionLaneId.ToString()),
+            new(AgentKitTagNames.OperationId, request.OperationId.ToString()),
+            new(AgentKitTagNames.RunId, request.RunId.ToString()),
+            new(AgentKitTagNames.TurnId,
+                ((InRunOperationCorrelation)request.Context.Correlation).TurnId?.ToString()),
+            new(AgentKitTagNames.SessionOperation, AgentKitActivityNames.SessionLeaseAcquire),
+        ];
+    }
+
+    private static void TryObserve(Action observation)
+    {
+        Debug.Assert(observation is not null, "An observation callback is required.");
+        try
+        {
+            observation();
+        }
+        catch
+        {
+            // Diagnostics are observational and cannot change ownership semantics.
+        }
     }
 }

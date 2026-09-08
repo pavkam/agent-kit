@@ -201,6 +201,95 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
             }, cancellationToken);
     }
 
+    /// <inheritdoc/>
+    public ValueTask<SessionInputLookupResult> LookupInputAsync(SessionInputLookupRequest request,
+        SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        return ObserveAsync(AgentKitActivityNames.SessionInputLookup, request.Context,
+            () => !ReferenceEquals(session.Coordinator, this)
+                ? ValueTask.FromResult<SessionInputLookupResult>(
+                    new SessionInputLookupRejected("The compiled capability selected a different session coordinator."))
+                : ExecuteExistingAsync(request, request.Context, session.Profile, SecurityOperationKind.StateRead,
+                SecurityEffect.Observe, SessionStoreSecurityBinding.Fingerprint(request),
+                static (store, wrapper, token) => store.LookupInputAsync(wrapper, token),
+                static reason => new SessionInputLookupRejected(reason), cancellationToken), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<SessionExecutionLaneProvisionResult> ProvisionLaneAsync(
+        SessionExecutionLaneProvisionRequest request, SessionExecutionCapability session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        return ObserveAsync(AgentKitActivityNames.SessionLaneProvision, request.Context,
+            () => !ReferenceEquals(session.Coordinator, this)
+                ? ValueTask.FromResult<SessionExecutionLaneProvisionResult>(
+                    new SessionExecutionLaneProvisionRejected(
+                        "The compiled capability selected a different session coordinator."))
+                : ExecuteExistingAsync(request, request.Context, session.Profile,
+                    SecurityOperationKind.StateMutation, SecurityEffect.Create,
+                    SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.ProvisionLaneAsync(wrapper, token),
+                    static reason => new SessionExecutionLaneProvisionRejected(reason), cancellationToken),
+            cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<InputAdmissionResult> AdmitInputAsync(SessionInputAdmissionRequest request,
+        SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        return ObserveAsync(AgentKitActivityNames.SessionInputAdmit, request.Context,
+            () => !ReferenceEquals(session.Coordinator, this)
+                ? ValueTask.FromResult<InputAdmissionResult>(new RejectedInput(new InputRejection(
+                    InputRejectionKind.Unauthorized,
+                    "The compiled capability selected a different session coordinator.")))
+                : ExecuteExistingAsync(request, request.Context, session.Profile,
+                    SecurityOperationKind.StateMutation, SecurityEffect.Append,
+                    SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.AdmitInputAsync(wrapper, token),
+                    static reason => new RejectedInput(new InputRejection(InputRejectionKind.Unauthorized, reason)),
+                    cancellationToken), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<SessionRunStartResult> AcceptRunAsync(SessionRunStartRequest request,
+        SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        return ObserveAsync(AgentKitActivityNames.SessionRunAccept, request.Context,
+            () => !ReferenceEquals(session.Coordinator, this)
+                ? ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartRejected(
+                    "The compiled capability selected a different session coordinator."))
+                : ExecuteExistingAsync(request, request.Context, session.Profile,
+                    SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
+                    SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.AcceptRunAsync(wrapper, token),
+                    static reason => new SessionRunStartRejected(reason), cancellationToken), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<SessionRunStateResult> LoadRunStateAsync(SessionRunStateRequest request,
+        SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        return ObserveAsync(AgentKitActivityNames.SessionRunStateLoad, request.Context,
+            () => !ReferenceEquals(session.Coordinator, this)
+                ? ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateUnavailable(
+                    "The compiled capability selected a different session coordinator."))
+                : ExecuteExistingAsync(request, request.Context, session.Profile,
+                    SecurityOperationKind.StateRead, SecurityEffect.Observe,
+                    SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.LoadRunStateAsync(wrapper, token),
+                    static reason => new SessionRunStateUnavailable(reason), cancellationToken), cancellationToken);
+    }
+
     private async ValueTask<SessionCreateResult> CreateCoreAsync(SessionCreateRequest request,
         SessionProfileSnapshot profile, CancellationToken cancellationToken)
     {
@@ -318,12 +407,14 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
             SecurityOperationKind.StateRead, SecurityEffect.Observe,
             SessionDirectorySecurityBinding.Resource(context.Identity.TenantId, context.ToAddress()),
             SessionDirectorySecurityBinding.LocateFingerprint(context), cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         if (directoryGrant is null)
         {
             return failed("Session route lookup was not authorized.");
         }
         var route = await _directory.LocateAsync(DirectoryRequest(context, directoryGrant),
             cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         if (route is not SessionLocated located)
         {
             return failed(SafeLocationReason(route));
@@ -331,6 +422,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
 
         var selection = await _storeSelector.ResolveExistingAsync(
             new SessionStoreSelectionRequest(context, profile, located.Location), cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         if (selection is not SessionStoreSelected selected)
         {
             return failed(SafeSelectionReason(selection));
@@ -339,10 +431,24 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         var storeGrant = await AuthorizeAsync(context.Authorization, selected.Store.SecurityAudience, kind, effect,
             SessionStoreSecurityBinding.Resource(selected.Descriptor.Key, context.ToAddress()), fingerprint,
             cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         return storeGrant is null
             ? failed("Session store access was not authorized.")
-            : await operation(selected.Store, StoreRequest(request, selected.Descriptor.Key, storeGrant),
-                cancellationToken).ConfigureAwait(false);
+            : await InvokeStoreAsync(operation, selected.Store,
+                StoreRequest(request, selected.Descriptor.Key, storeGrant), cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async ValueTask<TResult> InvokeStoreAsync<TRequest, TResult>(
+        Func<ISessionStore, AuthorizedSessionStoreRequest<TRequest>, CancellationToken, ValueTask<TResult>> operation,
+        ISessionStore store, AuthorizedSessionStoreRequest<TRequest> request, CancellationToken cancellationToken)
+        where TRequest : class where TResult : class
+    {
+        Debug.Assert(operation is not null, "A validated store operation delegate is required.");
+        Debug.Assert(store is not null, "A selected session store is required.");
+        Debug.Assert(request is not null, "An authorized store request is required.");
+        var result = await operation(store, request, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
     }
 
     private async ValueTask<SessionOperationContext?> CaptureCreateContextAsync(SessionCreateRequest request,
@@ -404,26 +510,56 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         SecurityGrant grant) where TRequest : class =>
         new(request, key, grant, new SecurityEnforcementIntent(_intentIds.Create(), null));
 
+    private ValueTask<TResult> ObserveAsync<TResult>(string operation, SessionOperationContext context,
+        Func<ValueTask<TResult>> action, CancellationToken cancellationToken) where TResult : class
+    {
+        Debug.Assert(context is not null, "A validated session context is required.");
+        return ObserveAsync(operation, context.AgentId, context.SessionId, context.Correlation.OperationId,
+            action, cancellationToken, context);
+    }
+
     private async ValueTask<TResult> ObserveAsync<TResult>(string operation, AgentId agentId, SessionId? sessionId,
-        OperationId? operationId, Func<ValueTask<TResult>> action, CancellationToken cancellationToken) where TResult : class
+        OperationId? operationId, Func<ValueTask<TResult>> action, CancellationToken cancellationToken,
+        SessionOperationContext? context = null) where TResult : class
     {
         Debug.Assert(!string.IsNullOrWhiteSpace(operation), "A stable session operation name is required.");
         Debug.Assert(action is not null, "A session operation delegate is required.");
-        Activity? activity = null;
-        TryObserve(() => activity = AgentKitDiagnostics.Activities.StartActivity(operation, ActivityKind.Internal,
-            Activity.Current?.Context ?? default, tags: new ActivityTagsCollection
-            {
-                { AgentKitTagNames.GenAiOperationName, operation },
-                { AgentKitTagNames.AgentId, agentId.ToString() },
-                { AgentKitTagNames.SessionId, sessionId?.ToString() },
-                { AgentKitTagNames.OperationId, operationId?.ToString() },
-                { AgentKitTagNames.SessionOperation, operation },
-            }));
-        TryObserve(() => SessionLog.OperationStarted(_logger, operation, agentId, sessionId));
+        var runId = context?.Correlation switch
+        {
+            InRunOperationCorrelation inRun => inRun.RunId,
+            AfterRunOperationCorrelation afterRun => afterRun.CausalRunId,
+            _ => (RunId?) null,
+        };
+        var turnId = (context?.Correlation as InRunOperationCorrelation)?.TurnId;
+        var tags = new ActivityTagsCollection
+        {
+            { AgentKitTagNames.GenAiOperationName, operation },
+            { AgentKitTagNames.TenantId, context?.Identity.TenantId.ToString() },
+            { AgentKitTagNames.AgentId, agentId.ToString() },
+            { AgentKitTagNames.SessionId, sessionId?.ToString() },
+            { AgentKitTagNames.ExecutionLaneId, context?.ExecutionLaneId?.ToString() },
+            { AgentKitTagNames.OperationId, operationId?.ToString() },
+            { AgentKitTagNames.RunId, runId?.ToString() },
+            { AgentKitTagNames.TurnId, turnId?.ToString() },
+            { AgentKitTagNames.SessionOperation, operation },
+        };
+        using var activityScope = AgentKitActivityScope.Start(operation, ActivityKind.Internal, tags);
+        var activity = activityScope.Activity;
+        if (context is null)
+        {
+            TryObserve(() => SessionLog.OperationStarted(_logger, operation, agentId, sessionId));
+        }
+        else
+        {
+            TryObserve(() => SessionLog.CorrelatedOperationStarted(_logger, operation,
+                context.Identity.TenantId, context.AgentId, context.SessionId, context.ExecutionLaneId,
+                context.Correlation.OperationId, runId, turnId));
+        }
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             var result = await action().ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             var outcome = Outcome(result);
             TryObserve(() =>
             {
@@ -439,37 +575,66 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
             TryObserve(() => SessionMetrics.Operations.Add(1,
                 new KeyValuePair<string, object?>(AgentKitTagNames.SessionOperation, operation),
                 new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
-            TryObserve(() => SessionLog.OperationCompleted(_logger, operation, agentId, sessionId, outcome));
+            if (context is null)
+            {
+                TryObserve(() => SessionLog.OperationCompleted(_logger, operation, agentId, sessionId, outcome));
+            }
+            else
+            {
+                TryObserve(() => SessionLog.CorrelatedOperationCompleted(_logger, operation,
+                    context.Identity.TenantId, context.AgentId, context.SessionId, context.ExecutionLaneId,
+                    context.Correlation.OperationId, runId, turnId, outcome));
+            }
             return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             TryObserve(() => activity.SetFailed("cancelled", "cancellation"));
             RecordOperationMetric(operation, "cancelled");
-            TryObserve(() => SessionLog.OperationCancelled(_logger, operation, agentId, sessionId));
-            throw;
+            if (context is null)
+            {
+                TryObserve(() => SessionLog.OperationCancelled(_logger, operation, agentId, sessionId));
+            }
+            else
+            {
+                TryObserve(() => SessionLog.CorrelatedOperationCancelled(_logger, operation,
+                    context.Identity.TenantId, context.AgentId, context.SessionId, context.ExecutionLaneId,
+                    context.Correlation.OperationId, runId, turnId));
+            }
+            throw new OperationCanceledException(cancellationToken);
         }
         catch (Exception exception)
         {
             var errorType = exception.GetType().FullName ?? exception.GetType().Name;
             TryObserve(() => activity.SetFailed("faulted", errorType));
             RecordOperationMetric(operation, "faulted");
-            TryObserve(() => SessionLog.OperationFaulted(_logger, operation, agentId, sessionId, errorType));
+            if (context is null)
+            {
+                TryObserve(() => SessionLog.OperationFaulted(_logger, operation, agentId, sessionId, errorType));
+            }
+            else
+            {
+                TryObserve(() => SessionLog.CorrelatedOperationFaulted(_logger, operation,
+                    context.Identity.TenantId, context.AgentId, context.SessionId, context.ExecutionLaneId,
+                    context.Correlation.OperationId, runId, turnId, errorType));
+            }
             throw;
-        }
-        finally
-        {
-            TryObserve(() => activity?.Dispose());
         }
     }
 
     private static string Outcome<TResult>(TResult result) where TResult : class => result switch
     {
-        SessionCreated or SessionLoaded or SessionAppended or SessionPage or SessionBranched or SessionDeleted =>
+        SessionCreated or SessionLoaded or SessionAppended or SessionPage or SessionBranched or SessionDeleted or
+            SessionInputReplayFound or SessionInputNotFound or SessionExecutionLaneProvisioned or AcceptedInput or
+            SessionRunAccepted or SessionRunStateLoaded =>
             "success",
         SessionCreateFailed or SessionNotFound or SessionLoadFailed or SessionAppendConflict or
             SessionAppendNotFound or SessionAppendFailed or SessionReadNotFound or SessionReadFailed or
-            SessionBranchParentNotFound or SessionBranchFailed or SessionDeleteFailed => "failed",
+            SessionBranchParentNotFound or SessionBranchFailed or SessionDeleteFailed or
+            SessionInputLookupConflict or SessionInputLookupRejected or SessionExecutionLaneProvisionConflict or
+            SessionExecutionLaneProvisionRejected or RejectedInput or SessionRunStartConflict or
+            SessionRunStartBusy or SessionRunStartFenced or SessionRunStartRejected or SessionRunStateUnavailable =>
+            "failed",
         _ => "unknown",
     };
 

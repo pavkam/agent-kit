@@ -270,7 +270,8 @@ public sealed class SessionHierarchyEqualityTests
 
     [Fact]
     public void SessionRunBusy_Equality_WhenSameValues_InstancesAreEqual() =>
-        new SessionRunBusy(new RunId(_runGuid)).ShouldBe(new SessionRunBusy(new RunId(_runGuid)));
+        new SessionRunBusy(new OperationId(_operationGuid), new RunId(_runGuid)).ShouldBe(
+            new SessionRunBusy(new OperationId(_operationGuid), new RunId(_runGuid)));
 
     [Fact]
     public void SessionStoreDescriptor_Constructor_WhenDurableTrueOrFalse_RoundTrips()
@@ -374,9 +375,19 @@ public sealed class SessionHierarchyEqualityTests
 
         public SessionLeaseId LeaseId => throw new NotImplementedException();
 
+        public TenantId TenantId => throw new NotImplementedException();
+
         public AgentId AgentId => throw new NotImplementedException();
 
         public SessionId SessionId => throw new NotImplementedException();
+
+        public ExecutionLaneId ExecutionLaneId => throw new NotImplementedException();
+
+        public OperationId OperationId => throw new NotImplementedException();
+
+        public OperationStateRevision StateRevision => throw new NotImplementedException();
+
+        public FencingToken? Fence => null;
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

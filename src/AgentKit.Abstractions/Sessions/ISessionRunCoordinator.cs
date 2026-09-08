@@ -4,24 +4,30 @@
 namespace AgentKit;
 
 /// <summary>
-/// Owns process-local single-active-mutating-run behavior for sessions.
+/// Acquires exact drive ownership for one tenant-partitioned session execution lane.
 /// </summary>
 /// <remarks>
-/// The default implementation enforces this rule with a process-local lock
-/// and makes no distributed-safety claim. A durable execution adapter may
-/// replace or augment this coordinator with fenced distributed leases for
-/// multi-process deployments.
+/// Ownership is per tenant, agent/session address, and lane; different lanes and
+/// colliding addresses in different tenant partitions remain independent. An
+/// acquired lease permits driving only the accepted operation it names. It is
+/// neither a security grant nor permission to bypass the session coordinator's
+/// separately authorized, serialized durable mutation line. The default
+/// implementation is process-local. A distributed implementation must return
+/// and enforce fencing evidence rather than infer cluster safety from this API.
 /// </remarks>
 public interface ISessionRunCoordinator
 {
     /// <summary>
-    /// Attempts to acquire exclusive mutating access to a session for one
-    /// run.
+    /// Attempts to acquire drive ownership for one exact accepted lane operation.
     /// </summary>
     /// <param name="request">The lease request.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
-    /// <returns>A task producing the terminal outcome.</returns>
+    /// <param name="session">The compiled invocation capability binding the exact profile and coordinator instances.</param>
+    /// <param name="cancellationToken">Cancels this caller's acquisition or wait; it does not request durable abort of the accepted operation.</param>
+    /// <returns>A task producing an acquired exact lease, the validated current owner when busy, or typed conflict/unavailability.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="session"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled before acquisition completes.</exception>
     public ValueTask<SessionRunLeaseResult> AcquireAsync(
         SessionRunLeaseRequest request,
+        SessionExecutionCapability session,
         CancellationToken cancellationToken = default);
 }

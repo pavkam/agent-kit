@@ -16,5 +16,5 @@ public sealed record SessionRunLeaseAcquired: SessionRunLeaseResult
     }
 
     /// <summary>Gets the acquired lease. The caller owns and must dispose it exactly once.</summary>
-    public ISessionRunLease Lease { get; init; }
+    public ISessionRunLease Lease { get; }
 }

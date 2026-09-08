@@ -84,4 +84,100 @@ public interface ISessionCoordinator
         SessionDeleteRequest request,
         SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Looks up a previously accepted input before preprocessing is repeated.</summary>
+    /// <param name="request">The exact input lookup request.</param>
+    /// <param name="session">The compiled invocation capability selecting this coordinator and immutable profile.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A task producing replay evidence or a typed absence/failure.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="session"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is already cancelled.</exception>
+    public ValueTask<SessionInputLookupResult> LookupInputAsync(
+        SessionInputLookupRequest request,
+        SessionExecutionCapability session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionInputLookupResult>(
+            new SessionInputLookupRejected("The coordinator does not support protected admitted-input lookup."));
+    }
+
+    /// <summary>Atomically provisions one execution lane on an exact branch cursor.</summary>
+    /// <param name="request">The lane provisioning transaction.</param>
+    /// <param name="session">The compiled invocation capability selecting this coordinator and immutable profile.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A task producing the committed lane or typed rejection.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="session"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is already cancelled.</exception>
+    public ValueTask<SessionExecutionLaneProvisionResult> ProvisionLaneAsync(
+        SessionExecutionLaneProvisionRequest request,
+        SessionExecutionCapability session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(
+            new SessionExecutionLaneProvisionRejected("The coordinator does not support protected lane provisioning."));
+    }
+
+    /// <summary>Atomically admits one preprocessed input into durable pending state.</summary>
+    /// <param name="request">The complete input admission transaction.</param>
+    /// <param name="session">The compiled invocation capability selecting this coordinator and immutable profile.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A task producing accepted replay evidence or typed rejection.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="session"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is already cancelled.</exception>
+    public ValueTask<InputAdmissionResult> AdmitInputAsync(
+        SessionInputAdmissionRequest request,
+        SessionExecutionCapability session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<InputAdmissionResult>(
+            new RejectedInput(new InputRejection(InputRejectionKind.Unauthorized,
+                "The coordinator does not support protected input admission.")));
+    }
+
+    /// <summary>Atomically consumes selected pending input and installs complete accepted run state.</summary>
+    /// <param name="request">The complete run acceptance transaction.</param>
+    /// <param name="session">The compiled invocation capability selecting this coordinator and immutable profile.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A task producing complete accepted state or a typed rejection.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="session"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is already cancelled.</exception>
+    public ValueTask<SessionRunStartResult> AcceptRunAsync(
+        SessionRunStartRequest request,
+        SessionExecutionCapability session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionRunStartResult>(
+            new SessionRunStartRejected("The coordinator does not support protected run acceptance."));
+    }
+
+    /// <summary>Loads complete accepted state for exact recovery or ownership revalidation.</summary>
+    /// <param name="request">The exact lane-bound in-run state request.</param>
+    /// <param name="session">The compiled invocation capability selecting this coordinator and immutable profile.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A task producing complete accepted state or typed unavailability.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="session"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is already cancelled.</exception>
+    public ValueTask<SessionRunStateResult> LoadRunStateAsync(
+        SessionRunStateRequest request,
+        SessionExecutionCapability session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionRunStateResult>(
+            new SessionRunStateUnavailable("The coordinator does not support protected run-state loading."));
+    }
 }

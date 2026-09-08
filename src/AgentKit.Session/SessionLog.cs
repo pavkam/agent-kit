@@ -47,4 +47,58 @@ internal static partial class SessionLog
         string sinkName,
         SessionId sessionId,
         string errorType);
+
+    /// <summary>Logs the start of a lane-correlated session operation without session content.</summary>
+    [LoggerMessage(6005, LogLevel.Debug, "Starting session operation {Operation} for tenant {TenantId}, agent {AgentId}, session {SessionId}, lane {ExecutionLaneId}, operation {OperationId}, run {RunId}, and turn {TurnId}.")]
+    internal static partial void CorrelatedOperationStarted(
+        ILogger logger,
+        string operation,
+        TenantId tenantId,
+        AgentId agentId,
+        SessionId sessionId,
+        ExecutionLaneId? executionLaneId,
+        OperationId operationId,
+        RunId? runId,
+        TurnId? turnId);
+
+    /// <summary>Logs the bounded terminal outcome of a lane-correlated session operation.</summary>
+    [LoggerMessage(6006, LogLevel.Debug, "Completed session operation {Operation} for tenant {TenantId}, agent {AgentId}, session {SessionId}, lane {ExecutionLaneId}, operation {OperationId}, run {RunId}, and turn {TurnId} with outcome {Outcome}.")]
+    internal static partial void CorrelatedOperationCompleted(
+        ILogger logger,
+        string operation,
+        TenantId tenantId,
+        AgentId agentId,
+        SessionId sessionId,
+        ExecutionLaneId? executionLaneId,
+        OperationId operationId,
+        RunId? runId,
+        TurnId? turnId,
+        string outcome);
+
+    /// <summary>Logs caller cancellation of a lane-correlated session operation.</summary>
+    [LoggerMessage(6007, LogLevel.Information, "Session operation {Operation} for tenant {TenantId}, agent {AgentId}, session {SessionId}, lane {ExecutionLaneId}, operation {OperationId}, run {RunId}, and turn {TurnId} was cancelled.")]
+    internal static partial void CorrelatedOperationCancelled(
+        ILogger logger,
+        string operation,
+        TenantId tenantId,
+        AgentId agentId,
+        SessionId sessionId,
+        ExecutionLaneId? executionLaneId,
+        OperationId operationId,
+        RunId? runId,
+        TurnId? turnId);
+
+    /// <summary>Logs an unexpected lane-correlated session error type without exception or session content.</summary>
+    [LoggerMessage(6008, LogLevel.Error, "Session operation {Operation} for tenant {TenantId}, agent {AgentId}, session {SessionId}, lane {ExecutionLaneId}, operation {OperationId}, run {RunId}, and turn {TurnId} faulted with error type {ErrorType}.")]
+    internal static partial void CorrelatedOperationFaulted(
+        ILogger logger,
+        string operation,
+        TenantId tenantId,
+        AgentId agentId,
+        SessionId sessionId,
+        ExecutionLaneId? executionLaneId,
+        OperationId operationId,
+        RunId? runId,
+        TurnId? turnId,
+        string errorType);
 }

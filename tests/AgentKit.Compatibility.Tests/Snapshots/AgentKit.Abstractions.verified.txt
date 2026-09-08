@@ -338,6 +338,7 @@ namespace AgentKit
             public static void ThrowIfDefaultEmptyOrDuplicate<T>(System.Collections.Immutable.ImmutableArray<T> values, [System.Runtime.CompilerServices.CallerArgumentExpression("values")] string? paramName = null)
                 where T :  struct { }
             public static void ThrowIfSessionContextNotLaneBound(AgentKit.SessionOperationContext context, [System.Runtime.CompilerServices.CallerArgumentExpression("context")] string? paramName = null) { }
+            public static void ThrowIfSessionContextNotInRun(AgentKit.SessionOperationContext context, [System.Runtime.CompilerServices.CallerArgumentExpression("context")] string? paramName = null) { }
             public static void ThrowIfSessionContextNotBeforeRun(AgentKit.SessionOperationContext context, [System.Runtime.CompilerServices.CallerArgumentExpression("context")] string? paramName = null) { }
             public static void ThrowIfInvalidSessionCreationAuthorization(AgentKit.SecurityAuthorizationContext authorization, [System.Runtime.CompilerServices.CallerArgumentExpression("authorization")] string? paramName = null) { }
             public static void ThrowIfDoesNotContain<T>(System.Collections.Immutable.ImmutableArray<T> values, T required, [System.Runtime.CompilerServices.CallerArgumentExpression("values")] string? paramName = null)
@@ -2962,11 +2963,16 @@ namespace AgentKit
     }
     public interface ISessionCoordinator
     {
+        System.Threading.Tasks.ValueTask<AgentKit.SessionRunStartResult> AcceptRunAsync(AgentKit.SessionRunStartRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.InputAdmissionResult> AdmitInputAsync(AgentKit.SessionInputAdmissionRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionAppendResult> AppendAsync(AgentKit.SessionAppendRequest request, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionBranchResult> BranchAsync(AgentKit.SessionBranchRequest request, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionCreateResult> CreateAsync(AgentKit.SessionCreateRequest request, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionDeleteResult> DeleteAsync(AgentKit.SessionDeleteRequest request, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionLoadResult> LoadAsync(AgentKit.SessionOperationContext context, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.SessionRunStateResult> LoadRunStateAsync(AgentKit.SessionRunStateRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.SessionInputLookupRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.SessionExecutionLaneProvisionRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionPageResult> ReadAsync(AgentKit.SessionReadRequest request, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface ISessionDirectory
@@ -2988,14 +2994,19 @@ namespace AgentKit
     }
     public interface ISessionRunCoordinator
     {
-        System.Threading.Tasks.ValueTask<AgentKit.SessionRunLeaseResult> AcquireAsync(AgentKit.SessionRunLeaseRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.SessionRunLeaseResult> AcquireAsync(AgentKit.SessionRunLeaseRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface ISessionRunLease : System.IAsyncDisposable
     {
         AgentKit.AgentId AgentId { get; }
+        AgentKit.ExecutionLaneId ExecutionLaneId { get; }
+        AgentKit.FencingToken? Fence { get; }
         AgentKit.SessionLeaseId LeaseId { get; }
+        AgentKit.OperationId OperationId { get; }
         AgentKit.RunId RunId { get; }
         AgentKit.SessionId SessionId { get; }
+        AgentKit.OperationStateRevision StateRevision { get; }
+        AgentKit.TenantId TenantId { get; }
     }
     public interface ISessionStore
     {
@@ -5742,6 +5753,13 @@ namespace AgentKit
         public AgentKit.SessionAddress Address { get; init; }
         public System.DateTimeOffset OccurredAt { get; init; }
     }
+    public sealed class SessionExecutionCapability : System.IEquatable<AgentKit.SessionExecutionCapability>
+    {
+        public SessionExecutionCapability(AgentKit.SessionProfileSnapshot profile, AgentKit.ISessionCoordinator coordinator, AgentKit.ISessionRunCoordinator runCoordinator) { }
+        public AgentKit.ISessionCoordinator Coordinator { get; }
+        public AgentKit.SessionProfileSnapshot Profile { get; }
+        public AgentKit.ISessionRunCoordinator RunCoordinator { get; }
+    }
     public sealed class SessionExecutionLaneProvisionConflict : AgentKit.SessionExecutionLaneProvisionResult, System.IEquatable<AgentKit.SessionExecutionLaneProvisionConflict>
     {
         public SessionExecutionLaneProvisionConflict(string safeMessage) { }
@@ -6002,22 +6020,44 @@ namespace AgentKit
     }
     public sealed class SessionRunBusy : AgentKit.SessionRunLeaseResult, System.IEquatable<AgentKit.SessionRunBusy>
     {
-        public SessionRunBusy(AgentKit.RunId activeRunId) { }
-        public AgentKit.RunId ActiveRunId { get; init; }
+        public SessionRunBusy(AgentKit.OperationId activeOperationId, AgentKit.RunId activeRunId) { }
+        public AgentKit.OperationId ActiveOperationId { get; }
+        public AgentKit.RunId ActiveRunId { get; }
     }
     public sealed class SessionRunLeaseAcquired : AgentKit.SessionRunLeaseResult, System.IEquatable<AgentKit.SessionRunLeaseAcquired>
     {
         public SessionRunLeaseAcquired(AgentKit.ISessionRunLease lease) { }
-        public AgentKit.ISessionRunLease Lease { get; init; }
+        public AgentKit.ISessionRunLease Lease { get; }
+    }
+    public sealed class SessionRunLeaseConflict : AgentKit.SessionRunLeaseResult, System.IEquatable<AgentKit.SessionRunLeaseConflict>
+    {
+        public SessionRunLeaseConflict(AgentKit.SessionRunLeaseConflictKind kind, string safeReason) { }
+        public AgentKit.SessionRunLeaseConflictKind Kind { get; }
+        public string SafeReason { get; }
+    }
+    public enum SessionRunLeaseConflictKind
+    {
+        OperationStateRevision = 0,
+        SessionProfile = 1,
+        AcceptedState = 2,
     }
     public sealed class SessionRunLeaseRequest : System.IEquatable<AgentKit.SessionRunLeaseRequest>
     {
-        public SessionRunLeaseRequest(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId runId) { }
-        public AgentKit.AgentId AgentId { get; init; }
-        public AgentKit.RunId RunId { get; init; }
-        public AgentKit.SessionId SessionId { get; init; }
+        public SessionRunLeaseRequest(AgentKit.SessionOperationContext context, AgentKit.OperationStateRevision expectedStateRevision) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.SessionOperationContext Context { get; }
+        public AgentKit.ExecutionLaneId ExecutionLaneId { get; }
+        public AgentKit.OperationStateRevision ExpectedStateRevision { get; }
+        public AgentKit.OperationId OperationId { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId SessionId { get; }
     }
     public abstract class SessionRunLeaseResult : System.IEquatable<AgentKit.SessionRunLeaseResult> { }
+    public sealed class SessionRunLeaseUnavailable : AgentKit.SessionRunLeaseResult, System.IEquatable<AgentKit.SessionRunLeaseUnavailable>
+    {
+        public SessionRunLeaseUnavailable(string safeReason) { }
+        public string SafeReason { get; }
+    }
     public sealed class SessionRunStartBusy : AgentKit.SessionRunStartResult, System.IEquatable<AgentKit.SessionRunStartBusy>
     {
         public SessionRunStartBusy(AgentKit.OperationId operationId, AgentKit.RunId runId) { }

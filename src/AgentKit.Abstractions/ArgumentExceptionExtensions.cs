@@ -142,6 +142,22 @@ public static class ArgumentExceptionExtensions
             }
         }
 
+        /// <summary>Throws when a session operation context is not a lane-bound in-run operation.</summary>
+        /// <param name="context">The non-null session context to inspect.</param>
+        /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="context"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="context"/> has no execution lane or does not carry <see cref="InRunOperationCorrelation"/>.</exception>
+        public static void ThrowIfSessionContextNotInRun(
+            SessionOperationContext context,
+            [CallerArgumentExpression(nameof(context))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(context, paramName);
+            if (context.ExecutionLaneId is null || context.Correlation is not InRunOperationCorrelation)
+            {
+                throw new ArgumentException("The session operation must identify a lane and carry in-run correlation.", paramName);
+            }
+        }
+
         /// <summary>Throws when a session operation context is not a before-run operation.</summary>
         /// <param name="context">The non-null session context to inspect.</param>
         /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>

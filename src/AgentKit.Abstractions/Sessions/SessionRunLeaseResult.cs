@@ -8,18 +8,17 @@ namespace AgentKit;
 /// <see cref="SessionRunLeaseRequest"/>.
 /// </summary>
 /// <remarks>
-/// This is a closed discriminated hierarchy. The concrete kinds are
-/// <see cref="SessionRunLeaseAcquired"/> and <see cref="SessionRunBusy"/>.
-/// Its constructor is <see langword="private protected"/>, so no assembly
-/// outside AgentKit.Abstractions can add a third kind.
+/// The built-in kinds are <see cref="SessionRunLeaseAcquired"/>, <see cref="SessionRunBusy"/>,
+/// <see cref="SessionRunLeaseConflict"/>, and <see cref="SessionRunLeaseUnavailable"/>.
+/// Consumers must fail closed for an unknown derived result.
 /// </remarks>
 public abstract record SessionRunLeaseResult
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="SessionRunLeaseResult"/>
-    /// record. This constructor is <see langword="private protected"/> so
-    /// only the closed set of kinds declared in this assembly can extend
-    /// the hierarchy.
+    /// record. The <see langword="private protected"/> accessibility limits
+    /// ordinary derivation to this assembly; consumers still handle unknown
+    /// derived record shapes defensively.
     /// </summary>
     private protected SessionRunLeaseResult()
     {

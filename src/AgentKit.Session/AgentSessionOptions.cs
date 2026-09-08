@@ -8,12 +8,16 @@ namespace AgentKit.Session;
 /// run coordinator registered by <c>AddAgentSession</c>.
 /// </summary>
 /// <remarks>
-/// These are hard engine ceilings validated once at registration time; they
-/// are not re-read per operation. A future per-agent session profile may
-/// tighten, but never loosen, these values.
+/// These are hard engine ceilings captured by the registered coordinators and
+/// are not re-read per operation. The immutable selected session profile owns
+/// per-operation busy behavior and may tighten applicable append/page bounds.
 /// </remarks>
 public sealed class AgentSessionOptions
 {
+    /// <summary>Gets the largest wait representable by the injected timer scheduler.</summary>
+    /// <value>The platform timer ceiling used by both direct construction and options validation.</value>
+    internal static TimeSpan MaximumBusyWaitTimeout { get; } = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+
     /// <summary>
     /// Gets or sets the maximum number of entries one
     /// <see cref="SessionAppendRequest"/> may carry. Defaults to 128.
@@ -33,16 +37,17 @@ public sealed class AgentSessionOptions
     public TimeSpan SecurityRequestLifetime { get; set; } = TimeSpan.FromMinutes(1);
 
     /// <summary>
-    /// Gets or sets what happens when a run requests the active-run lease
-    /// for a session that already has one. Defaults to
-    /// <see cref="SessionBusyBehavior.Reject"/>.
+    /// Gets or sets the legacy process default for busy behavior. Capability-based
+    /// acquisition uses the immutable selected <see cref="SessionProfileSnapshot.BusyBehavior"/>
+    /// instead. The default is <see cref="SessionBusyBehavior.Reject"/>.
     /// </summary>
     public SessionBusyBehavior BusyBehavior { get; set; } = SessionBusyBehavior.Reject;
 
     /// <summary>
     /// Gets or sets how long <see cref="SessionBusyBehavior.Wait"/> waits
-    /// for the active run to release the lease before giving up. Defaults
-    /// to 30 seconds. Ignored when <see cref="BusyBehavior"/> is
+    /// for the lane owner to release the lease before giving up. Defaults to 30
+    /// seconds, must not be negative, and cannot exceed the platform timer
+    /// ceiling. It is ignored when the selected session profile chooses
     /// <see cref="SessionBusyBehavior.Reject"/>.
     /// </summary>
     public TimeSpan BusyWaitTimeout { get; set; } = TimeSpan.FromSeconds(30);

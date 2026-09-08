@@ -3,58 +3,60 @@
 
 namespace AgentKit.Session;
 
-/// <summary>
-/// The default, process-local <see cref="ISessionRunLease"/>. Disposing it
-/// exactly once releases the session's active-run slot.
-/// </summary>
+/// <summary>The default exact, process-local ownership lease for one accepted session execution lane.</summary>
 internal sealed class SessionRunLease: ISessionRunLease
 {
     private readonly DefaultSessionRunCoordinator _owner;
     private int _disposed;
 
-    /// <summary>Initializes a new instance of the <see cref="SessionRunLease"/> class.</summary>
-    /// <param name="owner">The coordinator to notify when this lease is released.</param>
-    /// <param name="leaseId">The stable identity of this lease.</param>
-    /// <param name="agentId">The agent that owns the leased session.</param>
-    /// <param name="sessionId">The session this lease grants exclusive access to.</param>
-    /// <param name="runId">The run holding this lease.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="owner"/> is null.</exception>
-    public SessionRunLease(
-        DefaultSessionRunCoordinator owner,
-        SessionLeaseId leaseId,
-        AgentId agentId,
-        SessionId sessionId,
-        RunId runId)
+    /// <summary>Initializes one validated process-local lease.</summary>
+    /// <param name="owner">The coordinator that owns release linearization.</param>
+    /// <param name="request">The exact accepted-state lease request.</param>
+    /// <param name="leaseId">The non-default lease identity.</param>
+    /// <exception cref="ArgumentNullException">A required reference is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="leaseId"/> is default.</exception>
+    internal SessionRunLease(DefaultSessionRunCoordinator owner, SessionRunLeaseRequest request, SessionLeaseId leaseId)
     {
         ArgumentNullException.ThrowIfNull(owner);
-
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentOutOfRangeException.ThrowIfEqual(leaseId, default);
         _owner = owner;
+        TenantId = request.Context.Identity.TenantId;
         LeaseId = leaseId;
-        AgentId = agentId;
-        SessionId = sessionId;
-        RunId = runId;
+        AgentId = request.AgentId;
+        SessionId = request.SessionId;
+        ExecutionLaneId = request.ExecutionLaneId;
+        OperationId = request.OperationId;
+        RunId = request.RunId;
+        StateRevision = request.ExpectedStateRevision;
     }
 
     /// <inheritdoc/>
     public SessionLeaseId LeaseId { get; }
-
+    /// <inheritdoc/>
+    public TenantId TenantId { get; }
     /// <inheritdoc/>
     public AgentId AgentId { get; }
-
     /// <inheritdoc/>
     public SessionId SessionId { get; }
-
+    /// <inheritdoc/>
+    public ExecutionLaneId ExecutionLaneId { get; }
+    /// <inheritdoc/>
+    public OperationId OperationId { get; }
     /// <inheritdoc/>
     public RunId RunId { get; }
+    /// <inheritdoc/>
+    public OperationStateRevision StateRevision { get; }
+    /// <inheritdoc/>
+    public FencingToken? Fence => null;
 
     /// <inheritdoc/>
     public ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
-            _owner.Release(new SessionAddress(AgentId, SessionId));
+            _owner.Release(TenantId, new SessionAddress(AgentId, SessionId), ExecutionLaneId, LeaseId);
         }
-
         return ValueTask.CompletedTask;
     }
 }

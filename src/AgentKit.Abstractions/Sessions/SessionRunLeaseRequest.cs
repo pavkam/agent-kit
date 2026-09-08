@@ -3,78 +3,36 @@
 
 namespace AgentKit;
 
-/// <summary>
-/// A request to acquire the single active mutating run for a session.
-/// </summary>
-/// <remarks>
-/// This type is an immutable value object with structural equality over its
-/// fields. It carries no mutable state and is safe to share across threads
-/// without synchronization.
-/// </remarks>
+/// <summary>Requests process-local ownership for one exact durably accepted session-lane operation.</summary>
+/// <remarks>The request carries immutable canonical state evidence. Acquisition revalidates that evidence through the protected session coordinator after obtaining the local lane slot.</remarks>
 public sealed record SessionRunLeaseRequest
 {
-    private readonly AgentId _agentId;
-    private readonly SessionId _sessionId;
-    private readonly RunId _runId;
-
-    /// <summary>Initializes a new instance of the <see cref="SessionRunLeaseRequest"/> record.</summary>
-    /// <param name="agentId">The agent that owns the session.</param>
-    /// <param name="sessionId">The session to acquire the lease for.</param>
-    /// <param name="runId">The run requesting exclusive mutating access.</param>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="agentId"/>, <paramref name="sessionId"/>, or
-    /// <paramref name="runId"/> is its default, empty identity.
-    /// </exception>
-    public SessionRunLeaseRequest(AgentId agentId, SessionId sessionId, RunId runId)
+    /// <summary>Initializes an exact lane-ownership request.</summary>
+    /// <param name="context">The lane-bound in-run context of the accepted operation.</param>
+    /// <param name="expectedStateRevision">The positive total-state revision observed by the caller.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="context"/> is not lane-bound and in-run.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="expectedStateRevision"/> is default.</exception>
+    public SessionRunLeaseRequest(SessionOperationContext context, OperationStateRevision expectedStateRevision)
     {
-        ArgumentOutOfRangeException.ThrowIfEqual(agentId, default, nameof(agentId));
-        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default, nameof(sessionId));
-        ArgumentOutOfRangeException.ThrowIfEqual(runId, default, nameof(runId));
-
-        _agentId = agentId;
-        _sessionId = sessionId;
-        _runId = runId;
+        ArgumentException.ThrowIfSessionContextNotInRun(context);
+        ArgumentOutOfRangeException.ThrowIfEqual(expectedStateRevision, default);
+        Context = context;
+        ExpectedStateRevision = expectedStateRevision;
     }
 
-    /// <summary>Gets the agent that owns the session.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// An initializer attempts to set the default, empty identity.
-    /// </exception>
-    public AgentId AgentId
-    {
-        get => _agentId;
-        init
-        {
-            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(AgentId));
-            _agentId = value;
-        }
-    }
-
-    /// <summary>Gets the session to acquire the lease for.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// An initializer attempts to set the default, empty identity.
-    /// </exception>
-    public SessionId SessionId
-    {
-        get => _sessionId;
-        init
-        {
-            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(SessionId));
-            _sessionId = value;
-        }
-    }
-
-    /// <summary>Gets the run requesting exclusive mutating access.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// An initializer attempts to set the default, empty identity.
-    /// </exception>
-    public RunId RunId
-    {
-        get => _runId;
-        init
-        {
-            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(RunId));
-            _runId = value;
-        }
-    }
+    /// <summary>Gets the exact protected operation context.</summary><value>A lane-bound in-run context retained by accepted state.</value>
+    public SessionOperationContext Context { get; }
+    /// <summary>Gets the expected total-state revision.</summary><value>A positive revision revalidated before lease acquisition completes.</value>
+    public OperationStateRevision ExpectedStateRevision { get; }
+    /// <summary>Gets the owning agent.</summary><value>The agent from <see cref="Context"/>.</value>
+    public AgentId AgentId => Context.AgentId;
+    /// <summary>Gets the addressed session.</summary><value>The session from <see cref="Context"/>.</value>
+    public SessionId SessionId => Context.SessionId;
+    /// <summary>Gets the exact execution lane.</summary><value>The non-default lane from <see cref="Context"/>.</value>
+    public ExecutionLaneId ExecutionLaneId => Context.ExecutionLaneId!.Value;
+    /// <summary>Gets the accepted operation.</summary><value>The operation from the in-run correlation.</value>
+    public OperationId OperationId => ((InRunOperationCorrelation) Context.Correlation).OperationId;
+    /// <summary>Gets the accepted run.</summary><value>The run from the in-run correlation.</value>
+    public RunId RunId => ((InRunOperationCorrelation) Context.Correlation).RunId;
 }

@@ -69,6 +69,18 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddAgentSession_WhenBusyWaitTimeoutExceedsTimerCeiling_FailsValidationOnAccess()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentSession(options =>
+            options.BusyWaitTimeout = AgentSessionOptions.MaximumBusyWaitTimeout + TimeSpan.FromTicks(1));
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<AgentSessionOptions>>().Value);
+    }
+
+    [Fact]
     public void AddSessionStore_WhenCalled_RegistersProvidedStore()
     {
         var services = new ServiceCollection();

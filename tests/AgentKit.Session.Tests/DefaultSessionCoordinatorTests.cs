@@ -260,6 +260,55 @@ public sealed class DefaultSessionCoordinatorTests
         _ = result.ShouldBeOfType<SessionLoaded>();
     }
 
+    [Fact]
+    public async Task LookupInputAsync_WhenCapabilitySelectedDifferentCoordinator_RejectsBeforeAuthorityOrRouting()
+    {
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = static (ref options) =>
+                options.Name == AgentKitActivityNames.SessionInputLookup
+                    ? ActivitySamplingResult.AllData
+                    : ActivitySamplingResult.None,
+            ActivityStopped = activity => stopped = activity,
+        };
+        ActivitySource.AddActivityListener(listener);
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var profile = TestFactory.Profile();
+        var alternate = new FakeRunStateSessionCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(profile, alternate, runCoordinator);
+        var address = TestFactory.Descriptor().Address;
+        var identity = TestFactory.Identity();
+        var correlation = new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null);
+        var context = new SessionOperationContext(address.AgentId, address.SessionId,
+            new ExecutionLaneId(Guid.NewGuid()), correlation, identity,
+            TestFactory.Authorization(address.AgentId, address.SessionId, correlation, identity));
+        var input = new AgentInput(new InputId(Guid.NewGuid()), InputDelivery.FollowUp,
+            [new TextPart("content", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+
+        var result = await coordinator.LookupInputAsync(
+            new SessionInputLookupRequest(context, input, new InputFingerprint("sha256:input")),
+            capability, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionInputLookupRejected>();
+        harness.Authority.Requests.ShouldBeEmpty();
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+        activity.GetTagItem(AgentKitTagNames.TenantId).ShouldBe(identity.TenantId.ToString());
+        activity.GetTagItem(AgentKitTagNames.AgentId).ShouldBe(address.AgentId.ToString());
+        activity.GetTagItem(AgentKitTagNames.SessionId).ShouldBe(address.SessionId.ToString());
+        activity.GetTagItem(AgentKitTagNames.ExecutionLaneId).ShouldBe(context.ExecutionLaneId?.ToString());
+        activity.GetTagItem(AgentKitTagNames.OperationId).ShouldBe(correlation.OperationId.ToString());
+        activity.GetTagItem(AgentKitTagNames.RunId).ShouldBeNull();
+        activity.GetTagItem(AgentKitTagNames.TurnId).ShouldBeNull();
+    }
+
     private static SessionLocation Location(string storeKey, SessionAddress? address = null) => new(
         address ?? new SessionAddress(new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111")),
             new SessionId(Guid.Parse("22222222-2222-2222-2222-222222222222"))),

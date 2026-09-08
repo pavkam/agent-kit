@@ -45,7 +45,9 @@ public static class ServiceExtensions
                     "SecurityRequestLifetime must be positive.")
                 .Validate(o => o.SecurityRequestLifetime <= TimeSpan.FromHours(1),
                     "SecurityRequestLifetime must not exceed one hour.")
-                .Validate(o => o.BusyWaitTimeout >= TimeSpan.Zero, "BusyWaitTimeout must not be negative.");
+                .Validate(o => o.BusyWaitTimeout >= TimeSpan.Zero, "BusyWaitTimeout must not be negative.")
+                .Validate(o => o.BusyWaitTimeout <= AgentSessionOptions.MaximumBusyWaitTimeout,
+                    "BusyWaitTimeout exceeds the platform timer ceiling.");
 
             if (configure is not null)
             {

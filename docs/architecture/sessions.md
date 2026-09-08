@@ -371,7 +371,7 @@ public interface ISessionRunCoordinator
 {
     ValueTask<SessionRunLeaseResult> AcquireAsync(
         SessionRunLeaseRequest request,
-        SessionProfileSnapshot profile,
+        SessionExecutionCapability session,
         CancellationToken cancellationToken);
 }
 
@@ -458,6 +458,13 @@ coordinator key, and passes it to store selection. Multiple agents may therefore
 share one coordinator implementation while retaining different stores, bounds,
 retention, and concurrency policies. No constructor or factory captures the
 first profile registered for a component key.
+
+Accepted-state transactions and run-lease acquisition carry the complete
+invocation-only `SessionExecutionCapability`. The selected coordinator rejects a
+capability whose `Coordinator` is a different instance, and the selected run
+coordinator rejects one whose `RunCoordinator` is different. This preserves the
+compiled `CoordinatorKey` and `RunCoordinatorKey` binding without a container
+lookup or ambient registry while accepted ownership is revalidated.
 
 AgentKit defines no session-store base class. In-memory, SQLite, and remote
 stores have materially different transaction, serialization, and ownership
