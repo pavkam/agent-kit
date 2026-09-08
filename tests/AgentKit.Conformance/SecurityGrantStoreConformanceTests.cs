@@ -260,7 +260,7 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
     [Fact]
     public async Task ValidateAndConsumeAsync_WhenIntentReceiptsAreUnsupported_DoesNotInvokeLegacyConsumption()
     {
-        ISecurityGrantStore store = new LegacyOnlySecurityGrantStore();
+        ISecurityGrantStore store = new LegacyOnlyGrantStore();
         var grant = CreateGrant(DateTimeOffset.UnixEpoch);
 
         var result = await store.ValidateAndConsumeAsync(
@@ -268,7 +268,7 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
 
         result.Status.ShouldBe(GrantConsumptionStatus.Unknown);
         result.IntentReceipt.ShouldBeNull();
-        ((LegacyOnlySecurityGrantStore) store).LegacyConsumptionCalls.ShouldBe(0);
+        ((LegacyOnlyGrantStore) store).LegacyConsumptionCalls.ShouldBe(0);
     }
 
     /// <summary>Verifies revocation is idempotent and prevents every later grant consumption.</summary>
@@ -402,4 +402,24 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
         return await Task.WhenAll(workers).WaitAsync(cancellationToken);
     }
 
+    private sealed class LegacyOnlyGrantStore: ISecurityGrantStore
+    {
+        public int LegacyConsumptionCalls { get; private set; }
+
+        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+            SecurityGrant grant,
+            SecurityEnforcementRequest enforcement,
+            CancellationToken cancellationToken = default)
+        {
+            LegacyConsumptionCalls++;
+            return ValueTask.FromResult(new GrantConsumptionResult(
+                GrantConsumptionStatus.Consumed, 0, "Legacy consumption was invoked."));
+        }
+
+        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(false);
+    }
 }

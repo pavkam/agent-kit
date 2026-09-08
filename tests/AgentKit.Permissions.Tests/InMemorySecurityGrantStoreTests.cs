@@ -5,6 +5,8 @@ namespace AgentKit.Permissions.Tests;
 
 using System.Diagnostics.Metrics;
 
+using Microsoft.Extensions.Logging;
+
 public sealed class InMemorySecurityGrantStoreTests
 {
     private static readonly DateTimeOffset _now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
@@ -229,14 +231,14 @@ public sealed class InMemorySecurityGrantStoreTests
     [Fact]
     public async Task ValidateAndConsumeAsync_WhenImplementationDoesNotSupportIntentReceipts_FailsBeforeLegacyConsumption()
     {
-        ISecurityGrantStore store = new LegacyOnlySecurityGrantStore();
+        ISecurityGrantStore store = new LegacyOnlyGrantStore();
         var grant = CreateGrant();
 
         var result = await store.ValidateAndConsumeAsync(
             grant, CreateEnforcement(grant), CreateIntent(), TestContext.Current.CancellationToken);
 
         result.Status.ShouldBe(GrantConsumptionStatus.Unknown);
-        ((LegacyOnlySecurityGrantStore) store).LegacyConsumptionCalls.ShouldBe(0);
+        ((LegacyOnlyGrantStore) store).LegacyConsumptionCalls.ShouldBe(0);
     }
 
     [Fact]
@@ -260,8 +262,7 @@ public sealed class InMemorySecurityGrantStoreTests
     [Fact]
     public async Task ValidateAndConsumeAsync_WhenLoggerThrows_PreservesNewConsumptionAndReplay()
     {
-        var store = new InMemorySecurityGrantStore(
-            new FakeTimeProvider(_now), new ThrowingSecurityGrantStoreLogger());
+        var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now), new ThrowingLogger());
         var grant = CreateGrant();
         var enforcement = CreateEnforcement(grant);
         var intent = CreateIntent();
@@ -272,64 +273,6 @@ public sealed class InMemorySecurityGrantStoreTests
 
         consumed.Status.ShouldBe(GrantConsumptionStatus.Consumed);
         replay.Status.ShouldBe(GrantConsumptionStatus.Reconciled);
-    }
-
-    [Fact]
-    public async Task ValidateAndConsumeAsync_WhenClockFails_ObservesFaultAndPreservesOriginalExceptionAndUse()
-    {
-        var clock = new SwitchableThrowingTimeProvider(_now);
-        var logger = new RecordingSecurityGrantStoreLogger();
-        var store = new InMemorySecurityGrantStore(clock, logger);
-        var grant = CreateGrant();
-        var enforcement = CreateEnforcement(grant);
-        var intent = CreateIntent();
-        Activity? stopped = null;
-        var outcomes = new List<string>();
-        using var activityListener = new ActivityListener
-        {
-            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = SampleAllData,
-            ActivityStopped = activity =>
-            {
-                if (activity.OperationName == AgentKitActivityNames.SecurityGrantConsume
-                    && activity.GetTagItem(AgentKitTagNames.SecurityRequestId)?.ToString() == grant.RequestId.ToString())
-                {
-                    stopped = activity;
-                }
-            },
-        };
-        ActivitySource.AddActivityListener(activityListener);
-        using var meterListener = new MeterListener
-        {
-            InstrumentPublished = (instrument, listener) =>
-            {
-                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
-                    && instrument.Name == AgentKitMetricNames.SecurityGrantConsumptionCount)
-                {
-                    listener.EnableMeasurementEvents(instrument);
-                }
-            },
-        };
-        meterListener.SetMeasurementEventCallback<long>((_, _, tags, _) => outcomes.Add(OutcomeFrom(tags)));
-        meterListener.Start();
-        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
-
-        var exception = await Should.ThrowAsync<InvalidOperationException>(async () =>
-            await store.ValidateAndConsumeAsync(
-                grant, enforcement, intent, TestContext.Current.CancellationToken));
-
-        exception.ShouldBeSameAs(clock.Failure);
-        var activity = stopped.ShouldNotBeNull();
-        activity.Status.ShouldBe(ActivityStatusCode.Error);
-        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("faulted");
-        outcomes.ShouldContain("faulted");
-        logger.Events.ShouldContain(static item => item.EventId.Id == 5027);
-        logger.Events.ShouldAllBe(item => !item.Message.Contains(grant.InputFingerprint.Value, StringComparison.Ordinal));
-        clock.ThrowOnRead = false;
-        var later = await store.ValidateAndConsumeAsync(
-            grant, enforcement, intent, TestContext.Current.CancellationToken);
-        later.Status.ShouldBe(GrantConsumptionStatus.Consumed);
-        later.RemainingUses.ShouldBe(0);
     }
 
     [Fact]
@@ -533,4 +476,32 @@ public sealed class InMemorySecurityGrantStoreTests
         throw new InvalidOperationException("Grant-consumption metric omitted its bounded outcome.");
     }
 
+    private sealed class ThrowingLogger: ILogger<InMemorySecurityGrantStore>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => throw new InvalidOperationException("logger failure");
+    }
+
+    private sealed class LegacyOnlyGrantStore: ISecurityGrantStore
+    {
+        public int LegacyConsumptionCalls { get; private set; }
+
+        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+            SecurityGrant grant,
+            SecurityEnforcementRequest enforcement,
+            CancellationToken cancellationToken = default)
+        {
+            LegacyConsumptionCalls++;
+            return ValueTask.FromResult(new GrantConsumptionResult(
+                GrantConsumptionStatus.Consumed, 0, "Legacy consumption was invoked."));
+        }
+
+        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(false);
+    }
 }

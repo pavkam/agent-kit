@@ -37,9 +37,9 @@ public static class ServiceExtensions
             services.TryAddSingleton<IIdentifierGenerator<SecurityRequestId>, GuidSecurityRequestIdGenerator>();
             services.TryAddSingleton<ISecurityAuthority, SecurityAuthority>();
             services.TryAddSingleton<ISecurityAuthoritySelector, DefaultSecurityAuthoritySelector>();
-            services.TryAddSingleton<ISecurityAuditDispatcher, DefaultSecurityAuditDispatcher>();
             services.TryAddSingleton<ISecurityProfilePublicationReader, DefaultSecurityProfilePublicationReader>();
             services.TryAddSingleton<ISecurityProfileSelector, DefaultSecurityProfileSelector>();
+            services.TryAddSingleton<ISecurityAuditDispatcher, DefaultSecurityAuditDispatcher>();
             return services;
         }
 
@@ -60,7 +60,6 @@ public static class ServiceExtensions
             _ = services.AddSingleton(publication);
             return services;
         }
-
 
         /// <summary>Registers one host-owned audit sink with explicit supported-event and durability semantics.</summary>
         /// <param name="registration">The immutable event support, delivery, and durable-acceptance declaration.</param>

@@ -9,7 +9,7 @@ public sealed class AgentPermissionOptions
     /// <summary>Gets or sets the published effective policy version.</summary>
     public long PolicyVersion { get; set; } = 1;
     /// <summary>Gets or sets the exact immutable policy snapshot evaluated by this authority.</summary>
-    /// <value>The captured snapshot binding accepted for snapshot-bound protected work, or null when this authority supports only legacy uncaptured requests.</value>
+    /// <value>The captured snapshot binding accepted for protected session work, or null when this authority supports only legacy uncaptured requests.</value>
     public SecurityPolicySnapshotReference? PolicySnapshot { get; set; }
     /// <summary>Gets or sets the current revocation epoch.</summary>
     public long RevocationVersion { get; set; } = 1;

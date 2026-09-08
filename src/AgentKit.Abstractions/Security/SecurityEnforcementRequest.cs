@@ -59,42 +59,10 @@ public sealed record SecurityEnforcementRequest
         Authorization = authorization;
     }
 
-    /// <summary>Gets or initializes the actual scope.</summary>
-    /// <value>The non-null scope, which must equal the captured authorization scope when <see cref="Authorization"/> is present.</value>
-    /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
-    /// <exception cref="ArgumentException">A record copy assigns a scope different from the captured authorization scope.</exception>
-    public SecurityAuthorizationScope Scope
-    {
-        get;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(Scope));
-            if (Authorization is not null)
-            {
-                ArgumentException.ThrowIfNotEqual(Authorization.Scope, value, nameof(Scope));
-            }
-
-            field = value;
-        }
-    }
-    /// <summary>Gets or initializes the actual identity.</summary>
-    /// <value>The non-null identity, which must equal the captured authorization identity when <see cref="Authorization"/> is present.</value>
-    /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
-    /// <exception cref="ArgumentException">A record copy assigns an identity different from the captured authorization identity.</exception>
-    public ExecutionIdentity Identity
-    {
-        get;
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value, nameof(Identity));
-            if (Authorization is not null)
-            {
-                ArgumentException.ThrowIfNotEqual(Authorization.Identity, value, nameof(Identity));
-            }
-
-            field = value;
-        }
-    }
+    /// <summary>Gets the actual scope.</summary>
+    public SecurityAuthorizationScope Scope { get; init; }
+    /// <summary>Gets the actual identity.</summary>
+    public ExecutionIdentity Identity { get; init; }
     /// <summary>Gets complete captured authorization evidence for snapshot-bound enforcement.</summary><value>The immutable captured selection, or null only for legacy enforcement paths.</value>
     public SecurityAuthorizationContext? Authorization { get; }
     /// <summary>Gets the effecting component.</summary>

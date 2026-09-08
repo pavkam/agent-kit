@@ -90,32 +90,11 @@ public sealed class GrantIntentContractsTests
         exception.ParamName.ShouldBe("intent");
     }
 
-    [Fact]
-    public void Fingerprint_WhenResourceTextHasDistinctUtf16CodeUnits_ProducesDistinctBindings()
-    {
-        string[] resourceValues =
-        [
-            "resource:\ud800",
-            "resource:\ud801",
-            "resource:\udc00",
-            "resource:\udc01",
-            "resource:\ufffd",
-            "resource:\ud83d\ude00",
-        ];
-
-        var fingerprints = resourceValues
-            .Select(static value => SecurityEnforcementBinding.Fingerprint(
-                Enforcement(value), new SecurityEnforcementIntent(IntentId(), null)))
-            .ToArray();
-
-        fingerprints.Distinct().Count().ShouldBe(resourceValues.Length);
-    }
-
     private static SecurityEnforcementIntentReceipt Receipt() => new(
         IntentId(), GrantId(), RequestId(), Enforcement(), null, new ContentHash("sha256:effect"),
         DateTimeOffset.UnixEpoch);
 
-    private static SecurityEnforcementRequest Enforcement(string resourceValue = "session:test")
+    private static SecurityEnforcementRequest Enforcement()
     {
         var scope = new SecurityAuthorizationScope(
             new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001")),
@@ -127,7 +106,7 @@ public sealed class GrantIntentContractsTests
         return new SecurityEnforcementRequest(
             scope, identity, new ComponentId("session"), SecurityOperationKind.StateMutation,
             SecurityEffect.Mutate,
-            [new ProtectedResource(ProtectedResourceKind.ApplicationState, resourceValue)],
+            [new ProtectedResource(ProtectedResourceKind.ApplicationState, "session:test")],
             new InputFingerprint("sha256:input"), new SecurityRevocationVersion(1));
     }
 

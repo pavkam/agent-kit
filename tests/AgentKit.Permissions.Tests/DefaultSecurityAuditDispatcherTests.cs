@@ -3,6 +3,7 @@
 
 namespace AgentKit.Permissions.Tests;
 
+using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 
 using Microsoft.Extensions.Logging;
@@ -170,7 +171,7 @@ public sealed class DefaultSecurityAuditDispatcherTests
         var blocking = new BlockingSink();
         var laterSink = new RecordingSink();
         Activity? stopped = null;
-        List<string> outcomes = [];
+        ConcurrentQueue<string> outcomes = [];
         using var activityListener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
@@ -178,7 +179,7 @@ public sealed class DefaultSecurityAuditDispatcherTests
             ActivityStopped = activity => stopped = activity,
         };
         ActivitySource.AddActivityListener(activityListener);
-        using var meterListener = MeterListenerForAudit((_, tags) => outcomes.Add(OutcomeFrom(tags)), static (_, _) => { });
+        using var meterListener = MeterListenerForAudit((_, tags) => outcomes.Enqueue(OutcomeFrom(tags)), static (_, _) => { });
         var logger = new RecordingLogger();
         var dispatcher = Dispatcher(
             SecurityAuditDelivery.Required,
@@ -232,8 +233,8 @@ public sealed class DefaultSecurityAuditDispatcherTests
     {
         var timeProvider = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
         var blocking = new BlockingSink();
-        List<string> outcomes = [];
-        using var meterListener = MeterListenerForAudit((_, tags) => outcomes.Add(OutcomeFrom(tags)), static (_, _) => { });
+        ConcurrentQueue<string> outcomes = [];
+        using var meterListener = MeterListenerForAudit((_, tags) => outcomes.Enqueue(OutcomeFrom(tags)), static (_, _) => { });
         var record = Record();
         var dispatcher = Dispatcher(
             SecurityAuditDelivery.Required,
@@ -260,7 +261,7 @@ public sealed class DefaultSecurityAuditDispatcherTests
         Activity? stopped = null;
         var count = 0L;
         var durations = 0;
-        List<KeyValuePair<string, object?>> metricTags = [];
+        ConcurrentQueue<KeyValuePair<string, object?>> metricTags = [];
         using var parent = new Activity("security-audit-dispatch-parent").Start();
         using var activityListener = new ActivityListener
         {
@@ -279,7 +280,10 @@ public sealed class DefaultSecurityAuditDispatcherTests
             (measurement, tags) =>
             {
                 count += measurement;
-                metricTags.AddRange(tags.ToArray());
+                foreach (var tag in tags)
+                {
+                    metricTags.Enqueue(tag);
+                }
             },
             (_, _) => durations++);
         var logger = new RecordingLogger();
@@ -309,17 +313,17 @@ public sealed class DefaultSecurityAuditDispatcherTests
     [Fact]
     public async Task DispatchAsync_WhenUnavailableFailedOrCancelled_EmitsTruthfulErrorActivitiesAndBoundedOutcomes()
     {
-        List<Activity> stopped = [];
-        List<string> outcomes = [];
+        ConcurrentQueue<Activity> stopped = [];
+        ConcurrentQueue<string> outcomes = [];
         using var listener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
             Sample = SampleAllData,
-            ActivityStopped = stopped.Add,
+            ActivityStopped = stopped.Enqueue,
         };
         ActivitySource.AddActivityListener(listener);
         using var meterListener = MeterListenerForAudit(
-            (_, tags) => outcomes.Add(OutcomeFrom(tags)),
+            (_, tags) => outcomes.Enqueue(OutcomeFrom(tags)),
             static (_, _) => { });
         var logger = new RecordingLogger();
         var unavailable = Dispatcher(SecurityAuditDelivery.Required, [], logger: logger);
@@ -341,7 +345,7 @@ public sealed class DefaultSecurityAuditDispatcherTests
             && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "failed").ShouldHaveSingleItem();
         _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error
             && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "cancelled").ShouldHaveSingleItem();
-        outcomes.ShouldBe(["unavailable", "failed", "cancelled"], ignoreOrder: true);
+        outcomes.ShouldBe(["unavailable", "failed", "cancelled"]);
         logger.EventIds.ShouldContain(new EventId(5012));
         logger.EventIds.ShouldContain(new EventId(5013));
         logger.EventIds.ShouldContain(new EventId(5014));
