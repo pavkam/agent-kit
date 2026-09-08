@@ -66,4 +66,16 @@ internal static partial class LoopLog
     /// <summary>Logs a run that ended because no usable model could be chosen.</summary>
     [LoggerMessage(1050, LogLevel.Warning, "Model selection for run {RunId} failed: {Reason}.")]
     internal static partial void ModelSelectionFailed(ILogger logger, RunId runId, string reason);
+
+    /// <summary>Logs one terminal continuation proposal without captured content.</summary>
+    [LoggerMessage(1060, LogLevel.Debug, "Continuation evaluation for run {RunId} at {Boundary} proposed {Decision}.")]
+    internal static partial void ContinuationEvaluated(ILogger logger, RunId runId, string boundary, string decision);
+
+    /// <summary>Logs cancellation of an uncommitted continuation evaluation.</summary>
+    [LoggerMessage(1061, LogLevel.Debug, "Continuation evaluation for run {RunId} was cancelled.")]
+    internal static partial void ContinuationCancelled(ILogger logger, RunId runId);
+
+    /// <summary>Logs an unexpected continuation-policy failure by exception type only.</summary>
+    [LoggerMessage(1062, LogLevel.Error, "Continuation evaluation for run {RunId} failed with error type {ErrorType}.")]
+    internal static partial void ContinuationFailed(ILogger logger, RunId runId, string errorType);
 }

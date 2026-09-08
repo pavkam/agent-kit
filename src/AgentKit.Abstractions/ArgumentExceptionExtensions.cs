@@ -577,9 +577,12 @@ public static class ArgumentExceptionExtensions
                 throw new ArgumentException("Outcome must represent successful output or idle completion.", paramName);
             }
 
-            if (outcome is AgentRunCompleted { FinalMessage: not { State: MessageState.Complete, RunId: { } runId, TurnId: { } turnId } }
-                || outcome is AgentRunCompleted
-                    && (runId == default || turnId == default))
+            if (outcome is AgentRunCompleted completed
+                && (completed.FinalMessage is not { State: MessageState.Complete }
+                    || completed.FinalMessage.RunId is not { } runId
+                    || runId == default
+                    || completed.FinalMessage.TurnId is not { } turnId
+                    || turnId == default))
             {
                 throw new ArgumentException("Successful output completion requires a complete message with initialized run and turn identities.", paramName);
             }
@@ -626,7 +629,7 @@ public static class ArgumentExceptionExtensions
             var callIds = response.Parts.OfType<ToolCallPart>().Select(static part => part.CallId).ToImmutableArray();
             if (callIds.Any(static callId => callId == default)
                 || callIds.Distinct().Count() != callIds.Length
-                || toolResults.Select(static reference => reference.ToolCallId).SequenceEqual(callIds) is false
+                || !toolResults.Select(static reference => reference.ToolCallId).SequenceEqual(callIds)
                 || toolResults.Any(reference => reference.TurnId != turnId)
                 || toolResults.Select(static reference => reference.ToolCallId).Distinct().Count() != toolResults.Length
                 || toolResults.Select(static reference => reference.SessionEntryId).Distinct().Count() != toolResults.Length)
@@ -655,7 +658,7 @@ public static class ArgumentExceptionExtensions
         /// <param name="compaction">The non-null successful result to inspect.</param>
         /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
         /// <exception cref="ArgumentNullException"><paramref name="compaction"/> is null.</exception>
-        /// <exception cref="ArgumentException">The retained record is not active or lacks its activated checkpoint/version.</exception>
+        /// <exception cref="ArgumentException">The retained evidence has a default identity, contexts disagree, or the record is not an active checkpoint.</exception>
         public static void ThrowIfCompactionNotActive(
             CompactionSucceeded compaction,
             [CallerArgumentExpression(nameof(compaction))] string? paramName = null)
@@ -664,6 +667,17 @@ public static class ArgumentExceptionExtensions
             if (compaction.Record is null
                 || compaction.Context is null
                 || compaction.Record.Context is null
+                || compaction.Record.Manifest is null
+                || compaction.Record.Manifest.Context is null
+                || compaction.Context.CompactionId == default
+                || compaction.Context.AgentId == default
+                || compaction.Context.SessionId == default
+                || compaction.Context.Correlation is null
+                || compaction.Context.Identity is null
+                || compaction.Record.Manifest.Id == default
+                || compaction.Record.Manifest.BranchId == default
+                || compaction.Record.Context != compaction.Context
+                || compaction.Record.Manifest.Context != compaction.Context
                 || compaction.Record.Status != CompactionRecordStatus.Active
                 || compaction.Record.Checkpoint is null
                 || compaction.Record.ActivatedSessionVersion is null)
@@ -699,9 +713,10 @@ public static class ArgumentExceptionExtensions
         /// <param name="runId">The open run.</param>
         /// <param name="operationStateRevision">The captured operation revision.</param>
         /// <param name="branchCursor">The captured branch tip.</param>
+        /// <param name="inputPromotionCutoff">The latest admission sequence included in the captured evaluation.</param>
         /// <param name="boundary">The safe evaluation boundary.</param>
         /// <param name="causes">The initialized pending causes.</param>
-        /// <exception cref="ArgumentException">Any evidence names another run, operation, revision, cursor, request, or turn.</exception>
+        /// <exception cref="ArgumentException">Any evidence is unrelated to the captured run, installed operation, revision, cursor, request, or turn.</exception>
         public static void ThrowIfInconsistentContinuationEvidence(
             AgentId agentId,
             SessionId sessionId,
@@ -742,7 +757,20 @@ public static class ArgumentExceptionExtensions
                         || promoted.Snapshot.OperationStateRevision != operationStateRevision
                         || promoted.Snapshot.BranchCursor != branchCursor
                         || promoted.Snapshot.CutoffSequence != inputPromotionCutoff
-                        || !PromotionMatchesBoundary(promoted.Snapshot, boundary)))
+                        || !(boundary switch
+                        {
+                            CommittedTurnContinuationBoundary committedBoundary =>
+                                promoted.Snapshot.Boundary == PromotionBoundary.AfterTurnCommitted
+                                && promoted.Snapshot.PreviousTurnId == committedBoundary.Response.TurnId,
+                            RetryContinuationBoundary retryBoundary =>
+                                promoted.Snapshot.Boundary == PromotionBoundary.AfterContinuationCheckpoint
+                                && promoted.Snapshot.TargetTurnId == retryBoundary.TurnId,
+                            DeferredContinuationBoundary promotedDeferredBoundary =>
+                                promoted.Snapshot.Boundary == PromotionBoundary.AfterContinuationCheckpoint
+                                && promoted.Snapshot.TargetTurnId == promotedDeferredBoundary.TurnId,
+                            IdleContinuationBoundary => promoted.Snapshot.Boundary == PromotionBoundary.OtherwiseIdle,
+                            _ => false,
+                        })))
                 {
                     throw new ArgumentException("Promoted input evidence must match the continuation snapshot.", nameof(causes));
                 }
@@ -769,7 +797,8 @@ public static class ArgumentExceptionExtensions
                         || compaction.Compaction.Context.Correlation is not InRunOperationCorrelation compactionCorrelation
                         || compactionCorrelation.RunId != runId
                         || compactionCorrelation.OperationId == default
-                        || compactionCorrelation.TurnId != retry.TurnId))
+                        || compactionCorrelation.TurnId != retry.TurnId
+                        || compaction.Compaction.Record.Manifest.BranchId != branchCursor.BranchId))
                 {
                     throw new ArgumentException("Compaction retry evidence must match the retry boundary and run.", nameof(causes));
                 }
@@ -782,23 +811,6 @@ public static class ArgumentExceptionExtensions
                 }
             }
         }
-
-        private static bool PromotionMatchesBoundary(
-            InputPromotionSnapshot snapshot,
-            RunContinuationBoundary boundary) => boundary switch
-        {
-            CommittedTurnContinuationBoundary committed =>
-                snapshot.Boundary == PromotionBoundary.AfterTurnCommitted
-                && snapshot.TargetTurnId == committed.Response.TurnId,
-            RetryContinuationBoundary retry =>
-                snapshot.Boundary == PromotionBoundary.AfterContinuationCheckpoint
-                && snapshot.TargetTurnId == retry.TurnId,
-            DeferredContinuationBoundary deferred =>
-                snapshot.Boundary == PromotionBoundary.AfterContinuationCheckpoint
-                && snapshot.TargetTurnId == deferred.TurnId,
-            IdleContinuationBoundary => snapshot.Boundary == PromotionBoundary.OtherwiseIdle,
-            _ => false,
-        };
 
         /// <summary>Throws when a type cannot name one closed service contract.</summary>
         /// <param name="type">The non-null type that must not contain unbound generic parameters.</param>
@@ -829,6 +841,50 @@ public static class ArgumentExceptionExtensions
             if (type.IsAbstract || type.IsInterface)
             {
                 throw new ArgumentException("Type must be a concrete, non-interface implementation.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a type cannot be used as a closed reference-type component service contract.</summary>
+        /// <param name="type">The non-null service contract type to validate.</param>
+        /// <param name="paramName">The parameter name inferred from the type expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="type"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="type"/> is open, void, a pointer, by-reference, by-reference-like, or a value type.</exception>
+        public static void ThrowIfNotComponentContractType(
+            Type type,
+            [CallerArgumentExpression(nameof(type))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(type, paramName);
+            ArgumentException.ThrowIfNotClosedType(type, paramName);
+            if (type == typeof(void)
+                || type.IsPointer
+                || type.IsFunctionPointer
+                || type.IsByRef
+                || type.IsByRefLike
+                || type.IsValueType)
+            {
+                throw new ArgumentException("Component contract type must be a closed reference type usable by dependency injection.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a type cannot construct a closed reference-type component implementation.</summary>
+        /// <param name="type">The non-null implementation type to validate.</param>
+        /// <param name="paramName">The parameter name inferred from the type expression when omitted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="type"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="type"/> is open, abstract, an interface, void, a pointer, by-reference, by-reference-like, or a value type.</exception>
+        public static void ThrowIfNotComponentImplementationType(
+            Type type,
+            [CallerArgumentExpression(nameof(type))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(type, paramName);
+            ArgumentException.ThrowIfNotConcreteClosedType(type, paramName);
+            if (type == typeof(void)
+                || type.IsPointer
+                || type.IsFunctionPointer
+                || type.IsByRef
+                || type.IsByRefLike
+                || type.IsValueType)
+            {
+                throw new ArgumentException("Component implementation type must be a concrete closed reference type usable by dependency injection.", paramName);
             }
         }
 
@@ -917,6 +973,118 @@ public static class ArgumentExceptionExtensions
             if (identity != authorization.Identity)
             {
                 throw new ArgumentException("Input identity must equal authorization identity evidence.", paramName);
+            }
+        }
+
+        /// <summary>Throws when admission authorization does not exactly bind caller identity, address, and causal operation.</summary>
+        /// <param name="identity">The authenticated caller identity.</param><param name="agentId">The addressed agent.</param>
+        /// <param name="sessionId">The addressed session.</param><param name="correlation">The admission correlation.</param>
+        /// <param name="authorization">The captured authorization evidence.</param><param name="paramName">The authorization parameter name.</param>
+        /// <exception cref="ArgumentNullException">A required reference is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentId"/> or <paramref name="sessionId"/> is default.</exception>
+        /// <exception cref="ArgumentException">Identity, address, or correlation differs from authorization scope.</exception>
+        public static void ThrowIfInvalidInputAdmissionAuthorization(
+            ExecutionIdentity identity,
+            AgentId agentId,
+            SessionId sessionId,
+            OperationCorrelation correlation,
+            SecurityAuthorizationContext authorization,
+            [CallerArgumentExpression(nameof(authorization))] string? paramName = null)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(agentId, default, nameof(agentId));
+            ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default, nameof(sessionId));
+            ArgumentException.ThrowIfInputAuthorizationIdentityMismatch(identity, authorization, paramName);
+            ArgumentNullException.ThrowIfNull(correlation);
+            if (authorization.Scope.AgentId != agentId
+                || authorization.Scope.SessionId != sessionId
+                || authorization.Scope.Correlation != correlation)
+            {
+                throw new ArgumentException("Admission authorization must exactly bind the addressed agent, session, and causal operation.", paramName);
+            }
+        }
+
+        /// <summary>Throws when promotion authorization does not bind caller identity, address, and active run.</summary>
+        /// <param name="identity">The authenticated caller identity.</param><param name="agentId">The addressed agent.</param>
+        /// <param name="sessionId">The addressed session.</param><param name="expectedOperation">The installed lane operation.</param>
+        /// <param name="authorization">The distinct promotion-invocation authorization evidence.</param><param name="paramName">The authorization parameter name.</param>
+        /// <exception cref="ArgumentNullException">A required reference is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentId"/> or <paramref name="sessionId"/> is default.</exception>
+        /// <exception cref="ArgumentException">Identity, address, or active run differs from authorization scope.</exception>
+        public static void ThrowIfInvalidInputPromotionAuthorization(
+            ExecutionIdentity identity,
+            AgentId agentId,
+            SessionId sessionId,
+            InRunOperationCorrelation expectedOperation,
+            SecurityAuthorizationContext authorization,
+            [CallerArgumentExpression(nameof(authorization))] string? paramName = null)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(agentId, default, nameof(agentId));
+            ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default, nameof(sessionId));
+            ArgumentException.ThrowIfInputAuthorizationIdentityMismatch(identity, authorization, paramName);
+            ArgumentNullException.ThrowIfNull(expectedOperation);
+            if (authorization.Scope.AgentId != agentId
+                || authorization.Scope.SessionId != sessionId
+                || authorization.Scope.Correlation is not InRunOperationCorrelation invocation
+                || invocation.RunId != expectedOperation.RunId)
+            {
+                throw new ArgumentException("Promotion authorization must bind the addressed agent, session, and active run.", paramName);
+            }
+        }
+
+        /// <summary>Throws when committed promoted records do not exactly match snapshot order and address.</summary>
+        /// <param name="snapshot">The non-null committed selection evidence.</param><param name="promoted">The initialized promoted records.</param>
+        /// <param name="paramName">The promoted-record parameter name.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
+        /// <exception cref="ArgumentException">Records are default, null, misordered, admitted after the snapshot cutoff, unpromoted, or addressed differently from the snapshot.</exception>
+        public static void ThrowIfInvalidPromotedInputs(
+            InputPromotionSnapshot snapshot,
+            ImmutableArray<AdmittedInput> promoted,
+            [CallerArgumentExpression(nameof(promoted))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+            ArgumentException.ThrowIfContainsNull(promoted, paramName);
+            if (promoted.Length != snapshot.AdmissionIds.Length)
+            {
+                throw new ArgumentException("Promoted records must match the snapshot selection count.", paramName);
+            }
+
+            for (var index = 0; index < promoted.Length; index++)
+            {
+                var input = promoted[index];
+                if (input.AdmissionId != snapshot.AdmissionIds[index]
+                    || input.AgentId != snapshot.AgentId
+                    || input.SessionId != snapshot.SessionId
+                    || input.ExecutionLaneId != snapshot.ExecutionLaneId
+                    || input.AdmittedSequence.Value > snapshot.CutoffSequence.Value
+                    || input.PromotedSequence is null)
+                {
+                    throw new ArgumentException("Promoted records must exactly match snapshot order, address, lane, and committed state.", paramName);
+                }
+            }
+        }
+
+        /// <summary>Throws when previous and target turns do not match the named promotion boundary.</summary>
+        /// <param name="boundary">The validated safe boundary.</param><param name="previousTurnId">The prior committed turn, when applicable.</param>
+        /// <param name="targetTurnId">The nondefault receiving turn.</param><param name="paramName">The previous-turn parameter name.</param>
+        /// <exception cref="ArgumentOutOfRangeException">The boundary is undefined, the target turn is default, or a present previous turn is default.</exception>
+        /// <exception cref="ArgumentException">A committed-turn boundary lacks a distinct previous turn, or a first-request boundary supplies one.</exception>
+        public static void ThrowIfInvalidPromotionTurnBoundary(
+            PromotionBoundary boundary,
+            TurnId? previousTurnId,
+            TurnId targetTurnId,
+            [CallerArgumentExpression(nameof(previousTurnId))] string? paramName = null)
+        {
+            ArgumentOutOfRangeException.ThrowIfUndefined(boundary);
+            if (previousTurnId is { } previous)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(previous, default, nameof(previousTurnId));
+            }
+            ArgumentOutOfRangeException.ThrowIfEqual(targetTurnId, default, nameof(targetTurnId));
+            if ((boundary == PromotionBoundary.AfterTurnCommitted
+                    && (previousTurnId is null || previousTurnId == targetTurnId))
+                || (boundary == PromotionBoundary.BeforeFirstModelRequest && previousTurnId is not null))
+            {
+                throw new ArgumentException("Promotion previous and target turns must match the selected safe-boundary semantics.", paramName);
             }
         }
 

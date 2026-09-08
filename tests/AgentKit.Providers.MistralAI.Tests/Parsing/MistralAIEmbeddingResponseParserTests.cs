@@ -101,7 +101,7 @@ public sealed class MistralAIEmbeddingResponseParserTests
     {
         var parser = new MistralAIEmbeddingResponseParser();
 
-        await using var body = new MemoryStream("""{"object":"list","data":[],"model":"mistral-embed"}"""u8.ToArray());
+        await using var body = new MemoryStream(/*lang=json,strict*/ """{"object":"list","data":[],"model":"mistral-embed"}"""u8.ToArray());
         var result = await parser.ParseAsync(body, CreateContext(null), [], TestContext.Current.CancellationToken);
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();

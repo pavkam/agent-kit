@@ -29,6 +29,54 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddAgentLoop_WhenCalled_RegistersOnlyKeyedDefaultContinuationPolicy()
+    {
+        var services = BuildComposableServices();
+        _ = services.AddAgentLoop();
+
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetService<IRunContinuationPolicy>().ShouldBeNull();
+        _ = provider.GetRequiredKeyedService<IRunContinuationPolicy>(
+            AgentLoopDefaults.ContinuationPolicyKey.Value).ShouldBeOfType<DefaultRunContinuationPolicy>();
+    }
+
+    [Fact]
+    public void AddRunContinuationPolicy_WhenKeysDiffer_ResolvesEachPolicyIndependently()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddRunContinuationPolicy<TestContinuationPolicy>(new ComponentKey<IRunContinuationPolicy>("one"));
+        _ = services.AddRunContinuationPolicy<OtherContinuationPolicy>(new ComponentKey<IRunContinuationPolicy>("two"));
+
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredKeyedService<IRunContinuationPolicy>("one").ShouldBeOfType<TestContinuationPolicy>();
+        _ = provider.GetRequiredKeyedService<IRunContinuationPolicy>("two").ShouldBeOfType<OtherContinuationPolicy>();
+    }
+
+    [Fact]
+    public void AddRunContinuationPolicy_WhenKeyRepeats_PreservesBothDescriptors()
+    {
+        var services = new ServiceCollection();
+        var key = new ComponentKey<IRunContinuationPolicy>("duplicate");
+        _ = services.AddRunContinuationPolicy<TestContinuationPolicy>(key);
+        _ = services.AddRunContinuationPolicy<OtherContinuationPolicy>(key);
+
+        services.Count(descriptor => descriptor.ServiceKey?.Equals("duplicate") == true).ShouldBe(2);
+    }
+
+    [Fact]
+    public void AddRunContinuationPolicy_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(() =>
+            services.AddRunContinuationPolicy<TestContinuationPolicy>(new ComponentKey<IRunContinuationPolicy>("test")));
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
     public void AddAgentLoop_WhenHistoryReadPageSizeIsNotPositive_FailsValidationOnAccess()
     {
         var services = BuildComposableServices();
@@ -56,5 +104,19 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSingleton<ILlmModelResolver>(
             new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))));
         return services;
+    }
+
+    private sealed class TestContinuationPolicy: IRunContinuationPolicy
+    {
+        public ValueTask<RunContinuationDecision> DecideAsync(
+            RunContinuationContext context,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class OtherContinuationPolicy: IRunContinuationPolicy
+    {
+        public ValueTask<RunContinuationDecision> DecideAsync(
+            RunContinuationContext context,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

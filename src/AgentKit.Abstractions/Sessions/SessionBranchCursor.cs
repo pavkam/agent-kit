@@ -3,13 +3,13 @@
 
 namespace AgentKit;
 
-/// <summary>Captures an exact branch tip without using session-wide version as the branch identity.</summary>
-/// <remarks>A null last entry denotes an empty branch; a present entry identifies the immutable tip observed for later revalidation.</remarks>
+/// <summary>Captures an exact selected-branch tip without treating a session-wide version as branch identity.</summary>
+/// <remarks>The cursor is immutable revalidation evidence. A null last entry denotes an empty branch; a present entry identifies the observed immutable tip. It neither grants branch mutation authority nor proves that a later compare-and-swap will succeed.</remarks>
 public sealed record SessionBranchCursor
 {
-    /// <summary>Initializes a branch cursor.</summary>
-    /// <param name="branchId">The nondefault branch.</param>
-    /// <param name="lastEntryId">The nondefault last entry, or null for an empty branch.</param>
+    /// <summary>Initializes an observed branch-tip cursor.</summary>
+    /// <param name="branchId">The non-default identity of the selected branch.</param>
+    /// <param name="lastEntryId">The non-default identity of its observed last entry, or <see langword="null"/> when the branch was empty.</param>
     /// <exception cref="ArgumentOutOfRangeException">A supplied identity is default.</exception>
     public SessionBranchCursor(BranchId branchId, SessionEntryId? lastEntryId)
     {
@@ -23,9 +23,11 @@ public sealed record SessionBranchCursor
         LastEntryId = lastEntryId;
     }
 
-    /// <summary>Gets the captured branch.</summary><value>The nondefault branch identity.</value>
+    /// <summary>Gets the identity of the selected branch.</summary>
+    /// <value>A non-default branch identity; it scopes <see cref="LastEntryId"/> and cannot be replaced by a session version.</value>
     public BranchId BranchId { get; }
 
-    /// <summary>Gets the captured branch tip.</summary><value>The last entry, or null when the branch was empty.</value>
+    /// <summary>Gets the observed immutable tip of the selected branch.</summary>
+    /// <value>A non-default session entry identity, or <see langword="null"/> when the branch was empty at observation time.</value>
     public SessionEntryId? LastEntryId { get; }
 }

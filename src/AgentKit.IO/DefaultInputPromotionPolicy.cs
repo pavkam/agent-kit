@@ -9,42 +9,118 @@ using System.Collections.Immutable;
 /// <remarks>The policy performs no durable mutation. It rejects a selection bound that cannot include every input required by the boundary instead of silently truncating work.</remarks>
 internal sealed class DefaultInputPromotionPolicy: IInputPromotionPolicy
 {
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger<DefaultInputPromotionPolicy> _logger;
+
+    /// <summary>Initializes deterministic planning with replaceable observation dependencies.</summary>
+    /// <param name="timeProvider">The injected clock used only for elapsed measurement.</param>
+    /// <param name="logger">The optional content-free structured logger.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="timeProvider"/> is null.</exception>
+    public DefaultInputPromotionPolicy(TimeProvider timeProvider, ILogger<DefaultInputPromotionPolicy>? logger = null)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        _timeProvider = timeProvider;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultInputPromotionPolicy>.Instance;
+    }
+
     /// <inheritdoc/>
     public ValueTask<InputPromotionPlanningResult> PlanAsync(
         InputPromotionContext context,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var ordered = context.Eligible.ToArray();
-        Array.Sort(ordered, static (left, right) => left.AdmittedSequence.Value.CompareTo(right.AdmittedSequence.Value));
-        var selected = ImmutableArray.CreateBuilder<AdmissionId>();
-        if (context.Boundary == PromotionBoundary.OtherwiseIdle)
-        {
-            var followUp = ordered.FirstOrDefault(static input => input.EffectivePayload.Delivery == InputDelivery.FollowUp);
-            if (followUp is not null)
+        var started = TryGetTimestamp();
+        using var activityScope = AgentKitActivityScope.Start(
+            AgentKitActivityNames.InputPromotionPlan,
+            ActivityKind.Internal,
+            new ActivityTagsCollection
             {
-                selected.Add(followUp.AdmissionId);
-            }
+                { AgentKitTagNames.AgentId, context.AgentId.ToString() },
+                { AgentKitTagNames.SessionId, context.SessionId.ToString() },
+                { AgentKitTagNames.RunId, context.ExpectedOperation.RunId.ToString() },
+                { AgentKitTagNames.OperationId, context.ExpectedOperation.OperationId.ToString() },
+                { AgentKitTagNames.InputPromotionBoundary, context.Boundary.ToString() },
+                { AgentKitTagNames.ExecutionLaneId, context.ExecutionLaneId.ToString() },
+            });
+        var activity = activityScope.Activity;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = Plan(context, cancellationToken);
+            var outcome = result is InputPromotionPlan
+                ? InputPromotionPlanOutcome.Planned
+                : InputPromotionPlanOutcome.Rejected;
+            SafeSetActivity(() =>
+            {
+                if (result is InputPromotionPlan)
+                {
+                    activity.SetSuccessful(outcome.ToStableValue());
+                }
+                else
+                {
+                    activity.SetFailed(outcome.ToStableValue(), nameof(InputPromotionPlanRejected));
+                }
+            });
+            SafeObserve(context.Boundary, outcome, started, null);
+            return ValueTask.FromResult(result);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            SafeSetActivity(() => activity.SetFailed(InputPromotionPlanOutcome.Cancelled.ToStableValue(), nameof(OperationCanceledException)));
+            SafeObserve(context.Boundary, InputPromotionPlanOutcome.Cancelled, started, null);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var errorType = exception.GetType().FullName ?? exception.GetType().Name;
+            SafeSetActivity(() => activity.SetFailed(InputPromotionPlanOutcome.Failed.ToStableValue(), errorType));
+            SafeObserve(context.Boundary, InputPromotionPlanOutcome.Failed, started, errorType);
+            throw;
+        }
+    }
 
-        foreach (var input in ordered)
+    private static InputPromotionPlanningResult Plan(InputPromotionContext context, CancellationToken cancellationToken)
+    {
+        Debug.Assert(context is not null, "The public policy boundary validates the context.");
+
+        var requiredSteers = 0;
+        AdmittedInput? oldestFollowUp = null;
+        foreach (var input in context.Eligible)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (input.EffectivePayload.Delivery == InputDelivery.Steer)
             {
-                selected.Add(input.AdmissionId);
+                requiredSteers++;
+            }
+            else if (context.Boundary == PromotionBoundary.OtherwiseIdle
+                && (oldestFollowUp is null || input.AdmittedSequence.Value < oldestFollowUp.AdmittedSequence.Value))
+            {
+                oldestFollowUp = input;
             }
         }
 
-        if (selected.Count > context.MaximumPromotions)
+        var requiredCount = requiredSteers + (oldestFollowUp is null ? 0 : 1);
+        if (requiredCount > context.MaximumPromotions)
         {
-            return ValueTask.FromResult<InputPromotionPlanningResult>(new InputPromotionPlanRejected(
+            return new InputPromotionPlanRejected(
                 InputPromotionPlanRejectionKind.SelectionLimitExceeded,
-                selected.Count,
+                requiredCount,
                 context.MaximumPromotions,
-                "The promotion bound cannot include every input required at this boundary."));
+                "The promotion bound cannot include every input required at this boundary.");
+        }
+
+        var steers = context.Eligible
+            .Where(static input => input.EffectivePayload.Delivery == InputDelivery.Steer)
+            .OrderBy(static input => input.AdmittedSequence.Value);
+        var selected = ImmutableArray.CreateBuilder<AdmissionId>();
+        if (oldestFollowUp is not null)
+        {
+            selected.Add(oldestFollowUp.AdmissionId);
+        }
+        foreach (var steer in steers)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            selected.Add(steer.AdmissionId);
         }
 
         var snapshot = new InputPromotionSnapshot(
@@ -58,8 +134,84 @@ internal sealed class DefaultInputPromotionPolicy: IInputPromotionPolicy
             context.ExpectedVersion,
             context.ExpectedFencingToken,
             context.Boundary,
+            context.PreviousTurnId,
             context.TargetTurnId,
             selected.ToImmutable());
-        return ValueTask.FromResult<InputPromotionPlanningResult>(new InputPromotionPlan(snapshot));
+        return new InputPromotionPlan(snapshot);
+    }
+
+    private long? TryGetTimestamp()
+    {
+        try
+        {
+            return _timeProvider.GetTimestamp();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void SafeObserve(PromotionBoundary boundary, InputPromotionPlanOutcome outcome, long? started, string? errorType)
+    {
+        var outcomeValue = outcome.ToStableValue();
+        try
+        {
+            if (outcome == InputPromotionPlanOutcome.Cancelled)
+            {
+                IOLog.PromotionPlanCancelled(_logger, boundary);
+            }
+            else if (errorType is not null)
+            {
+                IOLog.PromotionPlanFailed(_logger, boundary, errorType);
+            }
+            else
+            {
+                IOLog.PromotionPlanCompleted(_logger, boundary, outcomeValue);
+            }
+        }
+        catch
+        {
+            // Logging is observational and cannot alter the promotion decision or metric emission.
+        }
+
+        var elapsed = TryGetElapsedTime(started);
+        try
+        {
+            IOMetrics.RecordPromotionPlan(boundary, outcome, elapsed);
+        }
+        catch
+        {
+            // Metrics are observational and cannot alter the promotion decision.
+        }
+    }
+
+    private TimeSpan? TryGetElapsedTime(long? started)
+    {
+        if (started is not { } timestamp)
+        {
+            return null;
+        }
+
+        try
+        {
+            return _timeProvider.GetElapsedTime(timestamp);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void SafeSetActivity(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch
+        {
+            // Activity listeners cannot alter the promotion decision.
+        }
     }
 }

@@ -3,11 +3,15 @@
 
 namespace AgentKit;
 
-/// <summary>Returns exact ordered selection evidence for atomic queue revalidation and commitment.</summary>
+/// <summary>Returns exact ordered selection evidence for a later atomic queue revalidation and promotion attempt.</summary>
+/// <remarks>A plan is side-effect-free and remains a proposal until the session owner accepts its snapshot in one promotion transition.</remarks>
 public sealed record InputPromotionPlan: InputPromotionPlanningResult
 {
-    /// <summary>Initializes a plan.</summary><param name="snapshot">The nonnull exact selection and ownership evidence.</param>
+    /// <summary>Initializes a side-effect-free promotion plan.</summary>
+    /// <param name="snapshot">The non-null immutable selection, ownership, cutoff, and target-turn evidence to revalidate before promotion.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
     public InputPromotionPlan(InputPromotionSnapshot snapshot) { ArgumentNullException.ThrowIfNull(snapshot); Snapshot = snapshot; }
-    /// <summary>Gets selection snapshot.</summary><value>The exact immutable plan.</value>
+    /// <summary>Gets the exact immutable promotion snapshot proposed by planning.</summary>
+    /// <value>A non-null plan snapshot; reading it neither reserves queue capacity nor consumes an admission.</value>
     public InputPromotionSnapshot Snapshot { get; }
 }

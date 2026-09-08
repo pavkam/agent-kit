@@ -55,8 +55,8 @@ public sealed class OllamaEmbeddingModelEndToEndTests
         var model = new OllamaEmbeddingModel(
             descriptor,
             OllamaProviderDefaults.CreateProfile(options),
-            new OpenAICompatible.OpenAIEmbeddingRequestTranslator(),
-            new OpenAICompatible.OpenAIEmbeddingResponseParser(),
+            new OpenAIEmbeddingRequestTranslator(),
+            new OpenAIEmbeddingResponseParser(),
             new StaticApiKeyCredentialSource("unused-local-key"),
             new HttpClient(handler),
             new FakeTimeProvider(Now));

@@ -87,7 +87,7 @@ public sealed class GoogleVertexAIEmbeddingResponseParserTests
     {
         var parser = new GoogleVertexAIEmbeddingResponseParser();
 
-        await using var body = new MemoryStream("""{"predictions":[]}"""u8.ToArray());
+        await using var body = new MemoryStream(/*lang=json,strict*/ """{"predictions":[]}"""u8.ToArray());
         var result = await parser.ParseAsync(body, CreateContext(), [], TestContext.Current.CancellationToken);
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();

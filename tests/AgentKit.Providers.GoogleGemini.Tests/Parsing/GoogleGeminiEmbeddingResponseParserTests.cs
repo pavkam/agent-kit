@@ -90,7 +90,7 @@ public sealed class GoogleGeminiEmbeddingResponseParserTests
     {
         var parser = new GoogleGeminiEmbeddingResponseParser();
 
-        await using var body = new MemoryStream("""{"embeddings":[]}"""u8.ToArray());
+        await using var body = new MemoryStream(/*lang=json,strict*/ """{"embeddings":[]}"""u8.ToArray());
         var result = await parser.ParseAsync(body, CreateContext(new EmbeddingRequestId(Guid.NewGuid())), [], TestContext.Current.CancellationToken);
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();

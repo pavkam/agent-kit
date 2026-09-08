@@ -17,4 +17,16 @@ internal static class LoopMetrics
         AgentKitMetricNames.AgentRunDuration,
         unit: "s",
         description: "Elapsed duration of settled agent runs in seconds.");
+
+    /// <summary>Gets the process-wide counter for continuation-policy decisions.</summary>
+    internal static Counter<long> ContinuationEvaluations { get; } = AgentKitDiagnostics.Metrics.CreateCounter<long>(
+        AgentKitMetricNames.RunContinuationEvaluationCount,
+        unit: "{evaluation}",
+        description: "Number of terminal run-continuation policy evaluations.");
+
+    /// <summary>Gets the process-wide histogram for continuation-policy evaluation duration.</summary>
+    internal static Histogram<double> ContinuationEvaluationDuration { get; } = AgentKitDiagnostics.Metrics.CreateHistogram<double>(
+        AgentKitMetricNames.RunContinuationEvaluationDuration,
+        unit: "s",
+        description: "Elapsed continuation-policy evaluation duration in seconds.");
 }

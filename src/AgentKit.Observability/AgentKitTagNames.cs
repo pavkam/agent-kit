@@ -141,4 +141,19 @@ public static class AgentKitTagNames
 
     /// <summary>Gets the one-based agent turn number attribute.</summary>
     public const string TurnNumber = "agentkit.turn.number";
+
+    /// <summary>Gets the bounded continuation-boundary kind attribute.</summary>
+    public const string ContinuationBoundary = "agentkit.continuation.boundary";
+
+    /// <summary>Gets the bounded continuation-decision kind attribute.</summary>
+    public const string ContinuationDecision = "agentkit.continuation.decision";
+
+    /// <summary>Gets the bounded selected continuation-cause kind attribute.</summary>
+    public const string ContinuationReason = "agentkit.continuation.reason";
+
+    /// <summary>Gets the bounded input-promotion boundary attribute.</summary>
+    public const string InputPromotionBoundary = "agentkit.input.promotion.boundary";
+
+    /// <summary>Gets the execution-lane identity correlation attribute for traces and logs.</summary>
+    public const string ExecutionLaneId = "agentkit.execution.lane.id";
 }

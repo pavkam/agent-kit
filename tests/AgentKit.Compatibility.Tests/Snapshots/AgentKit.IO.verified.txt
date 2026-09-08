@@ -13,6 +13,7 @@ namespace AgentKit.IO
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInputPromotionPolicy() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddHumanQuestionBroker() { }
         }
     }

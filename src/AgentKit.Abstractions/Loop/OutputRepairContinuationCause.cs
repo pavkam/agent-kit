@@ -3,11 +3,12 @@
 
 namespace AgentKit;
 
-/// <summary>Indicates that output validation requested a bounded repair attempt.</summary>
+/// <summary>Supplies the output processor's evidence that a bounded repair attempt is required.</summary>
+/// <remarks>The typed decision is preserved for revalidation. This cause neither performs a provider request nor consumes an output-repair budget.</remarks>
 public sealed record OutputRepairContinuationCause: RunContinuationCause
 {
-    /// <summary>Initializes output-repair evidence.</summary>
-    /// <param name="decision">The typed processor decision requesting repair.</param>
+    /// <summary>Initializes evidence for an output-repair continuation.</summary>
+    /// <param name="decision">The non-null typed processor decision requesting the bounded repair attempt.</param>
     /// <exception cref="ArgumentNullException"><paramref name="decision"/> is null.</exception>
     public OutputRepairContinuationCause(OutputRetryRequired decision)
     {
@@ -15,6 +16,7 @@ public sealed record OutputRepairContinuationCause: RunContinuationCause
         Decision = decision;
     }
 
-    /// <summary>Gets the bounded repair decision.</summary>
+    /// <summary>Gets the typed output processor decision requesting repair.</summary>
+    /// <value>A non-null immutable decision that remains subject to session-owner revalidation and budget checks.</value>
     public OutputRetryRequired Decision { get; }
 }

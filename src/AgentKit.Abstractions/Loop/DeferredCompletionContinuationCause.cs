@@ -3,11 +3,12 @@
 
 namespace AgentKit;
 
-/// <summary>Indicates that a previously suspended deferred operation has resolved.</summary>
+/// <summary>Supplies evidence that a previously suspended deferred operation resolved and may require another request.</summary>
+/// <remarks>The resolved operation is identified for correlation only; this cause does not itself advance the suspended run.</remarks>
 public sealed record DeferredCompletionContinuationCause: RunContinuationCause
 {
-    /// <summary>Initializes deferred-completion evidence.</summary>
-    /// <param name="operationId">The resolved deferred operation.</param>
+    /// <summary>Initializes evidence for one resolved deferred operation.</summary>
+    /// <param name="operationId">The non-default identity of the deferred operation that resolved.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="operationId"/> is default.</exception>
     public DeferredCompletionContinuationCause(OperationId operationId)
     {
@@ -15,6 +16,7 @@ public sealed record DeferredCompletionContinuationCause: RunContinuationCause
         OperationId = operationId;
     }
 
-    /// <summary>Gets the resolved deferred operation identity.</summary>
+    /// <summary>Gets the identity of the deferred operation that resolved.</summary>
+    /// <value>A non-default operation identity retained for causal revalidation.</value>
     public OperationId OperationId { get; }
 }

@@ -28,6 +28,7 @@ namespace AgentKit.Observability
         public const string HookDispatch = "hook.dispatch";
         public const string IdentityDerive = "identity.derive";
         public const string IdentityResolve = "identity.resolve";
+        public const string InputPromotionPlan = "input.promotion.plan";
         public const string InvokeAgent = "invoke_agent";
         public const string LanguageQuery = "language.query";
         public const string McpCatalogRefresh = "mcp.catalog.refresh";
@@ -44,6 +45,7 @@ namespace AgentKit.Observability
         public const string ProcessResolve = "process.resolve";
         public const string ProcessRun = "process.run";
         public const string ProcessSandboxPrepare = "process.sandbox.prepare";
+        public const string RunContinuationEvaluate = "run.continuation.evaluate";
         public const string RunSettle = "run.settle";
         public const string SecurityAuthorize = "security.authorize";
         public const string SessionBranch = "session.branch";
@@ -56,6 +58,12 @@ namespace AgentKit.Observability
         public const string SessionRead = "session.read";
         public const string SessionStoreOperation = "session.store.operation";
         public const string ToolBatch = "tool.batch";
+    }
+    public sealed class AgentKitActivityScope : System.IDisposable
+    {
+        public System.Diagnostics.Activity? Activity { get; }
+        public void Dispose() { }
+        public static AgentKit.Observability.AgentKitActivityScope Start(string name, System.Diagnostics.ActivityKind kind, System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, object?>>? tags = null) { }
     }
     public static class AgentKitDiagnostics
     {
@@ -80,6 +88,8 @@ namespace AgentKit.Observability
         public const string HookDispatchCount = "agentkit.hook.dispatch.count";
         public const string IdentityDerivationCount = "agentkit.identity.derivation.count";
         public const string IdentityResolutionCount = "agentkit.identity.resolution.count";
+        public const string InputPromotionPlanCount = "agentkit.input.promotion.plan.count";
+        public const string InputPromotionPlanDuration = "agentkit.input.promotion.plan.duration";
         public const string LanguageQueryCount = "agentkit.language.query.count";
         public const string McpClientOperationCount = "agentkit.mcp.client.operation.count";
         public const string ModelCatalogRefreshCount = "agentkit.model.catalog.refresh.count";
@@ -88,6 +98,8 @@ namespace AgentKit.Observability
         public const string OutputProcessingCount = "agentkit.output.processing.count";
         public const string OutputSchemaOperationCount = "agentkit.output.schema.operation.count";
         public const string ProcessOperationCount = "agentkit.process.operation.count";
+        public const string RunContinuationEvaluationCount = "agentkit.run.continuation.evaluation.count";
+        public const string RunContinuationEvaluationDuration = "agentkit.run.continuation.evaluation.duration";
         public const string SecurityDecisionCount = "agentkit.security.decision.count";
         public const string SessionOperationCount = "agentkit.session.operation.count";
         public const string SessionStoreOperationCount = "agentkit.session.store.operation.count";
@@ -101,13 +113,18 @@ namespace AgentKit.Observability
         public const string BudgetDimension = "agentkit.budget.dimension";
         public const string BudgetScopeId = "agentkit.budget.scope.id";
         public const string CompactionId = "agentkit.compaction.id";
+        public const string ContinuationBoundary = "agentkit.continuation.boundary";
+        public const string ContinuationDecision = "agentkit.continuation.decision";
+        public const string ContinuationReason = "agentkit.continuation.reason";
         public const string ConversationId = "gen_ai.conversation.id";
         public const string ErrorType = "error.type";
+        public const string ExecutionLaneId = "agentkit.execution.lane.id";
         public const string FileSystemOperation = "agentkit.filesystem.operation";
         public const string GenAiOperationName = "gen_ai.operation.name";
         public const string HookInvocationId = "agentkit.hook.invocation.id";
         public const string HookPoint = "agentkit.hook.point";
         public const string IdentityIssuer = "agentkit.identity.issuer";
+        public const string InputPromotionBoundary = "agentkit.input.promotion.boundary";
         public const string LanguageQueryId = "agentkit.language.query.id";
         public const string LanguageQueryKind = "agentkit.language.query.kind";
         public const string McpCatalogVersion = "agentkit.mcp.catalog.version";

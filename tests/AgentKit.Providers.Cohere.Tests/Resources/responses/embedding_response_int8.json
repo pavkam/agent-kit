@@ -2,9 +2,7 @@
   "id": "emb-2",
   "texts": ["hello"],
   "embeddings": {
-    "int8": [
-      [-5, 0, 120, -128]
-    ]
+    "int8": [[-5, 0, 120, -128]]
   },
   "meta": {
     "api_version": { "version": "2" },

@@ -7,7 +7,8 @@ namespace AgentKit;
 /// The closed terminal outcome of one agent run: exactly one of
 /// <see cref="AgentRunCompleted"/>, <see cref="AgentRunFailed"/>,
 /// <see cref="AgentRunCancelled"/>, <see cref="AgentRunTurnLimitReached"/>,
-/// or <see cref="AgentRunContextPreparationFailed"/>.
+/// <see cref="AgentRunContextPreparationFailed"/>, <see cref="AgentRunIdle"/>,
+/// <see cref="AgentRunInvalidState"/>, or <see cref="AgentRunOutputRejected"/>.
 /// </summary>
 /// <remarks>
 /// This hierarchy is closed to first-party outcomes recognized by
@@ -18,9 +19,13 @@ namespace AgentKit;
 /// context-preparation failure are typed outcomes, never a thrown
 /// <see cref="NotSupportedException"/> or a successful result with a null
 /// output.
+/// The additive continuation outcomes coexist with the original loop outcomes
+/// while consumers migrate to handling the complete family explicitly.
 /// </remarks>
 public abstract record AgentRunOutcome
 {
+    /// <summary>Prevents outcome implementations outside this assembly while allowing the canonical terminal records to initialize their base state.</summary>
+    /// <remarks>The base owns no settlement state; callers must keep semantic outcome separate from durable publication and recovery status.</remarks>
     private protected AgentRunOutcome()
     {
     }

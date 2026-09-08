@@ -3,14 +3,14 @@
 
 namespace AgentKit;
 
-/// <summary>Describes one direct dependency consumed by a registered component.</summary>
-/// <remarks>An optional factory boundary identifies the narrow case where resolution occurs in an owned operation scope. It is declarative evidence only and never executes a factory.</remarks>
+/// <summary>Describes one direct dependency declared by a registered component.</summary>
+/// <remarks>An optional factory boundary identifies the narrow case where resolution occurs in an explicitly owned operation scope. This is declarative graph evidence only: it never executes a factory or proves the implementation's actual dependency behavior.</remarks>
 public sealed record ComponentDependencyDescriptor
 {
-    /// <summary>Initializes a direct component dependency description.</summary>
-    /// <param name="reference">The contract and optional key to resolve.</param>
-    /// <param name="cardinality">Whether resolution requires one registration or collects all matching registrations.</param>
-    /// <param name="factoryBoundary">Optional evidence for a separately owned operation scope.</param>
+    /// <summary>Initializes declared metadata for one direct component dependency.</summary>
+    /// <param name="reference">The non-null contract address and optional exact key declared for resolution.</param>
+    /// <param name="cardinality">The defined cardinality stating whether the component requires one registration or collects all matching registrations.</param>
+    /// <param name="factoryBoundary">Optional metadata describing a separately owned operation scope, or <see langword="null"/> when normal component lifetime rules apply.</param>
     /// <exception cref="ArgumentNullException"><paramref name="reference"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="cardinality"/> is not a defined value.</exception>
     public ComponentDependencyDescriptor(ComponentContractReference reference, ComponentDependencyCardinality cardinality, ComponentFactoryBoundary? factoryBoundary = null)
@@ -23,12 +23,15 @@ public sealed record ComponentDependencyDescriptor
         FactoryBoundary = factoryBoundary;
     }
 
-    /// <summary>Gets the contract address this component consumes.</summary>
+    /// <summary>Gets the declared contract address consumed by this component.</summary>
+    /// <value>A non-null immutable address; it describes a requested registration and is not a resolved service instance.</value>
     public ComponentContractReference Reference { get; }
 
-    /// <summary>Gets the resolution cardinality.</summary>
+    /// <summary>Gets the declared resolution cardinality.</summary>
+    /// <value>A defined cardinality that determines whether graph validation requires a singular registration or permits a matching collection.</value>
     public ComponentDependencyCardinality Cardinality { get; }
 
-    /// <summary>Gets optional operation-scope ownership evidence.</summary>
+    /// <summary>Gets optional evidence of an explicitly owned operation scope.</summary>
+    /// <value>A factory boundary that can isolate a disposable operation lifetime, or <see langword="null"/> when this dependency is resolved under ordinary lifetime rules.</value>
     public ComponentFactoryBoundary? FactoryBoundary { get; }
 }

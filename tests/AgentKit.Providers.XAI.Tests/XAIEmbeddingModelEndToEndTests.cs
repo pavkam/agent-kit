@@ -55,8 +55,8 @@ public sealed class XAIEmbeddingModelEndToEndTests
         var model = new XAIEmbeddingModel(
             descriptor,
             XAIProviderDefaults.CreateProfile(options),
-            new OpenAICompatible.OpenAIEmbeddingRequestTranslator(),
-            new OpenAICompatible.OpenAIEmbeddingResponseParser(),
+            new OpenAIEmbeddingRequestTranslator(),
+            new OpenAIEmbeddingResponseParser(),
             new StaticApiKeyCredentialSource("xai-real-looking-key"),
             new HttpClient(handler),
             new FakeTimeProvider(Now));

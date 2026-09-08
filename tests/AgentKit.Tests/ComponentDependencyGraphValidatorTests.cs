@@ -3,11 +3,32 @@
 
 namespace AgentKit.Tests;
 
+using System.Collections.Immutable;
+
 using AgentKit;
+
 using Microsoft.Extensions.DependencyInjection;
 
 public sealed class ComponentDependencyGraphValidatorTests
 {
+    [Fact]
+    public void Validate_WhenRegistrationsAreDefault_ThrowsWithParameterName()
+    {
+        var exception = Should.Throw<ArgumentException>(() => ComponentDependencyGraphValidator.Validate(default));
+
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe("registrations");
+    }
+
+    [Fact]
+    public void Validate_WhenRegistrationsContainNull_ThrowsExactArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(() => ComponentDependencyGraphValidator.Validate([null!]));
+
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe("registrations");
+    }
+
     [Fact]
     public void Validate_WhenExactKeysAndLeafAreValid_ReturnsNoDiagnostics()
     {
@@ -42,11 +63,35 @@ public sealed class ComponentDependencyGraphValidatorTests
         var diagnostics = ComponentDependencyGraphValidator.Validate([
             Registration(Reference<ICollectionRoot>(), typeof(CollectionRoot), ServiceLifetime.Singleton,
                 Dependency(Reference<ILeaf>(), ComponentDependencyCardinality.AdditiveCollection)),
-            Registration(new ComponentContractReference(typeof(ILeaf), "one"), typeof(AlphaLeaf), ServiceLifetime.Transient),
-            Registration(new ComponentContractReference(typeof(ILeaf), "two"), typeof(BetaLeaf), ServiceLifetime.Transient),
+            Registration(Reference<ILeaf>(), typeof(AlphaLeaf), ServiceLifetime.Transient),
+            Registration(Reference<ILeaf>(), typeof(BetaLeaf), ServiceLifetime.Transient),
         ]);
 
         diagnostics.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Validate_WhenAdditiveCollectionHasNoMatches_ReturnsNoDiagnostics()
+    {
+        var diagnostics = ComponentDependencyGraphValidator.Validate([
+            Registration(Reference<ICollectionRoot>(), typeof(CollectionRoot), ServiceLifetime.Singleton,
+                Dependency(Reference<ILeaf>(), ComponentDependencyCardinality.AdditiveCollection)),
+        ]);
+
+        diagnostics.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Validate_WhenSameImplementationIsRegisteredTwiceForASingularDependency_ReportsAmbiguity()
+    {
+        var diagnostics = ComponentDependencyGraphValidator.Validate([
+            Registration(Reference<IRoot>(), typeof(Root), ServiceLifetime.Singleton, Dependency(Reference<ILeaf>())),
+            Registration(Reference<ILeaf>(), typeof(AlphaLeaf), ServiceLifetime.Transient),
+            Registration(Reference<ILeaf>(), typeof(AlphaLeaf), ServiceLifetime.Transient),
+        ]);
+
+        var diagnostic = diagnostics.Single(static item => item.Code == "agentkit.component-dependency.ambiguous");
+        diagnostic.SafeMessage.ShouldContain("2 registrations match");
     }
 
     [Fact]
@@ -113,6 +158,26 @@ public sealed class ComponentDependencyGraphValidatorTests
     }
 
     [Fact]
+    public void Validate_WhenFactoryRootIsMissingOrAmbiguous_ReportsSpecificBoundaryProblems()
+    {
+        var owner = Reference<IRoot>();
+        var operation = Reference<IOperation>();
+        var missingDiagnostics = ComponentDependencyGraphValidator.Validate([
+            Registration(owner, typeof(Root), ServiceLifetime.Singleton,
+                Dependency(operation, factoryBoundary: new ComponentFactoryBoundary(owner, operation, typeof(IDisposable)))),
+        ]);
+        var ambiguousDiagnostics = ComponentDependencyGraphValidator.Validate([
+            Registration(owner, typeof(Root), ServiceLifetime.Singleton,
+                Dependency(operation, factoryBoundary: new ComponentFactoryBoundary(owner, operation, typeof(IDisposable)))),
+            Registration(operation, typeof(Operation), ServiceLifetime.Scoped),
+            Registration(operation, typeof(Operation), ServiceLifetime.Scoped),
+        ]);
+
+        missingDiagnostics.Select(static diagnostic => diagnostic.Code).ShouldContain("agentkit.component-factory-boundary.root-missing");
+        ambiguousDiagnostics.Select(static diagnostic => diagnostic.Code).ShouldContain("agentkit.component-factory-boundary.root-ambiguous");
+    }
+
+    [Fact]
     public void Validate_WhenSingletonCapturesScopedDependencyThroughTransient_ReportsProblem()
     {
         var diagnostics = ComponentDependencyGraphValidator.Validate([
@@ -151,22 +216,34 @@ public sealed class ComponentDependencyGraphValidatorTests
     }
 
     [Fact]
+    public void Validate_WhenCalledRepeatedlyForTheSameGraph_ReturnsDeterministicDiagnostics()
+    {
+        var registrations = ImmutableArray.Create(
+            Registration(Reference<IA>(), typeof(A), ServiceLifetime.Singleton, Dependency(Reference<IB>())),
+            Registration(Reference<IB>(), typeof(B), ServiceLifetime.Singleton, Dependency(Reference<IC>())),
+            Registration(Reference<IC>(), typeof(C), ServiceLifetime.Singleton, Dependency(Reference<IA>())));
+
+        var first = ComponentDependencyGraphValidator.Validate(registrations);
+        var second = ComponentDependencyGraphValidator.Validate(registrations);
+
+        first.Select(static diagnostic => (diagnostic.Code, diagnostic.SafeMessage))
+            .ShouldBe(second.Select(static diagnostic => (diagnostic.Code, diagnostic.SafeMessage)));
+    }
+
+    [Fact]
     public void Validate_WhenDependencyChainIsDeep_CompletesWithoutRecursiveTraversal()
     {
         var registrations = ImmutableArray.CreateBuilder<ComponentRegistrationDescriptor>();
-        Type previousArgument = typeof(Seed);
-        var previous = typeof(IChain<>).MakeGenericType(previousArgument);
-        registrations.Add(Registration(new ComponentContractReference(previous), typeof(Chain<>).MakeGenericType(previousArgument), ServiceLifetime.Transient));
-        for (var index = 0; index < 512; index++)
+        var previous = new ComponentContractReference(typeof(ILeaf), "0");
+        registrations.Add(Registration(previous, typeof(AlphaLeaf), ServiceLifetime.Transient));
+        for (var index = 1; index < 10_000; index++)
         {
-            var argument = typeof(Node<>).MakeGenericType(previousArgument);
-            var service = typeof(IChain<>).MakeGenericType(argument);
+            var service = new ComponentContractReference(typeof(ILeaf), index.ToString(System.Globalization.CultureInfo.InvariantCulture));
             registrations.Add(Registration(
-                new ComponentContractReference(service),
-                typeof(Chain<>).MakeGenericType(argument),
+                service,
+                typeof(AlphaLeaf),
                 ServiceLifetime.Transient,
-                Dependency(new ComponentContractReference(previous))));
-            previousArgument = argument;
+                Dependency(previous)));
             previous = service;
         }
 
@@ -197,21 +274,17 @@ public sealed class ComponentDependencyGraphValidatorTests
     private interface IA;
     private interface IB;
     private interface IC;
-    private interface IChain<T>;
 
-    private sealed class Root : IRoot;
-    private sealed class CollectionRoot : ICollectionRoot;
-    private sealed class AlphaLeaf : ILeaf;
-    private sealed class BetaLeaf : ILeaf;
-    private sealed class SecondLeaf : ISecondLeaf;
-    private sealed class AnotherSecondLeaf : ISecondLeaf;
-    private sealed class Middle : IMiddle;
-    private sealed class Operation : IOperation, IDisposable { public void Dispose() { } }
-    private sealed class NonDisposableOperation : IOperation;
-    private sealed class A : IA;
-    private sealed class B : IB;
-    private sealed class C : IC;
-    private sealed class Seed;
-    private sealed class Node<T>;
-    private sealed class Chain<T> : IChain<T>;
+    private sealed class Root: IRoot;
+    private sealed class CollectionRoot: ICollectionRoot;
+    private sealed class AlphaLeaf: ILeaf;
+    private sealed class BetaLeaf: ILeaf;
+    private sealed class SecondLeaf: ISecondLeaf;
+    private sealed class AnotherSecondLeaf: ISecondLeaf;
+    private sealed class Middle: IMiddle;
+    private sealed class Operation: IOperation, IDisposable { public void Dispose() { } }
+    private sealed class NonDisposableOperation: IOperation;
+    private sealed class A: IA;
+    private sealed class B: IB;
+    private sealed class C: IC;
 }

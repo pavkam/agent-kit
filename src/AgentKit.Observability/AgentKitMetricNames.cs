@@ -22,6 +22,12 @@ public static class AgentKitMetricNames
     /// <summary>Gets the histogram for settled agent-run duration in seconds.</summary>
     public const string AgentRunDuration = "agentkit.agent.run.duration";
 
+    /// <summary>Gets the counter for terminal continuation-policy evaluations.</summary>
+    public const string RunContinuationEvaluationCount = "agentkit.run.continuation.evaluation.count";
+
+    /// <summary>Gets the histogram for continuation-policy evaluation duration in seconds.</summary>
+    public const string RunContinuationEvaluationDuration = "agentkit.run.continuation.evaluation.duration";
+
     /// <summary>Gets the counter for terminal context-preparation outcomes.</summary>
     public const string ContextPreparationCount = "agentkit.context.prepare.count";
 
@@ -66,6 +72,12 @@ public static class AgentKitMetricNames
 
     /// <summary>Gets the count of bounded local output-schema operations.</summary>
     public const string OutputSchemaOperationCount = "agentkit.output.schema.operation.count";
+
+    /// <summary>Gets the counter for terminal input-promotion planning outcomes.</summary>
+    public const string InputPromotionPlanCount = "agentkit.input.promotion.plan.count";
+
+    /// <summary>Gets the histogram for input-promotion planning duration in seconds.</summary>
+    public const string InputPromotionPlanDuration = "agentkit.input.promotion.plan.duration";
 
     /// <summary>Gets the counter for terminal file-system host operations.</summary>
     public const string FileSystemOperationCount = "agentkit.filesystem.operation.count";

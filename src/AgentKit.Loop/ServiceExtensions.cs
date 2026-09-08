@@ -54,8 +54,6 @@ public static class ServiceExtensions
             services.TryAddSingleton<IAgentLoop, DefaultAgentLoop>();
             services.TryAddKeyedSingleton<IRunContinuationPolicy, DefaultRunContinuationPolicy>(
                 AgentLoopDefaults.ContinuationPolicyKey.Value);
-            services.TryAddSingleton(provider =>
-                provider.GetRequiredKeyedService<IRunContinuationPolicy>(AgentLoopDefaults.ContinuationPolicyKey.Value));
 
             return services;
         }
@@ -71,7 +69,7 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
             ArgumentException.ThrowIfNullOrWhiteSpace(key.Value, nameof(key));
-            services.TryAddKeyedSingleton<IRunContinuationPolicy, TPolicy>(key.Value);
+            _ = services.AddKeyedSingleton<IRunContinuationPolicy, TPolicy>(key.Value);
             return services;
         }
     }

@@ -2,9 +2,7 @@
   "id": "emb-3",
   "texts": ["hello"],
   "embeddings": {
-    "ubinary": [
-      [170, 5]
-    ]
+    "ubinary": [[170, 5]]
   },
   "meta": {
     "api_version": { "version": "2" },

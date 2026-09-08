@@ -4,6 +4,7 @@
 namespace AgentKit.Abstractions.Tests.Composition;
 
 using AgentKit;
+
 using Microsoft.Extensions.DependencyInjection;
 
 public sealed class ComponentRegistrationDescriptorTests
@@ -37,6 +38,26 @@ public sealed class ComponentRegistrationDescriptorTests
         exception.ParamName.ShouldBe("contractType");
     }
 
+    [Theory]
+    [InlineData("void")]
+    [InlineData("byref")]
+    [InlineData("pointer")]
+    [InlineData("value")]
+    public void ContractReferenceConstructor_WhenContractCannotBeADiReferenceType_ThrowsWithParameterName(string shape)
+    {
+        var contractType = shape switch
+        {
+            "void" => typeof(void),
+            "byref" => typeof(int).MakeByRefType(),
+            "pointer" => typeof(int).MakePointerType(),
+            _ => typeof(int),
+        };
+
+        var exception = Should.Throw<ArgumentException>(() => new ComponentContractReference(contractType));
+
+        exception.ParamName.ShouldBe("contractType");
+    }
+
     [Fact]
     public void ContractReferenceConstructor_WhenKeyIsBlank_ThrowsWithParameterName()
     {
@@ -63,6 +84,20 @@ public sealed class ComponentRegistrationDescriptorTests
     }
 
     [Fact]
+    public void RegistrationConstructor_WhenServiceIsNullOrLifetimeIsUndefined_ThrowsExactExpectedException()
+    {
+        var serviceException = Should.Throw<ArgumentNullException>(() => new ComponentRegistrationDescriptor(
+            null!, typeof(Implementation), ServiceLifetime.Singleton, []));
+        var lifetimeException = Should.Throw<ArgumentOutOfRangeException>(() => new ComponentRegistrationDescriptor(
+            ComponentContractReference.Unkeyed<IContract>(), typeof(Implementation), (ServiceLifetime) 99, []));
+
+        serviceException.GetType().ShouldBe(typeof(ArgumentNullException));
+        lifetimeException.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
+        serviceException.ParamName.ShouldBe("service");
+        lifetimeException.ParamName.ShouldBe("lifetime");
+    }
+
+    [Fact]
     public void RegistrationConstructor_WhenImplementationIsAbstractOrUnassignable_ThrowsWithParameterName()
     {
         var abstractException = Should.Throw<ArgumentException>(() => new ComponentRegistrationDescriptor(
@@ -72,6 +107,15 @@ public sealed class ComponentRegistrationDescriptorTests
 
         abstractException.ParamName.ShouldBe("implementationType");
         unassignableException.ParamName.ShouldBe("implementationType");
+    }
+
+    [Fact]
+    public void RegistrationConstructor_WhenImplementationIsAnInterface_ThrowsWithParameterName()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new ComponentRegistrationDescriptor(
+            ComponentContractReference.Unkeyed<IContract>(), typeof(IContract), ServiceLifetime.Singleton, []));
+
+        exception.ParamName.ShouldBe("implementationType");
     }
 
     [Fact]
@@ -90,9 +134,19 @@ public sealed class ComponentRegistrationDescriptorTests
     public void DependencyConstructor_WhenCardinalityIsUndefined_ThrowsWithParameterName()
     {
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ComponentDependencyDescriptor(
-            ComponentContractReference.Unkeyed<IContract>(), (ComponentDependencyCardinality)99));
+            ComponentContractReference.Unkeyed<IContract>(), (ComponentDependencyCardinality) 99));
 
         exception.ParamName.ShouldBe("cardinality");
+    }
+
+    [Fact]
+    public void DependencyConstructor_WhenReferenceIsNull_ThrowsExactArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new ComponentDependencyDescriptor(
+            null!, ComponentDependencyCardinality.RequiredSingular));
+
+        exception.GetType().ShouldBe(typeof(ArgumentNullException));
+        exception.ParamName.ShouldBe("reference");
     }
 
     [Fact]
@@ -104,13 +158,27 @@ public sealed class ComponentRegistrationDescriptorTests
         exception.ParamName.ShouldBe("disposalContractType");
     }
 
+    [Fact]
+    public void FactoryBoundaryConstructor_WhenOwnerOrRootIsNull_ThrowsExactArgumentNullException()
+    {
+        var ownerException = Should.Throw<ArgumentNullException>(() => new ComponentFactoryBoundary(
+            null!, ComponentContractReference.Unkeyed<IContract>(), typeof(IDisposable)));
+        var rootException = Should.Throw<ArgumentNullException>(() => new ComponentFactoryBoundary(
+            ComponentContractReference.Unkeyed<IContract>(), null!, typeof(IDisposable)));
+
+        ownerException.GetType().ShouldBe(typeof(ArgumentNullException));
+        rootException.GetType().ShouldBe(typeof(ArgumentNullException));
+        ownerException.ParamName.ShouldBe("owner");
+        rootException.ParamName.ShouldBe("operationRoot");
+    }
+
     private interface IContract;
 
     private interface IGenericContract<T>;
 
-    private sealed class Implementation : IContract;
+    private sealed class Implementation: IContract;
 
-    private abstract class AbstractImplementation : IContract;
+    private abstract class AbstractImplementation: IContract;
 
     private sealed class UnrelatedImplementation;
 }

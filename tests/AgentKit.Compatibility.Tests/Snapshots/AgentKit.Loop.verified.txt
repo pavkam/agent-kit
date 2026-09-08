@@ -3,6 +3,10 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Loop
 {
+    public static class AgentLoopDefaults
+    {
+        public static AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> ContinuationPolicyKey { get; }
+    }
     public sealed class AgentLoopOptions
     {
         public AgentLoopOptions() { }
@@ -18,6 +22,8 @@ namespace AgentKit.Loop
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentLoop(System.Action<AgentKit.Loop.AgentLoopOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunContinuationPolicy<TPolicy>(AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> key)
+                where TPolicy :  class, AgentKit.IRunContinuationPolicy { }
         }
     }
 }

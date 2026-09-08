@@ -3,39 +3,45 @@
 
 namespace AgentKit;
 
-/// <summary>Names the total lifecycle state of one accepted run operation.</summary>
+/// <summary>Names the total durable lifecycle state of one accepted run operation.</summary>
+/// <remarks>
+/// The value is a state-machine observation, not a settlement outcome or a
+/// permission to perform the work named by the state. <see cref="Settled"/> is
+/// terminal; retry and deferred states remain open durable operations awaiting
+/// a later drive. The session coordinator validates every transition.
+/// </remarks>
 public enum AgentRunState
 {
-    /// <summary>The durable operation is accepted and may be awaiting a driver.</summary>
+    /// <summary>The durable operation was accepted and may be awaiting process-local drive ownership.</summary>
     Accepted,
-    /// <summary>A driver currently coordinates the operation.</summary>
+    /// <summary>A driver owns the current pass and is coordinating the open operation.</summary>
     Driving,
-    /// <summary>Eligible admitted input is being promoted.</summary>
+    /// <summary>The I/O owner is atomically promoting eligible admitted input at a safe boundary.</summary>
     PromotingInput,
-    /// <summary>The next model turn is being prepared.</summary>
+    /// <summary>The loop is preparing the next turn through its selected collaborators.</summary>
     PreparingTurn,
-    /// <summary>A recorded model request is awaiting its provider operation.</summary>
+    /// <summary>A durably recorded model request is awaiting its provider operation.</summary>
     AwaitingModel,
-    /// <summary>The provider response is streaming provisionally.</summary>
+    /// <summary>The provider response is streaming provisionally and is not yet a committed assistant response.</summary>
     StreamingModel,
-    /// <summary>Accepted tool calls are being durably recorded.</summary>
+    /// <summary>Accepted tool calls are being recorded durably before invocation can begin.</summary>
     RecordingToolCalls,
-    /// <summary>Recorded tool calls are awaiting terminal outcomes.</summary>
+    /// <summary>Recorded tool calls are awaiting terminal outcomes under the tool scheduler's control.</summary>
     AwaitingTools,
-    /// <summary>Terminal tool evidence is being materialized in source order.</summary>
+    /// <summary>Terminal tool evidence is being committed and projected in deterministic source order.</summary>
     CommittingToolResults,
-    /// <summary>The open operation waits for a retry wake condition.</summary>
+    /// <summary>The open durable operation awaits an explicit retry wake condition without settling.</summary>
     WaitingRetry,
-    /// <summary>The open operation waits for deferred work to resolve.</summary>
+    /// <summary>The open durable operation awaits resolution of deferred work without settling.</summary>
     SuspendedDeferred,
-    /// <summary>The semantic run outcome is being completed.</summary>
+    /// <summary>The loop is recording the semantic run outcome before required settlement work.</summary>
     Completing,
-    /// <summary>The operation is processing a committed cancellation.</summary>
+    /// <summary>The operation is processing a committed cancellation and stopping new effects.</summary>
     Cancelling,
-    /// <summary>The operation is recording a terminal failure.</summary>
+    /// <summary>The operation is recording a terminal failure before settlement.</summary>
     Failing,
-    /// <summary>Required post-run work is settling.</summary>
+    /// <summary>Required terminal persistence, recovery, hook, and observer work is settling.</summary>
     Settling,
-    /// <summary>The operation is terminal and can never be reopened.</summary>
+    /// <summary>The operation is terminal, has emitted its settlement event, and can never be reopened.</summary>
     Settled,
 }

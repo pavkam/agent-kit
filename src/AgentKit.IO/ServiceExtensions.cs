@@ -15,6 +15,7 @@ public static class ServiceExtensions
         public IServiceCollection AddInputPromotionPolicy()
         {
             ArgumentNullException.ThrowIfNull(services);
+            services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IInputPromotionPolicy, DefaultInputPromotionPolicy>();
             return services;
         }

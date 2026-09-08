@@ -24,6 +24,15 @@ public sealed class PublicApiExtractorTests
     }
 
     [Fact]
+    public void GeneratePublicApi_WhenTypeExtensionReceiverIsNonNullable_PreservesReceiverNullability()
+    {
+        var api = typeof(PublicApiExtractorTypeExtensionFixtureExtensions).GeneratePublicApi();
+
+        api.ShouldContain("extension(System.ArgumentException)");
+        api.ShouldNotContain("extension(System.ArgumentException?)");
+    }
+
+    [Fact]
     public void GeneratePublicApi_WhenGenericExtensionReturnsNullableReceiverTypeParameter_FailsClosed()
     {
         var exception = Should.Throw<FormatException>(() => typeof(UnsupportedGenericExtensionFixtureExtensions).GeneratePublicApi());

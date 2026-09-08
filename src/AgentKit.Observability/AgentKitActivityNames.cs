@@ -22,6 +22,12 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for coordinating one logical agent turn.</summary>
     public const string AgentTurn = "agent.turn";
 
+    /// <summary>Gets the name for evaluating one immutable run-continuation snapshot.</summary>
+    public const string RunContinuationEvaluate = "run.continuation.evaluate";
+
+    /// <summary>Gets the name for deterministic planning of already admitted input promotion.</summary>
+    public const string InputPromotionPlan = "input.promotion.plan";
+
     /// <summary>Gets the name for preparing provider-ready working context.</summary>
     public const string ContextPrepare = "context.prepare";
 

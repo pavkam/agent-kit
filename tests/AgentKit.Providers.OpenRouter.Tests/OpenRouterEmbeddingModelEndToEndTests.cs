@@ -55,8 +55,8 @@ public sealed class OpenRouterEmbeddingModelEndToEndTests
         var model = new OpenRouterEmbeddingModel(
             descriptor,
             OpenRouterProviderDefaults.CreateProfile(options),
-            new OpenAICompatible.OpenAIEmbeddingRequestTranslator(),
-            new OpenAICompatible.OpenAIEmbeddingResponseParser(),
+            new OpenAIEmbeddingRequestTranslator(),
+            new OpenAIEmbeddingResponseParser(),
             new StaticApiKeyCredentialSource("sk-or-real-looking-key"),
             new HttpClient(handler),
             new FakeTimeProvider(Now));
@@ -83,8 +83,8 @@ public sealed class OpenRouterEmbeddingModelEndToEndTests
         var model = new OpenRouterEmbeddingModel(
             descriptor,
             OpenRouterProviderDefaults.CreateProfile(options),
-            new OpenAICompatible.OpenAIEmbeddingRequestTranslator(),
-            new OpenAICompatible.OpenAIEmbeddingResponseParser(),
+            new OpenAIEmbeddingRequestTranslator(),
+            new OpenAIEmbeddingResponseParser(),
             new StaticApiKeyCredentialSource("sk-or-real-looking-key"),
             new HttpClient(handler),
             new FakeTimeProvider(Now));

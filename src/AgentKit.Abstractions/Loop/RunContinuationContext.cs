@@ -3,8 +3,16 @@
 
 namespace AgentKit;
 
-/// <summary>Captures every immutable observation needed to propose one continuation transition.</summary>
-/// <remarks>The values are revalidation evidence, not proof of commit or authority. The session owner compares them before accepting a proposal.</remarks>
+/// <summary>Captures the immutable, safe-boundary evidence from which a policy may propose the next transition for one open run.</summary>
+/// <remarks>
+/// This snapshot identifies the installed operation, the portion of session state
+/// it observed, and the causes eligible for continuation. Its values are
+/// revalidation evidence only: they neither prove that a referenced record was
+/// committed nor authorize a model request, session mutation, or other effect.
+/// The session owner must recheck the relevant evidence before it accepts a
+/// policy proposal. The instance is immutable and can safely cross an
+/// asynchronous policy boundary.
+/// </remarks>
 public sealed record RunContinuationContext
 {
     /// <summary>Initializes a continuation evaluation snapshot.</summary>
@@ -78,32 +86,46 @@ public sealed record RunContinuationContext
         Causes = causes;
     }
 
-    /// <summary>Gets the owning agent identity.</summary>
+    /// <summary>Gets the identity of the agent definition that owns the evaluated operation.</summary>
+    /// <value>A non-default identity that scopes the continuation proposal to one configured agent.</value>
     public AgentId AgentId { get; }
-    /// <summary>Gets the owning session identity.</summary>
+    /// <summary>Gets the identity of the session containing the operation's durable state.</summary>
+    /// <value>A non-default session identity used with the operation and lane identities during revalidation.</value>
     public SessionId SessionId { get; }
-    /// <summary>Gets the execution lane identity.</summary>
+    /// <summary>Gets the execution lane containing the installed operation being evaluated.</summary>
+    /// <value>A non-default lane identity; changes in unrelated lanes do not alone stale this context.</value>
     public ExecutionLaneId ExecutionLaneId { get; }
-    /// <summary>Gets the installed operation identity.</summary>
+    /// <summary>Gets the identity of the accepted operation whose next state is proposed.</summary>
+    /// <value>A non-default operation identity that prevents a proposal from advancing a successor operation.</value>
     public OperationId OperationId { get; }
-    /// <summary>Gets the open run identity.</summary>
+    /// <summary>Gets the identity of the open logical run associated with the operation.</summary>
+    /// <value>A non-default run identity preserved through retries and deferred work until settlement.</value>
     public RunId RunId { get; }
-    /// <summary>Gets the captured total run state.</summary>
+    /// <summary>Gets the total durable state observed at this continuation boundary.</summary>
+    /// <value>A defined state value that the session owner compares before applying a proposal.</value>
     public AgentRunState State { get; }
-    /// <summary>Gets the captured operation-state revision.</summary>
+    /// <summary>Gets the positive revision of <see cref="State"/> observed for the installed operation.</summary>
+    /// <value>A revision scoped to the operation state rather than a session-wide append version.</value>
     public OperationStateRevision OperationStateRevision { get; }
-    /// <summary>Gets the exact branch cursor.</summary>
+    /// <summary>Gets the exact selected-branch cursor that supplied continuation evidence.</summary>
+    /// <value>A non-null immutable cursor revalidated with the operation state to detect relevant history changes.</value>
     public SessionBranchCursor BranchCursor { get; }
-    /// <summary>Gets the admission cutoff already considered.</summary>
+    /// <summary>Gets the latest admission sequence considered for promotion at this boundary.</summary>
+    /// <value>The captured cutoff used to determine whether newly admitted input invalidates the proposal.</value>
     public SessionSequence InputPromotionCutoff { get; }
-    /// <summary>Gets the effective configuration version.</summary>
+    /// <summary>Gets the version of effective configuration captured for this evaluation.</summary>
+    /// <value>A non-default version identifying the configuration snapshot; it does not provide mutable configuration access.</value>
     public ConfigurationVersion ConfigurationVersion { get; }
-    /// <summary>Gets the selected run-policy version.</summary>
+    /// <summary>Gets the immutable run-policy version captured for this evaluation.</summary>
+    /// <value>A non-default value identifying the policy rules under which the proposal was made.</value>
     public RunPolicyVersion PolicyVersion { get; }
-    /// <summary>Gets the safe evaluation boundary.</summary>
+    /// <summary>Gets the boundary shape that determines which turn or operation evidence is available.</summary>
+    /// <value>A non-null committed-turn, retry, deferred, or idle boundary; it never fabricates a completed response.</value>
     public RunContinuationBoundary Boundary { get; }
-    /// <summary>Gets the committed primary stop outcome, when present.</summary>
+    /// <summary>Gets the primary committed non-success stop outcome, when one already prevents continuation.</summary>
+    /// <value>A non-success outcome, or <see langword="null"/> when no required stop was observed.</value>
     public AgentRunOutcome? RequiredStopOutcome { get; }
-    /// <summary>Gets every pending continuation cause in captured order.</summary>
+    /// <summary>Gets every pending continuation cause in the captured precedence-preserving order.</summary>
+    /// <value>A non-default immutable array with no null entries; these causes are evidence, not requests the policy may execute.</value>
     public ImmutableArray<RunContinuationCause> Causes { get; }
 }

@@ -44,6 +44,9 @@ internal static class ComponentDependencyGraphValidator
         return diagnostics.ToImmutable();
     }
 
+    /// <summary>Indexes descriptors by their exact closed service contract and key.</summary>
+    /// <param name="registrations">The validated non-default registration descriptors.</param>
+    /// <returns>Lists retaining the declaration indexes for every exact service address.</returns>
     private static Dictionary<ComponentContractReference, List<int>> IndexRegistrations(
         ImmutableArray<ComponentRegistrationDescriptor> registrations)
     {
@@ -64,6 +67,9 @@ internal static class ComponentDependencyGraphValidator
         return registrationsByService;
     }
 
+    /// <summary>Creates initialized empty adjacency lists for a graph of the requested size.</summary>
+    /// <param name="count">The non-negative number of graph nodes.</param>
+    /// <returns>One mutable empty edge list for every node index.</returns>
     private static List<int>[] CreateEdges(int count)
     {
         Debug.Assert(count >= 0, "A registration count cannot be negative.");
@@ -76,19 +82,29 @@ internal static class ComponentDependencyGraphValidator
         return edges;
     }
 
-    private static IReadOnlyList<int> Resolve(
+    /// <summary>Resolves registrations whose service address exactly equals a dependency reference.</summary>
+    /// <param name="registrationsByService">The initialized exact-address index.</param>
+    /// <param name="reference">The non-null dependency address to resolve.</param>
+    /// <returns>The declared target indexes, or an empty initialized list when none match.</returns>
+    private static List<int> Resolve(
         IReadOnlyDictionary<ComponentContractReference, List<int>> registrationsByService,
         ComponentContractReference reference) =>
         registrationsByService.TryGetValue(reference, out var matches) ? matches : [];
 
+    /// <summary>Emits a diagnostic when a singular dependency resolves to zero or multiple registrations.</summary>
+    /// <param name="ownerIndex">The index of the registration that declares the dependency.</param>
+    /// <param name="dependency">The non-null dependency declaration being resolved.</param>
+    /// <param name="targets">The initialized exact matches for the dependency.</param>
+    /// <param name="registrations">The descriptors used to describe the owning registration.</param>
+    /// <param name="diagnostics">The mutable result collector owned by the public validation call.</param>
     private static void ValidateCardinality(
         int ownerIndex,
         ComponentDependencyDescriptor dependency,
-        IReadOnlyList<int> targets,
+        List<int> targets,
         ImmutableArray<ComponentRegistrationDescriptor> registrations,
         ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
     {
-        Debug.Assert((uint)ownerIndex < (uint)registrations.Length, "A dependency owner index must identify a declared registration.");
+        Debug.Assert((uint) ownerIndex < (uint) registrations.Length, "A dependency owner index must identify a declared registration.");
         Debug.Assert(dependency is not null, "Registration descriptors reject null dependency declarations.");
         Debug.Assert(targets is not null, "Dependency resolution always returns an initialized target collection.");
         if (dependency.Cardinality != ComponentDependencyCardinality.RequiredSingular)
@@ -110,20 +126,23 @@ internal static class ComponentDependencyGraphValidator
         }
     }
 
+    /// <summary>Adds graph edges for every declared matching dependency target, including ambiguous singular evidence.</summary>
+    /// <param name="ownerIndex">The index of the registration that consumes the dependency.</param>
+    /// <param name="dependency">The non-null dependency declaration.</param>
+    /// <param name="targets">The initialized matching target indexes.</param>
+    /// <param name="edges">The full graph, including factory boundaries for re-entry checks.</param>
+    /// <param name="ordinaryEdges">The ordinary construction graph, excluding operation-owned factory boundaries.</param>
     private static void AddEdges(
         int ownerIndex,
         ComponentDependencyDescriptor dependency,
-        IReadOnlyList<int> targets,
+        List<int> targets,
         List<int>[] edges,
         List<int>[] ordinaryEdges)
     {
-        Debug.Assert((uint)ownerIndex < (uint)edges.Length, "A dependency owner index must identify an edge list.");
+        Debug.Assert((uint) ownerIndex < (uint) edges.Length, "A dependency owner index must identify an edge list.");
         Debug.Assert(edges.Length == ordinaryEdges.Length, "All graph views must cover the same registrations.");
         Debug.Assert(targets is not null, "Dependency resolution always returns an initialized target collection.");
-        var includedTargets = dependency.Cardinality == ComponentDependencyCardinality.RequiredSingular && targets.Count != 1
-            ? []
-            : targets;
-        foreach (var target in includedTargets)
+        foreach (var target in targets)
         {
             edges[ownerIndex].Add(target);
             if (dependency.FactoryBoundary is null)
@@ -133,15 +152,22 @@ internal static class ComponentDependencyGraphValidator
         }
     }
 
+    /// <summary>Checks that explicit factory metadata identifies one owned, disposable operation root.</summary>
+    /// <param name="ownerIndex">The index of the descriptor that declares the factory dependency.</param>
+    /// <param name="dependency">The non-null dependency whose optional boundary is being checked.</param>
+    /// <param name="targets">The initialized exact matches for the dependency.</param>
+    /// <param name="registrationsByService">The initialized exact-address index.</param>
+    /// <param name="registrations">The descriptors used for boundary evidence.</param>
+    /// <param name="diagnostics">The mutable result collector owned by the public validation call.</param>
     private static void ValidateFactoryBoundary(
         int ownerIndex,
         ComponentDependencyDescriptor dependency,
-        IReadOnlyList<int> targets,
+        List<int> targets,
         IReadOnlyDictionary<ComponentContractReference, List<int>> registrationsByService,
         ImmutableArray<ComponentRegistrationDescriptor> registrations,
         ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
     {
-        Debug.Assert((uint)ownerIndex < (uint)registrations.Length, "A factory boundary owner index must identify a declared registration.");
+        Debug.Assert((uint) ownerIndex < (uint) registrations.Length, "A factory boundary owner index must identify a declared registration.");
         Debug.Assert(targets is not null, "Dependency resolution always returns an initialized target collection.");
         if (dependency.FactoryBoundary is not { } boundary)
         {
@@ -197,6 +223,10 @@ internal static class ComponentDependencyGraphValidator
         }
     }
 
+    /// <summary>Finds every cyclic strongly connected component and emits its deterministic complete path.</summary>
+    /// <param name="registrations">The descriptors named in cycle diagnostics.</param>
+    /// <param name="edges">The initialized full dependency graph.</param>
+    /// <param name="diagnostics">The mutable result collector owned by the public validation call.</param>
     private static void ValidateCycles(
         ImmutableArray<ComponentRegistrationDescriptor> registrations,
         List<int>[] edges,
@@ -217,6 +247,10 @@ internal static class ComponentDependencyGraphValidator
         }
     }
 
+    /// <summary>Finds scoped registrations retained through ordinary singleton construction paths.</summary>
+    /// <param name="registrations">The descriptors supplying lifetime and diagnostic information.</param>
+    /// <param name="ordinaryEdges">The initialized graph that excludes owned operation boundaries.</param>
+    /// <param name="diagnostics">The mutable result collector owned by the public validation call.</param>
     private static void ValidateCaptiveScopes(
         ImmutableArray<ComponentRegistrationDescriptor> registrations,
         List<int>[] ordinaryEdges,
@@ -240,6 +274,9 @@ internal static class ComponentDependencyGraphValidator
         }
     }
 
+    /// <summary>Computes strongly connected components with two iterative graph walks.</summary>
+    /// <param name="edges">The initialized directed graph whose node indexes are dense from zero.</param>
+    /// <returns>Every component as registration indexes without relying on call-stack recursion.</returns>
     private static ImmutableArray<List<int>> FindStronglyConnectedComponents(List<int>[] edges)
     {
         Debug.Assert(edges is not null, "A materialized graph must supply adjacency lists.");
@@ -256,16 +293,16 @@ internal static class ComponentDependencyGraphValidator
             var stack = new List<(int Node, int NextEdge)> { (start, 0) };
             while (stack.Count > 0)
             {
-                var frame = stack[^1];
-                if (frame.NextEdge == edges[frame.Node].Count)
+                var (node, nextEdge) = stack[^1];
+                if (nextEdge == edges[node].Count)
                 {
-                    order.Add(frame.Node);
+                    order.Add(node);
                     stack.RemoveAt(stack.Count - 1);
                     continue;
                 }
 
-                stack[^1] = (frame.Node, frame.NextEdge + 1);
-                var target = edges[frame.Node][frame.NextEdge];
+                stack[^1] = (node, nextEdge + 1);
+                var target = edges[node][nextEdge];
                 if (!visited[target])
                 {
                     visited[target] = true;
@@ -316,6 +353,12 @@ internal static class ComponentDependencyGraphValidator
         return components.ToImmutable();
     }
 
+    /// <summary>Finds one complete cycle path within a known cyclic strongly connected component.</summary>
+    /// <param name="component">The non-empty cyclic component expressed as graph indexes.</param>
+    /// <param name="edges">The initialized full graph containing the component's edges.</param>
+    /// <param name="registrations">The descriptors used to choose a deterministic path start.</param>
+    /// <returns>A path whose final index equals its first index.</returns>
+    /// <exception cref="InvalidOperationException">The supplied component is not actually cyclic despite the caller invariant.</exception>
     private static IReadOnlyList<int> FindCyclePath(
         List<int> component,
         List<int>[] edges,
@@ -329,15 +372,15 @@ internal static class ComponentDependencyGraphValidator
         var stack = new List<(int Node, int NextEdge)> { (start, 0) };
         while (stack.Count > 0)
         {
-            var frame = stack[^1];
-            if (frame.NextEdge == edges[frame.Node].Count)
+            var (node, nextEdge) = stack[^1];
+            if (nextEdge == edges[node].Count)
             {
                 stack.RemoveAt(stack.Count - 1);
                 continue;
             }
 
-            stack[^1] = (frame.Node, frame.NextEdge + 1);
-            var target = edges[frame.Node][frame.NextEdge];
+            stack[^1] = (node, nextEdge + 1);
+            var target = edges[node][nextEdge];
             if (!members.Contains(target))
             {
                 continue;
@@ -358,12 +401,17 @@ internal static class ComponentDependencyGraphValidator
         throw new InvalidOperationException("A cyclic strongly connected component must contain a cycle path.");
     }
 
-    private static IReadOnlyList<int>? FindPathToScoped(
+    /// <summary>Searches one singleton's ordinary dependency closure for its first scoped registration.</summary>
+    /// <param name="start">The index of the singleton whose retained dependencies are being inspected.</param>
+    /// <param name="ordinaryEdges">The initialized ordinary dependency graph.</param>
+    /// <param name="registrations">The descriptors that classify target lifetimes.</param>
+    /// <returns>The inclusive path to a scoped registration, or <see langword="null"/> when no scoped target is reachable.</returns>
+    private static List<int>? FindPathToScoped(
         int start,
         List<int>[] ordinaryEdges,
         ImmutableArray<ComponentRegistrationDescriptor> registrations)
     {
-        Debug.Assert((uint)start < (uint)ordinaryEdges.Length, "A lifetime traversal start must identify a graph node.");
+        Debug.Assert((uint) start < (uint) ordinaryEdges.Length, "A lifetime traversal start must identify a graph node.");
         Debug.Assert(ordinaryEdges.Length == registrations.Length, "Lifetime traversal graph and registrations must use the same indexes.");
         var parents = new int?[ordinaryEdges.Length];
         var visited = new bool[ordinaryEdges.Length];
@@ -393,15 +441,20 @@ internal static class ComponentDependencyGraphValidator
         return null;
     }
 
-    private static IReadOnlyList<int> BuildPath(int start, int end, int?[] parents)
+    /// <summary>Reconstructs an inclusive graph path from predecessor evidence recorded by breadth-first search.</summary>
+    /// <param name="start">The known path origin.</param>
+    /// <param name="end">The discovered path destination.</param>
+    /// <param name="parents">The predecessor indexes established for visited nodes.</param>
+    /// <returns>The ordered indexes from <paramref name="start"/> through <paramref name="end"/>.</returns>
+    private static List<int> BuildPath(int start, int end, int?[] parents)
     {
-        Debug.Assert((uint)start < (uint)parents.Length && (uint)end < (uint)parents.Length, "Path endpoints must identify graph nodes.");
+        Debug.Assert((uint) start < (uint) parents.Length && (uint) end < (uint) parents.Length, "Path endpoints must identify graph nodes.");
         var path = new List<int> { end };
         for (var current = end; current != start;)
         {
             var parent = parents[current];
             Debug.Assert(parent is not null, "A discovered graph path must retain every predecessor.");
-            current = parent!.Value;
+            current = parent.Value;
             path.Add(current);
         }
 
@@ -409,9 +462,15 @@ internal static class ComponentDependencyGraphValidator
         return path;
     }
 
+    /// <summary>Formats a descriptor address and concrete implementation for a safe composition diagnostic.</summary>
+    /// <param name="registration">The non-null descriptor to identify.</param>
+    /// <returns>A stable, non-secret textual identifier for the descriptor.</returns>
     private static string Describe(ComponentRegistrationDescriptor registration) =>
         $"{Describe(registration.Service)} ({registration.ImplementationType.FullName ?? registration.ImplementationType.Name})";
 
+    /// <summary>Formats an exact contract-and-key reference for a safe composition diagnostic.</summary>
+    /// <param name="reference">The non-null closed contract reference to identify.</param>
+    /// <returns>A stable text representation that includes the key when present.</returns>
     private static string Describe(ComponentContractReference reference) =>
         reference.Key is null
             ? reference.ContractType.FullName ?? reference.ContractType.Name

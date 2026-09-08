@@ -5,22 +5,22 @@ namespace AgentKit;
 
 using Microsoft.Extensions.DependencyInjection;
 
-/// <summary>Describes one closed DI component registration without constructing its implementation.</summary>
-/// <remarks>The descriptor captures only information composition validation needs: service address, implementation, lifetime, and direct dependencies. Its immutable collection preserves the registration author's declared dependency order while preventing later mutation from changing the graph being validated.</remarks>
+/// <summary>Describes one closed dependency-injection component registration without constructing its implementation.</summary>
+/// <remarks>The descriptor supplies declared graph metadata for validation: service address, implementation, lifetime, and direct dependencies. Its immutable collection preserves declared dependency order. It does not resolve the component or prove that a factory's actual dependencies and disposal behavior obey the declaration.</remarks>
 public sealed record ComponentRegistrationDescriptor
 {
-    /// <summary>Initializes one concrete component registration description.</summary>
-    /// <param name="service">The closed service contract and optional key exposed by the registration.</param>
-    /// <param name="implementationType">The closed, concrete type constructed for <paramref name="service"/>.</param>
-    /// <param name="lifetime">The Microsoft DI lifetime with which the implementation is registered.</param>
-    /// <param name="dependencies">The initialized, non-null direct dependency descriptions; an empty array describes a leaf.</param>
+    /// <summary>Initializes declared metadata for one concrete component registration.</summary>
+    /// <param name="service">The non-null closed service contract and optional key exposed by the registration.</param>
+    /// <param name="implementationType">The non-null closed concrete reference type declared to implement <paramref name="service"/>.</param>
+    /// <param name="lifetime">The defined Microsoft dependency-injection lifetime declared for the implementation.</param>
+    /// <param name="dependencies">The non-default immutable direct dependency declarations in author-specified order; an empty collection describes a graph leaf.</param>
     /// <exception cref="ArgumentNullException"><paramref name="service"/>, <paramref name="implementationType"/>, or an element of <paramref name="dependencies"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException"><paramref name="implementationType"/> is not a concrete closed type assignable to <paramref name="service"/>, or <paramref name="dependencies"/> is default.</exception>
+    /// <exception cref="ArgumentException"><paramref name="implementationType"/> is not a concrete closed reference type assignable to <paramref name="service"/>, or <paramref name="dependencies"/> is default.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="lifetime"/> is not a defined <see cref="ServiceLifetime"/> value.</exception>
     public ComponentRegistrationDescriptor(ComponentContractReference service, Type implementationType, ServiceLifetime lifetime, ImmutableArray<ComponentDependencyDescriptor> dependencies)
     {
         ArgumentNullException.ThrowIfNull(service);
-        ArgumentException.ThrowIfNotConcreteClosedType(implementationType);
+        ArgumentException.ThrowIfNotComponentImplementationType(implementationType);
         ArgumentOutOfRangeException.ThrowIfUndefined(lifetime);
         ArgumentException.ThrowIfDefault(dependencies);
         foreach (var dependency in dependencies)
@@ -35,15 +35,19 @@ public sealed record ComponentRegistrationDescriptor
         Dependencies = dependencies;
     }
 
-    /// <summary>Gets the contract and optional key exposed by this registration.</summary>
+    /// <summary>Gets the declared contract address exposed by this registration.</summary>
+    /// <value>A non-null immutable service address containing the closed contract type and its keyed or unkeyed selector.</value>
     public ComponentContractReference Service { get; }
 
-    /// <summary>Gets the concrete implementation type registered for <see cref="Service"/>.</summary>
+    /// <summary>Gets the concrete implementation type declared for <see cref="Service"/>.</summary>
+    /// <value>A non-null closed concrete reference type assignable to <see cref="Service"/>'s contract; it is not a constructed instance.</value>
     public Type ImplementationType { get; }
 
-    /// <summary>Gets the DI lifetime used when resolving this component.</summary>
+    /// <summary>Gets the declared dependency-injection lifetime for this component.</summary>
+    /// <value>A defined lifetime validated against declared dependencies for captive-lifetime violations; the value alone does not create ownership.</value>
     public ServiceLifetime Lifetime { get; }
 
-    /// <summary>Gets the immutable direct dependency declarations, which may be empty for a leaf.</summary>
+    /// <summary>Gets the immutable direct dependency declarations in author-specified order.</summary>
+    /// <value>A non-default collection with no null elements. An empty collection declares a graph leaf, and a factory boundary may declare a separately owned operation scope.</value>
     public ImmutableArray<ComponentDependencyDescriptor> Dependencies { get; }
 }

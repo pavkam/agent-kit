@@ -3,11 +3,12 @@
 
 namespace AgentKit;
 
-/// <summary>Proposes another drive step for a supported continuation cause.</summary>
+/// <summary>Proposes another drive step for an evidence-backed continuation reason.</summary>
+/// <remarks>The proposed step remains subject to session-owner revalidation and may be discarded when an affected state, input, or stop observation changes.</remarks>
 public sealed record ContinueRun: RunContinuationDecision
 {
-    /// <summary>Initializes a continuation proposal.</summary>
-    /// <param name="reason">The selected cause and retained pending evidence.</param>
+    /// <summary>Initializes a proposal to continue the open run.</summary>
+    /// <param name="reason">The non-null selected cause and retained pending evidence supporting the proposed drive step.</param>
     /// <exception cref="ArgumentNullException"><paramref name="reason"/> is null.</exception>
     public ContinueRun(ContinuationReason reason)
     {
@@ -15,6 +16,7 @@ public sealed record ContinueRun: RunContinuationDecision
         Reason = reason;
     }
 
-    /// <summary>Gets the evidence-backed reason selected by policy.</summary>
+    /// <summary>Gets the evidence-backed reason selected by policy for the proposed drive step.</summary>
+    /// <value>A non-null immutable reason that records selection without executing or committing continuation.</value>
     public ContinuationReason Reason { get; }
 }
