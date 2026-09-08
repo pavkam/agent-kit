@@ -19,6 +19,31 @@ namespace AgentKit.Providers.GoogleVertexAI
         public static AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
     }
     public abstract class GoogleVertexAIAuthorizationResult : System.IEquatable<AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationResult> { }
+    public sealed class GoogleVertexAIEmbeddingModel : AgentKit.IEmbeddingModel
+    {
+        public GoogleVertexAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.Providers.GoogleVertexAI.IGoogleVertexAIEmbeddingRequestTranslator translator, AgentKit.Providers.GoogleVertexAI.IGoogleVertexAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.EmbeddingModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class GoogleVertexAIEmbeddingRequestTranslator : AgentKit.Providers.GoogleVertexAI.IGoogleVertexAIEmbeddingRequestTranslator
+    {
+        public GoogleVertexAIEmbeddingRequestTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request) { }
+    }
+    public sealed class GoogleVertexAIEmbeddingResponseParseContext : System.IEquatable<AgentKit.Providers.GoogleVertexAI.GoogleVertexAIEmbeddingResponseParseContext>
+    {
+        public GoogleVertexAIEmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.EmbeddingRequestId RequestId { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+    }
+    public sealed class GoogleVertexAIEmbeddingResponseParser : AgentKit.Providers.GoogleVertexAI.IGoogleVertexAIEmbeddingResponseParser
+    {
+        public GoogleVertexAIEmbeddingResponseParser() { }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class GoogleVertexAILlmModel : AgentKit.ILlmModel
     {
         public GoogleVertexAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -31,9 +56,13 @@ namespace AgentKit.Providers.GoogleVertexAI
         public const string DefaultPublisher = "google";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
+        public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
         public static AgentKit.ProviderId ProviderId { get; }
         public static System.Uri BuildGenerateContentUri(AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId, bool useStreaming) { }
+        public static System.Uri BuildPredictUri(AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId) { }
         public static System.Uri BuildRegionalBaseAddress(string location) { }
     }
     public sealed class GoogleVertexAIProviderOptions
@@ -50,6 +79,14 @@ namespace AgentKit.Providers.GoogleVertexAI
         public GoogleVertexAIProviderOptionsValidator() { }
         public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options) { }
     }
+    public interface IGoogleVertexAIEmbeddingRequestTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request);
+    }
+    public interface IGoogleVertexAIEmbeddingResponseParser
+    {
+        System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default);
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
@@ -58,6 +95,7 @@ namespace AgentKit.Providers.GoogleVertexAI
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleVertexAIOAuthCredential<TProvider>()
                 where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleVertexAILlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId = default, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleVertexAIEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId = default, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
         }
     }
 }

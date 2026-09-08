@@ -19,6 +19,32 @@ namespace AgentKit.Providers.Cohere
         public static AgentKit.Providers.Cohere.CohereAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
     }
     public abstract class CohereAuthorizationResult : System.IEquatable<AgentKit.Providers.Cohere.CohereAuthorizationResult> { }
+    public sealed class CohereEmbeddingModel : AgentKit.IEmbeddingModel
+    {
+        public CohereEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereEmbeddingRequestTranslator translator, AgentKit.Providers.Cohere.ICohereEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.EmbeddingModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class CohereEmbeddingRequestTranslator : AgentKit.Providers.Cohere.ICohereEmbeddingRequestTranslator
+    {
+        public CohereEmbeddingRequestTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request) { }
+    }
+    public sealed class CohereEmbeddingResponseParseContext : System.IEquatable<AgentKit.Providers.Cohere.CohereEmbeddingResponseParseContext>
+    {
+        public CohereEmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.EmbeddingEncoding requestedEncoding, AgentKit.EmbeddingPurpose requestedPurpose) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.EmbeddingRequestId RequestId { get; init; }
+        public AgentKit.EmbeddingEncoding RequestedEncoding { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+        public AgentKit.EmbeddingPurpose RequestedPurpose { get; init; }
+    }
+    public sealed class CohereEmbeddingResponseParser : AgentKit.Providers.Cohere.ICohereEmbeddingResponseParser
+    {
+        public CohereEmbeddingResponseParser() { }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class CohereLlmModel : AgentKit.ILlmModel
     {
         public CohereLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereRequestTranslator translator, AgentKit.Providers.Cohere.ICohereResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -28,12 +54,17 @@ namespace AgentKit.Providers.Cohere
     public static class CohereProviderDefaults
     {
         public const string DefaultChatPath = "v2/chat";
+        public const string DefaultEmbedPath = "v2/embed";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
+        public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
         public static AgentKit.ProviderId ProviderId { get; }
         public static System.Uri BuildChatUri(AgentKit.Providers.Cohere.CohereProviderOptions options) { }
+        public static System.Uri BuildEmbedUri(AgentKit.Providers.Cohere.CohereProviderOptions options) { }
     }
     public sealed class CohereProviderOptions
     {
@@ -41,6 +72,7 @@ namespace AgentKit.Providers.Cohere
         public System.Uri BaseAddress { get; set; }
         public string ChatPath { get; set; }
         public string? ClientName { get; set; }
+        public string EmbedPath { get; set; }
         public bool PreferStreaming { get; set; }
     }
     public sealed class CohereProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.Cohere.CohereProviderOptions>
@@ -69,6 +101,14 @@ namespace AgentKit.Providers.Cohere
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public interface ICohereEmbeddingRequestTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request);
+    }
+    public interface ICohereEmbeddingResponseParser
+    {
+        System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface ICohereRequestTranslator
     {
         System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, bool useStreaming);
@@ -87,6 +127,7 @@ namespace AgentKit.Providers.Cohere
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCohereOAuthCredential<TProvider>()
                 where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCohereLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddCohereEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
         }
     }
 }

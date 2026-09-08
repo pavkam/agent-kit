@@ -3,6 +3,10 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Providers.OpenRouter
 {
+    public sealed class OpenRouterEmbeddingModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleEmbeddingModelBase
+    {
+        public OpenRouterEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+    }
     public sealed class OpenRouterLlmModel : AgentKit.Providers.OpenAICompatible.OpenAICompatibleLlmModelBase
     {
         public OpenRouterLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -10,10 +14,14 @@ namespace AgentKit.Providers.OpenRouter
     public static class OpenRouterProviderDefaults
     {
         public const string DefaultChatCompletionsPath = "chat/completions";
+        public const string DefaultEmbeddingsPath = "embeddings";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
+        public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
         public static AgentKit.ProviderId ProviderId { get; }
         public static AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile CreateProfile(AgentKit.Providers.OpenRouter.OpenRouterProviderOptions options) { }
     }
@@ -23,6 +31,7 @@ namespace AgentKit.Providers.OpenRouter
         public string? ApplicationTitle { get; set; }
         public System.Uri BaseAddress { get; set; }
         public string ChatCompletionsPath { get; set; }
+        public string EmbeddingsPath { get; set; }
         public string? HttpReferer { get; set; }
         public bool IncludeRoutingMetadata { get; set; }
         public bool IncludeStreamUsage { get; set; }
@@ -42,6 +51,7 @@ namespace AgentKit.Providers.OpenRouter
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenRouterOAuthCredential<TProvider>()
                 where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenRouterLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddOpenRouterEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
         }
     }
 }

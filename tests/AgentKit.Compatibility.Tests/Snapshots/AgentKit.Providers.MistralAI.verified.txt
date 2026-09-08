@@ -3,6 +3,14 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Providers.MistralAI
 {
+    public interface IMistralAIEmbeddingRequestTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request);
+    }
+    public interface IMistralAIEmbeddingResponseParser
+    {
+        System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.MistralAI.MistralAIEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IMistralAIRequestTranslator
     {
         System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, bool useStreaming);
@@ -28,6 +36,31 @@ namespace AgentKit.Providers.MistralAI
         public static AgentKit.Providers.MistralAI.MistralAIAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
     }
     public abstract class MistralAIAuthorizationResult : System.IEquatable<AgentKit.Providers.MistralAI.MistralAIAuthorizationResult> { }
+    public sealed class MistralAIEmbeddingModel : AgentKit.IEmbeddingModel
+    {
+        public MistralAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.MistralAI.MistralAIProviderOptions options, AgentKit.Providers.MistralAI.IMistralAIEmbeddingRequestTranslator translator, AgentKit.Providers.MistralAI.IMistralAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.EmbeddingModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class MistralAIEmbeddingRequestTranslator : AgentKit.Providers.MistralAI.IMistralAIEmbeddingRequestTranslator
+    {
+        public MistralAIEmbeddingRequestTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request) { }
+    }
+    public sealed class MistralAIEmbeddingResponseParseContext : System.IEquatable<AgentKit.Providers.MistralAI.MistralAIEmbeddingResponseParseContext>
+    {
+        public MistralAIEmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.EmbeddingEncoding? requestedEncoding) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.EmbeddingRequestId RequestId { get; init; }
+        public AgentKit.EmbeddingEncoding? RequestedEncoding { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+    }
+    public sealed class MistralAIEmbeddingResponseParser : AgentKit.Providers.MistralAI.IMistralAIEmbeddingResponseParser
+    {
+        public MistralAIEmbeddingResponseParser() { }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.MistralAI.MistralAIEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class MistralAILlmModel : AgentKit.ILlmModel
     {
         public MistralAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.MistralAI.MistralAIProviderOptions options, AgentKit.Providers.MistralAI.IMistralAIRequestTranslator translator, AgentKit.Providers.MistralAI.IMistralAIResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -37,18 +70,24 @@ namespace AgentKit.Providers.MistralAI
     public static class MistralAIProviderDefaults
     {
         public const string DefaultChatCompletionsPath = "chat/completions";
+        public const string DefaultEmbeddingsPath = "embeddings";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
+        public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
         public static AgentKit.ProviderId ProviderId { get; }
         public static System.Uri BuildChatCompletionsUri(AgentKit.Providers.MistralAI.MistralAIProviderOptions options) { }
+        public static System.Uri BuildEmbeddingsUri(AgentKit.Providers.MistralAI.MistralAIProviderOptions options) { }
     }
     public sealed class MistralAIProviderOptions
     {
         public MistralAIProviderOptions() { }
         public System.Uri BaseAddress { get; set; }
         public string ChatCompletionsPath { get; set; }
+        public string EmbeddingsPath { get; set; }
         public bool PreferStreaming { get; set; }
     }
     public sealed class MistralAIProviderOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<AgentKit.Providers.MistralAI.MistralAIProviderOptions>
@@ -86,6 +125,7 @@ namespace AgentKit.Providers.MistralAI
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAIOAuthCredential<TProvider>()
                 where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAILlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddMistralAIEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
         }
     }
 }

@@ -19,6 +19,12 @@ namespace AgentKit.Providers.AzureOpenAI
         public static AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
     }
     public abstract class AzureOpenAIAuthorizationResult : System.IEquatable<AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationResult> { }
+    public sealed class AzureOpenAIEmbeddingModel : AgentKit.IEmbeddingModel
+    {
+        public AzureOpenAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.EmbeddingModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class AzureOpenAILlmModel : AgentKit.ILlmModel
     {
         public AzureOpenAILlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -28,9 +34,13 @@ namespace AgentKit.Providers.AzureOpenAI
     public static class AzureOpenAIProviderDefaults
     {
         public const string DefaultChatCompletionsPath = "openai/v1/chat/completions";
+        public const string DefaultEmbeddingsPath = "openai/v1/embeddings";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
+        public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
         public static AgentKit.ProviderId ProviderId { get; }
         public static AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile CreateProfile(AgentKit.Providers.AzureOpenAI.AzureOpenAIProviderOptions options) { }
     }
@@ -38,6 +48,7 @@ namespace AgentKit.Providers.AzureOpenAI
     {
         public AzureOpenAIProviderOptions() { }
         public string ChatCompletionsPath { get; set; }
+        public string EmbeddingsPath { get; set; }
         public bool IncludeStreamUsage { get; set; }
         public bool PreferStreaming { get; set; }
         public System.Uri? ResourceEndpoint { get; set; }
@@ -57,6 +68,7 @@ namespace AgentKit.Providers.AzureOpenAI
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAzureOpenAIOAuthCredential<TProvider>()
                 where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAzureOpenAILlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.DeploymentId deploymentId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAzureOpenAIEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.DeploymentId deploymentId, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
         }
     }
 }

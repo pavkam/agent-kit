@@ -24,6 +24,30 @@ namespace AgentKit.Providers.GoogleGemini
         public GoogleGeminiContentTranslator() { }
         public System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request) { }
     }
+    public sealed class GoogleGeminiEmbeddingModel : AgentKit.IEmbeddingModel
+    {
+        public GoogleGeminiEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingRequestTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
+        public AgentKit.EmbeddingModelAlias Alias { get; }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class GoogleGeminiEmbeddingRequestTranslator : AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingRequestTranslator
+    {
+        public GoogleGeminiEmbeddingRequestTranslator() { }
+        public System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request) { }
+    }
+    public sealed class GoogleGeminiEmbeddingResponseParseContext : System.IEquatable<AgentKit.Providers.GoogleGemini.GoogleGeminiEmbeddingResponseParseContext>
+    {
+        public GoogleGeminiEmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.EmbeddingRequestId RequestId { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+    }
+    public sealed class GoogleGeminiEmbeddingResponseParser : AgentKit.Providers.GoogleGemini.IGoogleGeminiEmbeddingResponseParser
+    {
+        public GoogleGeminiEmbeddingResponseParser() { }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class GoogleGeminiLlmModel : AgentKit.ILlmModel
     {
         public GoogleGeminiLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -36,8 +60,12 @@ namespace AgentKit.Providers.GoogleGemini
         public static AgentKit.ApiFamilyId ApiFamily { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
+        public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
+        public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
+        public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
         public static AgentKit.ProviderId ProviderId { get; }
+        public static System.Uri BuildBatchEmbedContentsUri(AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.ModelId modelId) { }
         public static System.Uri BuildGenerateContentUri(AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.ModelId modelId, bool useStreaming) { }
     }
     public sealed class GoogleGeminiProviderOptions
@@ -72,6 +100,14 @@ namespace AgentKit.Providers.GoogleGemini
     {
         System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request);
     }
+    public interface IGoogleGeminiEmbeddingRequestTranslator
+    {
+        System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request);
+    }
+    public interface IGoogleGeminiEmbeddingResponseParser
+    {
+        System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IGoogleGeminiResponseParser
     {
         System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
@@ -86,6 +122,7 @@ namespace AgentKit.Providers.GoogleGemini
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleGeminiOAuthCredential<TProvider>()
                 where TProvider :  class, AgentKit.IOAuthAccessTokenProvider { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleGeminiLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleGeminiEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
         }
     }
 }

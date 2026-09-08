@@ -44,6 +44,7 @@ namespace AgentKit.Providers.OpenAICompatible
     public sealed class OpenAICompatibilityProfile : System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile>
     {
         public OpenAICompatibilityProfile(System.Uri baseAddress, string chatCompletionsPath, bool sendDeveloperRoleAsSystem, bool preferStreaming, bool includeStreamUsage, bool useMaxCompletionTokensField, System.Collections.Immutable.ImmutableDictionary<string, string> defaultRequestHeaders, string? embeddingsPath = null) { }
+        public OpenAICompatibilityProfile(System.Uri baseAddress, string chatCompletionsPath, bool sendDeveloperRoleAsSystem, bool preferStreaming, bool includeStreamUsage, bool useMaxCompletionTokensField, System.Collections.Immutable.ImmutableDictionary<string, string> defaultRequestHeaders, string? embeddingsPath, bool supportsEmbeddingPurpose) { }
         public System.Uri BaseAddress { get; }
         public string ChatCompletionsPath { get; }
         public System.Uri ChatCompletionsUri { get; }
@@ -53,6 +54,7 @@ namespace AgentKit.Providers.OpenAICompatible
         public bool IncludeStreamUsage { get; }
         public bool PreferStreaming { get; }
         public bool SendDeveloperRoleAsSystem { get; }
+        public bool SupportsEmbeddingPurpose { get; }
         public bool UseMaxCompletionTokensField { get; }
     }
     public abstract class OpenAICompatibleEmbeddingModelBase : AgentKit.IEmbeddingModel
