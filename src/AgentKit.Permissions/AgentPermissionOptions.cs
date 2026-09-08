@@ -14,4 +14,8 @@ public sealed class AgentPermissionOptions
     public TimeSpan MaximumGrantLifetime { get; set; } = TimeSpan.FromMinutes(5);
     /// <summary>Gets or sets the maximum use count of any issued grant.</summary>
     public int MaximumGrantUses { get; set; } = 1;
+
+    /// <summary>Gets or sets the default delivery requirement for security audit records.</summary>
+    /// <value><see cref="SecurityAuditDelivery.Required"/> unless the host explicitly accepts best-effort audit export.</value>
+    public SecurityAuditDelivery AuditDelivery { get; set; } = SecurityAuditDelivery.Required;
 }

@@ -278,10 +278,17 @@ namespace AgentKit
         public ApiKeyProviderCredential(string apiKey) { }
         public string ApiKey { get; init; }
     }
+    public readonly struct ApprovalRequestId : System.IEquatable<AgentKit.ApprovalRequestId>
+    {
+        public ApprovalRequestId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
     public static class ArgumentExceptionExtensions
     {
         extension(System.ArgumentException)
         {
+            public static void ThrowIfDuplicateSecurityAuditEventKind(System.Collections.Immutable.ImmutableArray<AgentKit.SecurityAuditEventKind> eventKinds, [System.Runtime.CompilerServices.CallerArgumentExpression("eventKinds")] string? paramName = null) { }
             public static void ThrowIfInvalidBudgetExecutionBinding(AgentKit.BudgetScopeAddress address, AgentKit.ExecutionIdentity identity, AgentKit.OperationCorrelation correlation, [System.Runtime.CompilerServices.CallerArgumentExpression("address")] string? paramName = null) { }
             public static void ThrowIfInvalidOutputSchemaProfile(AgentKit.OutputSchemaDialectId defaultDialect, System.Collections.Immutable.ImmutableArray<AgentKit.OutputSchemaDialectId> supportedDialects, System.Collections.Immutable.ImmutableArray<string> assertionKeywords, System.Collections.Immutable.ImmutableArray<string> annotationKeywords, [System.Runtime.CompilerServices.CallerArgumentExpression("defaultDialect")] string? defaultDialectParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("supportedDialects")] string? supportedDialectsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("assertionKeywords")] string? assertionKeywordsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("annotationKeywords")] string? annotationKeywordsParamName = null) { }
             public static void ThrowIfUnsupportedOutputSchemaDialect(AgentKit.OutputSchemaEngineProfile profile, AgentKit.OutputSchemaDialectId dialect, [System.Runtime.CompilerServices.CallerArgumentExpression("dialect")] string? paramName = null) { }
@@ -2809,6 +2816,14 @@ namespace AgentKit
     {
         System.Threading.Tasks.ValueTask<AgentKit.RunContinuationDecision> DecideAsync(AgentKit.RunContinuationContext context, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface ISecurityAuditDispatcher
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.SecurityAuditDispatchResult> DispatchAsync(AgentKit.SecurityAuditRecord record, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface ISecurityAuditSink
+    {
+        System.Threading.Tasks.ValueTask WriteAsync(AgentKit.SecurityAuditRecord record, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface ISecurityAuthority
     {
         System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default);
@@ -4797,6 +4812,16 @@ namespace AgentKit
     {
         public RecoveryStartOperation() { }
     }
+    public sealed class RedactedAuditValue : System.IEquatable<AgentKit.RedactedAuditValue>
+    {
+        public AgentKit.SecurityAuditValueKind Kind { get; }
+        public string Value { get; }
+        public static AgentKit.RedactedAuditValue FromComponentId(AgentKit.ComponentId componentId) { }
+        public static AgentKit.RedactedAuditValue FromEffect(AgentKit.SecurityEffect effect) { }
+        public static AgentKit.RedactedAuditValue FromFingerprint(AgentKit.ContentHash fingerprint) { }
+        public static AgentKit.RedactedAuditValue FromOperationKind(AgentKit.SecurityOperationKind kind) { }
+        public static AgentKit.RedactedAuditValue FromPolicyId(AgentKit.SecurityPolicyId policyId) { }
+    }
     public sealed class RejectedInput : AgentKit.InputAdmissionResult, System.IEquatable<AgentKit.RejectedInput>
     {
         public RejectedInput(AgentKit.InputRejection rejection) { }
@@ -4885,6 +4910,80 @@ namespace AgentKit
     {
         public SecurityAllowed(AgentKit.SecurityRequestId requestId, AgentKit.SecurityPolicyVersion policyVersion, AgentKit.SecurityGrant grant) { }
         public AgentKit.SecurityGrant Grant { get; init; }
+    }
+    public sealed class SecurityAuditAccepted : AgentKit.SecurityAuditDispatchResult, System.IEquatable<AgentKit.SecurityAuditAccepted>
+    {
+        public SecurityAuditAccepted() { }
+    }
+    public enum SecurityAuditDelivery
+    {
+        BestEffort = 0,
+        Required = 1,
+    }
+    public abstract class SecurityAuditDispatchResult : System.IEquatable<AgentKit.SecurityAuditDispatchResult> { }
+    public enum SecurityAuditEventKind
+    {
+        Request = 0,
+        Decision = 1,
+        Approval = 2,
+        GrantIssued = 3,
+        EnforcementProposed = 4,
+        GrantConsumptionIntent = 5,
+        GrantLifecycle = 6,
+        Enforcement = 7,
+    }
+    public sealed class SecurityAuditFailed : AgentKit.SecurityAuditDispatchResult, System.IEquatable<AgentKit.SecurityAuditFailed>
+    {
+        public SecurityAuditFailed(string safeReason) { }
+        public string SafeReason { get; }
+    }
+    public enum SecurityAuditOutcome
+    {
+        Accepted = 0,
+        Denied = 1,
+        Cancelled = 2,
+        Failed = 3,
+        Unknown = 4,
+    }
+    public sealed class SecurityAuditRecord : System.IEquatable<AgentKit.SecurityAuditRecord>
+    {
+        public SecurityAuditRecord(AgentKit.SecurityAuditRecordId id, AgentKit.SecurityAuthorizationScope scope, AgentKit.SecurityRequestId requestId, AgentKit.GrantId? grantId, AgentKit.ApprovalRequestId? approvalRequestId, AgentKit.SecurityAuditEventKind eventKind, AgentKit.SecurityAuditOutcome outcome, AgentKit.SecurityPolicyVersion policyVersion, System.Collections.Immutable.ImmutableDictionary<string, AgentKit.RedactedAuditValue> fields, System.DateTimeOffset occurredAt) { }
+        public AgentKit.ApprovalRequestId? ApprovalRequestId { get; }
+        public AgentKit.SecurityAuditEventKind EventKind { get; }
+        public System.Collections.Immutable.ImmutableDictionary<string, AgentKit.RedactedAuditValue> Fields { get; }
+        public AgentKit.GrantId? GrantId { get; }
+        public AgentKit.SecurityAuditRecordId Id { get; }
+        public System.DateTimeOffset OccurredAt { get; }
+        public AgentKit.SecurityAuditOutcome Outcome { get; }
+        public AgentKit.SecurityPolicyVersion PolicyVersion { get; }
+        public AgentKit.SecurityRequestId RequestId { get; }
+        public AgentKit.SecurityAuthorizationScope Scope { get; }
+    }
+    public readonly struct SecurityAuditRecordId : System.IEquatable<AgentKit.SecurityAuditRecordId>
+    {
+        public SecurityAuditRecordId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SecurityAuditSinkRegistration : System.IEquatable<AgentKit.SecurityAuditSinkRegistration>
+    {
+        public SecurityAuditSinkRegistration(System.Collections.Immutable.ImmutableArray<AgentKit.SecurityAuditEventKind> supportedEventKinds, AgentKit.SecurityAuditDelivery delivery, bool providesDurableAcceptance) { }
+        public AgentKit.SecurityAuditDelivery Delivery { get; }
+        public bool ProvidesDurableAcceptance { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.SecurityAuditEventKind> SupportedEventKinds { get; }
+    }
+    public sealed class SecurityAuditUnavailable : AgentKit.SecurityAuditDispatchResult, System.IEquatable<AgentKit.SecurityAuditUnavailable>
+    {
+        public SecurityAuditUnavailable(string safeReason) { }
+        public string SafeReason { get; }
+    }
+    public enum SecurityAuditValueKind
+    {
+        Fingerprint = 0,
+        SecurityPolicyId = 1,
+        ComponentId = 2,
+        OperationKind = 3,
+        Effect = 4,
     }
     public sealed class SecurityAuthoritySelected : AgentKit.SecurityAuthoritySelectionResult, System.IEquatable<AgentKit.SecurityAuthoritySelected>
     {
@@ -5002,6 +5101,12 @@ namespace AgentKit
         Delegation = 8,
         StateRead = 9,
         Artifact = 10,
+    }
+    public readonly struct SecurityPolicyId : System.IEquatable<AgentKit.SecurityPolicyId>
+    {
+        public SecurityPolicyId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
     }
     public sealed class SecurityPolicyResult : System.IEquatable<AgentKit.SecurityPolicyResult>
     {

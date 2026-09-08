@@ -25,6 +25,27 @@ public static class ArgumentExceptionExtensions
 {
     extension(ArgumentException)
     {
+        /// <summary>Throws when an audit event-kind sequence is uninitialized, contains an undefined kind, or declares one kind more than once.</summary>
+        /// <param name="eventKinds">The initialized audit event-kind sequence to inspect.</param>
+        /// <param name="paramName">The parameter attributed to a duplicate event kind.</param>
+        /// <exception cref="ArgumentException"><paramref name="eventKinds"/> is a default, uninitialized immutable array or contains a duplicate event kind.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="eventKinds"/> contains an undefined <see cref="SecurityAuditEventKind"/>.</exception>
+        public static void ThrowIfDuplicateSecurityAuditEventKind(
+            ImmutableArray<SecurityAuditEventKind> eventKinds,
+            [CallerArgumentExpression(nameof(eventKinds))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfDefault(eventKinds, paramName);
+            var seen = new HashSet<SecurityAuditEventKind>();
+            foreach (var eventKind in eventKinds)
+            {
+                ArgumentOutOfRangeException.ThrowIfUndefined(eventKind, paramName);
+                if (!seen.Add(eventKind))
+                {
+                    throw new ArgumentException("Security audit event kinds must be unique.", paramName);
+                }
+            }
+        }
+
         /// <summary>Throws when a budget address cannot bind the supplied identity and operation correlation.</summary>
         /// <param name="address">The non-null budget address to validate.</param>
         /// <param name="identity">The non-null authenticated execution identity.</param>

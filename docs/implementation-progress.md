@@ -65,8 +65,35 @@ owning spec.
 
 ## Latest integration evidence
 
-The authority-selector checkpoint passed `make format`, `make lint`, and
-`make test` in an isolated checkout over `e845419`. All 4,214 tests passed
+The security audit-dispatch checkpoint passed `make format`, `make lint`, and
+`make test` in an isolated checkout over `a3fd03b`. All 4,275 tests passed
+without skips; the Release build reported zero warnings or errors. The three
+reviewed API snapshots are additive: typed audit records, dispatch and sink
+contracts, safe audit values, explicit sink registration, delivery policy, and
+shared diagnostic names. The initial test run failed only those three expected
+snapshot comparisons; no behavioral test failed.
+
+The replaceable dispatcher captures additive host-owned sinks. Required delivery
+fails closed unless a suitable sink successfully accepts the record durably;
+optional sink failures remain isolated. Cancellation propagates before and after
+sink calls, and diagnostics retain truthful dispatch outcomes without exporting
+audit fields. Fingerprint fields contain a recomputed digest instead of trusting
+caller-supplied text to be safe. Focused coverage includes argument validation,
+DI replacement, failure and cancellation, and hostile diagnostic listeners.
+Cancellation regressions cover sinks that cancel the caller and then throw a
+non-cancellation exception, including required and optional delivery. An
+existing compaction observation test now uses the shared concurrent collector,
+filtered to its operation, after a full run exposed lost callbacks in its plain
+list. Production compaction behavior is unchanged.
+
+This establishes audit dispatch, not complete security audit coverage. Bounded
+delivery deadlines, durable sink adapters, authority/approval/session audit
+integration, the control-plane persistence graph, grant-consumption intent
+receipts, and retained profile capture remain open. The `EnforcementProposed`
+event is distinct from proof that a grant was consumed or an effect completed.
+
+The preceding authority-selector checkpoint passed `make format`, `make lint`,
+and `make test` in an isolated checkout over `e845419`. All 4,214 tests passed
 without skips; the Release build reported zero warnings or errors. The 52
 Permissions tests include exact binding, duplicate and argument rejection,
 cancellation, safe diagnostics, hostile listeners, and failed timing. The three
@@ -236,11 +263,12 @@ and explicit coordination.
 - Anthropic and Gemini HTTP failures and cancellation are corrected in
   `c765ee8`. Broader provider capability and protocol conformance remain open;
   the external embedding implementation has its own ownership and review.
-- Security capture values are implemented, but profile/policy/authority
-  catalogs, selectors, retained snapshots, and downstream request/grant binding
-  remain open. `6b0bb98` distinguishes pinned run configuration from exact
-  per-operation authorization scope; possessing a context does not grant an
-  effect. `260bf5b` specifies publication and activation ownership. A default
+- Security capture values and explicit keyed authority selection (`a3fd03b`) are
+  implemented. Audit dispatch has a verified checkpoint; profile/policy
+  publication and capture, retained activation, and downstream request/grant
+  binding remain open. `6b0bb98` distinguishes pinned run configuration from
+  exact per-operation authorization scope; possessing a context does not grant
+  an effect. `260bf5b` specifies publication and activation ownership. A default
   selection reader depends on validated agent component selections and cannot be
   replaced by an unchecked profile-key registry.
 - Output diagnostic bounds are corrected in `4737dcd`, text is bounded before

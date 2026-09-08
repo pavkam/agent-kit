@@ -88,6 +88,9 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for activating one captured security-authority binding.</summary>
     public const string SecurityAuthoritySelect = "security.authority.select";
 
+    /// <summary>Gets the name for delivering one immutable security audit record to its captured sinks.</summary>
+    public const string SecurityAuditDispatch = "security.audit.dispatch";
+
     /// <summary>Gets the name for reserving bounded shared capacity.</summary>
     public const string BudgetReserve = "budget.reserve";
 

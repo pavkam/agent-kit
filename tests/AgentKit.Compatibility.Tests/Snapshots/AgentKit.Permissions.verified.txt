@@ -6,6 +6,7 @@ namespace AgentKit.Permissions
     public sealed class AgentPermissionOptions
     {
         public AgentPermissionOptions() { }
+        public AgentKit.SecurityAuditDelivery AuditDelivery { get; set; }
         public System.TimeSpan MaximumGrantLifetime { get; set; }
         public int MaximumGrantUses { get; set; }
         public long PolicyVersion { get; set; }
@@ -34,6 +35,7 @@ namespace AgentKit.Permissions
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentPermissions(System.Action<AgentKit.Permissions.AgentPermissionOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuditSink(AgentKit.SecurityAuditSinkRegistration registration, AgentKit.ISecurityAuditSink sink) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuthority(AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey, AgentKit.ISecurityAuthority authority) { }
         }
     }

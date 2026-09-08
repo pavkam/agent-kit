@@ -24,6 +24,18 @@ internal static class SecurityMetrics
         unit: "s",
         description: "Duration of captured security-authority selection.");
 
+    /// <summary>Gets the counter for terminal security-audit dispatch outcomes.</summary>
+    internal static Counter<long> AuditDispatches { get; } = AgentKitDiagnostics.Metrics.CreateCounter<long>(
+        AgentKitMetricNames.SecurityAuditDispatchCount,
+        unit: "{dispatch}",
+        description: "Number of terminal security-audit dispatch outcomes.");
+
+    /// <summary>Gets the histogram for security-audit dispatch duration in seconds.</summary>
+    internal static Histogram<double> AuditDispatchDuration { get; } = AgentKitDiagnostics.Metrics.CreateHistogram<double>(
+        AgentKitMetricNames.SecurityAuditDispatchDuration,
+        unit: "s",
+        description: "Duration of security-audit dispatch.");
+
     /// <summary>Records one bounded authority-selection outcome and any trustworthy measured duration.</summary>
     /// <param name="outcome">The defined terminal selection outcome.</param>
     /// <param name="elapsed">A nonnegative duration, or <see langword="null"/> when observation could not measure it.</param>
@@ -42,6 +54,27 @@ internal static class SecurityMetrics
         if (elapsed is { } measured)
         {
             AuthoritySelectionDuration.Record(measured.TotalSeconds, tags);
+        }
+    }
+
+    /// <summary>Records one bounded audit-dispatch outcome and any trustworthy measured duration.</summary>
+    /// <param name="outcome">The defined terminal audit-dispatch outcome.</param>
+    /// <param name="elapsed">A nonnegative duration, or <see langword="null"/> when observation could not measure it.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="outcome"/> is undefined or <paramref name="elapsed"/> is negative.</exception>
+    internal static void RecordAuditDispatch(SecurityAuditDispatchOutcome outcome, TimeSpan? elapsed)
+    {
+        ArgumentOutOfRangeException.ThrowIfUndefined(outcome);
+        if (elapsed is { } duration)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(duration, TimeSpan.Zero, nameof(elapsed));
+        }
+
+        TagList tags = default;
+        tags.Add(AgentKitTagNames.Outcome, outcome.ToStableValue());
+        AuditDispatches.Add(1, tags);
+        if (elapsed is { } measured)
+        {
+            AuditDispatchDuration.Record(measured.TotalSeconds, tags);
         }
     }
 }

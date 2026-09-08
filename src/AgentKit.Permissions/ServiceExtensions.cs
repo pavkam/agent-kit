@@ -20,6 +20,7 @@ public static class ServiceExtensions
                 .Validate(static value => value.RevocationVersion > 0, "RevocationVersion must be positive.")
                 .Validate(static value => value.MaximumGrantLifetime > TimeSpan.Zero, "MaximumGrantLifetime must be positive.")
                 .Validate(static value => value.MaximumGrantUses > 0, "MaximumGrantUses must be positive.")
+                .Validate(static value => Enum.IsDefined(value.AuditDelivery), "AuditDelivery must be defined.")
                 .ValidateOnStart();
             if (configure is not null)
             {
@@ -32,6 +33,24 @@ public static class ServiceExtensions
             services.TryAddSingleton<IIdentifierGenerator<SecurityRequestId>, GuidSecurityRequestIdGenerator>();
             services.TryAddSingleton<ISecurityAuthority, SecurityAuthority>();
             services.TryAddSingleton<ISecurityAuthoritySelector, DefaultSecurityAuthoritySelector>();
+            services.TryAddSingleton<ISecurityAuditDispatcher, DefaultSecurityAuditDispatcher>();
+            return services;
+        }
+
+        /// <summary>Registers one host-owned audit sink with explicit supported-event and durability semantics.</summary>
+        /// <param name="registration">The immutable event support, delivery, and durable-acceptance declaration.</param>
+        /// <param name="sink">The host-owned sink instance.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/>, <paramref name="registration"/>, or <paramref name="sink"/> is null.</exception>
+        /// <remarks>The container does not own disposal of the supplied instance. Required delivery is rejected by the dispatcher when no compatible durable sink accepts the record; this method supplies no no-op fallback.</remarks>
+        public IServiceCollection AddSecurityAuditSink(
+            SecurityAuditSinkRegistration registration,
+            ISecurityAuditSink sink)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(registration);
+            ArgumentNullException.ThrowIfNull(sink);
+            _ = services.AddSingleton(new SecurityAuditSinkBinding(registration, sink));
             return services;
         }
 

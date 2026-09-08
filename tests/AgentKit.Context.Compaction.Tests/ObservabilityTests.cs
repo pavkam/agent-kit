@@ -3,6 +3,8 @@
 
 namespace AgentKit.Context.Compaction.Tests;
 
+using AgentKit.TestSupport;
+
 using Microsoft.Extensions.Options;
 
 public sealed class ObservabilityTests
@@ -11,14 +13,6 @@ public sealed class ObservabilityTests
     public async Task CompactAsync_WhenObserved_EmitsCorrelatedContentFreeActivity()
     {
         const string protectedContent = "never-export-compaction-source";
-        var stopped = new List<Activity>();
-        using var listener = new ActivityListener
-        {
-            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = SampleAllData,
-            ActivityStopped = stopped.Add,
-        };
-        ActivitySource.AddActivityListener(listener);
         var branchId = new BranchId(Guid.NewGuid());
         var agentId = new AgentId(Guid.NewGuid());
         var sessionId = new SessionId(Guid.NewGuid());
@@ -42,19 +36,18 @@ public sealed class ObservabilityTests
             coordinator.Version,
             new SessionSequence(1),
             minimumRetainedEntries: 5);
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            activity => activity.OperationName == AgentKitActivityNames.ContextCompact
+                && Equals(
+                    activity.GetTagItem(AgentKitTagNames.CompactionId),
+                    request.Context.CompactionId.ToString()));
 
         _ = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
 
-        var activity = stopped.Single(a =>
-            a.OperationName == AgentKitActivityNames.ContextCompact
-            && Equals(
-                a.GetTagItem(AgentKitTagNames.CompactionId),
-                request.Context.CompactionId.ToString()));
+        var activity = activities.Snapshot().ShouldHaveSingleItem();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.CompactionId).ShouldBe(request.Context.CompactionId.ToString());
-        activity.TagObjects.Select(static tag => tag.Value?.ToString()).ShouldNotContain(protectedContent);
+        activity.Tags.Values.Select(static value => value?.ToString()).ShouldNotContain(protectedContent);
     }
-
-    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
-        ActivitySamplingResult.AllDataAndRecorded;
 }

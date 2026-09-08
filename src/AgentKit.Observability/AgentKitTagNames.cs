@@ -61,6 +61,15 @@ public static class AgentKitTagNames
     /// <summary>Gets the AgentKit security-request identity attribute.</summary>
     public const string SecurityRequestId = "agentkit.security_request.id";
 
+    /// <summary>Gets the AgentKit security-audit record identity attribute for traces and structured logs.</summary>
+    public const string SecurityAuditRecordId = "agentkit.security_audit_record.id";
+
+    /// <summary>Gets the bounded security-audit event-kind attribute.</summary>
+    public const string SecurityAuditEventKind = "agentkit.security_audit.event.kind";
+
+    /// <summary>Gets the bounded semantic outcome recorded by a security audit event.</summary>
+    public const string SecurityAuditOutcome = "agentkit.security_audit.outcome";
+
     /// <summary>Gets the normalized protected-operation kind attribute.</summary>
     public const string SecurityOperationKind = "agentkit.security.operation.kind";
 
