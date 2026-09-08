@@ -26,6 +26,7 @@ namespace AgentKit.Processes.Scripted
     public sealed class ScriptedProcessRunner : AgentKit.IProcessRunner
     {
         public ScriptedProcessRunner(AgentKit.IProcessIntentResolver resolver, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Processes.Scripted.ScriptedProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.Scripted.ScriptedProcessRunner>? logger = null) { }
+        public ScriptedProcessRunner(AgentKit.IProcessIntentResolver resolver, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Processes.Scripted.ScriptedProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.Scripted.ScriptedProcessRunner>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.ProcessRunResult> RunAsync(AgentKit.ProcessRunRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

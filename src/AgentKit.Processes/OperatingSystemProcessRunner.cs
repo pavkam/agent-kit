@@ -11,6 +11,7 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
     private readonly ImmutableDictionary<SandboxProfileId, IProcessSandboxProvider> _sandboxes;
     private readonly ISecurityGrantStore _grantStore;
     private readonly TimeProvider _timeProvider;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly SemaphoreSlim _capacity;
     private readonly TimeSpan _forcedTerminationWait;
     private readonly IProcessOutputArtifactSink? _outputArtifacts;
@@ -37,12 +38,46 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
         IOptions<OperatingSystemProcessOptions> options,
         ILogger<OperatingSystemProcessRunner>? logger = null,
         IProcessOutputArtifactSink? outputArtifacts = null)
+        : this(
+            resolver,
+            sandboxes,
+            grantStore,
+            timeProvider,
+            options,
+            logger,
+            outputArtifacts,
+            new GuidSecurityEnforcementIntentIdGenerator())
+    {
+    }
+
+    /// <summary>Initializes a process runner with an injected source of fresh atomic enforcement-intent identities.</summary>
+    /// <param name="resolver">The canonical intent resolver used again immediately before creation.</param>
+    /// <param name="sandboxes">The additive named sandbox providers.</param>
+    /// <param name="grantStore">The authoritative store that atomically consumes a grant and records permission to start.</param>
+    /// <param name="timeProvider">The deterministic timeout and grace-period clock.</param>
+    /// <param name="options">The validated host ceilings and concurrency capacity.</param>
+    /// <param name="logger">The optional structured logger; a null value selects a null logger.</param>
+    /// <param name="outputArtifacts">The optional complete-output artifact sink.</param>
+    /// <param name="intentIds">The non-null thread-safe source of fresh per-process enforcement intent identities.</param>
+    /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
+    /// <exception cref="ArgumentException">Sandbox profile identities collide.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A configured capacity is invalid.</exception>
+    public OperatingSystemProcessRunner(
+        IProcessIntentResolver resolver,
+        IEnumerable<IProcessSandboxProvider> sandboxes,
+        ISecurityGrantStore grantStore,
+        TimeProvider timeProvider,
+        IOptions<OperatingSystemProcessOptions> options,
+        ILogger<OperatingSystemProcessRunner>? logger,
+        IProcessOutputArtifactSink? outputArtifacts,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(sandboxes);
         ArgumentNullException.ThrowIfNull(grantStore);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(intentIds);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumConcurrentProcesses);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.Value.ForcedTerminationWait, TimeSpan.Zero);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumArtifactOutputBytes);
@@ -59,6 +94,7 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
 
         _grantStore = grantStore;
         _timeProvider = timeProvider;
+        _intentIds = intentIds;
         var maximumConcurrentProcesses = options.Value.MaximumConcurrentProcesses;
         _capacity = new SemaphoreSlim(maximumConcurrentProcesses, maximumConcurrentProcesses);
         _forcedTerminationWait = options.Value.ForcedTerminationWait;
@@ -111,20 +147,28 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
                     sandboxResult.SafeMessage ?? "The required sandbox could not be enforced.");
             }
 
+            var enforcement = ProcessEnforcementReceipt.Create(
+                request.Grant,
+                SecurityAudience,
+                ProcessSecurityBinding.Resources(currentIntent),
+                ProcessSecurityBinding.Fingerprint(currentIntent));
+            var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
             var grantResult = await _grantStore.ValidateAndConsumeAsync(
                 request.Grant,
-                new SecurityEnforcementRequest(
-                    request.Grant.Scope,
-                    request.Grant.Identity,
-                    SecurityAudience,
-                    SecurityOperationKind.Process,
-                    SecurityEffect.Execute,
-                    ProcessSecurityBinding.Resources(currentIntent),
-                    ProcessSecurityBinding.Fingerprint(currentIntent),
-                    request.Grant.RevocationVersion),
+                enforcement,
+                enforcementIntent,
                 cancellationToken).ConfigureAwait(false);
-            return grantResult.Status != GrantConsumptionStatus.Consumed
-                ? NotStarted(ProcessRunStatus.Denied, grantResult.SafeMessage)
+            cancellationToken.ThrowIfCancellationRequested();
+            return !ProcessEnforcementReceipt.IsFreshExact(
+                grantResult,
+                request.Grant,
+                enforcement,
+                enforcementIntent)
+                ? NotStarted(
+                    ProcessRunStatus.Denied,
+                    grantResult.Status == GrantConsumptionStatus.Consumed
+                        ? "The grant store did not retain a fresh exact enforcement-intent receipt."
+                        : grantResult.SafeMessage)
                 : await RunCreatedProcessAsync(
                     currentIntent, sandboxResult.Launch, request.Grant, cancellationToken).ConfigureAwait(false);
         }

@@ -65,8 +65,25 @@ owning spec.
 
 ## Latest integration evidence
 
-The network-enforcement checkpoint passed `make format`, `make lint`, and
-`make test` in an isolated checkout over `2e4e164`. All 4,439 tests passed
+The process-enforcement checkpoint passed `make format`, `make lint`, and
+`make test` in an isolated checkout containing the verified network checkpoint.
+All 4,455 tests passed without skips; the Release build reported zero warnings
+or errors. The initial run over `2e4e164` passed all 4,426 behavioral and
+unchanged-API tests, with only two expected API snapshot failures. Those
+additive constructor changes were reviewed before final integration. Direct
+null-intent-generator checks cover both new process constructor overloads.
+
+The operating-system and scripted process runners now require a freshly consumed
+grant with an exact enforcement-intent receipt before starting a process. They
+preserve captured authorization, reject reconciled, unsupported, missing, or
+mismatched receipts, and recheck cancellation after consumption. Intent identity
+generation is replaceable through DI, while existing public constructors and
+explicit null logger arguments remain compatible. Tests use actual captured
+grants from the in-memory grant store through both runners. Broader process
+isolation, termination, audit, and durable recovery requirements remain open.
+
+The preceding network-enforcement checkpoint passed `make format`, `make lint`,
+and `make test` in an isolated checkout over `2e4e164`. All 4,439 tests passed
 without skips; the Release build reported zero warnings or errors. The initial
 run exposed six composed web-fixture failures and two expected API comparisons.
 The strict web fixture now implements exact intent receipts and preserves the

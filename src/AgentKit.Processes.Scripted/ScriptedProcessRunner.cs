@@ -9,6 +9,7 @@ public sealed partial class ScriptedProcessRunner: IProcessRunner
     private readonly IProcessIntentResolver _resolver;
     private readonly ISecurityGrantStore _grantStore;
     private readonly TimeProvider _timeProvider;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly ImmutableDictionary<ProcessOperationId, ScriptedProcessScenario> _scenarios;
     private readonly ILogger<ScriptedProcessRunner> _logger;
 
@@ -26,14 +27,36 @@ public sealed partial class ScriptedProcessRunner: IProcessRunner
         TimeProvider timeProvider,
         IOptions<ScriptedProcessOptions> options,
         ILogger<ScriptedProcessRunner>? logger = null)
+        : this(resolver, grantStore, timeProvider, options, logger, new GuidSecurityEnforcementIntentIdGenerator())
+    {
+    }
+
+    /// <summary>Initializes a deterministic runner with an injected source of fresh atomic enforcement-intent identities.</summary>
+    /// <param name="resolver">The paired deterministic resolver used again before simulated start.</param>
+    /// <param name="grantStore">The authoritative store that atomically consumes a grant and records permission to start.</param>
+    /// <param name="timeProvider">The clock used for declared post-start delays.</param>
+    /// <param name="options">The configured operation scenarios.</param>
+    /// <param name="logger">The optional structured logger; a null value selects a null logger.</param>
+    /// <param name="intentIds">The non-null thread-safe source of fresh per-process enforcement intent identities.</param>
+    /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
+    /// <exception cref="ArgumentException">Scenario operation identities collide.</exception>
+    public ScriptedProcessRunner(
+        IProcessIntentResolver resolver,
+        ISecurityGrantStore grantStore,
+        TimeProvider timeProvider,
+        IOptions<ScriptedProcessOptions> options,
+        ILogger<ScriptedProcessRunner>? logger,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(grantStore);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(intentIds);
         _resolver = resolver;
         _grantStore = grantStore;
         _timeProvider = timeProvider;
+        _intentIds = intentIds;
         try
         {
             _scenarios = options.Value.Scenarios.ToImmutableDictionary(static item => item.OperationId);
@@ -70,21 +93,25 @@ public sealed partial class ScriptedProcessRunner: IProcessRunner
             return NotStarted(ProcessRunStatus.Failed, "No scripted process scenario is configured for the operation.");
         }
 
+        var enforcement = ProcessEnforcementReceipt.Create(
+            request.Grant,
+            SecurityAudience,
+            ProcessSecurityBinding.Resources(resolution.Intent),
+            ProcessSecurityBinding.Fingerprint(resolution.Intent));
+        var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
         var grant = await _grantStore.ValidateAndConsumeAsync(
             request.Grant,
-            new SecurityEnforcementRequest(
-                request.Grant.Scope,
-                request.Grant.Identity,
-                SecurityAudience,
-                SecurityOperationKind.Process,
-                SecurityEffect.Execute,
-                ProcessSecurityBinding.Resources(resolution.Intent),
-                ProcessSecurityBinding.Fingerprint(resolution.Intent),
-                request.Grant.RevocationVersion),
+            enforcement,
+            enforcementIntent,
             cancellationToken).ConfigureAwait(false);
-        if (grant.Status != GrantConsumptionStatus.Consumed)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!ProcessEnforcementReceipt.IsFreshExact(grant, request.Grant, enforcement, enforcementIntent))
         {
-            return NotStarted(ProcessRunStatus.Denied, grant.SafeMessage);
+            return NotStarted(
+                ProcessRunStatus.Denied,
+                grant.Status == GrantConsumptionStatus.Consumed
+                    ? "The grant store did not retain a fresh exact enforcement-intent receipt."
+                    : grant.SafeMessage);
         }
 
         try

@@ -10,6 +10,35 @@ public sealed class OperatingSystemProcessTests: IDisposable
     public OperatingSystemProcessTests() => _ = Directory.CreateDirectory(_root);
 
     [Fact]
+    public void Constructor_WhenLegacyLoggerAndArtifactArgumentsAreNull_RetainsUnambiguousSourceCompatibility()
+    {
+        using var runner = new OperatingSystemProcessRunner(
+            CreateResolver("/bin/sh"),
+            [new PlatformProcessSandboxProvider()],
+            new TestGrantStore(),
+            TimeProvider.System,
+            Options.Create(OptionsFor("/bin/sh", 1024)),
+            null,
+            null);
+    }
+
+    [Fact]
+    public void Constructor_WhenIntentIdsNull_ThrowsWithExactParameterName()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new OperatingSystemProcessRunner(
+            CreateResolver("/bin/sh"),
+            [new PlatformProcessSandboxProvider()],
+            new TestGrantStore(),
+            TimeProvider.System,
+            Options.Create(OptionsFor("/bin/sh", 1024)),
+            null,
+            null,
+            null!));
+
+        exception.ParamName.ShouldBe("intentIds");
+    }
+
+    [Fact]
     public async Task ResolveAsync_WhenExecutableAndWorkingDirectoryAllowed_ReturnsCanonicalFingerprintedIntent()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -126,6 +155,111 @@ public sealed class OperatingSystemProcessTests: IDisposable
         enforcement.Effect.ShouldBe(SecurityEffect.Execute);
         enforcement.Resources.ShouldBe(ProcessSecurityBinding.Resources(intent));
         enforcement.InputFingerprint.ShouldBe(ProcessSecurityBinding.Fingerprint(intent));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenStoreReconcilesAnEarlierIntent_DoesNotCreateTheProcess()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/sh", ["-c", "touch reconciled.txt"]),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var store = new TestGrantStore { Status = GrantConsumptionStatus.Reconciled };
+        var expectedId = new SecurityEnforcementIntentId(Guid.Parse("80000000-0000-0000-0000-000000000008"));
+        using var runner = CreateRunner(
+            resolver,
+            store,
+            intentIds: new SequenceSecurityEnforcementIntentIdGenerator(expectedId.Value));
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Denied);
+        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        File.Exists(Path.Combine(_root, "reconciled.txt")).ShouldBeFalse();
+        store.Intents.ShouldHaveSingleItem().Id.ShouldBe(expectedId);
+        store.LegacyConsumptionCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenConsumedResultLacksExactReceipt_DoesNotCreateTheProcess()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/sh", ["-c", "touch receipt-missing.txt"]),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var store = new TestGrantStore { IncludeIntentReceipt = false };
+        using var runner = CreateRunner(resolver, store);
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Denied);
+        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        File.Exists(Path.Combine(_root, "receipt-missing.txt")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/echo");
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/echo", ["captured"]),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var store = new InMemorySecurityGrantStore(TimeProvider.System);
+        var grant = CapturedGrantFactory.Create(
+            new ComponentId("agentkit.processes.operating-system"),
+            ProcessSecurityBinding.Resources(intent),
+            ProcessSecurityBinding.Fingerprint(intent));
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+        using var runner = CreateRunner(resolver, store);
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, grant),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.Completed);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCallerCancelsDuringNonCooperativeConsumption_DoesNotCreateTheProcess()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/sh", ["-c", "touch cancelled-before-create.txt"]),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var cancellation = new CancellationTokenSource();
+        var store = new TestGrantStore { OnIntentConsumption = cancellation.Cancel };
+        using var runner = CreateRunner(resolver, store);
+
+        var action = async () => await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), cancellation.Token);
+
+        _ = await action.ShouldThrowAsync<OperationCanceledException>();
+        _ = store.Intents.ShouldHaveSingleItem();
+        File.Exists(Path.Combine(_root, "cancelled-before-create.txt")).ShouldBeFalse();
     }
 
     [Fact]
@@ -406,13 +540,24 @@ public sealed class OperatingSystemProcessTests: IDisposable
         ISecurityGrantStore store,
         long maximumOutputBytes = 1024,
         long maximumArtifactOutputBytes = 64 * 1024 * 1024,
-        IProcessOutputArtifactSink? outputArtifacts = null) => new(
+        IProcessOutputArtifactSink? outputArtifacts = null,
+        IIdentifierGenerator<SecurityEnforcementIntentId>? intentIds = null) => intentIds is null
+        ? new OperatingSystemProcessRunner(
             resolver,
             [new PlatformProcessSandboxProvider()],
             store,
             TimeProvider.System,
             Options.Create(OptionsFor("/bin/sh", maximumOutputBytes, maximumArtifactOutputBytes)),
-            outputArtifacts: outputArtifacts);
+            outputArtifacts: outputArtifacts)
+        : new OperatingSystemProcessRunner(
+            resolver,
+            [new PlatformProcessSandboxProvider()],
+            store,
+            TimeProvider.System,
+            Options.Create(OptionsFor("/bin/sh", maximumOutputBytes, maximumArtifactOutputBytes)),
+            null,
+            outputArtifacts,
+            intentIds);
 
     private OperatingSystemProcessOptions OptionsFor(
         string executable,

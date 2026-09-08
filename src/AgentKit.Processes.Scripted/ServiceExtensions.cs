@@ -24,7 +24,14 @@ public static class ServiceExtensions
                 .ValidateOnStart();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IProcessIntentResolver, ScriptedProcessIntentResolver>();
-            services.TryAddSingleton<IProcessRunner, ScriptedProcessRunner>();
+            services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
+            services.TryAddSingleton<IProcessRunner>(static provider => new ScriptedProcessRunner(
+                provider.GetRequiredService<IProcessIntentResolver>(),
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<IOptions<ScriptedProcessOptions>>(),
+                provider.GetService<ILogger<ScriptedProcessRunner>>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
             return services;
         }
     }

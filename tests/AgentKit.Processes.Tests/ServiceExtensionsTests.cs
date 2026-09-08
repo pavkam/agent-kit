@@ -9,6 +9,10 @@ public sealed class ServiceExtensionsTests
     public void AddOperatingSystemProcesses_WhenRegistered_ProvidesResolverSandboxAndOperationIds()
     {
         var services = new ServiceCollection();
+        var intentIds = new SequenceSecurityEnforcementIntentIdGenerator(
+            Guid.Parse("82000000-0000-0000-0000-000000000008"));
+        _ = services.AddSingleton<ISecurityGrantStore>(new TestGrantStore());
+        _ = services.AddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>>(intentIds);
         _ = services.AddOperatingSystemProcesses(
             Path.GetTempPath(),
             static options => options.AllowedExecutablePaths.Add("/bin/sh"));
@@ -18,6 +22,8 @@ public sealed class ServiceExtensionsTests
         _ = provider.GetServices<IProcessSandboxProvider>().ShouldHaveSingleItem()
             .ShouldBeOfType<PlatformProcessSandboxProvider>();
         provider.GetRequiredService<IIdentifierGenerator<ProcessOperationId>>().Create().Value.ShouldNotBe(Guid.Empty);
+        provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>().ShouldBeSameAs(intentIds);
+        _ = provider.GetRequiredService<IProcessRunner>().ShouldBeOfType<OperatingSystemProcessRunner>();
     }
 
     [Fact]

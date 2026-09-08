@@ -28,6 +28,7 @@ namespace AgentKit.Processes
     public sealed class OperatingSystemProcessRunner : AgentKit.IProcessRunner, System.IDisposable
     {
         public OperatingSystemProcessRunner(AgentKit.IProcessIntentResolver resolver, System.Collections.Generic.IEnumerable<AgentKit.IProcessSandboxProvider> sandboxes, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Processes.OperatingSystemProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.OperatingSystemProcessRunner>? logger = null, AgentKit.IProcessOutputArtifactSink? outputArtifacts = null) { }
+        public OperatingSystemProcessRunner(AgentKit.IProcessIntentResolver resolver, System.Collections.Generic.IEnumerable<AgentKit.IProcessSandboxProvider> sandboxes, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Processes.OperatingSystemProcessOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Processes.OperatingSystemProcessRunner>? logger, AgentKit.IProcessOutputArtifactSink? outputArtifacts, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public void Dispose() { }
         public System.Threading.Tasks.ValueTask<AgentKit.ProcessRunResult> RunAsync(AgentKit.ProcessRunRequest request, System.Threading.CancellationToken cancellationToken = default) { }
