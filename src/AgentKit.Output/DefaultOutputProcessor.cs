@@ -189,6 +189,12 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
             return Decide(definition, attempt, extraction.Failure);
         }
 
+        if (extraction.Json is { } candidateJson
+            && TryFindCandidateStructuralFailure(candidateJson, cancellationToken) is { } structuralFailure)
+        {
+            return Decide(definition, attempt, structuralFailure);
+        }
+
         if (extraction.Utf8ByteCount is null
             && !FitsJsonUtf8Limit(extraction.Json!.Value, _options.MaximumCandidateBytes, cancellationToken))
         {
@@ -201,10 +207,10 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
                     []));
         }
 
-        if (extraction.Json is { } candidateJson
-            && TryFindCandidateStructuralFailure(candidateJson, cancellationToken) is { } structuralFailure)
+        if (extraction.Json is { } boundedCandidateJson
+            && TryFindDuplicateCandidateMember(boundedCandidateJson, cancellationToken) is { } duplicateMemberFailure)
         {
-            return Decide(definition, attempt, structuralFailure);
+            return Decide(definition, attempt, duplicateMemberFailure);
         }
 
         if (isStructuredMode && definition.Schema is not null)
@@ -241,7 +247,9 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
             try
             {
                 deserialized = JsonSerializer.Deserialize(
-                    extraction.Json.Value.GetRawText(), definition.RuntimeType, _deserializationOptions);
+                    JsonSerializer.SerializeToUtf8Bytes(extraction.Json.Value, _deserializationOptions),
+                    definition.RuntimeType,
+                    _deserializationOptions);
             }
             catch (JsonException exception)
             {
@@ -492,15 +500,12 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
 
             if (entry.Value.ValueKind == JsonValueKind.Object)
             {
-                var names = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var property in entry.Value.EnumerateObject())
                 {
-                    if (!names.Add(property.Name))
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (CannotQueueCandidateNode(entry.Depth + 1, nodes, pending.Count))
                     {
-                        return new OutputValidationFailure(
-                            OutputValidationFailureKind.MalformedJson,
-                            "The candidate contains a duplicate object member.",
-                            []);
+                        return CandidateStructuralLimitFailure();
                     }
 
                     pending.Push((property.Value, entry.Depth + 1));
@@ -510,6 +515,12 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
             {
                 foreach (var item in entry.Value.EnumerateArray())
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (CannotQueueCandidateNode(entry.Depth + 1, nodes, pending.Count))
+                    {
+                        return CandidateStructuralLimitFailure();
+                    }
+
                     pending.Push((item, entry.Depth + 1));
                 }
             }
@@ -518,26 +529,95 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
         return null;
     }
 
+    /// <summary>Finds duplicate object members after the candidate's aggregate byte limit has been enforced.</summary>
+    /// <param name="root">The structurally bounded JSON candidate to inspect.</param>
+    /// <param name="cancellationToken">The token observed before each value and object member.</param>
+    /// <returns>A malformed-JSON failure for the first duplicate member; otherwise, <see langword="null"/>.</returns>
+    /// <remarks>
+    /// The candidate size check runs first so the per-object name sets remain
+    /// bounded by accepted candidate content rather than attacker-controlled
+    /// raw input width.
+    /// </remarks>
+    private static OutputValidationFailure? TryFindDuplicateCandidateMember(
+        JsonElement root,
+        CancellationToken cancellationToken)
+    {
+        var pending = new Stack<JsonElement>();
+        pending.Push(root);
+        while (pending.TryPop(out var value))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (value.ValueKind == JsonValueKind.Object)
+            {
+                var names = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var property in value.EnumerateObject())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!names.Add(property.Name))
+                    {
+                        return new OutputValidationFailure(
+                            OutputValidationFailureKind.MalformedJson,
+                            "The candidate contains a duplicate object member.",
+                            []);
+                    }
+
+                    pending.Push(property.Value);
+                }
+            }
+            else if (value.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in value.EnumerateArray())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    pending.Push(item);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Determines whether adding one discovered child would exceed a captured
+    /// structural limit before retaining that child in the pending traversal.
+    /// </summary>
+    /// <param name="depth">The one-based depth of the discovered child.</param>
+    /// <param name="visitedNodes">The number of nodes already removed from the pending traversal.</param>
+    /// <param name="pendingNodes">The number of discovered nodes currently awaiting traversal.</param>
+    /// <returns>
+    /// <see langword="true"/> when the child must be rejected without queueing;
+    /// otherwise, <see langword="false"/>.
+    /// </returns>
+    /// <remarks>
+    /// Every queued value will become one visited node. Checking the aggregate
+    /// before the push keeps a wide object or array from allocating a pending
+    /// traversal proportional to input width after the node limit is known to
+    /// be exceeded.
+    /// </remarks>
+    private bool CannotQueueCandidateNode(int depth, int visitedNodes, int pendingNodes)
+    {
+        Debug.Assert(visitedNodes <= _options.MaximumCandidateNodes, "Visited candidate nodes have already passed the configured limit.");
+        Debug.Assert(pendingNodes >= 0, "The traversal pending-node count cannot be negative.");
+
+        return depth > _options.MaximumCandidateDepth
+            || pendingNodes >= _options.MaximumCandidateNodes - visitedNodes;
+    }
+
+    /// <summary>Creates the stable failure returned when candidate structural processing reaches a configured limit.</summary>
+    /// <returns>A bounded candidate-size failure that contains no candidate content.</returns>
+    private static OutputValidationFailure CandidateStructuralLimitFailure() =>
+        new(
+            OutputValidationFailureKind.OversizedCandidate,
+            "The candidate exceeds the configured structural processing limits.",
+            []);
+
     private static bool FitsJsonUtf8Limit(
         JsonElement value,
         int maximumBytes,
         CancellationToken cancellationToken)
     {
         Debug.Assert(maximumBytes > 0, "Captured candidate limits are positive.");
-        using var stream = new BoundedHashStream(maximumBytes, cancellationToken);
-        try
-        {
-            using var writer = new Utf8JsonWriter(
-                stream,
-                new JsonWriterOptions { Indented = false, SkipValidation = false });
-            value.WriteTo(writer);
-            writer.Flush();
-            return true;
-        }
-        catch (OutputSchemaSizeLimitException)
-        {
-            return false;
-        }
+        return BoundedJsonSerializer.TryComputeHash(value, maximumBytes, cancellationToken, out _);
     }
 
     private SchemaPreflightOutcome PreflightDefinition(OutputDefinition definition, CancellationToken cancellationToken)

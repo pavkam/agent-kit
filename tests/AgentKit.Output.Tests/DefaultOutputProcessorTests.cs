@@ -156,6 +156,119 @@ public sealed class DefaultOutputProcessorTests
         result.ShouldBeOfType<OutputRejected>().Failure.Kind.ShouldBe(OutputValidationFailureKind.OversizedCandidate);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ProcessAsync_WhenWideStructuredCandidateExceedsNodeLimit_RejectsBeforeTraversingRemainingChildren(
+        bool isObject)
+    {
+        var validator = new FakeOutputValidator("semantic", static _ => OutputValidationPassed.Instance);
+        var processor = CreateProcessor(options =>
+        {
+            options.RequireSchemaForStructuredModes = false;
+            options.MaximumCandidateNodes = 1;
+        }, [validator]);
+        var definition = TestFactory.Definition(
+            OutputMode.NativeSchema,
+            schema: null,
+            validators: [new OutputValidatorReference("semantic")],
+            retryPolicy: OutputRetryPolicy.None);
+        var members = string.Join(',', Enumerable.Range(0, 8_192).Select(static index => $"\"property-{index}\":0"));
+        var json = isObject ? $"{{{members}}}" : $"[{string.Join(',', Enumerable.Repeat("0", 8_192))}]";
+        var response = TestFactory.StructuredResponse(TestFactory.ParseJson(json));
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputRejected>().Failure.Kind.ShouldBe(OutputValidationFailureKind.OversizedCandidate);
+        validator.ReceivedRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenEscapedStructuredStringSerializesWithinByteLimit_ReturnsAccepted()
+    {
+        var processor = CreateProcessor(options =>
+        {
+            options.RequireSchemaForStructuredModes = false;
+            options.MaximumCandidateBytes = 3;
+        });
+        var definition = TestFactory.Definition(OutputMode.NativeSchema, schema: null);
+        var response = TestFactory.StructuredResponse(TestFactory.ParseJson("\"\\u0061\""));
+
+        var result = await processor.ProcessAsync(
+            TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputAccepted>().Output.Json!.Value.GetString().ShouldBe("a");
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenRuntimeCandidateContainsLargeRetainedWhitespace_DeserializesFromBoundedCanonicalBytes()
+    {
+        var processor = CreateProcessor(options =>
+        {
+            options.RequireSchemaForStructuredModes = false;
+            options.MaximumCandidateBytes = 16;
+        });
+        var definition = TestFactory.Definition(
+            OutputMode.NativeSchema,
+            schema: null,
+            runtimeType: typeof(WhitespaceRuntimeValue));
+        var response = TestFactory.StructuredResponse(
+            TestFactory.ParseJson($"{{{new string(' ', 1_000_000)}\"value\":1}}"));
+        var request = TestFactory.ProcessingRequest(definition, response);
+
+        _ = await processor.ProcessAsync(request, TestContext.Current.CancellationToken);
+
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        var operation = processor.ProcessAsync(request, TestContext.Current.CancellationToken);
+        operation.IsCompletedSuccessfully.ShouldBeTrue();
+        var result = await operation;
+        var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        var accepted = result.ShouldBeOfType<OutputAccepted>();
+        accepted.Output.Value.ShouldBeOfType<WhitespaceRuntimeValue>().Value.ShouldBe(1);
+        allocatedBytes.ShouldBeLessThan(8_192L);
+    }
+
+    [Theory]
+    [InlineData("string")]
+    [InlineData("number")]
+    [InlineData("property-name")]
+    public async Task ProcessAsync_WhenMaterializedTokenExceedsByteLimit_BoundsCurrentThreadAllocation(string tokenKind)
+    {
+        const int maximumCandidateBytes = 8;
+        var processor = CreateProcessor(options =>
+        {
+            options.RequireSchemaForStructuredModes = false;
+            options.MaximumCandidateBytes = maximumCandidateBytes;
+            options.MaximumCandidateNodes = 2;
+        });
+        var token = new string(tokenKind == "number" ? '1' : 'a', 1_000_000);
+        var json = tokenKind switch
+        {
+            "string" => $"\"{token}\"",
+            "number" => token,
+            "property-name" => $"{{\"{token}\":0}}",
+            _ => throw new UnreachableException($"Unknown token kind '{tokenKind}'."),
+        };
+        var request = TestFactory.ProcessingRequest(
+            TestFactory.Definition(OutputMode.NativeSchema, schema: null, retryPolicy: OutputRetryPolicy.None),
+            TestFactory.StructuredResponse(TestFactory.ParseJson(json)));
+
+        var warmup = processor.ProcessAsync(request, TestContext.Current.CancellationToken);
+        warmup.IsCompletedSuccessfully.ShouldBeTrue();
+        _ = (await warmup).ShouldBeOfType<OutputRejected>();
+
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        var operation = processor.ProcessAsync(request, TestContext.Current.CancellationToken);
+        operation.IsCompletedSuccessfully.ShouldBeTrue();
+        var result = await operation;
+        var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        result.ShouldBeOfType<OutputRejected>().Failure.Kind.ShouldBe(OutputValidationFailureKind.OversizedCandidate);
+        allocatedBytes.ShouldBeLessThan(8_192L);
+    }
+
     [Fact]
     public async Task ProcessAsync_WhenSchemaIsOptional_RejectsDuplicateCandidateMembers()
     {
@@ -623,4 +736,11 @@ public sealed class DefaultOutputProcessorTests
     private static DefaultOutputProcessor CreateProcessor(
         Action<AgentOutputOptions>? configure = null, IEnumerable<IOutputValidator>? validators = null) =>
         new(validators ?? [], new StructuralOutputSchemaEngine(), DefaultOptions(configure));
+
+    /// <summary>Represents the runtime value used to verify bounded structured-output deserialization.</summary>
+    private sealed class WhitespaceRuntimeValue
+    {
+        /// <summary>Gets or sets the value recovered from the canonical candidate JSON.</summary>
+        public int Value { get; set; }
+    }
 }

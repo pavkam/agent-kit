@@ -3,8 +3,6 @@
 
 namespace AgentKit.Output;
 
-using System.Text.Encodings.Web;
-
 /// <summary>Provides the bounded, fail-closed AgentKit structural JSON Schema profile.</summary>
 internal sealed class StructuralOutputSchemaEngine: IOutputSchemaEngine
 {
@@ -246,8 +244,8 @@ internal sealed class StructuralOutputSchemaEngine: IOutputSchemaEngine
 
             var failure = property.Name switch
             {
-                "type" => ValidateType(property.Value, path),
-                "required" => ValidateRequired(property.Value, path),
+                "type" => ValidateType(property.Value, path, cancellationToken),
+                "required" => ValidateRequired(property.Value, path, cancellationToken),
                 "properties" => PreflightProperties(property.Value, path, cancellationToken, ref dialect),
                 "items" => PreflightSchema(property.Value, isRoot: false, path + ".items", cancellationToken, ref dialect),
                 "additionalProperties" when property.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False) =>
@@ -277,6 +275,7 @@ internal sealed class StructuralOutputSchemaEngine: IOutputSchemaEngine
         var seenNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in value.EnumerateObject())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!seenNames.Add(property.Name))
             {
                 return Failure(OutputSchemaConfigurationFailureKind.MalformedSchema, "The properties assertion contains a duplicate member name.", path);
@@ -292,7 +291,10 @@ internal sealed class StructuralOutputSchemaEngine: IOutputSchemaEngine
         return null;
     }
 
-    private static OutputSchemaConfigurationFailure? ValidateType(JsonElement value, string path)
+    private static OutputSchemaConfigurationFailure? ValidateType(
+        JsonElement value,
+        string path,
+        CancellationToken cancellationToken)
     {
         if (value.ValueKind == JsonValueKind.String)
         {
@@ -309,6 +311,7 @@ internal sealed class StructuralOutputSchemaEngine: IOutputSchemaEngine
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var item in value.EnumerateArray())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (item.ValueKind != JsonValueKind.String || item.GetString() is not { } type || !_types.Contains(type) || !seen.Add(type))
             {
                 return Failure(OutputSchemaConfigurationFailureKind.MalformedSchema, "The type assertion must contain unique supported type names.", path);
@@ -318,7 +321,10 @@ internal sealed class StructuralOutputSchemaEngine: IOutputSchemaEngine
         return null;
     }
 
-    private static OutputSchemaConfigurationFailure? ValidateRequired(JsonElement value, string path)
+    private static OutputSchemaConfigurationFailure? ValidateRequired(
+        JsonElement value,
+        string path,
+        CancellationToken cancellationToken)
     {
         if (value.ValueKind != JsonValueKind.Array)
         {
@@ -328,6 +334,7 @@ internal sealed class StructuralOutputSchemaEngine: IOutputSchemaEngine
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var item in value.EnumerateArray())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (item.ValueKind != JsonValueKind.String || item.GetString() is not { } name || !seen.Add(name))
             {
                 return Failure(OutputSchemaConfigurationFailureKind.MalformedSchema, "The required assertion must contain unique string property names.", path);
@@ -537,72 +544,71 @@ internal sealed class StructuralOutputSchemaEngine: IOutputSchemaEngine
         out int observedDepth,
         out int observedNodes)
     {
-        observedDepth = 0;
-        observedNodes = 0;
-        if (!TryCount(value, 1, limits, cancellationToken, ref observedDepth, ref observedNodes))
+        if (!TryCount(value, limits, cancellationToken, out observedDepth, out observedNodes))
         {
             fingerprint = default;
             return false;
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        using var stream = new BoundedHashStream(limits.MaximumUtf8Bytes, cancellationToken);
-        try
-        {
-            using var writer = new Utf8JsonWriter(
-                stream,
-                new JsonWriterOptions
-                {
-                    Encoder = JavaScriptEncoder.Default,
-                    Indented = false,
-                    SkipValidation = false,
-                });
-            value.WriteTo(writer);
-            writer.Flush();
-        }
-        catch (OutputSchemaSizeLimitException)
+        if (!BoundedJsonSerializer.TryComputeHash(
+                value,
+                limits.MaximumUtf8Bytes,
+                cancellationToken,
+                out fingerprint))
         {
             fingerprint = default;
             return false;
         }
 
-        fingerprint = stream.CompleteHash();
         return true;
     }
 
     private static bool TryCount(
         JsonElement value,
-        int depth,
         OutputSchemaProcessingLimits limits,
         CancellationToken cancellationToken,
-        ref int observedDepth,
-        ref int observedNodes)
+        out int observedDepth,
+        out int observedNodes)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (depth > limits.MaximumDepth || observedNodes == limits.MaximumNodes)
+        observedDepth = 0;
+        observedNodes = 0;
+        var pending = new Stack<(JsonElement Value, int Depth)>();
+        pending.Push((value, 1));
+        while (pending.TryPop(out var current))
         {
-            return false;
-        }
-
-        observedNodes++;
-        observedDepth = Math.Max(observedDepth, depth);
-        if (value.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var property in value.EnumerateObject())
+            cancellationToken.ThrowIfCancellationRequested();
+            if (current.Depth > limits.MaximumDepth || observedNodes == limits.MaximumNodes)
             {
-                if (!TryCount(property.Value, depth + 1, limits, cancellationToken, ref observedDepth, ref observedNodes))
+                return false;
+            }
+
+            observedNodes++;
+            observedDepth = Math.Max(observedDepth, current.Depth);
+            if (current.Value.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in current.Value.EnumerateObject())
                 {
-                    return false;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (observedNodes + pending.Count >= limits.MaximumNodes)
+                    {
+                        return false;
+                    }
+
+                    pending.Push((property.Value, current.Depth + 1));
                 }
             }
-        }
-        else if (value.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in value.EnumerateArray())
+            else if (current.Value.ValueKind == JsonValueKind.Array)
             {
-                if (!TryCount(item, depth + 1, limits, cancellationToken, ref observedDepth, ref observedNodes))
+                foreach (var item in current.Value.EnumerateArray())
                 {
-                    return false;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (observedNodes + pending.Count >= limits.MaximumNodes)
+                    {
+                        return false;
+                    }
+
+                    pending.Push((item, current.Depth + 1));
                 }
             }
         }

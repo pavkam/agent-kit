@@ -27,6 +27,7 @@ public sealed class StructuralOutputSchemaEngineTests
     [Theory]
     [InlineData("true", "sha256:b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b")]
     [InlineData(/*lang=json,strict*/"""{"title":"<é>","default":1.00}""", "sha256:6305be41c976a1b3dda22dd56139290b16b29dfeeb40df1b8684ceefd99faf82")]
+    [InlineData(/*lang=json,strict*/"""{"properties":{"<é>":true},"default":1.00}""", "sha256:cfa808528c56f44e4e3c40823ab746cd8cb82c6279a201bc8f77bba26e62faf9")]
     public void Preflight_WhenSchemaIsCanonicalized_ProducesPinnedFingerprint(string json, string expectedFingerprint)
     {
         var result = _engine.Preflight(Request(json), TestContext.Current.CancellationToken);
@@ -82,6 +83,86 @@ public sealed class StructuralOutputSchemaEngineTests
         var result = _engine.Preflight(request, TestContext.Current.CancellationToken);
 
         result.ShouldBeOfType<OutputSchemaPreflightRejected>().Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.ResourceLimitExceeded);
+    }
+
+    [Fact]
+    public void Preflight_WhenAnnotationReachesMaximumSupportedDepth_ReturnsExactObservedDepth()
+    {
+        var nestedValue = new string('[', 126) + "null" + new string(']', 126);
+        using var document = JsonDocument.Parse(
+            $$"""{"default":{{nestedValue}}}""",
+            new JsonDocumentOptions { MaxDepth = 128 });
+        var request = new OutputSchemaPreflightRequest(
+            new JsonSchemaDocument("deep-schema", new SchemaVersion("1.0"), document.RootElement),
+            new OutputSchemaProcessingLimits(4096, 128, 128));
+
+        var result = _engine.Preflight(request, TestContext.Current.CancellationToken);
+
+        var manifest = result.ShouldBeOfType<OutputSchemaPreflightAccepted>().Manifest;
+        manifest.ObservedDepth.ShouldBe(128);
+        manifest.ObservedNodes.ShouldBe(128);
+    }
+
+    [Theory]
+    [InlineData(4, true)]
+    [InlineData(3, false)]
+    public void Preflight_WhenNodeCountMeetsOrExceedsLimit_EnforcesInclusiveBound(
+        int maximumNodes,
+        bool expectedAccepted)
+    {
+        var request = new OutputSchemaPreflightRequest(
+            TestFactory.Schema(/*lang=json,strict*/"""{"examples":[1,2]}"""),
+            new OutputSchemaProcessingLimits(4096, 16, maximumNodes));
+
+        var result = _engine.Preflight(request, TestContext.Current.CancellationToken);
+
+        if (expectedAccepted)
+        {
+            result.ShouldBeOfType<OutputSchemaPreflightAccepted>().Manifest.ObservedNodes.ShouldBe(4);
+        }
+        else
+        {
+            result.ShouldBeOfType<OutputSchemaPreflightRejected>().Failure.Kind
+                .ShouldBe(OutputSchemaConfigurationFailureKind.ResourceLimitExceeded);
+        }
+    }
+
+    [Fact]
+    public void Preflight_WhenWideAnnotationExceedsSmallNodeLimit_ReturnsResourceLimitFailure()
+    {
+        var values = string.Join(',', Enumerable.Repeat("null", 10_000));
+        var request = new OutputSchemaPreflightRequest(
+            TestFactory.Schema($$"""{"default":[{{values}}]}"""),
+            new OutputSchemaProcessingLimits(100_000, 16, 3));
+
+        var result = _engine.Preflight(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputSchemaPreflightRejected>().Failure.Kind
+            .ShouldBe(OutputSchemaConfigurationFailureKind.ResourceLimitExceeded);
+    }
+
+    [Theory]
+    [InlineData("annotation")]
+    [InlineData("property")]
+    [InlineData("number")]
+    public void Preflight_WhenSingleTokenCannotFitByteLimit_ReturnsResourceLimitFailure(string tokenKind)
+    {
+        var oversizedToken = new string(tokenKind == "number" ? '1' : 'x', 100_000);
+        var json = tokenKind switch
+        {
+            "annotation" => "{\"description\":\"" + oversizedToken + "\"}",
+            "property" => "{\"properties\":{\"" + oversizedToken + "\":true}}",
+            "number" => "{\"default\":" + oversizedToken + "}",
+            _ => throw new UnreachableException(),
+        };
+        var request = new OutputSchemaPreflightRequest(
+            TestFactory.Schema(json),
+            new OutputSchemaProcessingLimits(64, 16, 16));
+
+        var result = _engine.Preflight(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputSchemaPreflightRejected>().Failure.Kind
+            .ShouldBe(OutputSchemaConfigurationFailureKind.ResourceLimitExceeded);
     }
 
     [Theory]
