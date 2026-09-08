@@ -57,6 +57,9 @@ public sealed record DurableExecutionContext
     /// effects and revalidate their grant at the effecting adapter.
     /// </param>
     /// <exception cref="ArgumentNullException">
+    /// <paramref name="profileKey"/>, <paramref name="backendKey"/>,
+    /// <paramref name="journalKey"/>, <paramref name="leaseManagerKey"/>,
+    /// or <paramref name="recoveryPolicyKey"/> is a default key, or
     /// <paramref name="authorization"/> is <see langword="null"/>.
     /// </exception>
     public DurableExecutionContext(
@@ -68,6 +71,11 @@ public sealed record DurableExecutionContext
         RecoveryPolicyKey recoveryPolicyKey,
         SecurityAuthorizationScope authorization)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileKey.Value, nameof(profileKey));
+        ArgumentException.ThrowIfNullOrWhiteSpace(backendKey.Value, nameof(backendKey));
+        ArgumentException.ThrowIfNullOrWhiteSpace(journalKey.Value, nameof(journalKey));
+        ArgumentException.ThrowIfNullOrWhiteSpace(leaseManagerKey.Value, nameof(leaseManagerKey));
+        ArgumentException.ThrowIfNullOrWhiteSpace(recoveryPolicyKey.Value, nameof(recoveryPolicyKey));
         ArgumentNullException.ThrowIfNull(authorization);
 
         ProfileKey = profileKey;
@@ -79,23 +87,82 @@ public sealed record DurableExecutionContext
         _authorization = authorization;
     }
 
-    /// <summary>Gets the selected durability profile.</summary>
-    public DurabilityProfileKey ProfileKey { get; init; }
+    /// <summary>Gets the selected non-default durability profile.</summary>
+    /// <exception cref="ArgumentNullException">
+    /// An initializer supplies a default key.
+    /// </exception>
+    public DurabilityProfileKey ProfileKey
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(ProfileKey));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the published revision of the selected profile.</summary>
+    /// <value>
+    /// The captured nonnegative profile revision. Zero is a valid published
+    /// revision when the selected profile assigns it.
+    /// </value>
     public DurabilityProfileVersion ProfileVersion { get; init; }
 
-    /// <summary>Gets the backend that owns dispatch and handoff.</summary>
-    public DurableBackendKey BackendKey { get; init; }
+    /// <summary>Gets the non-default backend that owns dispatch and handoff.</summary>
+    /// <exception cref="ArgumentNullException">
+    /// An initializer supplies a default key.
+    /// </exception>
+    public DurableBackendKey BackendKey
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(BackendKey));
+            field = value;
+        }
+    }
 
-    /// <summary>Gets the journal that owns checkpoint and terminal truth.</summary>
-    public DurableJournalKey JournalKey { get; init; }
+    /// <summary>Gets the non-default journal that owns checkpoint and terminal truth.</summary>
+    /// <exception cref="ArgumentNullException">
+    /// An initializer supplies a default key.
+    /// </exception>
+    public DurableJournalKey JournalKey
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(JournalKey));
+            field = value;
+        }
+    }
 
-    /// <summary>Gets the lease manager that owns fencing state.</summary>
-    public DurableLeaseManagerKey LeaseManagerKey { get; init; }
+    /// <summary>Gets the non-default lease manager that owns fencing state.</summary>
+    /// <exception cref="ArgumentNullException">
+    /// An initializer supplies a default key.
+    /// </exception>
+    public DurableLeaseManagerKey LeaseManagerKey
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(LeaseManagerKey));
+            field = value;
+        }
+    }
 
-    /// <summary>Gets the policy that classifies recovery evidence.</summary>
-    public RecoveryPolicyKey RecoveryPolicyKey { get; init; }
+    /// <summary>Gets the non-default policy that classifies recovery evidence.</summary>
+    /// <exception cref="ArgumentNullException">
+    /// An initializer supplies a default key.
+    /// </exception>
+    public RecoveryPolicyKey RecoveryPolicyKey
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(RecoveryPolicyKey));
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Gets the authorization scope protected durability operations run

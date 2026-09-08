@@ -27,6 +27,66 @@ public sealed class DurableRecordsTests
         exception.ParamName.ShouldBe("authorization");
     }
 
+    [Theory]
+    [InlineData("profileKey", typeof(ArgumentNullException))]
+    [InlineData("backendKey", typeof(ArgumentNullException))]
+    [InlineData("journalKey", typeof(ArgumentNullException))]
+    [InlineData("leaseManagerKey", typeof(ArgumentNullException))]
+    [InlineData("recoveryPolicyKey", typeof(ArgumentNullException))]
+    public void DurableExecutionContext_Constructor_WhenRequiredSelectionIsDefault_ThrowsExactParameter(
+        string parameter,
+        Type exceptionType)
+    {
+        var exception = Record.Exception(() => ContextWithInvalidSelection(parameter));
+
+        _ = exception.ShouldNotBeNull();
+        exception.GetType().ShouldBe(exceptionType);
+        ((ArgumentException) exception).ParamName.ShouldBe(parameter);
+    }
+
+    [Theory]
+    [InlineData("ProfileKey", typeof(ArgumentNullException))]
+    [InlineData("BackendKey", typeof(ArgumentNullException))]
+    [InlineData("JournalKey", typeof(ArgumentNullException))]
+    [InlineData("LeaseManagerKey", typeof(ArgumentNullException))]
+    [InlineData("RecoveryPolicyKey", typeof(ArgumentNullException))]
+    public void DurableExecutionContext_With_WhenRequiredSelectionIsDefault_ThrowsExactPropertyParameter(
+        string property,
+        Type exceptionType)
+    {
+        var context = DurabilityTestData.Context();
+        var exception = Record.Exception(() => ContextWithInvalidCopy(context, property));
+
+        _ = exception.ShouldNotBeNull();
+        exception.GetType().ShouldBe(exceptionType);
+        ((ArgumentException) exception).ParamName.ShouldBe(property);
+    }
+
+    [Fact]
+    public void DurableExecutionContext_Constructor_WhenProfileVersionIsZero_RetainsPublishedRevision()
+    {
+        var context = new DurableExecutionContext(
+            new DurabilityProfileKey("p"),
+            new DurabilityProfileVersion(0),
+            new DurableBackendKey("b"),
+            new DurableJournalKey("j"),
+            new DurableLeaseManagerKey("l"),
+            new RecoveryPolicyKey("r"),
+            DurabilityTestData.Authorization());
+
+        context.ProfileVersion.ShouldBe(new DurabilityProfileVersion(0));
+    }
+
+    [Fact]
+    public void DurableExecutionContext_With_WhenProfileVersionIsZero_RetainsRevisionWithoutChangingOriginal()
+    {
+        var original = DurabilityTestData.Context();
+        var copy = original with { ProfileVersion = new DurabilityProfileVersion(0) };
+
+        copy.ProfileVersion.ShouldBe(new DurabilityProfileVersion(0));
+        original.ProfileVersion.ShouldBe(new DurabilityProfileVersion(1));
+    }
+
     [Fact]
     public void DurableExecutionContext_With_WhenAuthorizationIsNull_Throws()
     {
@@ -153,6 +213,61 @@ public sealed class DurableRecordsTests
         exception.ParamName.ShouldBe("descriptor");
     }
 
+    [Theory]
+    [InlineData((int) DurableOperationState.OutcomeReady)]
+    [InlineData((int) DurableOperationState.Completed)]
+    [InlineData((int) DurableOperationState.Faulted)]
+    public void DurableOperationResult_Constructor_WhenStateRetainsCompleteResult_CreatesResult(int rawState)
+    {
+        var state = (DurableOperationState) rawState;
+
+        var result = Result(state);
+
+        result.State.ShouldBe(state);
+    }
+
+    [Theory]
+    [InlineData((int) DurableOperationState.Accepted)]
+    [InlineData((int) DurableOperationState.EffectPending)]
+    [InlineData((int) DurableOperationState.Waiting)]
+    [InlineData(int.MaxValue)]
+    public void DurableOperationResult_Constructor_WhenStateDoesNotRetainCompleteResult_ThrowsExactParameter(int rawState)
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => Result((DurableOperationState) rawState));
+
+        exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
+        exception.ParamName.ShouldBe("state");
+    }
+
+    [Theory]
+    [InlineData((int) DurableOperationState.OutcomeReady)]
+    [InlineData((int) DurableOperationState.Completed)]
+    [InlineData((int) DurableOperationState.Faulted)]
+    public void DurableOperationResult_With_WhenStateRetainsCompleteResult_CreatesCopyWithoutChangingOriginal(int rawState)
+    {
+        var original = Result(DurableOperationState.Completed);
+        var copy = original with { State = (DurableOperationState) rawState };
+
+        copy.State.ShouldBe((DurableOperationState) rawState);
+        original.State.ShouldBe(DurableOperationState.Completed);
+    }
+
+    [Theory]
+    [InlineData((int) DurableOperationState.Accepted)]
+    [InlineData((int) DurableOperationState.EffectPending)]
+    [InlineData((int) DurableOperationState.Waiting)]
+    [InlineData(int.MaxValue)]
+    public void DurableOperationResult_With_WhenStateDoesNotRetainCompleteResult_ThrowsExactPropertyParameter(int rawState)
+    {
+        var original = DurabilityTestData.Result();
+        var exception = Should.Throw<ArgumentOutOfRangeException>(
+            () => original with { State = (DurableOperationState) rawState });
+
+        exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
+        exception.ParamName.ShouldBe(nameof(DurableOperationResult.State));
+        original.State.ShouldBe(DurableOperationState.Completed);
+    }
+
     [Fact]
     public void DurableOperationResult_Constructor_WhenFailureMessageOmitted_IsNull() =>
         DurabilityTestData.Result().SafeFailureMessage.ShouldBeNull();
@@ -170,6 +285,7 @@ public sealed class DurableRecordsTests
                 DurabilityTestData.Token,
                 DurabilityTestData.Now));
 
+        exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
         exception.ParamName.ShouldBe("state");
     }
 
@@ -223,6 +339,38 @@ public sealed class DurableRecordsTests
 
         exception.ParamName.ShouldBe("handle");
     }
+
+    private static DurableExecutionContext ContextWithInvalidSelection(string parameter) =>
+        new(
+            parameter == "profileKey" ? default : new DurabilityProfileKey("p"),
+            parameter == "profileVersion" ? default : new DurabilityProfileVersion(1),
+            parameter == "backendKey" ? default : new DurableBackendKey("b"),
+            parameter == "journalKey" ? default : new DurableJournalKey("j"),
+            parameter == "leaseManagerKey" ? default : new DurableLeaseManagerKey("l"),
+            parameter == "recoveryPolicyKey" ? default : new RecoveryPolicyKey("r"),
+            DurabilityTestData.Authorization());
+
+    private static DurableExecutionContext ContextWithInvalidCopy(DurableExecutionContext context, string property) =>
+        property switch
+        {
+            "ProfileKey" => context with { ProfileKey = default },
+            "ProfileVersion" => context with { ProfileVersion = default },
+            "BackendKey" => context with { BackendKey = default },
+            "JournalKey" => context with { JournalKey = default },
+            "LeaseManagerKey" => context with { LeaseManagerKey = default },
+            "RecoveryPolicyKey" => context with { RecoveryPolicyKey = default },
+            _ => throw new ArgumentOutOfRangeException(nameof(property)),
+        };
+
+    private static DurableOperationResult Result(DurableOperationState state) =>
+        new(
+            DurabilityTestData.Address(),
+            DurabilityTestData.Context(),
+            state,
+            SideEffectCertainty.DefinitelyPerformed,
+            DurabilityTestData.Payload(),
+            DurabilityTestData.Token,
+            DurabilityTestData.Now);
 
     /// <summary>
     /// Builds a descriptor whose arguments are all valid unless a test

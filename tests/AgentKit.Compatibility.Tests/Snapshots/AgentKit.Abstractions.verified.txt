@@ -399,6 +399,7 @@ namespace AgentKit
         {
             public static void ThrowIfUndefined<TEnum>(TEnum value, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? paramName = null)
                 where TEnum :  struct, System.Enum { }
+            public static void ThrowIfNotTerminalDurableOperationState(AgentKit.DurableOperationState value, [System.Runtime.CompilerServices.CallerArgumentExpression("value")] string? paramName = null) { }
         }
     }
     public enum ArtifactAbortReason

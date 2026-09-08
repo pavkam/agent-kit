@@ -65,6 +65,26 @@ owning spec.
 
 ## Latest integration evidence
 
+The durability-carrier checkpoint passed complete formatting, lint, Release
+build, and test gates in an isolated checkout over `2cbfab5`. Its one additive
+API snapshot exposes the canonical type-qualified guard for complete durable
+operation results.
+
+`DurableOperationResult` accepts `OutcomeReady`, `Completed`, and `Faulted` in
+construction and record copies. `Accepted`, `EffectPending`, `Waiting`, and
+undefined states reject before assignment. `OutcomeReady` retains the complete
+semantic result while publication may remain pending; recording it never
+licenses another effect invocation. Certainty stays independent and truthful,
+including unknown effects after failure or cancellation.
+
+`DurableExecutionContext` rejects default profile, backend, journal,
+lease-manager, and recovery-policy string keys in construction and copies.
+Durability profile revision zero remains valid under its owning contract. Tests
+cover exact exception types and parameter names, all permitted result states,
+failed copies, and preservation of the original value. Complete captured
+authorization, address/correlation coherence, runtime activation, journal
+implementation, and required-audit settlement remain open.
+
 The provider-bound component-registration checkpoint passed complete formatting,
 lint, Release build, and test gates in an isolated checkout over `aa81185`.
 Three additive API snapshots were reviewed. Component declarations now match

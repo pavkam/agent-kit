@@ -41,5 +41,33 @@ public static class ArgumentOutOfRangeExceptionExtensions
                     $"Value must be a defined {typeof(TEnum).Name} value.");
             }
         }
+
+        /// <summary>
+        /// Throws an <see cref="ArgumentOutOfRangeException"/> when
+        /// <paramref name="value"/> cannot represent a durable operation
+        /// result that recovery may commit without reinvoking its effect.
+        /// </summary>
+        /// <param name="value">The lifecycle state to validate.</param>
+        /// <param name="paramName">
+        /// The caller-supplied parameter name, inferred from
+        /// <paramref name="value"/> when omitted.
+        /// </param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="value"/> is undefined or is an in-progress state
+        /// without one complete staged or published result.
+        /// </exception>
+        public static void ThrowIfNotTerminalDurableOperationState(
+            DurableOperationState value,
+            [CallerArgumentExpression(nameof(value))] string? paramName = null)
+        {
+            ArgumentOutOfRangeException.ThrowIfUndefined(value, paramName);
+            if (value is not (DurableOperationState.OutcomeReady or DurableOperationState.Completed or DurableOperationState.Faulted))
+            {
+                throw new ArgumentOutOfRangeException(
+                    paramName,
+                    value,
+                    "Value must be OutcomeReady, Completed, or Faulted when recording a durable operation result.");
+            }
+        }
     }
 }

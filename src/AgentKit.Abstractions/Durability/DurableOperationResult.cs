@@ -42,9 +42,12 @@ public sealed record DurableOperationResult
     /// The captured durability composition the operation ran under.
     /// </param>
     /// <param name="state">
-    /// The terminal lifecycle position, normally
-    /// <see cref="DurableOperationState.Completed"/> or
-    /// <see cref="DurableOperationState.Faulted"/>.
+    /// The complete-result lifecycle position:
+    /// <see cref="DurableOperationState.OutcomeReady"/>,
+    /// <see cref="DurableOperationState.Completed"/>, or
+    /// <see cref="DurableOperationState.Faulted"/>. Outcome-ready evidence
+    /// is semantically terminal for effect execution but may still await
+    /// source-ordered publication.
     /// </param>
     /// <param name="sideEffectCertainty">
     /// What is actually known about whether the external effect occurred.
@@ -68,9 +71,9 @@ public sealed record DurableOperationResult
     /// <paramref name="output"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="state"/> or <paramref name="sideEffectCertainty"/> is
-    /// not a defined enumeration value, or <paramref name="fencingToken"/> is
-    /// the default, unallocated token.
+    /// <paramref name="state"/> is undefined or does not retain a complete
+    /// result, <paramref name="sideEffectCertainty"/> is undefined, or
+    /// <paramref name="fencingToken"/> is the default, unallocated token.
     /// </exception>
     public DurableOperationResult(
         DurableOperationAddress address,
@@ -84,7 +87,7 @@ public sealed record DurableOperationResult
     {
         ArgumentNullException.ThrowIfNull(address);
         ArgumentNullException.ThrowIfNull(executionContext);
-        ArgumentOutOfRangeException.ThrowIfUndefined(state);
+        ArgumentOutOfRangeException.ThrowIfNotTerminalDurableOperationState(state);
         ArgumentOutOfRangeException.ThrowIfUndefined(sideEffectCertainty);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentOutOfRangeException.ThrowIfEqual(fencingToken, default, nameof(fencingToken));
@@ -127,16 +130,19 @@ public sealed record DurableOperationResult
         }
     }
 
-    /// <summary>Gets the terminal lifecycle position.</summary>
+    /// <summary>
+    /// Gets the complete-result lifecycle position, which may be staged
+    /// <see cref="DurableOperationState.OutcomeReady"/> or already published.
+    /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// An initializer attempts to set an undefined enumeration value.
+    /// An initializer supplies an undefined or incomplete lifecycle state.
     /// </exception>
     public DurableOperationState State
     {
         get;
         init
         {
-            ArgumentOutOfRangeException.ThrowIfUndefined(value, nameof(State));
+            ArgumentOutOfRangeException.ThrowIfNotTerminalDurableOperationState(value, nameof(State));
             field = value;
         }
     }
