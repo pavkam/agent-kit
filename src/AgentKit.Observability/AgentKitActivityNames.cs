@@ -94,6 +94,9 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for delivering one immutable security audit record to its captured sinks.</summary>
     public const string SecurityAuditDispatch = "security.audit.dispatch";
 
+    /// <summary>Gets the name for atomic grant consumption and enforcement-intent receipt persistence.</summary>
+    public const string SecurityGrantConsume = "security.grant.consume";
+
     /// <summary>Gets the name for reserving bounded shared capacity.</summary>
     public const string BudgetReserve = "budget.reserve";
 

@@ -155,6 +155,64 @@ public sealed class SecurityAuthorityTests
         policy.CallCount.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AuthorizeAsync_WhenCapturedPolicySnapshotDiffers_DeniesBeforePolicyOrGrant(bool changeId)
+    {
+        var policy = new StubPolicy(SecurityPolicyResultKind.Allow);
+        var clock = new FakeTimeProvider(_now);
+        var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var evaluated = PolicySnapshot("10000000-0000-0000-0000-000000000001", "sha256:evaluated");
+        var supplied = changeId
+            ? PolicySnapshot("10000000-0000-0000-0000-000000000002", "sha256:evaluated")
+            : PolicySnapshot("10000000-0000-0000-0000-000000000001", "sha256:changed");
+        var options = new AgentPermissionOptions { PolicySnapshot = evaluated };
+        var authority = CreateAuthority([policy], store, clock, options);
+        var request = CreateCapturedRequest(supplied);
+
+        var decision = await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("security.captured_context_mismatch");
+        policy.CallCount.ShouldBe(0);
+        store.RegisterCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenOptionsMutateAfterConstruction_RetainsOriginalPolicySnapshotBinding()
+    {
+        var original = PolicySnapshot("10000000-0000-0000-0000-000000000001", "sha256:original");
+        var changed = PolicySnapshot("10000000-0000-0000-0000-000000000002", "sha256:changed");
+        var options = new AgentPermissionOptions { PolicySnapshot = original };
+        var policy = new StubPolicy(SecurityPolicyResultKind.Allow);
+        var authority = CreateAuthority([policy], options: options);
+        options.PolicySnapshot = changed;
+        options.PolicyVersion = 2;
+
+        var originalDecision = await authority.AuthorizeAsync(
+            CreateCapturedRequest(original), TestContext.Current.CancellationToken);
+        var changedDecision = await authority.AuthorizeAsync(
+            CreateCapturedRequest(changed), TestContext.Current.CancellationToken);
+
+        _ = originalDecision.ShouldBeOfType<SecurityAllowed>();
+        changedDecision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("security.captured_context_mismatch");
+        policy.CallCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Constructor_WhenPolicySnapshotVersionDiffers_ThrowsBeforeRetainingOptions()
+    {
+        var options = new AgentPermissionOptions
+        {
+            PolicyVersion = 2,
+            PolicySnapshot = PolicySnapshot("10000000-0000-0000-0000-000000000001", "sha256:original"),
+        };
+
+        var exception = Should.Throw<ArgumentException>(() => CreateAuthority([], options: options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
     [Fact]
     public async Task AuthorizeAsync_WhenRequestWasMutatedToUndefinedEffect_ThrowsBeforePolicy()
     {
@@ -196,12 +254,30 @@ public sealed class SecurityAuthorityTests
     private static SecurityAuthority CreateAuthority(
         IEnumerable<ISecurityPolicy> policies,
         ISecurityGrantStore? store = null,
-        TimeProvider? timeProvider = null) => new(
+        TimeProvider? timeProvider = null,
+        AgentPermissionOptions? options = null) => new(
             policies,
             store ?? new InMemorySecurityGrantStore(timeProvider ?? new FakeTimeProvider(_now)),
             new StubGrantIdGenerator(),
             timeProvider ?? new FakeTimeProvider(_now),
-            Options.Create(new AgentPermissionOptions()));
+            Options.Create(options ?? new AgentPermissionOptions()));
+
+    private static SecurityPolicySnapshotReference PolicySnapshot(string id, string fingerprint) => new(
+        new SecurityPolicySnapshotId(Guid.Parse(id)),
+        new SecurityPolicyVersion(1),
+        new ContentHash(fingerprint));
+
+    private static SecurityRequest CreateCapturedRequest(SecurityPolicySnapshotReference snapshot)
+    {
+        var legacy = CreateRequest();
+        var authorization = new SecurityAuthorizationContext(
+            new SecurityProfileKey("security"), new SecurityProfileVersion(1), snapshot,
+            new ComponentKey<ISecurityAuthority>("authority"), new AgentDefinitionRevision(1),
+            new ConfigurationVersion(1), legacy.Scope, legacy.Identity);
+        return new SecurityRequest(
+            legacy.Id, legacy.Scope, legacy.ToolCallId, legacy.Identity, authorization, legacy.Audience,
+            legacy.Kind, legacy.Effect, legacy.Resources, legacy.InputFingerprint, legacy.Deadline);
+    }
 
     private static SecurityRequest CreateRequest()
     {

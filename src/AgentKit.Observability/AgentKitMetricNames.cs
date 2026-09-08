@@ -64,6 +64,9 @@ public static class AgentKitMetricNames
     /// <summary>Gets the histogram for security-audit dispatch duration in seconds.</summary>
     public const string SecurityAuditDispatchDuration = "agentkit.security.audit.dispatch.duration";
 
+    /// <summary>Gets the counter for terminal grant-consumption outcomes.</summary>
+    public const string SecurityGrantConsumptionCount = "agentkit.security.grant.consumption.count";
+
     /// <summary>Gets the counter for terminal session coordination outcomes.</summary>
     public const string SessionOperationCount = "agentkit.session.operation.count";
 

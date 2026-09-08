@@ -10,6 +10,7 @@ namespace AgentKit.Permissions
         public System.TimeSpan AuditDeliveryTimeout { get; set; }
         public System.TimeSpan MaximumGrantLifetime { get; set; }
         public int MaximumGrantUses { get; set; }
+        public AgentKit.SecurityPolicySnapshotReference? PolicySnapshot { get; set; }
         public long PolicyVersion { get; set; }
         public long RevocationVersion { get; set; }
     }
@@ -22,9 +23,11 @@ namespace AgentKit.Permissions
     public sealed class InMemorySecurityGrantStore : AgentKit.ISecurityGrantStore
     {
         public InMemorySecurityGrantStore(System.TimeProvider timeProvider) { }
+        public InMemorySecurityGrantStore(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.InMemorySecurityGrantStore>? logger) { }
         public System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<bool> RevokeAsync(AgentKit.GrantId grantId, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class SecurityAuthority : AgentKit.ISecurityAuthority
     {

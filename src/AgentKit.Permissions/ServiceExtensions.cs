@@ -17,6 +17,8 @@ public static class ServiceExtensions
             _ = services.AddAgentKitObservability();
             var options = services.AddOptions<AgentPermissionOptions>()
                 .Validate(static value => value.PolicyVersion > 0, "PolicyVersion must be positive.")
+                .Validate(static value => value.PolicySnapshot is null || value.PolicySnapshot.Version.Value == value.PolicyVersion,
+                    "PolicySnapshot.Version must equal PolicyVersion.")
                 .Validate(static value => value.RevocationVersion > 0, "RevocationVersion must be positive.")
                 .Validate(static value => value.MaximumGrantLifetime > TimeSpan.Zero, "MaximumGrantLifetime must be positive.")
                 .Validate(static value => value.MaximumGrantUses > 0, "MaximumGrantUses must be positive.")

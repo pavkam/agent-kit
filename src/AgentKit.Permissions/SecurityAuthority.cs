@@ -13,7 +13,11 @@ public sealed class SecurityAuthority: ISecurityAuthority
     private readonly ISecurityGrantStore _grantStore;
     private readonly IIdentifierGenerator<GrantId> _grantIds;
     private readonly TimeProvider _timeProvider;
-    private readonly AgentPermissionOptions _options;
+    private readonly long _policyVersion;
+    private readonly long _revocationVersion;
+    private readonly TimeSpan _maximumGrantLifetime;
+    private readonly int _maximumGrantUses;
+    private readonly SecurityPolicySnapshotReference? _policySnapshot;
     private readonly ILogger<SecurityAuthority> _logger;
 
     /// <summary>Initializes the first-party security authority.</summary>
@@ -40,15 +44,25 @@ public sealed class SecurityAuthority: ISecurityAuthority
         ArgumentNullException.ThrowIfNull(grantIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.PolicyVersion);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.RevocationVersion);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.Value.MaximumGrantLifetime, TimeSpan.Zero);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumGrantUses);
+        var optionValues = options.Value;
+        ArgumentNullException.ThrowIfNull(optionValues);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(optionValues.PolicyVersion);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(optionValues.RevocationVersion);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(optionValues.MaximumGrantLifetime, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(optionValues.MaximumGrantUses);
+        if (optionValues.PolicySnapshot is { } snapshot)
+        {
+            ArgumentException.ThrowIfNotEqual(snapshot.Version.Value, optionValues.PolicyVersion, nameof(options));
+        }
         _policies = [.. policies];
         _grantStore = grantStore;
         _grantIds = grantIds;
         _timeProvider = timeProvider;
-        _options = options.Value;
+        _policyVersion = optionValues.PolicyVersion;
+        _revocationVersion = optionValues.RevocationVersion;
+        _maximumGrantLifetime = optionValues.MaximumGrantLifetime;
+        _maximumGrantUses = optionValues.MaximumGrantUses;
+        _policySnapshot = optionValues.PolicySnapshot;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SecurityAuthority>.Instance;
     }
 
@@ -130,8 +144,17 @@ public sealed class SecurityAuthority: ISecurityAuthority
         CancellationToken cancellationToken)
     {
         Debug.Assert(request is not null, "A validated security request is required by the authority core.");
-        var policyVersion = new SecurityPolicyVersion(_options.PolicyVersion);
+        var policyVersion = new SecurityPolicyVersion(_policyVersion);
         var now = _timeProvider.GetUtcNow();
+        if (request.Authorization is { } authorization
+            && (authorization.Scope != request.Scope
+                || authorization.Identity != request.Identity
+                || _policySnapshot is null
+                || authorization.PolicySnapshot != _policySnapshot))
+        {
+            return Denied(request, policyVersion, "security.captured_context_mismatch",
+                "The captured authorization context cannot be evaluated by this authority version.");
+        }
         if (request.Deadline <= now)
         {
             return Denied(request, policyVersion, "security.deadline_expired", "The authorization deadline has expired.");
@@ -172,22 +195,20 @@ public sealed class SecurityAuthority: ISecurityAuthority
             return Denied(request, policyVersion, "security.no_policy", "No security policy authorized this operation.");
         }
 
-        var maximumExpiry = now + _options.MaximumGrantLifetime;
-        var grant = new SecurityGrant(
-            _grantIds.Create(),
-            request.Id,
-            request.Scope,
-            request.Identity,
-            request.Audience,
-            request.Kind,
-            request.Effect,
-            request.Resources,
-            request.InputFingerprint,
-            policyVersion,
-            new SecurityRevocationVersion(_options.RevocationVersion),
-            now,
-            request.Deadline < maximumExpiry ? request.Deadline : maximumExpiry,
-            Math.Min(request.RequestedUses, _options.MaximumGrantUses));
+        var maximumExpiry = now + _maximumGrantLifetime;
+        var grantId = _grantIds.Create();
+        var revocationVersion = new SecurityRevocationVersion(_revocationVersion);
+        var expiresAt = request.Deadline < maximumExpiry ? request.Deadline : maximumExpiry;
+        var allowedUses = Math.Min(request.RequestedUses, _maximumGrantUses);
+        var grant = request.Authorization is { } capturedForGrant
+            ? new SecurityGrant(
+                grantId, request.Id, request.Scope, request.Identity, capturedForGrant, request.Audience,
+                request.Kind, request.Effect, request.Resources, request.InputFingerprint, policyVersion,
+                revocationVersion, now, expiresAt, allowedUses)
+            : new SecurityGrant(
+                grantId, request.Id, request.Scope, request.Identity, request.Audience, request.Kind,
+                request.Effect, request.Resources, request.InputFingerprint, policyVersion,
+                revocationVersion, now, expiresAt, allowedUses);
         await _grantStore.RegisterAsync(grant, cancellationToken).ConfigureAwait(false);
         return new SecurityAllowed(request.Id, policyVersion, grant);
     }

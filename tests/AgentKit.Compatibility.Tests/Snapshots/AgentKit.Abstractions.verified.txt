@@ -289,6 +289,8 @@ namespace AgentKit
         extension(System.ArgumentException)
         {
             public static void ThrowIfDuplicateSecurityAuditEventKind(System.Collections.Immutable.ImmutableArray<AgentKit.SecurityAuditEventKind> eventKinds, [System.Runtime.CompilerServices.CallerArgumentExpression("eventKinds")] string? paramName = null) { }
+            public static void ThrowIfNotEqual<T>(T actual, T expected, [System.Runtime.CompilerServices.CallerArgumentExpression("actual")] string? paramName = null) { }
+            public static void ThrowIfInvalidIntentReceipt(AgentKit.GrantConsumptionStatus status, AgentKit.SecurityEnforcementIntentReceipt? receipt, [System.Runtime.CompilerServices.CallerArgumentExpression("receipt")] string? paramName = null) { }
             public static void ThrowIfInvalidBudgetExecutionBinding(AgentKit.BudgetScopeAddress address, AgentKit.ExecutionIdentity identity, AgentKit.OperationCorrelation correlation, [System.Runtime.CompilerServices.CallerArgumentExpression("address")] string? paramName = null) { }
             public static void ThrowIfInvalidOutputSchemaProfile(AgentKit.OutputSchemaDialectId defaultDialect, System.Collections.Immutable.ImmutableArray<AgentKit.OutputSchemaDialectId> supportedDialects, System.Collections.Immutable.ImmutableArray<string> assertionKeywords, System.Collections.Immutable.ImmutableArray<string> annotationKeywords, [System.Runtime.CompilerServices.CallerArgumentExpression("defaultDialect")] string? defaultDialectParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("supportedDialects")] string? supportedDialectsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("assertionKeywords")] string? assertionKeywordsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("annotationKeywords")] string? annotationKeywordsParamName = null) { }
             public static void ThrowIfUnsupportedOutputSchemaDialect(AgentKit.OutputSchemaEngineProfile profile, AgentKit.OutputSchemaDialectId dialect, [System.Runtime.CompilerServices.CallerArgumentExpression("dialect")] string? paramName = null) { }
@@ -2333,9 +2335,11 @@ namespace AgentKit
     public sealed class GrantConsumptionResult : System.IEquatable<AgentKit.GrantConsumptionResult>
     {
         public GrantConsumptionResult(AgentKit.GrantConsumptionStatus status, int remainingUses, string safeMessage) { }
-        public int RemainingUses { get; init; }
-        public string SafeMessage { get; init; }
-        public AgentKit.GrantConsumptionStatus Status { get; init; }
+        public GrantConsumptionResult(AgentKit.GrantConsumptionStatus status, int remainingUses, string safeMessage, AgentKit.SecurityEnforcementIntentReceipt? intentReceipt) { }
+        public AgentKit.SecurityEnforcementIntentReceipt? IntentReceipt { get; }
+        public int RemainingUses { get; }
+        public string SafeMessage { get; }
+        public AgentKit.GrantConsumptionStatus Status { get; }
     }
     public enum GrantConsumptionStatus
     {
@@ -2346,6 +2350,7 @@ namespace AgentKit
         Expired = 4,
         Revoked = 5,
         Exhausted = 6,
+        Reconciled = 7,
     }
     public readonly struct GrantId : System.IEquatable<AgentKit.GrantId>
     {
@@ -2837,6 +2842,7 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<bool> RevokeAsync(AgentKit.GrantId grantId, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface ISecurityPolicy
     {
@@ -5080,10 +5086,39 @@ namespace AgentKit
         Mutate = 9,
         Delegate = 10,
     }
+    public static class SecurityEnforcementBinding
+    {
+        public static AgentKit.ContentHash Fingerprint(AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent) { }
+    }
+    public sealed class SecurityEnforcementIntent : System.IEquatable<AgentKit.SecurityEnforcementIntent>
+    {
+        public SecurityEnforcementIntent(AgentKit.SecurityEnforcementIntentId id, AgentKit.FencingToken? requiredFence) { }
+        public AgentKit.SecurityEnforcementIntentId Id { get; }
+        public AgentKit.FencingToken? RequiredFence { get; }
+    }
+    public readonly struct SecurityEnforcementIntentId : System.IEquatable<AgentKit.SecurityEnforcementIntentId>
+    {
+        public SecurityEnforcementIntentId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SecurityEnforcementIntentReceipt : System.IEquatable<AgentKit.SecurityEnforcementIntentReceipt>
+    {
+        public SecurityEnforcementIntentReceipt(AgentKit.SecurityEnforcementIntentId intentId, AgentKit.GrantId grantId, AgentKit.SecurityRequestId requestId, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.FencingToken? requiredFence, AgentKit.ContentHash effectFingerprint, System.DateTimeOffset consumedAt) { }
+        public System.DateTimeOffset ConsumedAt { get; }
+        public AgentKit.ContentHash EffectFingerprint { get; }
+        public AgentKit.SecurityEnforcementRequest Enforcement { get; }
+        public AgentKit.GrantId GrantId { get; }
+        public AgentKit.SecurityEnforcementIntentId IntentId { get; }
+        public AgentKit.SecurityRequestId RequestId { get; }
+        public AgentKit.FencingToken? RequiredFence { get; }
+    }
     public sealed class SecurityEnforcementRequest : System.IEquatable<AgentKit.SecurityEnforcementRequest>
     {
         public SecurityEnforcementRequest(AgentKit.SecurityAuthorizationScope scope, AgentKit.ExecutionIdentity identity, AgentKit.ComponentId audience, AgentKit.SecurityOperationKind kind, AgentKit.SecurityEffect effect, System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> resources, AgentKit.InputFingerprint inputFingerprint, AgentKit.SecurityRevocationVersion revocationVersion) { }
+        public SecurityEnforcementRequest(AgentKit.SecurityAuthorizationScope scope, AgentKit.ExecutionIdentity identity, AgentKit.SecurityAuthorizationContext authorization, AgentKit.ComponentId audience, AgentKit.SecurityOperationKind kind, AgentKit.SecurityEffect effect, System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> resources, AgentKit.InputFingerprint inputFingerprint, AgentKit.SecurityRevocationVersion revocationVersion) { }
         public AgentKit.ComponentId Audience { get; init; }
+        public AgentKit.SecurityAuthorizationContext? Authorization { get; }
         public AgentKit.SecurityEffect Effect { get; init; }
         public AgentKit.ExecutionIdentity Identity { get; init; }
         public AgentKit.InputFingerprint InputFingerprint { get; init; }
@@ -5095,8 +5130,10 @@ namespace AgentKit
     public sealed class SecurityGrant : System.IEquatable<AgentKit.SecurityGrant>
     {
         public SecurityGrant(AgentKit.GrantId id, AgentKit.SecurityRequestId requestId, AgentKit.SecurityAuthorizationScope scope, AgentKit.ExecutionIdentity identity, AgentKit.ComponentId audience, AgentKit.SecurityOperationKind kind, AgentKit.SecurityEffect effect, System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> resources, AgentKit.InputFingerprint inputFingerprint, AgentKit.SecurityPolicyVersion policyVersion, AgentKit.SecurityRevocationVersion revocationVersion, System.DateTimeOffset notBefore, System.DateTimeOffset expiresAt, int allowedUses) { }
+        public SecurityGrant(AgentKit.GrantId id, AgentKit.SecurityRequestId requestId, AgentKit.SecurityAuthorizationScope scope, AgentKit.ExecutionIdentity identity, AgentKit.SecurityAuthorizationContext authorization, AgentKit.ComponentId audience, AgentKit.SecurityOperationKind kind, AgentKit.SecurityEffect effect, System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> resources, AgentKit.InputFingerprint inputFingerprint, AgentKit.SecurityPolicyVersion policyVersion, AgentKit.SecurityRevocationVersion revocationVersion, System.DateTimeOffset notBefore, System.DateTimeOffset expiresAt, int allowedUses) { }
         public int AllowedUses { get; init; }
         public AgentKit.ComponentId Audience { get; init; }
+        public AgentKit.SecurityAuthorizationContext? Authorization { get; }
         public AgentKit.SecurityEffect Effect { get; init; }
         public System.DateTimeOffset ExpiresAt { get; init; }
         public AgentKit.GrantId Id { get; init; }
@@ -5201,7 +5238,9 @@ namespace AgentKit
     public sealed class SecurityRequest : System.IEquatable<AgentKit.SecurityRequest>
     {
         public SecurityRequest(AgentKit.SecurityRequestId id, AgentKit.SecurityAuthorizationScope scope, AgentKit.ToolCallId? toolCallId, AgentKit.ExecutionIdentity identity, AgentKit.ComponentId audience, AgentKit.SecurityOperationKind kind, AgentKit.SecurityEffect effect, System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> resources, AgentKit.InputFingerprint inputFingerprint, System.DateTimeOffset deadline, int requestedUses = 1) { }
+        public SecurityRequest(AgentKit.SecurityRequestId id, AgentKit.SecurityAuthorizationScope scope, AgentKit.ToolCallId? toolCallId, AgentKit.ExecutionIdentity identity, AgentKit.SecurityAuthorizationContext authorization, AgentKit.ComponentId audience, AgentKit.SecurityOperationKind kind, AgentKit.SecurityEffect effect, System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> resources, AgentKit.InputFingerprint inputFingerprint, System.DateTimeOffset deadline, int requestedUses = 1) { }
         public AgentKit.ComponentId Audience { get; init; }
+        public AgentKit.SecurityAuthorizationContext? Authorization { get; }
         public System.DateTimeOffset Deadline { get; init; }
         public AgentKit.SecurityEffect Effect { get; init; }
         public AgentKit.SecurityRequestId Id { get; init; }

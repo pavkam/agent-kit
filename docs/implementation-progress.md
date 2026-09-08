@@ -65,11 +65,49 @@ owning spec.
 
 ## Latest integration evidence
 
-The bounded audit-delivery checkpoint passed `make format`, `make lint`, and
-`make test` in an isolated checkout over `b59831d`. All 4,345 tests passed
-without skips; the Release build reported zero warnings or errors. Two reviewed
-API snapshots add `AuditDeliveryTimeout` and the typed `SecurityAuditTimedOut`
-result. The initial full run failed only these two expected comparisons.
+The grant-enforcement checkpoint passed `make format`, `make lint`, and
+`make test` in an isolated checkout over `4e1adf7`. All 4,414 tests passed
+without skips; the Release build reported zero warnings or errors. The initial
+full run passed 4,398 of 4,401 tests and failed only the three expected API
+snapshot comparisons. Thirteen direct guard cases were added before the final
+run, alongside the reviewed snapshots and documentation correction.
+
+Grant stores can now consume one use and retain its exact enforcement-intent
+receipt atomically. An exact retry returns `Reconciled` historical evidence; it
+cannot authorize another effect, even when the original grant later expires or
+is revoked. Changed effect or fence evidence fails without another spend. The
+default interface implementation rejects unsupported intent persistence before
+invoking legacy consumption. The in-memory implementation remains process-local
+and makes no durability claim.
+
+Captured security requests, grants, and enforcement evidence preserve the exact
+authorization context. Constructor and record-copy guards reject scope,
+identity, or captured grant policy-version mismatches. The authority captures
+its configured policy snapshot and bounds once, so later options mutation cannot
+replace a pinned selection. Canonical security fingerprints preserve exact
+UTF-16 code units; distinct unpaired surrogates no longer collapse through
+replacement encoding. Safe grant-consumption signals cover success,
+reconciliation, cancellation, faults, and throwing diagnostic listeners.
+
+The API review preserves the existing constructors and adds intent-aware
+contracts and overloads. It intentionally removes the `Status`, `RemainingUses`,
+and `SafeMessage` init setters from `GrantConsumptionResult`. This is a source
+and binary compatibility change: callers construct a validated result instead of
+changing fields independently of its retained receipt. Captured scope and
+identity copies also enforce their documented invariants.
+
+Protected session routing, facade profile activation, and network, process, and
+filesystem receipt enforcement are still being integrated. Required audit
+coverage, durable security-control persistence, live policy retirement, and
+composed recovery remain open; this checkpoint does not complete the security
+subsystem.
+
+The preceding bounded audit-delivery checkpoint (`4e1adf7`) passed
+`make format`, `make lint`, and `make test` in an isolated checkout over
+`b59831d`. All 4,345 tests passed without skips; the Release build reported zero
+warnings or errors. Two reviewed API snapshots add `AuditDeliveryTimeout` and
+the typed `SecurityAuditTimedOut` result. The initial full run failed only these
+two expected comparisons.
 
 The dispatcher captures a finite per-sink deadline, defaulting to thirty
 seconds, and validates the supported timer range before activation. Injected

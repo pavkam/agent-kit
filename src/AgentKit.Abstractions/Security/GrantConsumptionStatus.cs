@@ -20,4 +20,6 @@ public enum GrantConsumptionStatus
     Revoked,
     /// <summary>Every allowed use was already consumed.</summary>
     Exhausted,
+    /// <summary>The intent identity already consumed a use; the historical receipt is returned only for reconciliation and grants no permission to repeat the effect.</summary>
+    Reconciled,
 }

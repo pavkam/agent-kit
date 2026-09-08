@@ -147,6 +147,130 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
         results.Count(static result => result.Status == GrantConsumptionStatus.Exhausted).ShouldBe(31);
     }
 
+    /// <summary>Verifies an identical enforcement intent returns historical evidence without authorizing another effect.</summary>
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenIntentIsReplayed_ReconcilesWithoutAnotherConsumption()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var grant = CreateGrant(fixture.TimeProvider.GetUtcNow());
+        var enforcement = CreateEnforcement(grant);
+        var intent = CreateIntent();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+
+        var consumed = await store.ValidateAndConsumeAsync(
+            grant, enforcement, intent, TestContext.Current.CancellationToken);
+        var reconciled = await store.ValidateAndConsumeAsync(
+            grant, enforcement, intent, TestContext.Current.CancellationToken);
+
+        consumed.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+        _ = consumed.IntentReceipt.ShouldNotBeNull();
+        reconciled.Status.ShouldBe(GrantConsumptionStatus.Reconciled);
+        reconciled.IntentReceipt.ShouldBe(consumed.IntentReceipt);
+        reconciled.RemainingUses.ShouldBe(consumed.RemainingUses);
+    }
+
+    /// <summary>Verifies simultaneous identical intents produce exactly one fresh authority and receipt-only reconciliation for every loser.</summary>
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenIdenticalIntentsRace_AuthorizesExactlyOneEffect()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var grant = CreateGrant(fixture.TimeProvider.GetUtcNow());
+        var enforcement = CreateEnforcement(grant);
+        var intent = CreateIntent();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+
+        var results = await ConsumeIntentConcurrentlyAsync(store, grant, enforcement, intent);
+
+        results.Count(static result => result.Status == GrantConsumptionStatus.Consumed).ShouldBe(1);
+        results.Count(static result => result.Status == GrantConsumptionStatus.Reconciled).ShouldBe(31);
+        results.ShouldAllBe(static result => result.IntentReceipt != null);
+        results.Select(static result => result.IntentReceipt).Distinct().Count().ShouldBe(1);
+    }
+
+    /// <summary>Verifies one intent identity cannot be rebound to changed concrete effect or fencing evidence.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ValidateAndConsumeAsync_WhenIntentEvidenceChanges_RejectsWithoutAnotherConsumption(bool changeEffect)
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var grant = CreateGrant(fixture.TimeProvider.GetUtcNow(), allowedUses: 2);
+        var enforcement = CreateEnforcement(grant);
+        var intent = CreateIntent();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+        _ = await store.ValidateAndConsumeAsync(
+            grant, enforcement, intent, TestContext.Current.CancellationToken);
+        var changedEnforcement = changeEffect
+            ? enforcement with { InputFingerprint = new InputFingerprint("sha256:changed") }
+            : enforcement;
+        var changedIntent = changeEffect
+            ? intent
+            : new SecurityEnforcementIntent(intent.Id, new FencingToken(7));
+
+        var mismatch = await store.ValidateAndConsumeAsync(
+            grant, changedEnforcement, changedIntent, TestContext.Current.CancellationToken);
+        var remaining = await store.ValidateAndConsumeAsync(
+            grant, enforcement, CreateIntent(2), TestContext.Current.CancellationToken);
+
+        mismatch.Status.ShouldBe(GrantConsumptionStatus.Mismatch);
+        mismatch.RemainingUses.ShouldBe(1);
+        mismatch.IntentReceipt.ShouldBeNull();
+        remaining.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+        remaining.RemainingUses.ShouldBe(0);
+    }
+
+    /// <summary>Verifies expiry or revocation does not turn historical receipt recovery into renewed effect authority.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ValidateAndConsumeAsync_WhenConsumedIntentBecomesInvalid_ReconcilesHistoryButRejectsFreshIntent(bool revoke)
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var grant = CreateGrant(fixture.TimeProvider.GetUtcNow(), lifetime: TimeSpan.FromMinutes(1));
+        var enforcement = CreateEnforcement(grant);
+        var intent = CreateIntent();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+        var consumed = await store.ValidateAndConsumeAsync(
+            grant, enforcement, intent, TestContext.Current.CancellationToken);
+        if (revoke)
+        {
+            _ = await store.RevokeAsync(grant.Id, TestContext.Current.CancellationToken);
+        }
+        else
+        {
+            fixture.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        var historical = await store.ValidateAndConsumeAsync(
+            grant, enforcement, intent, TestContext.Current.CancellationToken);
+        var fresh = await store.ValidateAndConsumeAsync(
+            grant, enforcement, CreateIntent(2), TestContext.Current.CancellationToken);
+
+        historical.Status.ShouldBe(GrantConsumptionStatus.Reconciled);
+        historical.IntentReceipt.ShouldBe(consumed.IntentReceipt);
+        fresh.Status.ShouldBe(revoke ? GrantConsumptionStatus.Revoked : GrantConsumptionStatus.Expired);
+        fresh.IntentReceipt.ShouldBeNull();
+    }
+
+    /// <summary>Verifies the additive default overload fails closed without delegating to a legacy consumption effect.</summary>
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenIntentReceiptsAreUnsupported_DoesNotInvokeLegacyConsumption()
+    {
+        ISecurityGrantStore store = new LegacyOnlySecurityGrantStore();
+        var grant = CreateGrant(DateTimeOffset.UnixEpoch);
+
+        var result = await store.ValidateAndConsumeAsync(
+            grant, CreateEnforcement(grant), CreateIntent(), TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(GrantConsumptionStatus.Unknown);
+        result.IntentReceipt.ShouldBeNull();
+        ((LegacyOnlySecurityGrantStore) store).LegacyConsumptionCalls.ShouldBe(0);
+    }
+
     /// <summary>Verifies revocation is idempotent and prevents every later grant consumption.</summary>
     [Fact]
     public async Task RevokeAsync_WhenGrantIsKnown_PreventsFutureConsumption()
@@ -213,6 +337,13 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
         grant.InputFingerprint,
         grant.RevocationVersion);
 
+    /// <summary>Creates stable enforcement-intent evidence for receipt conformance cases.</summary>
+    /// <param name="discriminator">The positive deterministic identity suffix.</param>
+    /// <returns>A process-local intent with a non-default stable identity.</returns>
+    private static SecurityEnforcementIntent CreateIntent(int discriminator = 1) => new(
+        new SecurityEnforcementIntentId(Guid.Parse($"70000000-0000-0000-0000-{discriminator:D12}")),
+        null);
+
     /// <summary>Releases fixed workers together so each implementation faces real competing consumption calls.</summary>
     /// <param name="store">The store to exercise.</param>
     /// <param name="grant">The evidence every worker presents.</param>
@@ -240,4 +371,35 @@ public abstract class SecurityGrantStoreConformanceTests<TFixture>
 
         return await Task.WhenAll(workers).WaitAsync(cancellationToken);
     }
+
+    /// <summary>Releases fixed workers with one identical receipt-bearing intent.</summary>
+    /// <param name="store">The store under test.</param>
+    /// <param name="grant">The registered single-use grant.</param>
+    /// <param name="enforcement">The exact concrete effect.</param>
+    /// <param name="intent">The exact stable intent every worker presents.</param>
+    /// <returns>All terminal consumption or reconciliation results.</returns>
+    private static async Task<GrantConsumptionResult[]> ConsumeIntentConcurrentlyAsync(
+        ISecurityGrantStore store,
+        SecurityGrant grant,
+        SecurityEnforcementRequest enforcement,
+        SecurityEnforcementIntent intent)
+    {
+        const int workerCount = 32;
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var arrivals = 0;
+        var workers = Enumerable.Range(0, workerCount).Select(_ => Task.Run(async () =>
+        {
+            if (Interlocked.Increment(ref arrivals) == workerCount)
+            {
+                start.SetResult();
+            }
+
+            await start.Task.WaitAsync(cancellationToken);
+            return await store.ValidateAndConsumeAsync(grant, enforcement, intent, cancellationToken);
+        }));
+
+        return await Task.WhenAll(workers).WaitAsync(cancellationToken);
+    }
+
 }

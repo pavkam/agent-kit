@@ -46,6 +46,42 @@ public static class ArgumentExceptionExtensions
             }
         }
 
+        /// <summary>Throws when two values that describe one structural relation differ.</summary>
+        /// <typeparam name="T">The compared value type.</typeparam>
+        /// <param name="actual">The caller-supplied value that must match.</param>
+        /// <param name="expected">The authoritative expected value.</param>
+        /// <param name="paramName">The actual-value parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="actual"/> and <paramref name="expected"/> are not equal under <see cref="EqualityComparer{T}.Default"/>.</exception>
+        public static void ThrowIfNotEqual<T>(
+            T actual,
+            T expected,
+            [CallerArgumentExpression(nameof(actual))] string? paramName = null)
+        {
+            if (!EqualityComparer<T>.Default.Equals(actual, expected))
+            {
+                throw new ArgumentException("Value must match the related request evidence.", paramName);
+            }
+        }
+
+        /// <summary>Throws when an unsuccessful grant-consumption status carries a permission-to-start receipt.</summary>
+        /// <param name="status">The terminal grant-consumption status.</param>
+        /// <param name="receipt">The optional enforcement-intent receipt.</param>
+        /// <param name="paramName">The receipt parameter name inferred from the call-site expression when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="receipt"/> is non-null and <paramref name="status"/> is neither newly consumed nor reconciled.</exception>
+        public static void ThrowIfInvalidIntentReceipt(
+            GrantConsumptionStatus status,
+            SecurityEnforcementIntentReceipt? receipt,
+            [CallerArgumentExpression(nameof(receipt))] string? paramName = null)
+        {
+            if (status is not (GrantConsumptionStatus.Consumed or GrantConsumptionStatus.Reconciled)
+                && receipt is not null)
+            {
+                throw new ArgumentException(
+                    "Only a newly consumed or reconciled result may carry an enforcement-intent receipt.",
+                    paramName);
+            }
+        }
+
         /// <summary>Throws when a budget address cannot bind the supplied identity and operation correlation.</summary>
         /// <param name="address">The non-null budget address to validate.</param>
         /// <param name="identity">The non-null authenticated execution identity.</param>
