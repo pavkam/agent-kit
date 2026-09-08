@@ -150,6 +150,20 @@ public sealed class ComponentRegistrationDescriptorTests
     }
 
     [Fact]
+    public void DependencyConstructor_WhenCardinalityIsOptionalSingular_PreservesOptionalDependency()
+    {
+        var reference = ComponentContractReference.Unkeyed<IContract>();
+
+        var dependency = new ComponentDependencyDescriptor(
+            reference,
+            ComponentDependencyCardinality.OptionalSingular);
+
+        dependency.Reference.ShouldBe(reference);
+        dependency.Cardinality.ShouldBe(ComponentDependencyCardinality.OptionalSingular);
+        dependency.FactoryBoundary.ShouldBeNull();
+    }
+
+    [Fact]
     public void FactoryBoundaryConstructor_WhenDisposalContractIsUnsupported_ThrowsWithParameterName()
     {
         var exception = Should.Throw<ArgumentException>(() => new ComponentFactoryBoundary(

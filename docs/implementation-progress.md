@@ -65,6 +65,21 @@ owning spec.
 
 ## Latest integration evidence
 
+The optional-dependency cardinality checkpoint passed complete formatting, lint,
+Release build, and test gates in an isolated checkout over `d985f6e`. The
+reviewed API change adds `OptionalSingular = 2` while preserving existing enum
+values.
+
+Declared optional dependencies permit zero or one exact matching registration.
+Multiple matches reject as ambiguous; a present match participates in complete
+cycle and singleton-captivity validation. An optional dependency cannot claim an
+operation-owned factory boundary, whose root still requires singular presence.
+Focused tests cover absence, presence, ambiguity, cycles, captive scopes, and
+invalid factory metadata. This extends declared graph semantics only; metadata
+for actual optional Microsoft DI infrastructure, open-generic correspondence,
+first-party descriptor registration, and complete runnable activation remain
+open.
+
 The durability-carrier checkpoint passed complete formatting, lint, Release
 build, and test gates in an isolated checkout over `2cbfab5`. Its one additive
 API snapshot exposes the canonical type-qualified guard for complete durable

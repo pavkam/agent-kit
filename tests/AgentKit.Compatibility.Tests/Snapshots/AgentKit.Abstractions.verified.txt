@@ -1504,6 +1504,7 @@ namespace AgentKit
     {
         RequiredSingular = 0,
         AdditiveCollection = 1,
+        OptionalSingular = 2,
     }
     public sealed class ComponentDependencyDescriptor : System.IEquatable<AgentKit.ComponentDependencyDescriptor>
     {

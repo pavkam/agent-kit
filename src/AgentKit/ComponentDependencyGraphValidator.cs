@@ -91,7 +91,7 @@ internal static class ComponentDependencyGraphValidator
         ComponentContractReference reference) =>
         registrationsByService.TryGetValue(reference, out var matches) ? matches : [];
 
-    /// <summary>Emits a diagnostic when a singular dependency resolves to zero or multiple registrations.</summary>
+    /// <summary>Emits a diagnostic when a singular dependency resolves outside its required or optional bounds.</summary>
     /// <param name="ownerIndex">The index of the registration that declares the dependency.</param>
     /// <param name="dependency">The non-null dependency declaration being resolved.</param>
     /// <param name="targets">The initialized exact matches for the dependency.</param>
@@ -107,12 +107,13 @@ internal static class ComponentDependencyGraphValidator
         Debug.Assert((uint) ownerIndex < (uint) registrations.Length, "A dependency owner index must identify a declared registration.");
         Debug.Assert(dependency is not null, "Registration descriptors reject null dependency declarations.");
         Debug.Assert(targets is not null, "Dependency resolution always returns an initialized target collection.");
-        if (dependency.Cardinality != ComponentDependencyCardinality.RequiredSingular)
+        if (dependency.Cardinality == ComponentDependencyCardinality.AdditiveCollection)
         {
             return;
         }
 
-        if (targets.Count == 0)
+        if (targets.Count == 0
+            && dependency.Cardinality == ComponentDependencyCardinality.RequiredSingular)
         {
             diagnostics.Add(new CompositionDiagnostic(
                 "agentkit.component-dependency.missing",
@@ -120,9 +121,12 @@ internal static class ComponentDependencyGraphValidator
         }
         else if (targets.Count > 1)
         {
+            var cardinalityDescription = dependency.Cardinality == ComponentDependencyCardinality.RequiredSingular
+                ? "requires exactly one"
+                : "permits at most one";
             diagnostics.Add(new CompositionDiagnostic(
                 "agentkit.component-dependency.ambiguous",
-                $"{Describe(registrations[ownerIndex])} requires exactly one {Describe(dependency.Reference)}, but {targets.Count} registrations match."));
+                $"{Describe(registrations[ownerIndex])} {cardinalityDescription} {Describe(dependency.Reference)}, but {targets.Count} registrations match."));
         }
     }
 

@@ -82,6 +82,88 @@ public sealed class ComponentDependencyGraphValidatorTests
     }
 
     [Fact]
+    public void Validate_WhenOptionalSingularHasNoMatch_ReturnsNoDiagnostics()
+    {
+        var diagnostics = ComponentDependencyGraphValidator.Validate([
+            Registration(Reference<IRoot>(), typeof(Root), ServiceLifetime.Singleton,
+                Dependency(Reference<ILeaf>(), ComponentDependencyCardinality.OptionalSingular)),
+        ]);
+
+        diagnostics.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Validate_WhenOptionalSingularHasOneMatch_ValidatesPresentEdge()
+    {
+        var diagnostics = ComponentDependencyGraphValidator.Validate([
+            Registration(Reference<IRoot>(), typeof(Root), ServiceLifetime.Transient,
+                Dependency(Reference<ILeaf>(), ComponentDependencyCardinality.OptionalSingular)),
+            Registration(Reference<ILeaf>(), typeof(AlphaLeaf), ServiceLifetime.Scoped),
+        ]);
+
+        diagnostics.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Validate_WhenOptionalSingularHasMultipleMatches_ReportsAmbiguity()
+    {
+        var diagnostics = ComponentDependencyGraphValidator.Validate([
+            Registration(Reference<IRoot>(), typeof(Root), ServiceLifetime.Singleton,
+                Dependency(Reference<ILeaf>(), ComponentDependencyCardinality.OptionalSingular)),
+            Registration(Reference<ILeaf>(), typeof(AlphaLeaf), ServiceLifetime.Singleton),
+            Registration(Reference<ILeaf>(), typeof(BetaLeaf), ServiceLifetime.Singleton),
+        ]);
+
+        var diagnostic = diagnostics.Single(static item => item.Code == "agentkit.component-dependency.ambiguous");
+        diagnostic.SafeMessage.ShouldContain("permits at most one");
+        diagnostic.SafeMessage.ShouldContain("2 registrations match");
+    }
+
+    [Fact]
+    public void Validate_WhenPresentOptionalSingularClosesCycle_ReportsCompleteCycle()
+    {
+        var diagnostics = ComponentDependencyGraphValidator.Validate([
+            Registration(Reference<IRoot>(), typeof(Root), ServiceLifetime.Singleton,
+                Dependency(Reference<ILeaf>(), ComponentDependencyCardinality.OptionalSingular)),
+            Registration(Reference<ILeaf>(), typeof(AlphaLeaf), ServiceLifetime.Singleton,
+                Dependency(Reference<IRoot>())),
+        ]);
+
+        var diagnostic = diagnostics.Single(static item => item.Code == "agentkit.component-dependency.cycle");
+        diagnostic.SafeMessage.ShouldContain(typeof(IRoot).FullName!);
+        diagnostic.SafeMessage.ShouldContain(typeof(ILeaf).FullName!);
+    }
+
+    [Fact]
+    public void Validate_WhenSingletonCapturesPresentOptionalScopedDependency_ReportsProblem()
+    {
+        var diagnostics = ComponentDependencyGraphValidator.Validate([
+            Registration(Reference<IRoot>(), typeof(Root), ServiceLifetime.Singleton,
+                Dependency(Reference<ILeaf>(), ComponentDependencyCardinality.OptionalSingular)),
+            Registration(Reference<ILeaf>(), typeof(AlphaLeaf), ServiceLifetime.Scoped),
+        ]);
+
+        diagnostics.Select(static diagnostic => diagnostic.Code)
+            .ShouldContain("agentkit.component-lifetime.captive-scoped");
+    }
+
+    [Fact]
+    public void Validate_WhenOptionalSingularDeclaresFactoryBoundary_ReportsRequiredRootMismatch()
+    {
+        var owner = Reference<IRoot>();
+        var operation = Reference<IOperation>();
+        var diagnostics = ComponentDependencyGraphValidator.Validate([
+            Registration(owner, typeof(Root), ServiceLifetime.Singleton,
+                Dependency(operation, ComponentDependencyCardinality.OptionalSingular,
+                    new ComponentFactoryBoundary(owner, operation, typeof(IDisposable)))),
+            Registration(operation, typeof(Operation), ServiceLifetime.Scoped),
+        ]);
+
+        diagnostics.Select(static diagnostic => diagnostic.Code)
+            .ShouldContain("agentkit.component-factory-boundary.root-mismatch");
+    }
+
+    [Fact]
     public void Validate_WhenSameImplementationIsRegisteredTwiceForASingularDependency_ReportsAmbiguity()
     {
         var diagnostics = ComponentDependencyGraphValidator.Validate([
