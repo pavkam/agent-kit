@@ -4980,6 +4980,11 @@ namespace AgentKit
         public bool ProvidesDurableAcceptance { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.SecurityAuditEventKind> SupportedEventKinds { get; }
     }
+    public sealed class SecurityAuditTimedOut : AgentKit.SecurityAuditDispatchResult, System.IEquatable<AgentKit.SecurityAuditTimedOut>
+    {
+        public SecurityAuditTimedOut(string safeReason) { }
+        public string SafeReason { get; }
+    }
     public sealed class SecurityAuditUnavailable : AgentKit.SecurityAuditDispatchResult, System.IEquatable<AgentKit.SecurityAuditUnavailable>
     {
         public SecurityAuditUnavailable(string safeReason) { }

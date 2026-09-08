@@ -65,11 +65,40 @@ owning spec.
 
 ## Latest integration evidence
 
-The exact security-profile capture checkpoint passed `make format`, `make lint`,
-and `make test` in an isolated checkout over `8af9a62`. All 4,324 tests passed
-without skips; the Release build reported zero warnings or errors. Three
-reviewed API snapshots add publication reading, authorization capture, explicit
-publication registration, typed results, and shared diagnostic names.
+The bounded audit-delivery checkpoint passed `make format`, `make lint`, and
+`make test` in an isolated checkout over `b59831d`. All 4,345 tests passed
+without skips; the Release build reported zero warnings or errors. Two reviewed
+API snapshots add `AuditDeliveryTimeout` and the typed `SecurityAuditTimedOut`
+result. The initial full run failed only these two expected comparisons.
+
+The dispatcher captures a finite per-sink deadline, defaulting to thirty
+seconds, and validates the supported timer range before activation. Injected
+`TimeProvider` timers cancel cooperative sinks and bound waits on asynchronous
+sinks that ignore cancellation. Required delivery returns a timeout result with
+unknown durable acceptance; a later successful durable sink may satisfy the
+policy after an optional timeout. Caller cancellation retains its original
+token. Late sink completion or failure cannot produce another terminal dispatch
+outcome.
+
+Ten reusable audit-dispatcher conformance cases now run against the public
+Permissions composition. Package tests retain exact terminal-outcome counts,
+including after a late sink fault, and cover timer boundaries and safe
+diagnostics. The result hierarchy documentation describes typed outcomes
+accurately; generated record copy constructors do not enforce a closed
+hierarchy.
+
+Required audit coverage across authority, approval, grant lifecycle, session,
+and host effects remains incomplete. Durable sink adapters, security-control
+persistence bootstrap, retained activation, and composed recovery/settlement
+coverage also remain open. These checkpoints establish dispatch and profile
+capture, not completion of the permissions subsystem.
+
+The preceding exact security-profile capture checkpoint (`b59831d`) passed
+`make format`, `make lint`, and `make test` in an isolated checkout over
+`8af9a62`. All 4,324 tests passed without skips; the Release build reported zero
+warnings or errors. Three reviewed API snapshots add publication reading,
+authorization capture, explicit publication registration, typed results, and
+shared diagnostic names.
 
 The default reader freezes publications by agent identity, definition revision,
 configuration revision, and profile key. The selector checks every returned

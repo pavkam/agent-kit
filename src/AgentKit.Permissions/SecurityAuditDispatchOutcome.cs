@@ -15,6 +15,9 @@ internal enum SecurityAuditDispatchOutcome
     /// <summary>A required sink failed before the delivery policy was satisfied.</summary>
     Failed,
 
+    /// <summary>A required sink exceeded its delivery deadline and durable acceptance remains unknown.</summary>
+    TimedOut,
+
     /// <summary>The caller cancelled delivery before the dispatcher reached a terminal result.</summary>
     Cancelled,
 }

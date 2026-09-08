@@ -165,4 +165,11 @@ internal static partial class SecurityLog
     internal static partial void ProfilePublicationReadCancelled(
         ILogger logger,
         SecurityProfileKey securityProfileKey);
+
+    /// <summary>Logs a required audit-delivery deadline whose durable acceptance status remains unknown.</summary>
+    /// <param name="logger">The content-free logger to receive the structured event.</param>
+    /// <param name="securityAuditRecordId">The stable correlation identity of the record whose delivery timed out.</param>
+    /// <remarks>The event does not claim non-persistence and excludes sink payloads, exception messages, and protected content.</remarks>
+    [LoggerMessage(5024, LogLevel.Error, "Required delivery of security audit record {SecurityAuditRecordId} timed out; durable acceptance is unknown.")]
+    internal static partial void AuditDispatchTimedOut(ILogger logger, SecurityAuditRecordId securityAuditRecordId);
 }

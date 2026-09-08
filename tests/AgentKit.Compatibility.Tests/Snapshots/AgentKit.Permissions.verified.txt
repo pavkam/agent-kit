@@ -7,6 +7,7 @@ namespace AgentKit.Permissions
     {
         public AgentPermissionOptions() { }
         public AgentKit.SecurityAuditDelivery AuditDelivery { get; set; }
+        public System.TimeSpan AuditDeliveryTimeout { get; set; }
         public System.TimeSpan MaximumGrantLifetime { get; set; }
         public int MaximumGrantUses { get; set; }
         public long PolicyVersion { get; set; }

@@ -3,10 +3,10 @@
 
 namespace AgentKit;
 
-/// <summary>Represents the closed terminal result of delivering a security audit intent.</summary>
+/// <summary>Represents a typed terminal result of delivering a security audit intent.</summary>
 public abstract record SecurityAuditDispatchResult
 {
-    /// <summary>Prevents external result kinds from bypassing required-audit handling.</summary>
+    /// <summary>Initializes base state for a derived security-audit delivery result type.</summary>
     private protected SecurityAuditDispatchResult()
     {
     }

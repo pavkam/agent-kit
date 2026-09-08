@@ -16,6 +16,7 @@ internal static class SecurityAuditDispatchOutcomeExtensions
             SecurityAuditDispatchOutcome.Accepted => "accepted",
             SecurityAuditDispatchOutcome.Unavailable => "unavailable",
             SecurityAuditDispatchOutcome.Failed => "failed",
+            SecurityAuditDispatchOutcome.TimedOut => "timed_out",
             SecurityAuditDispatchOutcome.Cancelled => "cancelled",
             _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "The security audit dispatch outcome is undefined."),
         };

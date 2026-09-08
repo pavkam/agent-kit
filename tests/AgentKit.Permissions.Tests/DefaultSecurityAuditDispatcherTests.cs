@@ -117,6 +117,144 @@ public sealed class DefaultSecurityAuditDispatcherTests
     }
 
     [Fact]
+    public async Task DispatchAsync_WhenOptionalSinkTimesOut_ContinuesToTheLaterRequiredDurableSink()
+    {
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var blocking = new BlockingSink();
+        var durable = new RecordingSink();
+        var dispatcher = Dispatcher(
+            SecurityAuditDelivery.Required,
+            [
+                Binding(SecurityAuditDelivery.BestEffort, durable: false, blocking),
+                Binding(SecurityAuditDelivery.Required, durable: true, durable),
+            ],
+            timeProvider: timeProvider,
+            deliveryTimeout: TimeSpan.FromSeconds(1));
+
+        var dispatch = dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken).AsTask();
+        await blocking.Started;
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+
+        var result = await dispatch;
+
+        _ = result.ShouldBeOfType<SecurityAuditAccepted>();
+        _ = durable.Records.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenOnlyBestEffortDurableSinkTimesOutUnderGlobalRequired_ReturnsAmbiguousTimeout()
+    {
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var blocking = new BlockingSink();
+        var dispatcher = Dispatcher(
+            SecurityAuditDelivery.Required,
+            [Binding(SecurityAuditDelivery.BestEffort, durable: true, blocking)],
+            timeProvider: timeProvider,
+            deliveryTimeout: TimeSpan.FromSeconds(1));
+
+        var dispatch = dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken).AsTask();
+        await blocking.Started;
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+
+        var result = await dispatch;
+
+        _ = result.ShouldBeOfType<SecurityAuditTimedOut>();
+        blocking.DeliveryCancellation.IsCancellationRequested.ShouldBeTrue();
+        blocking.Complete();
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenRequiredSinkTimesOut_DoesNotInvokeLaterSinkAndReturnsAmbiguousTimeout()
+    {
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var blocking = new BlockingSink();
+        var laterSink = new RecordingSink();
+        Activity? stopped = null;
+        List<string> outcomes = [];
+        using var activityListener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = activity => stopped = activity,
+        };
+        ActivitySource.AddActivityListener(activityListener);
+        using var meterListener = MeterListenerForAudit((_, tags) => outcomes.Add(OutcomeFrom(tags)), static (_, _) => { });
+        var logger = new RecordingLogger();
+        var dispatcher = Dispatcher(
+            SecurityAuditDelivery.Required,
+            [
+                Binding(SecurityAuditDelivery.Required, durable: true, blocking),
+                Binding(SecurityAuditDelivery.Required, durable: true, laterSink),
+            ],
+            timeProvider: timeProvider,
+            logger: logger,
+            deliveryTimeout: TimeSpan.FromSeconds(1));
+
+        var dispatch = dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken).AsTask();
+        await blocking.Started;
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+
+        var result = await dispatch;
+
+        result.ShouldBeOfType<SecurityAuditTimedOut>().SafeReason.ShouldContain("unknown");
+        laterSink.Records.ShouldBeEmpty();
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("timed_out");
+        outcomes.ShouldBe(["timed_out"]);
+        logger.EventIds.ShouldContain(new EventId(5024));
+        blocking.DeliveryCancellation.IsCancellationRequested.ShouldBeTrue();
+        blocking.Complete();
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenCallerCancelsBeforeDeadline_PropagatesCallerCancellation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var blocking = new BlockingSink();
+        var dispatcher = Dispatcher(
+            SecurityAuditDelivery.Required,
+            [Binding(SecurityAuditDelivery.Required, durable: true, blocking)],
+            timeProvider: new FakeTimeProvider(DateTimeOffset.UnixEpoch),
+            deliveryTimeout: TimeSpan.FromSeconds(1));
+
+        var dispatch = dispatcher.DispatchAsync(Record(), cancellation.Token).AsTask();
+        await blocking.Started;
+        await cancellation.CancelAsync();
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () => await dispatch);
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenTimedOutSinkFaultsLate_RetainsOneTimeoutOutcomeAndTheOriginalRecordIdentity()
+    {
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var blocking = new BlockingSink();
+        List<string> outcomes = [];
+        using var meterListener = MeterListenerForAudit((_, tags) => outcomes.Add(OutcomeFrom(tags)), static (_, _) => { });
+        var record = Record();
+        var dispatcher = Dispatcher(
+            SecurityAuditDelivery.Required,
+            [Binding(SecurityAuditDelivery.Required, durable: true, blocking)],
+            timeProvider: timeProvider,
+            deliveryTimeout: TimeSpan.FromSeconds(1));
+
+        var dispatch = dispatcher.DispatchAsync(record, TestContext.Current.CancellationToken).AsTask();
+        await blocking.Started;
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+        _ = await dispatch;
+        blocking.Fail();
+        _ = await Should.ThrowAsync<InvalidOperationException>(async () => await blocking.Completion);
+        await Task.Yield();
+
+        blocking.Records.ShouldBe([record]);
+        blocking.Records[0].Id.ShouldBe(record.Id);
+        outcomes.ShouldBe(["timed_out"]);
+    }
+
+    [Fact]
     public async Task DispatchAsync_WhenObserved_EmitsContentFreeParentedActivityAndBoundedMetrics()
     {
         Activity? stopped = null;
@@ -289,6 +427,19 @@ public sealed class DefaultSecurityAuditDispatcherTests
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuditDispatcher([null!], Options.Create(new AgentPermissionOptions()), TimeProvider.System), "bindings");
         AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher(
             [], Options.Create(new AgentPermissionOptions { AuditDelivery = (SecurityAuditDelivery) 99 }), TimeProvider.System), "options");
+        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher(
+            [], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = TimeSpan.Zero }), TimeProvider.System), "options");
+        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher(
+            [], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = TimeSpan.FromTicks(-1) }), TimeProvider.System), "options");
+        _ = Should.NotThrow(() => new DefaultSecurityAuditDispatcher(
+            [], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = AgentPermissionOptions.MaximumAuditDeliveryTimeout }), TimeProvider.System));
+        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher(
+            [], Options.Create(new AgentPermissionOptions
+            {
+                AuditDeliveryTimeout = AgentPermissionOptions.MaximumAuditDeliveryTimeout.Add(TimeSpan.FromTicks(1)),
+            }), TimeProvider.System), "options");
+        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher(
+            [], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = TimeSpan.MaxValue }), TimeProvider.System), "options");
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuditDispatcher([], new NullOptions(), TimeProvider.System), "options");
         var exception = await Should.ThrowAsync<ArgumentNullException>(async () =>
             await Dispatcher(SecurityAuditDelivery.Required, []).DispatchAsync(null!));
@@ -323,6 +474,18 @@ public sealed class DefaultSecurityAuditDispatcherTests
 
         _ = dispatcher.ShouldBeOfType<DefaultSecurityAuditDispatcher>();
         _ = result.ShouldBeOfType<SecurityAuditUnavailable>();
+    }
+
+    [Fact]
+    public void AddAgentPermissions_WhenAuditDeliveryTimeoutIsInvalid_RejectsItBeforeDispatcherActivation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentPermissions(options => options.AuditDeliveryTimeout = TimeSpan.Zero);
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Should.Throw<OptionsValidationException>(provider.GetRequiredService<ISecurityAuditDispatcher>);
+
+        exception.GetType().ShouldBe(typeof(OptionsValidationException));
     }
 
     [Fact]
@@ -401,9 +564,14 @@ public sealed class DefaultSecurityAuditDispatcherTests
         SecurityAuditDelivery delivery,
         IEnumerable<SecurityAuditSinkBinding> bindings,
         TimeProvider? timeProvider = null,
-        ILogger<DefaultSecurityAuditDispatcher>? logger = null) => new(
+        ILogger<DefaultSecurityAuditDispatcher>? logger = null,
+        TimeSpan? deliveryTimeout = null) => new(
         bindings,
-        Options.Create(new AgentPermissionOptions { AuditDelivery = delivery }),
+        Options.Create(new AgentPermissionOptions
+        {
+            AuditDelivery = delivery,
+            AuditDeliveryTimeout = deliveryTimeout ?? TimeSpan.FromSeconds(30),
+        }),
         timeProvider ?? TimeProvider.System,
         logger);
 
@@ -514,15 +682,6 @@ public sealed class DefaultSecurityAuditDispatcherTests
         }
     }
 
-    private sealed class CancellingAndThrowingSink(CancellationTokenSource cancellation): ISecurityAuditSink
-    {
-        public ValueTask WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default)
-        {
-            cancellation.Cancel();
-            return ValueTask.FromException(new InvalidOperationException("sink"));
-        }
-    }
-
     private sealed class ThrowingSink: ISecurityAuditSink
     {
         public ValueTask WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default) =>
@@ -535,6 +694,41 @@ public sealed class DefaultSecurityAuditDispatcherTests
         {
             cancellation.Cancel();
             return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class CancellingAndThrowingSink(CancellationTokenSource cancellation): ISecurityAuditSink
+    {
+        public ValueTask WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default)
+        {
+            cancellation.Cancel();
+            return ValueTask.FromException(new InvalidOperationException("sink"));
+        }
+    }
+
+    private sealed class BlockingSink: ISecurityAuditSink
+    {
+        private readonly TaskCompletionSource<bool> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Completion => _completion.Task;
+
+        public List<SecurityAuditRecord> Records { get; } = [];
+
+        public Task Started => _started.Task;
+
+        public CancellationToken DeliveryCancellation { get; private set; }
+
+        public void Complete() => _completion.TrySetResult(true);
+
+        public void Fail() => _completion.TrySetException(new InvalidOperationException("late sink fault"));
+
+        public ValueTask WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default)
+        {
+            Records.Add(record);
+            DeliveryCancellation = cancellationToken;
+            _ = _started.TrySetResult(true);
+            return new ValueTask(_completion.Task);
         }
     }
 

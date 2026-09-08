@@ -21,6 +21,8 @@ public static class ServiceExtensions
                 .Validate(static value => value.MaximumGrantLifetime > TimeSpan.Zero, "MaximumGrantLifetime must be positive.")
                 .Validate(static value => value.MaximumGrantUses > 0, "MaximumGrantUses must be positive.")
                 .Validate(static value => Enum.IsDefined(value.AuditDelivery), "AuditDelivery must be defined.")
+                .Validate(static value => AgentPermissionOptions.IsSupportedAuditDeliveryTimeout(value.AuditDeliveryTimeout),
+                    "AuditDeliveryTimeout must be positive and within the supported timer range.")
                 .ValidateOnStart();
             if (configure is not null)
             {

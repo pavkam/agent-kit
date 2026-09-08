@@ -98,6 +98,8 @@ public sealed class SecurityAuditContractTests
         Should.Throw<ArgumentException>(() => new SecurityAuditFailed(" ")).ParamName.ShouldBe("safeReason");
         Should.Throw<ArgumentNullException>(() => new SecurityAuditUnavailable(null!)).ParamName.ShouldBe("safeReason");
         Should.Throw<ArgumentException>(() => new SecurityAuditUnavailable(" ")).ParamName.ShouldBe("safeReason");
+        Should.Throw<ArgumentNullException>(() => new SecurityAuditTimedOut(null!)).ParamName.ShouldBe("safeReason");
+        Should.Throw<ArgumentException>(() => new SecurityAuditTimedOut(" ")).ParamName.ShouldBe("safeReason");
         Should.Throw<ArgumentNullException>(() => RedactedAuditValue.FromPolicyId(default)).ParamName.ShouldBe("policyId");
         Should.Throw<ArgumentNullException>(() => RedactedAuditValue.FromComponentId(default)).ParamName.ShouldBe("componentId");
         Should.Throw<ArgumentOutOfRangeException>(() => RedactedAuditValue.FromOperationKind((SecurityOperationKind) 99)).ParamName.ShouldBe("kind");
