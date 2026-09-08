@@ -65,6 +65,17 @@ owning spec.
 
 ## Latest integration evidence
 
+The enforcement value-equality checkpoint passed formatting, lint, Release
+build, and all 4,952 tests in an isolated checkout over `3ab26b1`.
+`SecurityEnforcementRequest` now compares ordered resource contents and hashes
+the same complete evidence. Independently reconstructed requests and durable
+intent receipts retain value equality; changed scope, identity, captured
+authorization, audience, operation, effect, resource order, fingerprint, or
+revocation evidence remains distinct. Existing default-array record copies have
+total equality and hashing without gaining validity for enforcement. The
+behavioral correction changes no accepted security authority. SQLite storage and
+the budget-ledger extraction remain in progress.
+
 The Permissions storage checkpoint passed formatting, lint, Release build, and
 all 4,949 tests in an isolated checkout over `05fdae4`.
 

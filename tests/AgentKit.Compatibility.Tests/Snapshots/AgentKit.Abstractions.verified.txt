@@ -5299,6 +5299,8 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> Resources { get; init; }
         public AgentKit.SecurityRevocationVersion RevocationVersion { get; init; }
         public AgentKit.SecurityAuthorizationScope Scope { get; init; }
+        public bool Equals(AgentKit.SecurityEnforcementRequest? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class SecurityGrant : System.IEquatable<AgentKit.SecurityGrant>
     {

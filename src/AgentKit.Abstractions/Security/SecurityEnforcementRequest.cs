@@ -109,4 +109,48 @@ public sealed record SecurityEnforcementRequest
     public InputFingerprint InputFingerprint { get; init; }
     /// <summary>Gets the current revocation epoch.</summary>
     public SecurityRevocationVersion RevocationVersion { get; init; }
+
+    /// <summary>Compares complete enforcement evidence using ordered structural resource equality.</summary>
+    /// <param name="other">The candidate enforcement evidence.</param>
+    /// <returns><see langword="true"/> only when every scalar, captured context, and ordered resource is equal.</returns>
+    public bool Equals(SecurityEnforcementRequest? other) =>
+        other is not null
+        && Scope == other.Scope
+        && Identity == other.Identity
+        && Authorization == other.Authorization
+        && Audience == other.Audience
+        && Kind == other.Kind
+        && Effect == other.Effect
+        && ResourcesEqual(Resources, other.Resources)
+        && InputFingerprint == other.InputFingerprint
+        && RevocationVersion == other.RevocationVersion;
+
+    /// <summary>Computes a hash from every scalar, captured context, and ordered resource.</summary>
+    /// <returns>A value consistent with structural enforcement equality.</returns>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Scope);
+        hash.Add(Identity);
+        hash.Add(Authorization);
+        hash.Add(Audience);
+        hash.Add(Kind);
+        hash.Add(Effect);
+        if (!Resources.IsDefault)
+        {
+            foreach (var resource in Resources)
+            {
+                hash.Add(resource);
+            }
+        }
+        hash.Add(InputFingerprint);
+        hash.Add(RevocationVersion);
+        return hash.ToHashCode();
+    }
+
+    private static bool ResourcesEqual(
+        ImmutableArray<ProtectedResource> left,
+        ImmutableArray<ProtectedResource> right) => left.IsDefault || right.IsDefault
+        ? left.IsDefault == right.IsDefault
+        : left.AsSpan().SequenceEqual(right.AsSpan());
 }
