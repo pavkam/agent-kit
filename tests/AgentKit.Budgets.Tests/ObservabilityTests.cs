@@ -3,8 +3,12 @@
 
 namespace AgentKit.Budgets.Tests;
 
+using System.Collections.Concurrent;
+
 public sealed class ObservabilityTests
 {
+    private static readonly BudgetDimension _observedDimension = new("test.observability.dimension");
+
     [Fact]
     public async Task ReserveAsync_WhenObserved_EmitsCorrelatedTerminalActivity()
     {
@@ -117,12 +121,14 @@ public sealed class ObservabilityTests
     [Fact]
     public async Task StartAndCorrection_WhenMeasured_UseDistinctCountersWithOnlyBoundedTags()
     {
-        var measurements = new List<(string Name, string Outcome, string Dimension, bool HasScope)>();
+        var measurements = new ConcurrentQueue<(string Name, string Outcome, string Dimension, bool HasScope)>();
         using var listener = new MeterListener
         {
             InstrumentPublished = (instrument, meterListener) =>
             {
-                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName)
+                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
+                    && instrument.Name is AgentKitMetricNames.BudgetStartCount
+                        or AgentKitMetricNames.BudgetCorrectionCount)
                 {
                     meterListener.EnableMeasurementEvents(instrument);
                 }
@@ -149,24 +155,25 @@ public sealed class ObservabilityTests
                 }
             }
 
-            if (instrument.Name is AgentKitMetricNames.BudgetStartCount or AgentKitMetricNames.BudgetCorrectionCount)
+            if (dimension == _observedDimension.Value)
             {
-                measurements.Add((instrument.Name, outcome!, dimension!, hasScope));
+                measurements.Enqueue((instrument.Name, outcome!, dimension, hasScope));
             }
         });
         listener.Start();
-        var authority = TestFactory.Authority();
+        var authority = TestFactory.Authority(dimensions: TestFactory.DefaultCatalog(
+            new BudgetDimensionDescriptor(_observedDimension, BudgetAggregationKind.Sum, [TestFactory.Count])));
         var scope = await TestFactory.CreateRootScopeAsync(authority);
         var reservation = ((BudgetReserved) await scope.ReserveAsync(
-            TestFactory.ReservationRequest(scope.Id, TestFactory.TestDimension),
+            TestFactory.ReservationRequest(scope.Id, _observedDimension),
             TestContext.Current.CancellationToken)).Reservation;
 
         _ = await reservation.MarkStartedAsync(TestContext.Current.CancellationToken);
         _ = await reservation.CommitAsync(1m, TestContext.Current.CancellationToken);
         _ = await reservation.CorrectAsync(1m, 1, TestContext.Current.CancellationToken);
 
-        measurements.ShouldContain((AgentKitMetricNames.BudgetStartCount, "started", TestFactory.TestDimension.Value, false));
-        measurements.ShouldContain((AgentKitMetricNames.BudgetCorrectionCount, "corrected", TestFactory.TestDimension.Value, false));
+        measurements.ShouldContain((AgentKitMetricNames.BudgetStartCount, "started", _observedDimension.Value, false));
+        measurements.ShouldContain((AgentKitMetricNames.BudgetCorrectionCount, "corrected", _observedDimension.Value, false));
     }
 
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>

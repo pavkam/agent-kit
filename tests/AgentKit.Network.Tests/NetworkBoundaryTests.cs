@@ -6,6 +6,29 @@ namespace AgentKit.Network.Tests;
 public sealed class NetworkBoundaryTests
 {
     [Fact]
+    public void Constructors_WhenLegacyLoggerArgumentIsNull_RetainUnambiguousSourceCompatibility()
+    {
+        var store = new TestGrantStore();
+
+        _ = new DefaultNetworkNameResolver(store, new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null);
+        using var transport = new DefaultNetworkTransport(store, new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null);
+    }
+
+    [Fact]
+    public void Constructors_WhenIntentIdsNull_ThrowWithExactParameterName()
+    {
+        var store = new TestGrantStore();
+
+        var resolver = Should.Throw<ArgumentNullException>(() => new DefaultNetworkNameResolver(
+            store, new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null, null!));
+        var transport = Should.Throw<ArgumentNullException>(() => new DefaultNetworkTransport(
+            store, new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null, null!));
+
+        resolver.ParamName.ShouldBe("intentIds");
+        transport.ParamName.ShouldBe("intentIds");
+    }
+
+    [Fact]
     public async Task ResolveAsync_WhenObserved_EmitsContentFreeOperationActivity()
     {
         Activity? stopped = null;
@@ -46,6 +69,88 @@ public sealed class NetworkBoundaryTests
     }
 
     [Fact]
+    public async Task ResolveAsync_WhenStoreReconcilesAnEarlierIntent_DeniesBeforeResolution()
+    {
+        var store = new TestGrantStore { Status = GrantConsumptionStatus.Reconciled };
+        var resolver = Resolver(store);
+
+        var result = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<NetworkResolutionDenied>();
+        _ = store.Intents.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenConsumedResultLacksExactReceipt_DeniesBeforeResolution()
+    {
+        var store = new TestGrantStore { IncludeIntentReceipt = false };
+        var resolver = Resolver(store);
+
+        var result = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<NetworkResolutionDenied>().SafeMessage.ShouldContain("enforcement-intent receipt");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenReceiptIdentityDiffers_DeniesBeforeResolution()
+    {
+        var store = new TestGrantStore { ReturnExactIntentReceipt = false };
+        var resolver = Resolver(store);
+
+        var result = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<NetworkResolutionDenied>();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenCallerAlreadyCancelled_DoesNotConsumeOrResolve()
+    {
+        var store = new TestGrantStore();
+        var resolver = Resolver(store);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var action = async () => await resolver.ResolveAsync(ResolutionRequest(Destination(443)), cancellation.Token);
+
+        _ = await action.ShouldThrowAsync<OperationCanceledException>();
+        store.Enforcements.ShouldBeEmpty();
+        store.Intents.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenReceiptAccepted_UsesInjectedFreshIntentId()
+    {
+        var store = new TestGrantStore();
+        var expectedId = new SecurityEnforcementIntentId(Guid.Parse("80000000-0000-0000-0000-000000000008"));
+        var resolver = Resolver(store, new SequenceSecurityEnforcementIntentIdGenerator(expectedId.Value));
+
+        _ = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
+
+        store.Intents.ShouldHaveSingleItem().Id.ShouldBe(expectedId);
+        store.LegacyConsumptionCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AddAgentNetwork_WhenIntentGeneratorIsHostSupplied_UsesTheReplacement()
+    {
+        var store = new TestGrantStore();
+        var expectedId = new SecurityEnforcementIntentId(Guid.Parse("81000000-0000-0000-0000-000000000008"));
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<ISecurityGrantStore>(store);
+        _ = services.AddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>>(
+            new SequenceSecurityEnforcementIntentIdGenerator(expectedId.Value));
+        _ = services.AddAgentNetwork(value =>
+            value.DestinationPolicy = new NetworkDestinationPolicy(["http"], null, allowPrivateAddresses: true));
+        using var provider = services.BuildServiceProvider();
+
+        _ = await provider.GetRequiredService<INetworkNameResolver>().ResolveAsync(
+            ResolutionRequest(Destination(443)),
+            TestContext.Current.CancellationToken);
+
+        store.Intents.ShouldHaveSingleItem().Id.ShouldBe(expectedId);
+    }
+
+    [Fact]
     public async Task ResolveAsync_WhenIpLiteralAuthorized_ReturnsFreshPolicyEligibleAddress()
     {
         var resolver = Resolver(new TestGrantStore());
@@ -57,6 +162,25 @@ public sealed class NetworkBoundaryTests
         var resolved = result.ShouldBeOfType<NetworkResolved>();
         resolved.Addresses.ShouldHaveSingleItem().Address.ShouldBe(IPAddress.Loopback);
         resolved.Addresses[0].ExpiresAt.ShouldBe(DateTimeOffset.UnixEpoch.AddMinutes(1));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
+    {
+        var clock = new FixedTimeProvider();
+        var store = new InMemorySecurityGrantStore(clock);
+        var resolver = new DefaultNetworkNameResolver(store, clock, Options.Create(OptionsForNetwork()));
+        var request = ResolutionRequest(Destination(443));
+        var grant = TestSecurity.CapturedGrant(
+            resolver.SecurityAudience,
+            [NetworkSecurityBinding.ResolutionResource(request.Destination)],
+            NetworkSecurityBinding.ResolutionFingerprint(request));
+        request = new NetworkResolutionRequest(request.Id, request.Destination, request.Bounds, grant);
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+
+        var result = await resolver.ResolveAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<NetworkResolved>();
     }
 
     [Fact]
@@ -76,6 +200,50 @@ public sealed class NetworkBoundaryTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenStoreReconcilesAnEarlierIntent_DeniesBeforeConnection()
+    {
+        var store = new TestGrantStore { Status = GrantConsumptionStatus.Reconciled };
+        await using var server = LoopbackServer.Start("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        using var transport = Transport(store);
+
+        var result = await transport.SendAsync(Request(Destination(server.Port)), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<NetworkDenied>();
+        _ = store.Intents.ShouldHaveSingleItem();
+        server.AcceptedConnections.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCallerAlreadyCancelled_DoesNotConsumeOrConnect()
+    {
+        var store = new TestGrantStore();
+        using var transport = Transport(store);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var action = async () => await transport.SendAsync(Request(Destination(1)), cancellation.Token);
+
+        _ = await action.ShouldThrowAsync<OperationCanceledException>();
+        store.Enforcements.ShouldBeEmpty();
+        store.Intents.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCallerCancelsDuringNonCooperativeConsumption_DoesNotConnect()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var store = new TestGrantStore { OnIntentConsumption = cancellation.Cancel };
+        await using var server = LoopbackServer.Start("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        using var transport = Transport(store);
+
+        var action = async () => await transport.SendAsync(Request(Destination(server.Port)), cancellation.Token);
+
+        _ = await action.ShouldThrowAsync<OperationCanceledException>();
+        _ = store.Intents.ShouldHaveSingleItem();
+        server.AcceptedConnections.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task SendAsync_WhenResponseAuthorized_ReturnsBoundedOwnedBody()
     {
         await using var server = LoopbackServer.Start("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello");
@@ -86,6 +254,36 @@ public sealed class NetworkBoundaryTests
         var received = result.ShouldBeOfType<NetworkResponseReceived>();
         using var reader = new StreamReader(received.Response.Content);
         (await reader.ReadToEndAsync(TestContext.Current.CancellationToken)).ShouldBe("hello");
+        await received.Response.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
+    {
+        await using var server = LoopbackServer.Start("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        var clock = new FixedTimeProvider();
+        var store = new InMemorySecurityGrantStore(clock);
+        using var transport = new DefaultNetworkTransport(store, clock, Options.Create(OptionsForNetwork()));
+        var request = Request(Destination(server.Port));
+        var grant = TestSecurity.CapturedGrant(
+            transport.SecurityAudience,
+            NetworkSecurityBinding.RequestResources(request),
+            NetworkSecurityBinding.RequestFingerprint(request));
+        request = new NetworkRequest(
+            request.Id,
+            request.Method,
+            request.Destination,
+            request.Headers,
+            request.Content,
+            request.Bounds,
+            request.ResolvedAddresses,
+            request.Classification,
+            grant);
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+
+        var result = await transport.SendAsync(request, TestContext.Current.CancellationToken);
+
+        var received = result.ShouldBeOfType<NetworkResponseReceived>();
         await received.Response.DisposeAsync();
     }
 
@@ -164,10 +362,11 @@ public sealed class NetworkBoundaryTests
         fingerprint.Value.ShouldNotContain("private body");
     }
 
-    private static DefaultNetworkNameResolver Resolver(TestGrantStore store) => new(
-        store,
-        new FixedTimeProvider(),
-        Options.Create(OptionsForNetwork()));
+    private static DefaultNetworkNameResolver Resolver(
+        TestGrantStore store,
+        IIdentifierGenerator<SecurityEnforcementIntentId>? intentIds = null) => intentIds is null
+        ? new DefaultNetworkNameResolver(store, new FixedTimeProvider(), Options.Create(OptionsForNetwork()))
+        : new DefaultNetworkNameResolver(store, new FixedTimeProvider(), Options.Create(OptionsForNetwork()), null, intentIds);
 
     private static DefaultNetworkTransport Transport(TestGrantStore store, TimeProvider? timeProvider = null) => new(
         store,

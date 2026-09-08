@@ -7,6 +7,7 @@ internal sealed class LoopbackServer: IAsyncDisposable
 {
     private readonly TcpListener _listener;
     private readonly Task _serve;
+    private int _acceptedConnections;
 
     private LoopbackServer(string response)
     {
@@ -18,11 +19,14 @@ internal sealed class LoopbackServer: IAsyncDisposable
 
     internal int Port { get; }
 
+    internal int AcceptedConnections => Volatile.Read(ref _acceptedConnections);
+
     internal static LoopbackServer Start(string response) => new(response);
 
     private async Task ServeAsync(string response)
     {
         using var client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
+        _ = Interlocked.Increment(ref _acceptedConnections);
         await using var stream = client.GetStream();
         var buffer = new byte[4_096];
         _ = await stream.ReadAsync(buffer).ConfigureAwait(false);

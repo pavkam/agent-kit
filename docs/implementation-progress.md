@@ -65,12 +65,38 @@ owning spec.
 
 ## Latest integration evidence
 
-The grant-enforcement checkpoint passed `make format`, `make lint`, and
-`make test` in an isolated checkout over `4e1adf7`. All 4,414 tests passed
+The network-enforcement checkpoint passed `make format`, `make lint`, and
+`make test` in an isolated checkout over `2e4e164`. All 4,439 tests passed
 without skips; the Release build reported zero warnings or errors. The initial
-full run passed 4,398 of 4,401 tests and failed only the three expected API
-snapshot comparisons. Thirteen direct guard cases were added before the final
-run, alongside the reviewed snapshots and documentation correction.
+run exposed six composed web-fixture failures and two expected API comparisons.
+The strict web fixture now implements exact intent receipts and preserves the
+existing two-phase authorization and redirect assertions. Both additive API
+snapshots were reviewed before the final run, which also includes direct null
+intent-generator validation for all four new constructor overloads.
+
+A later run exposed a race in the unchanged budget-metrics test: its global
+listener collected parallel tests' events into an unsynchronized list. The
+fixture now selects its two instruments and dedicated bounded dimension, and
+retains measurements in a concurrent queue. Ten focused budget-suite runs with
+sixteen test threads passed before final solution verification.
+
+The default and scripted DNS resolvers and network transports now require a
+fresh `Consumed` result with a receipt matching the intent, grant, request,
+fence, fingerprint, captured authorization, and every concrete enforcement
+field. Reconciled, unsupported, missing, or mismatched receipts cannot begin a
+new effect. Caller cancellation is checked after a noncooperative grant store
+returns. Each boundary accepts a replaceable typed intent identifier generator;
+existing constructors, including explicit null loggers, remain compatible.
+Actual captured grants from `InMemorySecurityGrantStore` succeed through all
+four paths. Required audit coverage and the remaining network architecture
+requirements stay open.
+
+The preceding grant-enforcement checkpoint (`2e4e164`) passed `make format`,
+`make lint`, and `make test` in an isolated checkout over `4e1adf7`. All 4,414
+tests passed without skips; the Release build reported zero warnings or errors.
+The initial full run passed 4,398 of 4,401 tests and failed only the three
+expected API snapshot comparisons. Thirteen direct guard cases were added before
+the final run, alongside the reviewed snapshots and documentation correction.
 
 Grant stores can now consume one use and retain its exact enforcement-intent
 receipt atomically. An exact retry returns `Reconciled` historical evidence; it
@@ -96,11 +122,10 @@ and binary compatibility change: callers construct a validated result instead of
 changing fields independently of its retained receipt. Captured scope and
 identity copies also enforce their documented invariants.
 
-Protected session routing, facade profile activation, and network, process, and
-filesystem receipt enforcement are still being integrated. Required audit
-coverage, durable security-control persistence, live policy retirement, and
-composed recovery remain open; this checkpoint does not complete the security
-subsystem.
+Protected session routing, facade profile activation, and process and filesystem
+receipt enforcement are still being integrated. Required audit coverage, durable
+security-control persistence, live policy retirement, and composed recovery
+remain open; this checkpoint does not complete the security subsystem.
 
 The preceding bounded audit-delivery checkpoint (`4e1adf7`) passed
 `make format`, `make lint`, and `make test` in an isolated checkout over

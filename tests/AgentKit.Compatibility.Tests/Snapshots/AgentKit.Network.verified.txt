@@ -13,12 +13,14 @@ namespace AgentKit.Network
     public sealed class DefaultNetworkNameResolver : AgentKit.INetworkNameResolver
     {
         public DefaultNetworkNameResolver(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Network.AgentNetworkOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Network.DefaultNetworkNameResolver>? logger = null) { }
+        public DefaultNetworkNameResolver(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Network.AgentNetworkOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Network.DefaultNetworkNameResolver>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.NetworkResolutionResult> ResolveAsync(AgentKit.NetworkResolutionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class DefaultNetworkTransport : AgentKit.INetworkTransport, System.IDisposable
     {
         public DefaultNetworkTransport(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Network.AgentNetworkOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Network.DefaultNetworkTransport>? logger = null) { }
+        public DefaultNetworkTransport(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Network.AgentNetworkOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Network.DefaultNetworkTransport>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public void Dispose() { }
         public System.Threading.Tasks.ValueTask<AgentKit.NetworkSendResult> SendAsync(AgentKit.NetworkRequest request, System.Threading.CancellationToken cancellationToken = default) { }

@@ -5,6 +5,7 @@ namespace AgentKit.Network;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 /// <summary>Registers the security-enforcing real network leaf.</summary>
 public static class ServiceExtensions
@@ -35,8 +36,19 @@ public static class ServiceExtensions
 
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IIdentifierGenerator<NetworkOperationId>, GuidNetworkOperationIdGenerator>();
-            services.TryAddSingleton<INetworkNameResolver, DefaultNetworkNameResolver>();
-            services.TryAddSingleton<INetworkTransport, DefaultNetworkTransport>();
+            services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
+            services.TryAddSingleton<INetworkNameResolver>(static provider => new DefaultNetworkNameResolver(
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<IOptions<AgentNetworkOptions>>(),
+                provider.GetService<ILogger<DefaultNetworkNameResolver>>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
+            services.TryAddSingleton<INetworkTransport>(static provider => new DefaultNetworkTransport(
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<IOptions<AgentNetworkOptions>>(),
+                provider.GetService<ILogger<DefaultNetworkTransport>>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
             return services;
         }
     }

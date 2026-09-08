@@ -14,6 +14,7 @@ namespace AgentKit.Network.InMemory
     public sealed class ScriptedNetworkNameResolver : AgentKit.INetworkNameResolver
     {
         public ScriptedNetworkNameResolver(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Network.InMemory.ScriptedNetworkNameResolver>? logger = null) { }
+        public ScriptedNetworkNameResolver(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Network.InMemory.ScriptedNetworkNameResolver>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Collections.Generic.IReadOnlyList<AgentKit.Network.InMemory.NetworkOperationTrace> Traces { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.NetworkResolutionResult> ResolveAsync(AgentKit.NetworkResolutionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
@@ -29,6 +30,7 @@ namespace AgentKit.Network.InMemory
     public sealed class ScriptedNetworkTransport : AgentKit.INetworkTransport
     {
         public ScriptedNetworkTransport(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Network.InMemory.ScriptedNetworkTransport>? logger = null) { }
+        public ScriptedNetworkTransport(AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Network.InMemory.ScriptedNetworkTransport>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Collections.Generic.IReadOnlyList<AgentKit.Network.InMemory.NetworkOperationTrace> Traces { get; }
         public void Script(AgentKit.NetworkDestination destination, [System.Runtime.CompilerServices.ParamCollection] System.Collections.Generic.IEnumerable<AgentKit.NetworkSendResult> results) { }

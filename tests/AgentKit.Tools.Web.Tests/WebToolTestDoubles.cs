@@ -22,16 +22,7 @@ internal sealed class StrictGrantStore: ISecurityGrantStore
         CancellationToken cancellationToken = default)
     {
         Enforcements.Add(enforcement);
-        var matches = _grants.TryGetValue(grant.Id, out var registered)
-            && registered == grant
-            && grant.Scope == enforcement.Scope
-            && grant.Identity == enforcement.Identity
-            && grant.Audience == enforcement.Audience
-            && grant.Kind == enforcement.Kind
-            && grant.Effect == enforcement.Effect
-            && grant.Resources.SequenceEqual(enforcement.Resources)
-            && grant.InputFingerprint == enforcement.InputFingerprint
-            && grant.RevocationVersion == enforcement.RevocationVersion;
+        var matches = Matches(grant, enforcement);
         var status = !matches
             ? GrantConsumptionStatus.Mismatch
             : _consumed.Add(grant.Id) ? GrantConsumptionStatus.Consumed : GrantConsumptionStatus.Exhausted;
@@ -41,8 +32,49 @@ internal sealed class StrictGrantStore: ISecurityGrantStore
             status == GrantConsumptionStatus.Consumed ? "Consumed." : "Denied."));
     }
 
+    public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+        SecurityGrant grant,
+        SecurityEnforcementRequest enforcement,
+        SecurityEnforcementIntent intent,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Enforcements.Add(enforcement);
+        var matches = Matches(grant, enforcement);
+        var status = !matches
+            ? GrantConsumptionStatus.Mismatch
+            : _consumed.Add(grant.Id) ? GrantConsumptionStatus.Consumed : GrantConsumptionStatus.Exhausted;
+        return ValueTask.FromResult(new GrantConsumptionResult(
+            status,
+            0,
+            status == GrantConsumptionStatus.Consumed ? "Consumed." : "Denied.",
+            status == GrantConsumptionStatus.Consumed
+                ? new SecurityEnforcementIntentReceipt(
+                    intent.Id,
+                    grant.Id,
+                    grant.RequestId,
+                    enforcement,
+                    intent.RequiredFence,
+                    SecurityEnforcementBinding.Fingerprint(enforcement, intent),
+                    DateTimeOffset.UnixEpoch)
+                : null));
+    }
+
     public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(_grants.Remove(grantId));
+
+    private bool Matches(SecurityGrant grant, SecurityEnforcementRequest enforcement) =>
+        _grants.TryGetValue(grant.Id, out var registered)
+        && registered == grant
+        && grant.Scope == enforcement.Scope
+        && grant.Identity == enforcement.Identity
+        && grant.Authorization == enforcement.Authorization
+        && grant.Audience == enforcement.Audience
+        && grant.Kind == enforcement.Kind
+        && grant.Effect == enforcement.Effect
+        && grant.Resources.SequenceEqual(enforcement.Resources)
+        && grant.InputFingerprint == enforcement.InputFingerprint
+        && grant.RevocationVersion == enforcement.RevocationVersion;
 }
 
 internal sealed class RecordingSecurityAuthority(StrictGrantStore store): ISecurityAuthority

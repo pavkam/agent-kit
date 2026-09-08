@@ -14,6 +14,7 @@ public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposa
     private readonly ISecurityGrantStore _grantStore;
     private readonly NetworkDestinationPolicy _policy;
     private readonly TimeProvider _timeProvider;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly HttpMessageInvoker _invoker;
     private readonly ILogger<DefaultNetworkTransport> _logger;
 
@@ -21,21 +22,40 @@ public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposa
     /// <param name="grantStore">The authoritative grant store.</param>
     /// <param name="timeProvider">The deterministic deadline and freshness clock.</param>
     /// <param name="options">The validated structural destination policy.</param>
-    /// <param name="logger">The optional content-free diagnostic logger.</param>
-    /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
+    /// <param name="logger">The optional content-free diagnostic logger; a null value selects a null logger.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="grantStore"/>, <paramref name="timeProvider"/>, or <paramref name="options"/> is null.</exception>
     public DefaultNetworkTransport(
         ISecurityGrantStore grantStore,
         TimeProvider timeProvider,
         IOptions<AgentNetworkOptions> options,
         ILogger<DefaultNetworkTransport>? logger = null)
+        : this(grantStore, timeProvider, options, logger, new GuidSecurityEnforcementIntentIdGenerator())
+    {
+    }
+
+    /// <summary>Initializes the protected HTTP transport with an injected enforcement-intent identity source.</summary>
+    /// <param name="grantStore">The authoritative store that atomically consumes a grant and records permission to start.</param>
+    /// <param name="timeProvider">The deterministic deadline and freshness clock.</param>
+    /// <param name="options">The validated structural destination policy.</param>
+    /// <param name="logger">The optional content-free diagnostic logger.</param>
+    /// <param name="intentIds">The non-null thread-safe source of fresh per-send enforcement intent identities.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="grantStore"/>, <paramref name="timeProvider"/>, <paramref name="options"/>, or <paramref name="intentIds"/> is null.</exception>
+    public DefaultNetworkTransport(
+        ISecurityGrantStore grantStore,
+        TimeProvider timeProvider,
+        IOptions<AgentNetworkOptions> options,
+        ILogger<DefaultNetworkTransport>? logger,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
     {
         ArgumentNullException.ThrowIfNull(grantStore);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(intentIds);
         _logger = logger ?? NullLogger<DefaultNetworkTransport>.Instance;
         _grantStore = grantStore;
         _timeProvider = timeProvider;
         _policy = options.Value.DestinationPolicy;
+        _intentIds = intentIds;
         _invoker = new HttpMessageInvoker(
             new SocketsHttpHandler
             {
@@ -55,21 +75,24 @@ public sealed partial class DefaultNetworkTransport: INetworkTransport, IDisposa
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        var enforcement = NetworkEnforcementReceipt.Create(
+            request.Grant,
+            SecurityAudience,
+            NetworkSecurityBinding.RequestResources(request),
+            NetworkSecurityBinding.RequestFingerprint(request));
+        var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
         var consumption = await _grantStore.ValidateAndConsumeAsync(
             request.Grant,
-            new SecurityEnforcementRequest(
-                request.Grant.Scope,
-                request.Grant.Identity,
-                SecurityAudience,
-                SecurityOperationKind.Network,
-                SecurityEffect.Egress,
-                NetworkSecurityBinding.RequestResources(request),
-                NetworkSecurityBinding.RequestFingerprint(request),
-                request.Grant.RevocationVersion),
+            enforcement,
+            intent,
             cancellationToken).ConfigureAwait(false);
-        if (consumption.Status != GrantConsumptionStatus.Consumed)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!NetworkEnforcementReceipt.IsFreshExact(consumption, request.Grant, enforcement, intent))
         {
-            return new NetworkDenied(consumption.SafeMessage);
+            return new NetworkDenied(consumption.Status == GrantConsumptionStatus.Consumed
+                ? "The grant store did not retain a fresh exact enforcement-intent receipt."
+                : consumption.SafeMessage);
         }
 
         if (!_policy.AllowsSchemeAndHost(request.Destination))

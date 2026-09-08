@@ -21,8 +21,17 @@ public static class ServiceExtensions
             _ = services.AddAgentKitObservability();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IIdentifierGenerator<NetworkOperationId>, GuidNetworkOperationIdGenerator>();
-            services.TryAddSingleton<ScriptedNetworkNameResolver>();
-            services.TryAddSingleton<ScriptedNetworkTransport>();
+            services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
+            services.TryAddSingleton<ScriptedNetworkNameResolver>(static provider => new(
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetService<ILogger<ScriptedNetworkNameResolver>>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
+            services.TryAddSingleton<ScriptedNetworkTransport>(static provider => new(
+                provider.GetRequiredService<ISecurityGrantStore>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetService<ILogger<ScriptedNetworkTransport>>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
             services.TryAddSingleton<INetworkNameResolver>(static provider =>
                 provider.GetRequiredService<ScriptedNetworkNameResolver>());
             services.TryAddSingleton<INetworkTransport>(static provider =>

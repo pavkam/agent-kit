@@ -11,22 +11,40 @@ public sealed partial class ScriptedNetworkTransport: INetworkTransport
     private readonly List<NetworkOperationTrace> _traces = [];
     private readonly ISecurityGrantStore _grantStore;
     private readonly TimeProvider _timeProvider;
+    private readonly IIdentifierGenerator<SecurityEnforcementIntentId> _intentIds;
     private readonly ILogger<ScriptedNetworkTransport> _logger;
 
     /// <summary>Initializes the protected deterministic transport.</summary>
     /// <param name="grantStore">The authoritative single-use grant store.</param>
     /// <param name="timeProvider">The deterministic trace clock.</param>
     /// <param name="logger">The optional content-free diagnostic logger.</param>
-    /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="grantStore"/> or <paramref name="timeProvider"/> is null.</exception>
     public ScriptedNetworkTransport(
         ISecurityGrantStore grantStore,
         TimeProvider timeProvider,
         ILogger<ScriptedNetworkTransport>? logger = null)
+        : this(grantStore, timeProvider, logger, new GuidSecurityEnforcementIntentIdGenerator())
+    {
+    }
+
+    /// <summary>Initializes the protected deterministic transport with an injected enforcement-intent identity source.</summary>
+    /// <param name="grantStore">The authoritative store that atomically consumes a grant and records permission to start.</param>
+    /// <param name="timeProvider">The deterministic trace clock.</param>
+    /// <param name="logger">The optional content-free diagnostic logger.</param>
+    /// <param name="intentIds">The non-null thread-safe source of fresh per-send enforcement intent identities.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="grantStore"/>, <paramref name="timeProvider"/>, or <paramref name="intentIds"/> is null.</exception>
+    public ScriptedNetworkTransport(
+        ISecurityGrantStore grantStore,
+        TimeProvider timeProvider,
+        ILogger<ScriptedNetworkTransport>? logger,
+        IIdentifierGenerator<SecurityEnforcementIntentId> intentIds)
     {
         ArgumentNullException.ThrowIfNull(grantStore);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(intentIds);
         _grantStore = grantStore;
         _timeProvider = timeProvider;
+        _intentIds = intentIds;
         _logger = logger ?? NullLogger<ScriptedNetworkTransport>.Instance;
     }
 
@@ -68,21 +86,24 @@ public sealed partial class ScriptedNetworkTransport: INetworkTransport
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        var enforcement = NetworkEnforcementReceipt.Create(
+            request.Grant,
+            SecurityAudience,
+            NetworkSecurityBinding.RequestResources(request),
+            NetworkSecurityBinding.RequestFingerprint(request));
+        var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
         var consumption = await _grantStore.ValidateAndConsumeAsync(
             request.Grant,
-            new SecurityEnforcementRequest(
-                request.Grant.Scope,
-                request.Grant.Identity,
-                SecurityAudience,
-                SecurityOperationKind.Network,
-                SecurityEffect.Egress,
-                NetworkSecurityBinding.RequestResources(request),
-                NetworkSecurityBinding.RequestFingerprint(request),
-                request.Grant.RevocationVersion),
+            enforcement,
+            intent,
             cancellationToken).ConfigureAwait(false);
-        if (consumption.Status != GrantConsumptionStatus.Consumed)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!NetworkEnforcementReceipt.IsFreshExact(consumption, request.Grant, enforcement, intent))
         {
-            return new NetworkDenied(consumption.SafeMessage);
+            return new NetworkDenied(consumption.Status == GrantConsumptionStatus.Consumed
+                ? "The grant store did not retain a fresh exact enforcement-intent receipt."
+                : consumption.SafeMessage);
         }
 
         lock (_gate)
