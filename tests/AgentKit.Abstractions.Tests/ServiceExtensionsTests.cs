@@ -26,6 +26,10 @@ public sealed class ServiceExtensionsTests
         public SampleId Create() => new(Guid.NewGuid());
     }
 
+    private interface ISampleService;
+
+    private sealed class SampleService: ISampleService;
+
     [Fact]
     public void TryAddIdentifierGenerator_WhenNoneRegistered_RegistersSingleton()
     {
@@ -58,4 +62,55 @@ public sealed class ServiceExtensionsTests
 
         result.ShouldBeSameAs(services);
     }
+
+    [Fact]
+    public void DeclareAgentKitComponent_WhenServicesIsNull_ThrowsExactArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(() => services.DeclareAgentKitComponent(Registration()));
+
+        exception.GetType().ShouldBe(typeof(ArgumentNullException));
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void DeclareAgentKitComponent_WhenRegistrationIsNull_ThrowsBeforeMutation()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Should.Throw<ArgumentNullException>(() => services.DeclareAgentKitComponent(null!));
+
+        exception.GetType().ShouldBe(typeof(ArgumentNullException));
+        exception.ParamName.ShouldBe("registration");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void DeclareAgentKitComponent_WhenCalled_AddsMetadataWithoutResolvingOrReplacingDuplicates()
+    {
+        var factoryCalls = 0;
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<ISampleService>(
+            _ =>
+            {
+                factoryCalls++;
+                return new SampleService();
+            });
+        var registration = Registration();
+
+        var result = services
+            .DeclareAgentKitComponent(registration)
+            .DeclareAgentKitComponent(registration);
+
+        result.ShouldBeSameAs(services);
+        services.Count(descriptor => descriptor.ServiceType == typeof(ComponentRegistrationDescriptor)).ShouldBe(2);
+        factoryCalls.ShouldBe(0);
+    }
+
+    private static ComponentRegistrationDescriptor Registration() => new(
+        ComponentContractReference.Unkeyed<ISampleService>(),
+        typeof(SampleService),
+        ServiceLifetime.Singleton,
+        []);
 }

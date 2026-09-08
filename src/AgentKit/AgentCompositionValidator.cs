@@ -28,14 +28,41 @@ internal static class AgentCompositionValidator
     /// The composition is missing a required engine-wide service, publishes no
     /// runnable agent definition, or cannot resolve a loop for a run.
     /// </exception>
+    /// <exception cref="ArgumentNullException"><paramref name="provider"/> is <see langword="null"/>.</exception>
     /// <returns>
-    /// The exact immutable run-profile snapshot inspected by validation. The caller must
-    /// pass this same instance into engine construction so replaceable readers cannot
-    /// exchange the validated publication set between those stages.
+    /// The exact immutable run-profile and partial component-registration
+    /// evidence inspected by validation. The caller must pass this same
+    /// instance into engine construction so replaceable readers or later
+    /// service-collection mutation cannot exchange evidence between stages.
     /// </returns>
-    public static AgentRunProfilePublicationSnapshot Validate(IServiceProvider provider)
+    public static AgentCompositionSnapshot Validate(IServiceProvider provider)
     {
-        Debug.Assert(provider is not null, "A built provider is required for composition validation.");
+        ArgumentNullException.ThrowIfNull(provider);
+
+        var componentRegistrations = provider.GetService<ComponentRegistrationSnapshot>()
+            ?? throw new AgentCompositionException([
+                new CompositionDiagnostic(
+                    "agentkit.component-registration.snapshot-missing",
+                    "No build-local component registration snapshot is registered. Hosted compositions must use AgentKitServiceProviderFactory."),
+            ]);
+
+        return Validate(provider, componentRegistrations);
+    }
+
+    /// <summary>Validates a provider against the exact registration snapshot already captured for this build.</summary>
+    /// <param name="provider">The freshly built non-null composition to inspect.</param>
+    /// <param name="componentRegistrations">The non-null build-local registration evidence to validate and retain.</param>
+    /// <returns>The exact immutable readiness evidence inspected by validation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="provider"/> or <paramref name="componentRegistrations"/> is <see langword="null"/>.</exception>
+    /// <exception cref="AgentCompositionException">Declared graph, DI correspondence, or reduced runnable readiness validation fails.</exception>
+    internal static AgentCompositionSnapshot Validate(
+        IServiceProvider provider,
+        ComponentRegistrationSnapshot componentRegistrations)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(componentRegistrations);
+
+        ValidateComponentRegistrations(componentRegistrations);
 
         var diagnostics = ImmutableArray.CreateBuilder<CompositionDiagnostic>();
 
@@ -62,7 +89,26 @@ internal static class AgentCompositionValidator
 
         Debug.Assert(validatedRunProfiles is not null,
             "A runnable composition must have one validated run-profile snapshot.");
-        return validatedRunProfiles;
+        return new AgentCompositionSnapshot(validatedRunProfiles, componentRegistrations);
+    }
+
+    /// <summary>Validates the declared closed graph and its actual DI correspondence before application services are resolved.</summary>
+    /// <param name="snapshot">The non-null build-local registration evidence.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is <see langword="null"/>.</exception>
+    /// <exception cref="AgentCompositionException">The declared graph or its Microsoft DI correspondence is invalid. An absent declaration set remains explicitly partial and is not treated as complete graph validation.</exception>
+    internal static void ValidateComponentRegistrations(ComponentRegistrationSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        ImmutableArray<CompositionDiagnostic> diagnostics =
+        [
+            .. ComponentDependencyGraphValidator.Validate(snapshot.Registrations),
+            .. ComponentRegistrationCorrespondenceValidator.Validate(snapshot),
+        ];
+        if (!diagnostics.IsEmpty)
+        {
+            throw new AgentCompositionException(diagnostics);
+        }
     }
 
     private static AgentRunProfilePublicationSnapshot? ValidateCatalog(

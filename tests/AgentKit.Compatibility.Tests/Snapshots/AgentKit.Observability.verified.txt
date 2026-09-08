@@ -14,6 +14,7 @@ namespace AgentKit.Observability
     public static class AgentKitActivityNames
     {
         public const string AgentAdmission = "agent.admission";
+        public const string AgentCompositionBuild = "agent.composition.build";
         public const string AgentTurn = "agent.turn";
         public const string BudgetCommit = "budget.commit";
         public const string BudgetCorrection = "budget.correction";
@@ -82,6 +83,8 @@ namespace AgentKit.Observability
     public static class AgentKitMetricNames
     {
         public const string AgentAdmissionCount = "agentkit.agent.admission.count";
+        public const string AgentCompositionBuildCount = "agentkit.agent.composition.build.count";
+        public const string AgentCompositionBuildDuration = "agentkit.agent.composition.build.duration";
         public const string AgentRunCount = "agentkit.agent.run.count";
         public const string AgentRunDuration = "agentkit.agent.run.duration";
         public const string AgentRunProfilePublicationReadCount = "agentkit.agent.run_profile.read.count";

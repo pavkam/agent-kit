@@ -29,6 +29,43 @@ public static class ServiceExtensions
     extension(IServiceCollection services)
     {
         /// <summary>
+        /// Adds one explicit component-registration declaration for later
+        /// composition validation.
+        /// </summary>
+        /// <param name="registration">
+        /// The immutable contract, key, implementation, lifetime, and direct
+        /// dependency declaration that must correspond to an ordinary
+        /// Microsoft DI registration in the same collection.
+        /// </param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <remarks>
+        /// <para>
+        /// Declarations are additive and this method intentionally retains
+        /// duplicates so composition validation can reject ambiguous or
+        /// repeated evidence. It does not register the described component,
+        /// build a provider, resolve a service, or invoke a factory.
+        /// </para>
+        /// <para>
+        /// A component registered through an opaque implementation factory
+        /// must still declare its concrete implementation type and complete
+        /// direct dependency graph here. Validation never executes a factory
+        /// to infer either fact.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="services"/> or <paramref name="registration"/> is
+        /// <see langword="null"/>.
+        /// </exception>
+        public IServiceCollection DeclareAgentKitComponent(ComponentRegistrationDescriptor registration)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(registration);
+
+            _ = services.AddSingleton(registration);
+            return services;
+        }
+
+        /// <summary>
         /// Registers <typeparamref name="TGenerator"/> as the singleton
         /// <see cref="IIdentifierGenerator{TIdentifier}"/> used to create
         /// every new <typeparamref name="TIdentifier"/> value, unless a

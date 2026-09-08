@@ -7,6 +7,9 @@ namespace AgentKit.Observability;
 /// <remarks>Names describe operations, never high-cardinality identities or content.</remarks>
 public static class AgentKitActivityNames
 {
+    /// <summary>Gets the name for validating and building one AgentKit service provider.</summary>
+    public const string AgentCompositionBuild = "agent.composition.build";
+
     /// <summary>Gets the name for validating a pinned definition before a new agent run is admitted.</summary>
     public const string AgentAdmission = "agent.admission";
 

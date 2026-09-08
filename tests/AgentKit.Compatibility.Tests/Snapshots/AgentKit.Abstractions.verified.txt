@@ -5407,6 +5407,7 @@ namespace AgentKit
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection DeclareAgentKitComponent(AgentKit.ComponentRegistrationDescriptor registration) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection TryAddIdentifierGenerator<TIdentifier, TGenerator>()
                 where TIdentifier :  struct
                 where TGenerator :  class, AgentKit.IIdentifierGenerator<TIdentifier> { }

@@ -3,6 +3,7 @@
 
 namespace AgentKit.Tests;
 
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
 using AgentKit.Observability;
@@ -66,6 +67,8 @@ public sealed class DefaultAgentRunProfilePublicationReaderTests
     [Fact]
     public async Task ReadAsync_WhenDiagnosticsThrow_PreservesFoundUnavailableAndCancellation()
     {
+        using var parent = new Activity("run-profile-reader-hostile-meter-parent").Start();
+        var parentTraceId = parent.TraceId;
         var definition = CompositionTestData.Definition();
         var publication = CompositionTestData.RunProfile(definition);
         var reader = new DefaultAgentRunProfilePublicationReader(
@@ -79,7 +82,13 @@ public sealed class DefaultAgentRunProfilePublicationReaderTests
             }
         };
         listener.SetMeasurementEventCallback<long>(
-            static (_, _, _, _) => throw new InvalidOperationException("Hostile meter."));
+            (_, _, _, _) =>
+            {
+                if (Activity.Current?.TraceId == parentTraceId)
+                {
+                    throw new InvalidOperationException("Hostile meter.");
+                }
+            });
         listener.Start();
 
         var found = await reader.ReadAsync(
@@ -93,6 +102,7 @@ public sealed class DefaultAgentRunProfilePublicationReaderTests
 
         _ = found.ShouldBeOfType<AgentRunProfilePublicationFound>();
         _ = unavailable.ShouldBeOfType<AgentRunProfilePublicationUnavailable>();
+        Activity.Current.ShouldBe(parent);
     }
 
     [Fact]

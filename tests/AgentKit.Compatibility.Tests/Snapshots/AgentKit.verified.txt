@@ -36,6 +36,15 @@ namespace AgentKit
         public Microsoft.Extensions.DependencyInjection.IServiceCollection Services { get; }
         public AgentKit.AgentEngine Build() { }
     }
+    public sealed class AgentKitServiceProviderFactory : Microsoft.Extensions.DependencyInjection.IServiceProviderFactory<Microsoft.Extensions.DependencyInjection.IServiceCollection>
+    {
+        public AgentKitServiceProviderFactory() { }
+        public AgentKitServiceProviderFactory(Microsoft.Extensions.DependencyInjection.ServiceProviderOptions options) { }
+        public AgentKitServiceProviderFactory(Microsoft.Extensions.DependencyInjection.ServiceProviderOptions options, Microsoft.Extensions.Logging.ILogger<AgentKit.AgentKitServiceProviderFactory> logger) { }
+        public AgentKitServiceProviderFactory(Microsoft.Extensions.DependencyInjection.ServiceProviderOptions options, Microsoft.Extensions.Logging.ILogger<AgentKit.AgentKitServiceProviderFactory> logger, System.TimeProvider timeProvider) { }
+        public Microsoft.Extensions.DependencyInjection.IServiceCollection CreateBuilder(Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+        public System.IServiceProvider CreateServiceProvider(Microsoft.Extensions.DependencyInjection.IServiceCollection containerBuilder) { }
+    }
     public sealed class AgentRunOptions : System.IEquatable<AgentKit.AgentRunOptions>
     {
         public AgentRunOptions(AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.ExecutionIdentity identity, int? maxTurns = default, System.TimeSpan? attemptTimeout = default) { }

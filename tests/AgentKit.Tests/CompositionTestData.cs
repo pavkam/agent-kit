@@ -80,6 +80,16 @@ internal static class CompositionTestData
         }
     }
 
+    public static ServiceProvider BuildHostedProvider(
+        IServiceCollection services,
+        ServiceProviderOptions? options = null)
+    {
+        var factory = options is null
+            ? new AgentKitServiceProviderFactory()
+            : new AgentKitServiceProviderFactory(options);
+        return (ServiceProvider) factory.CreateServiceProvider(factory.CreateBuilder(services));
+    }
+
     /// <summary>
     /// Builds a composition that satisfies engine validation: the facade
     /// defaults, one recording loop, and one published agent.

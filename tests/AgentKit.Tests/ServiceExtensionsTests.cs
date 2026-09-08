@@ -56,7 +56,7 @@ public sealed class ServiceExtensionsTests
         var definition = CompositionTestData.Definition();
         _ = services.AddAgent(definition);
         CompositionTestData.AddRunProfiles(services, definition);
-        await using var provider = services.BuildServiceProvider();
+        await using var provider = CompositionTestData.BuildHostedProvider(services);
 
         provider.GetRequiredService<AgentEngine>().TimeProvider.ShouldBeSameAs(timeProvider);
     }
@@ -73,7 +73,7 @@ public sealed class ServiceExtensionsTests
         CompositionTestData.AddRunProfiles(services, definition);
 
         _ = services.ReplaceTimeProvider(timeProvider);
-        await using var provider = services.BuildServiceProvider();
+        await using var provider = CompositionTestData.BuildHostedProvider(services);
 
         services.Count(static descriptor => descriptor.ServiceType == typeof(TimeProvider)).ShouldBe(1);
         provider.GetRequiredService<AgentEngine>().TimeProvider.ShouldBeSameAs(timeProvider);
@@ -115,7 +115,7 @@ public sealed class ServiceExtensionsTests
         var definition = CompositionTestData.Definition();
         _ = services.AddAgent(definition);
         CompositionTestData.AddRunProfiles(services, definition);
-        var provider = services.BuildServiceProvider();
+        var provider = CompositionTestData.BuildHostedProvider(services);
 
         try
         {

@@ -13,7 +13,7 @@ public sealed class CatalogBootstrapTests
         _ = services.AddAgentKit();
         _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
         _ = services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
-        using var provider = services.BuildServiceProvider();
+        using var provider = CompositionTestData.BuildHostedProvider(services);
 
         var exception = Should.Throw<AgentCompositionException>(provider.GetRequiredService<AgentEngine>);
 
@@ -33,7 +33,7 @@ public sealed class CatalogBootstrapTests
         _ = services.AddAgentDefinitionSnapshot(new AgentDefinitionSourceSnapshot(
             new AgentDefinitionSourceId("test-source"), new AgentDefinitionSourceVersion(1), 0, [definition]));
         CompositionTestData.AddRunProfiles(services, definition);
-        await using var provider = services.BuildServiceProvider();
+        await using var provider = CompositionTestData.BuildHostedProvider(services);
 
         var engine = provider.GetRequiredService<AgentEngine>();
 

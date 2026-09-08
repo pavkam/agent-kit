@@ -65,6 +65,42 @@ owning spec.
 
 ## Latest integration evidence
 
+The provider-bound component-registration checkpoint passed complete formatting,
+lint, Release build, and test gates in an isolated checkout over `aa81185`.
+Three additive API snapshots were reviewed. Component declarations now match
+exact Microsoft DI contract addresses, ordinal keys, lifetimes, and observable
+implementation types. Opaque factories require explicit metadata; validation
+never invokes them to discover dependencies. Duplicate, missing, mismatched, and
+opaque metadata registrations are rejected before application service effects.
+
+`AgentKitServiceProviderFactory` captures the completed service collection once
+per provider build, validates the declared graph, and retains that exact
+immutable evidence with the engine. Later collection mutation cannot replace
+provider A's evidence; provider B validates its own collection. Captured
+provider options and normal Microsoft DI ownership/disposal are preserved. Null
+registrations reject before diagnostics or factory effects.
+
+Hosted callers must select `AgentKitServiceProviderFactory` through the standard
+.NET host factory boundary, or use it directly for a custom service collection.
+Resolving an engine from a plain `BuildServiceProvider()` now fails closed with
+`agentkit.component-registration.snapshot-missing`. This is an intentional
+behavioral migration. Standalone `AgentEngineBuilder.Build()` uses the same
+factory automatically. The additive `DeclareAgentKitComponent` extension
+publishes metadata only; it does not register an implementation or build a
+provider.
+
+Provider construction emits safe shared activities, bounded count/duration
+metrics, and source-generated bootstrap logs. Its explicitly supplied clock and
+logger are caller-owned. Failed or decreasing timing omits duration without
+changing construction; instrument publication holds no lock across listener
+callbacks. Tests exercise reentry, concurrent publication, exact clock values,
+observer failure, and trace-scoped parallel observation.
+
+This remains partial graph evidence: the snapshot explicitly does not attest to
+the complete runnable graph. First-party descriptor registration, full keyed
+component/profile selection, run-plan compilation, and runtime activation remain
+open.
+
 The broker observability checkpoint passed `make format`, `make lint`, and
 `make test` in an isolated checkout over `05df67a`. All 4,741 tests passed
 without skips; the Release build reported zero warnings or errors. Three
@@ -535,9 +571,10 @@ and explicit coordination.
 ## Active corrections
 
 - Declared component graph validation and deterministic continuation/input
-  policies are verified in `bd1101c`. Descriptor co-registration, complete
-  component/profile selections, run-plan compilation and activation remain open.
-  `IInputCoordinator` and `IInputQueue` still need their runtime
+  policies are verified in `bd1101c`. Provider-bound registration capture and DI
+  correspondence are now verified. First-party descriptor co-registration,
+  complete component/profile selections, run-plan compilation and activation
+  remain open. `IInputCoordinator` and `IInputQueue` still need their runtime
   implementations, including authorized replay before preprocessing. The
   in-memory session store now implements lane provisioning, idempotent
   admission, and atomic promotion into accepted-run state; connecting this state

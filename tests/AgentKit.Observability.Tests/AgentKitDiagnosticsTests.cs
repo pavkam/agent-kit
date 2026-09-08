@@ -29,6 +29,9 @@ public sealed class AgentKitDiagnosticsTests
     [Fact]
     public void StableNames_WhenInspected_ContainNoHighCardinalityValues()
     {
+        AgentKitActivityNames.AgentCompositionBuild.ShouldBe("agent.composition.build");
+        AgentKitMetricNames.AgentCompositionBuildCount.ShouldBe("agentkit.agent.composition.build.count");
+        AgentKitMetricNames.AgentCompositionBuildDuration.ShouldBe("agentkit.agent.composition.build.duration");
         AgentKitActivityNames.InvokeAgent.ShouldBe("invoke_agent");
         AgentKitActivityNames.Chat.ShouldBe("chat");
         AgentKitActivityNames.ExecuteTool.ShouldBe("execute_tool");

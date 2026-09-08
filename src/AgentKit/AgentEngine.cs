@@ -50,12 +50,12 @@ public sealed class AgentEngine: IAsyncDisposable
     /// The standalone provider owned by this engine, or <see langword="null"/>
     /// when an external host owns the provider.
     /// </param>
-    /// <param name="validatedRunProfiles">
-    /// The exact immutable snapshot already inspected by composition validation. Engine
-    /// construction pins this supplied value without consulting the replaceable reader again.
+    /// <param name="validatedComposition">
+    /// The exact immutable readiness evidence already inspected by composition validation.
+    /// Engine construction pins this supplied value without consulting replaceable readers again.
     /// </param>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="services"/> or <paramref name="validatedRunProfiles"/> is
+    /// <paramref name="services"/> or <paramref name="validatedComposition"/> is
     /// <see langword="null"/>.
     /// </exception>
     /// <exception cref="InvalidOperationException">
@@ -65,10 +65,10 @@ public sealed class AgentEngine: IAsyncDisposable
     internal AgentEngine(
         IServiceProvider services,
         IAsyncDisposable? ownedProvider,
-        AgentRunProfilePublicationSnapshot validatedRunProfiles)
+        AgentCompositionSnapshot validatedComposition)
     {
         ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(validatedRunProfiles);
+        ArgumentNullException.ThrowIfNull(validatedComposition);
 
         _services = services;
         _ownedProvider = ownedProvider;
@@ -78,7 +78,8 @@ public sealed class AgentEngine: IAsyncDisposable
         _operationIds = services.GetRequiredService<IIdentifierGenerator<OperationId>>();
         _runProfiles = services.GetRequiredService<IAgentRunProfilePublicationReader>();
         _securityProfiles = services.GetRequiredService<ISecurityProfileSelector>();
-        _pinnedRunProfiles = validatedRunProfiles.Publications.ToImmutableDictionary(
+        ComponentRegistrations = validatedComposition.ComponentRegistrations;
+        _pinnedRunProfiles = validatedComposition.RunProfiles.Publications.ToImmutableDictionary(
             static publication => (
                 publication.SecurityProfile.AgentId,
                 publication.SecurityProfile.AgentDefinitionRevision));
@@ -94,6 +95,10 @@ public sealed class AgentEngine: IAsyncDisposable
     /// this engine.
     /// </value>
     internal TimeProvider TimeProvider { get; }
+
+    /// <summary>Gets the exact partial component-registration evidence validated for this engine.</summary>
+    /// <value>The build-local immutable snapshot; it never changes when a builder collection is later mutated.</value>
+    internal ComponentRegistrationSnapshot ComponentRegistrations { get; }
 
     /// <summary>
     /// Creates a mutable builder for a new standalone engine composition.

@@ -10,18 +10,18 @@ public sealed class AgentEngineTests
     {
         var exception = Should.Throw<ArgumentNullException>(
             () => new AgentEngine(
-                null!, ownedProvider: null, new AgentRunProfilePublicationSnapshot([])));
+                null!, ownedProvider: null, Composition()));
 
         exception.ParamName.ShouldBe("services");
     }
 
     [Fact]
-    public void Constructor_WhenValidatedRunProfilesIsNull_ThrowsBeforeResolvingServices()
+    public void Constructor_WhenValidatedCompositionIsNull_ThrowsBeforeResolvingServices()
     {
         var exception = Should.Throw<ArgumentNullException>(
             () => new AgentEngine(MinimalProvider(), ownedProvider: null, null!));
 
-        exception.ParamName.ShouldBe("validatedRunProfiles");
+        exception.ParamName.ShouldBe("validatedComposition");
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public sealed class AgentEngineTests
     {
         var owner = new BlockingAsyncDisposable();
         var engine = new AgentEngine(
-            MinimalProvider(), owner, new AgentRunProfilePublicationSnapshot([]));
+            MinimalProvider(), owner, Composition());
 
         var firstDisposal = engine.DisposeAsync().AsTask();
         var secondDisposal = engine.DisposeAsync().AsTask();
@@ -193,7 +193,7 @@ public sealed class AgentEngineTests
     {
         var owner = new ThrowingAsyncDisposable();
         var engine = new AgentEngine(
-            MinimalProvider(), owner, new AgentRunProfilePublicationSnapshot([]));
+            MinimalProvider(), owner, Composition());
 
         _ = await Should.ThrowAsync<InvalidOperationException>(async () => await engine.DisposeAsync());
         _ = await Should.ThrowAsync<InvalidOperationException>(async () => await engine.DisposeAsync());
@@ -208,6 +208,10 @@ public sealed class AgentEngineTests
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         return services.BuildServiceProvider();
     }
+
+    private static AgentCompositionSnapshot Composition() => new(
+        new AgentRunProfilePublicationSnapshot([]),
+        ComponentRegistrationSnapshot.Capture(new ServiceCollection()));
 
     private sealed class BlockingAsyncDisposable: IAsyncDisposable
     {

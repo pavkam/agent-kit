@@ -7,6 +7,12 @@ namespace AgentKit.Observability;
 /// <remarks>Metric names use lowercase dotted namespaces and never embed identities.</remarks>
 public static class AgentKitMetricNames
 {
+    /// <summary>Gets the counter for terminal AgentKit service-provider build outcomes.</summary>
+    public const string AgentCompositionBuildCount = "agentkit.agent.composition.build.count";
+
+    /// <summary>Gets the histogram for AgentKit service-provider build duration in seconds.</summary>
+    public const string AgentCompositionBuildDuration = "agentkit.agent.composition.build.duration";
+
     /// <summary>Gets the counter for terminal pinned-agent admission outcomes.</summary>
     public const string AgentAdmissionCount = "agentkit.agent.admission.count";
 

@@ -43,11 +43,15 @@ public sealed class AgentEngineBuilder
     /// </returns>
     /// <remarks>
     /// <para>
-    /// Validation happens before the engine is returned and before any agent
-    /// runs. It checks that the engine-wide singular services exist, that at
-    /// least one runnable agent definition is published, and that every
-    /// definition resolves the collaborators a run needs. Missing behavior is
-    /// a composition error, never a cue to instantiate a hidden default.
+    /// Declared component metadata is frozen and its pure graph and Microsoft
+    /// DI correspondence are validated before a provider is built, so an
+    /// invalid declaration cannot run a registration factory. Reduced
+    /// readiness validation then checks that engine-wide singular services
+    /// exist, at least one runnable definition is published, and a loop can be
+    /// resolved. Missing behavior is a composition error, never a cue to
+    /// instantiate a hidden default. Component metadata remains explicitly
+    /// partial until the staged owner rollout declares the complete runnable
+    /// spine.
     /// </para>
     /// <para>
     /// When validation fails, the partially built provider is disposed before
@@ -59,9 +63,10 @@ public sealed class AgentEngineBuilder
     /// graph.
     /// </exception>
     /// <exception cref="AgentCompositionException">
-    /// The composition is missing a required engine-wide service, publishes no
-    /// runnable agent definition, or contains a definition whose collaborators
-    /// cannot be resolved.
+    /// The declared component graph or its Microsoft DI correspondence is
+    /// invalid, the composition is missing a required engine-wide service,
+    /// publishes no runnable agent definition, or contains a definition whose
+    /// collaborators cannot be resolved.
     /// </exception>
     public AgentEngine Build()
     {
@@ -69,15 +74,16 @@ public sealed class AgentEngineBuilder
 
         try
         {
-            provider = Services.BuildServiceProvider(
+            var factory = new AgentKitServiceProviderFactory(
                 new ServiceProviderOptions
                 {
                     ValidateOnBuild = true,
                     ValidateScopes = true,
                 });
+            provider = (ServiceProvider) factory.CreateServiceProvider(factory.CreateBuilder(Services));
 
-            var runProfiles = AgentCompositionValidator.Validate(provider);
-            return new AgentEngine(provider, provider, runProfiles);
+            var composition = AgentCompositionValidator.Validate(provider);
+            return new AgentEngine(provider, provider, composition);
         }
         catch
         {

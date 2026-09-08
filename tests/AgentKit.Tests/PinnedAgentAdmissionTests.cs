@@ -201,7 +201,9 @@ public sealed class PinnedAgentAdmissionTests
         await using var engine = new AgentEngine(
             new ThrowingScopeServiceProvider(provider),
             ownedProvider: null,
-            new AgentRunProfilePublicationSnapshot([CompositionTestData.RunProfile(definition)]));
+            new AgentCompositionSnapshot(
+                new AgentRunProfilePublicationSnapshot([CompositionTestData.RunProfile(definition)]),
+                successfullyBuilt.ComponentRegistrations));
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
         using var activities = AdmissionActivities(definition.Id);
         using var metrics = new AdmissionMetricCollector();

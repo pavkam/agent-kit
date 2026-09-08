@@ -37,6 +37,14 @@ public static class ServiceExtensions
         /// authority. It also registers no agent definition: a composition
         /// with none fails validation rather than inventing a default agent.
         /// </para>
+        /// <para>
+        /// Hosted applications must configure
+        /// <see cref="AgentKitServiceProviderFactory"/> as their standard .NET
+        /// service-provider factory. That boundary captures the exact
+        /// descriptors passed to each provider. A provider built without it
+        /// cannot prove component-registration correspondence and fails closed
+        /// when the engine is first resolved.
+        /// </para>
         /// </remarks>
         public IServiceCollection AddAgentKit()
         {
@@ -52,8 +60,8 @@ public static class ServiceExtensions
             services.TryAddSingleton(
                 static provider =>
                 {
-                    var runProfiles = AgentCompositionValidator.Validate(provider);
-                    return new AgentEngine(provider, ownedProvider: null, runProfiles);
+                    var composition = AgentCompositionValidator.Validate(provider);
+                    return new AgentEngine(provider, ownedProvider: null, composition);
                 });
 
             return services;
