@@ -33,15 +33,24 @@ namespace AgentKit
     public sealed class AgentEngineBuilder
     {
         public AgentEngineBuilder() { }
+        public AgentKit.AgentKitCompositionOptions CompositionOptions { get; set; }
         public Microsoft.Extensions.DependencyInjection.IServiceCollection Services { get; }
         public AgentKit.AgentEngine Build() { }
+    }
+    public sealed class AgentKitCompositionOptions : System.IEquatable<AgentKit.AgentKitCompositionOptions>
+    {
+        public const int DefaultMaximumDerivedInfrastructureRegistrations = 1024;
+        public AgentKitCompositionOptions(int maximumDerivedInfrastructureRegistrations = 1024) { }
+        public int MaximumDerivedInfrastructureRegistrations { get; }
     }
     public sealed class AgentKitServiceProviderFactory : Microsoft.Extensions.DependencyInjection.IServiceProviderFactory<Microsoft.Extensions.DependencyInjection.IServiceCollection>
     {
         public AgentKitServiceProviderFactory() { }
         public AgentKitServiceProviderFactory(Microsoft.Extensions.DependencyInjection.ServiceProviderOptions options) { }
+        public AgentKitServiceProviderFactory(AgentKit.AgentKitCompositionOptions compositionOptions, Microsoft.Extensions.DependencyInjection.ServiceProviderOptions options) { }
         public AgentKitServiceProviderFactory(Microsoft.Extensions.DependencyInjection.ServiceProviderOptions options, Microsoft.Extensions.Logging.ILogger<AgentKit.AgentKitServiceProviderFactory> logger) { }
         public AgentKitServiceProviderFactory(Microsoft.Extensions.DependencyInjection.ServiceProviderOptions options, Microsoft.Extensions.Logging.ILogger<AgentKit.AgentKitServiceProviderFactory> logger, System.TimeProvider timeProvider) { }
+        public AgentKitServiceProviderFactory(Microsoft.Extensions.DependencyInjection.ServiceProviderOptions options, Microsoft.Extensions.Logging.ILogger<AgentKit.AgentKitServiceProviderFactory> logger, System.TimeProvider timeProvider, AgentKit.AgentKitCompositionOptions compositionOptions) { }
         public Microsoft.Extensions.DependencyInjection.IServiceCollection CreateBuilder(Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
         public System.IServiceProvider CreateServiceProvider(Microsoft.Extensions.DependencyInjection.IServiceCollection containerBuilder) { }
     }

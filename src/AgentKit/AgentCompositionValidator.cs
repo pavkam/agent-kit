@@ -102,7 +102,7 @@ internal static class AgentCompositionValidator
 
         ImmutableArray<CompositionDiagnostic> diagnostics =
         [
-            .. ComponentDependencyGraphValidator.Validate(snapshot.Registrations),
+            .. ComponentDependencyGraphValidator.ValidateSnapshot(snapshot),
             .. ComponentRegistrationCorrespondenceValidator.Validate(snapshot),
             .. ValidateRequiredFacadeServices(snapshot),
         ];

@@ -25,6 +25,18 @@ public sealed class ComponentRegistrationSnapshotTests
         exception.ParamName.ShouldBe("registrations");
     }
 
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    public void Constructor_WhenInfrastructureBoundIsInvalid_ThrowsExactArgumentOutOfRangeException(int value)
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() =>
+            new ComponentRegistrationSnapshot([], [], value));
+
+        exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
+        exception.ParamName.ShouldBe("maximumDerivedInfrastructureRegistrations");
+    }
+
     [Fact]
     public void Capture_WhenServicesIsNull_ThrowsExactArgumentNullException()
     {
@@ -33,6 +45,20 @@ public sealed class ComponentRegistrationSnapshotTests
 
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("services");
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    public void Capture_WhenInfrastructureBoundIsInvalid_ThrowsBeforeDescriptorValidation(int value)
+    {
+        IServiceCollection services = new NullContainingServiceCollection { null! };
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() =>
+            ComponentRegistrationSnapshot.Capture(services, value));
+
+        exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
+        exception.ParamName.ShouldBe("maximumDerivedInfrastructureRegistrations");
     }
 
     [Fact]
@@ -93,4 +119,5 @@ public sealed class ComponentRegistrationSnapshotTests
     private interface ILeaf;
     private sealed class Leaf: ILeaf;
     private sealed class NullContainingServiceCollection: List<ServiceDescriptor>, IServiceCollection;
+
 }

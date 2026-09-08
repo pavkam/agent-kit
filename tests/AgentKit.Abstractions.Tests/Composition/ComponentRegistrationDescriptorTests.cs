@@ -161,6 +161,32 @@ public sealed class ComponentRegistrationDescriptorTests
         dependency.Reference.ShouldBe(reference);
         dependency.Cardinality.ShouldBe(ComponentDependencyCardinality.OptionalSingular);
         dependency.FactoryBoundary.ShouldBeNull();
+        dependency.ValidationBoundary.ShouldBe(ComponentDependencyValidationBoundary.DeclaredComponentsOnly);
+    }
+
+    [Fact]
+    public void DependencyConstructor_WhenInfrastructureBoundaryIsSelected_PreservesExplicitBoundary()
+    {
+        var dependency = new ComponentDependencyDescriptor(
+            ComponentContractReference.Unkeyed<IContract>(),
+            ComponentDependencyCardinality.RequiredSingular,
+            factoryBoundary: null,
+            ComponentDependencyValidationBoundary.MicrosoftDependencyInjectionInfrastructure);
+
+        dependency.ValidationBoundary.ShouldBe(
+            ComponentDependencyValidationBoundary.MicrosoftDependencyInjectionInfrastructure);
+    }
+
+    [Fact]
+    public void DependencyConstructor_WhenValidationBoundaryIsUndefined_ThrowsWithParameterName()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ComponentDependencyDescriptor(
+            ComponentContractReference.Unkeyed<IContract>(),
+            ComponentDependencyCardinality.RequiredSingular,
+            factoryBoundary: null,
+            (ComponentDependencyValidationBoundary) 99));
+
+        exception.ParamName.ShouldBe("validationBoundary");
     }
 
     [Fact]

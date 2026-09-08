@@ -6,6 +6,17 @@ namespace AgentKit.Tests;
 public sealed class AgentEngineBuilderTests
 {
     [Fact]
+    public void CompositionOptions_WhenAssignedNull_ThrowsExactArgumentNullException()
+    {
+        var builder = AgentEngine.CreateBuilder();
+
+        var exception = Should.Throw<ArgumentNullException>(() => builder.CompositionOptions = null!);
+
+        exception.GetType().ShouldBe(typeof(ArgumentNullException));
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
     public void CreateBuilder_WhenCalled_ReturnsIndependentMutableBuilders()
     {
         var first = AgentEngine.CreateBuilder();

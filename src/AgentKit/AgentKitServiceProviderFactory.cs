@@ -23,6 +23,7 @@ public sealed class AgentKitServiceProviderFactory: IServiceProviderFactory<ISer
     private readonly DefaultServiceProviderFactory _inner;
     private readonly ILogger<AgentKitServiceProviderFactory> _logger;
     private readonly TimeProvider _timeProvider;
+    private readonly int _maximumDerivedInfrastructureRegistrations;
 
     /// <summary>Initializes a factory with Microsoft DI's default validation options and no bootstrap log destination.</summary>
     /// <remarks>
@@ -35,7 +36,8 @@ public sealed class AgentKitServiceProviderFactory: IServiceProviderFactory<ISer
         : this(
             new ServiceProviderOptions(),
             NullLogger<AgentKitServiceProviderFactory>.Instance,
-            TimeProvider.System)
+            TimeProvider.System,
+            new AgentKitCompositionOptions())
     {
     }
 
@@ -44,7 +46,27 @@ public sealed class AgentKitServiceProviderFactory: IServiceProviderFactory<ISer
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
     /// <remarks>The option values are copied so later caller mutation cannot change provider builds performed by this factory.</remarks>
     public AgentKitServiceProviderFactory(ServiceProviderOptions options)
-        : this(options, NullLogger<AgentKitServiceProviderFactory>.Instance, TimeProvider.System)
+        : this(
+            options,
+            NullLogger<AgentKitServiceProviderFactory>.Instance,
+            TimeProvider.System,
+            new AgentKitCompositionOptions())
+    {
+    }
+
+    /// <summary>Initializes a factory with Microsoft DI behavior and explicit bounded AgentKit composition validation.</summary>
+    /// <param name="compositionOptions">The non-null immutable AgentKit validation limits to capture.</param>
+    /// <param name="options">The non-null provider options to copy at construction.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="compositionOptions"/> or <paramref name="options"/> is <see langword="null"/>.</exception>
+    /// <remarks>The caller retains the immutable options values. Every provider built by this factory captures the configured bound into its own registration snapshot.</remarks>
+    public AgentKitServiceProviderFactory(
+        AgentKitCompositionOptions compositionOptions,
+        ServiceProviderOptions options)
+        : this(
+            options,
+            NullLogger<AgentKitServiceProviderFactory>.Instance,
+            TimeProvider.System,
+            compositionOptions)
     {
     }
 
@@ -60,7 +82,7 @@ public sealed class AgentKitServiceProviderFactory: IServiceProviderFactory<ISer
     public AgentKitServiceProviderFactory(
         ServiceProviderOptions options,
         ILogger<AgentKitServiceProviderFactory> logger)
-        : this(options, logger, TimeProvider.System)
+        : this(options, logger, TimeProvider.System, new AgentKitCompositionOptions())
     {
     }
 
@@ -81,10 +103,27 @@ public sealed class AgentKitServiceProviderFactory: IServiceProviderFactory<ISer
         ServiceProviderOptions options,
         ILogger<AgentKitServiceProviderFactory> logger,
         TimeProvider timeProvider)
+        : this(options, logger, timeProvider, new AgentKitCompositionOptions())
+    {
+    }
+
+    /// <summary>Initializes a factory with captured DI behavior, bootstrap observation, and bounded composition validation.</summary>
+    /// <param name="options">The non-null provider options to copy at construction.</param>
+    /// <param name="logger">The non-null directly supplied bootstrap logger.</param>
+    /// <param name="timeProvider">The non-null clock used only to measure provider-build duration.</param>
+    /// <param name="compositionOptions">The non-null immutable AgentKit validation limits to capture.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/>, <paramref name="logger"/>, <paramref name="timeProvider"/>, or <paramref name="compositionOptions"/> is <see langword="null"/>.</exception>
+    /// <remarks>Logger or clock failure is observational. The caller owns supplied services and immutable options; the factory owns no returned provider.</remarks>
+    public AgentKitServiceProviderFactory(
+        ServiceProviderOptions options,
+        ILogger<AgentKitServiceProviderFactory> logger,
+        TimeProvider timeProvider,
+        AgentKitCompositionOptions compositionOptions)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(compositionOptions);
         _inner = new DefaultServiceProviderFactory(
             new ServiceProviderOptions
             {
@@ -93,6 +132,8 @@ public sealed class AgentKitServiceProviderFactory: IServiceProviderFactory<ISer
             });
         _logger = logger;
         _timeProvider = timeProvider;
+        _maximumDerivedInfrastructureRegistrations =
+            compositionOptions.MaximumDerivedInfrastructureRegistrations;
     }
 
     /// <summary>Returns the host's mutable collection as the standard Microsoft DI container builder.</summary>
@@ -133,7 +174,9 @@ public sealed class AgentKitServiceProviderFactory: IServiceProviderFactory<ISer
             ComponentRegistrationSnapshot? snapshot = null;
             _ = providerServices.AddSingleton(_ => snapshot
                 ?? throw new InvalidOperationException("The provider-local component registration snapshot was not initialized."));
-            snapshot = ComponentRegistrationSnapshot.Capture(providerServices);
+            snapshot = ComponentRegistrationSnapshot.Capture(
+                providerServices,
+                _maximumDerivedInfrastructureRegistrations);
             AgentCompositionValidator.ValidateComponentRegistrations(snapshot);
             var provider = _inner.CreateServiceProvider(providerServices);
             AgentCompositionBuildObservability.CompleteBuilt(scope, _timeProvider, timestamp, _logger);

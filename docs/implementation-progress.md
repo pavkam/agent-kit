@@ -65,6 +65,17 @@ owning spec.
 
 ## Latest integration evidence
 
+The DI infrastructure validation checkpoint passed formatting, lint, Release
+build, and all 5,170 tests in an isolated checkout over `b97049d`. Declared
+component dependencies may explicitly opt into inspection of captured Microsoft
+DI type and instance registrations. Validation closes generic registrations,
+checks constructor dependencies, collections, cycles, and lifetimes, and
+enforces a configurable bound without invoking factories or constructing
+application services. Keyed metadata never invokes application key equality. The
+existing explicit-declaration behavior and grant-store cardinality checks remain
+intact. This adds infrastructure evidence; complete runnable-graph declarations
+and required-spine coverage remain open work.
+
 The budget-ledger contract checkpoint passed formatting, lint, Release build,
 and all 5,106 tests in an isolated checkout over `4027060`. `IBudgetLedger`
 defines atomic scope creation, ordered batch reservations, start, settlement,

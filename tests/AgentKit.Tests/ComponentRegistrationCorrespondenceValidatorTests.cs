@@ -16,6 +16,28 @@ public sealed class ComponentRegistrationCorrespondenceValidatorTests
     }
 
     [Fact]
+    public void MatchesImplementation_WhenServiceIsNull_ThrowsExactArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() =>
+            ComponentRegistrationCorrespondenceValidator.MatchesImplementation(null!, typeof(Leaf)));
+
+        exception.GetType().ShouldBe(typeof(ArgumentNullException));
+        exception.ParamName.ShouldBe("service");
+    }
+
+    [Fact]
+    public void MatchesImplementation_WhenImplementationTypeIsNull_ThrowsExactArgumentNullException()
+    {
+        var service = ServiceDescriptor.Singleton<ILeaf, Leaf>();
+
+        var exception = Should.Throw<ArgumentNullException>(() =>
+            ComponentRegistrationCorrespondenceValidator.MatchesImplementation(service, null!));
+
+        exception.GetType().ShouldBe(typeof(ArgumentNullException));
+        exception.ParamName.ShouldBe("implementationType");
+    }
+
+    [Fact]
     public void Validate_WhenDirectKeyedAndInstanceRegistrationsMatch_ReturnsNoDiagnostics()
     {
         var instance = new InstanceLeaf();

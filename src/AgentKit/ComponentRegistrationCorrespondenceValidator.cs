@@ -181,10 +181,11 @@ internal static class ComponentRegistrationCorrespondenceValidator
     /// <param name="service">The non-null captured DI descriptor.</param>
     /// <param name="implementationType">The declared concrete implementation type.</param>
     /// <returns><see langword="true"/> when observable type evidence matches exactly or the DI registration is an opaque factory.</returns>
-    private static bool MatchesImplementation(ServiceDescriptor service, Type implementationType)
+    /// <exception cref="ArgumentNullException"><paramref name="service"/> or <paramref name="implementationType"/> is <see langword="null"/>.</exception>
+    internal static bool MatchesImplementation(ServiceDescriptor service, Type implementationType)
     {
-        Debug.Assert(service is not null, "Microsoft DI service collections reject null descriptors.");
-        Debug.Assert(implementationType is not null, "Component declarations reject null implementation types.");
+        ArgumentNullException.ThrowIfNull(service);
+        ArgumentNullException.ThrowIfNull(implementationType);
         var observedType = service.IsKeyedService
             ? service.KeyedImplementationType ?? service.KeyedImplementationInstance?.GetType()
             : service.ImplementationType ?? service.ImplementationInstance?.GetType();

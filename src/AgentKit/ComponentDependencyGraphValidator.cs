@@ -13,6 +13,18 @@ namespace AgentKit;
 /// </remarks>
 internal static class ComponentDependencyGraphValidator
 {
+    /// <summary>Validates a build-local graph after materializing explicitly permitted Microsoft DI infrastructure evidence.</summary>
+    /// <param name="snapshot">The non-null frozen component and Microsoft DI registration snapshot.</param>
+    /// <returns>Every deterministic materialization and graph diagnostic found.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is <see langword="null"/>.</exception>
+    internal static ImmutableArray<CompositionDiagnostic> ValidateSnapshot(ComponentRegistrationSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var (Registrations, Diagnostics, DependencyTargets) =
+            ComponentInfrastructureGraphMaterializer.Materialize(snapshot);
+        return [.. Diagnostics, .. Validate(Registrations, DependencyTargets)];
+    }
+
     /// <summary>Validates a materialized set of component registration descriptors.</summary>
     /// <param name="registrations">The initialized, non-null descriptors to validate.</param>
     /// <returns>Every deterministic diagnostic found; an empty array means the declared graph is valid.</returns>
@@ -21,7 +33,15 @@ internal static class ComponentDependencyGraphValidator
         ImmutableArray<ComponentRegistrationDescriptor> registrations)
     {
         ArgumentException.ThrowIfContainsNull(registrations);
+        return Validate(registrations, dependencyTargets: null);
+    }
 
+    private static ImmutableArray<CompositionDiagnostic> Validate(
+        ImmutableArray<ComponentRegistrationDescriptor> registrations,
+        ImmutableDictionary<(int OwnerIndex, int DependencyIndex), ImmutableArray<int>>? dependencyTargets)
+    {
+        Debug.Assert(!registrations.IsDefault,
+            "The public or snapshot validator rejects a default registration collection.");
         var diagnostics = ImmutableArray.CreateBuilder<CompositionDiagnostic>();
         var registrationsByService = IndexRegistrations(registrations);
         var edges = CreateEdges(registrations.Length);
@@ -30,9 +50,12 @@ internal static class ComponentDependencyGraphValidator
         for (var index = 0; index < registrations.Length; index++)
         {
             var registration = registrations[index];
-            foreach (var dependency in registration.Dependencies)
+            for (var dependencyIndex = 0; dependencyIndex < registration.Dependencies.Length; dependencyIndex++)
             {
-                var targets = Resolve(registrationsByService, dependency.Reference);
+                var dependency = registration.Dependencies[dependencyIndex];
+                var targets = dependencyTargets is null
+                    ? Resolve(registrationsByService, dependency.Reference)
+                    : ResolveMaterialized(dependencyTargets, index, dependencyIndex);
                 ValidateCardinality(index, dependency, targets, registrations, diagnostics);
                 AddEdges(index, dependency, targets, edges, ordinaryEdges);
                 ValidateFactoryBoundary(index, dependency, targets, registrationsByService, registrations, diagnostics);
@@ -42,6 +65,19 @@ internal static class ComponentDependencyGraphValidator
         ValidateCycles(registrations, edges, diagnostics);
         ValidateCaptiveScopes(registrations, ordinaryEdges, diagnostics);
         return diagnostics.ToImmutable();
+    }
+
+    private static List<int> ResolveMaterialized(
+        ImmutableDictionary<(int OwnerIndex, int DependencyIndex), ImmutableArray<int>> dependencyTargets,
+        int ownerIndex,
+        int dependencyIndex)
+    {
+        Debug.Assert(dependencyTargets is not null, "Snapshot materialization supplies initialized edge targets.");
+        Debug.Assert(ownerIndex >= 0, "A dependency owner index cannot be negative.");
+        Debug.Assert(dependencyIndex >= 0, "A dependency index cannot be negative.");
+        var found = dependencyTargets.TryGetValue((ownerIndex, dependencyIndex), out var targets);
+        Debug.Assert(found, "Snapshot materialization records target provenance for every dependency edge.");
+        return found ? [.. targets] : [];
     }
 
     /// <summary>Indexes descriptors by their exact closed service contract and key.</summary>

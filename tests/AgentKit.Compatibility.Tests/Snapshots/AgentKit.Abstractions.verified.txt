@@ -1714,9 +1714,16 @@ namespace AgentKit
     public sealed class ComponentDependencyDescriptor : System.IEquatable<AgentKit.ComponentDependencyDescriptor>
     {
         public ComponentDependencyDescriptor(AgentKit.ComponentContractReference reference, AgentKit.ComponentDependencyCardinality cardinality, AgentKit.ComponentFactoryBoundary? factoryBoundary = null) { }
+        public ComponentDependencyDescriptor(AgentKit.ComponentContractReference reference, AgentKit.ComponentDependencyCardinality cardinality, AgentKit.ComponentFactoryBoundary? factoryBoundary, AgentKit.ComponentDependencyValidationBoundary validationBoundary) { }
         public AgentKit.ComponentDependencyCardinality Cardinality { get; }
         public AgentKit.ComponentFactoryBoundary? FactoryBoundary { get; }
         public AgentKit.ComponentContractReference Reference { get; }
+        public AgentKit.ComponentDependencyValidationBoundary ValidationBoundary { get; }
+    }
+    public enum ComponentDependencyValidationBoundary
+    {
+        DeclaredComponentsOnly = 0,
+        MicrosoftDependencyInjectionInfrastructure = 1,
     }
     public sealed class ComponentFactoryBoundary : System.IEquatable<AgentKit.ComponentFactoryBoundary>
     {

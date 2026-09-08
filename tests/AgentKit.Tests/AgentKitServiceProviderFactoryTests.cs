@@ -26,6 +26,16 @@ public sealed class AgentKitServiceProviderFactoryTests
     }
 
     [Fact]
+    public void Constructor_WhenCompositionOptionsIsNull_ThrowsExactArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() =>
+            new AgentKitServiceProviderFactory(null!, new ServiceProviderOptions()));
+
+        exception.GetType().ShouldBe(typeof(ArgumentNullException));
+        exception.ParamName.ShouldBe("compositionOptions");
+    }
+
+    [Fact]
     public void Constructor_WhenInjectedLoggerOverloadOptionsIsNull_ThrowsExactArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() =>
@@ -56,6 +66,20 @@ public sealed class AgentKitServiceProviderFactoryTests
 
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("timeProvider");
+    }
+
+    [Fact]
+    public void Constructor_WhenObservationOverloadCompositionOptionsIsNull_ThrowsExactArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() =>
+            new AgentKitServiceProviderFactory(
+                new ServiceProviderOptions(),
+                new RecordingLogger(),
+                TimeProvider.System,
+                null!));
+
+        exception.GetType().ShouldBe(typeof(ArgumentNullException));
+        exception.ParamName.ShouldBe("compositionOptions");
     }
 
     [Fact]

@@ -33,6 +33,19 @@ public sealed class AgentEngineBuilder
     /// </value>
     public IServiceCollection Services { get; }
 
+    /// <summary>Gets or sets immutable bounds applied when this builder validates its next standalone composition.</summary>
+    /// <value>Non-null composition options. The default uses <see cref="AgentKitCompositionOptions.DefaultMaximumDerivedInfrastructureRegistrations"/>; assigning a new value affects later builds only.</value>
+    /// <exception cref="ArgumentNullException">The assigned value is <see langword="null"/>.</exception>
+    public AgentKitCompositionOptions CompositionOptions
+    {
+        get;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = new();
+
     /// <summary>
     /// Validates and captures the current service registrations in a new
     /// standalone engine.
@@ -75,6 +88,7 @@ public sealed class AgentEngineBuilder
         try
         {
             var factory = new AgentKitServiceProviderFactory(
+                CompositionOptions,
                 new ServiceProviderOptions
                 {
                     ValidateOnBuild = true,
