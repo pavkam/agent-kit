@@ -47,6 +47,7 @@ namespace AgentKit.Observability
         public const string ProcessSandboxPrepare = "process.sandbox.prepare";
         public const string RunContinuationEvaluate = "run.continuation.evaluate";
         public const string RunSettle = "run.settle";
+        public const string SecurityAuthoritySelect = "security.authority.select";
         public const string SecurityAuthorize = "security.authorize";
         public const string SessionBranch = "session.branch";
         public const string SessionCommit = "session.commit";
@@ -100,6 +101,8 @@ namespace AgentKit.Observability
         public const string ProcessOperationCount = "agentkit.process.operation.count";
         public const string RunContinuationEvaluationCount = "agentkit.run.continuation.evaluation.count";
         public const string RunContinuationEvaluationDuration = "agentkit.run.continuation.evaluation.duration";
+        public const string SecurityAuthoritySelectionCount = "agentkit.security.authority.selection.count";
+        public const string SecurityAuthoritySelectionDuration = "agentkit.security.authority.selection.duration";
         public const string SecurityDecisionCount = "agentkit.security.decision.count";
         public const string SessionOperationCount = "agentkit.session.operation.count";
         public const string SessionStoreOperationCount = "agentkit.session.store.operation.count";
@@ -147,6 +150,7 @@ namespace AgentKit.Observability
         public const string ProviderName = "gen_ai.provider.name";
         public const string RequestModel = "gen_ai.request.model";
         public const string RunId = "agentkit.run.id";
+        public const string SecurityAuthorityKey = "agentkit.security.authority.key";
         public const string SecurityEffect = "agentkit.security.effect";
         public const string SecurityOperationKind = "agentkit.security.operation.kind";
         public const string SecurityRequestId = "agentkit.security_request.id";

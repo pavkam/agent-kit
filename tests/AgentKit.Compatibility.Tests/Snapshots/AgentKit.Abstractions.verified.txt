@@ -2813,6 +2813,10 @@ namespace AgentKit
     {
         System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface ISecurityAuthoritySelector
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.SecurityAuthoritySelectionResult> SelectAsync(AgentKit.SecurityAuthorizationContext authorization, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface ISecurityGrantStore
     {
         System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default);
@@ -4881,6 +4885,19 @@ namespace AgentKit
     {
         public SecurityAllowed(AgentKit.SecurityRequestId requestId, AgentKit.SecurityPolicyVersion policyVersion, AgentKit.SecurityGrant grant) { }
         public AgentKit.SecurityGrant Grant { get; init; }
+    }
+    public sealed class SecurityAuthoritySelected : AgentKit.SecurityAuthoritySelectionResult, System.IEquatable<AgentKit.SecurityAuthoritySelected>
+    {
+        public SecurityAuthoritySelected(AgentKit.SecurityAuthorizationContext authorization, AgentKit.ISecurityAuthority authority) { }
+        public AgentKit.ISecurityAuthority Authority { get; }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+    }
+    public abstract class SecurityAuthoritySelectionResult : System.IEquatable<AgentKit.SecurityAuthoritySelectionResult> { }
+    public sealed class SecurityAuthoritySelectionUnavailable : AgentKit.SecurityAuthoritySelectionResult, System.IEquatable<AgentKit.SecurityAuthoritySelectionUnavailable>
+    {
+        public SecurityAuthoritySelectionUnavailable(AgentKit.SecurityAuthorizationContext authorization, string safeReason) { }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public string SafeReason { get; }
     }
     public sealed class SecurityAuthorizationCaptureRequest : System.IEquatable<AgentKit.SecurityAuthorizationCaptureRequest>
     {

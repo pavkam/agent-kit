@@ -64,6 +64,9 @@ public static class AgentKitTagNames
     /// <summary>Gets the normalized protected-operation kind attribute.</summary>
     public const string SecurityOperationKind = "agentkit.security.operation.kind";
 
+    /// <summary>Gets the captured security-authority component key for traces and logs.</summary>
+    public const string SecurityAuthorityKey = "agentkit.security.authority.key";
+
     /// <summary>Gets the normalized protected-effect class attribute.</summary>
     public const string SecurityEffect = "agentkit.security.effect";
 

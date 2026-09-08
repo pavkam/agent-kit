@@ -85,6 +85,9 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for a security authorization decision.</summary>
     public const string SecurityAuthorize = "security.authorize";
 
+    /// <summary>Gets the name for activating one captured security-authority binding.</summary>
+    public const string SecurityAuthoritySelect = "security.authority.select";
+
     /// <summary>Gets the name for reserving bounded shared capacity.</summary>
     public const string BudgetReserve = "budget.reserve";
 

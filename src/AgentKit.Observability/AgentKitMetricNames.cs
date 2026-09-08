@@ -43,6 +43,12 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal security authorization decisions.</summary>
     public const string SecurityDecisionCount = "agentkit.security.decision.count";
 
+    /// <summary>Gets the counter for terminal captured security-authority selection outcomes.</summary>
+    public const string SecurityAuthoritySelectionCount = "agentkit.security.authority.selection.count";
+
+    /// <summary>Gets the histogram for captured security-authority selection duration in seconds.</summary>
+    public const string SecurityAuthoritySelectionDuration = "agentkit.security.authority.selection.duration";
+
     /// <summary>Gets the counter for terminal session coordination outcomes.</summary>
     public const string SessionOperationCount = "agentkit.session.operation.count";
 

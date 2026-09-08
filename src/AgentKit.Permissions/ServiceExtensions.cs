@@ -31,6 +31,33 @@ public static class ServiceExtensions
             services.TryAddSingleton<IIdentifierGenerator<GrantId>, GuidGrantIdGenerator>();
             services.TryAddSingleton<IIdentifierGenerator<SecurityRequestId>, GuidSecurityRequestIdGenerator>();
             services.TryAddSingleton<ISecurityAuthority, SecurityAuthority>();
+            services.TryAddSingleton<ISecurityAuthoritySelector, DefaultSecurityAuthoritySelector>();
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one host-owned singleton authority under the exact key
+        /// that an authorization context must capture to select it.
+        /// </summary>
+        /// <param name="authorityKey">The non-default key that identifies the authority binding.</param>
+        /// <param name="authority">The host-owned singleton authority instance.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="authority"/> is null.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="authorityKey"/> is default.</exception>
+        /// <exception cref="ArgumentException"><paramref name="authorityKey"/> is blank.</exception>
+        /// <remarks>
+        /// The container does not own disposal of the supplied instance. Reusing a key is a composition
+        /// error reported when the singular selector is constructed; it never selects whichever binding
+        /// happened to be registered first. This method deliberately does not register an unkeyed fallback.
+        /// </remarks>
+        public IServiceCollection AddSecurityAuthority(
+            ComponentKey<ISecurityAuthority> authorityKey,
+            ISecurityAuthority authority)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentException.ThrowIfNullOrWhiteSpace(authorityKey.Value, nameof(authorityKey));
+            ArgumentNullException.ThrowIfNull(authority);
+            _ = services.AddSingleton(new SecurityAuthorityBinding(authorityKey, authority));
             return services;
         }
     }

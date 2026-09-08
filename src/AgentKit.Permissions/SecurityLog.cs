@@ -32,4 +32,24 @@ internal static partial class SecurityLog
         ILogger logger,
         SecurityRequestId securityRequestId,
         string errorType);
+
+    /// <summary>Logs exact-key authority selection without granting authority.</summary>
+    [LoggerMessage(5005, LogLevel.Debug, "Selecting captured security authority {SecurityAuthorityKey}.")]
+    internal static partial void AuthoritySelectionStarted(ILogger logger, ComponentKey<ISecurityAuthority> securityAuthorityKey);
+
+    /// <summary>Logs successful exact-key authority activation without issuing a grant.</summary>
+    [LoggerMessage(5006, LogLevel.Debug, "Selected captured security authority {SecurityAuthorityKey}.")]
+    internal static partial void AuthoritySelected(ILogger logger, ComponentKey<ISecurityAuthority> securityAuthorityKey);
+
+    /// <summary>Logs fail-closed unavailability of one captured authority binding.</summary>
+    [LoggerMessage(5007, LogLevel.Information, "Captured security authority {SecurityAuthorityKey} is unavailable.")]
+    internal static partial void AuthorityUnavailable(ILogger logger, ComponentKey<ISecurityAuthority> securityAuthorityKey);
+
+    /// <summary>Logs caller cancellation before a captured authority selection completes.</summary>
+    [LoggerMessage(5008, LogLevel.Information, "Selecting captured security authority {SecurityAuthorityKey} was cancelled.")]
+    internal static partial void AuthoritySelectionCancelled(ILogger logger, ComponentKey<ISecurityAuthority> securityAuthorityKey);
+
+    /// <summary>Logs an unexpected authority-selection failure without protected data.</summary>
+    [LoggerMessage(5009, LogLevel.Error, "Selecting captured security authority {SecurityAuthorityKey} faulted with error type {ErrorType}.")]
+    internal static partial void AuthoritySelectionFaulted(ILogger logger, ComponentKey<ISecurityAuthority> securityAuthorityKey, string errorType);
 }
