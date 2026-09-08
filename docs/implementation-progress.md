@@ -56,10 +56,45 @@ owning spec.
 | Retained output-definition integrity                   | `a054e1d`; 32 focused constructor/copy cases; full compatibility suite passes                                                                                     | Default identities, invalid names/enums, malformed collections and null policies reject before assignment; valid copies preserve their source         |
 | Materialized JSON allocation bounds                    | `211b0f8`; Output: 144 passed; old processor fails all three million-token allocation regressions                                                                 | Bounded traversal, token serialization and canonical-byte deserialization; duplicate-name allocation follows aggregate byte validation                |
 | Repository analyzer and fixture formatting             | `48c4bc5`; full format/lint/build/test gates pass in the matching isolated checkout                                                                               | Import order, redundant namespace qualification, JSON annotations and fixture whitespace corrected without replacing concurrent edits                 |
+| Provider embedding API compatibility                   | `0c1a36a`, `e3ffa47`; original eight-parameter constructor retained; nine reviewed additive provider snapshots                                                    | Binary constructor compatibility restored; full provider wire conformance remains open                                                                |
+| Declared component graph validation                    | `bd1101c`; exact-key cardinality, cycles, factory ownership/disposal, captive scopes and a 10,000-node chain exercised                                            | Pure graph validation verified; registration capture and runnable-graph activation remain open                                                        |
+| Continuation and input-promotion evidence              | `bd1101c`; Abstractions: 1,867 passed; Loop: 51 passed; IO: 29 passed; reusable policy cases included                                                             | Safe-boundary proposals, complete ordered evidence, cutoff checks, typed outcomes and constructor constraints verified                                |
+| Diagnostic failure isolation                           | `bd1101c`; Observability: 17 passed; policy suites cover throwing listeners/loggers/meters, cancellation and failed clock measurements                            | Policy outcomes survive observer failures; unavailable timing emits no fabricated zero duration                                                       |
 
 ## Latest integration evidence
 
-An isolated checkout matching committed `48c4bc5` passed `make format`,
+An isolated checkout matching committed `bd1101c` passed `make format`,
+`make lint`, and `make test` (including the Release build), with zero build
+warnings or errors. All 4,194 tests passed with no skips. All 2,690 committed
+files were compared byte-for-byte with the verified checkout. The final
+five-case diagnostic-outcome mapping test was added after formatting and passed
+the subsequent full lint and test gates. Twenty-one reviewed formatter changes
+were copied back only after confirming the shared files had not changed.
+
+This baseline includes the embedding work committed in `dbf22d6`. The provider
+API review found and repaired the removed eight-parameter
+`OpenAICompatibilityProfile` constructor in `0c1a36a`; `e3ffa47` records nine
+additive provider snapshots. The foundation snapshot also corrects a stale
+nullable annotation on the unnamed `ArgumentException` extension receiver. Its
+source declaration was already non-nullable, and a focused extractor regression
+now covers that shape. Snapshot approval establishes emitted API compatibility,
+not complete provider behavior.
+
+The new policies produce immutable proposals. They do not admit input, install
+session ownership, invoke models, or commit continuation transitions. The graph
+validator is not yet connected to registration capture or the facade's build
+validation. The active reduced loop still lacks output processing and complete
+keyed collaborator activation. Those integration requirements remain open.
+
+The next session slice is atomic idle-lane run acceptance. Admission and run
+acceptance are separate durable boundaries: authorized accepted-input replay
+must reconcile before preprocessing; a later run-start transaction must consume
+the selected pending inputs, materialize the initial prompt, advance the branch
+tip, write complete initial operation state, and install lane ownership
+together. Caller cancellation after that commit detaches the waiter without
+aborting accepted work.
+
+An earlier isolated checkout matching committed `48c4bc5` passed `make format`,
 `make lint`, and `make test` (including `make build`) in Release. The build
 reported zero warnings or errors; all 3,769 tests passed with no skips. This
 includes 1,689 abstraction tests, 144 output tests, and the public API
@@ -144,13 +179,25 @@ authoritative-run cancellation remain open.
 
 ## Concurrent ownership
 
-Two external agents own tool-feature completion and provider embedding support.
-The coordinating team avoids their implementation and provider-contract files
-and reviews their final changes at integration checkpoints. Shared abstraction
-and solution edits use narrow patches and explicit ownership coordination.
+Concurrent tool-feature and provider embedding work was incorporated by Alex in
+`dbf22d6`. The coordinating team preserved that commit, reviewed the provider
+API changes, and included the combined tree in the `bd1101c` integration gates.
+Future shared abstraction and solution edits continue to use narrow ownership
+and explicit coordination.
 
 ## Active corrections
 
+- Declared component graph validation and deterministic continuation/input
+  policies are verified in `bd1101c`. Descriptor co-registration, complete
+  component/profile selections, run-plan compilation and activation remain open.
+  `IInputCoordinator` and `IInputQueue` currently describe contracts; authorized
+  replay before preprocessing and atomic session-backed admission and promotion
+  still need implementations.
+- Continuation distinguishes the previous committed turn from the next target
+  turn, retains every pending cause, and requires authoritative terminal tool
+  references and consistent active compaction evidence. The session owner must
+  still prove those commits and revalidate proposals after asynchronous policy
+  evaluation. The current loop does not yet call the policy.
 - The artifact preparation contract clarified in `08c7bfc` is implemented in
   `1527997`; reusable store conformance is committed as `862f56d`. Durable
   reference commitment, retention coordination, and recovery remain open.
@@ -192,7 +239,7 @@ not make that component a mandatory dependency of every engine.
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Architecture index            | End-to-end source-of-truth conformance and complete coverage ledger                                                                                                    |
 | Foundation contracts          | Validated values, behavioral compatibility, versioning and deterministic primitives; emitted API baseline established                                                  |
-| Project structure             | Missing owners, constructor/factory graph, unchecked leaf protocol ownership and required project/test topology; core project graph enforced                           |
+| Project structure             | Missing owners, declared graph activation, unchecked leaf protocol ownership and required project/test topology; project and pure component graph checks established   |
 | Composition and configuration | Full closed runnable graph, catalog publication/reload, keyed selection, scope ownership, readiness                                                                    |
 | Agent runtime                 | Explicit state transitions, waiter cancellation, recovery identity, settlement outcomes                                                                                |
 | Budgets                       | Replaceable ledger/profile/policy/event contracts, consumer integration, durable accounting and full conformance                                                       |
