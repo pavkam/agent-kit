@@ -53,13 +53,34 @@ owning spec.
 | Owned schema values                                    | `ad7ce18`, `c4c4253`; 14 focused schema cases; clean integrated solution: 3,577 passed                                                                            | Detached DOM ownership, copy validation, structural equality and reviewed API baseline                                                                |
 | Independent filesystem capabilities                    | `c566dc5`; isolated filesystem suite: 82 passed                                                                                                                   | Replacing the facade or any narrow contract preserves remaining defaults and shared ownership                                                         |
 | Keyed schema preflight and execution contracts         | `e718eee`, `11e80f9`; isolated Release build: zero warnings/errors; full solution: 3,714 passed, no skips                                                         | Versioned schema-engine evidence, keyed profile isolation, bounded preflight and after-run budget capability values; runtime integration remains open |
+| Retained output-definition integrity                   | `a054e1d`; 32 focused constructor/copy cases; full compatibility suite passes                                                                                     | Default identities, invalid names/enums, malformed collections and null policies reject before assignment; valid copies preserve their source         |
+| Materialized JSON allocation bounds                    | `211b0f8`; Output: 144 passed; old processor fails all three million-token allocation regressions                                                                 | Bounded traversal, token serialization and canonical-byte deserialization; duplicate-name allocation follows aggregate byte validation                |
+| Repository analyzer and fixture formatting             | `48c4bc5`; full format/lint/build/test gates pass in the matching isolated checkout                                                                               | Import order, redundant namespace qualification, JSON annotations and fixture whitespace corrected without replacing concurrent edits                 |
 
 ## Latest integration evidence
 
-An isolated archive matching committed `11e80f9` built the complete solution in
-Release with zero warnings or errors and passed all 3,714 tests, with no
-failures or skips. This includes the schema-engine contract and keyed output
-preflight checkpoint. The archive excludes separately owned, uncommitted
+An isolated checkout matching committed `48c4bc5` passed `make format`,
+`make lint`, and `make test` (including `make build`) in Release. The build
+reported zero warnings or errors; all 3,769 tests passed with no skips. This
+includes 1,689 abstraction tests, 144 output tests, and the public API
+compatibility suite. All 2,515 committed files were compared byte-for-byte with
+the verified checkout after integration. Separately owned, uncommitted embedding
+work is excluded from this checkpoint.
+
+The three allocation regressions were also run against the original processor in
+the isolated checkout. With an 8-byte candidate limit, million-character string
+and number tokens each allocated 1,001,136 bytes; a property name allocated
+1,001,672 bytes. All three fail the regression's 8,192-byte allocation ceiling
+before the fix and pass afterward. A retained-whitespace regression verifies
+bounded runtime conversion as well. Schema fingerprint fixtures retain the
+existing encoding and numeric-spelling semantics. Constructor and record copy
+checks intentionally tighten rejection of invalid values without changing the
+emitted public API surface.
+
+An earlier isolated archive matching committed `11e80f9` built the complete
+solution in Release with zero warnings or errors and passed all 3,714 tests,
+with no failures or skips. This includes the schema-engine contract and keyed
+output preflight checkpoint. The archive excludes separately owned, uncommitted
 embedding changes. Passing this baseline does not close the remaining output
 mode, resource-bound, composition, or budget-integration requirements.
 
@@ -147,15 +168,15 @@ and solution edits use narrow patches and explicit ownership coordination.
   parsing in `de4910b`, and schema values own detached JSON in `ad7ce18`.
   `11e80f9` adds declared vocabulary/dialect capabilities, keyed schema-engine
   selection, complete schema preflight, and typed non-retriable configuration
-  failures. It also replaces full raw-text candidate sizing with bounded-stream
-  serialization. Traversal and writer allocation bounds still require review; a
-  bounded destination does not by itself bound upstream buffering. Retained
-  output-definition and alternative copies still need invariant enforcement. The
-  active engine/loop does not yet resolve output definitions or invoke the
-  output processor; complete run-plan selection must connect both before
-  claiming end-to-end structured output. Synthetic-tool, media, and union
-  processing, retry-budget integration, and the remaining replaceable output
-  pipeline collaborators remain open.
+  failures. `211b0f8` bounds traversal before retaining children, rejects large
+  tokens before decoding or writer allocation, and uses bounded canonical bytes
+  for runtime conversion. Duplicate-name sets are built only after aggregate
+  byte validation. `a054e1d` enforces retained output-definition and alternative
+  invariants through construction and record copies. The active engine/loop does
+  not yet resolve output definitions or invoke the output processor; complete
+  run-plan selection must connect both before claiming end-to-end structured
+  output. Synthetic-tool, media, and union processing, retry-budget integration,
+  and the remaining replaceable output pipeline collaborators remain open.
 - Filesystem capabilities now remain independently replaceable in `c566dc5`.
   Complete keyed profile composition, narrow read/write contracts and the
   deterministic in-memory backend remain open.
