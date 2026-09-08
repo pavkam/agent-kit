@@ -4175,6 +4175,8 @@ namespace AgentKit
         public OperationPayload(AgentKit.SchemaVersion schemaVersion, System.Collections.Immutable.ImmutableArray<byte> data) { }
         public System.Collections.Immutable.ImmutableArray<byte> Data { get; init; }
         public AgentKit.SchemaVersion SchemaVersion { get; init; }
+        public bool Equals(AgentKit.OperationPayload? other) { }
+        public override int GetHashCode() { }
     }
     public readonly struct OperationStateRevision : System.IEquatable<AgentKit.OperationStateRevision>
     {

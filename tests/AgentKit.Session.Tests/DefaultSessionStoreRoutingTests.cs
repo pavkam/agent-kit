@@ -3,6 +3,7 @@
 
 namespace AgentKit.Session.Tests;
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
@@ -170,15 +171,24 @@ public sealed class DefaultSessionStoreRoutingTests
     [Fact]
     public async Task SelectForCreateAsync_WhenObserved_EmitsContentFreeActivityAndBoundedMetricDimensions()
     {
+        using var parent = new Activity("session.store.routing.test").SetIdFormat(ActivityIdFormat.W3C).Start();
+        var parentSpanId = parent.SpanId;
         Activity? stopped = null;
         using var activityListener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
             Sample = SampleAll,
-            ActivityStopped = activity => stopped = activity,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.SessionStoreOperation
+                    && activity.ParentSpanId == parentSpanId)
+                {
+                    stopped = activity;
+                }
+            },
         };
         ActivitySource.AddActivityListener(activityListener);
-        List<KeyValuePair<string, object?>> tags = [];
+        ConcurrentQueue<KeyValuePair<string, object?>[]> measurements = [];
         using var meterListener = new MeterListener
         {
             InstrumentPublished = (instrument, current) =>
@@ -193,9 +203,12 @@ public sealed class DefaultSessionStoreRoutingTests
         meterListener.SetMeasurementEventCallback<long>((instrument, _, measurementTags, _) =>
         {
             if (instrument.Name == AgentKitMetricNames.SessionOperationCount
-                && HasSelectTag(measurementTags))
+                && HasSelectTag(measurementTags)
+                && Activity.Current is { } currentActivity
+                && currentActivity.OperationName == AgentKitActivityNames.SessionStoreOperation
+                && currentActivity.ParentSpanId == parentSpanId)
             {
-                tags.AddRange(measurementTags.ToArray());
+                measurements.Enqueue(measurementTags.ToArray());
             }
         });
         meterListener.Start();
@@ -207,10 +220,24 @@ public sealed class DefaultSessionStoreRoutingTests
             new SessionStoreCreateSelectionRequest(TestFactory.CreateRequest(), Profile("fake")),
             TestContext.Current.CancellationToken);
 
+        parent.Stop();
+        using (var distractor = new Activity("session.store.routing.distractor").SetIdFormat(ActivityIdFormat.W3C).Start())
+        {
+            _ = await selector.SelectForCreateAsync(
+                new SessionStoreCreateSelectionRequest(TestFactory.CreateRequest(), Profile("fake")),
+                TestContext.Current.CancellationToken);
+        }
+
+        activityListener.Dispose();
+        meterListener.Dispose();
         var activity = stopped.ShouldNotBeNull();
         activity.OperationName.ShouldBe(AgentKitActivityNames.SessionStoreOperation);
         activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.ParentSpanId.ShouldBe(parentSpanId);
         activity.GetTagItem(AgentKitTagNames.SessionOperation).ShouldBe("select");
+        var observedMeasurements = measurements.ToArray();
+        observedMeasurements.Length.ShouldBe(1);
+        var tags = observedMeasurements[0];
         tags.Select(static tag => tag.Key).Distinct().ShouldBe(
             [AgentKitTagNames.SessionOperation, AgentKitTagNames.Outcome],
             ignoreOrder: true);

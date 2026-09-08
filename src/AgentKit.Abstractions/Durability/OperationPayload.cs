@@ -44,15 +44,31 @@ public sealed record OperationPayload
     /// <see cref="ImmutableArray{T}"/> is not the same as an empty one and
     /// would throw on first access.
     /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="schemaVersion"/> is default and cannot identify a
+    /// recoverable serialization format.
+    /// </exception>
     public OperationPayload(SchemaVersion schemaVersion, ImmutableArray<byte> data)
     {
+        ArgumentOutOfRangeException.ThrowIfEqual(schemaVersion, default);
         ArgumentException.ThrowIfDefault(data);
         SchemaVersion = schemaVersion;
         _data = data;
     }
 
-    /// <summary>Gets the schema version the payload was written under.</summary>
-    public SchemaVersion SchemaVersion { get; init; }
+    /// <summary>Gets the non-default schema version the payload was written under.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// An initializer attempts to set a default schema version.
+    /// </exception>
+    public SchemaVersion SchemaVersion
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(SchemaVersion));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the serialized payload bytes.</summary>
     /// <value>
@@ -70,5 +86,36 @@ public sealed record OperationPayload
             ArgumentException.ThrowIfDefault(value, nameof(Data));
             _data = value;
         }
+    }
+
+    /// <summary>
+    /// Determines whether another payload retains the same schema version and
+    /// byte sequence.
+    /// </summary>
+    /// <param name="other">The payload to compare, or <see langword="null"/>.</param>
+    /// <returns>
+    /// <see langword="true"/> only when <paramref name="other"/> is non-null
+    /// and its schema version and every serialized byte are equal.
+    /// </returns>
+    public bool Equals(OperationPayload? other) =>
+        other is not null
+        && SchemaVersion == other.SchemaVersion
+        && Data.AsSpan().SequenceEqual(other.Data.AsSpan());
+
+    /// <summary>
+    /// Returns a hash derived from the schema version and every serialized
+    /// byte, consistent with structural payload equality.
+    /// </summary>
+    /// <returns>The structural hash code for this payload.</returns>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(SchemaVersion);
+        foreach (var value in Data)
+        {
+            hash.Add(value);
+        }
+
+        return hash.ToHashCode();
     }
 }

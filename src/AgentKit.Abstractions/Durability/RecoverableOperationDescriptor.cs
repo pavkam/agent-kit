@@ -79,6 +79,10 @@ public sealed record RecoverableOperationDescriptor
     /// describe one exact supported in-run or after-run durable operation.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="name"/>, <paramref name="version"/>, or
+    /// <paramref name="idempotencyKey"/> is default.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="retryOwner"/>, <paramref name="timeoutOwner"/>,
     /// <paramref name="cancellation"/>, <paramref name="effect"/>, or
     /// <paramref name="idempotency"/> is not a defined enumeration value, or
@@ -119,7 +123,7 @@ public sealed record RecoverableOperationDescriptor
     /// <param name="causalParentId">The allocated parent operation identity, or <see langword="null"/> for a root operation.</param>
     /// <param name="extensions">Host-specific durable data, or <see langword="null"/> to retain <see cref="ExtensionData.Empty"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="binding"/> or <paramref name="input"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">An enum is undefined or a supplied <paramref name="causalParentId"/> is default.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="name"/>, <paramref name="version"/>, <paramref name="idempotencyKey"/>, or a supplied <paramref name="causalParentId"/> is default; an enum is undefined.</exception>
     public RecoverableOperationDescriptor(
         DurableOperationBinding binding,
         DurableOperationName name,
@@ -136,6 +140,9 @@ public sealed record RecoverableOperationDescriptor
         ExtensionData? extensions = null)
     {
         ArgumentNullException.ThrowIfNull(binding);
+        ArgumentOutOfRangeException.ThrowIfEqual(name, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(version, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(idempotencyKey, default);
         ArgumentNullException.ThrowIfNull(input);
         ArgumentOutOfRangeException.ThrowIfUndefined(retryOwner);
         ArgumentOutOfRangeException.ThrowIfUndefined(timeoutOwner);
@@ -171,17 +178,44 @@ public sealed record RecoverableOperationDescriptor
     /// <value>The exact immutable selection and authorization evidence validated with this record's address; it cannot be replaced independently.</value>
     public DurableExecutionContext ExecutionContext => Binding.ExecutionContext;
 
-    /// <summary>Gets the deterministic operation name.</summary>
-    public DurableOperationName Name { get; init; }
+    /// <summary>Gets the non-default deterministic operation name.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer supplies a default operation name.</exception>
+    public DurableOperationName Name
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(Name));
+            field = value;
+        }
+    }
 
-    /// <summary>Gets the version of this operation's serialized contract.</summary>
-    public DurableOperationVersion Version { get; init; }
+    /// <summary>Gets the non-default version of this operation's serialized contract.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer supplies a default operation version.</exception>
+    public DurableOperationVersion Version
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(Version));
+            field = value;
+        }
+    }
 
     /// <summary>
-    /// Gets the key an effect owner can use to collapse duplicate attempts
-    /// into one effect.
+    /// Gets the non-default key an effect owner can use to collapse duplicate
+    /// attempts into one effect.
     /// </summary>
-    public IdempotencyKey IdempotencyKey { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">An initializer supplies a default idempotency key.</exception>
+    public IdempotencyKey IdempotencyKey
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(IdempotencyKey));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the versioned serialized input.</summary>
     /// <exception cref="ArgumentNullException">

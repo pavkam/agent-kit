@@ -65,6 +65,24 @@ owning spec.
 
 ## Latest integration evidence
 
+The durability payload checkpoint passed complete formatting, lint, Release
+build, and test gates in an isolated checkout over `43501c0`. Its additive API
+snapshot change exposes the source-authored equality and hash members that now
+implement the previously documented value contract.
+
+The session store routing observation test now correlates both activity and
+metric callbacks with its own parent span, snapshots measurements safely, and
+proves that unrelated selections cannot satisfy its assertions. This fixes a
+parallel-test race found by the complete gate.
+
+`OperationPayload` compares schema identity and byte contents, so independently
+allocated equal payloads work as dictionary keys and set members. Schema,
+length, or byte differences remain unequal. Default schema versions reject in
+construction and copies. Recoverable operation declarations also reject default
+names, versions, and idempotency keys before assignment in both constructor
+forms and record copies. Rejected copies leave the original values intact. These
+checks do not add a durable journal, storage adapter, or recovery worker.
+
 The captured-security integrity repair passed complete formatting, lint, Release
 build, and test gates in an isolated checkout over `75cf59d`. It restores
 validation removed by that refactor without changing the public API. Captured
