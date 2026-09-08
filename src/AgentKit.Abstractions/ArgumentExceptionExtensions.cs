@@ -69,6 +69,54 @@ public static class ArgumentExceptionExtensions
             }
         }
 
+        /// <summary>
+        /// Throws when a codec's readable schema declaration is uninitialized,
+        /// contains a default or duplicate schema version, or omits its write
+        /// version.
+        /// </summary>
+        /// <param name="readableVersions">
+        /// The initialized ordered schema-version sequence to validate.
+        /// </param>
+        /// <param name="writeVersion">
+        /// The nondefault write schema that must appear once in
+        /// <paramref name="readableVersions"/>.
+        /// </param>
+        /// <param name="paramName">
+        /// The readable-version parameter name inferred from the caller when
+        /// omitted.
+        /// </param>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="readableVersions"/> is default, repeats a schema
+        /// version, or omits <paramref name="writeVersion"/>.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="writeVersion"/> is default, or
+        /// <paramref name="readableVersions"/> contains a default schema
+        /// version.
+        /// </exception>
+        public static void ThrowIfInvalidSessionEntryCodecReadableVersions(
+            ImmutableArray<SchemaVersion> readableVersions,
+            SchemaVersion writeVersion,
+            [CallerArgumentExpression(nameof(readableVersions))] string? paramName = null)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(writeVersion, default);
+            ArgumentException.ThrowIfDefault(readableVersions, paramName);
+            var seen = new HashSet<SchemaVersion>();
+            foreach (var version in readableVersions)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(version, default, paramName);
+                if (!seen.Add(version))
+                {
+                    throw new ArgumentException("Readable schema versions must be unique.", paramName);
+                }
+            }
+
+            if (!seen.Contains(writeVersion))
+            {
+                throw new ArgumentException("Readable schema versions must include the write schema version.", paramName);
+            }
+        }
+
         /// <summary>Throws when two values that describe one structural relation differ.</summary>
         /// <typeparam name="T">The compared value type.</typeparam>
         /// <param name="actual">The caller-supplied value that must match.</param>

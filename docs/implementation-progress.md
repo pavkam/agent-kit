@@ -65,6 +65,16 @@ owning spec.
 
 ## Latest integration evidence
 
+The session-codec descriptor checkpoint passed formatting, lint, Release build,
+and all 4,995 tests in an isolated checkout over `861611c`. It adds a stable
+entry wire identifier, finite payload/extension/depth limits, and immutable
+descriptors binding an exact local entry type to explicitly readable schema
+versions. Declared versions must include the write version; unknown version
+ordering never implies compatibility. Ordered declaration equality, invalid
+defaults, and the public version guard have focused tests. Codec catalogs, wire
+envelopes, built-in codecs, and Session.Sqlite remain open; these descriptors do
+not implement persistence or semantic recovery.
+
 The enforcement value-equality checkpoint passed formatting, lint, Release
 build, and all 4,952 tests in an isolated checkout over `3ab26b1`.
 `SecurityEnforcementRequest` now compares ordered resource contents and hashes

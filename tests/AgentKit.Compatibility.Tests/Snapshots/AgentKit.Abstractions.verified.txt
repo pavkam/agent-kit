@@ -333,6 +333,7 @@ namespace AgentKit
         {
             public static void ThrowIfDuplicateAgentRunProfileCoordinates(System.Collections.Immutable.ImmutableArray<AgentKit.AgentRunProfilePublication> publications, [System.Runtime.CompilerServices.CallerArgumentExpression("publications")] string? paramName = null) { }
             public static void ThrowIfDuplicateSecurityAuditEventKind(System.Collections.Immutable.ImmutableArray<AgentKit.SecurityAuditEventKind> eventKinds, [System.Runtime.CompilerServices.CallerArgumentExpression("eventKinds")] string? paramName = null) { }
+            public static void ThrowIfInvalidSessionEntryCodecReadableVersions(System.Collections.Immutable.ImmutableArray<AgentKit.SchemaVersion> readableVersions, AgentKit.SchemaVersion writeVersion, [System.Runtime.CompilerServices.CallerArgumentExpression("readableVersions")] string? paramName = null) { }
             public static void ThrowIfNotEqual<T>(T actual, T expected, [System.Runtime.CompilerServices.CallerArgumentExpression("actual")] string? paramName = null) { }
             public static void ThrowIfInvalidIntentReceipt(AgentKit.GrantConsumptionStatus status, AgentKit.SecurityEnforcementIntentReceipt? receipt, [System.Runtime.CompilerServices.CallerArgumentExpression("receipt")] string? paramName = null) { }
             public static void ThrowIfDefaultEmptyOrDuplicate<T>(System.Collections.Immutable.ImmutableArray<T> values, [System.Runtime.CompilerServices.CallerArgumentExpression("values")] string? paramName = null)
@@ -5745,10 +5746,35 @@ namespace AgentKit
         public AgentKit.SchemaVersion SchemaVersion { get; init; }
         public AgentKit.SessionSequence Sequence { get; init; }
     }
+    public sealed class SessionEntryCodecDescriptor : System.IEquatable<AgentKit.SessionEntryCodecDescriptor>
+    {
+        public SessionEntryCodecDescriptor(AgentKit.SessionEntryTypeId typeId, System.Type entryType, AgentKit.SchemaVersion writeVersion, System.Collections.Immutable.ImmutableArray<AgentKit.SchemaVersion> readableVersions, AgentKit.SessionEntryCodecLimits limits) { }
+        public System.Type EntryType { get; }
+        public AgentKit.SessionEntryCodecLimits Limits { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.SchemaVersion> ReadableVersions { get; }
+        public AgentKit.SessionEntryTypeId TypeId { get; }
+        public AgentKit.SchemaVersion WriteVersion { get; }
+        public bool Equals(AgentKit.SessionEntryCodecDescriptor? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class SessionEntryCodecLimits : System.IEquatable<AgentKit.SessionEntryCodecLimits>
+    {
+        public SessionEntryCodecLimits(int maximumPayloadBytes, int maximumExtensionCount, int maximumExtensionBytes, int maximumJsonDepth) { }
+        public int MaximumExtensionBytes { get; }
+        public int MaximumExtensionCount { get; }
+        public int MaximumJsonDepth { get; }
+        public int MaximumPayloadBytes { get; }
+    }
     public readonly struct SessionEntryId : System.IEquatable<AgentKit.SessionEntryId>
     {
         public SessionEntryId(System.Guid value) { }
         public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct SessionEntryTypeId : System.IEquatable<AgentKit.SessionEntryTypeId>
+    {
+        public SessionEntryTypeId(string value) { }
+        public string Value { get; }
         public override string ToString() { }
     }
     public abstract class SessionEvent : System.IEquatable<AgentKit.SessionEvent>
