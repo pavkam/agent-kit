@@ -118,6 +118,9 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for atomic grant consumption and enforcement-intent receipt persistence.</summary>
     public const string SecurityGrantConsume = "security.grant.consume";
 
+    /// <summary>Gets the name for one authoritative security-grant store operation.</summary>
+    public const string SecurityGrantStoreOperation = "security.grant.store.operation";
+
     /// <summary>Gets the name for reserving bounded shared capacity.</summary>
     public const string BudgetReserve = "budget.reserve";
 

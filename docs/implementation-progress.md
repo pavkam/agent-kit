@@ -65,6 +65,24 @@ owning spec.
 
 ## Latest integration evidence
 
+The Permissions SQLite checkpoint passed formatting, lint, Release build, and
+all 5,242 tests in an isolated checkout over `0a60cb3`. The explicit
+`AgentKit.Permissions.Sqlite` leaf persists grants, remaining uses, revocation,
+and exact enforcement-intent receipts behind `ISecurityGrantStore`. Schema and
+store identity checks share the mutation transaction; bounded binary codecs
+preserve complete evidence, UTF-16 code units, and timestamp offsets. Reopening
+a store reconciles an existing receipt without granting a second effect.
+
+Both Permissions storage leaves use explicit additive selection. Repeating the
+same leaf is idempotent; competing leaves or custom stores remain visible for
+composition rejection. SQLite requires a host-supplied fixed target and explicit
+initialization. It creates no parent directories, retains records indefinitely,
+and promises local transactional storage without distributed fencing or OS
+isolation. Uncertain acknowledgements require exact-intent reconciliation; the
+legacy operation without an intent cannot safely retry automatically. Its 70
+adapter tests include shared conformance, restart, corruption, concurrent use,
+argument bounds, and isolated safe diagnostics with normal test parallelism.
+
 The DI infrastructure validation checkpoint passed formatting, lint, Release
 build, and all 5,170 tests in an isolated checkout over `b97049d`. Declared
 component dependencies may explicitly opt into inspection of captured Microsoft

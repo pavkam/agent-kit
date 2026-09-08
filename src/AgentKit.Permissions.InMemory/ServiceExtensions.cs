@@ -8,20 +8,26 @@ public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
-        /// <summary>Registers the process-local store when no security-grant store implementation was already selected.</summary>
+        /// <summary>Adds the process-local store as one explicit security-grant adapter selection.</summary>
         /// <returns>The same service collection for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         /// <remarks>
-        /// Registration is idempotent and preserves an existing <see cref="ISecurityGrantStore"/> registration. The store is
-        /// singleton and thread-safe, retains evidence only for the process lifetime, and is suitable for deterministic tests,
-        /// examples, and short-lived hosts. A durable host selects a dedicated storage adapter instead.
+        /// Repeating this leaf is idempotent. A different leaf or custom store remains visible as another
+        /// <see cref="ISecurityGrantStore"/> registration so composition rejects ambiguity regardless of registration order.
+        /// Hosts replace a prior selection explicitly by removing its interface registrations before adding this leaf.
         /// </remarks>
         public IServiceCollection AddInMemorySecurityGrantStore()
         {
             ArgumentNullException.ThrowIfNull(services);
             _ = services.AddAgentKitObservability();
             services.TryAddSingleton(TimeProvider.System);
-            services.TryAddSingleton<ISecurityGrantStore, InMemorySecurityGrantStore>();
+            if (!services.Any(static descriptor =>
+                    descriptor.ServiceType == typeof(ISecurityGrantStore)
+                    && descriptor.Lifetime == ServiceLifetime.Singleton
+                    && descriptor.ImplementationType == typeof(InMemorySecurityGrantStore)))
+            {
+                services.Add(ServiceDescriptor.Singleton<ISecurityGrantStore, InMemorySecurityGrantStore>());
+            }
             return services;
         }
     }

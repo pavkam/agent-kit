@@ -67,6 +67,12 @@ public static class AgentKitTagNames
     /// <summary>Gets the AgentKit security-request identity attribute.</summary>
     public const string SecurityRequestId = "agentkit.security_request.id";
 
+    /// <summary>Gets the security-grant identity attribute for traces and structured logs.</summary>
+    public const string SecurityGrantId = "agentkit.security_grant.id";
+
+    /// <summary>Gets the enforcement-intent identity attribute for traces and structured logs.</summary>
+    public const string SecurityEnforcementIntentId = "agentkit.security_enforcement_intent.id";
+
     /// <summary>Gets the AgentKit security-audit record identity attribute for traces and structured logs.</summary>
     public const string SecurityAuditRecordId = "agentkit.security_audit_record.id";
 

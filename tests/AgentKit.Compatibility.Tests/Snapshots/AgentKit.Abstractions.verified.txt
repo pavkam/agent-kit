@@ -5545,6 +5545,20 @@ namespace AgentKit
         public bool Equals(AgentKit.SecurityGrant? other) { }
         public override int GetHashCode() { }
     }
+    public enum SecurityGrantStoreFailureKind
+    {
+        OpenFailed = 0,
+        Busy = 1,
+        SchemaUnsupported = 2,
+        CorruptEvidence = 3,
+        PersistenceFailed = 4,
+    }
+    public sealed class SecurityGrantStoreUnavailableException : System.Exception
+    {
+        public SecurityGrantStoreUnavailableException(AgentKit.SecurityGrantStoreFailureKind kind, string safeMessage, System.Exception? innerException = null) { }
+        public AgentKit.SecurityGrantStoreFailureKind Kind { get; }
+        public string SafeMessage { get; }
+    }
     public enum SecurityOperationKind
     {
         FileRead = 0,

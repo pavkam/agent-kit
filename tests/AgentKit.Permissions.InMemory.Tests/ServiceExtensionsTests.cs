@@ -6,9 +6,9 @@ namespace AgentKit.Permissions.InMemory.Tests;
 /// <summary>Verifies explicit registration of the process-local grant-store leaf.</summary>
 public sealed class ServiceExtensionsTests
 {
-    /// <summary>Verifies repeated leaf registration supplies one store and preserves ordinary DI replacement semantics.</summary>
+    /// <summary>Verifies repeated leaf registration is idempotent while a different store remains visibly ambiguous.</summary>
     [Fact]
-    public void AddInMemorySecurityGrantStore_WhenCalledRepeatedlyOrAfterHostStore_PreservesOneSelectedStore()
+    public void AddInMemorySecurityGrantStore_WhenCalledRepeatedlyOrAfterHostStore_PreservesEveryDistinctSelection()
     {
         var replacement = new FixedGrantStore();
         var services = new ServiceCollection();
@@ -26,8 +26,10 @@ public sealed class ServiceExtensionsTests
         _ = services.AddInMemorySecurityGrantStore();
         using var replacementProvider = services.BuildServiceProvider();
 
-        replacementProvider.GetRequiredService<ISecurityGrantStore>().ShouldBeSameAs(replacement);
-        _ = replacementProvider.GetServices<ISecurityGrantStore>().ShouldHaveSingleItem();
+        var selections = replacementProvider.GetServices<ISecurityGrantStore>().ToArray();
+        selections.Length.ShouldBe(2);
+        selections.ShouldContain(replacement);
+        selections.ShouldContain(static store => store is InMemorySecurityGrantStore);
     }
 
     /// <summary>Verifies a null service collection is rejected before any registration occurs.</summary>
@@ -39,6 +41,23 @@ public sealed class ServiceExtensionsTests
 
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("services");
+    }
+
+    /// <summary>Verifies same-concrete instance and different-lifetime registrations cannot suppress the leaf singleton.</summary>
+    [Fact]
+    public void AddInMemorySecurityGrantStore_WhenSameConcreteAlternativeExists_PreservesVisibleAmbiguity()
+    {
+        var existing = new InMemorySecurityGrantStore(TimeProvider.System);
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<ISecurityGrantStore>(existing);
+        _ = services.AddScoped<ISecurityGrantStore, InMemorySecurityGrantStore>();
+
+        _ = services.AddInMemorySecurityGrantStore();
+
+        var descriptors = services.Where(static descriptor => descriptor.ServiceType == typeof(ISecurityGrantStore)).ToArray();
+        descriptors.Length.ShouldBe(3);
+        descriptors.ShouldContain(static descriptor => descriptor.Lifetime == ServiceLifetime.Singleton
+            && descriptor.ImplementationType == typeof(InMemorySecurityGrantStore));
     }
 
     private sealed class FixedGrantStore: ISecurityGrantStore

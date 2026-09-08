@@ -53,6 +53,7 @@ namespace AgentKit.Observability
         public const string SecurityAuthoritySelect = "security.authority.select";
         public const string SecurityAuthorize = "security.authorize";
         public const string SecurityGrantConsume = "security.grant.consume";
+        public const string SecurityGrantStoreOperation = "security.grant.store.operation";
         public const string SecurityProfileCapture = "security.profile.capture";
         public const string SessionBranch = "session.branch";
         public const string SessionCommit = "session.commit";
@@ -124,6 +125,8 @@ namespace AgentKit.Observability
         public const string SecurityAuthoritySelectionDuration = "agentkit.security.authority.selection.duration";
         public const string SecurityDecisionCount = "agentkit.security.decision.count";
         public const string SecurityGrantConsumptionCount = "agentkit.security.grant.consumption.count";
+        public const string SecurityGrantStoreOperationCount = "agentkit.security.grant.store.operation.count";
+        public const string SecurityGrantStoreOperationDuration = "agentkit.security.grant.store.operation.duration";
         public const string SecurityProfileCaptureCount = "agentkit.security.profile.capture.count";
         public const string SecurityProfileCaptureDuration = "agentkit.security.profile.capture.duration";
         public const string SecurityProfilePublicationReadCount = "agentkit.security.profile.publication.read.count";
@@ -183,6 +186,8 @@ namespace AgentKit.Observability
         public const string SecurityAuditRecordId = "agentkit.security_audit_record.id";
         public const string SecurityAuthorityKey = "agentkit.security.authority.key";
         public const string SecurityEffect = "agentkit.security.effect";
+        public const string SecurityEnforcementIntentId = "agentkit.security_enforcement_intent.id";
+        public const string SecurityGrantId = "agentkit.security_grant.id";
         public const string SecurityOperationKind = "agentkit.security.operation.kind";
         public const string SecurityProfileKey = "agentkit.security.profile.key";
         public const string SecurityRequestId = "agentkit.security_request.id";

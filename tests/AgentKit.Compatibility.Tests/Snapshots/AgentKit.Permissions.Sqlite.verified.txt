@@ -1,0 +1,57 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Permissions.Sqlite.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Permissions.Sqlite
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSecurityGrantStore(AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreTarget target, AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreSettings settings) { }
+        }
+    }
+    public enum SqliteDatabaseOpenMode
+    {
+        OpenExisting = 0,
+        CreateIfMissing = 1,
+    }
+    public enum SqliteSchemaMode
+    {
+        ValidateExact = 0,
+        ApplyKnownMigrations = 1,
+    }
+    public sealed class SqliteSecurityGrantStore : AgentKit.ISecurityGrantStore
+    {
+        public SqliteSecurityGrantStore(AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreTarget target, AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreSettings settings, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.Sqlite.SqliteSecurityGrantStore>? logger = null) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask RegisterAsync(AgentKit.SecurityGrant grant, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<bool> RevokeAsync(AgentKit.GrantId grantId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GrantConsumptionResult> ValidateAndConsumeAsync(AgentKit.SecurityGrant grant, AgentKit.SecurityEnforcementRequest enforcement, AgentKit.SecurityEnforcementIntent intent, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct SqliteSecurityGrantStoreInstanceId : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreInstanceId>
+    {
+        public SqliteSecurityGrantStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SqliteSecurityGrantStoreSettings : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreSettings>
+    {
+        public SqliteSecurityGrantStoreSettings(System.TimeSpan lockTimeout, int maximumGrantBytes, int maximumEnforcementBytes, int maximumResources, int maximumClaims, int maximumDelegationLinks) { }
+        public System.TimeSpan LockTimeout { get; }
+        public int MaximumClaims { get; }
+        public int MaximumDelegationLinks { get; }
+        public int MaximumEnforcementBytes { get; }
+        public int MaximumGrantBytes { get; }
+        public int MaximumResources { get; }
+        public static AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreSettings CreateDefault() { }
+    }
+    public sealed class SqliteSecurityGrantStoreTarget : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreTarget>
+    {
+        public SqliteSecurityGrantStoreTarget(string databasePath, AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreInstanceId expectedStoreInstanceId, AgentKit.Permissions.Sqlite.SqliteDatabaseOpenMode openMode, AgentKit.Permissions.Sqlite.SqliteSchemaMode schemaMode) { }
+        public string DatabasePath { get; }
+        public AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Permissions.Sqlite.SqliteDatabaseOpenMode OpenMode { get; }
+        public AgentKit.Permissions.Sqlite.SqliteSchemaMode SchemaMode { get; }
+    }
+}

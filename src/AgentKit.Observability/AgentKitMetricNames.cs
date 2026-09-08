@@ -76,6 +76,12 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal grant-consumption outcomes.</summary>
     public const string SecurityGrantConsumptionCount = "agentkit.security.grant.consumption.count";
 
+    /// <summary>Gets the counter for terminal authoritative security-grant store operations.</summary>
+    public const string SecurityGrantStoreOperationCount = "agentkit.security.grant.store.operation.count";
+
+    /// <summary>Gets the histogram for authoritative security-grant store operation duration in seconds.</summary>
+    public const string SecurityGrantStoreOperationDuration = "agentkit.security.grant.store.operation.duration";
+
     /// <summary>Gets the counter for terminal session coordination outcomes.</summary>
     public const string SessionOperationCount = "agentkit.session.operation.count";
 
