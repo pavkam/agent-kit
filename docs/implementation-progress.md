@@ -65,15 +65,38 @@ owning spec.
 
 ## Latest integration evidence
 
-The session/facade checkpoint passed `make format`, `make lint`, and `make test`
-in an isolated checkout over `bb4a2d4`. All 4,710 tests passed without skips;
-the Release build reported zero warnings or errors. The initial complete run
-passed 4,682 tests and failed only seven expected API snapshots, all reviewed.
-The final run also includes descriptor-construction and copy-invariant
-regressions, accepted-state coherence checks, and scoped diagnostic listeners
-that cannot interfere with parallel receipt tests. Source integration used
-verified frozen bundles; earlier language, artifact, and broker checkpoint bytes
-were retained.
+The broker observability checkpoint passed `make format`, `make lint`, and
+`make test` in an isolated checkout over `05df67a`. All 4,741 tests passed
+without skips; the Release build reported zero warnings or errors. Three
+additive public API snapshots were reviewed. Owning IO and Goals suites contain
+51 and 30 passing tests; downstream Question and Task suites contain 17 and 12.
+
+Human-question publication and task delegation now emit shared activities,
+source-generated structured logs, and outcome-only count/duration metrics. Trace
+and log identities retain correlation without capturing prompts, answers, task
+objectives, child results, or exception messages. Clocks and loggers are
+replaceable, and existing broker constructors remain available. Observer
+failures preserve semantic results and exceptions; cancellation is checked after
+a non-cooperative channel returns. Caller-wait cancellation does not assert that
+a displayed question was revoked or child work stopped.
+
+A channel result with a different question/delegation identity remains the
+returned object, while its observation records failure at error severity. Tests
+scope throwing listeners and metric collectors to their own parent trace and use
+concurrent-safe collectors. Direct metric and enum guards reject invalid values
+before measurement. Shared session instrumentation from the preceding checkpoint
+is retained. This checkpoint adds routine operational telemetry; required audit
+delivery and durable post-effect settlement remain open.
+
+The preceding session/facade checkpoint passed `make format`, `make lint`, and
+`make test` in an isolated checkout over `bb4a2d4`. All 4,710 tests passed
+without skips; the Release build reported zero warnings or errors. The initial
+complete run passed 4,682 tests and failed only seven expected API snapshots,
+all reviewed. The final run also includes descriptor-construction and
+copy-invariant regressions, accepted-state coherence checks, and scoped
+diagnostic listeners that cannot interfere with parallel receipt tests. Source
+integration used verified frozen bundles; earlier language, artifact, and broker
+checkpoint bytes were retained.
 
 Session operations now carry immutable captured authorization and an explicit
 session profile. Creation resolves an authorized sessionless directory route

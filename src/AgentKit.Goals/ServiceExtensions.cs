@@ -15,10 +15,14 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
             services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
+            services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<ITaskDelegationBroker>(static provider => new DefaultTaskDelegationBroker(
                 provider.GetRequiredService<ISecurityGrantStore>(),
                 provider.GetRequiredService<ITaskDelegationChannel>(),
-                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetService<ILogger<DefaultTaskDelegationBroker>>()
+                    ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultTaskDelegationBroker>.Instance));
             return services;
         }
     }

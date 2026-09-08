@@ -77,15 +77,18 @@ internal sealed class RecordingGrantStore: ISecurityGrantStore
 internal sealed class RecordingQuestionChannel: IHumanQuestionChannel
 {
     internal List<HumanQuestionPrompt> Prompts { get; } = [];
+    internal Action? OnAsk { get; set; }
+    internal Func<HumanQuestionPrompt, HumanQuestionResult> Result { get; set; } = static prompt =>
+        new HumanQuestionAnswered(prompt.Id,
+            new HumanQuestionAnswer(prompt.Options[0].Id, null, prompt.Identity, prompt.Deadline));
 
     public ValueTask<HumanQuestionResult> AskAsync(
         HumanQuestionPrompt prompt,
         CancellationToken cancellationToken = default)
     {
         Prompts.Add(prompt);
-        return ValueTask.FromResult<HumanQuestionResult>(new HumanQuestionAnswered(
-            prompt.Id,
-            new HumanQuestionAnswer(prompt.Options[0].Id, null, prompt.Identity, prompt.Deadline)));
+        OnAsk?.Invoke();
+        return ValueTask.FromResult(Result(prompt));
     }
 }
 
@@ -104,4 +107,35 @@ internal sealed class FixedSecurityEnforcementIntentIdGenerator(SecurityEnforcem
 internal sealed class FixedTimeProvider: TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch;
+}
+
+internal sealed class ThrowingLogger: ILogger<DefaultHumanQuestionBroker>
+{
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => throw new InvalidOperationException("observer");
+    public bool IsEnabled(LogLevel logLevel) => true;
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+        Func<TState, Exception?, string> formatter) => throw new InvalidOperationException("observer");
+}
+
+internal sealed class RecordingQuestionLogger: ILogger<DefaultHumanQuestionBroker>
+{
+    internal List<string> Messages { get; } = [];
+    internal List<(int EventId, LogLevel Level)> Events { get; } = [];
+    internal List<ImmutableArray<string>> FieldNames { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        Events.Add((eventId.Id, logLevel));
+        if (state is IReadOnlyList<KeyValuePair<string, object?>> fields)
+        {
+            FieldNames.Add([.. fields.Select(static field => field.Key)]);
+        }
+
+        Messages.Add(formatter(state, exception));
+    }
 }

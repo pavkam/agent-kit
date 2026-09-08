@@ -187,7 +187,445 @@ public sealed class DefaultHumanQuestionBrokerTests
             Guid.Parse("90000000-0000-0000-0000-000000000002")));
     }
 
-    private static HumanQuestionRequest Request(ComponentId audience, bool captured = false)
+    [Fact]
+    public async Task AskAsync_WhenAnswered_EmitsSafeCorrelatedActivityAndBoundedMetrics()
+    {
+        Activity? stopped = null;
+        var countMeasurements = 0;
+        var durationMeasurements = 0;
+        var metricTags = new ConcurrentQueue<KeyValuePair<string, object?>>();
+        using var parent = new Activity("human-question-publication-test").Start();
+        using var activities = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) =>
+                SampleForParent(ref options, parent.Context.TraceId),
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.HumanQuestionPublish
+                    && activity.ParentId == parent.Id)
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(activities);
+        using var metrics = new MeterListener();
+        metrics.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
+                && instrument.Name is AgentKitMetricNames.HumanQuestionPublicationCount or AgentKitMetricNames.HumanQuestionPublicationDuration)
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        metrics.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
+        {
+            if (instrument.Name == AgentKitMetricNames.HumanQuestionPublicationCount
+                && Activity.Current?.TraceId == parent.Context.TraceId)
+            {
+                _ = Interlocked.Add(ref countMeasurements, checked((int) measurement));
+                foreach (var tag in tags)
+                {
+                    metricTags.Enqueue(tag);
+                }
+            }
+        });
+        metrics.SetMeasurementEventCallback<double>((instrument, _, tags, _) =>
+        {
+            if (instrument.Name == AgentKitMetricNames.HumanQuestionPublicationDuration
+                && Activity.Current?.TraceId == parent.Context.TraceId)
+            {
+                _ = Interlocked.Increment(ref durationMeasurements);
+                foreach (var tag in tags)
+                {
+                    metricTags.Enqueue(tag);
+                }
+            }
+        });
+        metrics.Start();
+        var logger = new RecordingQuestionLogger();
+        var request = Request(new ComponentId("agentkit.io.human-question"));
+        var broker = new DefaultHumanQuestionBroker(new RecordingGrantStore(), new RecordingQuestionChannel(),
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.NewGuid())),
+            new FixedTimeProvider(), logger);
+
+        _ = await broker.AskAsync(request, TestContext.Current.CancellationToken);
+
+        var activity = stopped.ShouldNotBeNull();
+        activity.OperationName.ShouldBe(AgentKitActivityNames.HumanQuestionPublish);
+        activity.ParentId.ShouldBe(parent.Id);
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.GetTagItem(AgentKitTagNames.QuestionId).ShouldBe(request.Id.ToString());
+        activity.GetTagItem(AgentKitTagNames.TenantId).ShouldBe("tenant");
+        activity.GetTagItem(AgentKitTagNames.TurnId).ShouldBeNull();
+        string.Join('|', activity.TagObjects.Select(static tag => $"{tag.Key}={tag.Value}"))
+            .ShouldNotContain(request.Prompt);
+        logger.Events.ShouldHaveSingleItem().ShouldBe((1003, LogLevel.Information));
+        logger.FieldNames.ShouldHaveSingleItem().ShouldBe(["QuestionId", "TenantId", "AgentId", "SessionId", "RunId", "TurnId", "ToolCallId", "OperationId", "SecurityRequestId", "Outcome", "{OriginalFormat}"]);
+        logger.Messages.ShouldAllBe(message => !message.Contains(request.Prompt, StringComparison.Ordinal));
+        Volatile.Read(ref countMeasurements).ShouldBe(1);
+        Volatile.Read(ref durationMeasurements).ShouldBe(1);
+        metricTags.Select(static tag => tag.Key).Distinct().ShouldBe([AgentKitTagNames.Outcome]);
+        metricTags.Any(static tag => tag.Key == AgentKitTagNames.Outcome && Equals(tag.Value, "answered")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task AskAsync_WhenCorrelationHasTurn_EmitsEstablishedTenantAndTurnTags()
+    {
+        Activity? stopped = null;
+        using var parent = new Activity("human-question-turn-correlation-test").Start();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) => SampleForParent(ref options, parent.Context.TraceId),
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.HumanQuestionPublish && activity.ParentId == parent.Id)
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var broker = new DefaultHumanQuestionBroker(new RecordingGrantStore(), new RecordingQuestionChannel(),
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.Parse("90000000-0000-0000-0000-000000000019"))),
+            new FixedTimeProvider(), new RecordingQuestionLogger());
+        var turnId = new TurnId(Guid.Parse("90000000-0000-0000-0000-000000000020"));
+
+        _ = await broker.AskAsync(Request(broker.SecurityAudience, turnId: turnId), TestContext.Current.CancellationToken);
+
+        var activity = stopped.ShouldNotBeNull();
+        activity.GetTagItem(AgentKitTagNames.TenantId).ShouldBe("tenant");
+        activity.GetTagItem(AgentKitTagNames.TurnId).ShouldBe(turnId.ToString());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    public void RecordHumanQuestionPublication_WhenElapsedIsNullOrZero_RecordsDefinedOutcome(int? elapsedMilliseconds)
+    {
+        using var parent = new Activity("human-question-metrics-valid-test").Start();
+        using var measurementScope = new Activity("human-question-metrics-valid-operation").Start();
+        using var metrics = new MeterListener();
+        var measurements = new ConcurrentQueue<long>();
+        metrics.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == AgentKitMetricNames.HumanQuestionPublicationCount)
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        metrics.SetMeasurementEventCallback<long>((_, measurement, _, _) =>
+        {
+            if (Activity.Current?.TraceId == parent.Context.TraceId)
+            {
+                measurements.Enqueue(measurement);
+            }
+        });
+        metrics.Start();
+
+        IOMetrics.RecordHumanQuestionPublication(HumanQuestionPublicationOutcome.Answered,
+            elapsedMilliseconds is { } milliseconds ? TimeSpan.FromMilliseconds(milliseconds) : null);
+
+        measurements.ShouldBe([1L]);
+    }
+
+    [Fact]
+    public void RecordHumanQuestionPublication_WhenArgumentsAreInvalid_ThrowsBeforeMeasurement()
+    {
+        using var parent = new Activity("human-question-metrics-invalid-test").Start();
+        using var measurementScope = new Activity("human-question-metrics-invalid-operation").Start();
+        using var metrics = new MeterListener();
+        var measurements = new ConcurrentQueue<long>();
+        metrics.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == AgentKitMetricNames.HumanQuestionPublicationCount)
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        metrics.SetMeasurementEventCallback<long>((_, measurement, _, _) =>
+        {
+            if (Activity.Current?.TraceId == parent.Context.TraceId)
+            {
+                measurements.Enqueue(measurement);
+            }
+        });
+        metrics.Start();
+
+        var outcomeException = Should.Throw<ArgumentOutOfRangeException>(() =>
+            IOMetrics.RecordHumanQuestionPublication((HumanQuestionPublicationOutcome) (-1), null));
+        var elapsedException = Should.Throw<ArgumentOutOfRangeException>(() =>
+            IOMetrics.RecordHumanQuestionPublication(HumanQuestionPublicationOutcome.Answered, TimeSpan.FromTicks(-1)));
+
+        outcomeException.ParamName.ShouldBe("outcome");
+        elapsedException.ParamName.ShouldBe("elapsed");
+        measurements.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AskAsync_WhenObserversThrow_PreservesSemanticPublication()
+    {
+        using var parent = new Activity("human-question-observer-test").Start();
+        using var activities = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) =>
+                ThrowForParent(ref options, parent.Context.TraceId),
+        };
+        ActivitySource.AddActivityListener(activities);
+        using var metrics = new MeterListener();
+        metrics.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == AgentKitMetricNames.HumanQuestionPublicationCount)
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        metrics.SetMeasurementEventCallback<long>((_, _, _, _) =>
+        {
+            if (Activity.Current?.TraceId == parent.Context.TraceId)
+            {
+                throw new InvalidOperationException("observer");
+            }
+        });
+        metrics.Start();
+        var channel = new RecordingQuestionChannel();
+        var broker = new DefaultHumanQuestionBroker(new RecordingGrantStore(), channel,
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.NewGuid())),
+            new FixedTimeProvider(), new ThrowingLogger());
+
+        var result = await broker.AskAsync(Request(broker.SecurityAudience), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<HumanQuestionAnswered>();
+        _ = channel.Prompts.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task AskAsync_WhenCancelled_EmitsCancelledObservationAndPreservesCallerCancellation()
+    {
+        Activity? stopped = null;
+        using var parent = new Activity("human-question-cancellation-test").Start();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) =>
+                SampleForParent(ref options, parent.Context.TraceId),
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.HumanQuestionPublish
+                    && activity.ParentId == parent.Id)
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var logger = new RecordingQuestionLogger();
+        var broker = new DefaultHumanQuestionBroker(new RecordingGrantStore(), new RecordingQuestionChannel(),
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.NewGuid())),
+            new FixedTimeProvider(), logger);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await broker.AskAsync(Request(broker.SecurityAudience), cancellation.Token));
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("cancelled");
+        logger.Events.ShouldHaveSingleItem().ShouldBe((1004, LogLevel.Information));
+    }
+
+    [Fact]
+    public async Task AskAsync_WhenGrantStoreFaults_LogsOnlyErrorTypeAndRethrows()
+    {
+        Activity? stopped = null;
+        using var parent = new Activity("human-question-fault-test").Start();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) =>
+                SampleForParent(ref options, parent.Context.TraceId),
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.HumanQuestionPublish
+                    && activity.ParentId == parent.Id)
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var logger = new RecordingQuestionLogger();
+        var broker = new DefaultHumanQuestionBroker(
+            new RecordingGrantStore { OnConsume = static () => throw new InvalidOperationException("raw channel-adjacent detail") },
+            new RecordingQuestionChannel(),
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.NewGuid())),
+            new FixedTimeProvider(), logger);
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await broker.AskAsync(Request(broker.SecurityAudience), TestContext.Current.CancellationToken));
+
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("failed");
+        logger.Events.ShouldHaveSingleItem().ShouldBe((1005, LogLevel.Error));
+        logger.Messages.ShouldAllBe(message => !message.Contains("raw channel-adjacent detail", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ToStableValue_WhenOutcomeIsUndefined_ThrowsWithExactParameterName()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() =>
+            ((HumanQuestionPublicationOutcome) (-1)).ToStableValue());
+
+        exception.ParamName.ShouldBe("outcome");
+    }
+
+    [Fact]
+    public async Task AskAsync_WhenGrantIsDenied_EmitsTypedDenialWithoutPromptContent()
+    {
+        Activity? stopped = null;
+        using var parent = new Activity("human-question-denial-test").Start();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) =>
+                SampleForParent(ref options, parent.Context.TraceId),
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.HumanQuestionPublish
+                    && activity.ParentId == parent.Id)
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var logger = new RecordingQuestionLogger();
+        var request = Request(new ComponentId("agentkit.io.human-question"));
+        var result = await new DefaultHumanQuestionBroker(
+            new RecordingGrantStore { Status = GrantConsumptionStatus.Exhausted }, new RecordingQuestionChannel(),
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(
+                Guid.Parse("90000000-0000-0000-0000-000000000011"))), new FixedTimeProvider(), logger)
+            .AskAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<HumanQuestionUnavailable>();
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("grant_denied");
+        logger.Events.ShouldHaveSingleItem().ShouldBe((1003, LogLevel.Information));
+        logger.Messages.ShouldAllBe(message => !message.Contains(request.Prompt, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AskAsync_WhenCallerCancelsAfterNonCooperativeChannel_ReturnsCancellationAfterPublication()
+    {
+        Activity? stopped = null;
+        using var parent = new Activity("human-question-post-channel-cancellation-test").Start();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) =>
+                SampleForParent(ref options, parent.Context.TraceId),
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.HumanQuestionPublish
+                    && activity.ParentId == parent.Id)
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        using var cancellation = new CancellationTokenSource();
+        var channel = new RecordingQuestionChannel { OnAsk = cancellation.Cancel };
+        var broker = new DefaultHumanQuestionBroker(new RecordingGrantStore(), channel,
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(
+                Guid.Parse("90000000-0000-0000-0000-000000000012"))), new FixedTimeProvider(),
+            new RecordingQuestionLogger());
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await broker.AskAsync(Request(broker.SecurityAudience), cancellation.Token));
+
+        _ = channel.Prompts.ShouldHaveSingleItem();
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("cancelled");
+    }
+
+    [Fact]
+    public async Task AskAsync_WhenChannelReturnsDifferentQuestionId_PreservesResultAndEmitsFailedObservation()
+    {
+        Activity? stopped = null;
+        using var parent = new Activity("human-question-result-mismatch-test").Start();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) =>
+                SampleForParent(ref options, parent.Context.TraceId),
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.HumanQuestionPublish
+                    && activity.ParentId == parent.Id)
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var expected = new HumanQuestionUnavailable(new QuestionId(
+            Guid.Parse("90000000-0000-0000-0000-000000000013")), "Channel returned a different correlation.");
+        var channel = new RecordingQuestionChannel { Result = _ => expected };
+        var logger = new RecordingQuestionLogger();
+        var broker = new DefaultHumanQuestionBroker(new RecordingGrantStore(), channel,
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(
+                Guid.Parse("90000000-0000-0000-0000-000000000014"))), new FixedTimeProvider(),
+            logger);
+
+        var actual = await broker.AskAsync(Request(broker.SecurityAudience), TestContext.Current.CancellationToken);
+
+        actual.ShouldBeSameAs(expected);
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("failed");
+        logger.Events.ShouldHaveSingleItem().ShouldBe((1003, LogLevel.Error));
+    }
+
+    [Fact]
+    public void Constructor_WhenTimeProviderIsNull_ThrowsWithExactParameterName()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new DefaultHumanQuestionBroker(
+            new RecordingGrantStore(), new RecordingQuestionChannel(),
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.NewGuid())), null!,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultHumanQuestionBroker>.Instance));
+
+        exception.ParamName.ShouldBe("timeProvider");
+    }
+
+    [Fact]
+    public void Constructor_WhenLoggerIsNull_ThrowsWithExactParameterName()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new DefaultHumanQuestionBroker(
+            new RecordingGrantStore(), new RecordingQuestionChannel(),
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.NewGuid())),
+            new FixedTimeProvider(), null!));
+
+        exception.ParamName.ShouldBe("logger");
+    }
+
+    private static ActivitySamplingResult SampleForParent(ref ActivityCreationOptions<ActivityContext> options,
+        ActivityTraceId parentTraceId) => options.Parent.TraceId == parentTraceId
+            ? ActivitySamplingResult.AllDataAndRecorded
+            : ActivitySamplingResult.None;
+
+    private static ActivitySamplingResult ThrowForParent(ref ActivityCreationOptions<ActivityContext> options,
+        ActivityTraceId parentTraceId) => options.Parent.TraceId == parentTraceId ? throw new InvalidOperationException("observer") : ActivitySamplingResult.None;
+
+    private static HumanQuestionRequest Request(ComponentId audience, bool captured = false, TurnId? turnId = null)
     {
         var id = new QuestionId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
         var agentId = new AgentId(Guid.Parse("20000000-0000-0000-0000-000000000002"));
@@ -196,7 +634,7 @@ public sealed class DefaultHumanQuestionBrokerTests
         var correlation = new InRunOperationCorrelation(
             new OperationId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
             new RunId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
-            null);
+            turnId);
         var identity = TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         ImmutableArray<HumanQuestionOption> options =

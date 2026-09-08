@@ -58,6 +58,12 @@ public static class AgentKitTagNames
     /// <summary>Gets the AgentKit tool-call identity attribute.</summary>
     public const string ToolCallId = "agentkit.tool_call.id";
 
+    /// <summary>Gets the stable human-question identity attribute for traces and structured logs.</summary>
+    public const string QuestionId = "agentkit.question.id";
+
+    /// <summary>Gets the stable task-delegation identity attribute for traces and structured logs.</summary>
+    public const string DelegationId = "agentkit.delegation.id";
+
     /// <summary>Gets the AgentKit security-request identity attribute.</summary>
     public const string SecurityRequestId = "agentkit.security_request.id";
 

@@ -121,6 +121,12 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for compacting eligible context history.</summary>
     public const string ContextCompact = "context.compact";
 
+    /// <summary>Gets the name for one protected human-question publication attempt.</summary>
+    public const string HumanQuestionPublish = "human.question.publish";
+
+    /// <summary>Gets the name for one protected task-delegation dispatch attempt.</summary>
+    public const string TaskDelegationDispatch = "task.delegation.dispatch";
+
     /// <summary>Gets the name for a protected file-system host operation.</summary>
     public const string FileSystemOperation = "filesystem.operation";
 

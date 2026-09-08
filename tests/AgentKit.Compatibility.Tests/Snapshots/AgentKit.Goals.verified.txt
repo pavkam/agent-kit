@@ -1,5 +1,6 @@
 ﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
 [assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Goals.Tests")]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Goals
 {
@@ -7,6 +8,7 @@ namespace AgentKit.Goals
     {
         public DefaultTaskDelegationBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.ITaskDelegationChannel channel) { }
         public DefaultTaskDelegationBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.ITaskDelegationChannel channel, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
+        public DefaultTaskDelegationBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.ITaskDelegationChannel channel, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Goals.DefaultTaskDelegationBroker> logger) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.TaskDelegationResult> DelegateAsync(AgentKit.TaskDelegationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }

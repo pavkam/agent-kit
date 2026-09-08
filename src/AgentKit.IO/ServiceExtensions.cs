@@ -27,10 +27,14 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
             services.TryAddSingleton<IIdentifierGenerator<SecurityEnforcementIntentId>, GuidSecurityEnforcementIntentIdGenerator>();
+            services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IHumanQuestionBroker>(static provider => new DefaultHumanQuestionBroker(
                 provider.GetRequiredService<ISecurityGrantStore>(),
                 provider.GetRequiredService<IHumanQuestionChannel>(),
-                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>()));
+                provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetService<ILogger<DefaultHumanQuestionBroker>>()
+                    ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultHumanQuestionBroker>.Instance));
             return services;
         }
     }

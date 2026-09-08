@@ -69,12 +69,17 @@ internal sealed class RecordingGrantStore: ISecurityGrantStore
 internal sealed class RecordingDelegationChannel: ITaskDelegationChannel
 {
     internal List<TaskDelegationPrompt> Prompts { get; } = [];
+    internal Action? OnDelegate { get; set; }
+    internal Func<TaskDelegationPrompt, TaskDelegationResult> Result { get; set; } = static prompt =>
+        new TaskDelegationChildResult(prompt.Id, new GoalId(Guid.NewGuid()), prompt.TargetAgentId,
+            new SessionId(Guid.NewGuid()), null, null, TaskDelegationStatus.Succeeded, "Done.",
+            SideEffectCertainty.DefinitelyPerformed);
+
     public ValueTask<TaskDelegationResult> DelegateAsync(TaskDelegationPrompt prompt, CancellationToken cancellationToken = default)
     {
         Prompts.Add(prompt);
-        return ValueTask.FromResult<TaskDelegationResult>(new TaskDelegationChildResult(
-            prompt.Id, new GoalId(Guid.NewGuid()), prompt.TargetAgentId, new SessionId(Guid.NewGuid()), null, null,
-            TaskDelegationStatus.Succeeded, "Done.", SideEffectCertainty.DefinitelyPerformed));
+        OnDelegate?.Invoke();
+        return ValueTask.FromResult(Result(prompt));
     }
 }
 
@@ -93,4 +98,49 @@ internal sealed class FixedSecurityEnforcementIntentIdGenerator(SecurityEnforcem
 internal sealed class FixedTimeProvider: TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch;
+}
+
+internal sealed class CountingTimeProvider: TimeProvider
+{
+    internal int TimestampCalls { get; private set; }
+
+    public override long GetTimestamp()
+    {
+        TimestampCalls++;
+        return 0;
+    }
+}
+
+
+internal sealed class ThrowingDelegationLogger: ILogger<DefaultTaskDelegationBroker>
+{
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => throw new InvalidOperationException("observer");
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+        Func<TState, Exception?, string> formatter) => throw new InvalidOperationException("observer");
+}
+
+internal sealed class RecordingDelegationLogger: ILogger<DefaultTaskDelegationBroker>
+{
+    internal List<string> Messages { get; } = [];
+    internal List<(int EventId, LogLevel Level)> Events { get; } = [];
+    internal List<ImmutableArray<string>> FieldNames { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        Events.Add((eventId.Id, logLevel));
+        if (state is IReadOnlyList<KeyValuePair<string, object?>> fields)
+        {
+            FieldNames.Add([.. fields.Select(static field => field.Key)]);
+        }
+
+        Messages.Add(formatter(state, exception));
+    }
 }

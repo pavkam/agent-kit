@@ -26,6 +26,7 @@ namespace AgentKit.Observability
         public const string ExecuteTool = "execute_tool";
         public const string FileSystemOperation = "filesystem.operation";
         public const string HookDispatch = "hook.dispatch";
+        public const string HumanQuestionPublish = "human.question.publish";
         public const string IdentityDerive = "identity.derive";
         public const string IdentityResolve = "identity.resolve";
         public const string InputPromotionPlan = "input.promotion.plan";
@@ -62,6 +63,7 @@ namespace AgentKit.Observability
         public const string SessionLoad = "session.load";
         public const string SessionRead = "session.read";
         public const string SessionStoreOperation = "session.store.operation";
+        public const string TaskDelegationDispatch = "task.delegation.dispatch";
         public const string ToolBatch = "tool.batch";
     }
     public sealed class AgentKitActivityScope : System.IDisposable
@@ -92,6 +94,8 @@ namespace AgentKit.Observability
         public const string ContextPreparationDuration = "agentkit.context.prepare.duration";
         public const string FileSystemOperationCount = "agentkit.filesystem.operation.count";
         public const string HookDispatchCount = "agentkit.hook.dispatch.count";
+        public const string HumanQuestionPublicationCount = "agentkit.human_question.publication.count";
+        public const string HumanQuestionPublicationDuration = "agentkit.human_question.publication.duration";
         public const string IdentityDerivationCount = "agentkit.identity.derivation.count";
         public const string IdentityResolutionCount = "agentkit.identity.resolution.count";
         public const string InputPromotionPlanCount = "agentkit.input.promotion.plan.count";
@@ -118,6 +122,8 @@ namespace AgentKit.Observability
         public const string SessionDirectoryOperationCount = "agentkit.session.directory.operation.count";
         public const string SessionOperationCount = "agentkit.session.operation.count";
         public const string SessionStoreOperationCount = "agentkit.session.store.operation.count";
+        public const string TaskDelegationPublicationCount = "agentkit.task_delegation.publication.count";
+        public const string TaskDelegationPublicationDuration = "agentkit.task_delegation.publication.duration";
         public const string ToolCallCount = "agentkit.tool.call.count";
         public const string ToolCallDuration = "agentkit.tool.call.duration";
     }
@@ -132,6 +138,7 @@ namespace AgentKit.Observability
         public const string ContinuationDecision = "agentkit.continuation.decision";
         public const string ContinuationReason = "agentkit.continuation.reason";
         public const string ConversationId = "gen_ai.conversation.id";
+        public const string DelegationId = "agentkit.delegation.id";
         public const string ErrorType = "error.type";
         public const string ExecutionLaneId = "agentkit.execution.lane.id";
         public const string FileSystemOperation = "agentkit.filesystem.operation";
@@ -160,6 +167,7 @@ namespace AgentKit.Observability
         public const string ProcessOperationId = "agentkit.process.operation.id";
         public const string ProcessStage = "agentkit.process.stage";
         public const string ProviderName = "gen_ai.provider.name";
+        public const string QuestionId = "agentkit.question.id";
         public const string RequestModel = "gen_ai.request.model";
         public const string RunId = "agentkit.run.id";
         public const string SecurityAuditEventKind = "agentkit.security_audit.event.kind";

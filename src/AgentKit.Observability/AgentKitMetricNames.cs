@@ -109,6 +109,18 @@ public static class AgentKitMetricNames
     /// <summary>Gets the histogram for input-promotion planning duration in seconds.</summary>
     public const string InputPromotionPlanDuration = "agentkit.input.promotion.plan.duration";
 
+    /// <summary>Gets the counter for terminal human-question publication outcomes.</summary>
+    public const string HumanQuestionPublicationCount = "agentkit.human_question.publication.count";
+
+    /// <summary>Gets the histogram for human-question publication duration in seconds.</summary>
+    public const string HumanQuestionPublicationDuration = "agentkit.human_question.publication.duration";
+
+    /// <summary>Gets the counter for terminal task-delegation dispatch outcomes.</summary>
+    public const string TaskDelegationPublicationCount = "agentkit.task_delegation.publication.count";
+
+    /// <summary>Gets the histogram for task-delegation dispatch duration in seconds.</summary>
+    public const string TaskDelegationPublicationDuration = "agentkit.task_delegation.publication.duration";
+
     /// <summary>Gets the counter for terminal file-system host operations.</summary>
     public const string FileSystemOperationCount = "agentkit.filesystem.operation.count";
 
