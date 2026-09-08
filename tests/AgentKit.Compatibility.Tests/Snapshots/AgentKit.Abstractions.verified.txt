@@ -395,6 +395,9 @@ namespace AgentKit
             public static void ThrowIfNotDisposalContract(System.Type contractType, [System.Runtime.CompilerServices.CallerArgumentExpression("contractType")] string? paramName = null) { }
             public static void ThrowIfInvalidSessionDirectoryWriteBinding(AgentKit.SessionOperationContext context, AgentKit.SessionLocation location, [System.Runtime.CompilerServices.CallerArgumentExpression("location")] string? paramName = null) { }
             public static void ThrowIfInvalidSessionDirectoryCreationBinding(AgentKit.SessionCreateRequest request, AgentKit.SessionLocation location, [System.Runtime.CompilerServices.CallerArgumentExpression("location")] string? paramName = null) { }
+            public static void ThrowIfInvalidBudgetLedgerReservationRequest(AgentKit.BudgetReservationRequest request, [System.Runtime.CompilerServices.CallerArgumentExpression("request")] string? paramName = null) { }
+            public static void ThrowIfInvalidBudgetLedgerBatchReceipts(System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLedgerReservationReceipt> receipts, [System.Runtime.CompilerServices.CallerArgumentExpression("receipts")] string? paramName = null) { }
+            public static void ThrowIfInvalidBudgetUnresolvedReservationPage(AgentKit.BudgetLedgerScopeReference scope, AgentKit.BudgetLedgerWatermark watermark, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetUnresolvedReservation> items, AgentKit.BudgetReservationCursor? next, [System.Runtime.CompilerServices.CallerArgumentExpression("items")] string? paramName = null) { }
         }
     }
     public static class ArgumentOutOfRangeExceptionExtensions
@@ -864,6 +867,16 @@ namespace AgentKit
         public System.Guid Value { get; }
         public override string ToString() { }
     }
+    public sealed class BudgetActualEstimated : AgentKit.BudgetReconciliationEvidence, System.IEquatable<AgentKit.BudgetActualEstimated>
+    {
+        public BudgetActualEstimated(decimal actual) { }
+        public decimal Actual { get; }
+    }
+    public sealed class BudgetActualMeasured : AgentKit.BudgetReconciliationEvidence, System.IEquatable<AgentKit.BudgetActualMeasured>
+    {
+        public BudgetActualMeasured(decimal actual) { }
+        public decimal Actual { get; }
+    }
     public enum BudgetAggregationKind
     {
         Sum = 0,
@@ -960,6 +973,11 @@ namespace AgentKit
         public static AgentKit.BudgetDimension ToolRetries { get; }
         public static AgentKit.BudgetDimension Turns { get; }
     }
+    public sealed class BudgetEffectiveReservation : System.IEquatable<AgentKit.BudgetEffectiveReservation>
+    {
+        public BudgetEffectiveReservation(System.DateTimeOffset expiresAt) { }
+        public System.DateTimeOffset ExpiresAt { get; }
+    }
     public sealed class BudgetExecutionCapability : System.IEquatable<AgentKit.BudgetExecutionCapability>
     {
         public BudgetExecutionCapability(AgentKit.BudgetProfileKey profileKey, AgentKit.BudgetProfileVersion profileVersion, AgentKit.ExecutionIdentity identity, AgentKit.OperationCorrelation correlation, AgentKit.IBudgetScope scope) { }
@@ -968,6 +986,143 @@ namespace AgentKit
         public AgentKit.BudgetProfileKey ProfileKey { get; }
         public AgentKit.BudgetProfileVersion ProfileVersion { get; }
         public AgentKit.IBudgetScope Scope { get; }
+    }
+    public sealed class BudgetLedgerAlreadySettled : AgentKit.BudgetLedgerReleaseResult, System.IEquatable<AgentKit.BudgetLedgerAlreadySettled>
+    {
+        public BudgetLedgerAlreadySettled(AgentKit.BudgetCommitResult commit) { }
+        public AgentKit.BudgetCommitResult Commit { get; }
+    }
+    public sealed class BudgetLedgerBatchReserveRejected : AgentKit.BudgetLedgerBatchReserveResult, System.IEquatable<AgentKit.BudgetLedgerBatchReserveRejected>
+    {
+        public BudgetLedgerBatchReserveRejected(AgentKit.BudgetLimitFailure failure) { }
+        public AgentKit.BudgetLimitFailure Failure { get; }
+    }
+    public sealed class BudgetLedgerBatchReserveRequest : System.IEquatable<AgentKit.BudgetLedgerBatchReserveRequest>
+    {
+        public BudgetLedgerBatchReserveRequest(AgentKit.BudgetLedgerScopeReference scope, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetReservationRequest> originalRequests) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetReservationRequest> OriginalRequests { get; }
+        public AgentKit.BudgetLedgerScopeReference Scope { get; }
+        public bool Equals(AgentKit.BudgetLedgerBatchReserveRequest? other) { }
+        public override int GetHashCode() { }
+    }
+    public abstract class BudgetLedgerBatchReserveResult : System.IEquatable<AgentKit.BudgetLedgerBatchReserveResult> { }
+    public sealed class BudgetLedgerBatchReserved : AgentKit.BudgetLedgerBatchReserveResult, System.IEquatable<AgentKit.BudgetLedgerBatchReserved>
+    {
+        public BudgetLedgerBatchReserved(System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLedgerReservationReceipt> receipts) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLedgerReservationReceipt> Receipts { get; }
+        public bool Equals(AgentKit.BudgetLedgerBatchReserved? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class BudgetLedgerCorrectionRequest : System.IEquatable<AgentKit.BudgetLedgerCorrectionRequest>
+    {
+        public BudgetLedgerCorrectionRequest(AgentKit.BudgetLedgerReservationReference reservation, decimal correctedActual, long revision) { }
+        public decimal CorrectedActual { get; }
+        public AgentKit.BudgetLedgerReservationReference Reservation { get; }
+        public long Revision { get; }
+    }
+    public sealed class BudgetLedgerMutationConflictException : System.InvalidOperationException
+    {
+        public BudgetLedgerMutationConflictException(string safeMessage) { }
+        public string SafeMessage { get; }
+    }
+    public sealed class BudgetLedgerPersistenceUnavailableException : System.InvalidOperationException
+    {
+        public BudgetLedgerPersistenceUnavailableException(string safeMessage, bool acknowledgementUnknown) { }
+        public BudgetLedgerPersistenceUnavailableException(string safeMessage, bool acknowledgementUnknown, System.Exception innerException) { }
+        public bool AcknowledgementUnknown { get; }
+        public string SafeMessage { get; }
+    }
+    public sealed class BudgetLedgerReconciliationReleased : AgentKit.BudgetLedgerReconciliationResult, System.IEquatable<AgentKit.BudgetLedgerReconciliationReleased>
+    {
+        public BudgetLedgerReconciliationReleased(AgentKit.BudgetLedgerReservationReference reservation) { }
+        public AgentKit.BudgetLedgerReservationReference Reservation { get; }
+    }
+    public sealed class BudgetLedgerReconciliationRequest : System.IEquatable<AgentKit.BudgetLedgerReconciliationRequest>
+    {
+        public BudgetLedgerReconciliationRequest(AgentKit.BudgetLedgerReservationReference reservation, AgentKit.BudgetReconciliationEvidence evidence, AgentKit.IdempotencyKey idempotencyKey) { }
+        public AgentKit.BudgetReconciliationEvidence Evidence { get; }
+        public AgentKit.IdempotencyKey IdempotencyKey { get; }
+        public AgentKit.BudgetLedgerReservationReference Reservation { get; }
+    }
+    public abstract class BudgetLedgerReconciliationResult : System.IEquatable<AgentKit.BudgetLedgerReconciliationResult> { }
+    public sealed class BudgetLedgerReconciliationRetainedUnknown : AgentKit.BudgetLedgerReconciliationResult, System.IEquatable<AgentKit.BudgetLedgerReconciliationRetainedUnknown>
+    {
+        public BudgetLedgerReconciliationRetainedUnknown(AgentKit.BudgetLedgerReservationReference reservation) { }
+        public AgentKit.BudgetLedgerReservationReference Reservation { get; }
+    }
+    public sealed class BudgetLedgerReconciliationSettled : AgentKit.BudgetLedgerReconciliationResult, System.IEquatable<AgentKit.BudgetLedgerReconciliationSettled>
+    {
+        public BudgetLedgerReconciliationSettled(AgentKit.BudgetCommitResult commit) { }
+        public AgentKit.BudgetCommitResult Commit { get; }
+    }
+    public sealed class BudgetLedgerReferenceUnavailableException : System.InvalidOperationException
+    {
+        public BudgetLedgerReferenceUnavailableException(string safeMessage) { }
+        public string SafeMessage { get; }
+    }
+    public abstract class BudgetLedgerReleaseResult : System.IEquatable<AgentKit.BudgetLedgerReleaseResult> { }
+    public sealed class BudgetLedgerReleased : AgentKit.BudgetLedgerReleaseResult, System.IEquatable<AgentKit.BudgetLedgerReleased>
+    {
+        public BudgetLedgerReleased(AgentKit.BudgetLedgerReservationReference reservation) { }
+        public AgentKit.BudgetLedgerReservationReference Reservation { get; }
+    }
+    public sealed class BudgetLedgerReservationReceipt : System.IEquatable<AgentKit.BudgetLedgerReservationReceipt>
+    {
+        public BudgetLedgerReservationReceipt(AgentKit.BudgetLedgerReservationReference reservation, AgentKit.BudgetReservationRequest originalRequest, AgentKit.BudgetEffectiveReservation effectiveReservation) { }
+        public AgentKit.BudgetEffectiveReservation EffectiveReservation { get; }
+        public AgentKit.BudgetReservationRequest OriginalRequest { get; }
+        public AgentKit.BudgetLedgerReservationReference Reservation { get; }
+    }
+    public sealed class BudgetLedgerReservationReference : System.IEquatable<AgentKit.BudgetLedgerReservationReference>
+    {
+        public BudgetLedgerReservationReference(AgentKit.BudgetLedgerScopeReference scope, AgentKit.BudgetReservationId id) { }
+        public AgentKit.BudgetReservationId Id { get; }
+        public AgentKit.BudgetLedgerScopeReference Scope { get; }
+    }
+    public sealed class BudgetLedgerRetainedStarted : AgentKit.BudgetLedgerReleaseResult, System.IEquatable<AgentKit.BudgetLedgerRetainedStarted>
+    {
+        public BudgetLedgerRetainedStarted(AgentKit.BudgetLedgerReservationReference reservation) { }
+        public AgentKit.BudgetLedgerReservationReference Reservation { get; }
+    }
+    public sealed class BudgetLedgerScopeCreateRejected : AgentKit.BudgetLedgerScopeCreateResult, System.IEquatable<AgentKit.BudgetLedgerScopeCreateRejected>
+    {
+        public BudgetLedgerScopeCreateRejected(AgentKit.BudgetScopeCreationFailed failure) { }
+        public AgentKit.BudgetScopeCreationFailed Failure { get; }
+    }
+    public sealed class BudgetLedgerScopeCreateRequest : System.IEquatable<AgentKit.BudgetLedgerScopeCreateRequest>
+    {
+        public BudgetLedgerScopeCreateRequest(AgentKit.BudgetScopeRequest originalRequest, AgentKit.BudgetScopeAdmission admission) { }
+        public AgentKit.BudgetScopeAdmission Admission { get; }
+        public AgentKit.BudgetScopeRequest OriginalRequest { get; }
+    }
+    public abstract class BudgetLedgerScopeCreateResult : System.IEquatable<AgentKit.BudgetLedgerScopeCreateResult> { }
+    public sealed class BudgetLedgerScopeCreated : AgentKit.BudgetLedgerScopeCreateResult, System.IEquatable<AgentKit.BudgetLedgerScopeCreated>
+    {
+        public BudgetLedgerScopeCreated(AgentKit.BudgetLedgerScopeReference scope) { }
+        public AgentKit.BudgetLedgerScopeReference Scope { get; }
+    }
+    public sealed class BudgetLedgerScopeReference : System.IEquatable<AgentKit.BudgetLedgerScopeReference>
+    {
+        public BudgetLedgerScopeReference(AgentKit.BudgetScopeId id, AgentKit.BudgetScopeAddress address) { }
+        public AgentKit.BudgetScopeAddress Address { get; }
+        public AgentKit.BudgetScopeId Id { get; }
+    }
+    public sealed class BudgetLedgerSettlementRequest : System.IEquatable<AgentKit.BudgetLedgerSettlementRequest>
+    {
+        public BudgetLedgerSettlementRequest(AgentKit.BudgetLedgerReservationReference reservation, decimal actual) { }
+        public decimal Actual { get; }
+        public AgentKit.BudgetLedgerReservationReference Reservation { get; }
+    }
+    public sealed class BudgetLedgerStateException : System.InvalidOperationException
+    {
+        public BudgetLedgerStateException(string safeMessage) { }
+        public string SafeMessage { get; }
+    }
+    public readonly struct BudgetLedgerWatermark : System.IEquatable<AgentKit.BudgetLedgerWatermark>
+    {
+        public BudgetLedgerWatermark(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
     }
     public sealed class BudgetLimit : System.IEquatable<AgentKit.BudgetLimit>
     {
@@ -994,6 +1149,10 @@ namespace AgentKit
         Soft = 0,
         Hard = 1,
     }
+    public sealed class BudgetNoUsageProven : AgentKit.BudgetReconciliationEvidence, System.IEquatable<AgentKit.BudgetNoUsageProven>
+    {
+        public BudgetNoUsageProven() { }
+    }
     public readonly struct BudgetProfileKey : System.IEquatable<AgentKit.BudgetProfileKey>
     {
         public BudgetProfileKey(string value) { }
@@ -1006,10 +1165,18 @@ namespace AgentKit
         public long Value { get; }
         public override string ToString() { }
     }
+    public abstract class BudgetReconciliationEvidence : System.IEquatable<AgentKit.BudgetReconciliationEvidence> { }
     public sealed class BudgetRejected : AgentKit.BudgetReservationResult, System.IEquatable<AgentKit.BudgetRejected>
     {
         public BudgetRejected(AgentKit.BudgetLimitFailure failure) { }
         public AgentKit.BudgetLimitFailure Failure { get; init; }
+    }
+    public sealed class BudgetReservationCursor : System.IEquatable<AgentKit.BudgetReservationCursor>
+    {
+        public BudgetReservationCursor(AgentKit.BudgetLedgerScopeReference scope, AgentKit.BudgetLedgerWatermark watermark, AgentKit.BudgetReservationId afterReservationId) { }
+        public AgentKit.BudgetReservationId AfterReservationId { get; }
+        public AgentKit.BudgetLedgerScopeReference Scope { get; }
+        public AgentKit.BudgetLedgerWatermark Watermark { get; }
     }
     public readonly struct BudgetReservationId : System.IEquatable<AgentKit.BudgetReservationId>
     {
@@ -1043,6 +1210,13 @@ namespace AgentKit
         public AgentKit.RunId? RunId { get; init; }
         public AgentKit.SessionId? SessionId { get; init; }
         public AgentKit.TenantId TenantId { get; init; }
+    }
+    public sealed class BudgetScopeAdmission : System.IEquatable<AgentKit.BudgetScopeAdmission>
+    {
+        public BudgetScopeAdmission(int maximumScopeDepth, int maximumOpenReservationsPerScope, System.TimeSpan defaultReservationLifetime) { }
+        public System.TimeSpan DefaultReservationLifetime { get; }
+        public int MaximumOpenReservationsPerScope { get; }
+        public int MaximumScopeDepth { get; }
     }
     public sealed class BudgetScopeCreated : AgentKit.BudgetScopeResult, System.IEquatable<AgentKit.BudgetScopeCreated>
     {
@@ -1100,11 +1274,38 @@ namespace AgentKit
         public AgentKit.BudgetReservationId ReservationId { get; }
         public bool WasAlreadyStarted { get; }
     }
+    public sealed class BudgetStillUnknown : AgentKit.BudgetReconciliationEvidence, System.IEquatable<AgentKit.BudgetStillUnknown>
+    {
+        public BudgetStillUnknown() { }
+    }
     public readonly struct BudgetUnit : System.IEquatable<AgentKit.BudgetUnit>
     {
         public BudgetUnit(string value) { }
         public string Value { get; }
         public override string ToString() { }
+    }
+    public sealed class BudgetUnresolvedReservation : System.IEquatable<AgentKit.BudgetUnresolvedReservation>
+    {
+        public BudgetUnresolvedReservation(AgentKit.BudgetLedgerReservationReceipt receipt, System.DateTimeOffset startedAt) { }
+        public AgentKit.BudgetLedgerReservationReceipt Receipt { get; }
+        public System.DateTimeOffset StartedAt { get; }
+    }
+    public sealed class BudgetUnresolvedReservationPage : System.IEquatable<AgentKit.BudgetUnresolvedReservationPage>
+    {
+        public BudgetUnresolvedReservationPage(AgentKit.BudgetLedgerScopeReference scope, AgentKit.BudgetLedgerWatermark watermark, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetUnresolvedReservation> items, AgentKit.BudgetReservationCursor? next) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetUnresolvedReservation> Items { get; }
+        public AgentKit.BudgetReservationCursor? Next { get; }
+        public AgentKit.BudgetLedgerScopeReference Scope { get; }
+        public AgentKit.BudgetLedgerWatermark Watermark { get; }
+        public bool Equals(AgentKit.BudgetUnresolvedReservationPage? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class BudgetUnresolvedReservationQuery : System.IEquatable<AgentKit.BudgetUnresolvedReservationQuery>
+    {
+        public BudgetUnresolvedReservationQuery(AgentKit.BudgetLedgerScopeReference scope, int pageSize, AgentKit.BudgetReservationCursor? after) { }
+        public AgentKit.BudgetReservationCursor? After { get; }
+        public int PageSize { get; }
+        public AgentKit.BudgetLedgerScopeReference Scope { get; }
     }
     public enum CancellationSemantics
     {
@@ -2647,6 +2848,18 @@ namespace AgentKit
     public interface IBudgetDimensionCatalog
     {
         bool TryGet(AgentKit.BudgetDimension dimension, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.BudgetDimensionDescriptor? descriptor);
+    }
+    public interface IBudgetLedger
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.BudgetCorrectionResult> CorrectAsync(AgentKit.BudgetLedgerCorrectionRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerScopeCreateResult> CreateScopeAsync(AgentKit.BudgetLedgerScopeCreateRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.BudgetSnapshot> GetSnapshotAsync(AgentKit.BudgetLedgerScopeReference scope, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.BudgetStartResult> MarkStartedAsync(AgentKit.BudgetLedgerReservationReference reservation, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.BudgetUnresolvedReservationPage> ReadUnresolvedStartedAsync(AgentKit.BudgetUnresolvedReservationQuery query, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReconciliationResult> ReconcileAsync(AgentKit.BudgetLedgerReconciliationRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReleaseResult> ReleaseUnstartedAsync(AgentKit.BudgetLedgerReservationReference reservation, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerBatchReserveResult> ReserveBatchAsync(AgentKit.BudgetLedgerBatchReserveRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.BudgetCommitResult> SettleAsync(AgentKit.BudgetLedgerSettlementRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IBudgetReservation : System.IAsyncDisposable
     {

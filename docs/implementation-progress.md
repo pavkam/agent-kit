@@ -65,6 +65,18 @@ owning spec.
 
 ## Latest integration evidence
 
+The budget-ledger contract checkpoint passed formatting, lint, Release build,
+and all 5,106 tests in an isolated checkout over `4027060`. `IBudgetLedger`
+defines atomic scope creation, ordered batch reservations, start, settlement,
+correction, release, and recovery reconciliation. Immutable receipts retain
+original requests and effective expiry; scope admission captures its limits and
+lifetime. Exact address references, watermark paging, replay conflicts, and
+uncertain persistence acknowledgements have explicit contracts. Focused tests
+cover constructor constraints, complete ordered value equality, canonical
+guards, and paging/receipt coherence. The current budget runtime still contains
+its in-memory implementation; runtime proxies and explicit InMemory and Sqlite
+leaves remain open work.
+
 The session-codec descriptor checkpoint passed formatting, lint, Release build,
 and all 4,995 tests in an isolated checkout over `861611c`. It adds a stable
 entry wire identifier, finite payload/extension/depth limits, and immutable

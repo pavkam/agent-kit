@@ -1511,5 +1511,98 @@ public static class ArgumentExceptionExtensions
                 throw new ArgumentException("The candidate location must match the creation request's agent and tenant.", paramName);
             }
         }
+
+        /// <summary>Throws when copied reservation evidence cannot safely enter a ledger receipt.</summary>
+        /// <param name="request">The reservation request to validate.</param>
+        /// <param name="paramName">The parameter name attributed to invalid copied evidence.</param>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="request"/> is null or has default dimension,
+        /// unit, or idempotency-key evidence with null text.
+        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="request"/> contains blank dimension, unit, or idempotency text.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="request"/> contains default identities or a nonpositive amount.</exception>
+        public static void ThrowIfInvalidBudgetLedgerReservationRequest(
+            BudgetReservationRequest request,
+            [CallerArgumentExpression(nameof(request))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(request, paramName);
+            ArgumentOutOfRangeException.ThrowIfEqual(request.ScopeId, default, paramName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(request.Dimension.Value, paramName);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(request.Amount, paramName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(request.Unit.Value, paramName);
+            ArgumentOutOfRangeException.ThrowIfEqual(request.OperationId, default, paramName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(request.IdempotencyKey.Value, paramName);
+        }
+
+        /// <summary>Throws when accepted ledger receipts are mixed, duplicated, or invalid as one batch result.</summary>
+        /// <param name="receipts">The initialized nonempty receipt sequence.</param>
+        /// <param name="paramName">The parameter name attributed to invalid batch evidence.</param>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="receipts"/> is default, empty, null-containing,
+        /// mixed-scope, mixed-operation, repeats an identity or item key, or
+        /// expresses one dimension in incompatible units.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// A receipt's copied original request carries a default identity or
+        /// nonpositive amount.
+        /// </exception>
+        public static void ThrowIfInvalidBudgetLedgerBatchReceipts(
+            ImmutableArray<BudgetLedgerReservationReceipt> receipts,
+            [CallerArgumentExpression(nameof(receipts))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfDefaultOrEmpty(receipts, paramName);
+            ArgumentException.ThrowIfContainsNull(receipts, paramName);
+            var scope = receipts[0].Reservation.Scope;
+            var reservations = new HashSet<BudgetReservationId>();
+            var itemKeys = new HashSet<IdempotencyKey>();
+            foreach (var receipt in receipts)
+            {
+                ArgumentException.ThrowIfNotEqual(receipt.Reservation.Scope, scope, paramName);
+                ArgumentException.ThrowIfInvalidBudgetLedgerReservationRequest(receipt.OriginalRequest, paramName);
+                if (!reservations.Add(receipt.Reservation.Id) || !itemKeys.Add(receipt.OriginalRequest.IdempotencyKey))
+                {
+                    throw new ArgumentException("Ledger batch receipts must have unique reservation identities and item keys.", paramName);
+                }
+            }
+
+            ArgumentException.ThrowIfInvalidBudgetReservationBatch(
+                [.. receipts.Select(static receipt => receipt.OriginalRequest)],
+                scope.Id,
+                paramName);
+        }
+
+        /// <summary>Throws when a recovery page fails its scope, ordering, or continuation invariants.</summary>
+        /// <param name="scope">The exact queried scope.</param>
+        /// <param name="watermark">The scan revision returned by the ledger.</param>
+        /// <param name="items">The initialized unresolved rows.</param>
+        /// <param name="next">The optional continuation cursor.</param>
+        /// <param name="paramName">The parameter name attributed to invalid page evidence.</param>
+        /// <exception cref="ArgumentException"><paramref name="items"/> or <paramref name="next"/> is inconsistent with the scope, watermark, or canonical order.</exception>
+        public static void ThrowIfInvalidBudgetUnresolvedReservationPage(
+            BudgetLedgerScopeReference scope,
+            BudgetLedgerWatermark watermark,
+            ImmutableArray<BudgetUnresolvedReservation> items,
+            BudgetReservationCursor? next,
+            [CallerArgumentExpression(nameof(items))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(scope, nameof(scope));
+            ArgumentOutOfRangeException.ThrowIfEqual(watermark, default, nameof(watermark));
+            ArgumentException.ThrowIfDefault(items, paramName);
+            ArgumentException.ThrowIfContainsNull(items, paramName);
+            BudgetReservationId? previous = null;
+            foreach (var item in items)
+            {
+                ArgumentException.ThrowIfNotEqual(item.Receipt.Reservation.Scope, scope, paramName);
+                if (previous is { } prior && string.CompareOrdinal(prior.ToString(), item.Receipt.Reservation.Id.ToString()) >= 0)
+                {
+                    throw new ArgumentException("Unresolved reservations must be strictly ordered by canonical reservation identity.", paramName);
+                }
+                previous = item.Receipt.Reservation.Id;
+            }
+            if (next is not null && (next.Scope != scope || next.Watermark != watermark || previous is null || next.AfterReservationId != previous.Value))
+            {
+                throw new ArgumentException("The continuation cursor must exactly continue this page.", paramName);
+            }
+        }
     }
 }
