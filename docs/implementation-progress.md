@@ -65,6 +65,35 @@ owning spec.
 
 ## Latest integration evidence
 
+The captured-security integrity repair passed complete formatting, lint, Release
+build, and test gates in an isolated checkout over `75cf59d`. It restores
+validation removed by that refactor without changing the public API. Captured
+requests, grants, and enforcement values reject null or contradictory scope and
+identity copies before assignment. Grants also reject a policy version that
+differs from their captured policy snapshot, in construction and copies.
+Counterexamples against the prior commit demonstrated that matching
+contradictory grant and enforcement copies could otherwise be registered and
+consumed.
+
+Grant-consumption faults again preserve the original exception and record an
+error activity, bounded fault outcome metric, and safe event `5027`. A throwing
+clock regression verifies that the failed attempt consumes no use and a later
+valid attempt succeeds. Existing audit-test concurrency improvements and service
+registration order remain intact. No dependency or test-runner workaround was
+needed: the unchanged standalone Permissions test project builds and runs from a
+fresh archive. Full captured-authority enforcement at every protected boundary,
+required-audit settlement, and durable recovery remain open.
+
+The next storage-boundary work follows the explicit project requirement that
+runtime packages consume storage abstractions and concrete implementations live
+in separate adapter packages. Permissions in-memory persistence must move into
+`AgentKit.Permissions.InMemory`, with a SQLite adapter and shared contract
+conformance. The same separation and SQLite coverage apply across persistent
+framework storage; storage selection is explicit in application DI. Transient
+invocation caches and local synchronization are distinct from persistent stores.
+The current Permissions package still bundles its in-memory grant store; this
+security repair preserves its behavior before the required extraction.
+
 The protected session-coordinator and lane-ownership checkpoint passed complete
 formatting, lint, Release build, and test gates in an isolated checkout over
 `f943730c`. Two public API snapshots were reviewed, including the intentional

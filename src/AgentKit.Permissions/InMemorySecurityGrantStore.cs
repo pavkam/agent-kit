@@ -163,6 +163,14 @@ public sealed class InMemorySecurityGrantStore: ISecurityGrantStore
             SafeMetric("cancelled");
             throw;
         }
+        catch (Exception exception)
+        {
+            SafeSetActivity(() => activityScope.Activity.SetFailed("faulted", exception.GetType().Name));
+            SafeLog(() => SecurityLog.GrantConsumptionFaulted(
+                _logger, grant.RequestId, exception.GetType().Name));
+            SafeMetric("faulted");
+            throw;
+        }
     }
 
     private ValueTask<GrantConsumptionResult> ValidateAndConsumeIntentCoreAsync(

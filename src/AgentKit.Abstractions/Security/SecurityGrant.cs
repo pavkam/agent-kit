@@ -66,7 +66,7 @@ public sealed record SecurityGrant
 
     /// <summary>Initializes a grant that retains the complete captured authorization context evaluated for its request.</summary>
     /// <param name="id">The grant identity.</param><param name="requestId">The issuing request identity.</param><param name="scope">The exact execution scope.</param><param name="identity">The authenticated identity.</param><param name="authorization">The complete captured authorization evidence evaluated by the authority.</param><param name="audience">The sole consuming component.</param><param name="kind">The protected operation kind.</param><param name="effect">The exact material effect.</param><param name="resources">The ordered resources.</param><param name="inputFingerprint">The exact input fingerprint.</param><param name="policyVersion">The evaluated policy version.</param><param name="revocationVersion">The captured revocation epoch.</param><param name="notBefore">The first valid instant.</param><param name="expiresAt">The exclusive expiry.</param><param name="allowedUses">The positive use bound.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="authorization"/> is null.</exception><exception cref="ArgumentException">Its scope or identity differs from the grant.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="authorization"/> is null.</exception><exception cref="ArgumentException">Its scope, identity, or policy-snapshot version differs from the grant.</exception>
     public SecurityGrant(GrantId id, SecurityRequestId requestId, SecurityAuthorizationScope scope,
         ExecutionIdentity identity, SecurityAuthorizationContext authorization, ComponentId audience,
         SecurityOperationKind kind, SecurityEffect effect, ImmutableArray<ProtectedResource> resources,
@@ -79,6 +79,8 @@ public sealed record SecurityGrant
         ArgumentNullException.ThrowIfNull(authorization);
         ArgumentException.ThrowIfNotEqual(authorization.Scope, scope, nameof(authorization));
         ArgumentException.ThrowIfNotEqual(authorization.Identity, identity, nameof(authorization));
+        ArgumentException.ThrowIfNotEqual(
+            authorization.PolicySnapshot.Version, policyVersion, nameof(authorization));
         Authorization = authorization;
     }
 
@@ -86,10 +88,42 @@ public sealed record SecurityGrant
     public GrantId Id { get; init; }
     /// <summary>Gets the originating request identity.</summary>
     public SecurityRequestId RequestId { get; init; }
-    /// <summary>Gets the exact authorized scope.</summary>
-    public SecurityAuthorizationScope Scope { get; init; }
-    /// <summary>Gets the authenticated identity.</summary>
-    public ExecutionIdentity Identity { get; init; }
+    /// <summary>Gets or initializes the exact authorized scope.</summary>
+    /// <value>The non-null scope, which must equal the captured authorization scope when <see cref="Authorization"/> is present.</value>
+    /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
+    /// <exception cref="ArgumentException">A record copy assigns a scope different from the captured authorization scope.</exception>
+    public SecurityAuthorizationScope Scope
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(Scope));
+            if (Authorization is not null)
+            {
+                ArgumentException.ThrowIfNotEqual(Authorization.Scope, value, nameof(Scope));
+            }
+
+            field = value;
+        }
+    }
+    /// <summary>Gets or initializes the authenticated execution identity.</summary>
+    /// <value>The non-null identity, which must equal the captured authorization identity when <see cref="Authorization"/> is present.</value>
+    /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
+    /// <exception cref="ArgumentException">A record copy assigns an identity different from the captured authorization identity.</exception>
+    public ExecutionIdentity Identity
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(Identity));
+            if (Authorization is not null)
+            {
+                ArgumentException.ThrowIfNotEqual(Authorization.Identity, value, nameof(Identity));
+            }
+
+            field = value;
+        }
+    }
     /// <summary>Gets the captured authorization context evaluated for this grant.</summary><value>The immutable captured selection, or null only for grants issued through the legacy unpinned path.</value>
     public SecurityAuthorizationContext? Authorization { get; }
     /// <summary>Gets the sole consuming component.</summary>
@@ -102,8 +136,23 @@ public sealed record SecurityGrant
     public ImmutableArray<ProtectedResource> Resources { get; init; }
     /// <summary>Gets the normalized input fingerprint.</summary>
     public InputFingerprint InputFingerprint { get; init; }
-    /// <summary>Gets the issuing policy version.</summary>
-    public SecurityPolicyVersion PolicyVersion { get; init; }
+    /// <summary>Gets or initializes the issuing policy version.</summary>
+    /// <value>The issuing version, which must equal the captured policy-snapshot version when <see cref="Authorization"/> is present.</value>
+    /// <exception cref="ArgumentException">A record copy assigns a version different from the captured policy snapshot.</exception>
+    public SecurityPolicyVersion PolicyVersion
+    {
+        get;
+        init
+        {
+            if (Authorization is not null)
+            {
+                ArgumentException.ThrowIfNotEqual(
+                    Authorization.PolicySnapshot.Version, value, nameof(PolicyVersion));
+            }
+
+            field = value;
+        }
+    }
     /// <summary>Gets the captured revocation epoch.</summary>
     public SecurityRevocationVersion RevocationVersion { get; init; }
     /// <summary>Gets the earliest valid instant.</summary>

@@ -275,6 +275,119 @@ public sealed class InMemorySecurityGrantStoreTests
         replay.Status.ShouldBe(GrantConsumptionStatus.Reconciled);
     }
 
+    [Theory]
+    [InlineData(0, "Scope")]
+    [InlineData(1, "Identity")]
+    [InlineData(2, "PolicyVersion")]
+    public async Task RegisterAsync_WhenCapturedGrantCopyContradictsAuthorization_ThrowsBeforeRegistration(
+        int mutation,
+        string parameterName)
+    {
+        var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
+        var original = CreateCapturedGrant();
+        var replacementScope = new SecurityAuthorizationScope(
+            original.Scope.AgentId,
+            original.Scope.SessionId,
+            new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null));
+        var replacementIdentity = TestSupport.TestExecutionIdentity.Create(
+            new TenantId("other-tenant"), new PrincipalId("other-principal"), ExecutionSubjectKind.Human);
+        var registrationReached = false;
+        Action registration = mutation switch
+        {
+            0 => () =>
+            {
+                var contradictory = original with { Scope = replacementScope };
+                ObserveRegistration(contradictory);
+            }
+            ,
+            1 => () =>
+            {
+                var contradictory = original with { Identity = replacementIdentity };
+                ObserveRegistration(contradictory);
+            }
+            ,
+            _ => () =>
+            {
+                var contradictory = original with { PolicyVersion = new SecurityPolicyVersion(2) };
+                ObserveRegistration(contradictory);
+            }
+            ,
+        };
+
+        var exception = Should.Throw<ArgumentException>(registration);
+
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe(parameterName);
+        registrationReached.ShouldBeFalse();
+        await store.RegisterAsync(original, TestContext.Current.CancellationToken);
+        var result = await store.ValidateAndConsumeAsync(
+            original,
+            CreateCapturedEnforcement(original),
+            CreateIntent(),
+            TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+
+        void ObserveRegistration(SecurityGrant _) => registrationReached = true;
+    }
+
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenClockFails_ObservesFaultAndPreservesOriginalExceptionAndUse()
+    {
+        var clock = new SwitchableThrowingTimeProvider(_now);
+        var logger = new RecordingSecurityGrantStoreLogger();
+        var store = new InMemorySecurityGrantStore(clock, logger);
+        var grant = CreateGrant();
+        var enforcement = CreateEnforcement(grant);
+        var intent = CreateIntent();
+        Activity? stopped = null;
+        var outcomes = new List<string>();
+        using var activityListener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.SecurityGrantConsume
+                    && activity.GetTagItem(AgentKitTagNames.SecurityRequestId)?.ToString() == grant.RequestId.ToString())
+                {
+                    stopped = activity;
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(activityListener);
+        using var meterListener = new MeterListener
+        {
+            InstrumentPublished = (instrument, listener) =>
+            {
+                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
+                    && instrument.Name == AgentKitMetricNames.SecurityGrantConsumptionCount)
+                {
+                    listener.EnableMeasurementEvents(instrument);
+                }
+            },
+        };
+        meterListener.SetMeasurementEventCallback<long>((_, _, tags, _) => outcomes.Add(OutcomeFrom(tags)));
+        meterListener.Start();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await store.ValidateAndConsumeAsync(
+                grant, enforcement, intent, TestContext.Current.CancellationToken));
+
+        exception.ShouldBeSameAs(clock.Failure);
+        var activity = stopped.ShouldNotBeNull();
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("faulted");
+        outcomes.ShouldContain("faulted");
+        logger.Events.ShouldContain(static item => item.EventId.Id == 5027);
+        logger.Events.ShouldAllBe(item => !item.Message.Contains(grant.InputFingerprint.Value, StringComparison.Ordinal));
+        clock.ThrowOnRead = false;
+        var later = await store.ValidateAndConsumeAsync(
+            grant, enforcement, intent, TestContext.Current.CancellationToken);
+        later.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+        later.RemainingUses.ShouldBe(0);
+    }
+
     [Fact]
     public async Task ValidateAndConsumeAsync_WhenActivityListenerThrows_PreservesConsumption()
     {
@@ -449,6 +562,50 @@ public sealed class InMemorySecurityGrantStoreTests
     private static SecurityEnforcementRequest CreateEnforcement(SecurityGrant grant) => new(
         grant.Scope,
         grant.Identity,
+        grant.Audience,
+        grant.Kind,
+        grant.Effect,
+        grant.Resources,
+        grant.InputFingerprint,
+        grant.RevocationVersion);
+
+    private static SecurityGrant CreateCapturedGrant()
+    {
+        var grant = CreateGrant();
+        var authorization = new SecurityAuthorizationContext(
+            new SecurityProfileKey("default"),
+            new SecurityProfileVersion(1),
+            new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(Guid.NewGuid()),
+                grant.PolicyVersion,
+                new ContentHash("sha256:policy")),
+            new ComponentKey<ISecurityAuthority>("authority"),
+            new AgentDefinitionRevision(1),
+            new ConfigurationVersion(1),
+            grant.Scope,
+            grant.Identity);
+        return new SecurityGrant(
+            grant.Id,
+            grant.RequestId,
+            grant.Scope,
+            grant.Identity,
+            authorization,
+            grant.Audience,
+            grant.Kind,
+            grant.Effect,
+            grant.Resources,
+            grant.InputFingerprint,
+            grant.PolicyVersion,
+            grant.RevocationVersion,
+            grant.NotBefore,
+            grant.ExpiresAt,
+            grant.AllowedUses);
+    }
+
+    private static SecurityEnforcementRequest CreateCapturedEnforcement(SecurityGrant grant) => new(
+        grant.Scope,
+        grant.Identity,
+        grant.Authorization.ShouldNotBeNull(),
         grant.Audience,
         grant.Kind,
         grant.Effect,

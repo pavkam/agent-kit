@@ -71,12 +71,44 @@ public sealed record SecurityRequest
 
     /// <summary>Gets the request identity.</summary>
     public SecurityRequestId Id { get; init; }
-    /// <summary>Gets the exact authorization scope.</summary>
-    public SecurityAuthorizationScope Scope { get; init; }
+    /// <summary>Gets or initializes the exact authorization scope.</summary>
+    /// <value>The non-null scope, which must equal the captured authorization scope when <see cref="Authorization"/> is present.</value>
+    /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
+    /// <exception cref="ArgumentException">A record copy assigns a scope different from the captured authorization scope.</exception>
+    public SecurityAuthorizationScope Scope
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(Scope));
+            if (Authorization is not null)
+            {
+                ArgumentException.ThrowIfNotEqual(Authorization.Scope, value, nameof(Scope));
+            }
+
+            field = value;
+        }
+    }
     /// <summary>Gets the causing tool-call identity, when applicable.</summary>
     public ToolCallId? ToolCallId { get; init; }
-    /// <summary>Gets the authenticated execution identity.</summary>
-    public ExecutionIdentity Identity { get; init; }
+    /// <summary>Gets or initializes the authenticated execution identity.</summary>
+    /// <value>The non-null identity, which must equal the captured authorization identity when <see cref="Authorization"/> is present.</value>
+    /// <exception cref="ArgumentNullException">The initialized value is null.</exception>
+    /// <exception cref="ArgumentException">A record copy assigns an identity different from the captured authorization identity.</exception>
+    public ExecutionIdentity Identity
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(Identity));
+            if (Authorization is not null)
+            {
+                ArgumentException.ThrowIfNotEqual(Authorization.Identity, value, nameof(Identity));
+            }
+
+            field = value;
+        }
+    }
     /// <summary>Gets complete captured authorization evidence when the caller requires snapshot-bound evaluation.</summary><value>The immutable captured selection, or null only for the legacy unpinned request path.</value>
     public SecurityAuthorizationContext? Authorization { get; }
     /// <summary>Gets the effecting component audience.</summary>

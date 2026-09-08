@@ -3,25 +3,31 @@
 
 namespace AgentKit;
 
-/// <summary>Binds one compiled session profile to the exact selected coordinators for an invocation.</summary>
-/// <remarks>This capability is invocation-only composition evidence. Callers retain ownership of it and must not cache it past the operation whose profile it captures.</remarks>
+/// <summary>Binds one compiled session profile to the exact coordinator instances selected for an invocation.</summary>
+/// <remarks>
+/// The capability is immutable invocation evidence, not a service locator or security grant. Composition resolves both
+/// instances under the keys retained by <see cref="Profile"/> before constructing it; each protected effect still
+/// requires its own exact fresh authority. It borrows the selected coordinator instances without owning or disposing
+/// them, is valid only for the invocation that captured <see cref="Profile"/>, and must not be cached beyond that
+/// invocation.
+/// </remarks>
 public sealed record SessionExecutionCapability
 {
-    /// <summary>Initializes a profile-bound coordinator capability.</summary>
-    /// <param name="profile">The immutable compiled profile.</param>
-    /// <param name="coordinator">The coordinator selected by <paramref name="profile"/>.</param>
-    /// <param name="runCoordinator">The run coordinator selected by <paramref name="profile"/>.</param>
-    /// <exception cref="ArgumentNullException">Any argument is null.</exception>
+    /// <summary>Initializes one exact invocation-only session capability.</summary>
+    /// <param name="profile">The immutable selected session profile and component keys.</param>
+    /// <param name="coordinator">The coordinator resolved under <see cref="SessionProfileSnapshot.CoordinatorKey"/>.</param>
+    /// <param name="runCoordinator">The run coordinator resolved under <see cref="SessionProfileSnapshot.RunCoordinatorKey"/>.</param>
+    /// <exception cref="ArgumentNullException">A required reference is null.</exception>
     public SessionExecutionCapability(SessionProfileSnapshot profile, ISessionCoordinator coordinator, ISessionRunCoordinator runCoordinator)
     {
         ArgumentNullException.ThrowIfNull(profile); ArgumentNullException.ThrowIfNull(coordinator); ArgumentNullException.ThrowIfNull(runCoordinator);
         Profile = profile; Coordinator = coordinator; RunCoordinator = runCoordinator;
     }
 
-    /// <summary>Gets the immutable profile bound to this invocation.</summary><value>The exact compiled profile snapshot.</value>
+    /// <summary>Gets the exact compiled profile.</summary><value>Immutable profile identity, configuration, and component keys.</value>
     public SessionProfileSnapshot Profile { get; }
-    /// <summary>Gets the selected session coordinator.</summary><value>The invocation's resolved coordinator; this capability does not own its lifetime.</value>
+    /// <summary>Gets the selected protected session coordinator.</summary><value>The instance resolved under <see cref="SessionProfileSnapshot.CoordinatorKey"/>.</value>
     public ISessionCoordinator Coordinator { get; }
-    /// <summary>Gets the selected session-run coordinator.</summary><value>The invocation's resolved run coordinator; this capability does not own its lifetime.</value>
+    /// <summary>Gets the selected lane-ownership coordinator.</summary><value>The instance resolved under <see cref="SessionProfileSnapshot.RunCoordinatorKey"/>.</value>
     public ISessionRunCoordinator RunCoordinator { get; }
 }
