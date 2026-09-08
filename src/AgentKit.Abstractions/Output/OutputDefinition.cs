@@ -33,12 +33,18 @@ public sealed record OutputDefinition
     /// <param name="retryPolicy">How many validation-retry attempts this definition allows.</param>
     /// <param name="endStrategy">How a response mixing output-tool and function-tool calls picks its winner.</param>
     /// <exception cref="ArgumentException">
-    /// <paramref name="name"/> is null, empty, or consists only of whitespace, or
-    /// <paramref name="alternatives"/> or <paramref name="validators"/> is a default, uninitialized array.
+    /// <paramref name="name"/> is empty or consists only of whitespace;
+    /// <paramref name="alternatives"/> is default or contains <see langword="null"/>;
+    /// or <paramref name="validators"/> is default.
     /// </exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="mode"/> is undefined.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="id"/> or <paramref name="version"/> is default, or
+    /// <paramref name="mode"/> or <paramref name="endStrategy"/> is undefined.
+    /// </exception>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="validationPolicy"/> or <paramref name="retryPolicy"/> is null.
+    /// <paramref name="name"/>, <paramref name="validationPolicy"/>, or
+    /// <paramref name="retryPolicy"/> is null. A default validator reference
+    /// also throws this exception because it has no validator name.
     /// </exception>
     public OutputDefinition(
         OutputDefinitionId id,
@@ -53,10 +59,17 @@ public sealed record OutputDefinition
         OutputRetryPolicy retryPolicy,
         OutputEndStrategy endStrategy)
     {
+        ArgumentOutOfRangeException.ThrowIfEqual(id, default, nameof(id));
+        ArgumentOutOfRangeException.ThrowIfEqual(version, default, nameof(version));
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentOutOfRangeException.ThrowIfUndefined(mode);
-        ArgumentException.ThrowIfDefault(alternatives);
+        ArgumentException.ThrowIfContainsNull(alternatives);
         ArgumentException.ThrowIfDefault(validators);
+        foreach (var validator in validators)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(validator.Name, nameof(validators));
+        }
+
         ArgumentNullException.ThrowIfNull(validationPolicy);
         ArgumentNullException.ThrowIfNull(retryPolicy);
         ArgumentOutOfRangeException.ThrowIfUndefined(endStrategy);
@@ -75,37 +88,138 @@ public sealed record OutputDefinition
     }
 
     /// <summary>Gets the identity of this definition.</summary>
-    public OutputDefinitionId Id { get; init; }
+    /// <value>The non-default stable identity used to resolve this definition.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer attempts to set the default identity.</exception>
+    public OutputDefinitionId Id
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(Id));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the version of this definition.</summary>
-    public OutputDefinitionVersion Version { get; init; }
+    /// <value>The non-default version captured with resolved output work.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer attempts to set the default version.</exception>
+    public OutputDefinitionVersion Version
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(value, default, nameof(Version));
+            field = value;
+        }
+    }
 
     /// <summary>Gets a human-readable name for this definition.</summary>
-    public string Name { get; init; }
+    /// <value>Non-empty display text suitable for diagnostics.</value>
+    /// <exception cref="ArgumentException">An initializer attempts to set empty or whitespace-only text.</exception>
+    /// <exception cref="ArgumentNullException">An initializer attempts to set <see langword="null"/>.</exception>
+    public string Name
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value, nameof(Name));
+            field = value;
+        }
+    }
 
     /// <summary>Gets how this definition expects its terminal candidate to be produced.</summary>
-    public OutputMode Mode { get; init; }
+    /// <value>A defined output production mode.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer attempts to set an undefined value.</exception>
+    public OutputMode Mode
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfUndefined(value, nameof(Mode));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the schema a candidate must validate against, when applicable.</summary>
+    /// <value>The optional owned schema; mode-specific requirements are checked during profile preflight.</value>
     public JsonSchemaDocument? Schema { get; init; }
 
     /// <summary>Gets the CLR type to deserialize a validated candidate into, when applicable.</summary>
+    /// <value>The optional application type used only after structural validation succeeds.</value>
     public Type? RuntimeType { get; init; }
 
     /// <summary>Gets the named schema alternatives, when <see cref="Mode"/> is <see cref="OutputMode.Union"/>.</summary>
-    public ImmutableArray<OutputAlternative> Alternatives { get; init; }
+    /// <value>An initialized immutable array containing no null alternatives.</value>
+    /// <exception cref="ArgumentException">An initializer attempts to set a default array or one containing <see langword="null"/>.</exception>
+    public ImmutableArray<OutputAlternative> Alternatives
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfContainsNull(value, nameof(Alternatives));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the additively registered validators this definition selects, in evaluation order.</summary>
-    public ImmutableArray<OutputValidatorReference> Validators { get; init; }
+    /// <value>An initialized immutable array containing only usable validator references.</value>
+    /// <exception cref="ArgumentException">An initializer attempts to set a default array.</exception>
+    /// <exception cref="ArgumentNullException">
+    /// An initializer supplies a default validator reference, which has no validator name.
+    /// </exception>
+    public ImmutableArray<OutputValidatorReference> Validators
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value, nameof(Validators));
+            foreach (var validator in value)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(validator.Name, nameof(Validators));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets how validator failures accumulate.</summary>
-    public OutputValidationPolicy ValidationPolicy { get; init; }
+    /// <value>The non-null policy applied after structural validation.</value>
+    /// <exception cref="ArgumentNullException">An initializer attempts to set <see langword="null"/>.</exception>
+    public OutputValidationPolicy ValidationPolicy
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(ValidationPolicy));
+            field = value;
+        }
+    }
 
     /// <summary>Gets how many validation-retry attempts this definition allows.</summary>
-    public OutputRetryPolicy RetryPolicy { get; init; }
+    /// <value>The non-null bounded retry policy for invalid candidates.</value>
+    /// <exception cref="ArgumentNullException">An initializer attempts to set <see langword="null"/>.</exception>
+    public OutputRetryPolicy RetryPolicy
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(RetryPolicy));
+            field = value;
+        }
+    }
 
     /// <summary>Gets how a response mixing output-tool and function-tool calls picks its winner.</summary>
-    public OutputEndStrategy EndStrategy { get; init; }
+    /// <value>A defined strategy for resolving mixed terminal response content.</value>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer attempts to set an undefined value.</exception>
+    public OutputEndStrategy EndStrategy
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfUndefined(value, nameof(EndStrategy));
+            field = value;
+        }
+    }
 
     /// <inheritdoc/>
     public bool Equals(OutputDefinition? other) =>

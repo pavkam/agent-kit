@@ -17,10 +17,11 @@ public sealed record OutputAlternative
     /// <param name="name">The name this alternative is selected by.</param>
     /// <param name="schema">The schema this alternative's candidate must validate against.</param>
     /// <exception cref="ArgumentException">
-    /// <paramref name="name"/> is null, empty, or consists only of
-    /// whitespace.
+    /// <paramref name="name"/> is empty or consists only of whitespace.
     /// </exception>
-    /// <exception cref="ArgumentNullException"><paramref name="schema"/> is null.</exception>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="name"/> or <paramref name="schema"/> is null.
+    /// </exception>
     public OutputAlternative(string name, JsonSchemaDocument schema)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -31,8 +32,35 @@ public sealed record OutputAlternative
     }
 
     /// <summary>Gets the name this alternative is selected by.</summary>
-    public string Name { get; init; }
+    /// <value>Non-empty text that distinguishes the alternative within its union.</value>
+    /// <exception cref="ArgumentException">
+    /// An initializer attempts to set empty or whitespace-only text.
+    /// </exception>
+    /// <exception cref="ArgumentNullException">
+    /// An initializer attempts to set <see langword="null"/>.
+    /// </exception>
+    public string Name
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value, nameof(Name));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the schema this alternative's candidate must validate against.</summary>
-    public JsonSchemaDocument Schema { get; init; }
+    /// <value>The non-null owned schema retained by this alternative.</value>
+    /// <exception cref="ArgumentNullException">
+    /// An initializer attempts to set <see langword="null"/>.
+    /// </exception>
+    public JsonSchemaDocument Schema
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(Schema));
+            field = value;
+        }
+    }
 }
