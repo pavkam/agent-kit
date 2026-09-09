@@ -1843,6 +1843,12 @@ namespace AgentKit
         public System.Guid Value { get; }
         public override string ToString() { }
     }
+    public sealed class DecodedSessionEntry : System.IEquatable<AgentKit.DecodedSessionEntry>
+    {
+        public DecodedSessionEntry(AgentKit.SessionEntry entry, AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntry Entry { get; }
+        public AgentKit.SessionEntryWireEnvelope Wire { get; }
+    }
     public sealed class DefaultToolCallIdGenerator : AgentKit.IIdentifierGenerator<AgentKit.ToolCallId>
     {
         public DefaultToolCallIdGenerator() { }
@@ -3204,6 +3210,12 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask<AgentKit.SessionCreationLocationResult> LocateForCreateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionCreateRequest> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryWriteResult> RecordAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryWriteRequest> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryWriteResult> RecordCreateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryCreateRecordRequest> request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface ISessionEntryCodec
+    {
+        AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
+        AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire);
+        AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry);
     }
     public interface ISessionEventSink
     {
@@ -6009,17 +6021,59 @@ namespace AgentKit
         public int MaximumJsonDepth { get; }
         public int MaximumPayloadBytes { get; }
     }
+    public sealed class SessionEntryDecodeRejected : AgentKit.SessionEntryDecodeResult, System.IEquatable<AgentKit.SessionEntryDecodeRejected>
+    {
+        public SessionEntryDecodeRejected(string reason) { }
+        public string Reason { get; }
+    }
+    public abstract class SessionEntryDecodeResult : System.IEquatable<AgentKit.SessionEntryDecodeResult>
+    {
+        protected SessionEntryDecodeResult() { }
+    }
+    public sealed class SessionEntryDecoded : AgentKit.SessionEntryDecodeResult, System.IEquatable<AgentKit.SessionEntryDecoded>
+    {
+        public SessionEntryDecoded(AgentKit.DecodedSessionEntry decoded) { }
+        public AgentKit.DecodedSessionEntry Decoded { get; }
+    }
+    public sealed class SessionEntryEncodeRejected : AgentKit.SessionEntryEncodeResult, System.IEquatable<AgentKit.SessionEntryEncodeRejected>
+    {
+        public SessionEntryEncodeRejected(string reason) { }
+        public string Reason { get; }
+    }
+    public abstract class SessionEntryEncodeResult : System.IEquatable<AgentKit.SessionEntryEncodeResult>
+    {
+        protected SessionEntryEncodeResult() { }
+    }
+    public sealed class SessionEntryEncoded : AgentKit.SessionEntryEncodeResult, System.IEquatable<AgentKit.SessionEntryEncoded>
+    {
+        public SessionEntryEncoded(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryWireEnvelope Wire { get; }
+    }
     public readonly struct SessionEntryId : System.IEquatable<AgentKit.SessionEntryId>
     {
         public SessionEntryId(System.Guid value) { }
         public System.Guid Value { get; }
         public override string ToString() { }
     }
+    public sealed class SessionEntryOpaque : AgentKit.SessionEntryDecodeResult, System.IEquatable<AgentKit.SessionEntryOpaque>
+    {
+        public SessionEntryOpaque(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryWireEnvelope Wire { get; }
+    }
     public readonly struct SessionEntryTypeId : System.IEquatable<AgentKit.SessionEntryTypeId>
     {
         public SessionEntryTypeId(string value) { }
         public string Value { get; }
         public override string ToString() { }
+    }
+    public sealed class SessionEntryWireEnvelope : System.IEquatable<AgentKit.SessionEntryWireEnvelope>
+    {
+        public SessionEntryWireEnvelope(AgentKit.SessionEntryTypeId typeId, AgentKit.SchemaVersion schemaVersion, System.Collections.Immutable.ImmutableArray<byte> payload) { }
+        public System.Collections.Immutable.ImmutableArray<byte> Payload { get; }
+        public AgentKit.SchemaVersion SchemaVersion { get; }
+        public AgentKit.SessionEntryTypeId TypeId { get; }
+        public bool Equals(AgentKit.SessionEntryWireEnvelope? other) { }
+        public override int GetHashCode() { }
     }
     public abstract class SessionEvent : System.IEquatable<AgentKit.SessionEvent>
     {

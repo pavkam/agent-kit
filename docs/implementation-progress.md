@@ -65,6 +65,17 @@ owning spec.
 
 ## Latest integration evidence
 
+The session-codec value checkpoint passed all 2,391 abstraction tests and 66
+public API checks in an isolated checkout over `910e4d3`. The additive codec
+contract uses exact wire type/schema identities, structurally equal immutable
+payload bytes, and separate decoded, opaque, and rejected outcomes. A decoded
+entry retains its original wire envelope so unchanged persistence can preserve
+unknown nested fields. Encoding a new entry does not claim lossless rewriting.
+The focused tests cover argument names, byte equality and hashing, wrapper
+ownership, and arbitrary-byte retention. Bounds and semantic validation remain
+codec responsibilities; these values neither validate stored authority nor
+implement catalog dispatch, concrete codecs, or SQLite session storage.
+
 The protected semantic-operation context checkpoint passed all 2,371 abstraction
 tests and 66 public API checks in an isolated checkout over `709b20b`. The
 additive value binds the complete execution identity, agent, optional session
