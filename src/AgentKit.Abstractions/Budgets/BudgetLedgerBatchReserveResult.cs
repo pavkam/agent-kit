@@ -3,7 +3,7 @@
 
 namespace AgentKit;
 
-/// <summary>Closed storage outcome for one atomic reservation batch.</summary>
+/// <summary>Closed storage outcome: reserved receipts, numeric limit rejection, or truthful active-hold refusal for one atomic batch.</summary>
 public abstract record BudgetLedgerBatchReserveResult
 {
     /// <summary>Prevents external outcome categories.</summary>

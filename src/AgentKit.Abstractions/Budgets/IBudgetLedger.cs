@@ -39,7 +39,7 @@ public interface IBudgetLedger
     /// <exception cref="BudgetLedgerPersistenceUnavailableException">The adapter cannot confirm the outcome; inspect acknowledgement state before retrying.</exception>
     public ValueTask<BudgetLedgerScopeCreateResult> CreateScopeAsync(BudgetLedgerScopeCreateRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Atomically reserves every original request or returns one limit rejection.</summary>
+    /// <summary>Atomically reserves every original request or returns truthful limit or active-hold refusal evidence.</summary>
     /// <remarks>
     /// The ledger finds an item-key replay and compares the complete ordered
     /// original batch before reading its clock, sweeping expiry, allocating an
@@ -49,7 +49,7 @@ public interface IBudgetLedger
     /// </remarks>
     /// <param name="request">The non-null exact scope reference and ordered original requests.</param>
     /// <param name="cancellationToken">Cancels before operation linearization; cancellation after a possible commit requires an exact replay.</param>
-    /// <returns>Persisted receipts in original request order or a limit rejection that reserved no batch member.</returns>
+    /// <returns>Persisted receipts in original request order, a numeric limit rejection, or ordered active holds; refusal reserves no batch member.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation is observed before the operation linearizes; no reservation was created.</exception>
     /// <exception cref="BudgetLedgerReferenceUnavailableException">The scope is missing or foreign; no reservation was created.</exception>
@@ -79,7 +79,7 @@ public interface IBudgetLedger
     /// <exception cref="BudgetLedgerPersistenceUnavailableException">The adapter cannot confirm the outcome; inspect acknowledgement state before retrying.</exception>
     public ValueTask<BudgetStartResult> MarkStartedAsync(BudgetLedgerReservationReference reservation, CancellationToken cancellationToken = default);
 
-    /// <summary>Settles a started reservation with known actual usage.</summary>
+    /// <summary>Settles a started reservation with known actual usage and atomically creates per-boundary overrun holds when required.</summary>
     /// <remarks>
     /// The exact reservation and actual usage identify settlement replay. A
     /// repeat with equal values returns the original commitment; a different
@@ -87,7 +87,7 @@ public interface IBudgetLedger
     /// </remarks>
     /// <param name="request">The non-null exact reservation and nonnegative actual usage.</param>
     /// <param name="cancellationToken">Cancels before operation linearization; cancellation after a possible commit requires an exact replay.</param>
-    /// <returns>The persisted commitment result.</returns>
+    /// <returns>The persisted commitment result with its accounting revision and created hold evidence.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation is observed before the operation linearizes; no settlement occurred.</exception>
     /// <exception cref="BudgetLedgerReferenceUnavailableException">The reservation is missing or foreign; no transition occurred.</exception>
@@ -112,7 +112,7 @@ public interface IBudgetLedger
     /// <exception cref="BudgetLedgerPersistenceUnavailableException">The adapter cannot confirm the outcome; inspect acknowledgement state before retrying.</exception>
     public ValueTask<BudgetLedgerReleaseResult> ReleaseUnstartedAsync(BudgetLedgerReservationReference reservation, CancellationToken cancellationToken = default);
 
-    /// <summary>Replaces settled accounting with an authoritative correction.</summary>
+    /// <summary>Replaces settled accounting with an authoritative correction and atomically records resulting hold transitions.</summary>
     /// <remarks>
     /// The exact reservation, revision, and corrected actual identify replay.
     /// Repeating those values returns the stored correction; reusing the
@@ -120,7 +120,7 @@ public interface IBudgetLedger
     /// </remarks>
     /// <param name="request">The non-null exact reservation, nonnegative replacement usage, and positive revision.</param>
     /// <param name="cancellationToken">Cancels before operation linearization; cancellation after a possible commit requires an exact replay.</param>
-    /// <returns>The persisted correction result.</returns>
+    /// <returns>The persisted correction result with its accounting revision and created or automatically cleared generations.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation is observed before the operation linearizes; no correction occurred.</exception>
     /// <exception cref="BudgetLedgerReferenceUnavailableException">The reservation is missing or foreign; no transition occurred.</exception>
@@ -184,4 +184,24 @@ public interface IBudgetLedger
     /// <exception cref="BudgetLedgerStateException">Fresh evidence targets an already released or settled reservation; no transition occurred.</exception>
     /// <exception cref="BudgetLedgerPersistenceUnavailableException">The adapter cannot confirm the outcome; inspect acknowledgement state before retrying.</exception>
     public ValueTask<BudgetLedgerReconciliationResult> ReconcileAsync(BudgetLedgerReconciliationRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Idempotently resolves one eligible operator-policy overrun generation while persisting enforcement audit evidence.</summary>
+    /// <remarks>
+    /// Exact replay of a bound idempotency key returns its original immutable
+    /// blocked or resolved receipt even when accounting later changes. Reusing
+    /// that key with different evidence conflicts. A fresh key targeting an
+    /// already terminal generation is invalid and cannot create a replay alias.
+    /// The ledger validates structural receipt binding for audit only; it does
+    /// not authenticate the receipt or authorize the operator.
+    /// </remarks>
+    /// <param name="request">The exact hold, audit receipt, and replay key.</param>
+    /// <param name="cancellationToken">Cancels before the resolution linearizes; cancellation after a possible commit requires exact request replay.</param>
+    /// <returns>The original persisted blocked or resolved receipt for this exact attempt.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    /// <exception cref="OperationCanceledException">Cancellation occurs before any transition; no replay binding or hold mutation occurred.</exception>
+    /// <exception cref="BudgetLedgerReferenceUnavailableException">The hold boundary or reservation is missing or foreign; no transition occurred.</exception>
+    /// <exception cref="BudgetLedgerMutationConflictException">The replay key is bound to different evidence; no transition occurred.</exception>
+    /// <exception cref="BudgetLedgerStateException">The generation is stale, automatic-policy, already terminal under a fresh key, structurally mismatched to the audit receipt, or otherwise unusable; no transition occurred.</exception>
+    /// <exception cref="BudgetLedgerPersistenceUnavailableException">The adapter cannot confirm the result or replay binding; inspect acknowledgement state and retry only the exact immutable request when acknowledgement may be unknown.</exception>
+    public ValueTask<BudgetOverrunHoldResolutionResult> ResolveOverrunHoldAsync(BudgetOverrunHoldResolutionRequest request, CancellationToken cancellationToken = default);
 }

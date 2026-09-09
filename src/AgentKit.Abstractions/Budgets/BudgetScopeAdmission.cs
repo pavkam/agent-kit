@@ -13,13 +13,26 @@ public sealed record BudgetScopeAdmission
     /// <param name="defaultReservationLifetime">The positive lifetime used when an original request omits an expiry.</param>
     /// <exception cref="ArgumentOutOfRangeException">A supplied bound is not positive.</exception>
     public BudgetScopeAdmission(int maximumScopeDepth, int maximumOpenReservationsPerScope, TimeSpan defaultReservationLifetime)
+        : this(maximumScopeDepth, maximumOpenReservationsPerScope, defaultReservationLifetime, BudgetOverrunHoldPolicy.ClearWhenReconciled)
+    {
+    }
+
+    /// <summary>Initializes immutable admission facts including the captured overrun policy.</summary>
+    /// <param name="maximumScopeDepth">The positive maximum number of scopes in the lineage including this scope.</param>
+    /// <param name="maximumOpenReservationsPerScope">The positive maximum number of capacity-retaining reservations per scope.</param>
+    /// <param name="defaultReservationLifetime">The positive lifetime used when an original request omits an expiry.</param>
+    /// <param name="overrunHoldPolicy">The defined policy applied to overrun holds owned by this boundary.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A supplied bound is not positive or <paramref name="overrunHoldPolicy"/> is undefined.</exception>
+    public BudgetScopeAdmission(int maximumScopeDepth, int maximumOpenReservationsPerScope, TimeSpan defaultReservationLifetime, BudgetOverrunHoldPolicy overrunHoldPolicy)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumScopeDepth);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumOpenReservationsPerScope);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(defaultReservationLifetime, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfUndefined(overrunHoldPolicy);
         MaximumScopeDepth = maximumScopeDepth;
         MaximumOpenReservationsPerScope = maximumOpenReservationsPerScope;
         DefaultReservationLifetime = defaultReservationLifetime;
+        OverrunHoldPolicy = overrunHoldPolicy;
     }
     /// <summary>Gets the captured maximum lineage depth.</summary>
     /// <value>A positive count which includes the scope being admitted.</value>
@@ -30,4 +43,7 @@ public sealed record BudgetScopeAdmission
     /// <summary>Gets the positive default lifetime selected at scope admission.</summary>
     /// <value>A finite duration which the ledger adds once using its own clock.</value>
     public TimeSpan DefaultReservationLifetime { get; }
+    /// <summary>Gets the overrun behavior captured for this scope boundary.</summary>
+    /// <value>The defined policy persisted independently from descendant and ancestor choices.</value>
+    public BudgetOverrunHoldPolicy OverrunHoldPolicy { get; }
 }

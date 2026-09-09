@@ -496,6 +496,24 @@ public static class ServiceExtensions
 }
 ```
 
+The storage contract captures overrun policy independently on every admitted
+scope boundary. Truthful settlement creates a composite hold generation from the
+exact boundary reference, triggering reservation reference, and positive
+accounting revision. Admission blocked by such state returns a dedicated typed
+held result with exact hold facts rather than throwing a state exception or
+inventing a `BudgetLimitFailure`.
+
+Automatic reconciliation clears boundary holds only when no row currently
+overruns that boundary and dimension and exact aggregate accounting is within
+all applicable finite hard ceilings. Operator policy retains the generation
+until the same eligibility test passes and an exact audited resolution commits.
+The resolution receipt is immutable under replay, and its old composite
+reference has no authority over a later cleared-then-overrun generation.
+`IBudgetLedger` persists and structurally checks security-enforcement receipt
+binding as audit evidence; the later runtime resolver must use the selected
+security authority to authenticate and consume permission before calling this
+authorization-neutral storage mutation.
+
 The authority, ledger, immutable dimension/profile/policy catalogs, and event
 dispatcher are thread-safe process singletons. Host, tenant, principal, agent,
 session, run, and operation ownership are addresses inside that shared ledger,

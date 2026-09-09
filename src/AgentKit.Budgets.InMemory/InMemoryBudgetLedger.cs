@@ -12,6 +12,7 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
     private readonly Dictionary<IdempotencyKey, ScopeState> _scopeKeys = [];
     private readonly Dictionary<BudgetReservationId, ReservationState> _reservations = [];
     private readonly Dictionary<IdempotencyKey, BatchState> _batchKeys = [];
+    private readonly Dictionary<IdempotencyKey, OverrunResolutionState> _overrunResolutionKeys = [];
     private readonly TimeProvider _timeProvider;
     private readonly IIdentifierGenerator<BudgetScopeId> _scopeIds;
     private readonly IIdentifierGenerator<BudgetReservationId> _reservationIds;
@@ -120,6 +121,13 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
     {
         ArgumentNullException.ThrowIfNull(request);
         return ObserveAsync("reconcile", token => ReconcileCoreAsync(request, token), ResultOutcome, DiagnosticTags(request.Reservation.Scope.Address, request.Reservation.Scope.Id, request.Reservation.Id), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<BudgetOverrunHoldResolutionResult> ResolveOverrunHoldAsync(BudgetOverrunHoldResolutionRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ObserveAsync("resolve_overrun_hold", token => ResolveOverrunHoldCoreAsync(request, token), ResultOutcome, DiagnosticTags(request.Hold.Boundary.Address, request.Hold.Boundary.Id, request.Hold.Reservation.Id), cancellationToken);
     }
 
     private ValueTask<BudgetLedgerScopeCreateResult> CreateScopeCoreAsync(BudgetLedgerScopeCreateRequest request, CancellationToken cancellationToken)
@@ -241,6 +249,15 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
                         throw new BudgetLedgerStateException("The reservation unit conflicts with existing accounting at a charged boundary.");
                     }
                 }
+            }
+            var requestedDimensions = request.OriginalRequests.Select(item => item.Dimension).ToHashSet();
+            var activeHolds = lineage
+                .SelectMany(boundary => ActiveHoldEvidence(boundary))
+                .Where(hold => requestedDimensions.Contains(hold.Dimension))
+                .ToImmutableArray();
+            if (!activeHolds.IsEmpty)
+            {
+                return ValueTask.FromResult<BudgetLedgerBatchReserveResult>(new BudgetLedgerBatchReserveHeld(activeHolds));
             }
             var now = _timeProvider.GetUtcNow();
             var expired = FindExpired(now);
@@ -365,7 +382,7 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
         {
             cancellationToken.ThrowIfCancellationRequested();
             var state = GetReservation(request.Reservation);
-            return ValueTask.FromResult(Settle(state, request.Actual));
+            return ValueTask.FromResult(Settle(state, request.Actual, cancellationToken));
         }
     }
 
@@ -417,11 +434,46 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
                 throw new BudgetLedgerStateException("Correction revisions must increase monotonically.");
             }
 
-            var result = new BudgetCorrectionResult(request.Reservation.Id, state.Commit.Actual, request.CorrectedActual, request.Revision);
             EnsureRevisionCapacity(1);
-            state.Commit = Commit(request.Reservation.Id, state.Receipt.OriginalRequest.Amount, request.CorrectedActual);
+            var accountingRevision = new BudgetAccountingRevision(checked(_revision + 1));
+            var previousActual = state.Commit.Actual;
+            var reserved = state.Receipt.OriginalRequest.Amount;
+            var createdStates = ImmutableArray.CreateBuilder<(ScopeState Boundary, OverrunHoldState Hold)>();
+            if (previousActual <= reserved && request.CorrectedActual > reserved)
+            {
+                foreach (var boundary in state.Lineage.Where(boundary => !boundary.OverrunHolds.Any(hold => hold.IsActive && hold.Evidence.Reference.Reservation == state.Receipt.Reservation)))
+                {
+                    var evidence = HoldEvidence(boundary, state, accountingRevision, request.CorrectedActual);
+                    createdStates.Add((boundary, new OverrunHoldState(evidence)));
+                }
+            }
+            var clearing = state.Lineage
+                .SelectMany(boundary => EligibleForClear(boundary, state, request.CorrectedActual)
+                    ? boundary.OverrunHolds.Where(hold => hold.IsActive && hold.Evidence.Policy == BudgetOverrunHoldPolicy.ClearWhenReconciled && hold.Evidence.Dimension == state.Receipt.OriginalRequest.Dimension)
+                    : [])
+                .ToImmutableArray();
+            var result = new BudgetCorrectionResult(
+                request.Reservation.Id,
+                previousActual,
+                request.CorrectedActual,
+                request.Revision,
+                accountingRevision,
+                [.. createdStates.Select(item => item.Hold.Evidence)],
+                [.. clearing.Select(item => item.Evidence.Reference)]);
+            var commit = Commit(request.Reservation.Id, reserved, request.CorrectedActual, accountingRevision, [.. createdStates.Select(item => item.Hold.Evidence)]);
+            cancellationToken.ThrowIfCancellationRequested();
+            state.Commit = commit;
+            state.AccountingRevision = accountingRevision;
             state.LatestCorrectionRevision = request.Revision;
             state.Corrections.Add(request.Revision, result);
+            foreach (var (Boundary, Hold) in createdStates)
+            {
+                Boundary.OverrunHolds.Add(Hold);
+            }
+            foreach (var hold in clearing)
+            {
+                hold.AutomaticallyCleared = true;
+            }
             _ = AdvanceRevision();
             return ValueTask.FromResult(result);
         }
@@ -448,7 +500,7 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
                 var unit = limit?.Unit ?? state.Reservations.First(item => item.Receipt.OriginalRequest.Dimension == dimension).Receipt.OriginalRequest.Unit;
                 return new BudgetDimensionUsage(dimension, unit, reserved, committed, limit);
             }).ToImmutableArray();
-            var snapshot = new BudgetSnapshot(scope.Id, now, usages);
+            var snapshot = new BudgetSnapshot(scope.Id, now, usages, ActiveHoldEvidence(state));
             EnsureRevisionCapacity(expired.Count);
             cancellationToken.ThrowIfCancellationRequested();
             foreach (var expiredReservation in expired)
@@ -527,13 +579,65 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
             EnsureRevisionCapacity(request.Evidence is BudgetStillUnknown ? 1 : 2);
             BudgetLedgerReconciliationResult result = request.Evidence switch
             {
-                BudgetActualMeasured measured => new BudgetLedgerReconciliationSettled(Settle(state, measured.Actual)),
-                BudgetActualEstimated estimated => new BudgetLedgerReconciliationSettled(Settle(state, estimated.Actual)),
+                BudgetActualMeasured measured => new BudgetLedgerReconciliationSettled(Settle(state, measured.Actual, cancellationToken)),
+                BudgetActualEstimated estimated => new BudgetLedgerReconciliationSettled(Settle(state, estimated.Actual, cancellationToken)),
                 BudgetNoUsageProven => ReleaseForReconciliation(state),
                 BudgetStillUnknown => new BudgetLedgerReconciliationRetainedUnknown(request.Reservation),
                 _ => throw new InvalidOperationException("Unknown reconciliation evidence.")
             };
             state.Reconciliations.Add(request.IdempotencyKey, new ReconciliationState(request.Evidence, result));
+            _ = AdvanceRevision();
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    private ValueTask<BudgetOverrunHoldResolutionResult> ResolveOverrunHoldCoreAsync(BudgetOverrunHoldResolutionRequest request, CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "The public wrapper validates the request before dispatch.");
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_overrunResolutionKeys.TryGetValue(request.IdempotencyKey, out var replay))
+            {
+                return replay.Request != request
+                    ? throw Conflict("The overrun-resolution key is bound to different evidence.")
+                    : ValueTask.FromResult(replay.Result);
+            }
+            var boundary = GetScope(request.Hold.Boundary);
+            var reservation = GetReservation(request.Hold.Reservation);
+            if (!reservation.Lineage.Contains(boundary))
+            {
+                throw Missing("The overrun hold reference is unavailable.");
+            }
+            var hold = boundary.OverrunHolds.FirstOrDefault(item => item.Evidence.Reference == request.Hold)
+                ?? throw new BudgetLedgerStateException("The overrun hold generation is stale or unavailable.");
+            if (hold.Resolution is not null)
+            {
+                throw new BudgetLedgerStateException("A fresh key cannot resolve an already terminal overrun hold generation.");
+            }
+            if (hold.Evidence.Policy != BudgetOverrunHoldPolicy.RequireAuthorizedResolution || !hold.IsActive)
+            {
+                throw new BudgetLedgerStateException("The overrun hold generation cannot accept operator resolution.");
+            }
+            if (!BudgetOverrunSecurityBinding.Matches(request.Hold, request.EnforcementReceipt))
+            {
+                throw new BudgetLedgerStateException("The enforcement receipt is not structurally bound to the requested hold.");
+            }
+            var currentOverruns = CurrentOverruns(boundary, hold.Evidence.Dimension);
+            var hardFailures = CurrentHardFailures(boundary, hold.Evidence.Dimension);
+            BudgetOverrunHoldResolutionResult result;
+            EnsureRevisionCapacity(1);
+            result = !currentOverruns.IsEmpty || !hardFailures.IsEmpty
+                ? new BudgetOverrunHoldResolutionBlocked(request.Hold, currentOverruns, hardFailures)
+                : new BudgetOverrunHoldResolved(request.Hold, new BudgetAccountingRevision(checked(_revision + 1)), request.EnforcementReceipt);
+            var saved = new OverrunResolutionState(request, result);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (result is BudgetOverrunHoldResolved resolved)
+            {
+                hold.Resolution = resolved;
+            }
+            _overrunResolutionKeys.Add(request.IdempotencyKey, saved);
             _ = AdvanceRevision();
             return ValueTask.FromResult(result);
         }
@@ -682,6 +786,7 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
             BudgetLedgerScopeCreateRejected => "rejected",
             BudgetLedgerBatchReserved => "reserved",
             BudgetLedgerBatchReserveRejected => "rejected",
+            BudgetLedgerBatchReserveHeld => "held",
             BudgetStarted started when started.WasAlreadyStarted => "already_started",
             BudgetStarted => "started",
             BudgetStartRejected => "rejected",
@@ -692,6 +797,8 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
             BudgetLedgerReconciliationReleased => "released",
             BudgetLedgerReconciliationRetainedUnknown => "retained_unknown",
             BudgetLedgerReconciliationSettled => "settled",
+            BudgetOverrunHoldResolved => "resolved",
+            BudgetOverrunHoldResolutionBlocked => "held",
             _ => "completed",
         };
     }
@@ -699,7 +806,7 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
     private static bool IsStartForbidden(string outcome)
     {
         Debug.Assert(!string.IsNullOrWhiteSpace(outcome), "The result classifier supplies a bounded outcome.");
-        return outcome is "rejected" or "expired";
+        return outcome is "rejected" or "expired" or "held";
     }
 
     private static void TryObserve(Action observation)
@@ -773,7 +880,7 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
         return new BudgetLedgerReconciliationReleased(state.Receipt.Reservation);
     }
 
-    private BudgetCommitResult Settle(ReservationState state, decimal actual)
+    private BudgetCommitResult Settle(ReservationState state, decimal actual, CancellationToken cancellationToken)
     {
         Debug.Assert(state is not null, "The caller resolves reservation state before settlement.");
         Debug.Assert(actual >= 0, "The settlement request validates nonnegative actual usage.");
@@ -788,18 +895,36 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
             throw new BudgetLedgerStateException("The reservation is not started or is released.");
         }
         EnsureRevisionCapacity(1);
-        state.Commit = Commit(state.Receipt.Reservation.Id, state.Receipt.OriginalRequest.Amount, actual);
+        var accountingRevision = new BudgetAccountingRevision(checked(_revision + 1));
+        var createdStates = ImmutableArray.CreateBuilder<(ScopeState Boundary, OverrunHoldState Hold)>();
+        if (actual > state.Receipt.OriginalRequest.Amount)
+        {
+            foreach (var boundary in state.Lineage)
+            {
+                var evidence = HoldEvidence(boundary, state, accountingRevision, actual);
+                createdStates.Add((boundary, new OverrunHoldState(evidence)));
+            }
+        }
+        var createdEvidence = createdStates.Select(item => item.Hold.Evidence).ToImmutableArray();
+        var commit = Commit(state.Receipt.Reservation.Id, state.Receipt.OriginalRequest.Amount, actual, accountingRevision, createdEvidence);
+        cancellationToken.ThrowIfCancellationRequested();
+        state.Commit = commit;
         state.OriginalCommit = state.Commit;
+        state.AccountingRevision = accountingRevision;
+        foreach (var (Boundary, Hold) in createdStates)
+        {
+            Boundary.OverrunHolds.Add(Hold);
+        }
         _ = AdvanceRevision();
         return state.Commit;
     }
 
-    private static BudgetCommitResult Commit(BudgetReservationId id, decimal reserved, decimal actual)
+    private static BudgetCommitResult Commit(BudgetReservationId id, decimal reserved, decimal actual, BudgetAccountingRevision accountingRevision, ImmutableArray<BudgetOverrunHold> createdHolds)
     {
         Debug.Assert(id != default, "The persisted reservation supplies a nondefault identity.");
         Debug.Assert(reserved >= 0, "The original reservation request validates nonnegative capacity.");
         Debug.Assert(actual >= 0, "The settlement request validates nonnegative actual usage.");
-        return new(id, reserved, actual, Math.Max(0, reserved - actual), Math.Max(0, actual - reserved));
+        return new(id, reserved, actual, Math.Max(0, reserved - actual), Math.Max(0, actual - reserved), accountingRevision, createdHolds);
     }
 
     private long AdvanceRevision() => _revision = checked(_revision + 1);
@@ -857,6 +982,103 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
         return values.Aggregate(default(BudgetQuantity), static (total, value) => total.Add(BudgetQuantity.FromDecimal(value)));
     }
     private static BudgetQuantity Max(BudgetQuantity left, BudgetQuantity right) => left.CompareTo(right) >= 0 ? left : right;
+
+    private static BudgetOverrunHold HoldEvidence(ScopeState boundary, ReservationState reservation, BudgetAccountingRevision revision, decimal actual)
+    {
+        Debug.Assert(boundary is not null, "The caller resolves the charged boundary.");
+        Debug.Assert(reservation is not null, "The caller resolves the triggering reservation.");
+        Debug.Assert(actual > reservation.Receipt.OriginalRequest.Amount, "A hold is created only for a current row overrun.");
+        var original = reservation.Receipt.OriginalRequest;
+        return new BudgetOverrunHold(
+            new BudgetOverrunHoldReference(boundary.Reference, reservation.Receipt.Reservation, revision),
+            original.Dimension,
+            original.Unit,
+            original.Amount,
+            actual,
+            boundary.Request.Admission.OverrunHoldPolicy);
+    }
+
+    private ImmutableArray<BudgetOverrunHold> ActiveHoldEvidence(ScopeState boundary)
+    {
+        Debug.Assert(boundary is not null, "The caller resolves a charged boundary.");
+        return [.. boundary.OverrunHolds
+            .Where(hold => hold.IsActive)
+            .Select(hold => CurrentEvidence(hold.Evidence))
+            .OrderBy(hold => hold.Reference.TriggeringRevision.Value)];
+    }
+
+    private BudgetOverrunHold CurrentEvidence(BudgetOverrunHold evidence)
+    {
+        Debug.Assert(evidence is not null, "Persisted hold evidence is non-null.");
+        var state = _reservations[evidence.Reference.Reservation.Id];
+        return new BudgetOverrunHold(evidence.Reference, evidence.Dimension, evidence.Unit, evidence.Reserved, state.Commit?.Actual ?? evidence.CurrentActual, evidence.Policy);
+    }
+
+    private ImmutableArray<BudgetOverrunHold> CurrentOverruns(ScopeState boundary, BudgetDimension dimension) =>
+        [.. boundary.OverrunHolds
+            .Where(hold => hold.IsActive && hold.Evidence.Dimension == dimension)
+            .Select(hold => CurrentEvidence(hold.Evidence))
+            .Where(hold => hold.CurrentActual > hold.Reserved)];
+
+    private static bool EligibleForClear(ScopeState boundary, ReservationState correcting, decimal correctedActual)
+    {
+        Debug.Assert(boundary is not null, "The correction supplies a charged boundary.");
+        Debug.Assert(correcting is not null, "The correction supplies settled reservation state.");
+        var original = correcting.Receipt.OriginalRequest;
+        if (boundary.Reservations.Any(item =>
+            item.Commit is not null
+            && item.Receipt.OriginalRequest.Dimension == original.Dimension
+            && (ReferenceEquals(item, correcting) ? correctedActual : item.Commit.Actual) > item.Receipt.OriginalRequest.Amount))
+        {
+            return false;
+        }
+        var hard = boundary.Request.OriginalRequest.Limits.FirstOrDefault(limit => limit.Dimension == original.Dimension && limit.Kind == BudgetLimitKind.Hard);
+        if (hard is null)
+        {
+            return true;
+        }
+        var settledValues = boundary.Reservations
+            .Where(item => item.Commit is not null && item.Receipt.OriginalRequest.Dimension == original.Dimension)
+            .Select(item => ReferenceEquals(item, correcting) ? correctedActual : item.Commit!.Actual)
+            .ToArray();
+        var retainedValues = boundary.Reservations
+            .Where(item => item.IsCapacityRetaining && item.Receipt.OriginalRequest.Dimension == original.Dimension)
+            .Select(item => item.Receipt.OriginalRequest.Amount)
+            .ToArray();
+        var aggregation = correcting.Aggregation;
+        var observed = aggregation switch
+        {
+            BudgetAggregationKind.Maximum => Max(
+                retainedValues.Length == 0 ? default : BudgetQuantity.FromDecimal(retainedValues.Max()),
+                settledValues.Length == 0 ? default : BudgetQuantity.FromDecimal(settledValues.Max())),
+            BudgetAggregationKind.ConcurrentGauge => Sum(retainedValues),
+            BudgetAggregationKind.Sum or BudgetAggregationKind.Duration => Sum(retainedValues).Add(Sum(settledValues)),
+            _ => throw new BudgetLedgerStateException("The corrected accounting has unsupported aggregation semantics."),
+        };
+        return observed.CompareTo(BudgetQuantity.FromDecimal(hard.Value)) <= 0;
+    }
+
+    private static ImmutableArray<BudgetLimitFailure> CurrentHardFailures(ScopeState boundary, BudgetDimension dimension)
+    {
+        Debug.Assert(boundary is not null, "The caller resolves the hold-owning boundary.");
+        var hard = boundary.Request.OriginalRequest.Limits.FirstOrDefault(limit => limit.Dimension == dimension && limit.Kind == BudgetLimitKind.Hard);
+        if (hard is null)
+        {
+            return [];
+        }
+        var (reserved, committed) = Usage(boundary, dimension);
+        var aggregation = boundary.Reservations.First(item => item.Receipt.OriginalRequest.Dimension == dimension).Aggregation;
+        var observed = aggregation switch
+        {
+            BudgetAggregationKind.Maximum => Max(reserved, committed),
+            BudgetAggregationKind.ConcurrentGauge => reserved,
+            BudgetAggregationKind.Sum or BudgetAggregationKind.Duration => reserved.Add(committed),
+            _ => throw new BudgetLedgerStateException("The hold accounting has unsupported aggregation semantics."),
+        };
+        return observed.CompareTo(BudgetQuantity.FromDecimal(hard.Value)) <= 0
+            ? []
+            : [new BudgetLimitFailure(boundary.Reference.Id, dimension, BudgetLimitKind.Hard, hard.Value, observed, default, hard.Unit, "Current accounting exceeds the captured hard boundary.")];
+    }
 
     private static bool IsParentAddress(BudgetScopeAddress parent, BudgetScopeAddress child)
     {

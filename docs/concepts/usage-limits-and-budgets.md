@@ -107,6 +107,23 @@ Actual overrun MUST be fully recorded even when it exceeds a hard ceiling. It
 sets remaining capacity to zero and stops new work; the ledger MUST NOT clamp
 reported consumption or reject its truthful accounting.
 
+Each charged scope boundary captures its own overrun-hold policy when admitted.
+Settlement that exceeds a row's reservation creates an independently addressed
+hold generation at every charged boundary. Later reservation attempts return a
+typed held outcome containing those exact facts; a hold is not a numeric limit
+failure and MUST NOT be represented by fabricated ceiling evidence. A child and
+ancestor may capture different policies, and both apply.
+
+Automatic holds clear only after authoritative correction leaves no current row
+overrun at that boundary and dimension and exact accounting is within every
+relevant finite hard ceiling. Operator-policy holds additionally require an
+audited resolution of the exact boundary, reservation, and triggering accounting
+revision. Old-generation resolution never clears a later overrun. Operator
+resolution cannot override a current row overrun or hard exhaustion. The ledger
+persists structurally bound enforcement-receipt evidence for audit; the selected
+security authority, outside the authorization-neutral ledger, authenticates the
+actor and consumes or reconciles the permission.
+
 Reservation lifetime is not a budget dimension or numeric ceiling. Starting
 after the persisted effective expiry returns a typed expiration receipt with the
 reservation identity and deadline. Lazy cleanup MUST replay the same receipt; it

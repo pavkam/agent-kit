@@ -235,6 +235,7 @@ public sealed class IdentityValueTypeConformanceTests
         || identityType == typeof(PlanRevision)
         || identityType == typeof(ArtifactProfileVersion)
         || identityType == typeof(BudgetProfileVersion)
+        || identityType == typeof(BudgetAccountingRevision)
         || identityType == typeof(OperationStateRevision)
         || identityType == typeof(SessionLaneRevision)
         || identityType == typeof(SessionDirectoryRevision)

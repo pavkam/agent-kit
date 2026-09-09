@@ -148,6 +148,95 @@ public sealed class BudgetLedgerDiagnosticsTests
         entry.Tags.ContainsKey("ErrorType").ShouldBeFalse();
     }
 
+    /// <summary>Verifies audited overrun resolution emits one truthful correlated terminal across every diagnostic surface.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenSuccessful_EmitsResolvedTerminalSignals()
+    {
+        var activities = new List<Activity>();
+        var measurements = new List<(string Name, IReadOnlyDictionary<string, object?> Tags)>();
+        using var parent = StartParent("budget-ledger-overrun-resolution");
+        using var activityListener = ListenToActivities(activities, parent.TraceId);
+        using var meterListener = ListenToMetrics(measurements, parent.TraceId);
+        var logger = new RecordingLogger();
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger(logger);
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var scope = (await ledger.CreateScopeAsync(ScopeRequest(
+            "diagnostics-overrun",
+            admission: new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5), BudgetOverrunHoldPolicy.RequireAuthorizedResolution)), cancellationToken))
+            .ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var reservation = await ReserveAsync(ledger, scope, "diagnostics-overrun-row");
+        _ = await ledger.MarkStartedAsync(reservation, cancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), cancellationToken);
+        _ = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1), cancellationToken);
+        var request = ResolutionRequest(commit.CreatedOverrunHolds.Single().Reference);
+
+        _ = (await ledger.ResolveOverrunHoldAsync(request, cancellationToken)).ShouldBeOfType<BudgetOverrunHoldResolved>();
+
+        var activity = activities.Single(item =>
+            item.OperationName == AgentKitActivityNames.BudgetLedgerOperation
+            && Equals(item.GetTagItem(AgentKitTagNames.BudgetOperation), "resolve_overrun_hold"));
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("resolved");
+        activity.GetTagItem(AgentKitTagNames.BudgetScopeId).ShouldBe(scope.Id.ToString());
+        activity.GetTagItem(AgentKitTagNames.BudgetReservationId).ShouldBe(reservation.Id.ToString());
+        var entry = logger.Entries.Single(item => item.Tags.TryGetValue("BudgetOperation", out var value) && Equals(value, "resolve_overrun_hold"));
+        entry.EventId.Id.ShouldBe(7050);
+        entry.Tags["Outcome"].ShouldBe("resolved");
+        measurements.Count(item => item.Name == AgentKitMetricNames.BudgetLedgerOperationCount && Equals(item.Tags[AgentKitTagNames.BudgetOperation], "resolve_overrun_hold")).ShouldBe(1);
+        measurements.Count(item => item.Name == AgentKitMetricNames.BudgetLedgerOperationDuration && Equals(item.Tags[AgentKitTagNames.BudgetOperation], "resolve_overrun_hold")).ShouldBe(1);
+    }
+
+    /// <summary>Verifies held, invalid-binding, and cancellation resolution paths emit truthful content-free terminals.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenNotResolved_EmitsTruthfulSafeTerminalSignals()
+    {
+        var activities = new List<Activity>();
+        var measurements = new List<(string Name, IReadOnlyDictionary<string, object?> Tags)>();
+        using var parent = StartParent("budget-ledger-overrun-not-resolved");
+        using var activityListener = ListenToActivities(activities, parent.TraceId);
+        using var meterListener = ListenToMetrics(measurements, parent.TraceId);
+        var logger = new RecordingLogger();
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger(logger);
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var scope = (await ledger.CreateScopeAsync(ScopeRequest(
+            "diagnostics-overrun-held",
+            admission: new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5), BudgetOverrunHoldPolicy.RequireAuthorizedResolution)), cancellationToken))
+            .ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var reservation = await ReserveAsync(ledger, scope, "diagnostics-overrun-held-row");
+        _ = await ledger.MarkStartedAsync(reservation, cancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), cancellationToken);
+        var valid = ResolutionRequest(commit.CreatedOverrunHolds.Single().Reference);
+
+        _ = (await ledger.ResolveOverrunHoldAsync(valid, cancellationToken)).ShouldBeOfType<BudgetOverrunHoldResolutionBlocked>();
+        var invalid = CorruptResolutionRequest(valid);
+        _ = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ResolveOverrunHoldAsync(invalid, cancellationToken));
+        using var source = new CancellationTokenSource();
+        source.Cancel();
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await ledger.ResolveOverrunHoldAsync(
+            new BudgetOverrunHoldResolutionRequest(valid.Hold, valid.EnforcementReceipt, new IdempotencyKey("diagnostics-overrun-cancelled")), source.Token));
+
+        var resolutionActivities = activities.Where(item =>
+            item.OperationName == AgentKitActivityNames.BudgetLedgerOperation
+            && Equals(item.GetTagItem(AgentKitTagNames.BudgetOperation), "resolve_overrun_hold")).ToArray();
+        resolutionActivities.Select(item => item.GetTagItem(AgentKitTagNames.Outcome)?.ToString()).ShouldBe(["held", "faulted", "cancelled"]);
+        resolutionActivities.ShouldAllBe(item => item.Status == ActivityStatusCode.Error);
+        resolutionActivities[0].GetTagItem(AgentKitTagNames.ErrorType).ShouldBeNull();
+        resolutionActivities[1].GetTagItem(AgentKitTagNames.ErrorType).ShouldBe(typeof(BudgetLedgerStateException).FullName);
+        resolutionActivities[2].GetTagItem(AgentKitTagNames.ErrorType).ShouldBe(nameof(OperationCanceledException));
+        logger.Entries.Where(item => item.Tags.TryGetValue("BudgetOperation", out var value) && Equals(value, "resolve_overrun_hold"))
+            .Select(item => item.EventId.Id).ShouldBe([7050, 7051, 7050]);
+        measurements.Where(item => Equals(item.Tags[AgentKitTagNames.BudgetOperation], "resolve_overrun_hold"))
+            .SelectMany(item => item.Tags.Keys).Distinct().Order().ShouldBe(new[] { AgentKitTagNames.BudgetOperation, AgentKitTagNames.Outcome }.Order());
+        logger.Entries.ShouldAllBe(item => !item.Message.Contains("budget-overrun:", StringComparison.Ordinal) && !item.Message.Contains("sha256:", StringComparison.Ordinal));
+        foreach (var activity in resolutionActivities)
+        {
+            foreach (var tag in activity.Tags)
+            {
+                (tag.Value?.Contains("sha256:", StringComparison.Ordinal) ?? false).ShouldBeFalse();
+            }
+        }
+    }
+
     /// <summary>Verifies missing injected timing evidence omits duration rather than fabricating zero while preserving the count.</summary>
     [Fact]
     public async Task CreateScopeAsync_WhenTimestampFails_RecordsCountWithoutDuration()
@@ -304,9 +393,9 @@ public sealed class BudgetLedgerDiagnosticsTests
     private static async Task<BudgetLedgerScopeReference> CreateScopeAsync(IBudgetLedger ledger, string key) =>
         (await ledger.CreateScopeAsync(ScopeRequest(key), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
 
-    private static BudgetLedgerScopeCreateRequest ScopeRequest(string key, BudgetScopeAddress? address = null) => new(
+    private static BudgetLedgerScopeCreateRequest ScopeRequest(string key, BudgetScopeAddress? address = null, BudgetScopeAdmission? admission = null) => new(
         new BudgetScopeRequest(null, address ?? Address(), [new BudgetLimit(new BudgetDimension("test.sum"), 100, new BudgetUnit("count"), BudgetLimitKind.Hard)], new IdempotencyKey(key)),
-        new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5)));
+        admission ?? new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5)));
 
     private static async Task<BudgetLedgerReservationReference> ReserveAsync(IBudgetLedger ledger, BudgetLedgerScopeReference scope, string key) =>
         (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope,
@@ -314,6 +403,43 @@ public sealed class BudgetLedgerDiagnosticsTests
             .ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
 
     private static BudgetScopeAddress Address() => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001")), null, null, null);
+
+    private static BudgetOverrunHoldResolutionRequest ResolutionRequest(BudgetOverrunHoldReference hold)
+    {
+        var enforcement = new SecurityEnforcementRequest(
+            new SecurityAuthorizationScope(Address().AgentId, null, new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("30000000-0000-0000-0000-000000000003")), null)),
+            TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("operator"), ExecutionSubjectKind.Human),
+            new ComponentId("budget-operator"),
+            SecurityOperationKind.StateMutation,
+            SecurityEffect.Mutate,
+            [BudgetOverrunSecurityBinding.Resource(hold)],
+            BudgetOverrunSecurityBinding.Fingerprint(hold),
+            new SecurityRevocationVersion(1));
+        var receipt = new SecurityEnforcementIntentReceipt(
+            new SecurityEnforcementIntentId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
+            new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
+            new SecurityRequestId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
+            enforcement,
+            null,
+            new ContentHash("sha256:overrun-resolution"),
+            DateTimeOffset.UnixEpoch);
+        return new BudgetOverrunHoldResolutionRequest(hold, receipt, new IdempotencyKey("diagnostics-overrun-resolution"));
+    }
+
+    private static BudgetOverrunHoldResolutionRequest CorruptResolutionRequest(BudgetOverrunHoldResolutionRequest request)
+    {
+        var receipt = request.EnforcementReceipt;
+        var enforcement = receipt.Enforcement with { InputFingerprint = new InputFingerprint("sha256:wrong-target") };
+        var corrupted = new SecurityEnforcementIntentReceipt(
+            receipt.IntentId,
+            receipt.GrantId,
+            receipt.RequestId,
+            enforcement,
+            receipt.RequiredFence,
+            receipt.EffectFingerprint,
+            receipt.ConsumedAt);
+        return new BudgetOverrunHoldResolutionRequest(request.Hold, corrupted, new IdempotencyKey("diagnostics-overrun-invalid"));
+    }
 
     private static bool HasTag(Activity activity, string name) => !string.IsNullOrWhiteSpace(activity.GetTagItem(name)?.ToString());
 

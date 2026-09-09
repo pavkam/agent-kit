@@ -1636,5 +1636,44 @@ public static class ArgumentExceptionExtensions
                 throw new ArgumentException("The continuation cursor must exactly continue this page.", paramName);
             }
         }
+
+        /// <summary>Throws when an overrun-resolution refusal contains no current accounting fact that blocks clearance.</summary>
+        /// <param name="currentOverruns">The initialized current row-overrun evidence.</param>
+        /// <param name="hardLimitFailures">The initialized current hard-ceiling evidence.</param>
+        /// <param name="paramName">The parameter name attributed to the missing evidence.</param>
+        /// <exception cref="ArgumentException">Both evidence arrays are empty.</exception>
+        public static void ThrowIfNoBudgetOverrunResolutionBlockers(
+            ImmutableArray<BudgetOverrunHold> currentOverruns,
+            ImmutableArray<BudgetLimitFailure> hardLimitFailures,
+            [CallerArgumentExpression(nameof(currentOverruns))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfDefault(currentOverruns);
+            ArgumentException.ThrowIfDefault(hardLimitFailures);
+            if (currentOverruns.IsEmpty && hardLimitFailures.IsEmpty)
+            {
+                throw new ArgumentException("At least one blocking accounting fact is required.", paramName);
+            }
+        }
+
+        /// <summary>Throws when a proposed budget boundary address cannot be an ancestor of a charged reservation address.</summary>
+        /// <param name="boundary">The non-null proposed ancestor address.</param><param name="charged">The non-null charged scope address.</param><param name="paramName">The parameter name attributed to incoherent charged evidence.</param>
+        /// <exception cref="ArgumentNullException">An address is null.</exception><exception cref="ArgumentException">Tenant, principal, or agent differs, or a boundary session, run, or operation identity differs from the charged address.</exception>
+        public static void ThrowIfNotBudgetScopeAncestorAddress(
+            BudgetScopeAddress boundary,
+            BudgetScopeAddress charged,
+            [CallerArgumentExpression(nameof(charged))] string? paramName = null)
+        {
+            ArgumentNullException.ThrowIfNull(boundary);
+            ArgumentNullException.ThrowIfNull(charged);
+            if (boundary.TenantId != charged.TenantId
+                || boundary.PrincipalId != charged.PrincipalId
+                || boundary.AgentId != charged.AgentId
+                || (boundary.SessionId is not null && boundary.SessionId != charged.SessionId)
+                || (boundary.RunId is not null && boundary.RunId != charged.RunId)
+                || (boundary.OperationId is not null && boundary.OperationId != charged.OperationId))
+            {
+                throw new ArgumentException("The boundary address must be an ancestor of the charged reservation address.", paramName);
+            }
+        }
     }
 }

@@ -39,6 +39,8 @@ internal sealed class ReservationState
     internal BudgetCommitResult? Commit { get; set; }
     /// <summary>Gets or sets the immutable first settlement used for exact settlement replay.</summary>
     internal BudgetCommitResult? OriginalCommit { get; set; }
+    /// <summary>Gets or sets the latest positive ledger accounting revision.</summary>
+    internal BudgetAccountingRevision? AccountingRevision { get; set; }
     /// <summary>Gets or sets the persisted rejection returned by every expired-start replay.</summary>
     /// <summary>Gets or sets the immutable expiration receipt persisted by direct or lazy expiry cleanup.</summary>
     internal BudgetStartExpired? StartExpiration { get; set; }

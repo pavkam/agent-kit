@@ -249,13 +249,13 @@ public abstract class BudgetLedgerConformanceTests<TFixture>
         _ = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(first, decimal.MaxValue));
         var secondCommit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(second, 1));
         var exact = BudgetQuantity.FromDecimal(decimal.MaxValue).Add(BudgetQuantity.FromDecimal(1));
-        var rejection = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(
+        var held = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(
             scope,
-            [Reservation(scope, "overflow-later", 1)]))).ShouldBeOfType<BudgetLedgerBatchReserveRejected>();
+            [Reservation(scope, "overflow-later", 1)]))).ShouldBeOfType<BudgetLedgerBatchReserveHeld>();
 
         secondCommit.Actual.ShouldBe(1);
         (await ledger.GetSnapshotAsync(scope)).Usages.Single().Committed.ShouldBe(exact);
-        rejection.Failure.ObservedValue.ShouldBe(exact);
+        held.Holds.ShouldHaveSingleItem().CurrentActual.ShouldBe(decimal.MaxValue);
     }
 
     /// <summary>Verifies exact aggregate magnitude alone does not block new work without a finite ceiling.</summary>
@@ -596,6 +596,140 @@ public abstract class BudgetLedgerConformanceTests<TFixture>
         (await ledger.GetSnapshotAsync(scope)).ScopeId.ShouldBe(scope.Id);
     }
 
+    /// <summary>Verifies one overrun creates independent holds using every charged boundary's captured policy.</summary>
+    [Fact]
+    public async Task SettleAsync_WhenAncestorPoliciesDiffer_CreatesPerBoundaryHolds()
+    {
+        var ledger = new TFixture().CreateLedger();
+        var parent = await CreateScopeAsync(ledger, "hold-parent", 10, policy: BudgetOverrunHoldPolicy.RequireAuthorizedResolution);
+        var child = await CreateScopeAsync(ledger, "hold-child", 10, parent: parent);
+        var reservation = await ReserveOneAsync(ledger, child, "hold-row", 1, Dimension, Count);
+        _ = await ledger.MarkStartedAsync(reservation);
+
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2));
+
+        commit.AccountingRevision.HasValue.ShouldBeTrue();
+        commit.CreatedOverrunHolds.Select(hold => hold.Policy).ShouldBe([
+            BudgetOverrunHoldPolicy.ClearWhenReconciled,
+            BudgetOverrunHoldPolicy.RequireAuthorizedResolution]);
+        (await ledger.GetSnapshotAsync(child)).ActiveOverrunHolds.ShouldHaveSingleItem().Reference.Boundary.ShouldBe(child);
+        (await ledger.GetSnapshotAsync(parent)).ActiveOverrunHolds.ShouldHaveSingleItem().Reference.Boundary.ShouldBe(parent);
+        var held = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(child, [Reservation(child, "held-row", 1)])))
+            .ShouldBeOfType<BudgetLedgerBatchReserveHeld>();
+        held.Holds.Length.ShouldBe(2);
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(child,
+            [Reservation(child, "unaffected-dimension", 1, MaximumDimension, Count)])))
+            .ShouldBeOfType<BudgetLedgerBatchReserved>();
+    }
+
+    /// <summary>Verifies equality clears an automatic hold while fresh requested capacity remains independently enforced.</summary>
+    [Fact]
+    public async Task CorrectAsync_WhenAutomaticHoldBecomesEligible_ClearsExactGeneration()
+    {
+        var ledger = new TFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "auto-hold", 1);
+        var reservation = await ReserveOneAsync(ledger, scope, "auto-row", 1, Dimension, Count);
+        _ = await ledger.MarkStartedAsync(reservation);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2));
+
+        var correction = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1));
+
+        correction.ClearedOverrunHolds.ShouldBe([commit.CreatedOverrunHolds.Single().Reference]);
+        (await ledger.GetSnapshotAsync(scope)).ActiveOverrunHolds.ShouldBeEmpty();
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [Reservation(scope, "after-auto-clear", 1)])))
+            .ShouldBeOfType<BudgetLedgerBatchReserveRejected>();
+    }
+
+    /// <summary>Verifies operator resolution waits for eligible truth, replays exactly, and never clears a later generation.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenAccountingBecomesEligible_PreservesGenerationReplay()
+    {
+        var ledger = new TFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "operator-hold", 10, policy: BudgetOverrunHoldPolicy.RequireAuthorizedResolution);
+        var reservation = await ReserveOneAsync(ledger, scope, "operator-row", 1, Dimension, Count);
+        _ = await ledger.MarkStartedAsync(reservation);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2));
+        var oldHold = commit.CreatedOverrunHolds.Single().Reference;
+        _ = (await ledger.ResolveOverrunHoldAsync(ResolutionRequest(oldHold, "blocked-resolution", "operator-a", 4)))
+            .ShouldBeOfType<BudgetOverrunHoldResolutionBlocked>();
+        _ = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1));
+        var request = ResolutionRequest(oldHold, "successful-resolution", "operator-b", 5);
+
+        var resolved = (await ledger.ResolveOverrunHoldAsync(request)).ShouldBeOfType<BudgetOverrunHoldResolved>();
+        (await ledger.ResolveOverrunHoldAsync(request)).ShouldBe(resolved);
+        _ = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 2, 2));
+        var current = (await ledger.GetSnapshotAsync(scope)).ActiveOverrunHolds.ShouldHaveSingleItem();
+
+        current.Reference.TriggeringRevision.ShouldNotBe(oldHold.TriggeringRevision);
+        (await ledger.ResolveOverrunHoldAsync(request)).ShouldBe(resolved);
+        _ = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ResolveOverrunHoldAsync(
+            ResolutionRequest(oldHold, "historical-resolution", "operator-c", 6)));
+        (await ledger.GetSnapshotAsync(scope)).ActiveOverrunHolds.ShouldHaveSingleItem().Reference.ShouldBe(current.Reference);
+    }
+
+    /// <summary>Verifies automatic and operator clearance both wait until every row overrun at the boundary is corrected.</summary>
+    [Theory]
+    [InlineData(BudgetOverrunHoldPolicy.ClearWhenReconciled)]
+    [InlineData(BudgetOverrunHoldPolicy.RequireAuthorizedResolution)]
+    public async Task CorrectAsync_WhenAnotherRowStillOverruns_PreservesAllBoundaryHolds(BudgetOverrunHoldPolicy policy)
+    {
+        var ledger = new TFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, $"several-holds-{policy}", 10, policy: policy);
+        var first = await ReserveOneAsync(ledger, scope, $"several-first-{policy}", 1, Dimension, Count);
+        var second = await ReserveOneAsync(ledger, scope, $"several-second-{policy}", 1, Dimension, Count);
+        _ = await ledger.MarkStartedAsync(first);
+        _ = await ledger.MarkStartedAsync(second);
+        var firstCommit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(first, 2));
+        _ = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(second, 2));
+
+        var firstCorrection = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(first, 1, 1));
+
+        firstCorrection.ClearedOverrunHolds.ShouldBeEmpty();
+        (await ledger.GetSnapshotAsync(scope)).ActiveOverrunHolds.Length.ShouldBe(2);
+        if (policy == BudgetOverrunHoldPolicy.RequireAuthorizedResolution)
+        {
+            _ = (await ledger.ResolveOverrunHoldAsync(ResolutionRequest(firstCommit.CreatedOverrunHolds.Single().Reference, $"several-blocked-{policy}", "operator", 7)))
+                .ShouldBeOfType<BudgetOverrunHoldResolutionBlocked>();
+        }
+
+        var secondCorrection = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(second, 1, 1));
+        if (policy == BudgetOverrunHoldPolicy.ClearWhenReconciled)
+        {
+            secondCorrection.ClearedOverrunHolds.Length.ShouldBe(2);
+            (await ledger.GetSnapshotAsync(scope)).ActiveOverrunHolds.ShouldBeEmpty();
+        }
+        else
+        {
+            secondCorrection.ClearedOverrunHolds.ShouldBeEmpty();
+            (await ledger.GetSnapshotAsync(scope)).ActiveOverrunHolds.Length.ShouldBe(2);
+        }
+    }
+
+    /// <summary>Verifies cancellation and structurally mismatched audit evidence cannot resolve an eligible hold.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenAdmissionFailsBeforeMutation_PreservesEligibleHold()
+    {
+        var ledger = new TFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "resolution-atomic", 10, policy: BudgetOverrunHoldPolicy.RequireAuthorizedResolution);
+        var reservation = await ReserveOneAsync(ledger, scope, "resolution-atomic-row", 1, Dimension, Count);
+        _ = await ledger.MarkStartedAsync(reservation);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2));
+        var hold = commit.CreatedOverrunHolds.Single().Reference;
+        _ = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1));
+        var valid = ResolutionRequest(hold, "resolution-atomic-valid", "operator", 8);
+        var otherRevision = new BudgetOverrunHoldReference(hold.Boundary, hold.Reservation, new BudgetAccountingRevision(checked(hold.TriggeringRevision.Value + 1)));
+        var mismatchedReceipt = ResolutionRequest(otherRevision, "resolution-atomic-wrong", "operator", 9).EnforcementReceipt;
+        var mismatched = new BudgetOverrunHoldResolutionRequest(hold, mismatchedReceipt, new IdempotencyKey("resolution-atomic-wrong"));
+
+        _ = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ResolveOverrunHoldAsync(mismatched));
+        using var source = new CancellationTokenSource();
+        source.Cancel();
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await ledger.ResolveOverrunHoldAsync(valid, source.Token));
+        (await ledger.GetSnapshotAsync(scope)).ActiveOverrunHolds.ShouldHaveSingleItem().Reference.ShouldBe(hold);
+
+        _ = (await ledger.ResolveOverrunHoldAsync(valid)).ShouldBeOfType<BudgetOverrunHoldResolved>();
+    }
+
     private static async Task<BudgetLedgerScopeReference> CreateScopeAsync(
         IBudgetLedger ledger,
         string key,
@@ -604,13 +738,14 @@ public abstract class BudgetLedgerConformanceTests<TFixture>
         BudgetUnit? unit = null,
         BudgetLedgerScopeReference? parent = null,
         BudgetScopeAddress? address = null,
-        int maximumOpenReservations = 32)
+        int maximumOpenReservations = 32,
+        BudgetOverrunHoldPolicy policy = BudgetOverrunHoldPolicy.ClearWhenReconciled)
     {
         var limits = limit is { } value
             ? ImmutableArray.Create(new BudgetLimit(dimension ?? Dimension, value, unit ?? Count, BudgetLimitKind.Hard))
             : [];
         var request = new BudgetScopeRequest(parent?.Id, address ?? parent?.Address ?? Address("tenant"), limits, new IdempotencyKey(key));
-        var result = await ledger.CreateScopeAsync(new BudgetLedgerScopeCreateRequest(request, new BudgetScopeAdmission(8, maximumOpenReservations, TimeSpan.FromMinutes(5))));
+        var result = await ledger.CreateScopeAsync(new BudgetLedgerScopeCreateRequest(request, new BudgetScopeAdmission(8, maximumOpenReservations, TimeSpan.FromMinutes(5), policy)));
         return result.ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
     }
 
@@ -631,4 +766,31 @@ public abstract class BudgetLedgerConformanceTests<TFixture>
         BudgetUnit unit) =>
         (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [Reservation(scope, key, amount, dimension, unit)])))
             .ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
+
+    private static BudgetOverrunHoldResolutionRequest ResolutionRequest(BudgetOverrunHoldReference hold, string key, string principal, int intentSuffix)
+    {
+        var securityScope = new SecurityAuthorizationScope(
+            Agent,
+            null,
+            new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("30000000-0000-0000-0000-000000000003")), null));
+        var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId(principal), ExecutionSubjectKind.Human);
+        var enforcement = new SecurityEnforcementRequest(
+            securityScope,
+            identity,
+            new ComponentId("budget-operator"),
+            SecurityOperationKind.StateMutation,
+            SecurityEffect.Mutate,
+            [BudgetOverrunSecurityBinding.Resource(hold)],
+            BudgetOverrunSecurityBinding.Fingerprint(hold),
+            new SecurityRevocationVersion(1));
+        var receipt = new SecurityEnforcementIntentReceipt(
+            new SecurityEnforcementIntentId(Guid.Parse($"40000000-0000-0000-0000-{intentSuffix:000000000000}")),
+            new GrantId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
+            new SecurityRequestId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
+            enforcement,
+            null,
+            new ContentHash($"sha256:{key}"),
+            DateTimeOffset.UnixEpoch);
+        return new BudgetOverrunHoldResolutionRequest(hold, receipt, new IdempotencyKey(key));
+    }
 }

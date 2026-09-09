@@ -1287,6 +1287,134 @@ public sealed class BudgetLedgerContractsTests
 
     private static BudgetLedgerScopeReference Scope(OperationId? operationId = null) => new(new BudgetScopeId(Guid.NewGuid()), Address(operationId));
 
+    [Fact]
+    public void BudgetScopeAdmission_WhenOverrunPolicyIsUndefined_ThrowsExactArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetScopeAdmission(
+            1, 1, TimeSpan.FromMinutes(1), (BudgetOverrunHoldPolicy) int.MaxValue));
+
+        exception.ParamName.ShouldBe("overrunHoldPolicy");
+    }
+
+    [Fact]
+    public void BudgetAccountingRevision_WhenValueIsNotPositive_ThrowsExactArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetAccountingRevision(0));
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void BudgetOverrunHoldReference_WhenRevisionIsDefault_ThrowsExactArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetOverrunHoldReference(Scope(), Reservation(), default));
+
+        exception.ParamName.ShouldBe("triggeringRevision");
+    }
+
+    [Fact]
+    public void ThrowIfNoBudgetOverrunResolutionBlockers_WhenBothArraysAreEmpty_ThrowsInferredParameterName()
+    {
+        ImmutableArray<BudgetOverrunHold> currentOverruns = [];
+
+        var exception = Should.Throw<ArgumentException>(() =>
+            ArgumentException.ThrowIfNoBudgetOverrunResolutionBlockers(currentOverruns, []));
+
+        exception.ParamName.ShouldBe("currentOverruns");
+    }
+
+    [Fact]
+    public void Resource_WhenCopiedTargetAddressChanges_ProducesDistinctCanonicalBinding()
+    {
+        var scope = Scope();
+        var reservation = new BudgetLedgerReservationReference(scope, ReservationId());
+        var original = new BudgetOverrunHoldReference(scope, reservation, new BudgetAccountingRevision(1));
+        var changedAddress = new BudgetScopeAddress(
+            scope.Address.TenantId,
+            new PrincipalId("another-principal"),
+            scope.Address.AgentId,
+            scope.Address.SessionId,
+            scope.Address.RunId,
+            scope.Address.OperationId);
+        var changedBoundary = new BudgetLedgerScopeReference(scope.Id, changedAddress);
+        var changedReservationScope = new BudgetLedgerScopeReference(reservation.Scope.Id, changedAddress);
+        var changedReservation = new BudgetLedgerReservationReference(changedReservationScope, reservation.Id);
+        var changed = new BudgetOverrunHoldReference(changedBoundary, changedReservation, new BudgetAccountingRevision(1));
+
+        BudgetOverrunSecurityBinding.Resource(changed).ShouldNotBe(BudgetOverrunSecurityBinding.Resource(original));
+        BudgetOverrunSecurityBinding.Fingerprint(changed).ShouldNotBe(BudgetOverrunSecurityBinding.Fingerprint(original));
+    }
+
+    [Theory]
+    [InlineData("tenant")]
+    [InlineData("principal")]
+    [InlineData("agent")]
+    [InlineData("session")]
+    [InlineData("run")]
+    [InlineData("operation")]
+    public void BudgetOverrunHoldReference_WhenBoundaryContradictsChargedAddress_ThrowsExactParameterName(string mismatch)
+    {
+        var tenant = new TenantId("tenant");
+        var principal = new PrincipalId("principal");
+        var agent = new AgentId(Guid.NewGuid());
+        var session = new SessionId(Guid.NewGuid());
+        var run = new RunId(Guid.NewGuid());
+        var operation = new OperationId(Guid.NewGuid());
+        var charged = new BudgetScopeAddress(tenant, principal, agent, session, run, operation);
+        var boundary = mismatch switch
+        {
+            "tenant" => new BudgetScopeAddress(new TenantId("other-tenant"), principal, agent, session, run, operation),
+            "principal" => new BudgetScopeAddress(tenant, new PrincipalId("other-principal"), agent, session, run, operation),
+            "agent" => new BudgetScopeAddress(tenant, principal, new AgentId(Guid.NewGuid()), session, run, operation),
+            "session" => new BudgetScopeAddress(tenant, principal, agent, new SessionId(Guid.NewGuid()), run, operation),
+            "run" => new BudgetScopeAddress(tenant, principal, agent, session, new RunId(Guid.NewGuid()), operation),
+            "operation" => new BudgetScopeAddress(tenant, principal, agent, session, run, new OperationId(Guid.NewGuid())),
+            _ => throw new ArgumentOutOfRangeException(nameof(mismatch)),
+        };
+        var reservationScope = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), charged);
+        var reservation = new BudgetLedgerReservationReference(reservationScope, ReservationId());
+        var boundaryScope = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), boundary);
+
+        var exception = Should.Throw<ArgumentException>(() => new BudgetOverrunHoldReference(
+            boundaryScope, reservation, new BudgetAccountingRevision(1)));
+
+        exception.ParamName.ShouldBe("reservation");
+    }
+
+    [Fact]
+    public void BudgetOverrunHoldReference_WhenBoundaryNarrowsOnlyDescendantFacts_PreservesCanonicalBinding()
+    {
+        var tenant = new TenantId("tenant");
+        var principal = new PrincipalId("principal");
+        var agent = new AgentId(Guid.NewGuid());
+        var charged = new BudgetScopeAddress(tenant, principal, agent, new SessionId(Guid.NewGuid()),
+            new RunId(Guid.NewGuid()), new OperationId(Guid.NewGuid()));
+        var boundary = new BudgetScopeAddress(tenant, principal, agent, null, null, null);
+        var reservationScope = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), charged);
+        var reservation = new BudgetLedgerReservationReference(reservationScope, ReservationId());
+        var boundaryScope = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), boundary);
+
+        var hold = new BudgetOverrunHoldReference(boundaryScope, reservation, new BudgetAccountingRevision(1));
+
+        BudgetOverrunSecurityBinding.Resource(hold).Kind.ShouldBe(ProtectedResourceKind.ApplicationState);
+    }
+
+    [Fact]
+    public void Resource_WhenDelimiterLikeAddressTextDiffers_RemainsCollisionResistant()
+    {
+        var scopeId = new BudgetScopeId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
+        var agentId = new AgentId(Guid.Parse("20000000-0000-0000-0000-000000000002"));
+        var reservationId = new BudgetReservationId(Guid.Parse("30000000-0000-0000-0000-000000000003"));
+        var leftScope = new BudgetLedgerScopeReference(scopeId, new BudgetScopeAddress(
+            new TenantId("tenant:a/b"), new PrincipalId("principal:c"), agentId, null, null, null));
+        var rightScope = new BudgetLedgerScopeReference(scopeId, new BudgetScopeAddress(
+            new TenantId("tenant:a"), new PrincipalId("b/principal:c"), agentId, null, null, null));
+        var left = new BudgetOverrunHoldReference(leftScope, new BudgetLedgerReservationReference(leftScope, reservationId), new BudgetAccountingRevision(1));
+        var right = new BudgetOverrunHoldReference(rightScope, new BudgetLedgerReservationReference(rightScope, reservationId), new BudgetAccountingRevision(1));
+
+        BudgetOverrunSecurityBinding.Resource(left).ShouldNotBe(BudgetOverrunSecurityBinding.Resource(right));
+    }
+
     private static BudgetScopeAddress Address(OperationId? operationId = null) => new(
         new TenantId("tenant"),
         new PrincipalId("principal"),

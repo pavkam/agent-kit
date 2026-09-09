@@ -399,6 +399,8 @@ namespace AgentKit
             public static void ThrowIfInvalidBudgetLedgerReservationRequest(AgentKit.BudgetReservationRequest request, [System.Runtime.CompilerServices.CallerArgumentExpression("request")] string? paramName = null) { }
             public static void ThrowIfInvalidBudgetLedgerBatchReceipts(System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLedgerReservationReceipt> receipts, [System.Runtime.CompilerServices.CallerArgumentExpression("receipts")] string? paramName = null) { }
             public static void ThrowIfInvalidBudgetUnresolvedReservationPage(AgentKit.BudgetLedgerScopeReference scope, AgentKit.BudgetLedgerWatermark watermark, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetUnresolvedReservation> items, AgentKit.BudgetReservationCursor? next, [System.Runtime.CompilerServices.CallerArgumentExpression("items")] string? paramName = null) { }
+            public static void ThrowIfNoBudgetOverrunResolutionBlockers(System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> currentOverruns, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimitFailure> hardLimitFailures, [System.Runtime.CompilerServices.CallerArgumentExpression("currentOverruns")] string? paramName = null) { }
+            public static void ThrowIfNotBudgetScopeAncestorAddress(AgentKit.BudgetScopeAddress boundary, AgentKit.BudgetScopeAddress charged, [System.Runtime.CompilerServices.CallerArgumentExpression("charged")] string? paramName = null) { }
         }
     }
     public static class ArgumentOutOfRangeExceptionExtensions
@@ -868,6 +870,12 @@ namespace AgentKit
         public System.Guid Value { get; }
         public override string ToString() { }
     }
+    public readonly struct BudgetAccountingRevision : System.IEquatable<AgentKit.BudgetAccountingRevision>
+    {
+        public BudgetAccountingRevision(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
     public sealed class BudgetActualEstimated : AgentKit.BudgetReconciliationEvidence, System.IEquatable<AgentKit.BudgetActualEstimated>
     {
         public BudgetActualEstimated(decimal actual) { }
@@ -899,19 +907,30 @@ namespace AgentKit
     public sealed class BudgetCommitResult : System.IEquatable<AgentKit.BudgetCommitResult>
     {
         public BudgetCommitResult(AgentKit.BudgetReservationId reservationId, decimal reserved, decimal actual, decimal released, decimal overrun) { }
+        public BudgetCommitResult(AgentKit.BudgetReservationId reservationId, decimal reserved, decimal actual, decimal released, decimal overrun, AgentKit.BudgetAccountingRevision? accountingRevision, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> createdOverrunHolds) { }
+        public AgentKit.BudgetAccountingRevision? AccountingRevision { get; }
         public decimal Actual { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> CreatedOverrunHolds { get; }
         public decimal Overrun { get; init; }
         public decimal Released { get; init; }
         public AgentKit.BudgetReservationId ReservationId { get; init; }
         public decimal Reserved { get; init; }
+        public bool Equals(AgentKit.BudgetCommitResult? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class BudgetCorrectionResult : System.IEquatable<AgentKit.BudgetCorrectionResult>
     {
         public BudgetCorrectionResult(AgentKit.BudgetReservationId reservationId, decimal previousActual, decimal correctedActual, long revision) { }
+        public BudgetCorrectionResult(AgentKit.BudgetReservationId reservationId, decimal previousActual, decimal correctedActual, long revision, AgentKit.BudgetAccountingRevision? accountingRevision, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> createdOverrunHolds, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHoldReference> clearedOverrunHolds) { }
+        public AgentKit.BudgetAccountingRevision? AccountingRevision { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHoldReference> ClearedOverrunHolds { get; }
         public decimal CorrectedActual { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> CreatedOverrunHolds { get; }
         public decimal PreviousActual { get; }
         public AgentKit.BudgetReservationId ReservationId { get; }
         public long Revision { get; }
+        public bool Equals(AgentKit.BudgetCorrectionResult? other) { }
+        public override int GetHashCode() { }
     }
     public readonly struct BudgetDimension : System.IEquatable<AgentKit.BudgetDimension>
     {
@@ -993,6 +1012,13 @@ namespace AgentKit
     {
         public BudgetLedgerAlreadySettled(AgentKit.BudgetCommitResult commit) { }
         public AgentKit.BudgetCommitResult Commit { get; }
+    }
+    public sealed class BudgetLedgerBatchReserveHeld : AgentKit.BudgetLedgerBatchReserveResult, System.IEquatable<AgentKit.BudgetLedgerBatchReserveHeld>
+    {
+        public BudgetLedgerBatchReserveHeld(System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> holds) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> Holds { get; }
+        public bool Equals(AgentKit.BudgetLedgerBatchReserveHeld? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class BudgetLedgerBatchReserveRejected : AgentKit.BudgetLedgerBatchReserveResult, System.IEquatable<AgentKit.BudgetLedgerBatchReserveRejected>
     {
@@ -1156,6 +1182,58 @@ namespace AgentKit
     {
         public BudgetNoUsageProven() { }
     }
+    public sealed class BudgetOverrunHold : System.IEquatable<AgentKit.BudgetOverrunHold>
+    {
+        public BudgetOverrunHold(AgentKit.BudgetOverrunHoldReference reference, AgentKit.BudgetDimension dimension, AgentKit.BudgetUnit unit, decimal reserved, decimal currentActual, AgentKit.BudgetOverrunHoldPolicy policy) { }
+        public decimal CurrentActual { get; }
+        public AgentKit.BudgetDimension Dimension { get; }
+        public AgentKit.BudgetOverrunHoldPolicy Policy { get; }
+        public AgentKit.BudgetOverrunHoldReference Reference { get; }
+        public decimal Reserved { get; }
+        public AgentKit.BudgetUnit Unit { get; }
+    }
+    public enum BudgetOverrunHoldPolicy
+    {
+        ClearWhenReconciled = 0,
+        RequireAuthorizedResolution = 1,
+    }
+    public sealed class BudgetOverrunHoldReference : System.IEquatable<AgentKit.BudgetOverrunHoldReference>
+    {
+        public BudgetOverrunHoldReference(AgentKit.BudgetLedgerScopeReference boundary, AgentKit.BudgetLedgerReservationReference reservation, AgentKit.BudgetAccountingRevision triggeringRevision) { }
+        public AgentKit.BudgetLedgerScopeReference Boundary { get; }
+        public AgentKit.BudgetLedgerReservationReference Reservation { get; }
+        public AgentKit.BudgetAccountingRevision TriggeringRevision { get; }
+    }
+    public sealed class BudgetOverrunHoldResolutionBlocked : AgentKit.BudgetOverrunHoldResolutionResult, System.IEquatable<AgentKit.BudgetOverrunHoldResolutionBlocked>
+    {
+        public BudgetOverrunHoldResolutionBlocked(AgentKit.BudgetOverrunHoldReference hold, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> currentOverruns, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimitFailure> hardLimitFailures) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> CurrentOverruns { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimitFailure> HardLimitFailures { get; }
+        public AgentKit.BudgetOverrunHoldReference Hold { get; }
+        public bool Equals(AgentKit.BudgetOverrunHoldResolutionBlocked? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class BudgetOverrunHoldResolutionRequest : System.IEquatable<AgentKit.BudgetOverrunHoldResolutionRequest>
+    {
+        public BudgetOverrunHoldResolutionRequest(AgentKit.BudgetOverrunHoldReference hold, AgentKit.SecurityEnforcementIntentReceipt enforcementReceipt, AgentKit.IdempotencyKey idempotencyKey) { }
+        public AgentKit.SecurityEnforcementIntentReceipt EnforcementReceipt { get; }
+        public AgentKit.BudgetOverrunHoldReference Hold { get; }
+        public AgentKit.IdempotencyKey IdempotencyKey { get; }
+    }
+    public abstract class BudgetOverrunHoldResolutionResult : System.IEquatable<AgentKit.BudgetOverrunHoldResolutionResult> { }
+    public sealed class BudgetOverrunHoldResolved : AgentKit.BudgetOverrunHoldResolutionResult, System.IEquatable<AgentKit.BudgetOverrunHoldResolved>
+    {
+        public BudgetOverrunHoldResolved(AgentKit.BudgetOverrunHoldReference hold, AgentKit.BudgetAccountingRevision resolutionRevision, AgentKit.SecurityEnforcementIntentReceipt enforcementReceipt) { }
+        public AgentKit.SecurityEnforcementIntentReceipt EnforcementReceipt { get; }
+        public AgentKit.BudgetOverrunHoldReference Hold { get; }
+        public AgentKit.BudgetAccountingRevision ResolutionRevision { get; }
+    }
+    public static class BudgetOverrunSecurityBinding
+    {
+        public static AgentKit.InputFingerprint Fingerprint(AgentKit.BudgetOverrunHoldReference hold) { }
+        public static bool Matches(AgentKit.BudgetOverrunHoldReference hold, AgentKit.SecurityEnforcementIntentReceipt receipt) { }
+        public static AgentKit.ProtectedResource Resource(AgentKit.BudgetOverrunHoldReference hold) { }
+    }
     public readonly struct BudgetProfileKey : System.IEquatable<AgentKit.BudgetProfileKey>
     {
         public BudgetProfileKey(string value) { }
@@ -1233,9 +1311,11 @@ namespace AgentKit
     public sealed class BudgetScopeAdmission : System.IEquatable<AgentKit.BudgetScopeAdmission>
     {
         public BudgetScopeAdmission(int maximumScopeDepth, int maximumOpenReservationsPerScope, System.TimeSpan defaultReservationLifetime) { }
+        public BudgetScopeAdmission(int maximumScopeDepth, int maximumOpenReservationsPerScope, System.TimeSpan defaultReservationLifetime, AgentKit.BudgetOverrunHoldPolicy overrunHoldPolicy) { }
         public System.TimeSpan DefaultReservationLifetime { get; }
         public int MaximumOpenReservationsPerScope { get; }
         public int MaximumScopeDepth { get; }
+        public AgentKit.BudgetOverrunHoldPolicy OverrunHoldPolicy { get; }
     }
     public sealed class BudgetScopeCreated : AgentKit.BudgetScopeResult, System.IEquatable<AgentKit.BudgetScopeCreated>
     {
@@ -1275,6 +1355,8 @@ namespace AgentKit
     public sealed class BudgetSnapshot : System.IEquatable<AgentKit.BudgetSnapshot>
     {
         public BudgetSnapshot(AgentKit.BudgetScopeId scopeId, System.DateTimeOffset observedAt, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetDimensionUsage> usages) { }
+        public BudgetSnapshot(AgentKit.BudgetScopeId scopeId, System.DateTimeOffset observedAt, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetDimensionUsage> usages, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> activeOverrunHolds) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> ActiveOverrunHolds { get; }
         public System.DateTimeOffset ObservedAt { get; init; }
         public AgentKit.BudgetScopeId ScopeId { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetDimensionUsage> Usages { get; init; }
@@ -2897,6 +2979,7 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReconciliationResult> ReconcileAsync(AgentKit.BudgetLedgerReconciliationRequest request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReleaseResult> ReleaseUnstartedAsync(AgentKit.BudgetLedgerReservationReference reservation, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerBatchReserveResult> ReserveBatchAsync(AgentKit.BudgetLedgerBatchReserveRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.BudgetOverrunHoldResolutionResult> ResolveOverrunHoldAsync(AgentKit.BudgetOverrunHoldResolutionRequest request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.BudgetCommitResult> SettleAsync(AgentKit.BudgetLedgerSettlementRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IBudgetReservation : System.IAsyncDisposable

@@ -15,6 +15,7 @@ namespace AgentKit.Budgets.InMemory
         public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReconciliationResult> ReconcileAsync(AgentKit.BudgetLedgerReconciliationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReleaseResult> ReleaseUnstartedAsync(AgentKit.BudgetLedgerReservationReference reservation, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerBatchReserveResult> ReserveBatchAsync(AgentKit.BudgetLedgerBatchReserveRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetOverrunHoldResolutionResult> ResolveOverrunHoldAsync(AgentKit.BudgetOverrunHoldResolutionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.BudgetCommitResult> SettleAsync(AgentKit.BudgetLedgerSettlementRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ServiceExtensions

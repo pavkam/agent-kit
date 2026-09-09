@@ -65,6 +65,31 @@ owning spec.
 
 ## Latest integration evidence
 
+The captured budget-overrun-hold checkpoint passed formatting, repository lint,
+a Release build with no warnings or errors, and all 5,524 tests in an isolated
+checkout over `a754b24`. Each charged boundary retains its own overrun policy
+and exact hold generation. Truthful settlement and correction atomically update
+accounting and hold evidence; a held batch returns typed facts without reserving
+capacity or inventing a numeric limit failure.
+
+Automatic clearance waits for reconciled accounting. Operator clearance uses the
+same eligibility checks and retains the exact structurally bound enforcement
+receipt. Exact request replay preserves its original outcome, and a fresh key
+cannot resolve a terminal generation or clear a later generation. The ledger is
+authorization-neutral: authenticated selection and grant consumption remain the
+runtime resolver's responsibility. Receipt equality compares ordered contents
+across independently reconstructed arrays.
+
+The new required `IBudgetLedger.ResolveOverrunHoldAsync` method intentionally
+breaks custom ledger implementations until they implement it. Exhaustive batch
+result consumers must handle `BudgetLedgerBatchReserveHeld`. Existing admission,
+commit, correction, and snapshot constructors remain available with explicit
+default policy or absent optional evidence. The 56 ledger tests and 2,487
+abstraction tests cover replay, mixed ancestor policies, cancellation, target
+binding, safe diagnostics, and value guards. Runtime migration, operator
+security enforcement, complete profile/policy selection, and SQLite persistence
+remain open.
+
 The first portable session-codec checkpoint passed formatting, repository lint,
 a Release build with no warnings or errors, and all 5,463 tests in an isolated
 checkout over `1d533cc`. Explicit JSON codecs cover execution-lane provisioning

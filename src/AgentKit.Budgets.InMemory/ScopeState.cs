@@ -34,4 +34,6 @@ internal sealed class ScopeState
     internal int Depth { get; }
     /// <summary>Gets reservations charged to this boundary, including descendant reservations.</summary>
     internal List<ReservationState> Reservations { get; } = [];
+    /// <summary>Gets durable overrun generations owned by this exact boundary.</summary>
+    internal List<OverrunHoldState> OverrunHolds { get; } = [];
 }
