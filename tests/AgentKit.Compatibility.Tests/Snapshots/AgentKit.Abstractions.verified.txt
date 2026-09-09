@@ -943,7 +943,10 @@ namespace AgentKit
         public BudgetBatchRejected(AgentKit.BudgetLimitFailure failure) { }
         public AgentKit.BudgetLimitFailure Failure { get; }
     }
-    public abstract class BudgetBatchReservationResult : System.IEquatable<AgentKit.BudgetBatchReservationResult> { }
+    public abstract class BudgetBatchReservationResult : System.IEquatable<AgentKit.BudgetBatchReservationResult>
+    {
+        protected BudgetBatchReservationResult(AgentKit.BudgetBatchReservationResult original) { }
+    }
     public sealed class BudgetBatchReserved : AgentKit.BudgetBatchReservationResult, System.IEquatable<AgentKit.BudgetBatchReserved>
     {
         public BudgetBatchReserved(System.Collections.Immutable.ImmutableArray<AgentKit.IBudgetReservation> reservations) { }
@@ -1356,7 +1359,10 @@ namespace AgentKit
         public AgentKit.BudgetScopeId ScopeId { get; init; }
         public AgentKit.BudgetUnit Unit { get; init; }
     }
-    public abstract class BudgetReservationResult : System.IEquatable<AgentKit.BudgetReservationResult> { }
+    public abstract class BudgetReservationResult : System.IEquatable<AgentKit.BudgetReservationResult>
+    {
+        protected BudgetReservationResult(AgentKit.BudgetReservationResult original) { }
+    }
     public sealed class BudgetReserved : AgentKit.BudgetReservationResult, System.IEquatable<AgentKit.BudgetReserved>
     {
         public BudgetReserved(AgentKit.IBudgetReservation reservation) { }
@@ -1415,7 +1421,10 @@ namespace AgentKit
         public bool Equals(AgentKit.BudgetScopeRequest? other) { }
         public override int GetHashCode() { }
     }
-    public abstract class BudgetScopeResult : System.IEquatable<AgentKit.BudgetScopeResult> { }
+    public abstract class BudgetScopeResult : System.IEquatable<AgentKit.BudgetScopeResult>
+    {
+        protected BudgetScopeResult(AgentKit.BudgetScopeResult original) { }
+    }
     public sealed class BudgetSnapshot : System.IEquatable<AgentKit.BudgetSnapshot>
     {
         public BudgetSnapshot(AgentKit.BudgetScopeId scopeId, System.DateTimeOffset observedAt, System.Collections.Immutable.ImmutableArray<AgentKit.BudgetDimensionUsage> usages) { }
@@ -1438,7 +1447,10 @@ namespace AgentKit
         public BudgetStartRejected(AgentKit.BudgetLimitFailure failure) { }
         public AgentKit.BudgetLimitFailure Failure { get; }
     }
-    public abstract class BudgetStartResult : System.IEquatable<AgentKit.BudgetStartResult> { }
+    public abstract class BudgetStartResult : System.IEquatable<AgentKit.BudgetStartResult>
+    {
+        protected BudgetStartResult(AgentKit.BudgetStartResult original) { }
+    }
     public sealed class BudgetStarted : AgentKit.BudgetStartResult, System.IEquatable<AgentKit.BudgetStarted>
     {
         public BudgetStarted(AgentKit.BudgetReservationId reservationId, bool wasAlreadyStarted) { }

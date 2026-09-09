@@ -65,6 +65,18 @@ owning spec.
 
 ## Latest integration evidence
 
+The budget-result closure checkpoint passed formatting, a Release build with no
+warnings or errors, and all 5,839 tests in an isolated checkout over `f960ecb`.
+Four documented closed result families now reject external variants constructed
+through their inherited record-copy constructor. Valid built-in copies retain
+their type and value; null originals reject explicitly. Twelve focused cases
+exercise those boundaries, and the explicit protected API entries were reviewed.
+
+This intentionally rejects an undocumented construction path that previously
+bypassed each family's private-protected constructor. Extensible event and
+provider families are assessed separately; this change does not impose closure
+on every abstract record. The remaining closed-family audit stays open.
+
 The effective-configuration and toolset value checkpoint passed formatting, a
 Release build with no warnings or errors, and all 5,827 tests in an isolated
 checkout over `7d79b52`. Toolset publications retain exact policy references,
