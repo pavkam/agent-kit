@@ -781,6 +781,167 @@ explicit ownership of old and new scopes. Security selection follows the
 [publication and activation contract](permissions-and-human-control.md#selection-publication-and-activation),
 including retained implementation bindings for delayed work.
 
+The effective result is a complete semantic snapshot, not a configuration
+version paired with an extension bag:
+
+```csharp
+namespace AgentKit;
+
+public readonly record struct ConfigurationSourceId(string Value);
+
+public readonly record struct ConfigurationPath(string Value);
+
+public readonly record struct ConfigurationSourceVersion(long Value);
+
+public enum ConfigurationLayerKind
+{
+    LibraryDefaults,
+    HostGlobal,
+    TrustedOrganizationPolicy,
+    ApplicationOrExternalResource,
+    AgentDefinition,
+    ComposedCapabilities,
+    RunInvocation,
+    NamedNextTurnOverride
+}
+
+public enum ConfigurationMergeOperation
+{
+    Replace,
+    DeepMerge,
+    Append,
+    KeyedMerge,
+    RuleList,
+    Reset
+}
+
+public enum ConfigurationTrustClass
+{
+    Untrusted,
+    HostEstablished
+}
+
+public sealed record ConfigurationSourceReference(
+    ConfigurationSourceId SourceId,
+    ConfigurationSourceVersion SourceVersion,
+    ConfigurationLayerKind Layer,
+    ConfigurationTrustClass Trust,
+    ContentHash Fingerprint);
+
+public sealed record EffectiveConfigurationEntry(
+    ConfigurationPath Path,
+    ConfigurationMergeOperation MergeOperation,
+    ConfigurationSemanticValue Value,
+    ImmutableArray<ConfigurationSourceReference> Contributors);
+
+public abstract record ConfigurationSemanticValue;
+
+public sealed record ConfigurationJsonValue(
+    JsonElement Value) : ConfigurationSemanticValue;
+
+public sealed record SecurityProfileConfigurationValue(
+    SecurityProfilePublication Publication) : ConfigurationSemanticValue;
+
+public sealed record SessionProfileConfigurationValue(
+    SessionProfileReference Profile) : ConfigurationSemanticValue;
+
+public sealed record ModelSelectionConfigurationValue(
+    ModelSelectionPolicy Policy) : ConfigurationSemanticValue;
+
+public sealed record ToolsetConfigurationValue(
+    ToolsetPublication Publication) : ConfigurationSemanticValue;
+
+public sealed record EffectiveConfigurationSnapshot(
+    ConfigurationVersion Version,
+    ContentHash Fingerprint,
+    ImmutableArray<EffectiveConfigurationEntry> Entries,
+    ImmutableArray<ConfigurationSourceReference> Sources);
+```
+
+`ConfigurationSourceId` and `ConfigurationPath` are nonblank ordinal identity
+values. A source ID identifies one publisher; a path identifies one
+namespace-qualified semantic setting or selection. The compiler validates the
+path's declared namespace and setting grammar, rather than treating a slash or
+dot convention as authority. `ConfigurationSourceVersion` is a positive,
+monotonically published long revision. `ConfigurationLayerKind` is exactly the
+eight layers named by the configuration concept, and
+`ConfigurationMergeOperation` is exactly its six declared operations.
+
+`ConfigurationTrustClass.Untrusted` and `HostEstablished` are the initial closed
+classes. The host-owned source binding establishes this value before content is
+accepted; a file, remote response, or its extension data cannot self-promote.
+Trust classifies source handling only: it neither grants authority nor overrides
+a managed constraint.
+
+`ConfigurationPath` is a nonblank, namespace-qualified semantic setting or
+selection identity. `ConfigurationSemanticValue` is an owned closed family, not
+arbitrary `ExtensionData`. `ConfigurationJsonValue` owns a clone of one bounded
+JSON scalar, array, or object used only for a setting whose declared schema
+admits document data. The initial typed selection cases retain the actual
+immutable contracts used by compiled run publication:
+
+- `SecurityProfileConfigurationValue` retains the complete
+  `SecurityProfilePublication`, including its agent, definition and
+  configuration coordinates, profile key/version, policy snapshot reference, and
+  authority key;
+- `SessionProfileConfigurationValue` retains the exact `SessionProfileReference`
+  key and version;
+- `ModelSelectionConfigurationValue` retains the immutable
+  `ModelSelectionPolicy`; and
+- `ToolsetConfigurationValue` retains one complete `ToolsetPublication`,
+  including its key/version, execution-policy reference, source selection, and
+  aliases.
+
+No case converts a string into a profile, component, or catalog selection. A new
+selection family adds an explicit typed value case, canonical codec support, and
+merge-schema coverage in its owning contract; until then, compilation fails
+rather than omitting the selection or placing it in JSON. Provider endpoints,
+service surfaces, credential accounts, security policies, stores, and similar
+external facts remain exact references to their owning classified profile
+snapshots. Existing typed references retain their own exact key/version or
+fingerprint evidence; the configuration layer does not invent an additional
+fingerprint where their contract defines none. Secret material never enters a
+configuration value, source reference, fingerprint input, diagnostic, or durable
+manifest.
+
+`Entries` is the complete effective semantic configuration after merge, ordered
+canonically by path. Each entry retains the ordered source contributors that
+participated in its merge or reset. `Sources` is the complete distinct source
+publication closure, ordered by each run's configured layer precedence and then
+stable source identity. The eight-layer list is the default, not a hidden
+universal order. Equal-layer contributor order is deterministic and retained;
+source order and complete contributor closure are inputs to canonical
+fingerprinting. The snapshot fingerprint is computed from the canonical semantic
+entries and source publication references; it does not depend on dictionary
+enumeration, object identity, secret resolution, or wall-clock time. Equal
+version and fingerprint values cannot be rebound to different content.
+
+Construction checks local value shape, initialized ownership, canonical path
+order, duplicate paths, and complete source/contributor closure. It does not
+prove that an arbitrary entry is legal for a setting. The configuration compiler
+consumes declared setting schemas and merge metadata to prove that every
+effective path is present exactly when required, uses its permitted typed value
+case, follows its declared merge operation, and satisfies cross-setting
+selection constraints before publication.
+
+One configuration publication authority coordinates narrow replaceable
+collaborators for source discovery, schema-aware merge, canonical encoding and
+fingerprinting, and retained snapshot storage. It does not absorb those
+contracts into one implementation interface. Run and named turn overrides
+request a new publication through that authority; callers do not edit a captured
+snapshot. Invalid candidates leave the last known-good snapshot published. A
+compiled run publication binds the exact `EffectiveConfigurationSnapshot`
+instance alongside its definition, session, hook, security, model, toolset,
+budget, and output selections. Admission revalidates that publication and passes
+the same snapshot into the run scope. It never reconstructs effective
+configuration from live options, `IConfiguration`, an extension bag, or current
+profile catalogs.
+
+A durable operation records or can derive the snapshot version, fingerprint, and
+complete source publication closure. Recovery resolves that retained exact
+snapshot or applies an explicit authorized migration; it never substitutes the
+latest configuration merely because the earlier publisher is unavailable.
+
 Credential profile selection is explicit provider composition, while secret
 material is resolved by the selected leaf integration for each send. Secrets
 never enter AgentEngineBuilder, agent definitions, options display, context

@@ -65,6 +65,20 @@ owning spec.
 
 ## Latest integration evidence
 
+The configuration and toolset architecture checkpoint passed focused Markdown
+formatting and lint. Effective configuration now has a complete immutable
+semantic shape, source/contributor provenance, captured precedence, and typed
+selection cases. Constructors check local representation; schema-aware compilers
+prove completeness before a publication authority retains the exact snapshot.
+Untrusted sources cannot assign their own trust or widen managed constraints.
+
+Toolset publications explicitly select sources and exact alias targets. Runtime
+capture pins each discovered source version and its owned or borrowed invoker
+bindings; it does not require authors to predict a future dynamic version.
+Collision policy may select only evidence already present. This resolves the
+owner-spec gaps blocking canonical run catalog integration; the configuration
+compiler/publisher, toolset capture and provider/loop consumption remain open.
+
 The immutable catalog-snapshot checkpoint passed formatting, repository lint, a
 Release build with no warnings or errors, and all 5,655 tests in an isolated
 checkout over `bb2ccc9`. `ToolCatalogSnapshot` retains exact run, identity,

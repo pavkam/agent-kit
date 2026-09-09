@@ -60,6 +60,11 @@ The default precedence, lowest to highest, SHOULD be:
 7. run invocation;
 8. named next-turn override.
 
+`ConfigurationLayerKind` names exactly these eight layers. A run captures its
+actual configured precedence rather than assuming this default order is
+universal. Equal-layer sources have deterministic captured ordering, and every
+effective entry retains its complete ordered contributor closure.
+
 Managed security policy MAY be intentionally non-overridable. Such fields MUST
 be modeled as constraints rather than pretending to be an ordinary earlier
 layer.
@@ -114,12 +119,61 @@ A next-turn override expires after that request unless explicitly promoted to
 tool, and system-instruction overrides MUST apply at a turn boundary, never to
 an in-flight request.
 
+## Effective configuration snapshot
+
+The result of layering is an immutable `EffectiveConfigurationSnapshot` with a
+stable positive version, canonical content fingerprint, complete effective
+semantic entries, and complete source-publication provenance. It is not a raw
+configuration-provider view, mutable options object, or free-form extension bag.
+Every entry identifies its semantic path, declared merge operation, owned value,
+and ordered contributors. Profile and component selections retain their typed
+key, version, and fingerprint evidence; credentials, endpoint secrets, and
+account material remain behind their owning classified profile boundary.
+
+The initial semantic value family contains an owned bounded JSON value and
+explicit typed cases for `SecurityProfilePublication`,
+`SessionProfileReference`, `ModelSelectionPolicy`, and `ToolsetPublication`.
+JSON is available only to settings whose declared schema admits document data;
+it is not an escape hatch for a selection. Further selection families add a
+typed case and canonical codec support before the compiler can publish them.
+
+Snapshot construction validates local representation and contributor/source
+closure. The configuration compiler separately uses every setting's declared
+schema and merge metadata to prove complete paths, correct value cases, merge
+behavior, and cross-setting constraints. Constructor acceptance alone is not a
+claim that the configuration is complete or compilable.
+
+The configuration publication authority coordinates separate replaceable
+source-discovery, schema-aware merge, canonical-encoding, fingerprinting, and
+retained-storage contracts. A run publication pins the exact snapshot before
+admission and passes it through the explicit run context. Turn-boundary changes
+publish and capture another complete snapshot. Consumers must not reread
+`IConfiguration`, options monitors, current catalogs, environment variables, or
+files to reconstruct a captured value.
+
+Durable state retains the snapshot version and fingerprint plus enough source
+publication evidence to resolve the same semantic snapshot. Missing retained
+content is an unavailable or migration decision, never permission to use the
+latest snapshot.
+
 ## External configuration sources and trust
 
+`ConfigurationSourceId` and `ConfigurationPath` are nonblank ordinal value
+identities. The configuration compiler, not string spelling alone, validates a
+path against its declared namespace and setting grammar.
+`ConfigurationSourceVersion` is a positive published long revision.
+`ConfigurationMergeOperation` is exactly `Replace`, `DeepMerge`, `Append`,
+`KeyedMerge`, `RuleList`, or `Reset`; a setting declares one.
+`ConfigurationTrustClass` is initially closed to `Untrusted` and
+`HostEstablished`.
+
 Configuration discovery MUST define source locations and precedence. External
-resource content is untrusted until the host establishes its trust class.
-Untrusted configuration MUST NOT load executable extensions, change permission
-policy, inject credentials, or widen filesystem/network scope.
+resource content is untrusted until a host-owned source binding establishes its
+trust class. Source content, including its extension data, cannot self-promote
+from `Untrusted` to `HostEstablished`. Trust classifies handling only; it grants
+no authority and cannot override a managed constraint. Untrusted configuration
+MUST NOT load executable extensions, change permission policy, inject
+credentials, or widen filesystem/network scope.
 
 Parse or validation failure MUST preserve the last known-good immutable snapshot
 and report the rejected source. It MUST NOT replace effective configuration with
@@ -150,11 +204,23 @@ object by magic, darling.
 - Concurrent runs using different override scopes do not leak values.
 - Invalid hot reload leaves the last good snapshot active.
 - Untrusted project config cannot load code or broaden permissions.
+- A configuration file that declares itself `HostEstablished` is rejected unless
+  the host-owned source binding independently supplied that trust class.
 - A next-turn override expires exactly after its named boundary.
 - Two provider operations bound to different endpoint/account profiles cannot
   exchange options or credentials through registration order.
 - A provider payload-extension collision follows its declared merge rule or
   fails before I/O; it never overrides a protected typed field.
+- Two snapshots with the same semantic entries and source publications produce
+  the same fingerprint regardless of input dictionary order.
+- A changed effective value or selected profile reference changes the
+  fingerprint even when the publisher version is accidentally reused, and the
+  conflicting publication is rejected.
+- A run continues to expose the exact captured snapshot after a newer
+  publication becomes current; recovery resolves the retained version and
+  fingerprint or returns an explicit unavailable or migration outcome.
+- Snapshot diagnostics and durable manifests contain profile references and
+  source fingerprints but no credential, endpoint secret, or account material.
 
 ## Related specifications
 

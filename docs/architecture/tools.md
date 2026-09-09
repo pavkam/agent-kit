@@ -340,6 +340,20 @@ public sealed record ToolsetReference(
     ToolsetKey Key,
     ToolExecutionPolicyKey ExecutionPolicyKey);
 
+public sealed record ToolsetSourceSelection(
+    ToolSourceId SourceId);
+
+public sealed record ToolAliasAssignment(
+    ToolAlias Alias,
+    ToolIdentity Tool);
+
+public sealed record ToolsetPublication(
+    ToolsetKey Key,
+    ToolsetVersion Version,
+    ToolExecutionPolicyReference ExecutionPolicy,
+    ImmutableArray<ToolsetSourceSelection> Sources,
+    ImmutableArray<ToolAliasAssignment> Aliases);
+
 public sealed record ToolExecutionPolicyReference(
     ToolExecutionPolicyKey Key,
     ToolExecutionPolicyVersion Version);
@@ -374,6 +388,38 @@ public sealed record ToolCatalogSnapshot(
         ExecutionPolicies,
     ImmutableDictionary<ToolAlias, ToolIdentity> ProviderAliases);
 ```
+
+An agent definition authors only `ToolsetReference`: the stable toolset key and
+execution-policy family it selects. The referenced immutable
+`ToolsetPublication` owns the positive toolset version, exact retained policy
+version, ordered source membership, and explicit provider-visible alias
+assignments. Source membership names a stable `ToolSourceId`; it does not ask an
+agent author to predict a dynamic provider's next `ToolSourceVersion`.
+
+Capture resolves every selected source once. Each acquired provider returns its
+exact `ToolProviderSnapshot` and a companion lease able to bind only identities
+from that same source ID and source version. The catalog pins those discovered
+source versions, exact descriptors, alias targets, execution-policy references,
+and invoker acquisitions for the run. A later provider refresh cannot alter the
+captured graph, and releasing the catalog lease releases only acquisitions it
+owns. Borrowed host-DI instances remain owned by their host scope.
+
+Alias assignments target an exact `ToolIdentity`; capture verifies that the
+identity appears in exactly one selected source snapshot and that the captured
+descriptor declares the same source. An alias is never inferred from a
+descriptor name or canonical ID. Unknown provider text remains an unresolved
+alias and reaches typed rejection. Multiple aliases may explicitly target one
+identity, while duplicate aliases and ambiguous source identities are catalog
+collisions.
+
+One replaceable `IToolCatalogMergePolicy` receives the complete deterministic
+collision set after all selected source snapshots validate and before any alias
+is advertised. Its closed decision either selects an explicitly configured
+source and identity already present in the set or rejects capture; it cannot
+create an identity, version, alias, policy reference, or invoker. The
+first-party policy rejects every unconfigured descriptor, identity, source, or
+alias collision. Registration order, dictionary comparer behavior, descriptor
+names, and textual alias-to-ID equality never break ties.
 
 Every descriptor carries an exact nondefault tool version and explicit stable
 source identity. Its input and optional output use the shared owned `JsonSchema`
@@ -1078,6 +1124,27 @@ Descriptions, schemas, annotations, and effect hints are untrusted metadata.
 Host policy may tighten them. A model call resolves against the exact catalog
 snapshot included in its originating request, so a later catalog change cannot
 redirect execution.
+
+The toolset and capture contract has these acceptance scenarios:
+
+- An authored toolset selects a source ID without naming a future dynamic source
+  version; capture records the exact returned source version and retains it
+  after the provider publishes a newer snapshot.
+- Two explicit aliases may target one exact identity. Duplicate aliases,
+  ambiguous identities from selected sources, and an alias targeting a missing
+  descriptor reach the configured merge policy and reject under the first-party
+  policy before conversational model I/O. Dynamic discovery may perform its own
+  bounded provider I/O before producing a source snapshot.
+- A provider alias whose text equals a canonical tool ID remains unresolved
+  unless the captured toolset explicitly assigned that alias.
+- A merge policy may choose only an identity and source already present in the
+  validated collision set. A decision containing different evidence is rejected
+  rather than treated as a new registration.
+- A dynamic provider lease binds only descriptors from its own exact returned
+  source snapshot. A changed or missing binding rejects resolution, and partial
+  capture failure releases every owned acquisition exactly once.
+- Capturing or releasing borrowed host-DI tool instances never transfers or
+  duplicates their owning scope's disposal responsibility.
 
 ## Call pipeline
 
