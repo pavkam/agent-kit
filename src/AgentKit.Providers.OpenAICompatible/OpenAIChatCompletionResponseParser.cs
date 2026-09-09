@@ -69,6 +69,22 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                 cancellationToken).ConfigureAwait(false);
         }
 
+        ModelUsage usage;
+        try
+        {
+            usage = MapUsage(dto.Usage);
+        }
+        catch (ArgumentException exception)
+        {
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                "The provider returned invalid usage evidence.",
+                exception,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         if (dto.Choices.Count == 0)
         {
             return await FailAsync(
@@ -132,7 +148,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                         diagnosticCause: null,
                         cancellationToken,
                         parts.ToImmutable(),
-                        dto.Usage is null ? null : MapUsage(dto.Usage)).ConfigureAwait(false);
+                        dto.Usage is null ? null : usage).ConfigureAwait(false);
                 }
 
                 var toolCallPart = new ToolCallPart(
@@ -148,7 +164,6 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             }
         }
 
-        var usage = MapUsage(dto.Usage);
         if (dto.Usage is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usage), cancellationToken)
@@ -195,6 +210,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
         string? resolvedModel = null;
         string? responseId = null;
         OpenAIUsage? usageDto = null;
+        ModelUsage? reportedUsage = null;
 
         while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
         {
@@ -223,7 +239,8 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                     sequence,
                     "The provider returned a malformed streaming chunk.",
                     exception,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    usage: reportedUsage).ConfigureAwait(false);
             }
 
             resolvedModel ??= chunk.Model;
@@ -232,6 +249,20 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             if (chunk.Usage is not null)
             {
                 usageDto = chunk.Usage;
+                try
+                {
+                    reportedUsage = MapUsage(chunk.Usage);
+                }
+                catch (ArgumentException exception)
+                {
+                    return await FailAsync(
+                        observer,
+                        context,
+                        sequence,
+                        "The provider returned invalid usage evidence.",
+                        exception,
+                        cancellationToken).ConfigureAwait(false);
+                }
             }
 
             if (chunk.Choices is not { Count: > 0 })
@@ -350,7 +381,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                     diagnosticCause: null,
                     cancellationToken,
                     parts.ToImmutable(),
-                    usageDto is null ? null : MapUsage(usageDto)).ConfigureAwait(false);
+                    reportedUsage).ConfigureAwait(false);
             }
 
             var toolCallPart = new ToolCallPart(
@@ -367,7 +398,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             parts.Add(toolCallPart);
         }
 
-        var usage = MapUsage(usageDto);
+        var usage = reportedUsage ?? ModelUsage.NotReported;
         if (usageDto is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usage), cancellationToken)
@@ -432,8 +463,8 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
     private static ModelUsage MapUsage(OpenAIUsage? usage) =>
         usage is null
-            ? ModelUsage.Empty
-            : new ModelUsage(
+            ? ModelUsage.NotReported
+            : new ModelUsage(ModelUsageReportState.Final,
                 usage.PromptTokens,
                 usage.CompletionTokens,
                 usage.PromptTokensDetails?.CachedTokens,

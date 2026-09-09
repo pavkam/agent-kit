@@ -234,8 +234,18 @@ public sealed class ProviderValueTypesTests
     public void ModelUsageUpdated_Equality_WhenSameValues_InstancesAreEqual()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
+        var usage = new ModelUsage(ModelUsageReportState.Final, 1, 2, null, null, null, null, ExtensionData.Empty);
 
-        new ModelUsageUpdated(requestId, 1, ModelUsage.Empty).ShouldBe(new ModelUsageUpdated(requestId, 1, ModelUsage.Empty));
+        new ModelUsageUpdated(requestId, 1, usage).ShouldBe(new ModelUsageUpdated(requestId, 1, usage));
+    }
+
+    [Fact]
+    public void ModelUsageUpdated_Constructor_WhenUsageIsNotReported_ThrowsArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(
+            () => new ModelUsageUpdated(new ModelRequestId(Guid.NewGuid()), 1, ModelUsage.NotReported));
+
+        exception.ParamName.ShouldBe("usage");
     }
 
     [Fact]
@@ -349,6 +359,6 @@ public sealed class ProviderValueTypesTests
         new ProviderResponseIdentity(new ProviderId("openai"), null, new ApiFamilyId("chat"), new ModelId("gpt"), new ModelId("gpt"), null, null, null),
         [new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty)],
         NormalizedStopReason.Completed,
-        ModelUsage.Empty,
+        ModelUsage.NotReported,
         ExtensionData.Empty);
 }

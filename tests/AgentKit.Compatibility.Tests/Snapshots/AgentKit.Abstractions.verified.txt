@@ -4606,15 +4606,22 @@ namespace AgentKit
     public abstract class ModelSelectionResult : System.IEquatable<AgentKit.ModelSelectionResult> { }
     public sealed class ModelUsage : System.IEquatable<AgentKit.ModelUsage>
     {
-        public ModelUsage(long? inputTokens, long? outputTokens, long? cachedInputTokens, long? reasoningTokens, decimal? estimatedCost, string? costCurrency, AgentKit.ExtensionData extensions) { }
-        public long? CachedInputTokens { get; init; }
-        public string? CostCurrency { get; init; }
-        public decimal? EstimatedCost { get; init; }
-        public AgentKit.ExtensionData Extensions { get; init; }
-        public long? InputTokens { get; init; }
-        public long? OutputTokens { get; init; }
-        public long? ReasoningTokens { get; init; }
-        public static AgentKit.ModelUsage Empty { get; }
+        public ModelUsage(AgentKit.ModelUsageReportState reportState, long? inputTokens, long? outputTokens, long? cachedInputTokens, long? reasoningTokens, decimal? estimatedCost, string? costCurrency, AgentKit.ExtensionData extensions) { }
+        public long? CachedInputTokens { get; }
+        public string? CostCurrency { get; }
+        public decimal? EstimatedCost { get; }
+        public AgentKit.ExtensionData Extensions { get; }
+        public long? InputTokens { get; }
+        public long? OutputTokens { get; }
+        public long? ReasoningTokens { get; }
+        public AgentKit.ModelUsageReportState ReportState { get; }
+        public static AgentKit.ModelUsage NotReported { get; }
+    }
+    public enum ModelUsageReportState
+    {
+        NotReported = 0,
+        Interim = 1,
+        Final = 2,
     }
     public enum ModelUsageReportingMode
     {
@@ -4626,7 +4633,7 @@ namespace AgentKit
     public sealed class ModelUsageUpdated : AgentKit.ModelResponseEvent, System.IEquatable<AgentKit.ModelUsageUpdated>
     {
         public ModelUsageUpdated(AgentKit.ModelRequestId requestId, long sequence, AgentKit.ModelUsage usage) { }
-        public AgentKit.ModelUsage Usage { get; init; }
+        public AgentKit.ModelUsage Usage { get; }
     }
     public sealed class NetworkAddress : System.IEquatable<AgentKit.NetworkAddress>
     {

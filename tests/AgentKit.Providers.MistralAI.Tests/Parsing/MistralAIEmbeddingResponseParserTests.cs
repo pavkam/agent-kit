@@ -30,6 +30,7 @@ public sealed class MistralAIEmbeddingResponseParserTests
         var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
         var vector = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>().Vector.ShouldBeOfType<DenseFloatVector>();
         vector.Values.ShouldBe([0.1f, 0.2f, 0.3f]);
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(5);
     }
 

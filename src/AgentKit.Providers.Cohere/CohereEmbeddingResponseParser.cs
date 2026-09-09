@@ -102,7 +102,18 @@ public sealed class CohereEmbeddingResponseParser: ICohereEmbeddingResponseParse
             items.Add(new EmbeddingItemSucceeded(index, correlationId, vector, space, ExtensionData.Empty));
         }
 
-        var usage = BuildUsage(dto.Meta);
+        ModelUsage usage;
+        try
+        {
+            usage = BuildUsage(dto.Meta);
+        }
+        catch (ArgumentException exception)
+        {
+            return new EmbeddingAttemptFailed(BuildFailure(
+                context,
+                "The provider returned invalid usage evidence.",
+                exception));
+        }
         var response = new EmbeddingResponse(items.ToImmutable(), usage, providerRequestId: null, ExtensionData.Empty);
 
         return new EmbeddingAttemptCompleted(response);
@@ -167,17 +178,35 @@ public sealed class CohereEmbeddingResponseParser: ICohereEmbeddingResponseParse
             _ => throw new UnreachableException($"Unrecognized {nameof(EmbeddingVector)} kind '{vector.GetType().Name}'."),
         };
 
+    /// <summary>
+    /// Builds final usage evidence from one complete Cohere embedding response.
+    /// </summary>
+    /// <param name="meta">The optional wire metadata.</param>
+    /// <returns>Final usage for a supplied billed-unit count, or <see cref="ModelUsage.NotReported"/>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">A supplied wire token count is negative.</exception>
     private static ModelUsage BuildUsage(CohereEmbedMetaDto? meta) =>
         meta?.BilledUnits?.InputTokens is { } inputTokens
-            ? new ModelUsage(
-                (long?) inputTokens,
+            ? new ModelUsage(ModelUsageReportState.Final,
+                ToTokenCount(inputTokens),
                 outputTokens: null,
                 cachedInputTokens: null,
                 reasoningTokens: null,
                 estimatedCost: null,
                 costCurrency: null,
                 ExtensionData.Empty)
-            : ModelUsage.Empty;
+            : ModelUsage.NotReported;
+
+    /// <summary>
+    /// Validates a raw Cohere token count before its portable integer projection.
+    /// </summary>
+    /// <param name="value">The non-null raw wire count.</param>
+    /// <returns>The portable count after validation.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="value"/> is negative.</exception>
+    private static long ToTokenCount(double value)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(value);
+        return (long) value;
+    }
 
     private static ProviderResponseIdentity BuildIdentity(CohereEmbeddingResponseParseContext context) =>
         new(

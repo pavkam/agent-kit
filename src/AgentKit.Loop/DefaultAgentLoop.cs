@@ -728,7 +728,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             MessageState.Interrupted,
             partialParts,
             new AssistantResponseMetadata(
-                modelRequestId, identity, stopReason, rawStopReason: null, usage ?? ModelUsage.Empty, ExtensionData.Empty),
+                modelRequestId, identity, stopReason, rawStopReason: null, usage ?? ModelUsage.NotReported, ExtensionData.Empty),
             ExtensionData.Empty);
 
         var entry = new MessageSessionEntry(

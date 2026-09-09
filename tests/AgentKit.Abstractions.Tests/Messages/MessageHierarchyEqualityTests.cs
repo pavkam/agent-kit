@@ -64,8 +64,8 @@ public sealed class MessageHierarchyEqualityTests
 
     [Fact]
     public void ModelUsage_Equality_WhenSameValues_InstancesAreEqual() =>
-        new ModelUsage(1, 2, null, null, null, null, ExtensionData.Empty).ShouldBe(
-            new ModelUsage(1, 2, null, null, null, null, ExtensionData.Empty));
+        new ModelUsage(ModelUsageReportState.Final, 1, 2, null, null, null, null, ExtensionData.Empty).ShouldBe(
+            new ModelUsage(ModelUsageReportState.Final, 1, 2, null, null, null, null, ExtensionData.Empty));
 
     [Fact]
     public void ProviderResponseIdentity_Constructor_WhenValid_RoundTripsProperties()
@@ -102,5 +102,5 @@ public sealed class MessageHierarchyEqualityTests
         ResponseIdentity(),
         NormalizedStopReason.Completed,
         null,
-        ModelUsage.Empty, ExtensionData.Empty);
+        ModelUsage.NotReported, ExtensionData.Empty);
 }

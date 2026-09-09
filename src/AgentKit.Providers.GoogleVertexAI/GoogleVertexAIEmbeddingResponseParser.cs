@@ -92,16 +92,38 @@ public sealed class GoogleVertexAIEmbeddingResponseParser: IGoogleVertexAIEmbedd
 
                 if (statistics.TokenCount is { } tokenCount)
                 {
-                    totalTokenCount = (totalTokenCount ?? 0) + tokenCount;
+                    try
+                    {
+                        ArgumentOutOfRangeException.ThrowIfNegative(tokenCount);
+                        totalTokenCount = checked((totalTokenCount ?? 0) + tokenCount);
+                    }
+                    catch (Exception exception) when (exception is ArgumentException or OverflowException)
+                    {
+                        return new EmbeddingAttemptFailed(BuildFailure(
+                            context,
+                            "The provider returned invalid usage evidence.",
+                            exception));
+                    }
                 }
             }
 
             items.Add(new EmbeddingItemSucceeded(index, correlationId, vector, space, extensions));
         }
 
-        var usage = totalTokenCount is { } total
-            ? new ModelUsage(total, outputTokens: null, cachedInputTokens: null, reasoningTokens: null, estimatedCost: null, costCurrency: null, ExtensionData.Empty)
-            : ModelUsage.Empty;
+        ModelUsage usage;
+        try
+        {
+            usage = totalTokenCount is { } total
+                ? new ModelUsage(ModelUsageReportState.Final, total, outputTokens: null, cachedInputTokens: null, reasoningTokens: null, estimatedCost: null, costCurrency: null, ExtensionData.Empty)
+                : ModelUsage.NotReported;
+        }
+        catch (ArgumentException exception)
+        {
+            return new EmbeddingAttemptFailed(BuildFailure(
+                context,
+                "The provider returned invalid usage evidence.",
+                exception));
+        }
 
         var response = new EmbeddingResponse(items.ToImmutable(), usage, providerRequestId: null, ExtensionData.Empty);
 

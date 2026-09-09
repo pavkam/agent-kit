@@ -42,6 +42,7 @@ public sealed class OpenAIChatCompletionResponseParserStreamingTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.Completed);
         completed.Response.Parts.Length.ShouldBe(1);
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(10);
         completed.Response.Usage.OutputTokens.ShouldBe(2);
 
@@ -149,6 +150,49 @@ public sealed class OpenAIChatCompletionResponseParserStreamingTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenFinalUsageArrivesWithoutDone_RetainsFinalUsage()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllBytes("responses/streaming_success.sse");
+        var withoutDone = Encoding.UTF8.GetBytes(
+            Encoding.UTF8.GetString(payload).Replace("data: [DONE]", string.Empty, StringComparison.Ordinal));
+        await using var stream = new MemoryStream(withoutDone);
+
+        var result = await parser.ParseStreamingAsync(
+            stream,
+            CreateContext(requestId),
+            observer,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptCompleted>().Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenMalformedChunkFollowsFinalUsage_RetainsFinalUsageOnFailure()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllBytes("responses/streaming_success.sse");
+        var malformedTail = Encoding.UTF8.GetBytes(
+            Encoding.UTF8.GetString(payload).Replace("data: [DONE]", "data: { malformed", StringComparison.Ordinal));
+        await using var stream = new MemoryStream(malformedTail);
+
+        var result = await parser.ParseStreamingAsync(
+            stream,
+            CreateContext(requestId),
+            observer,
+            TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Usage.ShouldNotBeNull().ReportState.ShouldBe(ModelUsageReportState.Final);
+        observer.Events.OfType<ModelResponseCompleted>().ShouldBeEmpty();
     }
 
     [Theory]

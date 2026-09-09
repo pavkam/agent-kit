@@ -72,6 +72,34 @@ owning spec.
 
 ## Latest integration evidence
 
+The usage-report lifecycle checkpoint passed a Release build with no warnings or
+errors and all 6,205 tests without skips in an isolated checkout over `da4cb59`.
+`ModelUsage` now requires `NotReported`, `Interim` or `Final`, keeps unknown
+fields distinct from reported zero, validates nonnegative known values, and
+preserves cost and currency independently. An absent report carries no counter,
+cost, currency or extension evidence; it cannot be published as a
+`ModelUsageUpdated` event.
+
+This is an intentional public API correction: callers supply the report state,
+use `ModelUsage.NotReported` in place of `Empty`, and construct immutable values
+instead of changing their properties through object initializers. The reviewed
+API snapshot captures the constructor and accessor changes. Thirty-four new
+cases cover value constraints and provider regressions alongside migrated
+existing fixtures.
+
+Provider mappings distinguish usage evidence from response framing. Tested cases
+retain OpenAI final usage without `[DONE]` and after a malformed later chunk,
+Anthropic interim usage without final usage evidence, and Gemini interim usage
+after truncation. A stop-reason-only Anthropic event does not promote an earlier
+report; Gemini and Mistral likewise retain nonterminal-only usage as interim.
+Cohere rejects negative fractional counters before integer projection; Vertex
+rejects negative per-item counts and overflowing batch totals. Malformed usage
+becomes a typed protocol failure.
+
+This finishes the three checkpoints already underway when the user stopped the
+broad goal. Complete provider wire conformance, descriptor/runtime integration,
+run-level accounting and the other open architecture requirements remain open.
+
 The provider-compatibility checkpoint passed formatting, a Release build with no
 warnings or errors, and all 6,171 tests without skips in an isolated checkout
 over `a99e044`. Six additive values retain exact profile identity, positive

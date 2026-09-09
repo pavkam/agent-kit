@@ -307,7 +307,7 @@ public sealed class DefaultAgentLoopTests
         var failure = TestFactory.Failure();
         var loop = CreateLoop(
             out var coordinator, out _, _ => new ModelAttemptFailed(
-                failure, [new TextPart("partial", TextSemantics.Plain, ExtensionData.Empty)], ModelUsage.Empty));
+                failure, [new TextPart("partial", TextSemantics.Plain, ExtensionData.Empty)], ModelUsage.NotReported));
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);

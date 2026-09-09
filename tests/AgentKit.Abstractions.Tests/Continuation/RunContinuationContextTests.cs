@@ -186,7 +186,7 @@ public sealed class RunContinuationContextTests
                     null),
                 NormalizedStopReason.Completed,
                 rawStopReason: null,
-                ModelUsage.Empty,
+                ModelUsage.NotReported,
                 ExtensionData.Empty),
             ExtensionData.Empty);
         return new CommittedTurnContinuationBoundary(response, [], outputDecision: null, requiresOutputValidation: false);

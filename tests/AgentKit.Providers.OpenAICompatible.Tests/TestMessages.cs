@@ -79,7 +79,7 @@ internal static class TestMessages
                     responseId: null),
                 NormalizedStopReason.ToolUse,
                 rawStopReason: "tool_calls",
-                ModelUsage.Empty,
+                ModelUsage.NotReported,
                 ExtensionData.Empty),
             ExtensionData.Empty);
 

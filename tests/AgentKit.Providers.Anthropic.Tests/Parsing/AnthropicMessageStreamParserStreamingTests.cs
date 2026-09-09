@@ -40,6 +40,7 @@ public sealed class AnthropicMessageStreamParserStreamingTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.Completed);
         completed.Response.Parts.Length.ShouldBe(1);
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(10);
         completed.Response.Usage.OutputTokens.ShouldBe(2);
 
@@ -123,9 +124,65 @@ public sealed class AnthropicMessageStreamParserStreamingTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Usage.ShouldNotBeNull().ReportState.ShouldBe(ModelUsageReportState.Interim);
 
         observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
         _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenMessageStopIsMissingAfterFinalUsage_RetainsFinalUsageOnFailure()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllBytes("responses/streaming_text.sse");
+        var withoutStop = Encoding.UTF8.GetBytes(
+            Encoding.UTF8.GetString(payload).Replace(
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}",
+                string.Empty,
+                StringComparison.Ordinal));
+        await using var stream = new MemoryStream(withoutStop);
+
+        var result = await parser.ParseStreamingAsync(
+            stream,
+            CreateContext(requestId),
+            observer,
+            TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Usage.ShouldNotBeNull().ReportState.ShouldBe(ModelUsageReportState.Final);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenStopReasonDoesNotCarryUsage_DoesNotPromoteInitialUsage()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(
+            stream,
+            CreateContext(requestId),
+            observer,
+            TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Interim);
+        completed.Response.Usage.InputTokens.ShouldBe(10);
     }
 
     [Fact]

@@ -82,7 +82,7 @@ public sealed class GoogleGeminiEmbeddingResponseParser: IGoogleGeminiEmbeddingR
             items.Add(new EmbeddingItemSucceeded(index, correlationId, vector, space, ExtensionData.Empty));
         }
 
-        var response = new EmbeddingResponse(items.ToImmutable(), ModelUsage.Empty, providerRequestId: null, ExtensionData.Empty);
+        var response = new EmbeddingResponse(items.ToImmutable(), ModelUsage.NotReported, providerRequestId: null, ExtensionData.Empty);
 
         return new EmbeddingAttemptCompleted(response);
     }

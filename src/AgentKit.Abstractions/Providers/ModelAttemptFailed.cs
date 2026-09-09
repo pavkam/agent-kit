@@ -13,7 +13,7 @@ public sealed record ModelAttemptFailed: ModelAttemptResult
     /// <summary>Initializes a new instance of the <see cref="ModelAttemptFailed"/> record.</summary>
     /// <param name="failure">The normalized failure.</param>
     /// <param name="partialParts">The bounded, uncommitted partial content produced before the failure, if any.</param>
-    /// <param name="usage">The last known usage before the failure, if any was reported.</param>
+    /// <param name="usage">The last usage evidence before failure, retaining its interim or final provider report state when present.</param>
     /// <exception cref="ArgumentNullException"><paramref name="failure"/> is null.</exception>
     /// <exception cref="ArgumentException">
     /// <paramref name="partialParts"/> is a default, uninitialized array.
@@ -37,7 +37,8 @@ public sealed record ModelAttemptFailed: ModelAttemptResult
     /// <summary>Gets the bounded, uncommitted partial content produced before the failure, if any.</summary>
     public ImmutableArray<ContentPart> PartialParts { get; init; }
 
-    /// <summary>Gets the last known usage before the failure, if any was reported.</summary>
+    /// <summary>Gets the last usage evidence before failure without changing its provider report state.</summary>
+    /// <value>Captured usage evidence, or null when no report was retained; absence never means reported zero.</value>
     public ModelUsage? Usage { get; init; }
 
     /// <inheritdoc/>

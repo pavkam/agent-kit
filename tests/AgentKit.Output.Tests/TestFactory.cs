@@ -25,7 +25,7 @@ internal static class TestFactory
                 null),
             parts,
             NormalizedStopReason.Completed,
-            ModelUsage.Empty,
+            ModelUsage.NotReported,
             ExtensionData.Empty);
 
     public static JsonSchemaDocument Schema(string json) =>

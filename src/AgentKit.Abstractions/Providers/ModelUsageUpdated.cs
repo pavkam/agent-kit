@@ -15,13 +15,18 @@ public sealed record ModelUsageUpdated: ModelResponseEvent
     /// <param name="sequence">The strictly increasing sequence number of this event within its request.</param>
     /// <param name="usage">The current best-known usage for the attempt.</param>
     /// <exception cref="ArgumentNullException"><paramref name="usage"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="usage"/> represents absence rather than an observable update.</exception>
     public ModelUsageUpdated(ModelRequestId requestId, long sequence, ModelUsage usage)
         : base(requestId, sequence)
     {
         ArgumentNullException.ThrowIfNull(usage);
+        ArgumentException.ThrowIfNotEqual(
+            usage.ReportState == ModelUsageReportState.NotReported,
+            false,
+            nameof(usage));
         Usage = usage;
     }
 
     /// <summary>Gets the current best-known usage for the attempt.</summary>
-    public ModelUsage Usage { get; init; }
+    public ModelUsage Usage { get; }
 }

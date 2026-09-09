@@ -113,6 +113,6 @@ internal static class TestFactory
             null),
         NormalizedStopReason.Completed,
         null,
-        ModelUsage.Empty,
+        ModelUsage.NotReported,
         ExtensionData.Empty);
 }

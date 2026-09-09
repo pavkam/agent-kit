@@ -114,7 +114,23 @@ public sealed class CohereResponseParser: ICohereResponseParser
             parts.Add(part);
         }
 
-        var usage = BuildUsage(dto.Usage);
+        ModelUsage usage;
+        try
+        {
+            usage = BuildUsage(dto.Usage);
+        }
+        catch (ArgumentException exception)
+        {
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                ProviderFailureKind.ProtocolViolation,
+                "The provider returned invalid usage evidence.",
+                exception,
+                cancellationToken)
+                .ConfigureAwait(false);
+        }
         if (dto.Usage is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usage), cancellationToken)
@@ -270,7 +286,23 @@ public sealed class CohereResponseParser: ICohereResponseParser
             finalParts.Add(slot.FinalPart!);
         }
 
-        var usageResult = BuildUsage(usage);
+        ModelUsage usageResult;
+        try
+        {
+            usageResult = BuildUsage(usage);
+        }
+        catch (ArgumentException exception)
+        {
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                ProviderFailureKind.ProtocolViolation,
+                "The provider returned invalid usage evidence.",
+                exception,
+                cancellationToken)
+                .ConfigureAwait(false);
+        }
         if (usage is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usageResult), cancellationToken)
@@ -660,17 +692,40 @@ public sealed class CohereResponseParser: ICohereResponseParser
             context.ProviderRequestId,
             responseId is { Length: > 0 } id ? new ProviderResponseId(id) : null);
 
+    /// <summary>
+    /// Builds final usage evidence from a complete Cohere message response.
+    /// </summary>
+    /// <param name="usage">The optional wire usage object.</param>
+    /// <returns>Final usage when the provider supplied usage, or <see cref="ModelUsage.NotReported"/>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">A supplied wire token count is negative.</exception>
     private static ModelUsage BuildUsage(CohereUsageDto? usage) =>
         usage is null
-            ? ModelUsage.Empty
-            : new ModelUsage(
-                (long?) usage.Tokens?.InputTokens,
-                (long?) usage.Tokens?.OutputTokens,
-                (long?) usage.CachedTokens,
+            ? ModelUsage.NotReported
+            : new ModelUsage(ModelUsageReportState.Final,
+                ToTokenCount(usage.Tokens?.InputTokens),
+                ToTokenCount(usage.Tokens?.OutputTokens),
+                ToTokenCount(usage.CachedTokens),
                 reasoningTokens: null,
                 estimatedCost: null,
                 costCurrency: null,
                 ExtensionData.Empty);
+
+    /// <summary>
+    /// Validates an optional raw Cohere token count before portable integer projection.
+    /// </summary>
+    /// <param name="value">The optional raw wire count.</param>
+    /// <returns>The portable count when supplied; otherwise null.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="value"/> has a negative value.</exception>
+    private static long? ToTokenCount(double? value)
+    {
+        if (value is not { } count)
+        {
+            return null;
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(count, nameof(value));
+        return (long) count;
+    }
 
     private static NormalizedStopReason MapFinishReason(string? finishReason) =>
         finishReason switch

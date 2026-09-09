@@ -41,6 +41,7 @@ public sealed class AwsBedrockResponseParserStreamingTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.Completed);
         completed.Response.Parts.Length.ShouldBe(1);
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello world");
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(10);
         completed.Response.Usage.OutputTokens.ShouldBe(5);
 

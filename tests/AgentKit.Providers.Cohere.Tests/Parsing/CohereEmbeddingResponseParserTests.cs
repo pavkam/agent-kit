@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Cohere.Tests.Parsing;
 
+using System.Text;
+
 /// <summary>
 /// Verifies <see cref="CohereEmbeddingResponseParser.ParseAsync"/> against
 /// fixture Cohere v2 embed response bodies, across every supported
@@ -46,6 +48,7 @@ public sealed class CohereEmbeddingResponseParserTests
         second.CorrelationId.ShouldBe(new EmbeddingInputId(Guid.Parse("00000000-0000-0000-0000-00000000000b")));
         second.Vector.ShouldBeOfType<DenseFloatVector>().Values.ShouldBe([0.4f, 0.5f, 0.6f]);
 
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(5);
     }
 
@@ -100,6 +103,24 @@ public sealed class CohereEmbeddingResponseParserTests
 
         succeeded.Space.Dimensions.ShouldBe(16);
         succeeded.Space.ElementType.ShouldBe(EmbeddingElementType.UBinary);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenUsageTokenCountIsNegativeFraction_FailsWithProtocolViolation()
+    {
+        var parser = new CohereEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(
+            new TextEmbeddingInput("hello", null),
+            new TextEmbeddingInput("world", null));
+        var payload = TestResources.ReadAllText("responses/embedding_response_float.json")
+            .Replace("\"input_tokens\": 5", "\"input_tokens\": -0.5", StringComparison.Ordinal);
+
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+        var result = await parser.ParseAsync(
+            body, CreateContext(EmbeddingEncoding.Float), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
     }
 
     [Fact]

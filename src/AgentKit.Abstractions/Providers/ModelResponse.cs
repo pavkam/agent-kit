@@ -31,7 +31,7 @@ public sealed record ModelResponse
     /// <param name="identity">The exact provider, model, and correlation identity that served the request.</param>
     /// <param name="parts">The ordered, complete content of the response.</param>
     /// <param name="stopReason">The normalized, portable stop reason.</param>
-    /// <param name="usage">Token usage and cost accounting for this response.</param>
+    /// <param name="usage">Usage evidence for this response, retaining the provider report's lifecycle state.</param>
     /// <param name="extensions">Provider-specific response metadata.</param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="identity"/>, <paramref name="usage"/>, or
@@ -73,7 +73,8 @@ public sealed record ModelResponse
     /// <summary>Gets the normalized, portable stop reason.</summary>
     public NormalizedStopReason StopReason { get; init; }
 
-    /// <summary>Gets token usage and cost accounting for this response.</summary>
+    /// <summary>Gets usage evidence for this response with its independent provider report state.</summary>
+    /// <value>A non-null report preserving unknown fields as null and reported zero as a known value.</value>
     public ModelUsage Usage { get; init; }
 
     /// <summary>Gets provider-specific response metadata.</summary>

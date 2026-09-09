@@ -27,6 +27,8 @@ public sealed class GoogleGeminiEmbeddingResponseParserTests
 
         var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
         completed.Response.Items.Length.ShouldBe(1);
+        completed.Response.Usage.ShouldBeSameAs(ModelUsage.NotReported);
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.NotReported);
 
         var vector = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>().Vector.ShouldBeOfType<DenseFloatVector>();
         vector.Values.ShouldBe([0.1f, 0.2f, 0.3f]);
@@ -47,6 +49,8 @@ public sealed class GoogleGeminiEmbeddingResponseParserTests
 
         var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
         completed.Response.Items.Length.ShouldBe(2);
+        completed.Response.Usage.ShouldBeSameAs(ModelUsage.NotReported);
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.NotReported);
 
         completed.Response.Items[0].InputIndex.ShouldBe(0);
         completed.Response.Items[0].CorrelationId.ShouldBe(firstId);

@@ -120,7 +120,22 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             parts.Add(part);
         }
 
-        var usage = BuildUsage(dto.UsageMetadata);
+        ModelUsage usage;
+        try
+        {
+            usage = BuildUsage(dto.UsageMetadata);
+        }
+        catch (ArgumentException exception)
+        {
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                ProviderFailureKind.ProtocolViolation,
+                "The provider returned invalid usage evidence.",
+                exception,
+                cancellationToken).ConfigureAwait(false);
+        }
         if (dto.UsageMetadata is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usage), cancellationToken)
@@ -164,6 +179,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
         string? resolvedModel = null;
         string? responseId = null;
         GoogleGeminiUsageMetadataDto? usage = null;
+        var usageIsFinal = false;
         string? finishReason = null;
         string? blockReason = null;
         var sawAnyCandidate = false;
@@ -201,10 +217,14 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
 
             resolvedModel ??= chunk.ModelVersion;
             responseId ??= chunk.ResponseId;
-            usage = chunk.UsageMetadata ?? usage;
             blockReason ??= chunk.PromptFeedback?.BlockReason;
 
             var candidate = chunk.Candidates?.Count > 0 ? chunk.Candidates[0] : null;
+            if (chunk.UsageMetadata is not null)
+            {
+                usage = chunk.UsageMetadata;
+                usageIsFinal = candidate?.FinishReason is not null;
+            }
             if (candidate is null)
             {
                 continue;
@@ -221,6 +241,25 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             }
         }
 
+        ModelUsage usageResult;
+        try
+        {
+            usageResult = BuildUsage(
+                usage,
+                usageIsFinal ? ModelUsageReportState.Final : ModelUsageReportState.Interim);
+        }
+        catch (ArgumentException exception)
+        {
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                ProviderFailureKind.ProtocolViolation,
+                "The provider returned invalid usage evidence.",
+                exception,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         if (!sawAnyCandidate || finishReason is null)
         {
             return await FailAsync(
@@ -234,7 +273,8 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
                     ? $"The provider blocked the prompt: {blockReason}."
                     : "The provider's streaming response ended before a finish reason was received.",
                 diagnosticCause: null,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                usage is null ? null : usageResult).ConfigureAwait(false);
         }
 
         var finalParts = ImmutableArray.CreateBuilder<ContentPart>();
@@ -266,7 +306,6 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             finalParts.Add(accumulator.Part!);
         }
 
-        var usageResult = BuildUsage(usage);
         if (usage is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usageResult), cancellationToken)
@@ -395,7 +434,8 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
         ProviderFailureKind kind,
         string safeMessage,
         Exception? diagnosticCause,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ModelUsage? usage = null)
     {
         var failure = new ProviderFailure(
             kind,
@@ -409,11 +449,11 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             ExtensionData.Empty);
 
         await observer.OnEventAsync(
-                new ModelResponseFailed(context.ModelRequestId, sequence, failure, [], usage: null),
+                new ModelResponseFailed(context.ModelRequestId, sequence, failure, [], usage),
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new ModelAttemptFailed(failure, [], usage: null);
+        return new ModelAttemptFailed(failure, [], usage);
     }
 
     private static (ContentDelta? Delta, ContentPart Part) BuildPart(
@@ -470,11 +510,14 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             context.ProviderRequestId,
             responseId is { Length: > 0 } id ? new ProviderResponseId(id) : null);
 
-    private static ModelUsage BuildUsage(GoogleGeminiUsageMetadataDto? usage)
+    private static ModelUsage BuildUsage(
+        GoogleGeminiUsageMetadataDto? usage,
+        ModelUsageReportState reportState = ModelUsageReportState.Final)
     {
+        Debug.Assert(Enum.IsDefined(reportState), "Callers supply a defined usage report state.");
         if (usage is null)
         {
-            return ModelUsage.Empty;
+            return ModelUsage.NotReported;
         }
 
         var extensions = usage.ToolUsePromptTokenCount is { } toolUseTokens
@@ -484,7 +527,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
                     new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(toolUseTokens)])))
             : ExtensionData.Empty;
 
-        return new ModelUsage(
+        return new ModelUsage(reportState,
             usage.PromptTokenCount,
             usage.CandidatesTokenCount,
             usage.CachedContentTokenCount,

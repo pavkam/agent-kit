@@ -101,7 +101,7 @@ public sealed class CommittedTurnContinuationBoundaryTests
                     null),
                 NormalizedStopReason.ToolUse,
                 null,
-                ModelUsage.Empty,
+                ModelUsage.NotReported,
                 ExtensionData.Empty),
             ExtensionData.Empty);
     }

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Anthropic.Tests.Parsing;
 
+using System.Text;
+
 using AgentKit.Providers.Anthropic.Tests.Fakes;
 
 /// <summary>
@@ -35,6 +37,7 @@ public sealed class AnthropicMessageStreamParserBufferedTests
         completed.Response.Parts.Length.ShouldBe(1);
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello! How can I help you today?");
 
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(20);
         completed.Response.Usage.OutputTokens.ShouldBe(9);
         completed.Response.Usage.CachedInputTokens.ShouldBe(0);
@@ -94,6 +97,23 @@ public sealed class AnthropicMessageStreamParserBufferedTests
         reasoning.Content.SignatureToken.ShouldBe("sig_abc123");
 
         completed.Response.Parts[1].ShouldBeOfType<TextPart>().Text.ShouldBe("The answer is 42.");
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenUsageTokenCountIsNegative_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_text.json")
+            .Replace("\"input_tokens\": 20", "\"input_tokens\": -1", StringComparison.Ordinal);
+
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        observer.Events.ShouldNotContain(@event => @event is ModelResponseCompleted);
     }
 
     [Fact]

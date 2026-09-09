@@ -39,6 +39,7 @@ public sealed class OpenAIChatCompletionResponseParserBufferedTests
         var textPart = completed.Response.Parts[0].ShouldBeOfType<TextPart>();
         textPart.Text.ShouldBe("Hello! How can I help you today?");
 
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(20);
         completed.Response.Usage.OutputTokens.ShouldBe(9);
         completed.Response.Usage.CachedInputTokens.ShouldBe(0);
@@ -154,8 +155,30 @@ public sealed class OpenAIChatCompletionResponseParserBufferedTests
         var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
 
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
-        completed.Response.Usage.ShouldBeSameAs(ModelUsage.Empty);
+        completed.Response.Usage.ShouldBeSameAs(ModelUsage.NotReported);
         observer.Events.OfType<ModelUsageUpdated>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenUsageIsNegative_ReturnsProtocolFailureWithoutSuccess()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        const string json = /*lang=json,strict*/ """
+            {"id":"response","model":"model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":-1,"completion_tokens":1,"total_tokens":0}}
+            """;
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await parser.ParseBufferedAsync(
+            body,
+            CreateContext(requestId),
+            observer,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        observer.Events.OfType<ModelResponseCompleted>().ShouldBeEmpty();
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
     }
 
     [Fact]

@@ -152,7 +152,7 @@ internal static class TestFactory
                 null),
             parts,
             stopReason,
-            ModelUsage.Empty,
+            ModelUsage.NotReported,
             ExtensionData.Empty);
 
     public static ProviderFailure Failure(string safeMessage = "boom") =>

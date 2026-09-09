@@ -23,7 +23,7 @@ public sealed class AssistantMessageTests
             null),
         NormalizedStopReason.Completed,
         "stop",
-        ModelUsage.Empty,
+        ModelUsage.NotReported,
         ExtensionData.Empty);
 
     [Fact]

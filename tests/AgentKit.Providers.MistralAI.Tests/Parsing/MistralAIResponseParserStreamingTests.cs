@@ -40,6 +40,7 @@ public sealed class MistralAIResponseParserStreamingTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.Completed);
         completed.Response.Parts.Length.ShouldBe(1);
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(10);
         completed.Response.Usage.OutputTokens.ShouldBe(2);
 
@@ -52,6 +53,30 @@ public sealed class MistralAIResponseParserStreamingTests
         textDeltas.ShouldBe(["Hello", "!"]);
 
         observer.Events.Select(e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(i => (long) i));
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenOnlyNonterminalChunkCarriesUsage_RetainsInterimUsage()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            data: {"id":"cmpl-s02","model":"mistral-large-latest-2412","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}],"usage":{"prompt_tokens":10,"completion_tokens":null,"total_tokens":10}}
+
+            data: {"id":"cmpl-s02","model":"mistral-large-latest-2412","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":"stop"}]}
+
+            data: [DONE]
+
+            """u8.ToArray();
+
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Interim);
+        completed.Response.Usage.InputTokens.ShouldBe(10);
+        completed.Response.Usage.OutputTokens.ShouldBeNull();
     }
 
     [Theory]

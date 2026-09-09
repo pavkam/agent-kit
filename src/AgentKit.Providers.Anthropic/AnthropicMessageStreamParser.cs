@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Anthropic;
 
+using System.Diagnostics;
+
 using AgentKit.Providers.Anthropic.Wire;
 
 /// <summary>
@@ -87,7 +89,21 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
             parts.Add(part);
         }
 
-        var usage = BuildUsage(dto.Usage);
+        ModelUsage usage;
+        try
+        {
+            usage = BuildUsage(dto.Usage);
+        }
+        catch (ArgumentException exception)
+        {
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                "The provider returned invalid usage evidence.",
+                exception,
+                cancellationToken).ConfigureAwait(false);
+        }
         if (dto.Usage is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usage), cancellationToken)
@@ -132,6 +148,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         string? responseId = null;
         AnthropicUsageDto? initialUsage = null;
         AnthropicUsageDto? finalUsage = null;
+        var finalUsageIsFinal = false;
         string? finalStopReason = null;
         var messageStopReceived = false;
 
@@ -196,7 +213,11 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
 
                 case "message_delta":
                     finalStopReason = streamEvent.Delta?.StopReason ?? finalStopReason;
-                    finalUsage = streamEvent.Usage ?? finalUsage;
+                    if (streamEvent.Usage is not null)
+                    {
+                        finalUsage = streamEvent.Usage;
+                        finalUsageIsFinal = streamEvent.Delta?.StopReason is not null;
+                    }
                     break;
 
                 case "message_stop":
@@ -229,13 +250,35 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
 
         if (!messageStopReceived)
         {
+            ModelUsage? retainedUsage = null;
+            try
+            {
+                retainedUsage = initialUsage is null && finalUsage is null
+                    ? null
+                    : BuildUsage(
+                        initialUsage,
+                        finalUsage,
+                        finalUsageIsFinal ? ModelUsageReportState.Final : ModelUsageReportState.Interim);
+            }
+            catch (ArgumentException exception)
+            {
+                return await FailAsync(
+                    observer,
+                    context,
+                    sequence,
+                    "The provider returned invalid usage evidence.",
+                    exception,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             return await FailAsync(
                 observer,
                 context,
                 sequence,
                 "The provider's streaming response ended before a message_stop event was received.",
                 diagnosticCause: null,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                retainedUsage).ConfigureAwait(false);
         }
 
         var parts = ImmutableArray.CreateBuilder<ContentPart>();
@@ -255,7 +298,24 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
             parts.Add(accumulator.Part!);
         }
 
-        var usage = BuildUsage(initialUsage, finalUsage);
+        ModelUsage usage;
+        try
+        {
+            usage = BuildUsage(
+                initialUsage,
+                finalUsage,
+                finalUsageIsFinal ? ModelUsageReportState.Final : ModelUsageReportState.Interim);
+        }
+        catch (ArgumentException exception)
+        {
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                "The provider returned invalid usage evidence.",
+                exception,
+                cancellationToken).ConfigureAwait(false);
+        }
         if (initialUsage is not null || finalUsage is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usage), cancellationToken)
@@ -404,7 +464,8 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         long sequence,
         string safeMessage,
         Exception? diagnosticCause,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ModelUsage? usage = null)
     {
         var failure = BuildFailure(
             context,
@@ -415,11 +476,11 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
             diagnosticCause);
 
         await observer.OnEventAsync(
-                new ModelResponseFailed(context.ModelRequestId, sequence, failure, [], usage: null),
+                new ModelResponseFailed(context.ModelRequestId, sequence, failure, [], usage),
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new ModelAttemptFailed(failure, [], usage: null);
+        return new ModelAttemptFailed(failure, [], usage);
     }
 
     private static ProviderFailure BuildFailure(
@@ -515,13 +576,20 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
             context.ProviderRequestId,
             responseId is { Length: > 0 } id ? new ProviderResponseId(id) : null);
 
-    private static ModelUsage BuildUsage(AnthropicUsageDto? usage) => BuildUsage(usage, final: null);
+    private static ModelUsage BuildUsage(AnthropicUsageDto? usage) => BuildUsage(
+        usage,
+        final: usage,
+        ModelUsageReportState.Final);
 
-    private static ModelUsage BuildUsage(AnthropicUsageDto? initial, AnthropicUsageDto? final)
+    private static ModelUsage BuildUsage(
+        AnthropicUsageDto? initial,
+        AnthropicUsageDto? final,
+        ModelUsageReportState reportState)
     {
+        Debug.Assert(Enum.IsDefined(reportState), "Callers supply a defined usage report state.");
         if (initial is null && final is null)
         {
-            return ModelUsage.Empty;
+            return ModelUsage.NotReported;
         }
 
         var cacheCreationInputTokens = final?.CacheCreationInputTokens ?? initial?.CacheCreationInputTokens;
@@ -533,6 +601,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
             : ExtensionData.Empty;
 
         return new ModelUsage(
+            reportState,
             final?.InputTokens ?? initial?.InputTokens,
             final?.OutputTokens ?? initial?.OutputTokens,
             final?.CacheReadInputTokens ?? initial?.CacheReadInputTokens,

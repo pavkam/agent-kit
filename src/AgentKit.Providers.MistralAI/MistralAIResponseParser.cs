@@ -115,7 +115,23 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
             parts.Add(part);
         }
 
-        var usage = BuildUsage(dto.Usage);
+        ModelUsage usage;
+        try
+        {
+            usage = BuildUsage(dto.Usage);
+        }
+        catch (ArgumentException exception)
+        {
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                ProviderFailureKind.ProtocolViolation,
+                "The provider returned invalid usage evidence.",
+                exception,
+                cancellationToken)
+                .ConfigureAwait(false);
+        }
         if (dto.Usage is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usage), cancellationToken)
@@ -159,6 +175,7 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
         string? resolvedModel = null;
         string? responseId = null;
         MistralAIUsageDto? usage = null;
+        var usageIsFinal = false;
         string? finishReason = null;
         var sawDoneSentinel = false;
 
@@ -201,9 +218,12 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
 
             resolvedModel ??= chunk.Model;
             responseId ??= chunk.Id;
-            usage = chunk.Usage ?? usage;
-
             var choice = chunk.Choices?.Count > 0 ? chunk.Choices[0] : null;
+            if (chunk.Usage is not null)
+            {
+                usage = chunk.Usage;
+                usageIsFinal = choice?.FinishReason is not null || finishReason is not null;
+            }
             if (choice is null)
             {
                 continue;
@@ -259,7 +279,25 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
             finalParts.Add(slot.FinalPart!);
         }
 
-        var usageResult = BuildUsage(usage);
+        ModelUsage usageResult;
+        try
+        {
+            usageResult = BuildUsage(
+                usage,
+                usageIsFinal ? ModelUsageReportState.Final : ModelUsageReportState.Interim);
+        }
+        catch (ArgumentException exception)
+        {
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                ProviderFailureKind.ProtocolViolation,
+                "The provider returned invalid usage evidence.",
+                exception,
+                cancellationToken)
+                .ConfigureAwait(false);
+        }
         if (usage is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usageResult), cancellationToken)
@@ -587,10 +625,14 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
             context.ProviderRequestId,
             responseId is { Length: > 0 } id ? new ProviderResponseId(id) : null);
 
-    private static ModelUsage BuildUsage(MistralAIUsageDto? usage) =>
-        usage is null
-            ? ModelUsage.Empty
-            : new ModelUsage(
+    private static ModelUsage BuildUsage(
+        MistralAIUsageDto? usage,
+        ModelUsageReportState reportState = ModelUsageReportState.Final)
+    {
+        Debug.Assert(Enum.IsDefined(reportState), "Callers supply a defined usage report state.");
+        return usage is null
+            ? ModelUsage.NotReported
+            : new ModelUsage(reportState,
                 usage.PromptTokens,
                 usage.CompletionTokens,
                 cachedInputTokens: null,
@@ -598,6 +640,7 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
                 estimatedCost: null,
                 costCurrency: null,
                 ExtensionData.Empty);
+    }
 
     private static NormalizedStopReason MapFinishReason(string? finishReason) =>
         finishReason switch

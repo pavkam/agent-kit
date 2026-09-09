@@ -25,7 +25,7 @@ public sealed record EmbeddingResponse
 {
     /// <summary>Initializes a new instance of the <see cref="EmbeddingResponse"/> record.</summary>
     /// <param name="items">The per-input outcomes, one per originating input, in input order.</param>
-    /// <param name="usage">Token usage and cost accounting for this response.</param>
+    /// <param name="usage">Usage evidence for this response, retaining the provider report's lifecycle state.</param>
     /// <param name="providerRequestId">The provider-supplied request correlation identifier, when available.</param>
     /// <param name="extensions">Provider-specific response metadata.</param>
     /// <exception cref="ArgumentNullException">
@@ -55,7 +55,8 @@ public sealed record EmbeddingResponse
     /// <summary>Gets the per-input outcomes, one per originating input, in input order.</summary>
     public ImmutableArray<EmbeddingItemOutcome> Items { get; init; }
 
-    /// <summary>Gets token usage and cost accounting for this response.</summary>
+    /// <summary>Gets usage evidence for this response with its independent provider report state.</summary>
+    /// <value>A non-null report preserving unknown fields as null and reported zero as a known value.</value>
     public ModelUsage Usage { get; init; }
 
     /// <summary>Gets the provider-supplied request correlation identifier, when available.</summary>

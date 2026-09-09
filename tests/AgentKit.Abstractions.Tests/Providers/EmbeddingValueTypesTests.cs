@@ -168,7 +168,7 @@ public sealed class EmbeddingValueTypesTests
 
     [Fact]
     public void EmbeddingResponse_Constructor_WhenItemsEmpty_ThrowsArgumentException() =>
-        _ = Should.Throw<ArgumentException>(() => new EmbeddingResponse([], ModelUsage.Empty, null, ExtensionData.Empty));
+        _ = Should.Throw<ArgumentException>(() => new EmbeddingResponse([], ModelUsage.NotReported, null, ExtensionData.Empty));
 
     [Fact]
     public void EmbeddingResponse_Constructor_WhenUsageNull_ThrowsArgumentNullException()
@@ -184,8 +184,8 @@ public sealed class EmbeddingValueTypesTests
     {
         var items = ImmutableArray.Create<EmbeddingItemOutcome>(SucceededItem());
 
-        var first = new EmbeddingResponse(items, ModelUsage.Empty, null, ExtensionData.Empty);
-        var second = new EmbeddingResponse(items, ModelUsage.Empty, null, ExtensionData.Empty);
+        var first = new EmbeddingResponse(items, ModelUsage.NotReported, null, ExtensionData.Empty);
+        var second = new EmbeddingResponse(items, ModelUsage.NotReported, null, ExtensionData.Empty);
 
         first.ShouldBe(second);
         first.GetHashCode().ShouldBe(second.GetHashCode());
@@ -266,7 +266,7 @@ public sealed class EmbeddingValueTypesTests
     public void EmbeddingAttemptResult_Hierarchy_EveryLeafDerivesFromEmbeddingAttemptResult()
     {
         var items = ImmutableArray.Create<EmbeddingItemOutcome>(SucceededItem());
-        var response = new EmbeddingResponse(items, ModelUsage.Empty, null, ExtensionData.Empty);
+        var response = new EmbeddingResponse(items, ModelUsage.NotReported, null, ExtensionData.Empty);
 
         EmbeddingAttemptResult completed = new EmbeddingAttemptCompleted(response);
         EmbeddingAttemptResult failed = new EmbeddingAttemptFailed(Failure());

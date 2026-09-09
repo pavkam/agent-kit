@@ -40,6 +40,7 @@ public sealed class GoogleGeminiResponseParserStreamingTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.Completed);
         completed.Response.Parts.Length.ShouldBe(1);
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(10);
         completed.Response.Usage.OutputTokens.ShouldBe(2);
 
@@ -177,5 +178,54 @@ public sealed class GoogleGeminiResponseParserStreamingTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenOnlyNonterminalResponseCarriesUsage_RetainsInterimUsage()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hello"}]},"index":0}],"usageMetadata":{"promptTokenCount":10,"totalTokenCount":10}}
+
+            data: {"candidates":[{"content":{"role":"model","parts":[{"text":"!"}]},"finishReason":"STOP","index":0}]}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(
+            stream,
+            CreateContext(requestId),
+            observer,
+            TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Interim);
+        completed.Response.Usage.InputTokens.ShouldBe(10);
+        completed.Response.Usage.OutputTokens.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenUsageResponseIsTruncated_RetainsInterimUsageOnFailure()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Partial"}]},"index":0}],"usageMetadata":{"promptTokenCount":10,"totalTokenCount":10}}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(
+            stream,
+            CreateContext(requestId),
+            observer,
+            TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Usage.ShouldNotBeNull().ReportState.ShouldBe(ModelUsageReportState.Interim);
     }
 }

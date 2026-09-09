@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Cohere.Tests.Parsing;
 
+using System.Text;
+
 using AgentKit.Providers.Cohere.Tests.Fakes;
 
 /// <summary>
@@ -35,6 +37,7 @@ public sealed class CohereResponseParserBufferedTests
         completed.Response.Parts.Length.ShouldBe(1);
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello! How can I help you today?");
 
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(20);
         completed.Response.Usage.OutputTokens.ShouldBe(9);
         completed.Response.Usage.CachedInputTokens.ShouldBe(0);
@@ -121,6 +124,23 @@ public sealed class CohereResponseParserBufferedTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenUsageTokenCountIsNegativeFraction_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_text.json")
+            .Replace("\"input_tokens\": 20", "\"input_tokens\": -0.5", StringComparison.Ordinal);
+
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        observer.Events.ShouldNotContain(@event => @event is ModelResponseCompleted);
     }
 
     [Fact]

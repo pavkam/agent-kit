@@ -68,7 +68,7 @@ internal static class TestFactory
             null),
         NormalizedStopReason.ToolUse,
         null,
-        new ModelUsage(null, null, null, null, null, null, ExtensionData.Empty),
+        new ModelUsage(ModelUsageReportState.Final, null, null, null, null, null, null, ExtensionData.Empty),
         ExtensionData.Empty);
 
     /// <summary>Builds a causally paired tool-call entry and its terminal tool-result entry.</summary>

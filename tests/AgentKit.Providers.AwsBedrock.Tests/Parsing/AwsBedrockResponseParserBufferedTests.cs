@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.AwsBedrock.Tests.Parsing;
 
+using System.Text;
+
 using AgentKit.Providers.AwsBedrock.Tests.Fakes;
 
 /// <summary>
@@ -35,6 +37,7 @@ public sealed class AwsBedrockResponseParserBufferedTests
         completed.Response.Parts.Length.ShouldBe(1);
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello! How can I help you today?");
 
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(20);
         completed.Response.Usage.OutputTokens.ShouldBe(9);
 
@@ -72,6 +75,23 @@ public sealed class AwsBedrockResponseParserBufferedTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenUsageTokenCountIsNegative_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_text.json")
+            .Replace("\"inputTokens\": 20", "\"inputTokens\": -1", StringComparison.Ordinal);
+
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        observer.Events.ShouldNotContain(@event => @event is ModelResponseCompleted);
+    }
+
+    [Fact]
     public async Task ParseBufferedAsync_WhenBodyIsNotJson_FailsWithProtocolViolation()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
@@ -99,6 +119,6 @@ public sealed class AwsBedrockResponseParserBufferedTests
 
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
         completed.Response.Parts.Length.ShouldBe(0);
-        completed.Response.Usage.ShouldBe(ModelUsage.Empty);
+        completed.Response.Usage.ShouldBeSameAs(ModelUsage.NotReported);
     }
 }

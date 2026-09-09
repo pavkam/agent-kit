@@ -38,6 +38,7 @@ public sealed class OpenAIEmbeddingResponseParserTests
         succeeded.Space.Dimensions.ShouldBe(3);
         succeeded.Space.ElementType.ShouldBe(EmbeddingElementType.Float32);
 
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(5);
     }
 

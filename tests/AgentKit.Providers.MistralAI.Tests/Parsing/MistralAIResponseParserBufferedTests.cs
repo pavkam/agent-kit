@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.MistralAI.Tests.Parsing;
 
+using System.Text;
+
 using AgentKit.Providers.MistralAI.Tests.Fakes;
 
 /// <summary>
@@ -36,6 +38,7 @@ public sealed class MistralAIResponseParserBufferedTests
         completed.Response.Parts.Length.ShouldBe(1);
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello! How can I help you today?");
 
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(20);
         completed.Response.Usage.OutputTokens.ShouldBe(9);
         completed.Response.Usage.CachedInputTokens.ShouldBeNull();
@@ -119,6 +122,23 @@ public sealed class MistralAIResponseParserBufferedTests
 
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenUsageTokenCountIsNegative_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_text.json")
+            .Replace("\"prompt_tokens\": 20", "\"prompt_tokens\": -1", StringComparison.Ordinal);
+
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        observer.Events.ShouldNotContain(@event => @event is ModelResponseCompleted);
     }
 
     [Fact]

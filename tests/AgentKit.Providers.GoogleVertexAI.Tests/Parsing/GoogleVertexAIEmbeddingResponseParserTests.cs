@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.GoogleVertexAI.Tests.Parsing;
 
+using System.Text;
+
 /// <summary>
 /// Verifies <see cref="GoogleVertexAIEmbeddingResponseParser.ParseAsync"/>
 /// against fixture Vertex AI <c>:predict</c> response bodies.
@@ -30,6 +32,7 @@ public sealed class GoogleVertexAIEmbeddingResponseParserTests
         var item = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>();
         item.Vector.ShouldBeOfType<DenseFloatVector>().Values.ShouldBe([0.1f, 0.2f, 0.3f]);
 
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(6);
     }
 
@@ -48,10 +51,60 @@ public sealed class GoogleVertexAIEmbeddingResponseParserTests
 
         var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
         completed.Response.Items.Length.ShouldBe(2);
+        completed.Response.Usage.ReportState.ShouldBe(ModelUsageReportState.Final);
         completed.Response.Usage.InputTokens.ShouldBe(7);
 
         completed.Response.Items[0].CorrelationId.ShouldBe(firstId);
         completed.Response.Items[1].CorrelationId.ShouldBe(secondId);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenUsageTokenCountIsNegative_FailsWithProtocolViolation()
+    {
+        var parser = new GoogleVertexAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+        var payload = TestResources.ReadAllText("responses/embedding_response.json")
+            .Replace("\"token_count\": 6", "\"token_count\": -1", StringComparison.Ordinal);
+
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+        var result = await parser.ParseAsync(body, CreateContext(), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Theory]
+    [InlineData(-1L, 5L)]
+    [InlineData(long.MaxValue, 1L)]
+    public async Task ParseAsync_WhenBatchUsageIsNegativeOrOverflows_FailsWithProtocolViolation(
+        long firstCount,
+        long secondCount)
+    {
+        var parser = new GoogleVertexAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(
+            new TextEmbeddingInput("first", null),
+            new TextEmbeddingInput("second", null));
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            predictions = new[] { firstCount, secondCount }.Select(count => new
+            {
+                embeddings = new { values = ImmutableArray.Create(0.1f), statistics = new { token_count = count } },
+            }),
+        });
+
+        await using var body = new MemoryStream(payload);
+        var result = await parser.ParseAsync(body, CreateContext(), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        if (firstCount < 0)
+        {
+            failed.Failure.DiagnosticCause.ShouldBeOfType<ArgumentOutOfRangeException>().ParamName.ShouldBe("tokenCount");
+        }
+        else
+        {
+            _ = failed.Failure.DiagnosticCause.ShouldBeOfType<OverflowException>();
+        }
     }
 
     [Fact]

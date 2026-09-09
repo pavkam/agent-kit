@@ -88,7 +88,16 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
             parts.Add(part);
         }
 
-        var usage = BuildUsage(dto.Usage);
+        ModelUsage usage;
+        try
+        {
+            usage = BuildUsage(dto.Usage);
+        }
+        catch (ArgumentException exception)
+        {
+            return await FailAsync(observer, context, sequence, "The provider returned invalid usage evidence.", exception, cancellationToken)
+                .ConfigureAwait(false);
+        }
         if (dto.Usage is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usage), cancellationToken)
@@ -255,7 +264,16 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
             parts.Add(accumulator.Part!);
         }
 
-        var usage = BuildUsage(usageDto);
+        ModelUsage usage;
+        try
+        {
+            usage = BuildUsage(usageDto);
+        }
+        catch (ArgumentException exception)
+        {
+            return await FailAsync(observer, context, sequence, "The provider returned invalid usage evidence.", exception, cancellationToken)
+                .ConfigureAwait(false);
+        }
         if (usageDto is not null)
         {
             await observer.OnEventAsync(new ModelUsageUpdated(requestId, sequence++, usage), cancellationToken)
@@ -431,7 +449,7 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
     {
         if (usage is null)
         {
-            return ModelUsage.Empty;
+            return ModelUsage.NotReported;
         }
 
         var extensions = usage.CacheWriteInputTokens is { } cacheWrite
@@ -441,7 +459,7 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                     new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(cacheWrite)])))
             : ExtensionData.Empty;
 
-        return new ModelUsage(
+        return new ModelUsage(ModelUsageReportState.Final,
             usage.InputTokens,
             usage.OutputTokens,
             usage.CacheReadInputTokens,

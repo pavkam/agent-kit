@@ -81,7 +81,18 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
             items.Add(new EmbeddingItemSucceeded(entry.Index, correlationId, vector, space, ExtensionData.Empty));
         }
 
-        var usage = BuildUsage(dto.Usage);
+        ModelUsage usage;
+        try
+        {
+            usage = BuildUsage(dto.Usage);
+        }
+        catch (ArgumentException exception)
+        {
+            return new EmbeddingAttemptFailed(BuildProtocolFailure(
+                context,
+                "The provider returned invalid usage evidence.",
+                exception));
+        }
         var response = new EmbeddingResponse(items.ToImmutable(), usage, context.ProviderRequestId, ExtensionData.Empty);
 
         return new EmbeddingAttemptCompleted(response);
@@ -126,8 +137,8 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
 
     private static ModelUsage BuildUsage(OpenAIUsage? usage) =>
         usage is null
-            ? ModelUsage.Empty
-            : new ModelUsage(
+            ? ModelUsage.NotReported
+            : new ModelUsage(ModelUsageReportState.Final,
                 usage.PromptTokens,
                 outputTokens: null,
                 cachedInputTokens: null,
