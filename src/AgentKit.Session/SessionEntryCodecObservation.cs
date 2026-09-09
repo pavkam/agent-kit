@@ -125,6 +125,7 @@ internal static class SessionEntryCodecObservation
     {
         ExecutionLaneProvisionedSessionEntry lane => lane.ExecutionLaneId,
         InputPromotedSessionEntry promotion => promotion.ExecutionLaneId,
+        OperationAcceptedSessionEntry accepted => accepted.State.ExecutionLaneId,
         _ => null,
     };
 

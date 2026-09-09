@@ -44,6 +44,14 @@ namespace AgentKit.Session
         public NeverRetireSessionRetentionPolicy() { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionRetentionDecision> EvaluateAsync(AgentKit.SessionDescriptor session, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class OperationAcceptedSessionEntryCodec : AgentKit.ISessionEntryCodec
+    {
+        public OperationAcceptedSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.OperationAcceptedSessionEntryCodec> logger) { }
+        public OperationAcceptedSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.OperationAcceptedSessionEntryCodec> logger, AgentKit.SessionEntryCodecLimits limits) { }
+        public AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
+        public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)

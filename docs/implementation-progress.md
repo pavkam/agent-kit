@@ -65,6 +65,22 @@ owning spec.
 
 ## Latest integration evidence
 
+The accepted-operation codec checkpoint passed formatting, repository lint, a
+Release build with no warnings or errors, and all 5,543 tests in an isolated
+checkout over `1966dd5`. The additive public codec preserves complete accepted
+run state at exact schema `1`, including lane, admission and history identities,
+retained configuration, ordered recovery evidence, and timestamp offsets.
+Identity and authorization evidence are encoded explicitly and reconstructed as
+immutable values; decoding never resolves authority or mints a grant.
+
+Payload, nesting, unknown-field and raw-extension bounds apply to the complete
+security graph. Tests exercise exact byte and depth limits, malformed text,
+inconsistent recovery references, validation before diagnostic effects, original
+wire retention, and the shared codec conformance suite. Admitted-input and
+message codecs, the mandatory durable base profile, and SQLite session
+persistence remain open. The message codec also requires correcting incomplete
+tool identity and result-projection contracts before their shape is persisted.
+
 The captured budget-overrun-hold checkpoint passed formatting, repository lint,
 a Release build with no warnings or errors, and all 5,524 tests in an isolated
 checkout over `a754b24`. Each charged boundary retains its own overrun policy

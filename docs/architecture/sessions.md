@@ -714,6 +714,18 @@ the original escaped name spelling, colon, and interior whitespace. A nested
 unknown subtree is charged once by bytes while every property in that subtree
 still counts toward the compatible-field count limit.
 
+The portable accepted-operation codec uses wire identity
+`agentkit.session/operation-accepted` and the producer's exact schema version
+`1`. It persists the complete accepted run state, including ordered promotion
+and materialization identities, retained identity evidence, and security
+profile, policy-snapshot, authority-selection, scope, and configuration
+evidence. The authorization object explicitly references the single serialized
+state identity and correlation; decoding reconstructs immutable evidence and
+does not resolve an authority or create a grant. Recovery revalidates the
+retained profile, policy, configuration, and authority selections at their live
+owners before use. This third codec still does not complete the mandatory
+durable base profile because admitted-input and message codecs remain required.
+
 AgentKit.IO coordinates admission and promotion through these contracts. It does
 not keep a private queue beside the session. An in-memory store may keep the
 record in process, while a durable store must commit admission atomically with
