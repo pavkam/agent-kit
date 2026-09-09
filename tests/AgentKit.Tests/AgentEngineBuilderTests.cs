@@ -107,6 +107,135 @@ public sealed class AgentEngineBuilderTests
     }
 
     [Fact]
+    public async Task Build_WhenLoopUsesFactory_DoesNotActivateLoopUntilRunStarts()
+    {
+        var factoryCalls = 0;
+        var definition = CompositionTestData.Definition();
+        var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRunProfiles(builder.Services, definition);
+        _ = builder.Services.AddAgent(definition);
+        _ = builder.Services.AddScoped<IAgentLoop>(
+            _ =>
+            {
+                factoryCalls++;
+                return new RecordingAgentLoop();
+            });
+
+        await using var engine = builder.Build();
+
+        factoryCalls.ShouldBe(0);
+
+        var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
+        _ = await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken);
+
+        factoryCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Build_WhenLoopRegistrationIsDuplicated_RejectsWithoutActivatingEitherFactory()
+    {
+        var factoryCalls = 0;
+        var definition = CompositionTestData.Definition();
+        var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRunProfiles(builder.Services, definition);
+        _ = builder.Services.AddAgent(definition);
+        _ = builder.Services.AddScoped<IAgentLoop>(
+            _ =>
+            {
+                factoryCalls++;
+                return new RecordingAgentLoop();
+            });
+        _ = builder.Services.AddScoped<IAgentLoop>(
+            _ =>
+            {
+                factoryCalls++;
+                return new RecordingAgentLoop();
+            });
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(
+            static diagnostic => diagnostic.Code == "agentkit.loop.ambiguous");
+        factoryCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Build_WhenLoopConstructorDependencyIsMissing_RejectsWithoutConstructingLoop()
+    {
+        MissingDependencyAgentLoop.ConstructorCalls = 0;
+        var definition = CompositionTestData.Definition();
+        var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRunProfiles(builder.Services, definition);
+        _ = builder.Services.AddAgent(definition);
+        _ = builder.Services.AddScoped<IAgentLoop, MissingDependencyAgentLoop>();
+
+        var exception = Should.Throw<AggregateException>(builder.Build);
+
+        exception.ToString().ShouldContain(nameof(UnregisteredLoopDependency));
+        MissingDependencyAgentLoop.ConstructorCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Build_WhenOnlyKeyedLoopIsRegistered_RejectsCurrentUnkeyedRuntime()
+    {
+        var factoryCalls = 0;
+        var definition = CompositionTestData.Definition();
+        var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRunProfiles(builder.Services, definition);
+        _ = builder.Services.AddAgent(definition);
+        _ = builder.Services.AddKeyedScoped<IAgentLoop>(
+            "selected",
+            (_, _) =>
+            {
+                factoryCalls++;
+                return new RecordingAgentLoop();
+            });
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(
+            static diagnostic => diagnostic.Code == "agentkit.loop.unresolvable");
+        factoryCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task HostedResolution_WhenLoopUsesFactory_DoesNotActivateLoop()
+    {
+        var factoryCalls = 0;
+        var definition = CompositionTestData.Definition();
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+        CompositionTestData.AddRunProfiles(services, definition);
+        _ = services.AddAgent(definition);
+        _ = services.AddScoped<IAgentLoop>(
+            _ =>
+            {
+                factoryCalls++;
+                return new RecordingAgentLoop();
+            });
+        await using var provider = CompositionTestData.BuildHostedProvider(services);
+
+        _ = provider.GetRequiredService<AgentEngine>();
+
+        factoryCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Build_WhenLoopInstanceIsSupplied_DoesNotDisposeItDuringReadiness()
+    {
+        var loop = new DisposableAgentLoop();
+        var definition = CompositionTestData.Definition();
+        var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRunProfiles(builder.Services, definition);
+        _ = builder.Services.AddAgent(definition);
+        _ = builder.Services.AddSingleton<IAgentLoop>(loop);
+
+        await using var engine = builder.Build();
+
+        loop.DisposeCount.ShouldBe(0);
+    }
+
+    [Fact]
     public void Build_WhenSeveralProblemsExist_ReportsAllOfThem()
     {
         var builder = AgentEngine.CreateBuilder();
@@ -166,6 +295,36 @@ public sealed class AgentEngineBuilderTests
     }
 
     private sealed class ScopedDependency;
+
+    private sealed class UnregisteredLoopDependency;
+
+    private sealed class MissingDependencyAgentLoop: IAgentLoop
+    {
+        public MissingDependencyAgentLoop(UnregisteredLoopDependency dependency)
+        {
+            ArgumentNullException.ThrowIfNull(dependency);
+            ConstructorCalls++;
+        }
+
+        public static int ConstructorCalls { get; set; }
+
+        public Task<AgentLoopResult> RunAsync(
+            AgentRunRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class DisposableAgentLoop: IAgentLoop, IDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public Task<AgentLoopResult> RunAsync(
+            AgentRunRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public void Dispose() => DisposeCount++;
+    }
 
     private sealed class SingletonCapturingScoped(ScopedDependency dependency)
     {

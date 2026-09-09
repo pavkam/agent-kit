@@ -60,11 +60,12 @@ public sealed class AgentEngineBuilder
     /// DI correspondence are validated before a provider is built, so an
     /// invalid declaration cannot run a registration factory. Reduced
     /// readiness validation then checks that engine-wide singular services
-    /// exist, at least one runnable definition is published, and a loop can be
-    /// resolved. Missing behavior is a composition error, never a cue to
-    /// instantiate a hidden default. Component metadata remains explicitly
-    /// partial until the staged owner rollout declares the complete runnable
-    /// spine.
+    /// exist, at least one runnable definition is published, and exactly one
+    /// loop is registered for the current reduced runtime. This structural
+    /// readiness check never activates the loop or its collaborators. Missing
+    /// behavior is a composition error, never a cue to instantiate a hidden
+    /// default. Component metadata remains explicitly partial until the staged
+    /// owner rollout declares the complete runnable spine.
     /// </para>
     /// <para>
     /// When validation fails, the partially built provider is disposed before

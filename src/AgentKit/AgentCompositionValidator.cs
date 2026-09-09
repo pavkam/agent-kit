@@ -80,7 +80,7 @@ internal static class AgentCompositionValidator
             validatedRunProfiles = ValidateCatalog(catalog, profileReader, diagnostics);
         }
 
-        ValidateRunScope(provider, diagnostics);
+        ValidateRunScopeRegistration(componentRegistrations, diagnostics);
 
         if (diagnostics.Count > 0)
         {
@@ -218,24 +218,34 @@ internal static class AgentCompositionValidator
         return profileSnapshot;
     }
 
-    private static void ValidateRunScope(
-        IServiceProvider provider,
+    /// <summary>Validates reduced loop readiness from frozen registration metadata without activating application services.</summary>
+    /// <param name="snapshot">The exact build-local service descriptors already captured for validation.</param>
+    /// <param name="diagnostics">The initialized collector that receives missing or ambiguous loop diagnostics.</param>
+    /// <remarks>
+    /// Constructor-graph validation remains Microsoft DI's responsibility. This check proves only that the current
+    /// reduced runtime has exactly one unkeyed loop registration; selected keyed loop validation belongs to the
+    /// canonical agent-component selection checkpoint.
+    /// </remarks>
+    private static void ValidateRunScopeRegistration(
+        ComponentRegistrationSnapshot snapshot,
         ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
     {
-        // The loop is resolved per run from a scope, so validating it against
-        // the root provider would miss scoped dependencies entirely.
-        using var scope = provider.CreateScope();
+        Debug.Assert(snapshot is not null, "Composition validation supplies a non-null registration snapshot.");
+        Debug.Assert(diagnostics is not null, "Composition validation owns an initialized diagnostic collector.");
 
-        try
-        {
-            _ = scope.ServiceProvider.GetRequiredService<IAgentLoop>();
-        }
-        catch (InvalidOperationException exception)
+        var registrations = snapshot.Services.Count(static descriptor =>
+            !descriptor.IsKeyedService && descriptor.ServiceType == typeof(IAgentLoop));
+        if (registrations == 0)
         {
             diagnostics.Add(new CompositionDiagnostic(
                 "agentkit.loop.unresolvable",
-                $"No {nameof(IAgentLoop)} can be resolved for a run scope. Register one with "
-                + $"AddAgentLoop and register its collaborators. {exception.Message}"));
+                $"No unkeyed {nameof(IAgentLoop)} is registered for the current reduced runtime. Register one with AddAgentLoop."));
+        }
+        else if (registrations > 1)
+        {
+            diagnostics.Add(new CompositionDiagnostic(
+                "agentkit.loop.ambiguous",
+                $"More than one unkeyed {nameof(IAgentLoop)} is registered for the current reduced runtime. Register exactly one."));
         }
     }
 

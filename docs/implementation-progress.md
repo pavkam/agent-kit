@@ -65,6 +65,22 @@ owning spec.
 
 ## Latest integration evidence
 
+The loop-readiness checkpoint passed formatting, lint, Release build, and all
+5,248 tests in an isolated checkout over `5375f15`. Build and hosted facade
+resolution now inspect the captured loop registration without invoking its
+factory or constructing a temporary loop. The current runtime requires exactly
+one unkeyed loop; missing, keyed-only, and duplicate registrations reject.
+Microsoft DI still validates constructor dependencies and lifetimes without
+constructing the loop. Tests also prove that readiness does not dispose a
+supplied instance and a scoped factory runs only when execution starts.
+
+This corrects build-time activation. Complete declared factory metadata and
+canonical keyed activation remain open. The dependency audit found missing
+output event/result publication, model execution context, and top-level tool
+execution contract families beneath `AgentComponentSelection`. Hook activation
+and rich context assembly are further prerequisites. No temporary selection
+shape or empty contract was added to bypass those requirements.
+
 The Permissions SQLite checkpoint passed formatting, lint, Release build, and
 all 5,242 tests in an isolated checkout over `0a60cb3`. The explicit
 `AgentKit.Permissions.Sqlite` leaf persists grants, remaining uses, revocation,
