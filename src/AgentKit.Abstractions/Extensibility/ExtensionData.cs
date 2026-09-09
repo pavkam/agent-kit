@@ -47,8 +47,9 @@ public sealed record ExtensionData
     /// <summary>Initializes a new instance of the <see cref="ExtensionData"/> record.</summary>
     /// <param name="values">
     /// The keyed extension values. The caller transfers effective ownership
-    /// of this dictionary; because it is already immutable, no defensive
-    /// copy is necessary or performed.
+    /// of the immutable entries. This constructor normalizes the retained
+    /// dictionary's key and value comparers, but does not copy individual
+    /// keys or values.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="values"/> is null.</exception>
     public ExtensionData(ImmutableDictionary<string, ExtensionValue> values)
@@ -61,8 +62,29 @@ public sealed record ExtensionData
     /// Gets the keyed extension values. Each key is a stable,
     /// component-defined extension name; callers that do not recognize a
     /// key are expected to preserve it unchanged rather than discard it.
+    /// An initializer must supply a non-null dictionary. The value retained
+    /// by this record always uses ordinal key comparison and the default
+    /// structural <see cref="ExtensionValue"/> comparer, while preserving
+    /// every supplied key's original spelling and value.
     /// </summary>
-    public ImmutableDictionary<string, ExtensionValue> Values { get; init; }
+    /// <value>
+    /// An immutable ordinal-keyed dictionary whose values use
+    /// <see cref="EqualityComparer{T}.Default"/> comparison for
+    /// <see cref="ExtensionValue"/>.
+    /// </value>
+    /// <exception cref="ArgumentNullException">
+    /// An object initializer or <c>with</c> expression supplies a null
+    /// dictionary.
+    /// </exception>
+    public ImmutableDictionary<string, ExtensionValue> Values
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(Values));
+            field = value.WithComparers(StringComparer.Ordinal, EqualityComparer<ExtensionValue>.Default);
+        }
+    }
 
     /// <summary>
     /// Determines whether this instance and <paramref name="other"/>

@@ -142,14 +142,11 @@ public sealed class ToolResultProjectionPolicyContractsTests
     }
 
     [Fact]
-    public void Snapshot_WhenCopiedExtensionBagHasNullValues_ThrowsExactParameterName()
+    public void Snapshot_WhenExtensionBagCopyHasNullValues_RejectsAtExtensionBoundary()
     {
-        var malformed = ExtensionData.Empty with { Values = null! };
+        var exception = Should.Throw<ArgumentNullException>(() => ExtensionData.Empty with { Values = null! });
 
-        var exception = Should.Throw<ArgumentNullException>(() => new ToolResultProjectionPolicySnapshot(
-            Reference(), Bounds(), ToolResultProjectionTransformations.None, malformed));
-
-        exception.ParamName.ShouldBe("extensions");
+        exception.ParamName.ShouldBe(nameof(ExtensionData.Values));
     }
 
     [Fact]

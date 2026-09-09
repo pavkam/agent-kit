@@ -65,6 +65,20 @@ owning spec.
 
 ## Latest integration evidence
 
+The extension-comparer correction passed formatting, repository lint, a Release
+build with no warnings or errors, and all 5,620 tests in an isolated checkout
+over `6c2091a`. `ExtensionData` now owns ordinal key comparison and the default
+structural value comparer during construction and initializer/copy assignment.
+Key spelling and value bytes remain unchanged. Equality is symmetric across
+source comparers, and deriving a changed dictionary cannot silently retain an
+old value because of a caller-supplied comparer.
+
+Seven focused bag tests cover equality/hash consistency, exact null guards,
+initializer ownership, and adversarial key/value comparers. Projection-policy
+contracts now assert eager rejection at the extension boundary. Public member
+signatures remain unchanged; default-value and serialized-content constraints
+are separate remaining work.
+
 The ledger-backed budget runtime checkpoint passed formatting, repository lint,
 a Release build with no warnings or errors, and all 5,613 tests in an isolated
 checkout over `22cf16f`. The first-party authority and immutable
