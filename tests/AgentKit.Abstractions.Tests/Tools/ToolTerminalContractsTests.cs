@@ -180,6 +180,59 @@ public sealed class ToolTerminalContractsTests
     }
 
     [Fact]
+    public void ToolCallResult_Constructor_WhenMutatingEffectPartiallyPerformedWithoutIdempotency_RejectsUnsafeRetry()
+    {
+        var fixture = Fixture.Create(effect: ToolEffect.Mutating, idempotency: null);
+
+        var exception = Should.Throw<ArgumentException>(() => fixture.Result(
+            accepted: false,
+            retryable: true,
+            sideEffectCertainty: SideEffectCertainty.PartiallyPerformed));
+
+        exception.ParamName.ShouldBe("retryable");
+    }
+
+    [Fact]
+    public void ToolCallResult_Constructor_WhenMutatingEffectPartiallyPerformedWithIdempotency_AllowsRetryAdvice()
+    {
+        var fixture = Fixture.Create(
+            effect: ToolEffect.Mutating,
+            idempotency: IdempotencyClassification.Idempotent);
+
+        var result = fixture.Result(
+            accepted: false,
+            retryable: true,
+            sideEffectCertainty: SideEffectCertainty.PartiallyPerformed);
+
+        result.Retryable.ShouldBeTrue();
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.PartiallyPerformed);
+    }
+
+    [Fact]
+    public void ToolCallResult_Constructor_WhenSideEffectCertaintyIsNotApplicable_ThrowsExactException()
+    {
+        var fixture = Fixture.Create();
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(
+            () => fixture.Result(sideEffectCertainty: SideEffectCertainty.NotApplicable));
+
+        exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
+        exception.ParamName.ShouldBe("sideEffectCertainty");
+    }
+
+    [Fact]
+    public void ToolCallResult_Constructor_WhenSideEffectCertaintyIsUndefined_ThrowsExactException()
+    {
+        var fixture = Fixture.Create();
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(
+            () => fixture.Result(sideEffectCertainty: (SideEffectCertainty) 99));
+
+        exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
+        exception.ParamName.ShouldBe("sideEffectCertainty");
+    }
+
+    [Fact]
     public void ToolCallResult_Constructor_WhenMutatingEffectDefinitelyDidNotStart_AllowsOrdinaryRetry()
     {
         var fixture = Fixture.Create(effect: ToolEffect.Mutating, idempotency: null);

@@ -14,7 +14,7 @@ public sealed record ToolCallResult
     /// <param name="providerAlias">Exact requested alias.</param><param name="toolId">Resolved canonical tool, if resolved.</param><param name="toolVersion">Resolved exact version, if resolved.</param>
     /// <param name="effects">Captured effects when resolved.</param><param name="externalIdempotencyKey">Optional external keyed-idempotency evidence when extraction reached that stage.</param><param name="admission">Raw admission evidence.</param>
     /// <param name="status">Exact numeric terminal status.</param><param name="content">Initialized normalized content within the captured part bound.</param><param name="error">Optional safe error evidence.</param>
-    /// <param name="sideEffectCertainty">Defined side-effect evidence.</param><param name="usage">Optional reported usage.</param><param name="retryable">Whether policy selected another safe attempt.</param>
+    /// <param name="sideEffectCertainty">Defined side-effect evidence other than <see cref="SideEffectCertainty.NotApplicable"/>.</param><param name="usage">Optional reported usage.</param><param name="retryable">Retained advice that a future request may be retried under policy; never permission to replay this terminally recorded effect.</param>
     /// <param name="normalization">Captured normalization rules.</param><param name="normalizationInfo">Actual normalization evidence.</param><param name="projectionPolicy">Captured projection policy repeated for indexing.</param>
     /// <param name="requestedAt">Request timestamp.</param><param name="invocationStartedAt">Invocation start timestamp when accepted.</param><param name="completedAt">Terminal timestamp.</param><param name="extensions">Compatible immutable evidence.</param>
     /// <exception cref="ArgumentOutOfRangeException">An identity, alias, or certainty value is invalid.</exception>
@@ -68,6 +68,10 @@ public sealed record ToolCallResult
         ArgumentNullException.ThrowIfNull(admission);
         ArgumentException.ThrowIfContainsNull(content);
         ArgumentOutOfRangeException.ThrowIfUndefined(sideEffectCertainty);
+        ArgumentOutOfRangeException.ThrowIfEqual(
+            sideEffectCertainty,
+            SideEffectCertainty.NotApplicable,
+            nameof(sideEffectCertainty));
         ArgumentNullException.ThrowIfNull(normalization);
         ArgumentException.ThrowIfNotEqual(normalization.ExecutionPolicy is not null, toolId.HasValue, nameof(normalization));
         ArgumentOutOfRangeException.ThrowIfGreaterThan(content.Length, normalization.Bounds.MaximumParts, nameof(content));
@@ -153,7 +157,7 @@ public sealed record ToolCallResult
     public SideEffectCertainty SideEffectCertainty { get; }
     /// <summary>Gets optional usage.</summary><value>Null means unreported, not zero.</value>
     public ToolUsage? Usage { get; }
-    /// <summary>Gets the captured retry decision.</summary><value>True only when another attempt was selected under local replay constraints.</value>
+    /// <summary>Gets the retained retry advice.</summary><value>True when a future request may be retried under policy; this never permits replaying the terminally recorded effect, whose runtime retry still checks identity, idempotency, deadline, and budgets.</value>
     public bool Retryable { get; }
     /// <summary>Gets captured normalization rules.</summary><value>Immutable admission-time policy evidence.</value>
     public ToolResultNormalizationSnapshot Normalization { get; }

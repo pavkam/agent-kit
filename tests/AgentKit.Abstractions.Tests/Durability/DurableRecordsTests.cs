@@ -306,6 +306,37 @@ public sealed class DurableRecordsTests
         exception.ParamName.ShouldBe("sideEffectCertainty");
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void RecoveryEvidence_Constructor_WhenCertaintyIsCanonicalNumericValue_RetainsValue(int rawCertainty)
+    {
+        var certainty = (SideEffectCertainty) rawCertainty;
+
+        var evidence = new RecoveryEvidence(
+            DurabilityTestData.Address(),
+            DurabilityTestData.Context(),
+            DurableOperationState.EffectPending,
+            certainty,
+            startDefinitelyAbsent: false,
+            terminalResultRecorded: false);
+
+        evidence.SideEffectCertainty.ShouldBe(certainty);
+    }
+
+    [Fact]
+    public void SideEffectCertainty_WhenCanonicalValues_AreWireStable()
+    {
+        ((int) SideEffectCertainty.DefinitelyNotPerformed).ShouldBe(0);
+        ((int) SideEffectCertainty.Unknown).ShouldBe(1);
+        ((int) SideEffectCertainty.DefinitelyPerformed).ShouldBe(2);
+        ((int) SideEffectCertainty.PartiallyPerformed).ShouldBe(3);
+        ((int) SideEffectCertainty.NotApplicable).ShouldBe(4);
+    }
+
     [Fact]
     public void RecoveryEvidence_Constructor_WhenLastWriterTokenIsEmpty_ThrowsArgumentOutOfRangeException()
     {

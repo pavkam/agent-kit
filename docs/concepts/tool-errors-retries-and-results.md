@@ -316,6 +316,13 @@ clean pre-invocation rejection. Unknown statuses fail toward `Failed`, never
 `Success`. Human-readable content, `isError`, or absence of an error string is
 not parsed to determine any of these values.
 
+Every `ToolCallResult` represents an attempted or requested tool-effect boundary
+and therefore rejects `SideEffectCertainty.NotApplicable`. A pre-invocation
+terminal result uses `DefinitelyNotPerformed` only with evidence that the effect
+did not occur. `PartiallyPerformed` is possibly started, so retry uses the same
+idempotency or reconciliation protections as `Unknown`; durable result recording
+remains a separate fact from effect completion.
+
 When a provider protocol lacks a separate status field, the adapter MUST encode
 a deterministic bounded status envelope in the model-visible tool result or
 reject the mapping. It may not drop the status, infer it from text, or turn a
@@ -374,6 +381,8 @@ and tests its behavior before effects start.
   without fabricating a resolved `ToolId` or `ToolVersion`.
 - A timeout with unknown side effects projects as failed with uncertainty, not
   as success or a clean pre-invocation rejection.
+- A pre-invocation rejection with evidence that no effect occurred retains
+  `DefinitelyNotPerformed`; a confirmed partial effect is not blindly retried.
 - A provider without native tool status receives an explicit bounded status
   envelope or rejects the mapping.
 - Recorder failure after authorization prevents invocation because no accepted

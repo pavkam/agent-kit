@@ -48,6 +48,16 @@ namespace AgentKit;
 
 public readonly record struct AgentErrorCode(string Value);
 
+public static class AgentErrorCodes
+{
+    public static AgentErrorCode Unknown { get; }
+    public static AgentErrorCode InvalidInput { get; }
+    // One typed get-only declaration exists for every stable code in the
+    // taxonomy table. The complete set is that table plus Unknown.
+}
+
+public readonly record struct ErrorOrigin(string Value);
+
 public sealed record AgentError(
     AgentErrorCode Code,
     string SafeMessage,
@@ -60,6 +70,34 @@ public sealed record AgentError(
     TimeSpan? RetryAfter,
     ExtensionData Diagnostics);
 ```
+
+`AgentErrorCode` and `ErrorOrigin` preserve nonblank exact ordinal text. Their
+CLR defaults are invalid sentinels whose nullable `Value` is null and whose
+`ToString()` result is empty. `AgentErrorCodes` publishes one immutable typed,
+get-only value for every named stable taxonomy code plus `Unknown`; each machine
+value is exactly the documented PascalCase name. It is a declaration surface,
+not a parser, registry, resolver, or central error manager. Unknown custom and
+future codes remain valid and preserve their exact text.
+
+`ErrorOrigin` identifies the mapper or effect boundary that normalized an error.
+It is extensible provenance, not a category, authority, service key, resolver,
+or activation identity. Two boundaries may map failures to the same code while
+retaining different origins.
+
+`AgentError` is immutable and structurally compares all ten fields. It rejects
+default code/origin values, a blank safe message, undefined side-effect
+certainty, default present operation or external-request identities, a negative
+retry delay, blank present external code, and null diagnostics. A zero retry
+delay is valid. `ExternalCode` is safe opaque machine text and is never parsed
+to recover a portable code. `IsRetryable` remains advisory and cannot override
+deadline, budget, idempotency, visible-output, or side-effect policy.
+
+The constructor proves local shape only. The mapper owns redaction and decides
+which safe external code and diagnostics may cross the boundary; constructing an
+`AgentError` does not certify content safety. The portable value contains no
+`Exception` and performs no CLR activation. An original exception may remain in
+restricted in-process diagnostics owned by the mapper, but it does not become
+part of this value.
 
 Provider adapters map provider errors; tool invokers map tool errors; stores map
 storage errors; file, network, process, MCP, identity, artifact, and durability

@@ -125,6 +125,28 @@ Operation payloads use registered versioned codecs and preserve unknown
 compatible fields. Runtime objects, service scopes, tasks, cancellation sources,
 delegates, credentials, and providers are never serialized.
 
+### Shared side-effect certainty
+
+`SideEffectCertainty` is the shared numeric durable fact:
+`DefinitelyNotPerformed` is `0`, `Unknown` is `1`, `DefinitelyPerformed` is `2`,
+`PartiallyPerformed` is `3`, and `NotApplicable` is `4`. Its certainty concerns
+the relevant external effect, never whether a result record was durably written;
+`TerminalResultRecorded` carries that separate fact.
+
+`DefinitelyNotPerformed` requires affirmative evidence that the relevant effect
+did not occur, rather than merely an absent start record. `Unknown` says no
+completion certainty exists. `DefinitelyPerformed` says the effect completed.
+`PartiallyPerformed` requires affirmative evidence of partial completion and is
+possibly started for replay safety. `NotApplicable` is valid only where an
+operation has no relevant external-effect boundary; it is never an alternate
+spelling of unstarted work.
+
+For example, a host can know a payment completed while its result journal write
+failed: the certainty is `DefinitelyPerformed` and `TerminalResultRecorded` is
+false. A timeout after a confirmed partial upload is `PartiallyPerformed`, so
+recovery retains idempotency or reconciliation protections instead of replaying
+blindly.
+
 ### Backend discovery and selection
 
 ```csharp

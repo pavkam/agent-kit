@@ -164,6 +164,77 @@ namespace AgentKit
         public long Value { get; }
         public override string ToString() { }
     }
+    public sealed class AgentError : System.IEquatable<AgentKit.AgentError>
+    {
+        public AgentError(AgentKit.AgentErrorCode code, string safeMessage, bool isRetryable, AgentKit.SideEffectCertainty sideEffectCertainty, AgentKit.ErrorOrigin origin, string? externalCode, AgentKit.OperationId? operationId, AgentKit.ExternalRequestId? externalRequestId, System.TimeSpan? retryAfter, AgentKit.ExtensionData diagnostics) { }
+        public AgentKit.AgentErrorCode Code { get; }
+        public AgentKit.ExtensionData Diagnostics { get; }
+        public string? ExternalCode { get; }
+        public AgentKit.ExternalRequestId? ExternalRequestId { get; }
+        public bool IsRetryable { get; }
+        public AgentKit.OperationId? OperationId { get; }
+        public AgentKit.ErrorOrigin Origin { get; }
+        public System.TimeSpan? RetryAfter { get; }
+        public string SafeMessage { get; }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; }
+    }
+    public readonly struct AgentErrorCode : System.IEquatable<AgentKit.AgentErrorCode>
+    {
+        public AgentErrorCode(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public static class AgentErrorCodes
+    {
+        public static AgentKit.AgentErrorCode ApprovalExpired { get; }
+        public static AgentKit.AgentErrorCode ApprovalRequired { get; }
+        public static AgentKit.AgentErrorCode AuthenticationFailed { get; }
+        public static AgentKit.AgentErrorCode AuthorizationDenied { get; }
+        public static AgentKit.AgentErrorCode Cancelled { get; }
+        public static AgentKit.AgentErrorCode ConcurrencyConflict { get; }
+        public static AgentKit.AgentErrorCode Conflict { get; }
+        public static AgentKit.AgentErrorCode ConnectionFailed { get; }
+        public static AgentKit.AgentErrorCode ContentFiltered { get; }
+        public static AgentKit.AgentErrorCode ContextLimit { get; }
+        public static AgentKit.AgentErrorCode CorruptState { get; }
+        public static AgentKit.AgentErrorCode CostLimit { get; }
+        public static AgentKit.AgentErrorCode CredentialUnavailable { get; }
+        public static AgentKit.AgentErrorCode ExtensionFailed { get; }
+        public static AgentKit.AgentErrorCode IncompatibleModel { get; }
+        public static AgentKit.AgentErrorCode IncompatibleSchema { get; }
+        public static AgentKit.AgentErrorCode InternalFailure { get; }
+        public static AgentKit.AgentErrorCode InvalidConfiguration { get; }
+        public static AgentKit.AgentErrorCode InvalidInput { get; }
+        public static AgentKit.AgentErrorCode InvalidProviderRequest { get; }
+        public static AgentKit.AgentErrorCode InvalidState { get; }
+        public static AgentKit.AgentErrorCode InvalidToolArguments { get; }
+        public static AgentKit.AgentErrorCode LeaseLost { get; }
+        public static AgentKit.AgentErrorCode MigrationRequired { get; }
+        public static AgentKit.AgentErrorCode MissingDependency { get; }
+        public static AgentKit.AgentErrorCode ObserverFailed { get; }
+        public static AgentKit.AgentErrorCode OutputValidationFailed { get; }
+        public static AgentKit.AgentErrorCode ProtocolViolation { get; }
+        public static AgentKit.AgentErrorCode ProviderUnavailable { get; }
+        public static AgentKit.AgentErrorCode QueueCapacity { get; }
+        public static AgentKit.AgentErrorCode RateLimited { get; }
+        public static AgentKit.AgentErrorCode ReconciliationRequired { get; }
+        public static AgentKit.AgentErrorCode RecoveryIncompatible { get; }
+        public static AgentKit.AgentErrorCode RequestLimit { get; }
+        public static AgentKit.AgentErrorCode SessionBusy { get; }
+        public static AgentKit.AgentErrorCode StoreUnavailable { get; }
+        public static AgentKit.AgentErrorCode StructuredOutputMissing { get; }
+        public static AgentKit.AgentErrorCode Timeout { get; }
+        public static AgentKit.AgentErrorCode TokenLimit { get; }
+        public static AgentKit.AgentErrorCode ToolFailed { get; }
+        public static AgentKit.AgentErrorCode ToolInterrupted { get; }
+        public static AgentKit.AgentErrorCode ToolLimit { get; }
+        public static AgentKit.AgentErrorCode ToolOutcomeUnknown { get; }
+        public static AgentKit.AgentErrorCode TruncatedStream { get; }
+        public static AgentKit.AgentErrorCode Unknown { get; }
+        public static AgentKit.AgentErrorCode UnknownTool { get; }
+        public static AgentKit.AgentErrorCode UnsupportedCapability { get; }
+        public static AgentKit.AgentErrorCode UntrustedConfiguration { get; }
+    }
     public abstract class AgentHookEventArgs : System.EventArgs
     {
         protected AgentHookEventArgs(AgentKit.AgentId agentId, AgentKit.SessionId? sessionId, AgentKit.OperationCorrelation correlation, System.DateTimeOffset timestamp, AgentKit.HookInvocationId invocationId) { }
@@ -2617,6 +2688,12 @@ namespace AgentKit
         End = 3,
     }
     public abstract class EmbeddingVector : System.IEquatable<AgentKit.EmbeddingVector> { }
+    public readonly struct ErrorOrigin : System.IEquatable<AgentKit.ErrorOrigin>
+    {
+        public ErrorOrigin(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
     public sealed class ExecutionIdentity : System.IEquatable<AgentKit.ExecutionIdentity>
     {
         public ExecutionIdentity(AgentKit.TenantId tenantId, AgentKit.PrincipalId principalId, AgentKit.ExecutionSubjectKind subjectKind, AgentKit.AuthenticationEvidence evidence, System.Collections.Immutable.ImmutableArray<AgentKit.IdentityClaim> claims, System.Collections.Immutable.ImmutableArray<AgentKit.DelegationIdentityLink> delegationChain, AgentKit.IdentityAssuranceLevel assurance, AgentKit.IdentityVersion version) { }
@@ -6954,6 +7031,8 @@ namespace AgentKit
         DefinitelyNotPerformed = 0,
         Unknown = 1,
         DefinitelyPerformed = 2,
+        PartiallyPerformed = 3,
+        NotApplicable = 4,
     }
     public sealed class StaticApiKeyCredentialSource : AgentKit.IProviderCredentialSource
     {

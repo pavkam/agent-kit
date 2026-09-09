@@ -643,6 +643,13 @@ enforce that mechanism before the retry starts. Descriptor declarations alone
 never prove replay safety. A call known not to have started may be retried under
 ordinary retry policy.
 
+Every `ToolCallResult` describes an attempted or requested tool-effect boundary,
+so it rejects `SideEffectCertainty.NotApplicable`. A pre-invocation terminal
+result uses `DefinitelyNotPerformed` only when evidence establishes that the
+effect did not occur. `PartiallyPerformed` is possibly started and receives the
+same idempotency or reconciliation protections as an unknown effect. Completion
+certainty and durable terminal recording remain distinct facts.
+
 `ToolCallResult` is the complete authoritative terminal record, not message
 content. It retains terminal status, historical authorization/acceptance-grant
 correlation, side-effect certainty, normalized typed content, safe error,

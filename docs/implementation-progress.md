@@ -65,6 +65,24 @@ owning spec.
 
 ## Latest integration evidence
 
+The portable-error and side-effect-certainty checkpoint passed formatting, a
+Release build with no warnings or errors, and all 5,953 tests in an isolated
+checkout over `e86c153`. `AgentError` retains all ten normative fields with
+exact local guards; extensible code and origin values preserve unknown machine
+text. The 48 typed framework codes cover the stable taxonomy plus `Unknown`.
+Mappers remain responsible for safe content and operation-specific error
+translation.
+
+Side-effect certainty preserves the original three numeric values and adds
+partial completion and not-applicable states. Completion never proves durable
+terminal recording. Tool terminal values reject not-applicable certainty and
+treat partial mutating effects as possibly started for retry safety. Forty-eight
+additional cases cover error values, numeric compatibility, recovery evidence
+and tool replay constraints. The additive API changes were reviewed; rejecting
+not-applicable tool certainty is an intentional boundary correction. Provider,
+store and runtime error mapping, durable recovery and I/O final envelopes remain
+open.
+
 The run-event and context-provenance checkpoint passed formatting, a Release
 build with no warnings or errors, and all 5,905 tests in an isolated checkout
 over `900b186`. Extensible run events retain exact correlation, positive per-run

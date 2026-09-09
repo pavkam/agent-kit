@@ -51,6 +51,11 @@ The taxonomy MUST include at least:
 The final enum MAY use hierarchical codes, but consumers must be able to branch
 on the stable category without parsing messages or vendor codes.
 
+Canonical typed `AgentErrorCodes`, including `Unknown`, are declared by the
+[foundation contract](../architecture/foundation-contracts.md#stable-error-contract).
+Consumers compare those values directly; they never parse message text, vendor
+codes, or code prefixes. Textual `ErrorOrigin` is retained mapper provenance.
+
 ## Retryability
 
 `IsRetryable` is advice for the operation under the supplied context, not a
@@ -65,13 +70,15 @@ not retryable when a non-idempotent effect may have occurred.
 
 ## Side-effect certainty
 
-Every failure at an effect boundary SHOULD report one of:
-
-- `NotStarted`;
-- `Completed`;
-- `PartiallyCompleted`;
-- `Unknown`; or
-- `NotApplicable`.
+Every failure at an effect boundary reports the shared numeric
+`SideEffectCertainty` fact: `DefinitelyNotPerformed` (`0`), `Unknown` (`1`),
+`DefinitelyPerformed` (`2`), `PartiallyPerformed` (`3`), or `NotApplicable`
+(`4`). `DefinitelyNotPerformed` requires evidence that the relevant effect did
+not occur; `DefinitelyPerformed` establishes completion but says nothing about
+durable result recording. `PartiallyPerformed` requires affirmative partial
+completion evidence and remains unsafe to replay without idempotency or
+reconciliation. `Unknown` has no completion certainty. `NotApplicable` is only
+for operations with no relevant external-effect boundary, never unstarted work.
 
 This value is independent of retryability. A response-parse failure can be
 retryable at the provider level but still have consumed tokens; a tool timeout
