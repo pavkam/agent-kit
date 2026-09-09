@@ -20,7 +20,7 @@ public abstract class BudgetLedgerConformanceTests<TFixture>
 
         _ = first.ShouldNotBeNull();
         first.ShouldBe(fixture.ExpectedDescriptor);
-        second.ShouldBeSameAs(first);
+        second.ShouldBe(first);
     }
     private static readonly BudgetDimension Dimension = new("test.sum");
     private static readonly BudgetDimension MaximumDimension = new("test.maximum");
@@ -596,6 +596,51 @@ public abstract class BudgetLedgerConformanceTests<TFixture>
 
         replay.ShouldBe(settled);
         (await ledger.GetSnapshotAsync(scope)).Usages.Single().Committed.ToDecimalChecked().ShouldBe(3);
+    }
+
+    /// <summary>Verifies reconciliation keys are scoped per exact reservation and cannot disclose replay through a forged address.</summary>
+    [Fact]
+    public async Task ReconcileAsync_WhenKeyIsReusedAcrossReservations_IsIndependentAndAddressBound()
+    {
+        var ledger = new TFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "scope-reconcile-axis", 10);
+        var first = await ReserveOneAsync(ledger, scope, "axis-first", 1, Dimension, Count);
+        var second = await ReserveOneAsync(ledger, scope, "axis-second", 1, Dimension, Count);
+        _ = await ledger.MarkStartedAsync(first);
+        _ = await ledger.MarkStartedAsync(second);
+        var evidence = new BudgetStillUnknown();
+        var key = new IdempotencyKey("same-reconciliation-key");
+
+        _ = (await ledger.ReconcileAsync(new(first, evidence, key))).ShouldBeOfType<BudgetLedgerReconciliationRetainedUnknown>();
+        _ = (await ledger.ReconcileAsync(new(second, evidence, key))).ShouldBeOfType<BudgetLedgerReconciliationRetainedUnknown>();
+        _ = await Should.ThrowAsync<BudgetLedgerReferenceUnavailableException>(async () => await ledger.ReconcileAsync(new(
+            new BudgetLedgerReservationReference(new(scope.Id, Address("foreign-tenant")), first.Id), evidence, key)));
+        _ = await Should.ThrowAsync<BudgetLedgerMutationConflictException>(async () =>
+            await ledger.ReconcileAsync(new(first, new BudgetNoUsageProven(), key)));
+    }
+
+    /// <summary>Verifies lazy expiry recomputes Maximum from surviving live values rather than subtracting maxima.</summary>
+    [Theory]
+    [InlineData(10, 8, true, false, 8)]
+    [InlineData(10, 8, false, true, 10)]
+    [InlineData(10, 10, true, false, 10)]
+    [InlineData(10, 8, true, true, 0)]
+    public async Task GetSnapshotAsync_WhenMaximumRowsExpire_RecomputesSurvivingMaximum(
+        decimal firstAmount, decimal secondAmount, bool firstExpired, bool secondExpired, decimal expected)
+    {
+        var ledger = new TFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, $"scope-maximum-expiry-{firstAmount}-{secondAmount}-{firstExpired}-{secondExpired}",
+            10, dimension: MaximumDimension);
+        var operation = new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001"));
+        BudgetReservationRequest Row(string key, decimal amount, bool expired) => new(scope.Id, MaximumDimension,
+            amount, Count, operation, expired ? DateTimeOffset.UnixEpoch : DateTimeOffset.MaxValue, new(key));
+        _ = (await ledger.ReserveBatchAsync(new(scope,
+            [Row("maximum-expiry-first", firstAmount, firstExpired), Row("maximum-expiry-second", secondAmount, secondExpired)])))
+            .ShouldBeOfType<BudgetLedgerBatchReserved>();
+
+        var snapshot = await ledger.GetSnapshotAsync(scope);
+
+        snapshot.Usages.Single().Reserved.ToDecimalChecked().ShouldBe(expected);
     }
 
     /// <summary>Verifies an address mismatch uses the same unavailable-reference category and discloses no snapshot.</summary>

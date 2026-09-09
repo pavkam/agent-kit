@@ -144,9 +144,8 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
             cancellationToken.ThrowIfCancellationRequested();
             if (_scopeKeys.TryGetValue(request.OriginalRequest.IdempotencyKey, out var replay))
             {
-                return replay.Request != request
-                    ? throw Conflict("The scope key is bound to different evidence.")
-                    : ValueTask.FromResult<BudgetLedgerScopeCreateResult>(new BudgetLedgerScopeCreated(replay.Reference));
+                return ValueTask.FromResult(BudgetScopeCreateTransition.Replay(
+                    request, replay.Request, replay.Reference)!);
             }
             ScopeState? parent = null;
             if (request.OriginalRequest.ParentScopeId is { } parentId)
@@ -156,45 +155,40 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
                     throw Missing("The parent scope is unavailable.");
                 }
             }
-            var depth = (parent?.Depth ?? 0) + 1;
-            if (depth > request.Admission.MaximumScopeDepth)
+            var ancestors = ImmutableArray.CreateBuilder<BudgetLedgerScopeCreateRequest>();
+            for (var ancestor = parent; ancestor is not null; ancestor = ancestor.Parent)
             {
-                return ValueTask.FromResult<BudgetLedgerScopeCreateResult>(Rejected(BudgetScopeCreationFailureKind.MaximumDepthExceeded, "The scope would exceed its captured maximum depth."));
+                ancestors.Add(ancestor.Request);
             }
-
+            var parentEvidence = parent is null
+                ? null
+                : new ScopeCreateParent(parent.Reference, parent.Request, parent.Depth, ancestors.ToImmutable());
+            var rejection = BudgetScopeCreateTransition.EvaluateDepth(request, parentEvidence);
+            if (rejection is not null)
+            {
+                return ValueTask.FromResult<BudgetLedgerScopeCreateResult>(rejection);
+            }
+            var descriptors = ImmutableArray.CreateBuilder<BudgetDimensionDescriptor?>(request.OriginalRequest.Limits.Length);
             foreach (var limit in request.OriginalRequest.Limits)
             {
-                if (!_dimensions.TryGet(limit.Dimension, out var descriptor) || !descriptor.AllowedUnits.Contains(limit.Unit))
-                {
-                    return ValueTask.FromResult<BudgetLedgerScopeCreateResult>(Rejected(BudgetScopeCreationFailureKind.InvalidLimit, "The scope limit has no compatible dimension descriptor."));
-                }
-                for (var ancestor = parent; ancestor is not null; ancestor = ancestor.Parent)
-                {
-                    var inherited = ancestor.Request.OriginalRequest.Limits.FirstOrDefault(item => item.Dimension == limit.Dimension && item.Unit == limit.Unit);
-                    var incompatible = ancestor.Request.OriginalRequest.Limits.FirstOrDefault(item => item.Dimension == limit.Dimension && item.Unit != limit.Unit);
-                    if (incompatible is not null)
-                    {
-                        return ValueTask.FromResult<BudgetLedgerScopeCreateResult>(Rejected(BudgetScopeCreationFailureKind.InvalidLimit, "The scope limit unit conflicts with an ancestor limit."));
-                    }
-                    if (inherited is { Kind: BudgetLimitKind.Hard } && limit.Value > inherited.Value)
-                    {
-                        return ValueTask.FromResult<BudgetLedgerScopeCreateResult>(Rejected(BudgetScopeCreationFailureKind.LimitWiderThanAncestor, "The scope limit widens an ancestor hard limit."));
-                    }
-                }
+                descriptors.Add(_dimensions.TryGet(limit.Dimension, out var descriptor) ? descriptor : null);
+            }
+            rejection = BudgetScopeCreateTransition.EvaluateLimits(request, parentEvidence, descriptors.MoveToImmutable());
+            if (rejection is not null)
+            {
+                return ValueTask.FromResult<BudgetLedgerScopeCreateResult>(rejection);
             }
             var id = _scopeIds.Create();
             ArgumentOutOfRangeException.ThrowIfEqual(id, default, nameof(id));
-            if (_scopes.ContainsKey(id))
-            {
-                throw new BudgetLedgerStateException("The scope identity source produced a duplicate value.");
-            }
-            cancellationToken.ThrowIfCancellationRequested();
-            var state = new ScopeState(new BudgetLedgerScopeReference(id, request.OriginalRequest.Address), request, parent, depth);
             EnsureRevisionCapacity(1);
+            var (result, mutation) = BudgetScopeCreateTransition.PlanAccepted(
+                request, parentEvidence, id, _scopes.ContainsKey(id), _revision + 1);
+            cancellationToken.ThrowIfCancellationRequested();
+            var state = new ScopeState(mutation.Reference, mutation.Request, parent, mutation.Depth);
             _scopes.Add(id, state);
             _scopeKeys.Add(request.OriginalRequest.IdempotencyKey, state);
             _ = AdvanceRevision();
-            return ValueTask.FromResult<BudgetLedgerScopeCreateResult>(new BudgetLedgerScopeCreated(state.Reference));
+            return ValueTask.FromResult(result);
         }
     }
 
@@ -964,13 +958,6 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
             _ => throw new BudgetLedgerStateException("The committed accounting has an unsupported aggregation kind."),
         };
         return (reserved, committed);
-    }
-
-    private static BudgetLedgerScopeCreateRejected Rejected(BudgetScopeCreationFailureKind kind, string message)
-    {
-        Debug.Assert(Enum.IsDefined(kind), "The caller supplies a defined scope failure kind.");
-        Debug.Assert(!string.IsNullOrWhiteSpace(message), "The caller supplies a content-free safe message.");
-        return new(new BudgetScopeCreationFailed(kind, message));
     }
 
     private static BudgetLedgerBatchReserveRejected Reject(ScopeState scope, BudgetReservationRequest item, decimal limit, BudgetQuantity observed, BudgetQuantity requested, string? unit = null)

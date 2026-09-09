@@ -12,4 +12,7 @@
     <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
     <ProjectReference Include="../AgentKit.Observability/AgentKit.Observability.csproj"/>
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../AgentKit.Budgets.Storage.Shared/*.cs" Link="Storage/%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

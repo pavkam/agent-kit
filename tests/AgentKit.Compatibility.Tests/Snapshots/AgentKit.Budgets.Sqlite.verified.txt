@@ -1,0 +1,64 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Budgets.Sqlite.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Budgets.Sqlite
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteBudgetLedger(AgentKit.Budgets.Sqlite.SqliteBudgetLedgerTarget target, AgentKit.Budgets.Sqlite.SqliteBudgetLedgerSettings settings) { }
+        }
+    }
+    public sealed class SqliteBudgetLedger : AgentKit.IBudgetLedger
+    {
+        public SqliteBudgetLedger(AgentKit.Budgets.Sqlite.SqliteBudgetLedgerTarget target, AgentKit.Budgets.Sqlite.SqliteBudgetLedgerSettings settings, System.TimeProvider timeProvider, AgentKit.IIdentifierGenerator<AgentKit.BudgetScopeId> scopeIds, AgentKit.IIdentifierGenerator<AgentKit.BudgetReservationId> reservationIds, AgentKit.IBudgetDimensionCatalog dimensions, Microsoft.Extensions.Logging.ILogger<AgentKit.Budgets.Sqlite.SqliteBudgetLedger>? logger = null) { }
+        public AgentKit.BudgetLedgerDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetCorrectionResult> CorrectAsync(AgentKit.BudgetLedgerCorrectionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerScopeCreateResult> CreateScopeAsync(AgentKit.BudgetLedgerScopeCreateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetSnapshot> GetSnapshotAsync(AgentKit.BudgetLedgerScopeReference scope, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask InitializeAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetStartResult> MarkStartedAsync(AgentKit.BudgetLedgerReservationReference reservation, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetUnresolvedReservationPage> ReadUnresolvedStartedAsync(AgentKit.BudgetUnresolvedReservationQuery query, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReconciliationResult> ReconcileAsync(AgentKit.BudgetLedgerReconciliationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReleaseResult> ReleaseUnstartedAsync(AgentKit.BudgetLedgerReservationReference reservation, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerBatchReserveResult> ReserveBatchAsync(AgentKit.BudgetLedgerBatchReserveRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetOverrunHoldResolutionResult> ResolveOverrunHoldAsync(AgentKit.BudgetOverrunHoldResolutionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetCommitResult> SettleAsync(AgentKit.BudgetLedgerSettlementRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct SqliteBudgetLedgerInstanceId : System.IEquatable<AgentKit.Budgets.Sqlite.SqliteBudgetLedgerInstanceId>
+    {
+        public SqliteBudgetLedgerInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class SqliteBudgetLedgerSettings : System.IEquatable<AgentKit.Budgets.Sqlite.SqliteBudgetLedgerSettings>
+    {
+        public SqliteBudgetLedgerSettings(System.TimeSpan lockTimeout, int maximumPayloadBytes, int maximumResultBytes, int maximumBatchSize, int maximumLimitsPerScope, int maximumLineageDepth) { }
+        public System.TimeSpan LockTimeout { get; }
+        public int MaximumBatchSize { get; }
+        public int MaximumLimitsPerScope { get; }
+        public int MaximumLineageDepth { get; }
+        public int MaximumPayloadBytes { get; }
+        public int MaximumResultBytes { get; }
+        public static AgentKit.Budgets.Sqlite.SqliteBudgetLedgerSettings CreateDefault() { }
+    }
+    public sealed class SqliteBudgetLedgerTarget : System.IEquatable<AgentKit.Budgets.Sqlite.SqliteBudgetLedgerTarget>
+    {
+        public SqliteBudgetLedgerTarget(string databasePath, AgentKit.Budgets.Sqlite.SqliteBudgetLedgerInstanceId expectedStoreInstanceId, AgentKit.Budgets.Sqlite.SqliteDatabaseOpenMode openMode, AgentKit.Budgets.Sqlite.SqliteSchemaMode schemaMode) { }
+        public string DatabasePath { get; }
+        public AgentKit.Budgets.Sqlite.SqliteBudgetLedgerInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Budgets.Sqlite.SqliteDatabaseOpenMode OpenMode { get; }
+        public AgentKit.Budgets.Sqlite.SqliteSchemaMode SchemaMode { get; }
+    }
+    public enum SqliteDatabaseOpenMode
+    {
+        OpenExisting = 0,
+        CreateIfMissing = 1,
+    }
+    public enum SqliteSchemaMode
+    {
+        ValidateExact = 0,
+        ApplyKnownMigrations = 1,
+    }
+}

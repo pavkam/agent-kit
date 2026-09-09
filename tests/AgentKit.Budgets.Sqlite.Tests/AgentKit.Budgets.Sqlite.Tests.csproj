@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/AgentKit.Budgets.Sqlite/AgentKit.Budgets.Sqlite.csproj" />
+    <ProjectReference Include="../../src/AgentKit.Observability/AgentKit.Observability.csproj" />
+    <ProjectReference Include="../AgentKit.Conformance/AgentKit.Conformance.csproj" />
+    <ProjectReference Include="../AgentKit.Budgets.Sqlite.ProcessHost/AgentKit.Budgets.Sqlite.ProcessHost.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

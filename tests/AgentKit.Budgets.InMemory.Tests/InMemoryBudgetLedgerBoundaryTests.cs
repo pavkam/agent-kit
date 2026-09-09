@@ -49,7 +49,7 @@ public sealed class InMemoryBudgetLedgerBoundaryTests
         var second = ledger.Descriptor;
 
         first.ShouldBe(new BudgetLedgerDescriptor(false, BudgetLedgerConcurrencyDomain.ProcessLocal));
-        second.ShouldBeSameAs(first);
+        second.ShouldBe(first);
     }
 
     /// <summary>Verifies the registration extension validates its receiver.</summary>

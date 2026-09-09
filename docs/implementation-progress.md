@@ -7,11 +7,18 @@ conformance to requirements it does not exercise.
 
 ## Objective and operating rules
 
-Implement all missing parts of the documented architecture and correct divergent
-implementations. Terra and Sol agents perform implementation; the coordinating
-architect assigns ownership, reviews decisions and evidence, and commits
-verified checkpoints. Preserve concurrent work and record unresolved
-requirements rather than weakening specifications to match existing code.
+The broad architecture implementation goal was stopped at the user’s request on
+2026-09-09. Closeout is limited to the already-started SQLite budget ledger,
+provider compatibility values and usage-report state migration, followed by
+verification, commits and a push. Remaining architecture requirements stay open;
+no further checkpoint starts without a new instruction.
+
+The original objective was to implement all missing parts of the documented
+architecture and correct divergent implementations. Terra and Sol agents perform
+implementation; the coordinating architect assigns ownership, reviews decisions
+and evidence, and commits verified checkpoints. Preserve concurrent work and
+record unresolved requirements rather than weakening specifications to match
+existing code.
 
 Each component closes only after its contracts, first-party implementations,
 registrations, capabilities, failure semantics, diagnostics, reusable
@@ -64,6 +71,20 @@ owning spec.
 | Exact authority selection                              | Isolated Release solution: 4,214 passed; Permissions: 52 passed; full format/lint passed; three additive API snapshots reviewed                                   | Explicit bindings, typed missing-key results and isolated diagnostics verified; policy capture, audit and session integration remain open             |
 
 ## Latest integration evidence
+
+The SQLite budget-ledger checkpoint passed formatting, a Release build with no
+warnings or errors, and all 6,134 tests without skips in an isolated checkout
+over `b3f9b89`. The explicit local adapter implements the shared ledger contract
+with exact decimal accounting, atomic batch admission, stable replay receipts,
+revisioned corrections and retained started reservations after process loss.
+Shared scope-admission mechanics keep the in-memory and SQLite adapters aligned.
+
+The gate covers concurrency, bounded codecs, exact schema and store identity,
+corrupt persisted values, commit-acknowledgement uncertainty, indexed active and
+unresolved queries, process-kill recovery, and diagnostics that cannot change
+semantic outcomes. The additive public API snapshot was reviewed. SQLite
+provides durable host-local storage; distributed ownership, cross-store
+atomicity, full budget profile selection and consumer integration remain open.
 
 The provider-profile and history-cursor checkpoint passed formatting, a Release
 build with no warnings or errors, and all 6,038 tests in an isolated checkout
