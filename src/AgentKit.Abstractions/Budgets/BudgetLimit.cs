@@ -21,9 +21,12 @@ public sealed record BudgetLimit
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="value"/> is negative, or <paramref name="kind"/> is undefined.
     /// </exception>
+    /// <exception cref="ArgumentException"><paramref name="dimension"/> or <paramref name="unit"/> is default or blank.</exception>
     public BudgetLimit(BudgetDimension dimension, decimal value, BudgetUnit unit, BudgetLimitKind kind)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(dimension.Value, nameof(dimension));
         ArgumentOutOfRangeException.ThrowIfNegative(value);
+        ArgumentException.ThrowIfNullOrWhiteSpace(unit.Value, nameof(unit));
         ArgumentOutOfRangeException.ThrowIfUndefined(kind);
 
         Dimension = dimension;
@@ -33,14 +36,50 @@ public sealed record BudgetLimit
     }
 
     /// <summary>Gets the dimension this limit applies to.</summary>
-    public BudgetDimension Dimension { get; init; }
+    /// <exception cref="ArgumentException">An initializer assigns a default or blank dimension.</exception>
+    public BudgetDimension Dimension
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(Dimension));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the configured ceiling value.</summary>
-    public decimal Value { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">An initializer assigns a negative value.</exception>
+    public decimal Value
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value, nameof(Value));
+            field = value;
+        }
+    }
 
     /// <summary>Gets the unit <see cref="Value"/> is expressed in.</summary>
-    public BudgetUnit Unit { get; init; }
+    /// <exception cref="ArgumentException">An initializer assigns a default or blank unit.</exception>
+    public BudgetUnit Unit
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(Unit));
+            field = value;
+        }
+    }
 
     /// <summary>Gets whether this limit is enforced or observational.</summary>
-    public BudgetLimitKind Kind { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">An initializer assigns an undefined value.</exception>
+    public BudgetLimitKind Kind
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfUndefined(value, nameof(Kind));
+            field = value;
+        }
+    }
 }

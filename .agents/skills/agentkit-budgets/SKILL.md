@@ -32,14 +32,19 @@ read the [modern C# rules](../references/modern-csharp.md).
 3. Reserve before work and mark started before an effect. Dispose only unstarted
    capacity; unknown started spend remains unresolved or explicitly estimated
    until reconciliation. Record actual overrun fully and apply corrections once.
-4. Enforce every shared scope and reserve every dimension of an indivisible
+4. Apply each dimension's declared aggregation to amounts in its declared unit.
+   Sum and duration add usage; maximum compares live, committed, and candidate
+   maxima; concurrent gauges sum live capacity-retaining amounts and retain no
+   committed balance after proven completion or release. Never substitute row
+   count or a different aggregation as a fallback.
+5. Enforce every shared scope and reserve every dimension of an indivisible
    batch atomically or none. Transfer/subdivide reserved capacity rather than
    charging the same work again at a lower layer.
-5. Preserve measured, provider-reported, estimated, and unknown provenance.
+6. Preserve measured, provider-reported, estimated, and unknown provenance.
    Provider corrections replace provisional accounting rather than double-count.
-6. Return typed exhaustion with boundary and partial-effect certainty. Budget
+7. Return typed exhaustion with boundary and partial-effect certainty. Budget
    events observe immutable facts and cannot call back into the authority.
-7. Validate live capability bindings against tenant, principal, operation, and
+8. Validate live capability bindings against tenant, principal, operation, and
    active run. Before-run and after-run addresses omit an active run; a causal
    run identifier never reopens settled capacity. New after-run work receives a
    child operation scope under an authorized non-run parent.

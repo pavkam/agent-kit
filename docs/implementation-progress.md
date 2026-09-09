@@ -65,6 +65,21 @@ owning spec.
 
 ## Latest integration evidence
 
+The budget-value checkpoint passed 2,411 abstraction tests, 67 budget-runtime
+tests, and 66 public API checks in an isolated checkout over `9d6daed`.
+Construction and record initialization now reject invalid limit dimensions,
+units, negative amounts, undefined kinds, default parent identities, default
+replay keys, and duplicate dimensions. The reusable type-qualified limit guard
+has direct boundary and parameter-name coverage. This intentionally tightens
+invalid-input behavior: malformed values fail at construction or copying, before
+a ledger request can carry them. The only additive public API is the canonical
+guard.
+
+The budget owner document, concept, and skill now define amount-based gauge
+accounting and distinguish maximum aggregation from addition. The existing
+budget authority still needs migration to the new ledger; correcting the
+contract does not claim that its legacy uniform-sum behavior is compliant.
+
 The session-codec value checkpoint passed all 2,391 abstraction tests and 66
 public API checks in an isolated checkout over `910e4d3`. The additive codec
 contract uses exact wire type/schema identities, structurally equal immutable

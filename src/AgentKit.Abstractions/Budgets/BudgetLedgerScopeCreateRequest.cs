@@ -10,15 +10,14 @@ public sealed record BudgetLedgerScopeCreateRequest
     /// <param name="originalRequest">The non-null caller request used for exact replay comparison.</param>
     /// <param name="admission">The non-null captured admission facts persisted with the scope.</param>
     /// <exception cref="ArgumentNullException"><paramref name="originalRequest"/> or <paramref name="admission"/> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="originalRequest"/> supplies a default idempotency key
-    /// or a present default parent scope identity.
-    /// </exception>
+    /// <exception cref="ArgumentException"><paramref name="originalRequest"/> contains invalid limits or blank replay evidence.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="originalRequest"/> contains a present default parent identity, negative limit, or undefined limit kind.</exception>
     public BudgetLedgerScopeCreateRequest(BudgetScopeRequest originalRequest, BudgetScopeAdmission admission)
     {
         ArgumentNullException.ThrowIfNull(originalRequest);
         ArgumentNullException.ThrowIfNull(admission);
-        ArgumentOutOfRangeException.ThrowIfEqual(originalRequest.IdempotencyKey, default, nameof(originalRequest));
+        ArgumentException.ThrowIfInvalidBudgetScopeLimits(originalRequest.Limits, nameof(originalRequest));
+        ArgumentException.ThrowIfNullOrWhiteSpace(originalRequest.IdempotencyKey.Value, nameof(originalRequest));
         if (originalRequest.ParentScopeId is { } parentScopeId)
         {
             ArgumentOutOfRangeException.ThrowIfEqual(parentScopeId, default, nameof(originalRequest));

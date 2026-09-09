@@ -33,16 +33,30 @@ public sealed record BudgetScopeRequest
     /// <param name="address">The hierarchical address of the new scope.</param>
     /// <param name="limits">The limits configured directly on the new scope.</param>
     /// <param name="idempotencyKey">The key that makes repeating this exact request safe.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="address"/> is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="limits"/> is a default, uninitialized array.</exception>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="address"/> is null, <paramref name="idempotencyKey"/> is default, or a limit has a default dimension or unit.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="limits"/> is default, contains null, contains blank dimension or unit text, or repeats a dimension;
+    /// or <paramref name="idempotencyKey"/> is blank.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="parentScopeId"/> is present and default, or a limit is negative or has an undefined kind.
+    /// </exception>
     public BudgetScopeRequest(
         BudgetScopeId? parentScopeId,
         BudgetScopeAddress address,
         ImmutableArray<BudgetLimit> limits,
         IdempotencyKey idempotencyKey)
     {
+        if (parentScopeId is { } parent)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(parent, default, nameof(parentScopeId));
+        }
+
         ArgumentNullException.ThrowIfNull(address);
-        ArgumentException.ThrowIfDefault(limits);
+        ArgumentException.ThrowIfInvalidBudgetScopeLimits(limits);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey.Value, nameof(idempotencyKey));
 
         ParentScopeId = parentScopeId;
         Address = address;
@@ -54,7 +68,20 @@ public sealed record BudgetScopeRequest
     /// Gets the scope this new scope is a child of, when applicable;
     /// <see langword="null"/> creates a root scope.
     /// </summary>
-    public BudgetScopeId? ParentScopeId { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">An initializer assigns a present default identity.</exception>
+    public BudgetScopeId? ParentScopeId
+    {
+        get;
+        init
+        {
+            if (value is { } parent)
+            {
+                ArgumentOutOfRangeException.ThrowIfEqual(parent, default, nameof(ParentScopeId));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>Gets the hierarchical address of the new scope.</summary>
     public BudgetScopeAddress Address
@@ -68,18 +95,30 @@ public sealed record BudgetScopeRequest
     }
 
     /// <summary>Gets the limits configured directly on the new scope.</summary>
+    /// <exception cref="ArgumentException">An initializer assigns invalid limits or repeats a dimension.</exception>
+    /// <exception cref="ArgumentNullException">An initializer assigns a collection containing a default dimension or unit.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer assigns a negative limit or undefined limit kind.</exception>
     public ImmutableArray<BudgetLimit> Limits
     {
         get;
         init
         {
-            ArgumentException.ThrowIfDefault(value);
+            ArgumentException.ThrowIfInvalidBudgetScopeLimits(value, nameof(Limits));
             field = value;
         }
     }
 
     /// <summary>Gets the key that makes repeating this exact request safe.</summary>
-    public IdempotencyKey IdempotencyKey { get; init; }
+    /// <exception cref="ArgumentException">An initializer assigns a default or blank key.</exception>
+    public IdempotencyKey IdempotencyKey
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value.Value, nameof(IdempotencyKey));
+            field = value;
+        }
+    }
 
     /// <inheritdoc/>
     public bool Equals(BudgetScopeRequest? other) =>

@@ -196,6 +196,16 @@ public interface IBudgetDimensionCatalog
 }
 ```
 
+Aggregation applies to amounts in the dimension's declared unit, not to ledger
+row count. `Sum` and `Duration` add live reservations and committed actuals.
+`Maximum` observes the maximum across live reserved amounts, committed actual
+amounts, and candidate reservations. `ConcurrentGauge` adds the amounts of all
+live capacity-retaining reservations and records zero committed usage after
+proven completion or release. One gauge reservation of three slots therefore
+uses the same capacity as three simultaneous one-slot reservations. An adapter
+cannot substitute sum aggregation for another kind as a conservative fallback;
+that changes the configured capacity semantics.
+
 Disposal releases an unstarted reservation exactly once. Immediately before
 starting charged work, its owner calls `MarkStartedAsync`; failure starts no
 work. A started reservation is committed with known actual usage or retained as

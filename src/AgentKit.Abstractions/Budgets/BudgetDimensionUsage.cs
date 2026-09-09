@@ -19,8 +19,8 @@ public sealed record BudgetDimensionUsage
     /// <summary>Initializes a new instance of the <see cref="BudgetDimensionUsage"/> record.</summary>
     /// <param name="dimension">The dimension this usage describes.</param>
     /// <param name="unit">The unit <paramref name="reserved"/> and <paramref name="committed"/> are expressed in.</param>
-    /// <param name="reserved">The sum of currently outstanding, uncommitted reservations.</param>
-    /// <param name="committed">The sum of committed actual amounts.</param>
+    /// <param name="reserved">The live reserved observation under the dimension's declared aggregation.</param>
+    /// <param name="committed">The committed actual observation under the dimension's declared aggregation.</param>
     /// <param name="limit">The configured limit for this dimension, when one is configured.</param>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="reserved"/> or <paramref name="committed"/> is negative.
@@ -48,10 +48,10 @@ public sealed record BudgetDimensionUsage
     /// <summary>Gets the unit <see cref="Reserved"/> and <see cref="Committed"/> are expressed in.</summary>
     public BudgetUnit Unit { get; init; }
 
-    /// <summary>Gets the sum of currently outstanding, uncommitted reservations.</summary>
+    /// <summary>Gets live reserved usage: a sum for sum, duration, and concurrent-gauge dimensions, or the largest live amount for a maximum dimension.</summary>
     public decimal Reserved { get; init; }
 
-    /// <summary>Gets the sum of committed actual amounts.</summary>
+    /// <summary>Gets committed usage: a sum for sum and duration dimensions, the largest actual for a maximum dimension, or zero for a concurrent gauge.</summary>
     public decimal Committed { get; init; }
 
     /// <summary>Gets the configured limit for this dimension, when one is configured.</summary>

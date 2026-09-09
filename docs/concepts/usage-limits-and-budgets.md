@@ -89,6 +89,14 @@ reservation; a started reservation with unknown usage MUST remain unresolved or
 be conservatively charged with explicit estimated provenance until reconciled.
 Process loss is not evidence that no money or tokens were consumed.
 
+Aggregation uses reservation amounts in the dimension's declared unit. Sum and
+duration dimensions add live reserved and committed actual amounts. A maximum
+dimension compares the largest live reservation, committed actual, and proposed
+reservation. A concurrent gauge adds every live capacity-retaining amount and
+has no committed remainder after proven completion or release. Row count is not
+capacity: one reservation for three concurrent slots is equivalent to three live
+one-slot reservations.
+
 An indivisible batch MUST reserve every required dimension across its shared
 ancestors atomically or reserve none. A sequence of independently successful
 single-dimension checks is insufficient. Each charged dimension has one owner;

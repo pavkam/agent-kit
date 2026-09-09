@@ -554,8 +554,8 @@ The architecture index defines document authority and change rules.
   for goal state, attempts, scoped child work, joins, communication, and
   handoffs, including coding-harness task/subagent tools.
 - Use [agentkit-budgets](.agents/skills/agentkit-budgets/SKILL.md) for
-  hierarchical limits, atomic reservations, usage accounting, corrections, and
-  typed exhaustion.
+  hierarchical limits, atomic reservations, dimension aggregation semantics,
+  usage accounting, corrections, and typed exhaustion.
 - Use [agentkit-hooks](.agents/skills/agentkit-hooks/SKILL.md) for typed
   lifecycle hooks, ordering, mutation validation, short-circuiting, reentrancy,
   stage identity, failure-policy precedence, and rollback-safe isolation.

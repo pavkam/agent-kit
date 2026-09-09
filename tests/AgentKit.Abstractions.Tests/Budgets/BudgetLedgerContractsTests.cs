@@ -6,6 +6,159 @@ namespace AgentKit.Abstractions.Tests.Budgets;
 public sealed class BudgetLedgerContractsTests
 {
     [Fact]
+    public void BudgetLimit_WhenZeroCeilingIsSupplied_PreservesValidBoundary()
+    {
+        var limit = new BudgetLimit(
+            new BudgetDimension("tests.requests"), 0m, new BudgetUnit("requests"), BudgetLimitKind.Hard);
+
+        limit.Value.ShouldBe(0m);
+    }
+
+    [Fact]
+    public void BudgetLimit_WhenConstructorDimensionIsDefault_ThrowsExactArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new BudgetLimit(
+            default, 1m, new BudgetUnit("requests"), BudgetLimitKind.Hard));
+
+        exception.ParamName.ShouldBe("dimension");
+    }
+
+    [Fact]
+    public void BudgetLimit_WhenConstructorUnitIsDefault_ThrowsExactArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new BudgetLimit(
+            new BudgetDimension("tests.requests"), 1m, default, BudgetLimitKind.Hard));
+
+        exception.ParamName.ShouldBe("unit");
+    }
+
+    [Fact]
+    public void BudgetLimit_WhenConstructorValueIsNegative_ThrowsExactArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetLimit(
+            new BudgetDimension("tests.requests"), -1m, new BudgetUnit("requests"), BudgetLimitKind.Hard));
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void BudgetLimit_WhenConstructorKindIsUndefined_ThrowsExactArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetLimit(
+            new BudgetDimension("tests.requests"), 1m, new BudgetUnit("requests"),
+            (BudgetLimitKind) int.MaxValue));
+
+        exception.ParamName.ShouldBe("kind");
+    }
+
+    [Fact]
+    public void BudgetScopeRequest_WhenConstructorParentIsDefault_ThrowsExactArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetScopeRequest(
+            new BudgetScopeId(), Address(), [], new IdempotencyKey("scope")));
+
+        exception.ParamName.ShouldBe("parentScopeId");
+    }
+
+    [Fact]
+    public void BudgetScopeRequest_WhenConstructorIdempotencyKeyIsDefault_ThrowsExactArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new BudgetScopeRequest(
+            null, Address(), [], default));
+
+        exception.ParamName.ShouldBe("idempotencyKey");
+    }
+
+    [Fact]
+    public void BudgetLimit_WhenCopiedDimensionIsDefault_RejectsCopy()
+    {
+        var limit = Limit();
+
+        var exception = Should.Throw<ArgumentNullException>(() => limit with { Dimension = default });
+
+        exception.ParamName.ShouldBe("Dimension");
+    }
+
+    [Fact]
+    public void BudgetLimit_WhenCopiedUnitIsDefault_RejectsCopy()
+    {
+        var limit = Limit();
+
+        var exception = Should.Throw<ArgumentNullException>(() => limit with { Unit = default });
+
+        exception.ParamName.ShouldBe("Unit");
+    }
+
+    [Fact]
+    public void BudgetLimit_WhenCopiedValueIsNegative_RejectsCopy()
+    {
+        var limit = Limit();
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => limit with { Value = -1m });
+
+        exception.ParamName.ShouldBe("Value");
+    }
+
+    [Fact]
+    public void BudgetLimit_WhenCopiedKindIsUndefined_RejectsCopy()
+    {
+        var limit = Limit();
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(
+            () => limit with { Kind = (BudgetLimitKind) int.MaxValue });
+
+        exception.ParamName.ShouldBe("Kind");
+    }
+
+    [Fact]
+    public void BudgetScopeRequest_WhenLimitsContainNull_RejectsBeforeAssignment()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new BudgetScopeRequest(
+            null, Address(), [null!], new IdempotencyKey("scope")));
+
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe("limits");
+    }
+
+    [Fact]
+    public void BudgetScopeRequest_WhenLimitsRepeatDimension_RejectsBeforeAssignment()
+    {
+        var first = Limit();
+        var second = new BudgetLimit(first.Dimension, 2m, first.Unit, BudgetLimitKind.Soft);
+
+        var exception = Should.Throw<ArgumentException>(() => new BudgetScopeRequest(
+            null, Address(), [first, second], new IdempotencyKey("scope")));
+
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe("limits");
+    }
+
+    [Fact]
+    public void BudgetScopeRequest_WhenCopiedLimitsRepeatDimension_RejectsCopy()
+    {
+        var request = ScopeRequest();
+        var limit = Limit();
+
+        var exception = Should.Throw<ArgumentException>(
+            () => request with { Limits = [limit, limit] });
+
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe("Limits");
+    }
+
+    [Fact]
+    public void BudgetLedgerScopeCreateRequest_WhenScopeLimitsAreValid_PreservesValidatedProductionEvidence()
+    {
+        var original = new BudgetScopeRequest(
+            null, Address(), [Limit()], new IdempotencyKey("scope"));
+
+        var request = new BudgetLedgerScopeCreateRequest(original, Admission());
+
+        request.OriginalRequest.ShouldBeSameAs(original);
+        request.OriginalRequest.Limits.ShouldBe(original.Limits);
+    }
+
+    [Fact]
     public void BudgetLedgerBatchReserveRequest_WhenOriginalBatchIsValid_PreservesOnlyOriginalEvidence()
     {
         var scope = Scope();
@@ -540,28 +693,25 @@ public sealed class BudgetLedgerContractsTests
     }
 
     [Fact]
-    public void BudgetLedgerScopeCreateRequest_WhenOriginalIdempotencyKeyIsDefault_RejectsBeforePropertyAssignment()
+    public void BudgetScopeRequest_WhenCopiedIdempotencyKeyIsDefault_RejectsCopy()
     {
-        var originalRequest = ScopeRequest() with { IdempotencyKey = default };
+        var originalRequest = ScopeRequest();
 
-        var exception = Should.Throw<ArgumentOutOfRangeException>(
-            () => new BudgetLedgerScopeCreateRequest(originalRequest, Admission()));
+        var exception = Should.Throw<ArgumentNullException>(
+            () => originalRequest with { IdempotencyKey = default });
 
-        exception.ParamName.ShouldBe("originalRequest");
+        exception.ParamName.ShouldBe("IdempotencyKey");
     }
 
     [Fact]
-    public void BudgetLedgerScopeCreateRequest_WhenOriginalParentScopeIdIsPresentAndDefault_RejectsBeforePropertyAssignment()
+    public void BudgetScopeRequest_WhenCopiedParentScopeIdIsPresentAndDefault_RejectsCopy()
     {
-        var originalRequest = ScopeRequest() with
-        {
-            ParentScopeId = (BudgetScopeId?) default(BudgetScopeId)
-        };
+        var originalRequest = ScopeRequest();
 
         var exception = Should.Throw<ArgumentOutOfRangeException>(
-            () => new BudgetLedgerScopeCreateRequest(originalRequest, Admission()));
+            () => originalRequest with { ParentScopeId = new BudgetScopeId() });
 
-        exception.ParamName.ShouldBe("originalRequest");
+        exception.ParamName.ShouldBe("ParentScopeId");
     }
 
     [Fact]
@@ -1173,6 +1323,9 @@ public sealed class BudgetLedgerContractsTests
     ];
 
     private static BudgetScopeRequest ScopeRequest() => new(null, Address(), [], new IdempotencyKey("scope"));
+
+    private static BudgetLimit Limit() => new(
+        new BudgetDimension("tests.requests"), 1m, new BudgetUnit("requests"), BudgetLimitKind.Hard);
 
     private static BudgetScopeAdmission Admission() => new(1, 1, TimeSpan.FromMinutes(1));
 

@@ -837,6 +837,38 @@ public static class ArgumentExceptionExtensions
             }
         }
 
+        /// <summary>Throws when scope limits cannot form one deterministic per-dimension limit set.</summary>
+        /// <param name="limits">The initialized limit sequence to validate in its declared order.</param>
+        /// <param name="paramName">The parameter name inferred from the limit expression when omitted.</param>
+        /// <exception cref="ArgumentNullException">A member has a default dimension or unit.</exception>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="limits"/> is default, contains a null member, contains blank dimension or unit text,
+        /// or repeats a dimension.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// A limit value is negative or a limit kind is undefined.
+        /// </exception>
+        public static void ThrowIfInvalidBudgetScopeLimits(
+            ImmutableArray<BudgetLimit> limits,
+            [CallerArgumentExpression(nameof(limits))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfDefault(limits, paramName);
+            ArgumentException.ThrowIfContainsNull(limits, paramName);
+            var dimensions = new HashSet<BudgetDimension>();
+            foreach (var limit in limits)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(limit.Dimension.Value, paramName);
+                ArgumentOutOfRangeException.ThrowIfNegative(limit.Value, paramName);
+                ArgumentException.ThrowIfNullOrWhiteSpace(limit.Unit.Value, paramName);
+                ArgumentOutOfRangeException.ThrowIfUndefined(limit.Kind, paramName);
+                if (!dimensions.Add(limit.Dimension))
+                {
+                    throw new ArgumentException(
+                        "A budget scope may declare at most one limit for each dimension.", paramName);
+                }
+            }
+        }
+
         /// <summary>Throws when a stream cannot supply artifact content.</summary>
         /// <param name="stream">The non-null stream to inspect.</param>
         /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
