@@ -65,6 +65,13 @@ owning spec.
 
 ## Latest integration evidence
 
+The model-selection candidate guard checkpoint passed formatting, a Release
+build with no warnings or errors, and all 5,685 tests in an isolated checkout
+over `7c9bca0`. Constructor and initializer/copy assignment now reject default
+model aliases before retaining a candidate list. Three focused tests verify
+exact exception names and valid candidate ordering. Public signatures remain
+unchanged; this corrects invalid input previously accepted by the policy.
+
 The configuration-source primitive checkpoint passed formatting, repository
 lint, a Release build with no warnings or errors, and all 5,682 tests in an
 isolated checkout over `5cb8982`. Source and path identities preserve ordinal

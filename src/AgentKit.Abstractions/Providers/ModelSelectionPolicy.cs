@@ -46,6 +46,7 @@ public sealed record ModelSelectionPolicy
     /// duplicate alias.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="candidates"/> contains a default alias, or
     /// <paramref name="fallback"/> or <paramref name="downgrade"/> is not a
     /// defined enumeration value.
     /// </exception>
@@ -70,6 +71,9 @@ public sealed record ModelSelectionPolicy
     /// <exception cref="ArgumentException">
     /// An initializer attempts to set an uninitialized, empty, or duplicated
     /// candidate list.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// An initializer attempts to include a default alias.
     /// </exception>
     public ImmutableArray<ModelAlias> Candidates
     {
@@ -164,6 +168,7 @@ public sealed record ModelSelectionPolicy
         var seen = new HashSet<ModelAlias>();
         foreach (var candidate in candidates)
         {
+            ArgumentOutOfRangeException.ThrowIfEqual(candidate, default, paramName);
             if (!seen.Add(candidate))
             {
                 throw new ArgumentException(
