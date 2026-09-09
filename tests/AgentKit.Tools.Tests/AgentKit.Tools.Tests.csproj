@@ -19,5 +19,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj" />
+    <ProjectReference Include="../AgentKit.Conformance/AgentKit.Conformance.csproj" />
   </ItemGroup>
 </Project>

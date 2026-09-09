@@ -20,10 +20,13 @@ using System.Diagnostics.CodeAnalysis;
 public sealed class ToolCatalog: IToolCatalog
 {
     private readonly ImmutableDictionary<ToolId, ITool> _tools;
+    private readonly ImmutableDictionary<ToolId, ToolDescriptor> _capturedDescriptors;
 
     /// <summary>Initializes a new instance of the <see cref="ToolCatalog"/> class.</summary>
     /// <param name="tools">Every tool to register in this catalog.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="tools"/> is null.</exception>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="tools"/>, an element, or an element's descriptor is null.
+    /// </exception>
     /// <exception cref="ArgumentException">
     /// Two tools in <paramref name="tools"/> declare the same <see cref="ToolId"/>.
     /// </exception>
@@ -32,20 +35,22 @@ public sealed class ToolCatalog: IToolCatalog
         ArgumentNullException.ThrowIfNull(tools);
 
         var builder = ImmutableDictionary.CreateBuilder<ToolId, ITool>();
+        var capturedDescriptors = ImmutableDictionary.CreateBuilder<ToolId, ToolDescriptor>();
         var descriptors = ImmutableArray.CreateBuilder<ToolDescriptor>();
 
         foreach (var tool in tools)
         {
-            if (!builder.TryAdd(tool.Descriptor.Id, tool))
-            {
-                throw new ArgumentException(
-                    $"Duplicate tool id '{tool.Descriptor.Id}' registered in the catalog.", nameof(tools));
-            }
+            ArgumentNullException.ThrowIfNull(tool, nameof(tools));
+            var descriptor = tool.Descriptor;
+            ArgumentNullException.ThrowIfNull(descriptor, nameof(tools));
+            ArgumentException.ThrowIfNotEqual(builder.TryAdd(descriptor.Id, tool), true, nameof(tools));
 
-            descriptors.Add(tool.Descriptor);
+            capturedDescriptors.Add(descriptor.Id, descriptor);
+            descriptors.Add(descriptor);
         }
 
         _tools = builder.ToImmutable();
+        _capturedDescriptors = capturedDescriptors.ToImmutable();
         Descriptors = descriptors.ToImmutable();
     }
 
@@ -54,4 +59,24 @@ public sealed class ToolCatalog: IToolCatalog
 
     /// <inheritdoc/>
     public bool TryResolve(ToolId id, [NotNullWhen(true)] out ITool? tool) => _tools.TryGetValue(id, out tool);
+
+    /// <summary>Resolves the registered tool and the exact descriptor captured with it at catalog construction.</summary>
+    /// <param name="id">The canonical tool identity to resolve.</param>
+    /// <param name="tool">The borrowed registered tool instance when found; the catalog does not own its lifetime.</param>
+    /// <param name="descriptor">The same immutable descriptor instance published by <see cref="Descriptors"/> when found.</param>
+    /// <returns>True when both captured values exist for <paramref name="id"/>; otherwise false.</returns>
+    public bool TryResolve(
+        ToolId id,
+        [NotNullWhen(true)] out ITool? tool,
+        [NotNullWhen(true)] out ToolDescriptor? descriptor)
+    {
+        if (_tools.TryGetValue(id, out tool))
+        {
+            descriptor = _capturedDescriptors[id];
+            return true;
+        }
+
+        descriptor = null;
+        return false;
+    }
 }

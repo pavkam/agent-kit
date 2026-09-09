@@ -65,6 +65,21 @@ owning spec.
 
 ## Latest integration evidence
 
+The coherent catalog-resolution checkpoint passed formatting, repository lint, a
+Release build with no warnings or errors, and all 5,643 tests in an isolated
+checkout over `4db57f7`. The catalog reads each tool descriptor once, advertises
+that exact value, and returns it with the original borrowed tool. The invoker
+authorizes that pair through the interface contract, including replacement
+catalogs, without rereading live descriptor metadata.
+
+Seven additional tests cover descriptor changes to effects/source/schema,
+duplicate and null registrations, borrowed instance identity, custom catalog
+replacement, invocation forwarding, and reusable paired-resolution conformance.
+The old tool-only overload remains; the required paired overload intentionally
+changes catalog implementor compatibility. Two API snapshots were reviewed.
+Run-bound catalog capture, provider-alias resolution, authoritative terminal
+recording, and deterministic projection remain open.
+
 The terminal-result architecture amendment passed focused Markdown formatting
 and lint. It separates bounded raw admission, authorized invocation acceptance,
 authoritative terminal recording, and history projection. Unresolved aliases
@@ -113,9 +128,9 @@ packages.
 The constructor/property API correction is intentional and has a reviewed
 snapshot; callers must supply actual versions, source identities, and owned
 schemas. Complete catalog capture/resolution, authoritative terminal recording,
-projection, and provider/loop migration remain open. The legacy catalog and
-invoker also reread descriptor getters; the forthcoming captured binding must
-use one descriptor consistently through resolution and authorization.
+projection, and provider/loop migration remain open. The later
+coherent-resolution checkpoint fixes the legacy catalog and invoker descriptor
+rereads; full run-bound catalog capture remains open.
 
 The extension-comparer correction passed formatting, repository lint, a Release
 build with no warnings or errors, and all 5,620 tests in an isolated checkout

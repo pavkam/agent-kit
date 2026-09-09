@@ -3432,6 +3432,7 @@ namespace AgentKit
     {
         System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> Descriptors { get; }
         bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool);
+        bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ToolDescriptor? descriptor);
     }
     public interface IToolInvoker
     {

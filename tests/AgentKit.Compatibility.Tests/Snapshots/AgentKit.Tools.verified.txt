@@ -33,5 +33,6 @@ namespace AgentKit.Tools
         public ToolCatalog(System.Collections.Generic.IEnumerable<AgentKit.ITool> tools) { }
         public System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> Descriptors { get; }
         public bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool) { }
+        public bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ToolDescriptor? descriptor) { }
     }
 }

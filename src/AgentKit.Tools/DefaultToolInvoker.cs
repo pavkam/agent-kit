@@ -72,7 +72,7 @@ public sealed class DefaultToolInvoker: IToolInvoker
             tags: CreateActivityTags(request));
         ToolLog.Started(_logger, context.ToolCallId, request.ToolId);
 
-        if (!_catalog.TryResolve(request.ToolId, out var tool))
+        if (!_catalog.TryResolve(request.ToolId, out var tool, out var descriptor))
         {
             activity.SetFailed("unknown_tool", "unknown_tool");
             ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "unknown_tool"));
@@ -81,7 +81,7 @@ public sealed class DefaultToolInvoker: IToolInvoker
         }
 
         var authorization = await _authorizer.AuthorizeAsync(
-            new ToolAuthorizationRequest(request.Context, tool.Descriptor), cancellationToken).ConfigureAwait(false);
+            new ToolAuthorizationRequest(request.Context, descriptor), cancellationToken).ConfigureAwait(false);
 
         if (authorization is ToolAuthorizationDenied denied)
         {
