@@ -71,40 +71,226 @@ request according to policy.
 
 ## Authoritative terminal record and history projection
 
-`ToolCallResult` is the complete authoritative terminal record. It retains the
-exact terminal status, call and requested alias, resolved tool/version identity
-when available, authorization and grant correlation, bounded normalized content,
-safe error, side-effect certainty, usage, retry decision, timestamps, and
-extension evidence. The runtime MUST commit that full value through
-`IToolCallRecorder` before adding a tool result to message history. A failure to
-materialize history retries from the recorded result and MUST NOT invoke the
-tool again.
+A call has three durable stages with distinct authority:
 
-The accepted call and terminal record retain the captured projection-policy
-identity, version, and bounds. Recovery MUST use that captured policy or return
-a typed unavailable/publication failure; it MUST NOT reproject under whatever
-policy happens to be current after a restart.
+1. `AcceptedToolCall` records a successfully resolved, semantically validated,
+   authorized invocation: requested alias, exact tool/version, declared effects,
+   retry-mechanism facts, raw admission evidence, acceptance evidence (including
+   the historical invocation grant ID), and selected normalization/projection
+   snapshots. The recorder commits it **before** an invoker may start an effect.
+2. `ToolCallResult` records exactly one terminal outcome for every bounded call,
+   including pre-invocation rejection. It is authoritative execution evidence
+   and is committed before publication.
+3. `ToolResultPart` is a bounded history/model projection of the terminal
+   record. A publication retry starts from the recorded result and cannot invoke
+   the tool again.
 
-The terminal result and `ToolResultPart` MUST carry the same durable projection
-policy key/version reference. The referenced immutable snapshot owns the exact
-bounds and transformation rules and remains available for the retention period
-of any call that can require history repair.
+Every accepted or terminal record preserves the requested alias. A terminal
+record for an unresolved alias has both `ToolId` and `ToolVersion` absent; a
+resolved terminal record and every accepted record have both present.
+`ToolEffects` and an external idempotency key are likewise absent when no
+descriptor resolved; no value invents a read-only or mutating effect for an
+unknown alias. No provider, recorder, or projection fabricates a canonical ID
+from an alias or provider name.
 
-`ToolResultPart` is a separate bounded durable projection for history and model
-context. It is not the authoritative record and MUST NOT be used to reconstruct
-one. Its outcome retains the source `ToolTerminalStatus`, side-effect certainty,
-and retryability alongside the coarser portable `ToolCallOutcomeKind`. Its
-projection remains bound by call and requested alias, plus exact tool/version
-when resolution succeeded, to the one terminal record. It records every
-redaction, normalization, summary, truncation, omitted part/byte count, and
-authorized artifact or continuation reference.
+`ToolCallAdmissionEvidence` records the bounded raw-argument fingerprint,
+catalog version, and source ordinal for every terminal path. Its fingerprint is
+raw admission evidence, not proof that arguments were semantically valid.
+`ToolCallAcceptanceEvidence` exists only after semantic validation, planning,
+and authorization produce an accepted invocation. It retains the historical
+invocation grant ID, validated-argument fingerprint, and acceptance timestamp,
+not a reusable grant. `ToolCallResult.GrantId` independently preserves a grant
+that may have been issued even when acceptance recording failed; when acceptance
+evidence exists, the two grant IDs must match. A terminal result carries
+acceptance evidence only when an invocation was accepted. The fingerprint
+denotes accepted-invocation evidence in this contract, not every successful
+standalone validator call. Malformed, truncated, unknown, ambiguous,
+denied-before-acceptance, and unsupported calls retain admission evidence
+without being represented as accepted invocations.
 
-Projection policy MAY be tighter than terminal-record policy. It may omit
-diagnostic detail and usage that the model does not need, but it MUST preserve
-call identity, requested alias, resolved tool/version when available, terminal
-meaning, uncertainty, and enough safe correction detail for the selected loop
-policy. Projection failure is a result-publication failure, not evidence that
-the invocation failed or should be retried.
+### Terminal status and error
+
+`ToolTerminalStatus` has an integer wire representation. The named base set is:
+
+| Status                                                                     | Meaning                                                            |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `Succeeded`                                                                | Invocation and result normalization completed.                     |
+| `UnknownTool`, `InvalidArguments`, `Unsupported`                           | Rejected before invocation.                                        |
+| `Denied`, `ApprovalDenied`, `ApprovalExpired`                              | Authorization/approval did not permit invocation.                  |
+| `InvocationFailed`, `TimedOut`                                             | Invocation reached a terminal failure.                             |
+| `Cancelled`, `Interrupted`                                                 | Invocation or its surrounding operation was cancelled/interrupted. |
+| `ResultNormalizationFailed`, `ResultSerializationFailed`, `ProtocolFailed` | A result could not be normalized, represented, or mapped safely.   |
+
+The value is not a closed CLR enum validation boundary. A reader retains an
+unknown numeric status exactly in `ToolCallResult`; it neither activates an
+unknown implementation nor guesses success. When a portable projection cannot
+represent that status, it emits `ToolCallOutcomeKind.Failed`, retains the
+numeric source status, and includes `StatusCoarsened` in
+`ToolResultProjectionInfo.Losses`.
+
+`ToolError` is durable, bounded safe evidence:
+
+```csharp
+public sealed record ToolError(
+    ToolErrorKind Kind,
+    string SafeMessage,
+    string? ExternalCode,
+    TimeSpan? RetryAfter,
+    ExtensionData Extensions);
+```
+
+`Kind` is a closed stable source classification: `Tool` (a safe tool-declared
+failure), `Transport`, `Host`, `Policy`, `Serialization`, or `Protocol`. It is
+not an exception type or a provider status-code registry, and it does not repeat
+the terminal status. `SafeMessage` and `ExternalCode` are validated, bounded
+fields selected for durable/model-safe use. `RetryAfter` is nonnegative when
+present. Raw exception objects, stack traces, request/response bodies,
+secret-bearing arguments, and unbounded provider diagnostics are excluded;
+implementations may retain those only in classified, separately controlled
+diagnostics.
+
+A succeeded result has no `ToolError`. A failed/rejected result may omit one
+when no safe explanation exists. Human-readable text and an `isError` convention
+never determine terminal status.
+
+### Closed terminal content family
+
+`ToolResultContent` is a closed, discriminated family. Its first portable
+variants have these shapes:
+
+```csharp
+public abstract record ToolResultContent;
+public sealed record ToolResultTextContent(
+    string Text, TextSemantics Semantics, ExtensionData Extensions)
+    : ToolResultContent;
+public sealed record ToolResultStructuredContent(
+    JsonElement Value, JsonSchemaReference? Schema, ExtensionData Extensions)
+    : ToolResultContent;
+public sealed record ToolResultMediaContent(MediaReference Reference, ExtensionData Extensions)
+    : ToolResultContent;
+public sealed record ToolResultArtifactContent(ArtifactReference Reference, ExtensionData Extensions)
+    : ToolResultContent;
+public sealed record ToolResultOpaqueContent(
+    string TypeDiscriminator, ExtensionValue CanonicalPayload, ExtensionData Extensions)
+    : ToolResultContent;
+```
+
+They carry, respectively, bounded text; structured JSON with an optional schema;
+a media or artifact reference; and a bounded unknown type discriminator plus
+canonical opaque bytes. Each variant carries `ExtensionData` for compatible
+field additions.
+
+Structured JSON is copied into an owned cloned DOM before the result is made
+observable or durable; no variant may retain a caller-owned `JsonDocument` or
+`JsonElement` buffer. Opaque content retains its unknown type discriminator and
+canonical bytes without CLR type-name activation or semantic promotion. Media
+and artifact variants retain their immutable references; they do not silently
+inline bytes or stringify unsupported media. The selected normalizer owns the
+canonical retained-content encoding used for byte accounting and portable
+round-trip preservation.
+
+### Usage evidence
+
+`ToolCallResult.Usage` is optional. Its absence means no usage report was made,
+never reported zero and never an implied budget settlement. A present
+`ToolUsage` contains an immutable collection of unique `ToolUsageMeasurement`s,
+keyed by exact `(BudgetDimension, BudgetUnit)`:
+
+```csharp
+public sealed record ToolUsageMeasurement(
+    BudgetDimension Dimension,
+    BudgetUnit Unit,
+    BudgetQuantity? Amount,
+    ToolUsageMeasurementQuality Quality);
+```
+
+`ToolUsageMeasurementQuality` is the closed set `Measured`, `Estimated`,
+`Unknown`, and `NotApplicable`. `Measured` and `Estimated` require an exact
+nonnegative `BudgetQuantity`; `Unknown` and `NotApplicable` require no amount.
+The four qualities distinguish reported measurement from estimate, explicit
+unknown, and an inapplicable dimension. A usage report has no authority to
+reserve, settle, or reconcile a budget ledger. Budget settlement uses its own
+recorded evidence.
+
+### Retry and authorization evidence
+
+A terminal result retains `ToolEffects` and an optional external
+`IdempotencyKey` whenever a descriptor resolved, including a resolved rejection
+that never became an accepted invocation. These are the declared replay facts,
+not proof that a host executed an idempotent operation. The `ToolCallResult`
+constructor validates only local pairing and presence invariants.
+`IToolCallRecorder.RecordTerminalAsync` loads the accepted record when
+acceptance evidence is present and validates exact terminal-to-accepted
+identity, effect, idempotency-key, admission, acceptance/grant, and policy
+evidence. The supplied `SecurityAuthorizationContext` is historical correlation
+for the record's exact agent/session/run/turn/operation; neither constructor nor
+recorder reauthorizes, revalidates a live grant, or infers an effect from
+content.
+
+Before retrying a potentially started mutating invocation, the executor must
+validate that the selected invoker and effecting host will enforce the declared
+idempotency mechanism and captured key where applicable. It may retry an attempt
+known not to have started under the ordinary retry policy. A descriptor's
+idempotency declaration alone never proves that this condition holds.
+
+### Captured normalization and projection
+
+`ToolResultNormalizationSnapshot` is an immutable captured value containing:
+
+```csharp
+public sealed record ToolResultNormalizationSnapshot(
+    ToolResultRejectionPolicyReference RejectionPolicy,
+    ToolResultProjectionPolicyReference ProjectionPolicy,
+    ToolExecutionPolicyReference? ExecutionPolicy,
+    ToolResultNormalizationAlgorithmVersion AlgorithmVersion,
+    ToolResultBounds Bounds,
+    ToolResultProjectionTransformations AllowedTransformations,
+    ExtensionData Extensions);
+```
+
+`ToolResultBounds` sets a positive maximum content-part count and canonical
+retained-content byte limit. A run captures the nondefault immutable
+`ToolResultRejectionPolicyReference` before resolution; it supplies the
+normalization bounds and captures the exact projection-policy reference/bounds
+for unknown, ambiguous, invalid, and other pre-policy rejections.
+`ExecutionPolicy` is null in those paths and otherwise is the selected per-tool
+policy identity for its immutable normalization rules. This separates captured
+run-level rejection handling from a current/default lookup and does not
+introduce a second normalizer catalog. `AlgorithmVersion` identifies the
+deterministic normalizer revision. The normalizer validates aggregate canonical
+bytes before constructing a terminal record and returns a
+`ToolResultNormalizationInfo`. Its actual transformations are a defined, unique,
+ordered collection of `Redacted`, `Normalized`, `Summarized`, `Truncated`, or
+`Externalized`; nullable input/omitted byte and part counts are present only
+when measured, never replaced with zero when unknown. When both an omitted count
+and its corresponding input count are measured, the omitted count cannot exceed
+the input count. This is terminal-normalization evidence and is separate from
+`ToolResultProjectionInfo.Losses`, which describes later history/model
+projection loss. Value constructors validate required references, legal bounds,
+flags, content shape, and nonnegative supplied counts, but do not falsely claim
+independent aggregate-byte measurement without the canonical encoder.
+
+`ToolResultProjectionPolicyReference` is captured inside normalization and
+repeated on accepted/terminal records for direct recorder and message indexing;
+all three values must match. It remains the policy for the tighter history/model
+projection. Its version and the normalization snapshot remain resolvable for
+every accepted record that can require recovery. Projection may redact,
+normalize, summarize, truncate, or externalize only when allowed by its captured
+rules, and records every loss. It preserves call identity, requested alias,
+resolved identity when present, source status, certainty, retryability, and safe
+correction evidence.
+
+### Terminal invariants
+
+A `ToolCallResult` locally requires a nonempty requested alias; paired resolved
+ID/version; effects only with resolved identity; no invocation start without
+acceptance evidence; and, for `Succeeded`, resolved identity, acceptance
+evidence, invocation start, and no error. The recorder, which has both records,
+checks those terminal-to-accepted facts when acceptance evidence is present:
+identity, effects, idempotency key, admission, acceptance/grant evidence, and
+captured-policy coherence. UTC timestamps are facts but their comparison does
+not establish stage order because clocks can move backwards. A retained grant ID
+is historical correlation, not proof a current grant remains valid.
 
 ## Loss-aware status mapping
 
@@ -137,17 +323,17 @@ failed/uncertain result into ordinary successful-looking content.
 
 ## Result bounds and normalization
 
-Both the authoritative result and its model/history projection are bounded, with
-independently configured limits. The normalizer MAY truncate, summarize, store
-externally with an authorized reference, or reject according to tool policy. It
-MUST mark transformations and retain safe provenance. Replacing content with a
-reference never changes terminal status.
+The terminal normalizer enforces the accepted `ToolResultNormalizationSnapshot`
+before a `ToolCallResult` is constructed. It uses canonical retained-content
+encoding to account for the complete closed content family and extension
+evidence, so a constructor does not pretend to have independently measured
+aggregate bytes. It may apply only the captured allowed transformations and must
+retain their provenance. Projection then applies its separate, potentially
+tighter captured policy.
 
-Result content MAY include text, structured data, images, audio, files, and
-resource references. Unsupported media MUST not be silently stringified.
-Tool-specific details and usage remain typed fields or typed extension data in
-the authoritative record; only explicitly selected safe fields enter the
-projection.
+Unsupported media, unknown typed content, and future status values are retained
+loss-aware or rejected with a typed terminal/projection failure; they are never
+silently stringified, dropped, or promoted into a known semantic value.
 
 ## Hook overrides
 
@@ -190,6 +376,26 @@ and tests its behavior before effects start.
   as success or a clean pre-invocation rejection.
 - A provider without native tool status receives an explicit bounded status
   envelope or rejects the mapping.
+- Recorder failure after authorization prevents invocation because no accepted
+  call exists; publication failure after terminal recording reprojects that
+  terminal record without repeating the effect.
+- An unknown or ambiguous call has raw admission evidence and the captured
+  run-level rejection policy, but no accepted invocation, resolved effects, or
+  validated-argument fingerprint. A malformed call rejected after resolution
+  retains its resolved effects while still lacking acceptance evidence.
+- An unknown numeric terminal status remains exact in durable evidence and
+  projects as `Failed` with `StatusCoarsened`, never as success.
+- A structured result remains readable after its source `JsonDocument` is
+  disposed, and unknown opaque typed content round-trips its discriminator and
+  canonical bytes without type activation.
+- A normalizer rejects content over its canonical aggregate-byte bound before a
+  terminal record is created; a record constructor does not pretend that an
+  unrelated byte count proves this bound.
+- Missing usage remains absent, while measured, estimated, unknown, and
+  inapplicable dimension/unit measurements remain distinguishable and do not
+  settle a budget reservation.
+- A retry of a possibly-started mutating call proceeds only after the selected
+  host confirms enforcement of the captured idempotency mechanism and key.
 
 ## Related specifications
 

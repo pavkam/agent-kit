@@ -65,6 +65,21 @@ owning spec.
 
 ## Latest integration evidence
 
+The terminal-result architecture amendment passed focused Markdown formatting
+and lint. It separates bounded raw admission, authorized invocation acceptance,
+authoritative terminal recording, and history projection. Unresolved aliases
+retain no fabricated tool identity or effects. Accepted calls retain validated
+argument and invocation-grant evidence; terminal records independently retain
+any issued grant even when acceptance recording failed.
+
+Captured run-level rejection policy supplies bounds before tool resolution.
+Normalization records actual transformations and measured or unknown counts
+separately from later projection losses. The closed content family owns its
+payloads, usage remains optional exact evidence, and unknown numeric status is
+preserved without implying success. Constructors enforce local consistency;
+recorders compare retained cross-record evidence. This is a normative contract
+checkpoint; its production values and runtime pipeline remain in progress.
+
 The ledger-descriptor checkpoint passed formatting, repository lint, a Release
 build with no warnings or errors, and all 5,636 tests in an isolated checkout
 over `9ea2cf5`. Every `IBudgetLedger` now publishes immutable, side-effect-free

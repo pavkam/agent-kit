@@ -208,6 +208,14 @@ public readonly record struct ToolResultProjectionPolicyKey(string Value);
 
 public readonly record struct ToolResultProjectionPolicyVersion(long Value);
 
+public readonly record struct ToolResultRejectionPolicyKey(string Value);
+
+public readonly record struct ToolResultRejectionPolicyVersion(long Value);
+
+public sealed record ToolResultRejectionPolicyReference(
+    ToolResultRejectionPolicyKey Key,
+    ToolResultRejectionPolicyVersion Version);
+
 public sealed record ToolResultProjectionPolicyReference(
     ToolResultProjectionPolicyKey Key,
     ToolResultProjectionPolicyVersion Version);
@@ -223,6 +231,50 @@ public enum ToolResultProjectionTransformations
     Externalization = 16
 }
 
+public enum ToolResultNormalizationTransformation
+{
+    Redacted,
+    Normalized,
+    Summarized,
+    Truncated,
+    Externalized
+}
+
+public enum ToolErrorKind
+{
+    Tool,
+    Transport,
+    Host,
+    Policy,
+    Serialization,
+    Protocol
+}
+
+public enum ToolUsageMeasurementQuality
+{
+    Measured,
+    Estimated,
+    Unknown,
+    NotApplicable
+}
+
+public sealed record ToolError(
+    ToolErrorKind Kind,
+    string SafeMessage,
+    string? ExternalCode,
+    TimeSpan? RetryAfter,
+    ExtensionData Extensions);
+
+public sealed record ToolUsageMeasurement(
+    BudgetDimension Dimension,
+    BudgetUnit Unit,
+    BudgetQuantity? Amount,
+    ToolUsageMeasurementQuality Quality);
+
+public sealed record ToolUsage(
+    ImmutableArray<ToolUsageMeasurement> Measurements,
+    ExtensionData Extensions);
+
 public sealed record ToolResultProjectionBounds(
     long MaximumBytes,
     int MaximumParts);
@@ -230,6 +282,21 @@ public sealed record ToolResultProjectionBounds(
 public sealed record ToolResultProjectionPolicySnapshot(
     ToolResultProjectionPolicyReference Reference,
     ToolResultProjectionBounds Bounds,
+    ToolResultProjectionTransformations AllowedTransformations,
+    ExtensionData Extensions);
+
+public readonly record struct ToolResultNormalizationAlgorithmVersion(long Value);
+
+public sealed record ToolResultBounds(
+    long MaximumCanonicalBytes,
+    int MaximumParts);
+
+public sealed record ToolResultNormalizationSnapshot(
+    ToolResultRejectionPolicyReference RejectionPolicy,
+    ToolResultProjectionPolicyReference ProjectionPolicy,
+    ToolExecutionPolicyReference? ExecutionPolicy,
+    ToolResultNormalizationAlgorithmVersion AlgorithmVersion,
+    ToolResultBounds Bounds,
     ToolResultProjectionTransformations AllowedTransformations,
     ExtensionData Extensions);
 ```
@@ -242,7 +309,14 @@ AgentKit identity.
 Projection policy keys are validated non-empty composition keys and versions are
 positive, monotonically published values. Policy construction rejects
 non-positive bounds, unknown transformation flags, and a snapshot whose
-reference collides with different content.
+reference collides with different content. Normalization algorithm versions are
+positive, its bounds are positive, and its allowed transformations use the same
+closed flags. A run captures a nondefault `ToolResultRejectionPolicyReference`
+before resolution. That immutable run-level policy supplies normalization bounds
+and the exact projection-policy reference/bounds for unknown, ambiguous,
+invalid, or otherwise pre-policy rejections. A selected
+`ToolExecutionPolicyReference`, when one exists, identifies the immutable
+per-tool normalization rules; it is not a second normalizer registry.
 
 Description is immutable and independent from discovery, resolution, policy,
 execution, state, and observation:
@@ -413,6 +487,43 @@ public sealed record ToolInvocationContext(
     DateTimeOffset Deadline,
     IToolProgressReporter Progress);
 
+public sealed record ToolCallAdmissionEvidence(
+    ToolCatalogVersion CatalogVersion,
+    int SourceOrdinal,
+    InputFingerprint RawArgumentsFingerprint);
+
+public sealed record ToolCallAcceptanceEvidence(
+    GrantId InvocationGrantId,
+    InputFingerprint ValidatedArgumentsFingerprint,
+    DateTimeOffset AcceptedAt);
+
+public sealed record ToolResultNormalizationInfo(
+    ImmutableArray<ToolResultNormalizationTransformation> Transformations,
+    long? InputCanonicalBytes,
+    int? InputParts,
+    long? OmittedCanonicalBytes,
+    int? OmittedParts,
+    ExtensionData Extensions);
+
+public sealed record AcceptedToolCall(
+    AgentId AgentId,
+    SessionId SessionId,
+    RunId RunId,
+    TurnId TurnId,
+    OperationId OperationId,
+    ToolCallId CallId,
+    SecurityAuthorizationContext Authorization,
+    ToolCallAcceptanceEvidence Acceptance,
+    ToolAlias ProviderAlias,
+    ToolId ToolId,
+    ToolVersion ToolVersion,
+    ToolEffects Effects,
+    IdempotencyKey? ExternalIdempotencyKey,
+    ToolCallAdmissionEvidence Admission,
+    ToolResultNormalizationSnapshot Normalization,
+    ToolResultProjectionPolicyReference ProjectionPolicy,
+    DateTimeOffset RequestedAt);
+
 public sealed record ToolCallResult(
     AgentId AgentId,
     SessionId SessionId,
@@ -422,15 +533,21 @@ public sealed record ToolCallResult(
     ToolCallId CallId,
     SecurityAuthorizationContext Authorization,
     GrantId? GrantId,
+    ToolCallAcceptanceEvidence? Acceptance,
     ToolAlias ProviderAlias,
     ToolId? ToolId,
     ToolVersion? ToolVersion,
+    ToolEffects? Effects,
+    IdempotencyKey? ExternalIdempotencyKey,
+    ToolCallAdmissionEvidence Admission,
     ToolTerminalStatus Status,
     ImmutableArray<ToolResultContent> Content,
     ToolError? Error,
     SideEffectCertainty SideEffectCertainty,
-    ToolUsage Usage,
+    ToolUsage? Usage,
     bool Retryable,
+    ToolResultNormalizationSnapshot Normalization,
+    ToolResultNormalizationInfo NormalizationInfo,
     ToolResultProjectionPolicyReference ProjectionPolicy,
     DateTimeOffset RequestedAt,
     DateTimeOffset? InvocationStartedAt,
@@ -438,58 +555,79 @@ public sealed record ToolCallResult(
     ExtensionData Extensions);
 ```
 
-`ToolCallResult.Status` is authoritative. Construction validation rejects
-impossible combinations such as `Succeeded` without a resolved tool/version,
-`Succeeded` with an error, `Denied` with a claim that invocation ran, a
-descriptor/version mismatch, a missing requested alias, only one member of the
-resolved tool/version pair, a start timestamp on an uninvoked call, or a
-retryable unknown mutating effect. UTC timestamp comparison is not a stage-order
-check: clocks can move backward. Durable transitions establish chronology and
-monotonic timing measures duration. Calls that terminate before invocation leave
-`InvocationStartedAt` null but still carry required request and completion
-timestamps.
+`AcceptedToolCall` is the durable invocation-acceptance fact. It exists only
+after resolution, semantic argument validation, planning, and authorization
+establish the resolved identity, declared effects, retry mechanism reference,
+and normalization policy. The executor records it before it invokes an effect.
+`IToolCallRecorder.RecordAcceptedAsync` must succeed before `IToolInvoker`
+begins. Deferral is not acceptance until this record exists.
 
-`ProviderAlias` preserves the exact bounded name requested in the originating
-catalog snapshot. `ToolId` and `ToolVersion` are present only after successful
-resolution; an unknown or ambiguous alias reaches a rejected terminal result
-without fabricating canonical tool identity.
+`ToolCallResult.Status` is authoritative, numeric, and forward-compatible. Known
+status values cover successful invocation, rejection before invocation, denial
+or approval expiry, invocation failure, timeout, cancellation, interruption,
+result normalization failure, result serialization failure, and protocol
+failure. An unrecognized numeric value is retained exactly in the terminal
+record; no CLR enum validation rewrites it. A projector that cannot represent it
+maps it to portable `Failed`, retains the original numeric source value, and
+records `StatusCoarsened` in `ToolResultProjectionInfo.Losses`.
 
-`ToolCallResult` is the complete authoritative terminal record for the call, not
-message content. “Complete” means it retains the exact terminal status,
-authorization and grant correlation, normalized error, side-effect certainty,
-usage, retry decision, timestamps, typed content, and safe extension evidence;
-its content is still bounded or externalized by the selected result policy. The
-runtime commits this value through `IToolCallRecorder` before materializing a
-tool-result message. A commit retry is a record operation and never invokes the
-tool again.
+Construction validates local structural facts only: a requested alias and
+admission evidence are present; a resolved `ToolId` and `ToolVersion` occur
+together; effects are present only for a resolved descriptor; a terminal result
+without acceptance evidence has no invocation start; and a successful result has
+resolved identity, acceptance evidence, an invocation start, and no error. When
+acceptance evidence is present, `GrantId` equals its `InvocationGrantId`. The
+supplied authorization is historical evidence for this exact
+agent/session/run/turn/operation correlation. It does not reauthorize, inspect a
+current grant, infer execution from content, or establish that an idempotency
+mechanism was actually enforced. When acceptance evidence is present, the
+recorder loads that accepted record and checks exact identity, effect,
+idempotency-key, admission, acceptance/grant, and captured-policy coherence. UTC
+timestamp comparison is not a stage-order check because clocks can move
+backward; durable transitions establish chronology.
 
-`ProjectionPolicy` identifies the immutable, versioned result-projection
-snapshot captured in the accepted call and retained with the terminal result.
-That snapshot contains the exact content/part bounds and transformation policy;
-its catalog version remains resolvable until no accepted or terminal record can
-refer to it. Recovery never substitutes a newer policy merely because its key
-matches.
+`Effects` and `ExternalIdempotencyKey` preserve declared facts whenever a
+descriptor resolved; both remain absent for an unresolved alias. The captured
+run-level rejection policy, rather than a current/default per-tool policy,
+governs the normalization and projection bounds in that case. Retrying a
+possibly-started mutating call is structurally consistent only with `Idempotent`
+or `IdempotentWithKey` declared effects; the latter requires its exact nonempty
+external key. The executor separately verifies that the chosen invoker/host will
+enforce that mechanism before the retry starts. Descriptor declarations alone
+never prove replay safety. A call known not to have started may be retried under
+ordinary retry policy.
 
-The durable `ToolResultPart` in message history is a separate, bounded
-projection for the model and provider pipeline. It preserves the call, requested
-alias, exact tool/version when resolved, the source terminal status, a coarser
-portable outcome, side-effect certainty, retryability, a safe failure
-explanation, and explicit projection provenance. Content may be redacted,
-summarized, truncated, or replaced by an authorized artifact/continuation
-reference under a tighter history budget. The projection remains correlated to
-the one terminal record by call and requested alias, plus exact tool/version
-when resolution succeeded. It records every loss, including omitted parts or
-bytes, and is never treated as a reconstruction of the full terminal record.
+`ToolCallResult` is the complete authoritative terminal record, not message
+content. It retains terminal status, historical authorization/acceptance-grant
+correlation, side-effect certainty, normalized typed content, safe error,
+optional usage, retry decision, normalization provenance, and policy evidence.
+The runtime records it before projecting a `ToolResultPart`; a recording retry
+is never an invocation retry. The duplicate `ProjectionPolicy` field on both
+accepted and terminal records is required to match
+`Normalization.ProjectionPolicy`, so stores and message projection can index the
+retained reference directly.
 
-Projection happens after terminal recording. If appending the `ToolMessage`
-fails, recovery projects again from the recorded `ToolCallResult` and does not
-repeat the effect. The accepted/terminal record retains the captured result
-policy identity, version, and bounds used for that projection; recovery never
-silently substitutes the current policy. The exact-to-portable status mapping is
-defined by the
-[tool-result contract](../concepts/tool-errors-retries-and-results.md); neither
-the projector nor a provider adapter infers status from human-readable text or
-maps an unknown/uncertain state to success.
+`Normalization` is the immutable normalization snapshot captured at admission.
+It contains the always-present captured run-level rejection and projection
+policies, an optional selected per-tool execution-policy reference,
+normalization algorithm revision, result bounds, and allowed transformations.
+The rejection policy makes pre-resolution rejections representable without a
+current/default lookup. The execution-policy reference is the existing selection
+identity when resolution succeeds: its retained immutable snapshot includes
+normalization rules and does not create a second normalizer catalog. The
+normalizer owns canonical retained-content encoding and checks aggregate byte
+bounds before it constructs a terminal result. Constructors validate content
+shape and captured limits but do not claim to measure aggregate content bytes
+independently of that canonical encoder.
+
+The durable `ToolResultPart` is a distinct, tighter, loss-aware history/model
+projection. It retains call identity, requested alias, resolved identity when
+present, source status, coarse outcome, side-effect certainty, retryability,
+safe correction detail, and projection provenance. It records every redaction,
+normalization, summary, truncation, omitted part/byte count, and authorized
+artifact or continuation replacement. Projection occurs only after terminal
+recording; retrying a failed append reprojects the record and never repeats the
+effect.
 
 Provider adapters copy bounded argument bytes into an owned
 `ImmutableArray<byte>` before constructing `ToolCallRequest`; a view over
@@ -1026,19 +1164,24 @@ exactly one terminal result.
 The [tool result contract](../concepts/tool-errors-retries-and-results.md) binds
 retryability to idempotency and side-effect certainty.
 
-The authoritative terminal result contains typed bounded content, exact status,
-safe errors, usage, retryability, and side-effect certainty. Oversized content
-is rejected, summarized, truncated, or stored behind authorized
-[artifact references](artifacts.md) according to explicit policy. The tool
-normalizer coordinates artifact creation and the `IToolCallRecorder` terminal
-commit; the artifact component never calls back into the tool recorder. A
-separate deterministic projection then creates the tighter model/history
-`ToolResultPart`, preserving exact status and transformation provenance even
-when its portable outcome or content is necessarily coarser.
+The authoritative terminal result contains a numeric exact status, typed
+normalized content, safe errors, optional usage, retryability, and side-effect
+certainty. A captured immutable normalization snapshot names the selected
+execution-policy reference, algorithm revision, bounds, and allowed
+transformations. Its normalizer, not an arbitrary result constructor, owns
+canonical retained-content encoding and aggregate byte enforcement. Oversized
+content is rejected, transformed, or stored behind authorized
+[artifact references](artifacts.md) according to that snapshot. The normalizer
+coordinates artifact creation and the `IToolCallRecorder` terminal commit; the
+artifact component never calls back into the tool recorder. A separate
+deterministic projection then creates the tighter model/history
+`ToolResultPart`.
 
-Retries require both a retryable failure and safe execution semantics. Mutating
-calls need idempotency or proof that the prior attempt did not start. Raw
-exceptions and secret-bearing arguments never enter model-visible results.
+Retries require both a retryable failure and safe execution semantics. A
+possibly-started mutating call needs a declared idempotency mechanism and its
+captured external key when applicable; the executor must verify the selected
+invoker actually enforces it before retrying. Raw exceptions and secret-bearing
+arguments never enter model-visible results.
 
 Provider-native tools remain distinct because their execution, permission,
 billing, and result lifecycles differ from application tools.
