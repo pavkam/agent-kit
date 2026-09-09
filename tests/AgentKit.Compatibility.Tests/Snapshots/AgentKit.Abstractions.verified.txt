@@ -6905,6 +6905,23 @@ namespace AgentKit
         public System.DateTimeOffset RequestedAt { get; init; }
         public AgentKit.ToolId ToolId { get; init; }
     }
+    public sealed class ToolCatalogSnapshot : System.IEquatable<AgentKit.ToolCatalogSnapshot>
+    {
+        public ToolCatalogSnapshot(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId runId, AgentKit.ExecutionIdentity identity, AgentKit.SecurityPolicySnapshotReference securityPolicy, AgentKit.AgentDefinitionRevision agentDefinitionRevision, AgentKit.ConfigurationVersion configurationVersion, AgentKit.ToolCatalogVersion version, System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> tools, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.ToolExecutionPolicyReference> executionPolicies, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolAlias, AgentKit.ToolIdentity> providerAliases) { }
+        public AgentKit.AgentDefinitionRevision AgentDefinitionRevision { get; }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.ConfigurationVersion ConfigurationVersion { get; }
+        public System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.ToolExecutionPolicyReference> ExecutionPolicies { get; }
+        public AgentKit.ExecutionIdentity Identity { get; }
+        public System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolAlias, AgentKit.ToolIdentity> ProviderAliases { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SecurityPolicySnapshotReference SecurityPolicy { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> Tools { get; }
+        public AgentKit.ToolCatalogVersion Version { get; }
+        public bool Equals(AgentKit.ToolCatalogSnapshot? other) { }
+        public override int GetHashCode() { }
+    }
     public readonly struct ToolCatalogVersion : System.IEquatable<AgentKit.ToolCatalogVersion>
     {
         public ToolCatalogVersion(string value) { }

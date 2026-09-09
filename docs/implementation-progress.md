@@ -65,6 +65,20 @@ owning spec.
 
 ## Latest integration evidence
 
+The immutable catalog-snapshot checkpoint passed formatting, repository lint, a
+Release build with no warnings or errors, and all 5,655 tests in an isolated
+checkout over `bb2ccc9`. `ToolCatalogSnapshot` retains exact run, identity,
+security, definition, configuration and catalog evidence together with ordered
+descriptors, their exact policy references, and provider aliases.
+
+Twelve focused cases verify local guards, exact policy coverage, alias targets,
+empty catalogs, ordered descriptors, map-independent equality, and normalization
+of caller-supplied key/value comparers before collision checks. Multiple aliases
+may target one identity; unaliased descriptors remain representable. The
+additive API snapshot was reviewed. This value does not acquire invokers,
+validate live authority, or complete engine/loop capture; those runtime
+integrations remain open.
+
 The coherent catalog-resolution checkpoint passed formatting, repository lint, a
 Release build with no warnings or errors, and all 5,643 tests in an isolated
 checkout over `4db57f7`. The catalog reads each tool descriptor once, advertises

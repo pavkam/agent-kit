@@ -1,0 +1,283 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Abstractions.Tests.Tools;
+
+using System.Text.Json;
+
+public sealed class ToolCatalogSnapshotTests
+{
+    [Fact]
+    public void Constructor_WhenGraphValid_CapturesEveryFieldAndPreservesToolOrder()
+    {
+        var first = Descriptor("read", "1");
+        var second = Descriptor("write", "2");
+        var snapshot = Create(
+            [first, second],
+            Policies(first, second),
+            ImmutableDictionary.CreateRange(new Dictionary<ToolAlias, ToolIdentity>
+            {
+                [new ToolAlias("read_file")] = Identity(first),
+                [new ToolAlias("read_legacy")] = Identity(first),
+            }));
+
+        snapshot.AgentId.ShouldBe(Agent());
+        snapshot.SessionId.ShouldBe(Session());
+        snapshot.RunId.ShouldBe(Run());
+        snapshot.AgentDefinitionRevision.ShouldBe(new AgentDefinitionRevision(0));
+        snapshot.ConfigurationVersion.ShouldBe(new ConfigurationVersion(4));
+        snapshot.Version.ShouldBe(new ToolCatalogVersion("catalog-7"));
+        snapshot.Tools.ShouldBe([first, second]);
+        snapshot.ExecutionPolicies.Keys.ShouldBe([Identity(first), Identity(second)], ignoreOrder: true);
+        snapshot.ProviderAliases.Count.ShouldBe(2);
+        snapshot.ProviderAliases.Values.Distinct().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public void Constructor_WhenCatalogEmpty_AcceptsInitializedEmptyCollections()
+    {
+        var snapshot = Create([], EmptyPolicies(),
+            EmptyAliases());
+
+        snapshot.Tools.ShouldBeEmpty();
+        snapshot.ExecutionPolicies.ShouldBeEmpty();
+        snapshot.ProviderAliases.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Constructor_WhenScalarOrReferenceInvalid_ThrowsExactException()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => CreateInvalid(InvalidField.AgentId)).ParamName.ShouldBe("agentId");
+        Should.Throw<ArgumentOutOfRangeException>(() => CreateInvalid(InvalidField.SessionId)).ParamName.ShouldBe("sessionId");
+        Should.Throw<ArgumentOutOfRangeException>(() => CreateInvalid(InvalidField.RunId)).ParamName.ShouldBe("runId");
+        Should.Throw<ArgumentNullException>(() => CreateInvalid(InvalidField.Identity)).ParamName.ShouldBe("identity");
+        Should.Throw<ArgumentNullException>(() => CreateInvalid(InvalidField.SecurityPolicy)).ParamName.ShouldBe("securityPolicy");
+        Should.Throw<ArgumentOutOfRangeException>(() => CreateInvalid(InvalidField.ConfigurationVersion)).ParamName.ShouldBe("configurationVersion");
+        Should.Throw<ArgumentOutOfRangeException>(() => CreateInvalid(InvalidField.Version)).ParamName.ShouldBe("version");
+    }
+
+    [Fact]
+    public void Constructor_WhenCollectionsInvalid_ThrowsExactException()
+    {
+        Should.Throw<ArgumentException>(() => CreateInvalid(InvalidField.Tools)).ParamName.ShouldBe("tools");
+        Should.Throw<ArgumentException>(() => Create(tools: [null!])).ParamName.ShouldBe("tools");
+        Should.Throw<ArgumentNullException>(() => CreateInvalid(InvalidField.ExecutionPolicies)).ParamName.ShouldBe("executionPolicies");
+        Should.Throw<ArgumentNullException>(() => CreateInvalid(InvalidField.ProviderAliases)).ParamName.ShouldBe("providerAliases");
+    }
+
+    [Fact]
+    public void Constructor_WhenDescriptorIdentityDuplicated_ThrowsOwningParameter()
+    {
+        var first = Descriptor("read", "1");
+        var duplicate = Descriptor("read", "1", name: "other");
+
+        Should.Throw<ArgumentException>(() => Create([first, duplicate], Policies(first), EmptyAliases())).ParamName.ShouldBe("tools");
+    }
+
+    [Fact]
+    public void Constructor_WhenPolicyGraphNotExact_ThrowsOwningParameter()
+    {
+        var tool = Descriptor("read", "1");
+        var orphan = Descriptor("orphan", "1");
+
+        Should.Throw<ArgumentException>(() => Create([tool], EmptyPolicies(), EmptyAliases())).ParamName.ShouldBe("executionPolicies");
+        Should.Throw<ArgumentException>(() => Create([tool], Policies(tool, orphan), EmptyAliases())).ParamName.ShouldBe("executionPolicies");
+        Should.Throw<ArgumentException>(() => Create([tool], Policies(orphan), EmptyAliases())).ParamName.ShouldBe("executionPolicies");
+        Should.Throw<ArgumentOutOfRangeException>(() => Create([tool], ImmutableDictionary.CreateRange(new Dictionary<ToolIdentity, ToolExecutionPolicyReference>
+        {
+            [default] = Policy(),
+        }), EmptyAliases())).ParamName.ShouldBe("executionPolicies");
+        Should.Throw<ArgumentNullException>(() => Create([tool], ImmutableDictionary.CreateRange(new Dictionary<ToolIdentity, ToolExecutionPolicyReference>
+        {
+            [Identity(tool)] = null!,
+        }), EmptyAliases())).ParamName.ShouldBe("executionPolicies");
+    }
+
+    [Fact]
+    public void Constructor_WhenAliasInvalidOrDangling_ThrowsOwningParameter()
+    {
+        var tool = Descriptor("read", "1");
+        var policies = Policies(tool);
+
+        Should.Throw<ArgumentOutOfRangeException>(() => Create([tool], policies,
+            ImmutableDictionary.CreateRange(new Dictionary<ToolAlias, ToolIdentity> { [default] = Identity(tool) }))).ParamName.ShouldBe("providerAliases");
+        Should.Throw<ArgumentOutOfRangeException>(() => Create([tool], policies,
+            ImmutableDictionary.CreateRange(new Dictionary<ToolAlias, ToolIdentity> { [new ToolAlias("read")] = default }))).ParamName.ShouldBe("providerAliases");
+        Should.Throw<ArgumentException>(() => Create([tool], policies,
+            ImmutableDictionary.CreateRange(new Dictionary<ToolAlias, ToolIdentity> { [new ToolAlias("other")] = new(new ToolId("other"), new ToolVersion("1")) }))).ParamName.ShouldBe("providerAliases");
+    }
+
+    [Fact]
+    public void Constructor_WhenInputUsesCustomComparers_NormalizesKeyAndValueComparers()
+    {
+        var tool = Descriptor("read", "1");
+        var aliases = ImmutableDictionary.Create<ToolAlias, ToolIdentity>(new AliasIgnoreCaseComparer())
+            .Add(new ToolAlias("Read"), Identity(tool));
+        var policies = ImmutableDictionary.Create(
+            EqualityComparer<ToolIdentity>.Default, new AlwaysEqualPolicyComparer()).Add(Identity(tool), Policy());
+
+        var snapshot = Create([tool], policies, aliases);
+
+        snapshot.ProviderAliases.KeyComparer.ShouldBe(EqualityComparer<ToolAlias>.Default);
+        snapshot.ProviderAliases.ContainsKey(new ToolAlias("read")).ShouldBeFalse();
+        snapshot.ExecutionPolicies.ValueComparer.ShouldBe(EqualityComparer<ToolExecutionPolicyReference>.Default);
+    }
+
+    [Fact]
+    public void Constructor_WhenNormalizationExposesCollision_ThrowsOwningParameter()
+    {
+        var tool = Descriptor("read", "1");
+        var aliases = ImmutableDictionary.Create<ToolAlias, ToolIdentity>(new NeverEqualAliasComparer())
+            .Add(new ToolAlias("read"), Identity(tool))
+            .Add(new ToolAlias("read"), Identity(tool));
+
+        Should.Throw<ArgumentException>(() => Create([tool], Policies(tool), aliases)).ParamName.ShouldBe("providerAliases");
+    }
+
+    [Fact]
+    public void Constructor_WhenPolicyNormalizationExposesCollision_ThrowsOwningParameter()
+    {
+        var tool = Descriptor("read", "1");
+        var identity = Identity(tool);
+        var policies = ImmutableDictionary.Create<ToolIdentity, ToolExecutionPolicyReference>(new NeverEqualIdentityComparer())
+            .Add(identity, Policy())
+            .Add(identity, Policy());
+
+        Should.Throw<ArgumentException>(() => Create([tool], policies, EmptyAliases())).ParamName.ShouldBe("executionPolicies");
+    }
+
+    [Fact]
+    public void Equality_WhenMapOrderAndInputComparersDiffer_IsSymmetricAndHashCompatible()
+    {
+        var first = Descriptor("read", "1");
+        var second = Descriptor("write", "2");
+        var left = Create([first, second], Policies(first, second), ImmutableDictionary.CreateRange(new Dictionary<ToolAlias, ToolIdentity>
+        {
+            [new ToolAlias("read")] = Identity(first),
+            [new ToolAlias("write")] = Identity(second),
+        }));
+        var right = Create([first, second], Policies(second, first), ImmutableDictionary.CreateRange(new Dictionary<ToolAlias, ToolIdentity>
+        {
+            [new ToolAlias("write")] = Identity(second),
+            [new ToolAlias("read")] = Identity(first),
+        }));
+
+        left.ShouldBe(right);
+        right.ShouldBe(left);
+        left.GetHashCode().ShouldBe(right.GetHashCode());
+        Create([second, first], Policies(first, second), right.ProviderAliases).ShouldNotBe(left);
+    }
+
+    [Fact]
+    public void Equality_WhenBoundScalarPolicyOrAliasDiffers_ReturnsFalse()
+    {
+        var tool = Descriptor("read", "1");
+        var aliases = ImmutableDictionary<ToolAlias, ToolIdentity>.Empty.Add(new ToolAlias("read"), Identity(tool));
+        var baseline = Create([tool], Policies(tool), aliases);
+        var changedPolicy = ImmutableDictionary<ToolIdentity, ToolExecutionPolicyReference>.Empty.Add(
+            Identity(tool), new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("strict"), new ToolExecutionPolicyVersion(2)));
+        var changedAlias = ImmutableDictionary<ToolAlias, ToolIdentity>.Empty.Add(new ToolAlias("read_file"), Identity(tool));
+
+        Create([tool], Policies(tool), aliases, version: new ToolCatalogVersion("catalog-8")).ShouldNotBe(baseline);
+        Create([tool], changedPolicy, aliases).ShouldNotBe(baseline);
+        Create([tool], Policies(tool), changedAlias).ShouldNotBe(baseline);
+    }
+
+    private static ToolCatalogSnapshot Create(
+        ImmutableArray<ToolDescriptor>? tools = null,
+        ImmutableDictionary<ToolIdentity, ToolExecutionPolicyReference>? executionPolicies = null,
+        ImmutableDictionary<ToolAlias, ToolIdentity>? providerAliases = null,
+        AgentId? agentId = null,
+        SessionId? sessionId = null,
+        RunId? runId = null,
+        ExecutionIdentity? identity = null,
+        SecurityPolicySnapshotReference? securityPolicy = null,
+        ConfigurationVersion? configurationVersion = null,
+        ToolCatalogVersion? version = null) => new(
+            agentId ?? Agent(), sessionId ?? Session(), runId ?? Run(), identity ?? Identity(),
+            securityPolicy ?? SecurityPolicy(), new AgentDefinitionRevision(0),
+            configurationVersion ?? new ConfigurationVersion(4), version ?? new ToolCatalogVersion("catalog-7"),
+            tools ?? [], executionPolicies ?? EmptyPolicies(),
+            providerAliases ?? EmptyAliases());
+
+    private static ToolCatalogSnapshot CreateInvalid(InvalidField field) => new(
+            field is InvalidField.AgentId ? default : Agent(),
+            field is InvalidField.SessionId ? default : Session(),
+            field is InvalidField.RunId ? default : Run(),
+            field is InvalidField.Identity ? null! : Identity(),
+            field is InvalidField.SecurityPolicy ? null! : SecurityPolicy(), new AgentDefinitionRevision(0),
+            field is InvalidField.ConfigurationVersion ? default : new ConfigurationVersion(4),
+            field is InvalidField.Version ? default : new ToolCatalogVersion("catalog-7"),
+            field is InvalidField.Tools ? default : [],
+            field is InvalidField.ExecutionPolicies ? null! : EmptyPolicies(),
+            field is InvalidField.ProviderAliases ? null! : EmptyAliases());
+
+    private static ImmutableDictionary<ToolIdentity, ToolExecutionPolicyReference> Policies(params ToolDescriptor[] tools) =>
+        tools.ToImmutableDictionary(Identity, static _ => Policy());
+
+    private static ImmutableDictionary<ToolIdentity, ToolExecutionPolicyReference> EmptyPolicies() =>
+        [];
+
+    private static ImmutableDictionary<ToolAlias, ToolIdentity> EmptyAliases() =>
+        [];
+
+    private static ToolIdentity Identity(ToolDescriptor descriptor) => new(descriptor.Id, descriptor.Version);
+    private static ToolExecutionPolicyReference Policy() => new(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1));
+    private static AgentId Agent() => new(Guid.Parse("11111111-1111-1111-1111-111111111111"));
+    private static SessionId Session() => new(Guid.Parse("22222222-2222-2222-2222-222222222222"));
+    private static RunId Run() => new(Guid.Parse("33333333-3333-3333-3333-333333333333"));
+    private static ExecutionIdentity Identity() => TestSupport.TestExecutionIdentity.Create(
+        new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+    private static SecurityPolicySnapshotReference SecurityPolicy() => new(
+        new SecurityPolicySnapshotId(Guid.Parse("44444444-4444-4444-4444-444444444444")),
+        new SecurityPolicyVersion(1), new ContentHash("sha256:test"));
+
+    private static ToolDescriptor Descriptor(string id, string version, string name = "tool")
+    {
+        using var document = JsonDocument.Parse("{}");
+        return new ToolDescriptor(
+            new ToolId(id), new ToolVersion(version), name, "description",
+            new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), document.RootElement),
+            null, new ToolEffects(ToolEffect.ReadOnly, null, null),
+            new ToolExecutionHints(ToolSchedulingMode.Unspecified, null, null, null),
+            new ToolSourceId("agentkit.tools.tests"), ExtensionData.Empty);
+    }
+
+    private sealed class AliasIgnoreCaseComparer: IEqualityComparer<ToolAlias>
+    {
+        public bool Equals(ToolAlias x, ToolAlias y) => StringComparer.OrdinalIgnoreCase.Equals(x.Value, y.Value);
+        public int GetHashCode(ToolAlias obj) => StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Value);
+    }
+
+    private sealed class AlwaysEqualPolicyComparer: IEqualityComparer<ToolExecutionPolicyReference>
+    {
+        public bool Equals(ToolExecutionPolicyReference? x, ToolExecutionPolicyReference? y) => true;
+        public int GetHashCode(ToolExecutionPolicyReference obj) => 0;
+    }
+
+    private sealed class NeverEqualAliasComparer: IEqualityComparer<ToolAlias>
+    {
+        public bool Equals(ToolAlias x, ToolAlias y) => false;
+        public int GetHashCode(ToolAlias obj) => EqualityComparer<ToolAlias>.Default.GetHashCode(obj);
+    }
+
+    private sealed class NeverEqualIdentityComparer: IEqualityComparer<ToolIdentity>
+    {
+        public bool Equals(ToolIdentity x, ToolIdentity y) => false;
+        public int GetHashCode(ToolIdentity obj) => EqualityComparer<ToolIdentity>.Default.GetHashCode(obj);
+    }
+
+    private enum InvalidField
+    {
+        AgentId,
+        SessionId,
+        RunId,
+        Identity,
+        SecurityPolicy,
+        ConfigurationVersion,
+        Version,
+        Tools,
+        ExecutionPolicies,
+        ProviderAliases,
+    }
+}
