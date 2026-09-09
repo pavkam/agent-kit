@@ -65,6 +65,28 @@ owning spec.
 
 ## Latest integration evidence
 
+The terminal-tool value checkpoint passed formatting, a Release build with no
+warnings or errors, and all 5,760 tests in an isolated checkout over `80cba80`.
+It adds complete accepted-call and terminal-result evidence, closed owned
+content variants, exact optional usage, captured normalization policy and actual
+normalization evidence. Unknown numeric statuses remain exact; unresolved
+aliases retain no fabricated canonical identity or effects.
+
+Fifty-nine focused cases plus shared identity conformance verify malformed
+inputs, authorization correlation, nullable identity defaults, policy coherence,
+copy ownership, structural equality and retry evidence. Preacceptance keyed
+rejections may lack an external key; a potentially started mutating retry needs
+compatible idempotency evidence. Constructors retain historical evidence without
+reactivating grants or claiming aggregate-byte validation.
+
+The additive API snapshot was reviewed. An explicit protected copy-constructor
+guard prevents external records from bootstrapping another content variant,
+while preserving valid built-in copies. Terminal wrappers also reject malformed
+copies of legacy media and schema references. The wider closed-record and
+legacy-reference audits remain open. Runtime acceptance/terminal recording,
+normalization, deterministic projection, codecs, and provider/loop integration
+remain open; these values alone do not execute or persist a call.
+
 The model-selection candidate guard checkpoint passed formatting, a Release
 build with no warnings or errors, and all 5,685 tests in an isolated checkout
 over `7c9bca0`. Constructor and initializer/copy assignment now reject default

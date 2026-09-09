@@ -8,6 +8,44 @@ namespace AgentKit
         public AcceptedInput(AgentKit.AdmissionReceipt receipt) { }
         public AgentKit.AdmissionReceipt Receipt { get; }
     }
+    public sealed class AcceptedToolCall : System.IEquatable<AgentKit.AcceptedToolCall>
+    {
+        public AcceptedToolCall(
+                    AgentKit.AgentId agentId,
+                    AgentKit.SessionId sessionId,
+                    AgentKit.RunId runId,
+                    AgentKit.TurnId turnId,
+                    AgentKit.OperationId operationId,
+                    AgentKit.ToolCallId callId,
+                    AgentKit.SecurityAuthorizationContext authorization,
+                    AgentKit.ToolCallAcceptanceEvidence acceptance,
+                    AgentKit.ToolAlias providerAlias,
+                    AgentKit.ToolId toolId,
+                    AgentKit.ToolVersion toolVersion,
+                    AgentKit.ToolEffects effects,
+                    AgentKit.IdempotencyKey? externalIdempotencyKey,
+                    AgentKit.ToolCallAdmissionEvidence admission,
+                    AgentKit.ToolResultNormalizationSnapshot normalization,
+                    AgentKit.ToolResultProjectionPolicyReference projectionPolicy,
+                    System.DateTimeOffset requestedAt) { }
+        public AgentKit.ToolCallAcceptanceEvidence Acceptance { get; }
+        public AgentKit.ToolCallAdmissionEvidence Admission { get; }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public AgentKit.ToolCallId CallId { get; }
+        public AgentKit.ToolEffects Effects { get; }
+        public AgentKit.IdempotencyKey? ExternalIdempotencyKey { get; }
+        public AgentKit.ToolResultNormalizationSnapshot Normalization { get; }
+        public AgentKit.OperationId OperationId { get; }
+        public AgentKit.ToolResultProjectionPolicyReference ProjectionPolicy { get; }
+        public AgentKit.ToolAlias ProviderAlias { get; }
+        public System.DateTimeOffset RequestedAt { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public AgentKit.ToolId ToolId { get; }
+        public AgentKit.ToolVersion ToolVersion { get; }
+        public AgentKit.TurnId TurnId { get; }
+    }
     public readonly struct AdmissionId : System.IEquatable<AgentKit.AdmissionId>
     {
         public AdmissionId(System.Guid value) { }
@@ -6921,6 +6959,20 @@ namespace AgentKit
         public AgentKit.ToolExecutionContext Context { get; init; }
         public AgentKit.ToolDescriptor Descriptor { get; init; }
     }
+    public sealed class ToolCallAcceptanceEvidence : System.IEquatable<AgentKit.ToolCallAcceptanceEvidence>
+    {
+        public ToolCallAcceptanceEvidence(AgentKit.GrantId invocationGrantId, AgentKit.InputFingerprint validatedArgumentsFingerprint, System.DateTimeOffset acceptedAt) { }
+        public System.DateTimeOffset AcceptedAt { get; }
+        public AgentKit.GrantId InvocationGrantId { get; }
+        public AgentKit.InputFingerprint ValidatedArgumentsFingerprint { get; }
+    }
+    public sealed class ToolCallAdmissionEvidence : System.IEquatable<AgentKit.ToolCallAdmissionEvidence>
+    {
+        public ToolCallAdmissionEvidence(AgentKit.ToolCatalogVersion catalogVersion, int sourceOrdinal, AgentKit.InputFingerprint rawArgumentsFingerprint) { }
+        public AgentKit.ToolCatalogVersion CatalogVersion { get; }
+        public AgentKit.InputFingerprint RawArgumentsFingerprint { get; }
+        public int SourceOrdinal { get; }
+    }
     public readonly struct ToolCallId : System.IEquatable<AgentKit.ToolCallId>
     {
         public ToolCallId(System.Guid value) { }
@@ -6956,6 +7008,68 @@ namespace AgentKit
         public AgentKit.ToolExecutionContext Context { get; init; }
         public System.DateTimeOffset RequestedAt { get; init; }
         public AgentKit.ToolId ToolId { get; init; }
+    }
+    public sealed class ToolCallResult : System.IEquatable<AgentKit.ToolCallResult>
+    {
+        public ToolCallResult(
+                    AgentKit.AgentId agentId,
+                    AgentKit.SessionId sessionId,
+                    AgentKit.RunId runId,
+                    AgentKit.TurnId turnId,
+                    AgentKit.OperationId operationId,
+                    AgentKit.ToolCallId callId,
+                    AgentKit.SecurityAuthorizationContext authorization,
+                    AgentKit.GrantId? grantId,
+                    AgentKit.ToolCallAcceptanceEvidence? acceptance,
+                    AgentKit.ToolAlias providerAlias,
+                    AgentKit.ToolId? toolId,
+                    AgentKit.ToolVersion? toolVersion,
+                    AgentKit.ToolEffects? effects,
+                    AgentKit.IdempotencyKey? externalIdempotencyKey,
+                    AgentKit.ToolCallAdmissionEvidence admission,
+                    AgentKit.ToolTerminalStatus status,
+                    System.Collections.Immutable.ImmutableArray<AgentKit.ToolResultContent> content,
+                    AgentKit.ToolError? error,
+                    AgentKit.SideEffectCertainty sideEffectCertainty,
+                    AgentKit.ToolUsage? usage,
+                    bool retryable,
+                    AgentKit.ToolResultNormalizationSnapshot normalization,
+                    AgentKit.ToolResultNormalizationInfo normalizationInfo,
+                    AgentKit.ToolResultProjectionPolicyReference projectionPolicy,
+                    System.DateTimeOffset requestedAt,
+                    System.DateTimeOffset? invocationStartedAt,
+                    System.DateTimeOffset completedAt,
+                    AgentKit.ExtensionData extensions) { }
+        public AgentKit.ToolCallAcceptanceEvidence? Acceptance { get; }
+        public AgentKit.ToolCallAdmissionEvidence Admission { get; }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public AgentKit.ToolCallId CallId { get; }
+        public System.DateTimeOffset CompletedAt { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolResultContent> Content { get; }
+        public AgentKit.ToolEffects? Effects { get; }
+        public AgentKit.ToolError? Error { get; }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.IdempotencyKey? ExternalIdempotencyKey { get; }
+        public AgentKit.GrantId? GrantId { get; }
+        public System.DateTimeOffset? InvocationStartedAt { get; }
+        public AgentKit.ToolResultNormalizationSnapshot Normalization { get; }
+        public AgentKit.ToolResultNormalizationInfo NormalizationInfo { get; }
+        public AgentKit.OperationId OperationId { get; }
+        public AgentKit.ToolResultProjectionPolicyReference ProjectionPolicy { get; }
+        public AgentKit.ToolAlias ProviderAlias { get; }
+        public System.DateTimeOffset RequestedAt { get; }
+        public bool Retryable { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; }
+        public AgentKit.ToolTerminalStatus Status { get; }
+        public AgentKit.ToolId? ToolId { get; }
+        public AgentKit.ToolVersion? ToolVersion { get; }
+        public AgentKit.TurnId TurnId { get; }
+        public AgentKit.ToolUsage? Usage { get; }
+        public bool Equals(AgentKit.ToolCallResult? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class ToolCatalogSnapshot : System.IEquatable<AgentKit.ToolCatalogSnapshot>
     {
@@ -7007,6 +7121,24 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResourceKind>? RequiredResourceKinds { get; }
         public bool Equals(AgentKit.ToolEffects? other) { }
         public override int GetHashCode() { }
+    }
+    public sealed class ToolError : System.IEquatable<AgentKit.ToolError>
+    {
+        public ToolError(AgentKit.ToolErrorKind kind, string safeMessage, string? externalCode, System.TimeSpan? retryAfter, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; }
+        public string? ExternalCode { get; }
+        public AgentKit.ToolErrorKind Kind { get; }
+        public System.TimeSpan? RetryAfter { get; }
+        public string SafeMessage { get; }
+    }
+    public enum ToolErrorKind
+    {
+        Tool = 0,
+        Transport = 1,
+        Host = 2,
+        Policy = 3,
+        Serialization = 4,
+        Protocol = 5,
     }
     public sealed class ToolExecutionContext : System.IEquatable<AgentKit.ToolExecutionContext>
     {
@@ -7083,6 +7215,72 @@ namespace AgentKit
         public string Name { get; init; }
         public AgentKit.ToolVersion? Version { get; init; }
     }
+    public sealed class ToolResultArtifactContent : AgentKit.ToolResultContent, System.IEquatable<AgentKit.ToolResultArtifactContent>
+    {
+        public ToolResultArtifactContent(AgentKit.ArtifactReference reference, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.ArtifactReference Reference { get; }
+    }
+    public sealed class ToolResultBounds : System.IEquatable<AgentKit.ToolResultBounds>
+    {
+        public ToolResultBounds(long maximumCanonicalBytes, int maximumParts) { }
+        public long MaximumCanonicalBytes { get; }
+        public int MaximumParts { get; }
+    }
+    public abstract class ToolResultContent : System.IEquatable<AgentKit.ToolResultContent>
+    {
+        protected ToolResultContent(AgentKit.ToolResultContent original) { }
+    }
+    public sealed class ToolResultMediaContent : AgentKit.ToolResultContent, System.IEquatable<AgentKit.ToolResultMediaContent>
+    {
+        public ToolResultMediaContent(AgentKit.MediaReference reference, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.MediaReference Reference { get; }
+    }
+    public readonly struct ToolResultNormalizationAlgorithmVersion : System.IEquatable<AgentKit.ToolResultNormalizationAlgorithmVersion>
+    {
+        public ToolResultNormalizationAlgorithmVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ToolResultNormalizationInfo : System.IEquatable<AgentKit.ToolResultNormalizationInfo>
+    {
+        public ToolResultNormalizationInfo(System.Collections.Immutable.ImmutableArray<AgentKit.ToolResultNormalizationTransformation> transformations, long? inputCanonicalBytes, int? inputParts, long? omittedCanonicalBytes, int? omittedParts, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; }
+        public long? InputCanonicalBytes { get; }
+        public int? InputParts { get; }
+        public long? OmittedCanonicalBytes { get; }
+        public int? OmittedParts { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolResultNormalizationTransformation> Transformations { get; }
+        public bool Equals(AgentKit.ToolResultNormalizationInfo? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class ToolResultNormalizationSnapshot : System.IEquatable<AgentKit.ToolResultNormalizationSnapshot>
+    {
+        public ToolResultNormalizationSnapshot(AgentKit.ToolResultRejectionPolicyReference rejectionPolicy, AgentKit.ToolResultProjectionPolicyReference projectionPolicy, AgentKit.ToolExecutionPolicyReference? executionPolicy, AgentKit.ToolResultNormalizationAlgorithmVersion algorithmVersion, AgentKit.ToolResultBounds bounds, AgentKit.ToolResultProjectionTransformations allowedTransformations, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ToolResultNormalizationAlgorithmVersion AlgorithmVersion { get; }
+        public AgentKit.ToolResultProjectionTransformations AllowedTransformations { get; }
+        public AgentKit.ToolResultBounds Bounds { get; }
+        public AgentKit.ToolExecutionPolicyReference? ExecutionPolicy { get; }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.ToolResultProjectionPolicyReference ProjectionPolicy { get; }
+        public AgentKit.ToolResultRejectionPolicyReference RejectionPolicy { get; }
+    }
+    public enum ToolResultNormalizationTransformation
+    {
+        Redacted = 0,
+        Normalized = 1,
+        Summarized = 2,
+        Truncated = 3,
+        Externalized = 4,
+    }
+    public sealed class ToolResultOpaqueContent : AgentKit.ToolResultContent, System.IEquatable<AgentKit.ToolResultOpaqueContent>
+    {
+        public ToolResultOpaqueContent(string typeDiscriminator, AgentKit.ExtensionValue canonicalPayload, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionValue CanonicalPayload { get; }
+        public AgentKit.ExtensionData Extensions { get; }
+        public string TypeDiscriminator { get; }
+    }
     public sealed class ToolResultPart : AgentKit.ContentPart, System.IEquatable<AgentKit.ToolResultPart>
     {
         public ToolResultPart(AgentKit.ToolCallId callId, AgentKit.ToolReference tool, AgentKit.ToolCallOutcome outcome, System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> content, AgentKit.ExtensionData extensions) { }
@@ -7135,6 +7333,40 @@ namespace AgentKit
         Truncation = 8,
         Externalization = 16,
     }
+    public readonly struct ToolResultRejectionPolicyKey : System.IEquatable<AgentKit.ToolResultRejectionPolicyKey>
+    {
+        public ToolResultRejectionPolicyKey(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ToolResultRejectionPolicyReference : System.IEquatable<AgentKit.ToolResultRejectionPolicyReference>
+    {
+        public ToolResultRejectionPolicyReference(AgentKit.ToolResultRejectionPolicyKey key, AgentKit.ToolResultRejectionPolicyVersion version) { }
+        public AgentKit.ToolResultRejectionPolicyKey Key { get; }
+        public AgentKit.ToolResultRejectionPolicyVersion Version { get; }
+    }
+    public readonly struct ToolResultRejectionPolicyVersion : System.IEquatable<AgentKit.ToolResultRejectionPolicyVersion>
+    {
+        public ToolResultRejectionPolicyVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ToolResultStructuredContent : AgentKit.ToolResultContent, System.IEquatable<AgentKit.ToolResultStructuredContent>
+    {
+        public ToolResultStructuredContent(System.Text.Json.JsonElement value, AgentKit.JsonSchemaReference? schema, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.JsonSchemaReference? Schema { get; }
+        public System.Text.Json.JsonElement Value { get; }
+        public bool Equals(AgentKit.ToolResultStructuredContent? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class ToolResultTextContent : AgentKit.ToolResultContent, System.IEquatable<AgentKit.ToolResultTextContent>
+    {
+        public ToolResultTextContent(string text, AgentKit.TextSemantics semantics, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.TextSemantics Semantics { get; }
+        public string Text { get; }
+    }
     public enum ToolSchedulingMode
     {
         Unspecified = 0,
@@ -7155,6 +7387,46 @@ namespace AgentKit
         public ToolSourceVersion(string value) { }
         public string Value { get; }
         public override string ToString() { }
+    }
+    public enum ToolTerminalStatus
+    {
+        Succeeded = 1,
+        UnknownTool = 2,
+        InvalidArguments = 3,
+        Unsupported = 4,
+        Denied = 5,
+        ApprovalDenied = 6,
+        ApprovalExpired = 7,
+        InvocationFailed = 8,
+        TimedOut = 9,
+        Cancelled = 10,
+        Interrupted = 11,
+        ResultNormalizationFailed = 12,
+        ResultSerializationFailed = 13,
+        ProtocolFailed = 14,
+    }
+    public sealed class ToolUsage : System.IEquatable<AgentKit.ToolUsage>
+    {
+        public ToolUsage(System.Collections.Immutable.ImmutableArray<AgentKit.ToolUsageMeasurement> measurements, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolUsageMeasurement> Measurements { get; }
+        public bool Equals(AgentKit.ToolUsage? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class ToolUsageMeasurement : System.IEquatable<AgentKit.ToolUsageMeasurement>
+    {
+        public ToolUsageMeasurement(AgentKit.BudgetDimension dimension, AgentKit.BudgetUnit unit, AgentKit.BudgetQuantity? amount, AgentKit.ToolUsageMeasurementQuality quality) { }
+        public AgentKit.BudgetQuantity? Amount { get; }
+        public AgentKit.BudgetDimension Dimension { get; }
+        public AgentKit.ToolUsageMeasurementQuality Quality { get; }
+        public AgentKit.BudgetUnit Unit { get; }
+    }
+    public enum ToolUsageMeasurementQuality
+    {
+        Measured = 0,
+        Estimated = 1,
+        Unknown = 2,
+        NotApplicable = 3,
     }
     public readonly struct ToolVersion : System.IEquatable<AgentKit.ToolVersion>
     {
