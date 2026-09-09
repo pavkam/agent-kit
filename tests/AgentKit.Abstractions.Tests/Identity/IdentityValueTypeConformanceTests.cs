@@ -238,6 +238,7 @@ public sealed class IdentityValueTypeConformanceTests
         || identityType == typeof(BudgetAccountingRevision)
         || identityType == typeof(OperationStateRevision)
         || identityType == typeof(SessionLaneRevision)
+        || identityType == typeof(ContextContributorCatalogVersion)
         || identityType == typeof(SessionDirectoryRevision)
         || identityType == typeof(SessionProfileVersion)
         || identityType == typeof(OutputSchemaProfileVersion)

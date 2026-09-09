@@ -2013,6 +2013,13 @@ namespace AgentKit
         public override string ToString() { }
     }
     public abstract class ContentDelta : System.IEquatable<AgentKit.ContentDelta> { }
+    public sealed class ContentDeltaEvent : AgentKit.RunEvent, System.IEquatable<AgentKit.ContentDeltaEvent>
+    {
+        public ContentDeltaEvent(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.RunId runId, AgentKit.TurnId? turnId, long sequence, System.DateTimeOffset occurredAt, AgentKit.ModelRequestId requestId, int partIndex, AgentKit.ContentDelta delta) { }
+        public AgentKit.ContentDelta Delta { get; }
+        public int PartIndex { get; }
+        public AgentKit.ModelRequestId RequestId { get; }
+    }
     public readonly struct ContentHash : System.IEquatable<AgentKit.ContentHash>
     {
         public ContentHash(string value) { }
@@ -2043,11 +2050,22 @@ namespace AgentKit
         public override int GetHashCode() { }
     }
     public abstract class ContextAssemblyResult : System.IEquatable<AgentKit.ContextAssemblyResult> { }
+    public readonly struct ContextContributorCatalogVersion : System.IEquatable<AgentKit.ContextContributorCatalogVersion>
+    {
+        public ContextContributorCatalogVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
     public readonly struct ContextEpoch : System.IEquatable<AgentKit.ContextEpoch>
     {
         public ContextEpoch(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public enum ContextEvaluationFrequency
+    {
+        OncePerRun = 0,
+        OncePerModelRequest = 1,
     }
     public sealed class ContextPreparationFailed : AgentKit.ContextAssemblyResult, System.IEquatable<AgentKit.ContextPreparationFailed>
     {
@@ -2071,6 +2089,42 @@ namespace AgentKit
     {
         public ContextReady(AgentKit.LlmRequestContext context) { }
         public AgentKit.LlmRequestContext Context { get; init; }
+    }
+    public readonly struct ContextSourceKey : System.IEquatable<AgentKit.ContextSourceKey>
+    {
+        public ContextSourceKey(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct ContextSourceNamespace : System.IEquatable<AgentKit.ContextSourceNamespace>
+    {
+        public ContextSourceNamespace(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ContextSourceReference : System.IEquatable<AgentKit.ContextSourceReference>
+    {
+        public ContextSourceReference(AgentKit.ContextSourceNamespace sourceNamespace, AgentKit.ContextSourceKey key, AgentKit.ContextSourceVersion version) { }
+        public AgentKit.ContextSourceKey Key { get; }
+        public AgentKit.ContextSourceNamespace Namespace { get; }
+        public AgentKit.ContextSourceVersion Version { get; }
+    }
+    public readonly struct ContextSourceVersion : System.IEquatable<AgentKit.ContextSourceVersion>
+    {
+        public ContextSourceVersion(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public enum ContextTrust
+    {
+        Framework = 0,
+        HostPolicy = 1,
+        AgentDefinition = 2,
+        Workspace = 3,
+        User = 4,
+        RetrievedData = 5,
+        ToolData = 6,
+        ModelGenerated = 7,
     }
     public sealed class ContinuationReason : System.IEquatable<AgentKit.ContinuationReason>
     {
@@ -4146,6 +4200,12 @@ namespace AgentKit
         public string Value { get; }
         public override string ToString() { }
     }
+    public sealed class MessageCommittedEvent : AgentKit.RunEvent, System.IEquatable<AgentKit.MessageCommittedEvent>
+    {
+        public MessageCommittedEvent(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.RunId runId, AgentKit.TurnId? turnId, long sequence, System.DateTimeOffset occurredAt, AgentKit.MessageId messageId, AgentKit.SessionVersion sessionVersion) { }
+        public AgentKit.MessageId MessageId { get; }
+        public AgentKit.SessionVersion SessionVersion { get; }
+    }
     public readonly struct MessageId : System.IEquatable<AgentKit.MessageId>
     {
         public MessageId(System.Guid value) { }
@@ -5588,6 +5648,23 @@ namespace AgentKit
         public AgentKit.AgentRunState State { get; }
     }
     public abstract class RunContinuationDecision : System.IEquatable<AgentKit.RunContinuationDecision> { }
+    public abstract class RunEvent : System.IEquatable<AgentKit.RunEvent>
+    {
+        protected RunEvent(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.RunId runId, AgentKit.TurnId? turnId, long sequence, System.DateTimeOffset occurredAt, AgentKit.RunEventDurability durability) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.ConversationId? ConversationId { get; }
+        public AgentKit.RunEventDurability Durability { get; }
+        public System.DateTimeOffset OccurredAt { get; }
+        public AgentKit.RunId RunId { get; }
+        public long Sequence { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public AgentKit.TurnId? TurnId { get; }
+    }
+    public enum RunEventDurability
+    {
+        Live = 0,
+        Durable = 1,
+    }
     public readonly struct RunId : System.IEquatable<AgentKit.RunId>
     {
         public RunId(System.Guid value) { }

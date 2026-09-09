@@ -65,6 +65,22 @@ owning spec.
 
 ## Latest integration evidence
 
+The run-event and context-provenance checkpoint passed formatting, a Release
+build with no warnings or errors, and all 5,905 tests in an isolated checkout
+over `900b186`. Extensible run events retain exact correlation, positive per-run
+sequence and explicit live/durable classification. Built-in content deltas and
+committed-message events require a turn and validate their request,
+part-position, message and session-version evidence.
+
+Context source references preserve exact namespace, key and textual revision;
+contributor catalog versions are positive. Trust and evaluation-frequency values
+retain the normative vocabulary without assigning authority or numeric
+precedence. Sixty-six additional cases, including shared identity conformance,
+verify defaults, guards, boundary values, extensibility and immutable copies.
+The additive API snapshot was reviewed. Publisher sequence allocation, durable
+fan-out, final envelopes, source resolution, instruction precedence and request
+manifests remain open.
+
 The budget-result closure checkpoint passed formatting, a Release build with no
 warnings or errors, and all 5,839 tests in an isolated checkout over `f960ecb`.
 Four documented closed result families now reject external variants constructed
