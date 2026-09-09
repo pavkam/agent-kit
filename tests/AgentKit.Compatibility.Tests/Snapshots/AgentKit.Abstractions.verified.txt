@@ -1931,6 +1931,13 @@ namespace AgentKit
         public string SafeMessage { get; init; }
         public override string ToString() { }
     }
+    public sealed class ConfigurationJsonValue : AgentKit.ConfigurationSemanticValue, System.IEquatable<AgentKit.ConfigurationJsonValue>
+    {
+        public ConfigurationJsonValue(System.Text.Json.JsonElement value) { }
+        public System.Text.Json.JsonElement Value { get; }
+        public bool Equals(AgentKit.ConfigurationJsonValue? other) { }
+        public override int GetHashCode() { }
+    }
     public enum ConfigurationLayerKind
     {
         LibraryDefaults = 0,
@@ -1956,6 +1963,10 @@ namespace AgentKit
         public ConfigurationPath(string value) { }
         public string? Value { get; }
         public override string ToString() { }
+    }
+    public abstract class ConfigurationSemanticValue : System.IEquatable<AgentKit.ConfigurationSemanticValue>
+    {
+        protected ConfigurationSemanticValue(AgentKit.ConfigurationSemanticValue original) { }
     }
     public readonly struct ConfigurationSourceId : System.IEquatable<AgentKit.ConfigurationSourceId>
     {
@@ -2354,6 +2365,26 @@ namespace AgentKit
         None = 0,
         Caller = 1,
         Backend = 2,
+    }
+    public sealed class EffectiveConfigurationEntry : System.IEquatable<AgentKit.EffectiveConfigurationEntry>
+    {
+        public EffectiveConfigurationEntry(AgentKit.ConfigurationPath path, AgentKit.ConfigurationMergeOperation mergeOperation, AgentKit.ConfigurationSemanticValue value, System.Collections.Immutable.ImmutableArray<AgentKit.ConfigurationSourceReference> contributors) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ConfigurationSourceReference> Contributors { get; }
+        public AgentKit.ConfigurationMergeOperation MergeOperation { get; }
+        public AgentKit.ConfigurationPath Path { get; }
+        public AgentKit.ConfigurationSemanticValue Value { get; }
+        public bool Equals(AgentKit.EffectiveConfigurationEntry? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class EffectiveConfigurationSnapshot : System.IEquatable<AgentKit.EffectiveConfigurationSnapshot>
+    {
+        public EffectiveConfigurationSnapshot(AgentKit.ConfigurationVersion version, AgentKit.ContentHash fingerprint, System.Collections.Immutable.ImmutableArray<AgentKit.EffectiveConfigurationEntry> entries, System.Collections.Immutable.ImmutableArray<AgentKit.ConfigurationSourceReference> sources) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.EffectiveConfigurationEntry> Entries { get; }
+        public AgentKit.ContentHash Fingerprint { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ConfigurationSourceReference> Sources { get; }
+        public AgentKit.ConfigurationVersion Version { get; }
+        public bool Equals(AgentKit.EffectiveConfigurationSnapshot? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class EmbeddingAttemptCancelled : AgentKit.EmbeddingAttemptResult, System.IEquatable<AgentKit.EmbeddingAttemptCancelled>
     {
@@ -4336,6 +4367,11 @@ namespace AgentKit
         public ModelSelected(AgentKit.ModelSelectionDecision decision) { }
         public AgentKit.ModelSelectionDecision Decision { get; init; }
     }
+    public sealed class ModelSelectionConfigurationValue : AgentKit.ConfigurationSemanticValue, System.IEquatable<AgentKit.ModelSelectionConfigurationValue>
+    {
+        public ModelSelectionConfigurationValue(AgentKit.ModelSelectionPolicy policy) { }
+        public AgentKit.ModelSelectionPolicy Policy { get; }
+    }
     public sealed class ModelSelectionDecision : System.IEquatable<AgentKit.ModelSelectionDecision>
     {
         public ModelSelectionDecision(AgentKit.ModelDescriptor model, AgentKit.ModelCatalogVersion catalogVersion, string reason, System.Collections.Immutable.ImmutableArray<AgentKit.ModelSelectionDiagnostic> diagnostics) { }
@@ -5872,6 +5908,11 @@ namespace AgentKit
         public long Value { get; }
         public override string ToString() { }
     }
+    public sealed class SecurityProfileConfigurationValue : AgentKit.ConfigurationSemanticValue, System.IEquatable<AgentKit.SecurityProfileConfigurationValue>
+    {
+        public SecurityProfileConfigurationValue(AgentKit.SecurityProfilePublication publication) { }
+        public AgentKit.SecurityProfilePublication Publication { get; }
+    }
     public readonly struct SecurityProfileKey : System.IEquatable<AgentKit.SecurityProfileKey>
     {
         public SecurityProfileKey(string value) { }
@@ -6506,6 +6547,11 @@ namespace AgentKit
         public override int GetHashCode() { }
     }
     public abstract class SessionPageResult : System.IEquatable<AgentKit.SessionPageResult> { }
+    public sealed class SessionProfileConfigurationValue : AgentKit.ConfigurationSemanticValue, System.IEquatable<AgentKit.SessionProfileConfigurationValue>
+    {
+        public SessionProfileConfigurationValue(AgentKit.SessionProfileReference profile) { }
+        public AgentKit.SessionProfileReference Profile { get; }
+    }
     public readonly struct SessionProfileKey : System.IEquatable<AgentKit.SessionProfileKey>
     {
         public SessionProfileKey(string value) { }
@@ -6936,6 +6982,12 @@ namespace AgentKit
         public ToolAlias(string value) { }
         public string Value { get; }
         public override string ToString() { }
+    }
+    public sealed class ToolAliasAssignment : System.IEquatable<AgentKit.ToolAliasAssignment>
+    {
+        public ToolAliasAssignment(AgentKit.ToolAlias alias, AgentKit.ToolIdentity tool) { }
+        public AgentKit.ToolAlias Alias { get; }
+        public AgentKit.ToolIdentity Tool { get; }
     }
     public sealed class ToolArgumentsContentDelta : AgentKit.ContentDelta, System.IEquatable<AgentKit.ToolArgumentsContentDelta>
     {
@@ -7432,6 +7484,45 @@ namespace AgentKit
     {
         public ToolVersion(string value) { }
         public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ToolsetConfigurationValue : AgentKit.ConfigurationSemanticValue, System.IEquatable<AgentKit.ToolsetConfigurationValue>
+    {
+        public ToolsetConfigurationValue(AgentKit.ToolsetPublication publication) { }
+        public AgentKit.ToolsetPublication Publication { get; }
+    }
+    public readonly struct ToolsetKey : System.IEquatable<AgentKit.ToolsetKey>
+    {
+        public ToolsetKey(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ToolsetPublication : System.IEquatable<AgentKit.ToolsetPublication>
+    {
+        public ToolsetPublication(AgentKit.ToolsetKey key, AgentKit.ToolsetVersion version, AgentKit.ToolExecutionPolicyReference executionPolicy, System.Collections.Immutable.ImmutableArray<AgentKit.ToolsetSourceSelection> sources, System.Collections.Immutable.ImmutableArray<AgentKit.ToolAliasAssignment> aliases) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolAliasAssignment> Aliases { get; }
+        public AgentKit.ToolExecutionPolicyReference ExecutionPolicy { get; }
+        public AgentKit.ToolsetKey Key { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolsetSourceSelection> Sources { get; }
+        public AgentKit.ToolsetVersion Version { get; }
+        public bool Equals(AgentKit.ToolsetPublication? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class ToolsetReference : System.IEquatable<AgentKit.ToolsetReference>
+    {
+        public ToolsetReference(AgentKit.ToolsetKey key, AgentKit.ToolExecutionPolicyKey executionPolicyKey) { }
+        public AgentKit.ToolExecutionPolicyKey ExecutionPolicyKey { get; }
+        public AgentKit.ToolsetKey Key { get; }
+    }
+    public sealed class ToolsetSourceSelection : System.IEquatable<AgentKit.ToolsetSourceSelection>
+    {
+        public ToolsetSourceSelection(AgentKit.ToolSourceId sourceId) { }
+        public AgentKit.ToolSourceId SourceId { get; }
+    }
+    public readonly struct ToolsetVersion : System.IEquatable<AgentKit.ToolsetVersion>
+    {
+        public ToolsetVersion(long value) { }
+        public long Value { get; }
         public override string ToString() { }
     }
     public readonly struct TurnId : System.IEquatable<AgentKit.TurnId>

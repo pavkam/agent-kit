@@ -65,6 +65,21 @@ owning spec.
 
 ## Latest integration evidence
 
+The effective-configuration and toolset value checkpoint passed formatting, a
+Release build with no warnings or errors, and all 5,827 tests in an isolated
+checkout over `7d79b52`. Toolset publications retain exact policy references,
+ordered source selections and alias assignments. Effective snapshots retain
+strictly ordered setting paths, typed semantic values and exact bidirectional
+source/contributor provenance.
+
+Sixty-seven additional cases cover value constraints, positive versions,
+source/alias uniqueness, empty local snapshots, JSON ownership, structural
+equality and valid record copies. Configuration's closed semantic family rejects
+external copy-constructor bootstrapping. The additive API snapshot was reviewed.
+These values validate local representation; source authentication, schema-aware
+merge, completeness, retained publication, runtime capture and selected-graph
+activation remain open.
+
 The terminal-tool value checkpoint passed formatting, a Release build with no
 warnings or errors, and all 5,760 tests in an isolated checkout over `80cba80`.
 It adds complete accepted-call and terminal-result evidence, closed owned
