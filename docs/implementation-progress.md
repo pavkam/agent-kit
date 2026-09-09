@@ -72,6 +72,21 @@ owning spec.
 
 ## Latest integration evidence
 
+The provider-compatibility checkpoint passed formatting, a Release build with no
+warnings or errors, and all 6,171 tests without skips in an isolated checkout
+over `a99e044`. Six additive values retain exact profile identity, positive
+publication revisions, configured candidate multiplicity, usage-report
+availability and ordered tool-schema dialect evidence. Thirty-seven additional
+cases include shared identity conformance, invalid boundaries and structural
+equality.
+
+The owner and concept documents now specify the portable profile shape, reject
+conflicting publication under one key and version, and distinguish report-phase
+availability from actual usage evidence. The API snapshot was reviewed. These
+values do not activate a wire profile, verify fingerprints, grant authority or
+complete descriptor publication and runtime preflight; that integration remains
+open under the stopped architecture goal.
+
 The SQLite budget-ledger checkpoint passed formatting, a Release build with no
 warnings or errors, and all 6,134 tests without skips in an isolated checkout
 over `b3f9b89`. The explicit local adapter implements the shared ledger contract

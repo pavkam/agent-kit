@@ -59,7 +59,9 @@ A configured provider operation also has three independently selectable
 composition bindings:
 
 - an endpoint profile chooses the service surface, origin, region, API version,
-  deployment, transport policy, and compatibility profile;
+  deployment, and transport policy;
+- a descriptor retains the exact versioned compatibility profile that supplies
+  portable wire-behavior evidence for that configured operation;
 - a credential profile chooses one account or workload identity plus its
   authentication scheme, audience, scopes, refresh, and rotation policy; and
 - an operation registration binds one chat, embedding, reranking, media, or
@@ -72,6 +74,24 @@ source, pairs whichever options happened to register first with another
 provider's model, or changes endpoint/account binding during an in-flight
 attempt. One engine can therefore use several providers, endpoints, service
 surfaces, and accounts concurrently without credential or options leakage.
+
+A `CompatibilityProfile` is immutable portable evidence. Its key, version, and
+fingerprint identify the published wire-behavior profile retained by a
+`ModelDescriptor`; the value itself neither resolves that identity nor verifies
+the fingerprint. A publisher rejects two different profile bodies for the same
+key and version, including a changed fingerprint, rather than choosing one at
+lookup time. The profile's dialect array is ordered, initialized, unique, and
+may be empty for an operation with no tool schema support. A nonempty profile
+dialect set remains valid when a particular descriptor's effective
+`ModelCapabilities` disables tools; when a request does select tools, preflight
+requires a dialect supported by both the selected tool schema and the profile.
+
+`ExactlyOne` describes the first-party single-candidate operation contract.
+`Multiple` requires a separate candidate-aware operation with stable candidate
+identities and interleaving rules. Usage-reporting modes state which report
+phases an operation can expose: `NotReported`, `TerminalOnly`, `InterimOnly`, or
+`StreamingAndTerminal`. They do not promise complete counters or a report on
+every successful response; missing usage remains `NotReported`.
 
 Before I/O, the provider runtime compares the request with the effective
 descriptor. Unsupported behavior is rejected, explicitly downgraded, or routed
@@ -206,6 +226,8 @@ public readonly record struct ProviderApiVersion(string Value);
 public readonly record struct DeploymentId(string Value);
 public readonly record struct ModelDescriptorSourceId(string Value);
 public readonly record struct EmbeddingInputId(Guid Value);
+public readonly record struct CompatibilityProfileKey(string Value);
+public readonly record struct CompatibilityProfileVersion(long Value);
 public readonly record struct ModelDescriptorRevision(long Value);
 public readonly record struct ModelCatalogVersion(long Value);
 public readonly record struct ModelDescriptorSourceVersion(long Value);
@@ -222,6 +244,30 @@ public sealed record ProviderCredentialProfileReference(
 public sealed record ProviderOperationBinding(
     ProviderEndpointProfileReference Endpoint,
     ProviderCredentialProfileReference Credential);
+
+public enum ModelCandidateMultiplicity
+{
+    ExactlyOne = 0,
+    Multiple = 1,
+}
+
+public enum ModelUsageReportingMode
+{
+    NotReported = 0,
+    TerminalOnly = 1,
+    InterimOnly = 2,
+    StreamingAndTerminal = 3,
+}
+
+public sealed record CompatibilityProfile(
+    CompatibilityProfileKey Key,
+    CompatibilityProfileVersion Version,
+    ContentHash Fingerprint,
+    ModelCandidateMultiplicity RequestMultiplicity,
+    ModelCandidateMultiplicity ResponseMultiplicity,
+    ModelUsageReportingMode UsageReporting,
+    ImmutableArray<JsonSchemaDialectId> SupportedToolSchemaDialects,
+    ExtensionData Extensions);
 
 public sealed record ProviderEndpointProfileSnapshot(
     ProviderEndpointProfileReference Reference,

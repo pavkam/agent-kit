@@ -180,6 +180,25 @@ Endpoint compatibility is evidence for reuse, not proof of equivalence.
 Unknown provider response fields SHOULD be preserved in extension data. Request
 profiles MUST avoid sending fields a deployment is known not to accept.
 
+A `CompatibilityProfile` is versioned, fingerprinted portable evidence retained
+in the selected descriptor. It captures request and response candidate
+multiplicity, usage-report phases, and the ordered unique set of supported tool
+schema dialects. It does not duplicate `ModelCapabilities`, activate a concrete
+wire profile, verify its fingerprint, or grant authority. `ExactlyOne` denotes
+the single-candidate operation; `Multiple` requires a distinct candidate-aware
+operation. `NotReported`, `TerminalOnly`, `InterimOnly`, and
+`StreamingAndTerminal` describe which usage-report phases can be observed, not
+whether every counter is present. A successful operation can still have no
+terminal usage evidence.
+
+An empty dialect set is valid for an operation without tool schema support. A
+profile may retain nonempty dialect support while a particular model's effective
+capabilities disable tools. When tools are selected, preflight must find a
+schema dialect supported by both the selected tool schema and the profile;
+otherwise it rejects before provider I/O. Publication rejects conflicting
+content for one retained profile identity instead of resolving ambiguity at
+execution.
+
 ## Selection and fallback
 
 `IModelSelector` receives requirements, policy, run context, and candidate
@@ -225,6 +244,10 @@ from an embedding contract.
 - A single-candidate operation rejects an unexpected second candidate instead of
   silently selecting the first.
 - Missing provider usage remains unknown rather than becoming reported zero.
+- An operation with only interim usage evidence preserves it without inventing a
+  terminal report.
+- A tool-selected request with no dialect shared by its schema and compatibility
+  profile is rejected before provider I/O.
 - Embeddings from incompatible model revisions cannot share an index query.
 - Replacing an embedding or reranking registration does not replace the selected
   conversational model.

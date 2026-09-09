@@ -1944,6 +1944,32 @@ namespace AgentKit
         public AgentKit.CompactionSourceSnapshot Source { get; init; }
     }
     public abstract class CompactionValidationResult : System.IEquatable<AgentKit.CompactionValidationResult> { }
+    public sealed class CompatibilityProfile : System.IEquatable<AgentKit.CompatibilityProfile>
+    {
+        public CompatibilityProfile(AgentKit.CompatibilityProfileKey key, AgentKit.CompatibilityProfileVersion version, AgentKit.ContentHash fingerprint, AgentKit.ModelCandidateMultiplicity requestMultiplicity, AgentKit.ModelCandidateMultiplicity responseMultiplicity, AgentKit.ModelUsageReportingMode usageReporting, System.Collections.Immutable.ImmutableArray<AgentKit.JsonSchemaDialectId> supportedToolSchemaDialects, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.ContentHash Fingerprint { get; }
+        public AgentKit.CompatibilityProfileKey Key { get; }
+        public AgentKit.ModelCandidateMultiplicity RequestMultiplicity { get; }
+        public AgentKit.ModelCandidateMultiplicity ResponseMultiplicity { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.JsonSchemaDialectId> SupportedToolSchemaDialects { get; }
+        public AgentKit.ModelUsageReportingMode UsageReporting { get; }
+        public AgentKit.CompatibilityProfileVersion Version { get; }
+        public bool Equals(AgentKit.CompatibilityProfile? other) { }
+        public override int GetHashCode() { }
+    }
+    public readonly struct CompatibilityProfileKey : System.IEquatable<AgentKit.CompatibilityProfileKey>
+    {
+        public CompatibilityProfileKey(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct CompatibilityProfileVersion : System.IEquatable<AgentKit.CompatibilityProfileVersion>
+    {
+        public CompatibilityProfileVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
     public sealed class CompleteRun : AgentKit.RunContinuationDecision, System.IEquatable<AgentKit.CompleteRun>
     {
         public CompleteRun(AgentKit.AgentRunOutcome outcome) { }
@@ -4341,6 +4367,11 @@ namespace AgentKit
         public override int GetHashCode() { }
     }
     public abstract class ModelAttemptResult : System.IEquatable<AgentKit.ModelAttemptResult> { }
+    public enum ModelCandidateMultiplicity
+    {
+        ExactlyOne = 0,
+        Multiple = 1,
+    }
     public enum ModelCandidateOutcome
     {
         Selected = 0,
@@ -4397,6 +4428,12 @@ namespace AgentKit
         public AgentKit.ModelId ModelId { get; init; }
         public AgentKit.ModelPricing? Pricing { get; init; }
         public AgentKit.ProviderId ProviderId { get; init; }
+    }
+    public readonly struct ModelDescriptorRevision : System.IEquatable<AgentKit.ModelDescriptorRevision>
+    {
+        public ModelDescriptorRevision(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
     }
     public readonly struct ModelDescriptorSourceId : System.IEquatable<AgentKit.ModelDescriptorSourceId>
     {
@@ -4578,6 +4615,13 @@ namespace AgentKit
         public long? OutputTokens { get; init; }
         public long? ReasoningTokens { get; init; }
         public static AgentKit.ModelUsage Empty { get; }
+    }
+    public enum ModelUsageReportingMode
+    {
+        NotReported = 0,
+        TerminalOnly = 1,
+        InterimOnly = 2,
+        StreamingAndTerminal = 3,
     }
     public sealed class ModelUsageUpdated : AgentKit.ModelResponseEvent, System.IEquatable<AgentKit.ModelUsageUpdated>
     {
