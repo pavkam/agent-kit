@@ -12,6 +12,12 @@ public static class AgentKitTagNames
 {
     /// <summary>Gets the bounded session-entry codec operation attribute.</summary>
     public const string SessionEntryCodecOperation = "agentkit.session.entry.codec.operation";
+
+    /// <summary>Gets the durable session-entry identity attribute for traces and structured logs.</summary>
+    public const string SessionEntryId = "agentkit.session.entry.id";
+
+    /// <summary>Gets the durable session-branch identity attribute for traces and structured logs.</summary>
+    public const string SessionBranchId = "agentkit.session.branch.id";
     /// <summary>Gets the current catalog snapshot version attribute for traces and structured logs.</summary>
     public const string AgentCatalogVersion = "agentkit.agent.catalog.version";
 

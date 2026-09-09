@@ -65,6 +65,22 @@ owning spec.
 
 ## Latest integration evidence
 
+The first portable session-codec checkpoint passed formatting, repository lint,
+a Release build with no warnings or errors, and all 5,463 tests in an isolated
+checkout over `1d533cc`. Explicit JSON codecs cover execution-lane provisioning
+and input promotion at their exact schema `1`. They preserve identities, ordered
+admission evidence, canonical wire values, and original envelopes containing
+unknown fields without activating CLR types from stored data.
+
+Captured per-codec limits bound actual encoded bytes, depth, unknown-field
+counts, and raw extension bytes before materialization. Malformed UTF-8,
+unpaired Unicode escapes, duplicate fields, inconsistent values, and copied
+invalid base entries reject with typed outcomes. Tests exercise exact byte/depth
+boundaries, validation before diagnostic effects, and independent parallel
+listeners. The two public codecs and two shared trace tags are additive API
+changes. Accepted-operation, admitted-input, and message codecs, the mandatory
+durable base profile, and SQLite session persistence remain open.
+
 The in-memory budget-ledger checkpoint passed formatting, repository lint, a
 Release build with no warnings or errors, and all 5,405 tests in an isolated
 checkout over `003e824`. The explicit `AgentKit.Budgets.InMemory` leaf stores

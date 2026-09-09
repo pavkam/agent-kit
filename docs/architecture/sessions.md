@@ -696,6 +696,24 @@ admission and promotion, lifecycle transitions, model and configuration changes,
 tool calls and results, permissions and approval references, compaction, goals,
 delegation, and recovery checkpoints.
 
+The first portable codec slice assigns stable wire identities
+`agentkit.session/execution-lane-provisioned` and
+`agentkit.session/input-promoted` to the corresponding base entry families and
+reads and writes their existing exact schema version `1`. Their JSON schemas use
+explicit field names and closed correlation discriminants; no CLR type name or
+reflection activation enters durable data. Decoders bound nesting and compatible
+unknown-field count and bytes before materializing semantic values, reject
+duplicate or malformed fields, and retain the original immutable envelope for
+unchanged persistence. This slice does not constitute the complete first-party
+durable profile: message, admitted-input, and accepted-operation codecs remain
+required before a persistent store may claim the five-entry base profile.
+
+Compatible-field byte limits count the exact retained UTF-8 bytes from an
+unknown property's opening name quote through the end of its value, including
+the original escaped name spelling, colon, and interior whitespace. A nested
+unknown subtree is charged once by bytes while every property in that subtree
+still counts toward the compatible-field count limit.
+
 AgentKit.IO coordinates admission and promotion through these contracts. It does
 not keep a private queue beside the session. An in-memory store may keep the
 record in process, while a durable store must commit admission atomically with

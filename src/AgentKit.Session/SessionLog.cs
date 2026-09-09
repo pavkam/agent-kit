@@ -20,6 +20,30 @@ internal static partial class SessionLog
     [LoggerMessage(6010, LogLevel.Error, "Session entry codec operation {Operation} faulted with error type {ErrorType}.")]
     internal static partial void CodecFaulted(ILogger logger, string operation, string errorType);
 
+    /// <summary>Logs a successful or typed-rejected concrete codec operation with validated durable identities and no entry content.</summary>
+    /// <param name="logger">The non-null codec-category logger.</param><param name="operation">The bounded concrete codec operation.</param>
+    /// <param name="outcome">The bounded terminal outcome.</param><param name="agentId">The validated owning agent.</param>
+    /// <param name="sessionId">The validated owning session.</param><param name="entryId">The validated durable entry identity.</param>
+    /// <param name="branchId">The validated durable branch identity.</param><param name="executionLaneId">The applicable execution lane.</param>
+    /// <param name="operationId">The validated causal operation.</param><param name="runId">The applicable run identity.</param>
+    /// <param name="turnId">The applicable turn identity.</param>
+    [LoggerMessage(6011, LogLevel.Debug, "Completed concrete session entry codec {Operation} with outcome {Outcome} for agent {AgentId}, session {SessionId}, entry {EntryId}, branch {BranchId}, lane {ExecutionLaneId}, causal operation {OperationId}, run {RunId}, and turn {TurnId}.")]
+    internal static partial void CorrelatedCodecCompleted(ILogger logger, string operation, string outcome,
+        AgentId agentId, SessionId sessionId, SessionEntryId entryId, BranchId branchId,
+        ExecutionLaneId? executionLaneId, OperationId operationId, RunId? runId, TurnId? turnId);
+
+    /// <summary>Logs an unexpected concrete codec failure with validated durable identities and normalized error type only.</summary>
+    /// <param name="logger">The non-null codec-category logger.</param><param name="operation">The bounded concrete codec operation.</param>
+    /// <param name="errorType">The normalized exception type name.</param><param name="agentId">The validated owning agent.</param>
+    /// <param name="sessionId">The validated owning session.</param><param name="entryId">The validated durable entry identity.</param>
+    /// <param name="branchId">The validated durable branch identity.</param><param name="executionLaneId">The applicable execution lane.</param>
+    /// <param name="operationId">The validated causal operation.</param><param name="runId">The applicable run identity.</param>
+    /// <param name="turnId">The applicable turn identity.</param>
+    [LoggerMessage(6012, LogLevel.Error, "Concrete session entry codec {Operation} faulted with error type {ErrorType} for agent {AgentId}, session {SessionId}, entry {EntryId}, branch {BranchId}, lane {ExecutionLaneId}, causal operation {OperationId}, run {RunId}, and turn {TurnId}.")]
+    internal static partial void CorrelatedCodecFaulted(ILogger logger, string operation, string errorType,
+        AgentId agentId, SessionId sessionId, SessionEntryId entryId, BranchId branchId,
+        ExecutionLaneId? executionLaneId, OperationId operationId, RunId? runId, TurnId? turnId);
+
     /// <summary>Logs the start of one session operation without session content.</summary>
     [LoggerMessage(6000, LogLevel.Debug, "Starting session operation {Operation} for agent {AgentId} and session {SessionId}.")]
     internal static partial void OperationStarted(

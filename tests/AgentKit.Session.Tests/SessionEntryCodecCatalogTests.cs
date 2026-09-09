@@ -3,6 +3,7 @@
 
 namespace AgentKit.Session.Tests;
 
+using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 
 using Microsoft.Extensions.Logging;
@@ -196,7 +197,8 @@ public sealed class SessionEntryCodecCatalogTests
     [Fact]
     public void Encode_WhenObserved_EmitsSafeCorrelatedDiagnostics()
     {
-        using var parent = new Activity("parent").Start();
+        using var parent = new Activity("parent").SetIdFormat(ActivityIdFormat.W3C).Start();
+        var parentSpanId = parent.SpanId;
         Activity? completed = null;
         using var activityListener = new ActivityListener
         {
@@ -215,7 +217,7 @@ public sealed class SessionEntryCodecCatalogTests
             },
         };
         ActivitySource.AddActivityListener(activityListener);
-        var measurements = new List<(string Name, double Value, IReadOnlyDictionary<string, object?> Tags)>();
+        ConcurrentQueue<(string Name, double Value, IReadOnlyDictionary<string, object?> Tags)> measurements = [];
         using var meterListener = new MeterListener();
         meterListener.InstrumentPublished = (instrument, listener) =>
         {
@@ -227,9 +229,19 @@ public sealed class SessionEntryCodecCatalogTests
             }
         };
         meterListener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
-            measurements.Add((instrument.Name, measurement, tags.ToArray().ToDictionary())));
+        {
+            if (IsCodecObservationUnder(parentSpanId))
+            {
+                measurements.Enqueue((instrument.Name, measurement, tags.ToArray().ToDictionary()));
+            }
+        });
         meterListener.SetMeasurementEventCallback<double>((instrument, measurement, tags, _) =>
-            measurements.Add((instrument.Name, measurement, tags.ToArray().ToDictionary())));
+        {
+            if (IsCodecObservationUnder(parentSpanId))
+            {
+                measurements.Enqueue((instrument.Name, measurement, tags.ToArray().ToDictionary()));
+            }
+        });
         meterListener.Start();
         var logger = new RecordingLogger();
 
@@ -343,7 +355,18 @@ public sealed class SessionEntryCodecCatalogTests
     [Fact]
     public void Encode_WhenTimestampClockThrows_EmitsCountAndOmitsDuration()
     {
-        var instrumentNames = new List<string>();
+        using var parent = new Activity("session.entry.codec.clock").SetIdFormat(ActivityIdFormat.W3C).Start();
+        var parentSpanId = parent.SpanId;
+        using var activityListener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) =>
+                options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context
+                    ? ActivitySamplingResult.PropagationData
+                    : ActivitySamplingResult.None,
+        };
+        ActivitySource.AddActivityListener(activityListener);
+        ConcurrentQueue<string> instrumentNames = [];
         using var listener = new MeterListener();
         listener.InstrumentPublished = (instrument, current) =>
         {
@@ -354,8 +377,20 @@ public sealed class SessionEntryCodecCatalogTests
                 current.EnableMeasurementEvents(instrument);
             }
         };
-        listener.SetMeasurementEventCallback<long>((instrument, _, _, _) => instrumentNames.Add(instrument.Name));
-        listener.SetMeasurementEventCallback<double>((instrument, _, _, _) => instrumentNames.Add(instrument.Name));
+        listener.SetMeasurementEventCallback<long>((instrument, _, _, _) =>
+        {
+            if (IsCodecObservationUnder(parentSpanId))
+            {
+                instrumentNames.Enqueue(instrument.Name);
+            }
+        });
+        listener.SetMeasurementEventCallback<double>((instrument, _, _, _) =>
+        {
+            if (IsCodecObservationUnder(parentSpanId))
+            {
+                instrumentNames.Enqueue(instrument.Name);
+            }
+        });
         listener.Start();
 
         _ = new SessionEntryCodecCatalog([new FakeCodec()], new ThrowingTimeProvider()).Encode(new TestEntry());
@@ -453,6 +488,13 @@ public sealed class SessionEntryCodecCatalogTests
         listener.Start();
         return listener;
     }
+
+    /// <summary>Returns whether a synchronous metric callback belongs to this test's codec activity.</summary>
+    /// <param name="parentSpanId">The span identity of the test-owned parent activity.</param>
+    /// <returns><see langword="true"/> only for the codec activity directly parented by <paramref name="parentSpanId"/>.</returns>
+    private static bool IsCodecObservationUnder(ActivitySpanId parentSpanId) =>
+        Activity.Current is { OperationName: AgentKitActivityNames.SessionEntryCodec } activity
+        && activity.ParentSpanId == parentSpanId;
 
     private static readonly SessionEntryTypeId Type = new("agentkit.test/v1");
     private static readonly SchemaVersion Version = new("agentkit.test/v1");

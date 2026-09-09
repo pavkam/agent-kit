@@ -23,6 +23,22 @@ namespace AgentKit.Session
         public System.Threading.Tasks.ValueTask<AgentKit.SessionStoreSelectionResult> ResolveExistingAsync(AgentKit.SessionStoreSelectionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionStoreSelectionResult> SelectForCreateAsync(AgentKit.SessionStoreCreateSelectionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class ExecutionLaneProvisionedSessionEntryCodec : AgentKit.ISessionEntryCodec
+    {
+        public ExecutionLaneProvisionedSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.ExecutionLaneProvisionedSessionEntryCodec> logger) { }
+        public ExecutionLaneProvisionedSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.ExecutionLaneProvisionedSessionEntryCodec> logger, AgentKit.SessionEntryCodecLimits limits) { }
+        public AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
+        public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
+    }
+    public sealed class InputPromotedSessionEntryCodec : AgentKit.ISessionEntryCodec
+    {
+        public InputPromotedSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.InputPromotedSessionEntryCodec> logger) { }
+        public InputPromotedSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.InputPromotedSessionEntryCodec> logger, AgentKit.SessionEntryCodecLimits limits) { }
+        public AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
+        public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
+    }
     public sealed class NeverRetireSessionRetentionPolicy : AgentKit.ISessionRetentionPolicy
     {
         public NeverRetireSessionRetentionPolicy() { }
