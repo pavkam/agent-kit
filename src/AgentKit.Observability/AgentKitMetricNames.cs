@@ -107,6 +107,12 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal budget correction outcomes.</summary>
     public const string BudgetCorrectionCount = "agentkit.budget.correction.count";
 
+    /// <summary>Gets the counter for terminal authoritative budget-ledger operations.</summary>
+    public const string BudgetLedgerOperationCount = "agentkit.budget.ledger.operation.count";
+
+    /// <summary>Gets the histogram for authoritative budget-ledger operation duration in seconds.</summary>
+    public const string BudgetLedgerOperationDuration = "agentkit.budget.ledger.operation.duration";
+
     /// <summary>Gets the counter for terminal hook dispatch outcomes.</summary>
     public const string HookDispatchCount = "agentkit.hook.dispatch.count";
 

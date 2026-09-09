@@ -65,6 +65,30 @@ owning spec.
 
 ## Latest integration evidence
 
+The in-memory budget-ledger checkpoint passed formatting, repository lint, a
+Release build with no warnings or errors, and all 5,405 tests in an isolated
+checkout over `003e824`. The explicit `AgentKit.Budgets.InMemory` leaf stores
+atomic hierarchical batches, original replay receipts, start evidence,
+settlement, revisioned corrections, and unresolved-usage reconciliation. Exact
+quantities preserve aggregate overrun; sum, duration, maximum, and live gauge
+dimensions retain their distinct semantics. Mixed units reject before
+accounting, and missing or foreign references remain indistinguishable.
+
+The adapter's 48 tests include reusable conformance, concurrent parent capacity,
+watermark paging, cancellation before mutation, exact replay after correction,
+expiry, and isolated diagnostics with normal test parallelism. Its state is
+ephemeral. Captured overrun-policy holds, migration of the runtime authority to
+ledger-backed handles, complete store selection, and SQLite persistence remain
+open; this storage checkpoint does not claim complete budget enforcement.
+
+`BudgetStartExpired` now carries the reservation identity and persisted deadline
+instead of fabricated numeric limit evidence. Both implementations return that
+outcome for expiration; exact retries preserve the deadline. An explicitly
+released reservation remains a distinct invalid start state. The legacy runtime
+now throws `InvalidOperationException` for that misuse instead of returning its
+previous misleading limit rejection. Exhaustive start-result consumers must
+handle the additive expiration subtype.
+
 The exact-budget-quantity checkpoint passed formatting, repository lint, a
 Release build with no warnings or errors, and all 5,353 tests in an isolated
 checkout over `f66c39f`. `BudgetQuantity` preserves nonnegative base-ten

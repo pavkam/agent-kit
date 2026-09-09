@@ -15,6 +15,7 @@ internal sealed class InMemoryBudgetReservation: IBudgetReservation
     private long _revision;
     private BudgetCorrectionResult? _lastCorrection;
     private InMemoryBudgetReservation? _parentReservation;
+    private bool _expired;
     private readonly ILogger<InMemoryBudgetScope> _logger;
 
     /// <summary>Initializes one local level of a hierarchical reservation.</summary>
@@ -87,14 +88,19 @@ internal sealed class InMemoryBudgetReservation: IBudgetReservation
         {
             cancellationToken.ThrowIfCancellationRequested();
             var result = Scope.MarkStarted(this, cancellationToken);
-            var outcome = result is BudgetStarted ? "started" : "start_rejected";
+            var outcome = result switch
+            {
+                BudgetStarted => "started",
+                BudgetStartExpired => "expired",
+                _ => "start_rejected",
+            };
             if (result is BudgetStarted)
             {
                 activity.SetSuccessful(outcome);
             }
             else
             {
-                activity.SetFailed(outcome, nameof(BudgetLimitFailure));
+                activity.SetFailed(outcome, result is BudgetStartExpired ? nameof(BudgetStartExpired) : nameof(BudgetLimitFailure));
             }
 
             BudgetLog.StartCompleted(_logger, ScopeId, Dimension, outcome);
@@ -198,7 +204,9 @@ internal sealed class InMemoryBudgetReservation: IBudgetReservation
         var wasAlreadyStarted = _state == _stateStarted;
         if (_state == _stateReleased)
         {
-            return new BudgetStartRejected(CreateStartFailure());
+            return _expired
+                ? new BudgetStartExpired(Id, ExpiresAt)
+                : throw new InvalidOperationException("A released reservation cannot be started.");
         }
         if (_state == _stateCommitted)
         {
@@ -294,7 +302,12 @@ internal sealed class InMemoryBudgetReservation: IBudgetReservation
     }
 
     /// <summary>Releases this reservation hierarchy only while it remains unstarted.</summary>
-    internal void ReleaseHierarchyLocked()
+    internal void ReleaseHierarchyLocked() => ReleaseHierarchyLocked(expired: false);
+
+    /// <summary>Expires this reservation hierarchy and retains the reason for an honest start outcome.</summary>
+    internal void ExpireHierarchyLocked() => ReleaseHierarchyLocked(expired: true);
+
+    private void ReleaseHierarchyLocked(bool expired)
     {
         if (_state != _stateOpen)
         {
@@ -311,22 +324,9 @@ internal sealed class InMemoryBudgetReservation: IBudgetReservation
 
         for (var current = this; current is not null; current = current._parentReservation)
         {
+            current._expired = expired;
             current._state = _stateReleased;
             current.Scope.ReleaseLocalLocked(current);
         }
-    }
-
-    private BudgetLimitFailure CreateStartFailure()
-    {
-        var limit = Scope.Limits.GetValueOrDefault(Dimension);
-        return new BudgetLimitFailure(
-            ScopeId,
-            Dimension,
-            BudgetLimitKind.Hard,
-            limit?.Value ?? Reserved,
-            limit?.Value ?? Reserved,
-            Reserved,
-            Unit,
-            "The reservation expired or was released before its effect started.");
     }
 }

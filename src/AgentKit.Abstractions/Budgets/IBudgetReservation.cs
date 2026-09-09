@@ -36,9 +36,12 @@ public interface IBudgetReservation: IAsyncDisposable
     /// <remarks>
     /// A successful budget transition carries no security authority; the
     /// effecting component still enforces its applicable authorization.
+    /// An expired unstarted reservation returns <see cref="BudgetStartExpired"/>
+    /// with its admitted effective deadline; explicitly released state is invalid.
     /// </remarks>
     /// <param name="cancellationToken">A token used to cancel the transition before it occurs.</param>
     /// <returns>A task producing the idempotent start outcome.</returns>
+    /// <exception cref="InvalidOperationException">The reservation was explicitly released before start or was already settled.</exception>
     public ValueTask<BudgetStartResult> MarkStartedAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

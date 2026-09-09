@@ -412,7 +412,7 @@ internal sealed class InMemoryBudgetScope: IBudgetScope, IRunBudget
         {
             if (reservation.IsOpen && reservation.ExpiresAt <= now)
             {
-                reservation.ReleaseHierarchyLocked();
+                reservation.ExpireHierarchyLocked();
             }
         }
     }

@@ -18,6 +18,7 @@ namespace AgentKit.Observability
         public const string AgentTurn = "agent.turn";
         public const string BudgetCommit = "budget.commit";
         public const string BudgetCorrection = "budget.correction";
+        public const string BudgetLedgerOperation = "budget.ledger.operation";
         public const string BudgetReserve = "budget.reserve";
         public const string BudgetScopeCreate = "budget.scope.create";
         public const string BudgetStart = "budget.start";
@@ -96,6 +97,8 @@ namespace AgentKit.Observability
         public const string AgentRunDuration = "agentkit.agent.run.duration";
         public const string AgentRunProfilePublicationReadCount = "agentkit.agent.run_profile.read.count";
         public const string BudgetCorrectionCount = "agentkit.budget.correction.count";
+        public const string BudgetLedgerOperationCount = "agentkit.budget.ledger.operation.count";
+        public const string BudgetLedgerOperationDuration = "agentkit.budget.ledger.operation.duration";
         public const string BudgetReservationCount = "agentkit.budget.reservation.count";
         public const string BudgetSettlementCount = "agentkit.budget.settlement.count";
         public const string BudgetStartCount = "agentkit.budget.start.count";
@@ -146,6 +149,8 @@ namespace AgentKit.Observability
         public const string AgentCatalogVersion = "agentkit.agent.catalog.version";
         public const string AgentId = "gen_ai.agent.id";
         public const string BudgetDimension = "agentkit.budget.dimension";
+        public const string BudgetOperation = "agentkit.budget.operation";
+        public const string BudgetReservationId = "agentkit.budget.reservation.id";
         public const string BudgetScopeId = "agentkit.budget.scope.id";
         public const string CompactionId = "agentkit.compaction.id";
         public const string ContinuationBoundary = "agentkit.continuation.boundary";

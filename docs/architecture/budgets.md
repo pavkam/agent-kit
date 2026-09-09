@@ -223,9 +223,21 @@ Compatibility constructors still accept nonnegative decimal row values, while
 consumers of aggregate properties must compare exact quantities or request a
 checked decimal projection.
 
+`BudgetStartExpired` is an additive start-result subtype. Consumers that switch
+exhaustively over the closed result family must handle expiration separately
+from `BudgetStartRejected`, which continues to carry only genuine budget-limit
+evidence. The legacy in-memory reservation now throws
+`InvalidOperationException` when start follows explicit release instead of
+returning a fabricated `BudgetStartRejected`; callers that depended on that
+misleading result must treat the state transition as invalid.
+
 Disposal releases an unstarted reservation exactly once. Immediately before
 starting charged work, its owner calls `MarkStartedAsync`; failure starts no
-work. A started reservation is committed with known actual usage or retained as
+work. An unstarted reservation whose persisted deadline has passed returns
+`BudgetStartExpired` with its reservation identity and effective expiry; it does
+not fabricate a numeric hard-limit failure. Exact retries replay that expiration
+receipt, while an explicitly released reservation remains an invalid start
+state. A started reservation is committed with known actual usage or retained as
 unresolved accounting. Disposal, timeout, lease expiry, and process loss do not
 refund possibly consumed work. Reconciliation releases it only with evidence of
 non-consumption, records an explicitly estimated charge, or keeps it unresolved

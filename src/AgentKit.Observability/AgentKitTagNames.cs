@@ -105,6 +105,12 @@ public static class AgentKitTagNames
     /// <summary>Gets the budget scope identity attribute.</summary>
     public const string BudgetScopeId = "agentkit.budget.scope.id";
 
+    /// <summary>Gets the budget reservation identity attribute for traces and structured logs.</summary>
+    public const string BudgetReservationId = "agentkit.budget.reservation.id";
+
+    /// <summary>Gets the bounded authoritative budget-ledger operation attribute.</summary>
+    public const string BudgetOperation = "agentkit.budget.operation";
+
     /// <summary>Gets the stable hook-point identity attribute.</summary>
     public const string HookPoint = "agentkit.hook.point";
 

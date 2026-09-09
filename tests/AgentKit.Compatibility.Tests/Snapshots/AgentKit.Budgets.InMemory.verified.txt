@@ -1,0 +1,27 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Budgets.InMemory.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Budgets.InMemory
+{
+    public sealed class InMemoryBudgetLedger : AgentKit.IBudgetLedger
+    {
+        public InMemoryBudgetLedger(System.TimeProvider timeProvider, AgentKit.IIdentifierGenerator<AgentKit.BudgetScopeId> scopeIds, AgentKit.IIdentifierGenerator<AgentKit.BudgetReservationId> reservationIds, AgentKit.IBudgetDimensionCatalog dimensions) { }
+        public InMemoryBudgetLedger(System.TimeProvider timeProvider, AgentKit.IIdentifierGenerator<AgentKit.BudgetScopeId> scopeIds, AgentKit.IIdentifierGenerator<AgentKit.BudgetReservationId> reservationIds, AgentKit.IBudgetDimensionCatalog dimensions, Microsoft.Extensions.Logging.ILogger<AgentKit.Budgets.InMemory.InMemoryBudgetLedger>? logger) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetCorrectionResult> CorrectAsync(AgentKit.BudgetLedgerCorrectionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerScopeCreateResult> CreateScopeAsync(AgentKit.BudgetLedgerScopeCreateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetSnapshot> GetSnapshotAsync(AgentKit.BudgetLedgerScopeReference scope, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetStartResult> MarkStartedAsync(AgentKit.BudgetLedgerReservationReference reservation, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetUnresolvedReservationPage> ReadUnresolvedStartedAsync(AgentKit.BudgetUnresolvedReservationQuery query, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReconciliationResult> ReconcileAsync(AgentKit.BudgetLedgerReconciliationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerReleaseResult> ReleaseUnstartedAsync(AgentKit.BudgetLedgerReservationReference reservation, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerBatchReserveResult> ReserveBatchAsync(AgentKit.BudgetLedgerBatchReserveRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.BudgetCommitResult> SettleAsync(AgentKit.BudgetLedgerSettlementRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryBudgetLedger() { }
+        }
+    }
+}

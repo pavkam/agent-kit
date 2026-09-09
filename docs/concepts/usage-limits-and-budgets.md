@@ -107,6 +107,12 @@ Actual overrun MUST be fully recorded even when it exceeds a hard ceiling. It
 sets remaining capacity to zero and stops new work; the ledger MUST NOT clamp
 reported consumption or reject its truthful accounting.
 
+Reservation lifetime is not a budget dimension or numeric ceiling. Starting
+after the persisted effective expiry returns a typed expiration receipt with the
+reservation identity and deadline. Lazy cleanup MUST replay the same receipt; it
+MUST NOT invent limit values or units. Explicit release remains a distinct
+lifecycle state and is not reported as expiration.
+
 Aggregate reserved and committed quantities use an exact canonical base-ten
 representation. A decimal projection is only a compatibility view and fails when
 it would round or overflow; it never clamps a recorded amount. Each request,

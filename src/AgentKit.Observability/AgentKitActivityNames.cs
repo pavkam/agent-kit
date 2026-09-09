@@ -138,6 +138,9 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for replacing provisional budget accounting with a correction.</summary>
     public const string BudgetCorrection = "budget.correction";
 
+    /// <summary>Gets the name for one authoritative budget-ledger operation.</summary>
+    public const string BudgetLedgerOperation = "budget.ledger.operation";
+
     /// <summary>Gets the name for dispatching one typed hook point.</summary>
     public const string HookDispatch = "hook.dispatch";
 

@@ -65,7 +65,9 @@ public interface IBudgetLedger
     /// unsettled reservation returns <see cref="BudgetStarted"/> with
     /// <see cref="BudgetStarted.WasAlreadyStarted"/> set to
     /// <see langword="true"/>. It never starts an effect itself or renews a
-    /// start permission after settlement or reconciliation release.
+    /// start permission after settlement or reconciliation release. Expiry
+    /// returns an exactly replayable <see cref="BudgetStartExpired"/> carrying
+    /// the persisted deadline rather than fabricated dimension-limit evidence.
     /// </remarks>
     /// <param name="reservation">The non-null exact persisted reservation locator.</param>
     /// <param name="cancellationToken">Cancels before operation linearization; cancellation after a possible commit requires an exact replay.</param>
@@ -73,7 +75,7 @@ public interface IBudgetLedger
     /// <exception cref="ArgumentNullException"><paramref name="reservation"/> is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation is observed before the operation linearizes; no start permission was persisted.</exception>
     /// <exception cref="BudgetLedgerReferenceUnavailableException">The reservation is missing or foreign; no transition occurred.</exception>
-    /// <exception cref="BudgetLedgerStateException">The reservation has an invalid persisted lifecycle state not represented by <see cref="BudgetStartRejected"/>; no transition occurred.</exception>
+    /// <exception cref="BudgetLedgerStateException">The reservation has an invalid persisted lifecycle state not represented by <see cref="BudgetStartRejected"/> or <see cref="BudgetStartExpired"/>; no transition occurred.</exception>
     /// <exception cref="BudgetLedgerPersistenceUnavailableException">The adapter cannot confirm the outcome; inspect acknowledgement state before retrying.</exception>
     public ValueTask<BudgetStartResult> MarkStartedAsync(BudgetLedgerReservationReference reservation, CancellationToken cancellationToken = default);
 

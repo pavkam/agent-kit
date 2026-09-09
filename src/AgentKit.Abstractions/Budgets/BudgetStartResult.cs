@@ -5,8 +5,8 @@ namespace AgentKit;
 
 /// <summary>The closed terminal outcome of attempting to start a reservation.</summary>
 /// <remarks>
-/// Concrete outcomes are <see cref="BudgetStarted"/> and
-/// <see cref="BudgetStartRejected"/>. Rejection is a normal budget outcome and
+/// Concrete outcomes are <see cref="BudgetStarted"/>, <see cref="BudgetStartRejected"/>,
+/// and <see cref="BudgetStartExpired"/>. Rejection and expiration are normal budget outcomes and
 /// guarantees that the caller must not begin the protected effect.
 /// </remarks>
 public abstract record BudgetStartResult

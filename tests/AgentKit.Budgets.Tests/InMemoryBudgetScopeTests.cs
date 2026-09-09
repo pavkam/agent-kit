@@ -483,21 +483,43 @@ public sealed class InMemoryBudgetScopeTests
     }
 
     [Fact]
-    public async Task MarkStartedAsync_WhenUnstartedReservationExpired_ReturnsRejectedAndStartsNoEffect()
+    public async Task MarkStartedAsync_WhenUnstartedReservationExpired_ReturnsExpiredAndStartsNoEffect()
     {
         var clock = new FakeTimeProvider();
         var authority = TestFactory.Authority(timeProvider: clock);
         var scope = await TestFactory.CreateRootScopeAsync(authority);
+        var expiresAt = clock.GetUtcNow().AddSeconds(1);
         var reservation = ((BudgetReserved) await scope.ReserveAsync(
             TestFactory.ReservationRequest(scope.Id, TestFactory.TestDimension,
-                expiresAt: clock.GetUtcNow().AddSeconds(1)), TestContext.Current.CancellationToken)).Reservation;
+                expiresAt: expiresAt), TestContext.Current.CancellationToken)).Reservation;
         clock.Advance(TimeSpan.FromSeconds(2));
 
-        _ = (await reservation.MarkStartedAsync(TestContext.Current.CancellationToken))
-            .ShouldBeOfType<BudgetStartRejected>();
+        var expired = (await reservation.MarkStartedAsync(TestContext.Current.CancellationToken))
+            .ShouldBeOfType<BudgetStartExpired>();
+        expired.ReservationId.ShouldBe(reservation.Id);
+        expired.EffectiveExpiry.ShouldBe(expiresAt);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        var replay = (await reservation.MarkStartedAsync(TestContext.Current.CancellationToken))
+            .ShouldBeOfType<BudgetStartExpired>();
+        replay.ShouldBe(expired);
+        replay.EffectiveExpiry.ShouldBe(expiresAt);
 
         _ = await Should.ThrowAsync<InvalidOperationException>(
             () => reservation.CommitAsync(1m, TestContext.Current.CancellationToken).AsTask());
+    }
+
+    [Fact]
+    public async Task MarkStartedAsync_WhenExplicitlyReleased_ThrowsInvalidOperationException()
+    {
+        var authority = TestFactory.Authority();
+        var scope = await TestFactory.CreateRootScopeAsync(authority);
+        var reservation = ((BudgetReserved) await scope.ReserveAsync(
+            TestFactory.ReservationRequest(scope.Id, TestFactory.TestDimension),
+            TestContext.Current.CancellationToken)).Reservation;
+        await reservation.DisposeAsync();
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(
+            () => reservation.MarkStartedAsync(TestContext.Current.CancellationToken).AsTask());
     }
 
     [Fact]

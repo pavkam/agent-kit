@@ -1281,6 +1281,12 @@ namespace AgentKit
         public bool Equals(AgentKit.BudgetSnapshot? other) { }
         public override int GetHashCode() { }
     }
+    public sealed class BudgetStartExpired : AgentKit.BudgetStartResult, System.IEquatable<AgentKit.BudgetStartExpired>
+    {
+        public BudgetStartExpired(AgentKit.BudgetReservationId reservationId, System.DateTimeOffset effectiveExpiry) { }
+        public System.DateTimeOffset EffectiveExpiry { get; }
+        public AgentKit.BudgetReservationId ReservationId { get; }
+    }
     public sealed class BudgetStartRejected : AgentKit.BudgetStartResult, System.IEquatable<AgentKit.BudgetStartRejected>
     {
         public BudgetStartRejected(AgentKit.BudgetLimitFailure failure) { }
