@@ -31,11 +31,18 @@ order.
 
 Each resolved tool may declare:
 
+- `Unspecified`: supplies no scheduling compatibility claim and is handled
+  conservatively by host policy;
 - `ParallelSafe`: can overlap with compatible calls;
 - `Sequential`: executes alone as an ordering barrier;
 - `ConcurrencyKey`: may overlap except with the same key;
 - `GlobalExclusive`: executes alone in the configured scheduler scope; or
 - `HostScheduled`: delegated to a scheduler with equivalent guarantees.
+
+The typed `ToolExecutionHints` value carries this mode. Its concurrency key is
+required exactly for `ConcurrencyKey`; nullable duration and approval-cache
+fields mean the publisher made no claim. Hints remain untrusted and never
+override stricter host policy.
 
 Host policy may tighten but never loosen untrusted tool hints.
 

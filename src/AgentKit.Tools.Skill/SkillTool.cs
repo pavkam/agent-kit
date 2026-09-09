@@ -70,8 +70,11 @@ public sealed class SkillTool: ITool
         new ToolVersion("1.0"),
         "skill",
         "Lists the captured skill catalog or activates one skill by stable ID. Activation reads guidance only; it never installs, migrates, executes, or grants instruction authority.",
-        _inputSchema,
-        ToolEffect.ReadOnly,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.ReadOnly, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.skill"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>

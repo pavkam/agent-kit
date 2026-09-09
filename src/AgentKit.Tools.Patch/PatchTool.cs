@@ -75,8 +75,11 @@ public sealed class PatchTool: ITool
         new ToolVersion("1.0"),
         "patch",
         "Applies an agentkit-patch-v1 Begin/End Patch envelope with Add File, exact-context Update File, Delete File, and content-preserving Move to entries. It plans the complete patch without effects, rejects overlapping paths, separately authorizes every observation and final mutation, and reports honest multi-file partial settlement.",
-        _inputSchema,
-        ToolEffect.Mutating,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.Mutating, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.patch"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>

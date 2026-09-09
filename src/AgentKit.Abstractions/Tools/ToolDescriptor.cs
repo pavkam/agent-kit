@@ -3,98 +3,88 @@
 
 namespace AgentKit;
 
-/// <summary>
-/// The immutable, catalog-facing description of one tool: its identity,
-/// display metadata, declared input shape, and coarse effect category.
-/// </summary>
+/// <summary>Describes one exact, source-owned tool contract advertised through a catalog snapshot.</summary>
 /// <remarks>
-/// <para>
-/// This type is an immutable value object with structural equality over its
-/// fields. It carries no mutable state and is safe to share across threads
-/// without synchronization.
-/// </para>
-/// <para>
-/// This is a deliberately reduced stand-in for the fuller tool descriptor
-/// described by the tools architecture, which additionally carries
-/// provider-facing schema translation hints, deprecation and replacement
-/// metadata, and idempotency declarations. Until a full catalog/versioning
-/// system exists, one <see cref="ToolId"/> maps to exactly one descriptor
-/// per <see cref="IToolCatalog"/>; version-aware resolution is deferred.
-/// </para>
+/// The immutable descriptor owns its schemas and carries declarations only. Descriptions, schemas, effects, and hints
+/// are untrusted inputs to validation and policy; none grants authority or proves runtime support.
 /// </remarks>
 public sealed record ToolDescriptor
 {
-    /// <summary>Initializes a new instance of the <see cref="ToolDescriptor"/> record.</summary>
-    /// <param name="id">The stable identity of this tool.</param>
-    /// <param name="version">The published version of this tool, when versioned.</param>
-    /// <param name="name">The display name advertised to the model.</param>
-    /// <param name="description">A human- and model-readable description of what the tool does.</param>
-    /// <param name="inputSchema">The JSON Schema describing valid call arguments.</param>
-    /// <param name="effect">The coarse effect category this tool declares.</param>
-    /// <param name="extensions">Provider-specific or forward-compatible descriptor data.</param>
-    /// <exception cref="ArgumentException">
-    /// <paramref name="name"/> or <paramref name="description"/> is null,
-    /// empty, or consists only of whitespace.
-    /// </exception>
-    /// <exception cref="ArgumentNullException"><paramref name="extensions"/> is null.</exception>
+    /// <summary>Initializes a complete immutable tool descriptor.</summary>
+    /// <param name="id">The nondefault canonical tool identity.</param>
+    /// <param name="version">The nondefault published contract version.</param>
+    /// <param name="name">The nonblank display name advertised to the model.</param>
+    /// <param name="description">The nonblank human- and model-readable description.</param>
+    /// <param name="inputSchema">The nonnull owned canonical input schema.</param>
+    /// <param name="outputSchema">The optional owned canonical output schema.</param>
+    /// <param name="effects">The nonnull effect declarations.</param>
+    /// <param name="executionHints">The nonnull optional execution hints.</param>
+    /// <param name="sourceId">The nondefault explicit publishing source.</param>
+    /// <param name="extensions">The nonnull immutable extension evidence.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="id"/>, <paramref name="version"/>, or <paramref name="sourceId"/> is default.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="name"/>, <paramref name="description"/>, <paramref name="inputSchema"/>, <paramref name="effects"/>, <paramref name="executionHints"/>, or <paramref name="extensions"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="name"/> or <paramref name="description"/> is empty or whitespace.</exception>
     public ToolDescriptor(
         ToolId id,
-        ToolVersion? version,
+        ToolVersion version,
         string name,
         string description,
-        JsonElement inputSchema,
-        ToolEffect effect,
+        JsonSchema inputSchema,
+        JsonSchema? outputSchema,
+        ToolEffects effects,
+        ToolExecutionHints executionHints,
+        ToolSourceId sourceId,
         ExtensionData extensions)
     {
+        ArgumentOutOfRangeException.ThrowIfEqual(id, default);
+        ArgumentOutOfRangeException.ThrowIfEqual(version, default);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(description);
+        ArgumentNullException.ThrowIfNull(inputSchema);
+        ArgumentNullException.ThrowIfNull(effects);
+        ArgumentNullException.ThrowIfNull(executionHints);
+        ArgumentOutOfRangeException.ThrowIfEqual(sourceId, default);
         ArgumentNullException.ThrowIfNull(extensions);
-
         Id = id;
         Version = version;
         Name = name;
         Description = description;
         InputSchema = inputSchema;
-        Effect = effect;
+        OutputSchema = outputSchema;
+        Effects = effects;
+        ExecutionHints = executionHints;
+        SourceId = sourceId;
         Extensions = extensions;
     }
 
-    /// <summary>Gets the stable identity of this tool.</summary>
-    public ToolId Id { get; init; }
-
-    /// <summary>Gets the published version of this tool, when versioned.</summary>
-    public ToolVersion? Version { get; init; }
-
-    /// <summary>Gets the display name advertised to the model.</summary>
-    public string Name { get; init; }
-
-    /// <summary>Gets a human- and model-readable description of what the tool does.</summary>
-    public string Description { get; init; }
-
-    /// <summary>Gets the JSON Schema describing valid call arguments.</summary>
-    public JsonElement InputSchema { get; init; }
-
-    /// <summary>Gets the coarse effect category this tool declares.</summary>
-    public ToolEffect Effect { get; init; }
-
-    /// <summary>Gets provider-specific or forward-compatible descriptor data.</summary>
-    public ExtensionData Extensions { get; init; }
-
-    /// <inheritdoc/>
-    public bool Equals(ToolDescriptor? other) =>
-        other is not null
-        && Id.Equals(other.Id)
-        && Nullable.Equals(Version, other.Version)
-        && Name == other.Name
-        && Description == other.Description
-        && RawTextOf(InputSchema) == RawTextOf(other.InputSchema)
-        && Effect == other.Effect
-        && Extensions.Equals(other.Extensions);
-
-    /// <inheritdoc/>
-    public override int GetHashCode() =>
-        HashCode.Combine(Id, Version, Name, Description, RawTextOf(InputSchema), Effect, Extensions);
-
-    private static string? RawTextOf(JsonElement element) =>
-        element.ValueKind == JsonValueKind.Undefined ? null : element.GetRawText();
+    /// <summary>Gets the canonical tool identity.</summary>
+    /// <value>A nondefault catalog identity distinct from any provider-visible alias.</value>
+    public ToolId Id { get; }
+    /// <summary>Gets the exact published contract version.</summary>
+    /// <value>A nondefault version captured with the descriptor and used in exact catalog resolution.</value>
+    public ToolVersion Version { get; }
+    /// <summary>Gets the advertised display name.</summary>
+    /// <value>Nonblank descriptive text; provider aliases are captured separately by a catalog snapshot.</value>
+    public string Name { get; }
+    /// <summary>Gets the human- and model-readable description.</summary>
+    /// <value>Nonblank untrusted metadata that grants no authority or capability.</value>
+    public string Description { get; }
+    /// <summary>Gets the owned canonical input schema.</summary>
+    /// <value>An immutable dialect-bound schema value; support still requires selected-engine preflight.</value>
+    public JsonSchema InputSchema { get; }
+    /// <summary>Gets the optional owned canonical output schema.</summary>
+    /// <value>An immutable dialect-bound schema, or null when no output schema is declared.</value>
+    public JsonSchema? OutputSchema { get; }
+    /// <summary>Gets the declared effect evidence.</summary>
+    /// <value>Immutable untrusted policy input that never grants permission or proves replay safety.</value>
+    public ToolEffects Effects { get; }
+    /// <summary>Gets the optional execution hints.</summary>
+    /// <value>Immutable advisory evidence that host policy may tighten and must not treat as authority.</value>
+    public ToolExecutionHints ExecutionHints { get; }
+    /// <summary>Gets the explicit publishing source.</summary>
+    /// <value>A nondefault stable package or registration source identity, never inferred from CLR activation.</value>
+    public ToolSourceId SourceId { get; }
+    /// <summary>Gets immutable extension evidence.</summary>
+    /// <value>Provider-specific or forward-compatible values that do not replace typed descriptor fields.</value>
+    public ExtensionData Extensions { get; }
 }

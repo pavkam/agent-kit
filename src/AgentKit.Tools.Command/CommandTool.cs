@@ -93,8 +93,11 @@ public sealed class CommandTool: ITool
         new ToolVersion("1.0"),
         "command",
         "Runs one command through an explicitly configured shell in a required no-network workspace sandbox. Output retains separate bounded stdout and stderr tails.",
-        _inputSchema,
-        ToolEffect.Mutating,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.Mutating, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.command"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>

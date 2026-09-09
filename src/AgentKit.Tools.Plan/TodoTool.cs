@@ -44,8 +44,11 @@ public sealed class TodoTool: ITool
         new ToolVersion("1.0"),
         "todo",
         "Compatibility name for the current session work plan. Reads and updates the same versioned state as plan; mutations require the previously observed revision.",
-        PlanTool.InputSchema,
-        ToolEffect.Mutating,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), PlanTool.InputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.Mutating, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.plan"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>

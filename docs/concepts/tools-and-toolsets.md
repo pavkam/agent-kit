@@ -79,6 +79,13 @@ another identity by accident.
 
 ## Schema rules
 
+Descriptors retain an owned `JsonSchema` for each input schema and optional
+output schema. The value records its exact `JsonSchemaDialectId`; it does not
+compile the schema, resolve references, or declare keyword support. Every
+published descriptor also retains its exact nondefault tool version and stable
+source identity, so a catalog never reconstructs either from registration order
+or a CLR type.
+
 Input schemas MUST use a declared JSON Schema dialect and provider translation
 profile. The runtime MUST retain a canonical full schema for validation even
 when an adapter must downgrade the model-visible schema.
@@ -92,6 +99,19 @@ Output schemas describe result data but do not excuse output bounds,
 serialization validation, or redaction.
 
 ## Effects and execution hints
+
+Optional effect and hint evidence distinguishes an unasserted value from an
+explicit claim. Null idempotency or resource-kind evidence does not imply
+idempotence or absence of protected effects; an initialized empty resource-kind
+collection is the explicit-none representation. `Unspecified` scheduling does
+not mean parallel-safe. A concurrency key is present exactly for
+`ConcurrencyKey` scheduling, while expected duration and approval-cacheability
+remain nullable when the publisher makes no claim.
+
+A mutating effect cannot declare `IdempotencyClassification.ReadOnly`, whose
+meaning is that the operation performs no external mutation. Read-only tools may
+still omit replay evidence or declare a stricter classification; policy never
+widens from a conservative claim.
 
 Descriptors SHOULD declare effect class, idempotency, required resource scope,
 expected duration, concurrency key, sequential/barrier requirement, and whether

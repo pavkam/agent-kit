@@ -72,8 +72,11 @@ public sealed class SearchTool: ITool
         new ToolVersion("1.0"),
         "search",
         "Searches strict UTF-8 workspace files using literal text or .NET non-backtracking regex. Paths use simple-glob v1; ordering is ordinal; symlinks, binary files, and ambient ignore files are excluded.",
-        _inputSchema,
-        ToolEffect.ReadOnly,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.ReadOnly, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.search"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>

@@ -83,8 +83,11 @@ public sealed class EditTool: ITool
         new ToolVersion("1.0"),
         "edit",
         "Replaces one unique exact text occurrence, or every occurrence when requested, in a strict UTF-8 file. It preserves all untouched bytes, BOM, newline spelling, and final-newline state, requires the planned content hash at commit, and atomically replaces the existing file without following symlinks.",
-        _inputSchema,
-        ToolEffect.Mutating,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.Mutating, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.edit"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>

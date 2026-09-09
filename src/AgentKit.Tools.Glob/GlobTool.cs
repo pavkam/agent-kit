@@ -67,8 +67,11 @@ public sealed class GlobTool: ITool
         new ToolVersion("1.0"),
         "glob",
         "Matches workspace paths with AgentKit simple-glob v1. It never follows symlinks or consults ambient ignore files.",
-        _inputSchema,
-        ToolEffect.ReadOnly,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.ReadOnly, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.glob"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>

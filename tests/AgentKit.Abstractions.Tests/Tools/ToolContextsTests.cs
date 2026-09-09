@@ -159,5 +159,10 @@ public sealed class ToolContextsTests
             AgentId(), SessionId(), ToolCallId(), Correlation(), Identity());
 
     private static ToolDescriptor Descriptor() => new(
-        new ToolId("t"), null, "tool", "description", default, ToolEffect.ReadOnly, ExtensionData.Empty);
+        new ToolId("t"), new ToolVersion("1.0"), "tool", "description",
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"),
+            JsonDocument.Parse("{}").RootElement), outputSchema: null,
+        new ToolEffects(ToolEffect.ReadOnly, null, null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, null, null, null),
+        new ToolSourceId("agentkit.tools.tests"), ExtensionData.Empty);
 }

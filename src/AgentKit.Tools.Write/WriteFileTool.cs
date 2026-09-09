@@ -65,11 +65,14 @@ public sealed class WriteFileTool: ITool
     /// <inheritdoc/>
     public ToolDescriptor Descriptor { get; } = new(
         Id,
-        null,
+        new ToolVersion("1.0"),
         "write_file",
         "Writes a text file within the sandboxed working directory, creating, overwriting, or appending as requested.",
-        _inputSchema,
-        ToolEffect.Mutating,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.Mutating, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.write"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>

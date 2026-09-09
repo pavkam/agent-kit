@@ -85,8 +85,11 @@ public sealed class PlanTool: ITool
         new ToolVersion("1.0"),
         "plan",
         "Reads, replaces, or advances the typed work plan for the current session. Mutations require the revision returned by the previous result; keep at most one item in progress.",
-        InputSchema,
-        ToolEffect.Mutating,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), InputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.Mutating, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.plan"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>

@@ -73,8 +73,11 @@ public sealed class ListDirectoryTool: ITool
         new ToolVersion("1.0"),
         "list_directory",
         "Lists a deterministic page of child paths without following entries. Continuations fail if the directory changes.",
-        _inputSchema,
-        ToolEffect.ReadOnly,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.ReadOnly, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.list"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>

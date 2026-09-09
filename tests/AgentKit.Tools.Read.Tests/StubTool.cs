@@ -10,11 +10,14 @@ internal sealed class StubTool: ITool
 
     public ToolDescriptor Descriptor { get; } = new(
         new ToolId("stub"),
-        null,
+        new ToolVersion("1.0"),
         "stub",
         "A no-op tool used by dependency-injection registration tests.",
-        _inputSchema,
-        ToolEffect.ReadOnly, ExtensionData.Empty);
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.ReadOnly, null, null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, null, null, null),
+        new ToolSourceId("agentkit.tools.read.tests"), ExtensionData.Empty);
 
     public Task<ToolInvocationResult> InvokeAsync(
         ToolInvocationRequest request,

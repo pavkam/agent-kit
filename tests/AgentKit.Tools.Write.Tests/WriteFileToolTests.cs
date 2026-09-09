@@ -15,8 +15,16 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    public void Descriptor_WhenAccessed_DeclaresMutatingEffect() =>
-        TestFactory.Tool().Descriptor.Effect.ShouldBe(ToolEffect.Mutating);
+    public void Descriptor_WhenAccessed_DeclaresAuthoredWriteContractAndOpenInputSchema()
+    {
+        var descriptor = TestFactory.Tool().Descriptor;
+
+        descriptor.Effects.Effect.ShouldBe(ToolEffect.Mutating);
+        descriptor.Version.ShouldBe(new ToolVersion("1.0"));
+        descriptor.SourceId.ShouldBe(new ToolSourceId("agentkit.tools.write"));
+        descriptor.InputSchema.Dialect.ShouldBe(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"));
+        descriptor.InputSchema.Document.TryGetProperty("additionalProperties", out _).ShouldBeFalse();
+    }
 
     [Fact]
     public async Task InvokeAsync_WhenRequestNull_ThrowsArgumentNullException()

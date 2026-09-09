@@ -6899,21 +6899,31 @@ namespace AgentKit
     }
     public sealed class ToolDescriptor : System.IEquatable<AgentKit.ToolDescriptor>
     {
-        public ToolDescriptor(AgentKit.ToolId id, AgentKit.ToolVersion? version, string name, string description, System.Text.Json.JsonElement inputSchema, AgentKit.ToolEffect effect, AgentKit.ExtensionData extensions) { }
-        public string Description { get; init; }
-        public AgentKit.ToolEffect Effect { get; init; }
-        public AgentKit.ExtensionData Extensions { get; init; }
-        public AgentKit.ToolId Id { get; init; }
-        public System.Text.Json.JsonElement InputSchema { get; init; }
-        public string Name { get; init; }
-        public AgentKit.ToolVersion? Version { get; init; }
-        public bool Equals(AgentKit.ToolDescriptor? other) { }
-        public override int GetHashCode() { }
+        public ToolDescriptor(AgentKit.ToolId id, AgentKit.ToolVersion version, string name, string description, AgentKit.JsonSchema inputSchema, AgentKit.JsonSchema? outputSchema, AgentKit.ToolEffects effects, AgentKit.ToolExecutionHints executionHints, AgentKit.ToolSourceId sourceId, AgentKit.ExtensionData extensions) { }
+        public string Description { get; }
+        public AgentKit.ToolEffects Effects { get; }
+        public AgentKit.ToolExecutionHints ExecutionHints { get; }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.ToolId Id { get; }
+        public AgentKit.JsonSchema InputSchema { get; }
+        public string Name { get; }
+        public AgentKit.JsonSchema? OutputSchema { get; }
+        public AgentKit.ToolSourceId SourceId { get; }
+        public AgentKit.ToolVersion Version { get; }
     }
     public enum ToolEffect
     {
         ReadOnly = 0,
         Mutating = 1,
+    }
+    public sealed class ToolEffects : System.IEquatable<AgentKit.ToolEffects>
+    {
+        public ToolEffects(AgentKit.ToolEffect effect, AgentKit.IdempotencyClassification? idempotency, System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResourceKind>? requiredResourceKinds) { }
+        public AgentKit.ToolEffect Effect { get; }
+        public AgentKit.IdempotencyClassification? Idempotency { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResourceKind>? RequiredResourceKinds { get; }
+        public bool Equals(AgentKit.ToolEffects? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class ToolExecutionContext : System.IEquatable<AgentKit.ToolExecutionContext>
     {
@@ -6925,6 +6935,14 @@ namespace AgentKit
         public AgentKit.SessionId? SessionId { get; }
         public AgentKit.SessionProfileSnapshot? SessionProfile { get; }
         public AgentKit.ToolCallId ToolCallId { get; }
+    }
+    public sealed class ToolExecutionHints : System.IEquatable<AgentKit.ToolExecutionHints>
+    {
+        public ToolExecutionHints(AgentKit.ToolSchedulingMode schedulingMode, string? concurrencyKey, System.TimeSpan? expectedDuration, bool? approvalMayBeCached) { }
+        public bool? ApprovalMayBeCached { get; }
+        public string? ConcurrencyKey { get; }
+        public System.TimeSpan? ExpectedDuration { get; }
+        public AgentKit.ToolSchedulingMode SchedulingMode { get; }
     }
     public readonly struct ToolExecutionPolicyKey : System.IEquatable<AgentKit.ToolExecutionPolicyKey>
     {
@@ -7033,6 +7051,15 @@ namespace AgentKit
         Summarization = 4,
         Truncation = 8,
         Externalization = 16,
+    }
+    public enum ToolSchedulingMode
+    {
+        Unspecified = 0,
+        ParallelSafe = 1,
+        Sequential = 2,
+        ConcurrencyKey = 3,
+        GlobalExclusive = 4,
+        HostScheduled = 5,
     }
     public readonly struct ToolSourceId : System.IEquatable<AgentKit.ToolSourceId>
     {

@@ -301,6 +301,33 @@ public sealed record ToolCatalogSnapshot(
     ImmutableDictionary<ToolAlias, ToolIdentity> ProviderAliases);
 ```
 
+Every descriptor carries an exact nondefault tool version and explicit stable
+source identity. Its input and optional output use the shared owned `JsonSchema`
+value with an explicit `JsonSchemaDialectId`; accepting that value proves only
+that the document is representable and owned, not that a selected validator
+supports its keywords. Catalog construction and request preflight perform those
+capability checks.
+
+`ToolEffects` always carries the defined coarse `ToolEffect`. Its optional
+`IdempotencyClassification` and optional resource-kind collection are declared
+evidence: null means the publisher made no claim, while an initialized empty
+resource collection explicitly declares no protected resource kind. Neither form
+grants authority, and missing evidence never implies retry safety.
+
+`ToolExecutionHints` uses the closed `ToolSchedulingMode` vocabulary from the
+scheduling contract. `Unspecified` supplies no parallel-safety claim. A
+concurrency key is required exactly for `ConcurrencyKey`; expected duration and
+approval-cacheability remain nullable when unasserted. Host policy may tighten
+every hint and treats absent or unknown evidence conservatively.
+
+This descriptor shape intentionally replaces the earlier reduced public
+constructor. `Version` is now required, the borrowed `JsonElement` input schema
+is an owned `JsonSchema`, the singular `Effect` property is represented by
+`Effects`, and output schema, execution hints, and source identity are explicit.
+Callers migrate by supplying their real published version, package or
+registration source, and dialect-bound schema; no compatibility overload fills
+those facts with defaults.
+
 The snapshot is bound to one run. A provider alias maps to one exact
 `ToolId`/`ToolVersion` in that snapshot and is not resolved against live DI
 registrations later. Its per-tool execution-policy map preserves the originating

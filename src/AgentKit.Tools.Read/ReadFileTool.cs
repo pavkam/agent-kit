@@ -61,11 +61,14 @@ public sealed class ReadFileTool: ITool
     /// <inheritdoc/>
     public ToolDescriptor Descriptor { get; } = new(
         Id,
-        null,
+        new ToolVersion("1.0"),
         "read_file",
         "Reads a text file within the sandboxed working directory, optionally limited to a line range.",
-        _inputSchema,
-        ToolEffect.ReadOnly,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.ReadOnly, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.read"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>

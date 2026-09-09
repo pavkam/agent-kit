@@ -65,6 +65,29 @@ owning spec.
 
 ## Latest integration evidence
 
+The complete tool-descriptor checkpoint passed formatting, repository lint, a
+Release build with no warnings or errors, and all 5,626 tests in an isolated
+checkout over `05af3a5`. Descriptors now require exact tool version and source,
+owned dialect-bound input schema, optional output schema, effect declarations,
+and scheduling hints. Get-only properties preserve the validated shape. Optional
+evidence distinguishes unasserted values from explicit empty or false claims;
+mutating tools cannot claim read-only idempotency.
+
+All 17 first-party declarations now carry explicit draft 2020-12 schemas and
+stable package sources. Fifteen existing `1.0` versions are preserved; Read and
+Write now publish their previously absent `1.0` versions. Their open root
+schemas remain open. No output schema, retry mechanism, resource-kind claim, or
+parallel safety is invented. Tests cover owned schema lifetime, exact guards,
+structural effect evidence, scheduling-key consistency, and the affected feature
+packages.
+
+The constructor/property API correction is intentional and has a reviewed
+snapshot; callers must supply actual versions, source identities, and owned
+schemas. Complete catalog capture/resolution, authoritative terminal recording,
+projection, and provider/loop migration remain open. The legacy catalog and
+invoker also reread descriptor getters; the forthcoming captured binding must
+use one descriptor consistently through resolution and authorization.
+
 The extension-comparer correction passed formatting, repository lint, a Release
 build with no warnings or errors, and all 5,620 tests in an isolated checkout
 over `6c2091a`. `ExtensionData` now owns ordinal key comparison and the default

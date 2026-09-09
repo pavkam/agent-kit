@@ -85,8 +85,11 @@ public sealed class LanguageTool: ITool
         new ToolVersion("1.0"),
         "language",
         "Queries diagnostics, hover, definitions, implementations, references, and symbols from the selected language service. Input positions and projected ranges are one-based; providers use zero-based UTF-16 positions internally.",
-        _inputSchema,
-        ToolEffect.ReadOnly,
+        new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
+        outputSchema: null,
+        new ToolEffects(ToolEffect.ReadOnly, idempotency: null, requiredResourceKinds: null),
+        new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
+        new ToolSourceId("agentkit.tools.language"),
         ExtensionData.Empty);
 
     /// <inheritdoc/>
