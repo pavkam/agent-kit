@@ -65,6 +65,22 @@ owning spec.
 
 ## Latest integration evidence
 
+The provider-profile and history-cursor checkpoint passed formatting, a Release
+build with no warnings or errors, and all 6,038 tests in an isolated checkout
+over `66c051d`. Fifteen provider-neutral values preserve exact endpoint and
+credential profile identities, positive publication versions, operation bindings
+and immutable snapshots. Constructors validate local shape without claiming
+profile availability, destination safety, fingerprint verification or credential
+authority. URI transport validation remains with the branded owner.
+
+`MessageCursor` retains agent, session, optional conversation, branch, version
+and append sequence. It rejects default identities while preserving zero and
+independent watermark values. Eighty-five additional cases, including shared
+identity conformance, cover defaults, optional values, bounds, copies and exact
+correlation. The additive API snapshot was reviewed. Provider profile
+publication, activation, protected credential leases, complete descriptors,
+request execution and history-reader integration remain open.
+
 The portable-error and side-effect-certainty checkpoint passed formatting, a
 Release build with no warnings or errors, and all 5,953 tests in an isolated
 checkout over `e86c153`. `AgentError` retains all ten normative fields with

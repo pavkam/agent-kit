@@ -4283,6 +4283,16 @@ namespace AgentKit
         public AgentKit.MessageId MessageId { get; }
         public AgentKit.SessionVersion SessionVersion { get; }
     }
+    public sealed class MessageCursor : System.IEquatable<AgentKit.MessageCursor>
+    {
+        public MessageCursor(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.BranchId branchId, AgentKit.SessionVersion version, AgentKit.SessionSequence sequence) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.BranchId BranchId { get; }
+        public AgentKit.ConversationId? ConversationId { get; }
+        public AgentKit.SessionSequence Sequence { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public AgentKit.SessionVersion Version { get; }
+    }
     public readonly struct MessageId : System.IEquatable<AgentKit.MessageId>
     {
         public MessageId(System.Guid value) { }
@@ -5445,6 +5455,18 @@ namespace AgentKit
         public AgentKit.ExecutionIdentity Identity { get; }
         public AgentKit.SessionId? SessionId { get; }
     }
+    public readonly struct ProviderAccountId : System.IEquatable<AgentKit.ProviderAccountId>
+    {
+        public ProviderAccountId(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct ProviderApiVersion : System.IEquatable<AgentKit.ProviderApiVersion>
+    {
+        public ProviderApiVersion(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
     public sealed class ProviderContentDelta : AgentKit.ContentDelta, System.IEquatable<AgentKit.ProviderContentDelta>
     {
         public ProviderContentDelta(AgentKit.ProviderId providerId, AgentKit.ExtensionData extensions) { }
@@ -5452,6 +5474,78 @@ namespace AgentKit
         public AgentKit.ProviderId ProviderId { get; init; }
     }
     public abstract class ProviderCredential : System.IEquatable<AgentKit.ProviderCredential> { }
+    public readonly struct ProviderCredentialProfileKey : System.IEquatable<AgentKit.ProviderCredentialProfileKey>
+    {
+        public ProviderCredentialProfileKey(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ProviderCredentialProfileReference : System.IEquatable<AgentKit.ProviderCredentialProfileReference>
+    {
+        public ProviderCredentialProfileReference(AgentKit.ProviderCredentialProfileKey key, AgentKit.ProviderCredentialProfileVersion version) { }
+        public AgentKit.ProviderCredentialProfileKey Key { get; }
+        public AgentKit.ProviderCredentialProfileVersion Version { get; }
+    }
+    public sealed class ProviderCredentialProfileSnapshot : System.IEquatable<AgentKit.ProviderCredentialProfileSnapshot>
+    {
+        public ProviderCredentialProfileSnapshot(AgentKit.ProviderCredentialProfileReference reference, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId serviceSurface, AgentKit.ProviderCredentialSourceKey sourceKey, AgentKit.ProviderAccountId? accountId, System.TimeSpan refreshSkew, AgentKit.ContentHash configurationFingerprint, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ProviderAccountId? AccountId { get; }
+        public AgentKit.ContentHash ConfigurationFingerprint { get; }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.ProviderId ProviderId { get; }
+        public AgentKit.ProviderCredentialProfileReference Reference { get; }
+        public System.TimeSpan RefreshSkew { get; }
+        public AgentKit.ProviderServiceSurfaceId ServiceSurface { get; }
+        public AgentKit.ProviderCredentialSourceKey SourceKey { get; }
+    }
+    public readonly struct ProviderCredentialProfileVersion : System.IEquatable<AgentKit.ProviderCredentialProfileVersion>
+    {
+        public ProviderCredentialProfileVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct ProviderCredentialSourceKey : System.IEquatable<AgentKit.ProviderCredentialSourceKey>
+    {
+        public ProviderCredentialSourceKey(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct ProviderEndpointId : System.IEquatable<AgentKit.ProviderEndpointId>
+    {
+        public ProviderEndpointId(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct ProviderEndpointProfileKey : System.IEquatable<AgentKit.ProviderEndpointProfileKey>
+    {
+        public ProviderEndpointProfileKey(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ProviderEndpointProfileReference : System.IEquatable<AgentKit.ProviderEndpointProfileReference>
+    {
+        public ProviderEndpointProfileReference(AgentKit.ProviderEndpointProfileKey key, AgentKit.ProviderEndpointProfileVersion version) { }
+        public AgentKit.ProviderEndpointProfileKey Key { get; }
+        public AgentKit.ProviderEndpointProfileVersion Version { get; }
+    }
+    public sealed class ProviderEndpointProfileSnapshot : System.IEquatable<AgentKit.ProviderEndpointProfileSnapshot>
+    {
+        public ProviderEndpointProfileSnapshot(AgentKit.ProviderEndpointProfileReference reference, AgentKit.ProviderId providerId, AgentKit.ProviderServiceSurfaceId serviceSurface, AgentKit.ProviderEndpointId endpointId, System.Uri baseAddress, AgentKit.ProviderApiVersion? apiVersion, AgentKit.ContentHash configurationFingerprint, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ProviderApiVersion? ApiVersion { get; }
+        public System.Uri BaseAddress { get; }
+        public AgentKit.ContentHash ConfigurationFingerprint { get; }
+        public AgentKit.ProviderEndpointId EndpointId { get; }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.ProviderId ProviderId { get; }
+        public AgentKit.ProviderEndpointProfileReference Reference { get; }
+        public AgentKit.ProviderServiceSurfaceId ServiceSurface { get; }
+    }
+    public readonly struct ProviderEndpointProfileVersion : System.IEquatable<AgentKit.ProviderEndpointProfileVersion>
+    {
+        public ProviderEndpointProfileVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
     public sealed class ProviderFailure : System.IEquatable<AgentKit.ProviderFailure>
     {
         public ProviderFailure(AgentKit.ProviderFailureKind kind, AgentKit.ProviderId providerId, AgentKit.ProviderRequestId? requestId, int? statusCode, string? providerCode, System.TimeSpan? retryAfter, string safeMessage, System.Exception? diagnosticCause, AgentKit.ExtensionData extensions) { }
@@ -5483,6 +5577,18 @@ namespace AgentKit
         public string Value { get; }
         public override string ToString() { }
     }
+    public readonly struct ProviderModelRevision : System.IEquatable<AgentKit.ProviderModelRevision>
+    {
+        public ProviderModelRevision(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ProviderOperationBinding : System.IEquatable<AgentKit.ProviderOperationBinding>
+    {
+        public ProviderOperationBinding(AgentKit.ProviderEndpointProfileReference endpoint, AgentKit.ProviderCredentialProfileReference credential) { }
+        public AgentKit.ProviderCredentialProfileReference Credential { get; }
+        public AgentKit.ProviderEndpointProfileReference Endpoint { get; }
+    }
     public readonly struct ProviderRequestId : System.IEquatable<AgentKit.ProviderRequestId>
     {
         public ProviderRequestId(string value) { }
@@ -5512,6 +5618,12 @@ namespace AgentKit
         public AgentKit.ModelId ResolvedModelId { get; init; }
         public AgentKit.ProviderResponseId? ResponseId { get; init; }
         public AgentKit.ProviderId? UpstreamProviderId { get; init; }
+    }
+    public readonly struct ProviderServiceSurfaceId : System.IEquatable<AgentKit.ProviderServiceSurfaceId>
+    {
+        public ProviderServiceSurfaceId(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
     }
     public readonly struct ProviderToolCallId : System.IEquatable<AgentKit.ProviderToolCallId>
     {

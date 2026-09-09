@@ -251,7 +251,9 @@ public sealed class IdentityValueTypeConformanceTests
         || identityType == typeof(ToolResultRejectionPolicyVersion)
         || identityType == typeof(ToolResultNormalizationAlgorithmVersion)
         || identityType == typeof(ConfigurationSourceVersion)
-        || identityType == typeof(ToolsetVersion);
+        || identityType == typeof(ToolsetVersion)
+        || identityType == typeof(ProviderEndpointProfileVersion)
+        || identityType == typeof(ProviderCredentialProfileVersion);
 
     private static TheoryData<Type> ToTheoryData(IEnumerable<Type> types)
     {
