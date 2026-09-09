@@ -63,6 +63,9 @@ public static class ServiceExtensions
                 _ => new GuidIdentifierGenerator<SecurityEnforcementIntentId>(
                     static value => new SecurityEnforcementIntentId(value)));
             services.TryAddSingleton<ISessionRetentionPolicy, NeverRetireSessionRetentionPolicy>();
+            services.TryAddSingleton<SessionEntryCodecCatalog>();
+            services.TryAddSingleton<ISessionEntryCodecCatalog>(provider =>
+                provider.GetRequiredService<SessionEntryCodecCatalog>());
             services.TryAddSingleton<SessionStoreBindingSnapshot>();
             services.TryAddSingleton<ISessionStoreCatalog>(provider =>
                 new DefaultSessionStoreCatalog(provider.GetRequiredService<SessionStoreBindingSnapshot>()));
@@ -92,6 +95,18 @@ public static class ServiceExtensions
         {
             ArgumentNullException.ThrowIfNull(services);
             _ = services.AddSingleton<ISessionStore, TStore>();
+            return services;
+        }
+
+        /// <summary>Adds one thread-safe singleton codec to the immutable session-entry codec composition.</summary>
+        /// <typeparam name="TCodec">The codec implementation whose descriptor and dispatch behavior remain stable for the process lifetime.</typeparam>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <remarks>Registrations are additive. Repeated local entry types or wire identities are rejected when the singleton catalog captures the complete set.</remarks>
+        public IServiceCollection AddSessionEntryCodec<TCodec>()
+            where TCodec : class, ISessionEntryCodec
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddSingleton<ISessionEntryCodec, TCodec>();
             return services;
         }
 

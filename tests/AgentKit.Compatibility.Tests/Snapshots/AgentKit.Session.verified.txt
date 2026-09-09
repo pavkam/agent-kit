@@ -35,10 +35,23 @@ namespace AgentKit.Session
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentSession(System.Action<AgentKit.Session.AgentSessionOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSessionStore<TStore>()
                 where TStore :  class, AgentKit.ISessionStore { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSessionEntryCodec<TCodec>()
+                where TCodec :  class, AgentKit.ISessionEntryCodec { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSessionEventSink<TSink>()
                 where TSink :  class, AgentKit.ISessionEventSink { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceSessionRetentionPolicy<TPolicy>()
                 where TPolicy :  class, AgentKit.ISessionRetentionPolicy { }
         }
+    }
+    public sealed class SessionEntryCodecCatalog : AgentKit.ISessionEntryCodecCatalog
+    {
+        public SessionEntryCodecCatalog(System.Collections.Generic.IEnumerable<AgentKit.ISessionEntryCodec> codecs, System.TimeProvider timeProvider, AgentKit.Session.SessionEntryCodecCatalogOptions? options = null, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.SessionEntryCodecCatalog>? logger = null) { }
+        public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
+    }
+    public sealed class SessionEntryCodecCatalogOptions : System.IEquatable<AgentKit.Session.SessionEntryCodecCatalogOptions>
+    {
+        public SessionEntryCodecCatalogOptions(int maximumPayloadBytes) { }
+        public int MaximumPayloadBytes { get; }
     }
 }

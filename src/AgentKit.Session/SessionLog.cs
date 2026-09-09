@@ -6,6 +6,20 @@ namespace AgentKit.Session;
 /// <summary>Defines allocation-efficient structured session-coordination log events.</summary>
 internal static partial class SessionLog
 {
+    /// <summary>Logs a content-free terminal session-entry codec result using bounded values.</summary>
+    /// <param name="logger">The non-null logger receiving the structured event.</param>
+    /// <param name="operation">The bounded catalog operation name.</param>
+    /// <param name="outcome">The bounded semantic result category.</param>
+    [LoggerMessage(6009, LogLevel.Debug, "Completed session entry codec operation {Operation} with outcome {Outcome}.")]
+    internal static partial void CodecCompleted(ILogger logger, string operation, string outcome);
+
+    /// <summary>Logs an unexpected session-entry codec failure without exception details or entry content.</summary>
+    /// <param name="logger">The non-null logger receiving the structured event.</param>
+    /// <param name="operation">The bounded catalog operation name.</param>
+    /// <param name="errorType">The normalized exception type name.</param>
+    [LoggerMessage(6010, LogLevel.Error, "Session entry codec operation {Operation} faulted with error type {ErrorType}.")]
+    internal static partial void CodecFaulted(ILogger logger, string operation, string errorType);
+
     /// <summary>Logs the start of one session operation without session content.</summary>
     [LoggerMessage(6000, LogLevel.Debug, "Starting session operation {Operation} for agent {AgentId} and session {SessionId}.")]
     internal static partial void OperationStarted(

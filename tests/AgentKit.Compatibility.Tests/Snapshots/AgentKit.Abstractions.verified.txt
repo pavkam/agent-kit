@@ -3218,6 +3218,11 @@ namespace AgentKit
         AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire);
         AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry);
     }
+    public interface ISessionEntryCodecCatalog
+    {
+        AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire);
+        AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry);
+    }
     public interface ISessionEventSink
     {
         System.Threading.Tasks.ValueTask PublishAsync(AgentKit.SessionEvent sessionEvent, System.Threading.CancellationToken cancellationToken = default);

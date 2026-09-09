@@ -60,6 +60,7 @@ namespace AgentKit.Observability
         public const string SessionCreate = "session.create";
         public const string SessionDelete = "session.delete";
         public const string SessionDirectoryOperation = "session.directory.operation";
+        public const string SessionEntryCodec = "session.entry.codec";
         public const string SessionEventPublish = "session.event.publish";
         public const string SessionInputAdmit = "session.input.admit";
         public const string SessionInputLookup = "session.input.lookup";
@@ -131,6 +132,8 @@ namespace AgentKit.Observability
         public const string SecurityProfileCaptureDuration = "agentkit.security.profile.capture.duration";
         public const string SecurityProfilePublicationReadCount = "agentkit.security.profile.publication.read.count";
         public const string SessionDirectoryOperationCount = "agentkit.session.directory.operation.count";
+        public const string SessionEntryCodecCount = "agentkit.session.entry.codec.count";
+        public const string SessionEntryCodecDuration = "agentkit.session.entry.codec.duration";
         public const string SessionOperationCount = "agentkit.session.operation.count";
         public const string SessionStoreOperationCount = "agentkit.session.store.operation.count";
         public const string TaskDelegationPublicationCount = "agentkit.task_delegation.publication.count";
@@ -191,6 +194,7 @@ namespace AgentKit.Observability
         public const string SecurityOperationKind = "agentkit.security.operation.kind";
         public const string SecurityProfileKey = "agentkit.security.profile.key";
         public const string SecurityRequestId = "agentkit.security_request.id";
+        public const string SessionEntryCodecOperation = "agentkit.session.entry.codec.operation";
         public const string SessionId = "agentkit.session.id";
         public const string SessionOperation = "agentkit.session.operation";
         public const string TenantId = "agentkit.tenant.id";

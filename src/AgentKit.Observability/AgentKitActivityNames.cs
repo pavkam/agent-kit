@@ -7,6 +7,8 @@ namespace AgentKit.Observability;
 /// <remarks>Names describe operations, never high-cardinality identities or content.</remarks>
 public static class AgentKitActivityNames
 {
+    /// <summary>Gets the name for one bounded session-entry codec operation.</summary>
+    public const string SessionEntryCodec = "session.entry.codec";
     /// <summary>Gets the name for validating and building one AgentKit service provider.</summary>
     public const string AgentCompositionBuild = "agent.composition.build";
 

@@ -10,6 +10,8 @@ namespace AgentKit.Observability;
 /// </remarks>
 public static class AgentKitTagNames
 {
+    /// <summary>Gets the bounded session-entry codec operation attribute.</summary>
+    public const string SessionEntryCodecOperation = "agentkit.session.entry.codec.operation";
     /// <summary>Gets the current catalog snapshot version attribute for traces and structured logs.</summary>
     public const string AgentCatalogVersion = "agentkit.agent.catalog.version";
 

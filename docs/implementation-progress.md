@@ -65,6 +65,21 @@ owning spec.
 
 ## Latest integration evidence
 
+The session-codec catalog checkpoint passed repository lint, a Release build
+with no warnings or errors, and all 5,332 tests in an isolated checkout over
+`ffc3c42`. The catalog captures descriptors once, selects exact local types and
+wire schemas, preserves unknown entries as opaque bytes, and validates codec
+results before returning them. A global payload cap applies before any decode;
+known codecs also enforce their tighter descriptor cap. Codec-specific depth and
+extension limits remain the codec's responsibility.
+
+The catalog uses an injected clock and bounded diagnostics. Throwing listeners,
+loggers, meters, and timing providers cannot replace results or exceptions;
+activity failures restore the caller's parent trace. Tests isolate their own
+operation and parent so concurrent session traces cannot contaminate assertions.
+This checkpoint adds no concrete entry serializers, mandatory persistent-store
+codec profile, or SQLite session adapter.
+
 The budget-value checkpoint passed 2,411 abstraction tests, 67 budget-runtime
 tests, and 66 public API checks in an isolated checkout over `9d6daed`.
 Construction and record initialization now reject invalid limit dimensions,
