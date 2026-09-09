@@ -4999,6 +4999,16 @@ namespace AgentKit
         Delegation = 5,
         Artifact = 6,
     }
+    public sealed class ProtectedSemanticOperationContext : System.IEquatable<AgentKit.ProtectedSemanticOperationContext>
+    {
+        public ProtectedSemanticOperationContext(AgentKit.AgentId agentId, AgentKit.SessionId? sessionId, AgentKit.ConversationId? conversationId, AgentKit.ExecutionIdentity identity, AgentKit.OperationCorrelation correlation, AgentKit.SecurityAuthorizationContext authorization) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public AgentKit.ConversationId? ConversationId { get; }
+        public AgentKit.OperationCorrelation Correlation { get; }
+        public AgentKit.ExecutionIdentity Identity { get; }
+        public AgentKit.SessionId? SessionId { get; }
+    }
     public sealed class ProviderContentDelta : AgentKit.ContentDelta, System.IEquatable<AgentKit.ProviderContentDelta>
     {
         public ProviderContentDelta(AgentKit.ProviderId providerId, AgentKit.ExtensionData extensions) { }

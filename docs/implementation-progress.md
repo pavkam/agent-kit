@@ -65,6 +65,15 @@ owning spec.
 
 ## Latest integration evidence
 
+The protected semantic-operation context checkpoint passed all 2,371 abstraction
+tests and 66 public API checks in an isolated checkout over `709b20b`. The
+additive value binds the complete execution identity, agent, optional session
+and conversation, exact before/in/after-run correlation, and captured
+authorization. Construction rejects mismatched evidence; get-only properties
+prevent inconsistent record copies. Fifteen focused cases include truthful
+sessionless before-run and after-run work. This adds provider-neutral operation
+evidence, not a grant, provider executor, or retry implementation.
+
 The loop-readiness checkpoint passed formatting, lint, Release build, and all
 5,248 tests in an isolated checkout over `5375f15`. Build and hosted facade
 resolution now inspect the captured loop registration without invoking its
