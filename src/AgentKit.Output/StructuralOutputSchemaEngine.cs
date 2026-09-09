@@ -14,7 +14,7 @@ internal sealed class StructuralOutputSchemaEngine: IOutputSchemaEngine
         ["additionalProperties", "items", "properties", "required", "type"];
     private static readonly ImmutableHashSet<string> _annotations =
         ["$comment", "default", "deprecated", "description", "examples", "readOnly", "title", "writeOnly"];
-    private static readonly OutputSchemaDialectId _dialect = new(_dialectName);
+    private static readonly JsonSchemaDialectId _dialect = new(_dialectName);
     private readonly ILogger<StructuralOutputSchemaEngine> _logger;
 
     /// <summary>Initializes the stateless structural engine with an optional content-free logger.</summary>
@@ -184,7 +184,7 @@ internal sealed class StructuralOutputSchemaEngine: IOutputSchemaEngine
         bool isRoot,
         string path,
         CancellationToken cancellationToken,
-        ref OutputSchemaDialectId dialect)
+        ref JsonSchemaDialectId dialect)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (schema.ValueKind is JsonValueKind.True or JsonValueKind.False)
@@ -265,7 +265,7 @@ internal sealed class StructuralOutputSchemaEngine: IOutputSchemaEngine
         JsonElement value,
         string path,
         CancellationToken cancellationToken,
-        ref OutputSchemaDialectId dialect)
+        ref JsonSchemaDialectId dialect)
     {
         if (value.ValueKind != JsonValueKind.Object)
         {

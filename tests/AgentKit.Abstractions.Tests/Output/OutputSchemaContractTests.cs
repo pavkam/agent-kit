@@ -7,7 +7,29 @@ using System.Text.Json;
 
 public sealed class OutputSchemaContractTests
 {
-    private static readonly OutputSchemaDialectId _dialect = new("urn:test:dialect");
+    private static readonly JsonSchemaDialectId _dialect = new("urn:test:dialect");
+
+    [Fact]
+    public void JsonSchemaDialectId_WhenTextInvalid_ThrowsExactArgumentException()
+    {
+        var nullException = Should.Throw<ArgumentNullException>(() => new JsonSchemaDialectId(null!));
+        var emptyException = Should.Throw<ArgumentException>(() => new JsonSchemaDialectId(string.Empty));
+        var blankException = Should.Throw<ArgumentException>(() => new JsonSchemaDialectId(" \t"));
+
+        nullException.GetType().ShouldBe(typeof(ArgumentNullException));
+        emptyException.GetType().ShouldBe(typeof(ArgumentException));
+        blankException.GetType().ShouldBe(typeof(ArgumentException));
+        nullException.ParamName.ShouldBe("value");
+        emptyException.ParamName.ShouldBe("value");
+        blankException.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void JsonSchemaDialectId_WhenDefault_PreservesPriorValueSemantics()
+    {
+        default(JsonSchemaDialectId).ShouldBe(default);
+        default(JsonSchemaDialectId).ToString().ShouldBeNull();
+    }
 
     [Fact]
     public void OutputSchemaEngineProfile_WhenSetsDifferOnlyByOrder_HasStructuralEqualityAndHash()
@@ -28,7 +50,7 @@ public sealed class OutputSchemaContractTests
     [InlineData("default")]
     public void OutputSchemaEngineProfile_WhenCapabilitySetsAreInvalid_RejectsExactSet(string invalid)
     {
-        ImmutableArray<OutputSchemaDialectId> dialects = invalid switch { "dialects" => [], "default" => [new("urn:test:other")], _ => [_dialect] };
+        ImmutableArray<JsonSchemaDialectId> dialects = invalid switch { "dialects" => [], "default" => [new("urn:test:other")], _ => [_dialect] };
         ImmutableArray<string> assertions = invalid switch { "assertions" => ["type", "type"], "overlap" => ["title"], _ => ["type"] };
         ImmutableArray<string> annotations = invalid == "annotations" ? ["title", "title"] : ["title"];
 
@@ -70,7 +92,7 @@ public sealed class OutputSchemaContractTests
     [Fact]
     public void ThrowIfUnsupportedOutputSchemaDialect_WhenUnsupported_UsesInferredParameterName()
     {
-        var dialect = new OutputSchemaDialectId("urn:test:unsupported");
+        var dialect = new JsonSchemaDialectId("urn:test:unsupported");
 
         var exception = Should.Throw<ArgumentException>(
             () => ArgumentException.ThrowIfUnsupportedOutputSchemaDialect(Profile(), dialect));
@@ -95,7 +117,7 @@ public sealed class OutputSchemaContractTests
     }
 
     private static OutputSchemaEngineProfile Profile(
-        ImmutableArray<OutputSchemaDialectId>? dialects = null,
+        ImmutableArray<JsonSchemaDialectId>? dialects = null,
         ImmutableArray<string>? assertions = null,
         ImmutableArray<string>? annotations = null) =>
         new(new OutputSchemaProfileId("test"), new OutputSchemaProfileVersion(1), _dialect,

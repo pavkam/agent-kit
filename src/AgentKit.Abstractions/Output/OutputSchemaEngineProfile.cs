@@ -15,7 +15,7 @@ public sealed record OutputSchemaEngineProfile
     /// <param name="annotationKeywords">The initialized unique annotation-keyword set disjoint from assertions.</param>
     /// <exception cref="ArgumentException">A supplied identity is invalid or the profile sets are inconsistent.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="version"/> is not positive.</exception>
-    public OutputSchemaEngineProfile(OutputSchemaProfileId id, OutputSchemaProfileVersion version, OutputSchemaDialectId defaultDialect, ImmutableArray<OutputSchemaDialectId> supportedDialects, ImmutableArray<string> assertionKeywords, ImmutableArray<string> annotationKeywords)
+    public OutputSchemaEngineProfile(OutputSchemaProfileId id, OutputSchemaProfileVersion version, JsonSchemaDialectId defaultDialect, ImmutableArray<JsonSchemaDialectId> supportedDialects, ImmutableArray<string> assertionKeywords, ImmutableArray<string> annotationKeywords)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id.Value, nameof(id));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(version.Value, nameof(version));
@@ -32,9 +32,9 @@ public sealed record OutputSchemaEngineProfile
     /// <summary>Gets the profile revision.</summary>
     public OutputSchemaProfileVersion Version { get; }
     /// <summary>Gets the selected default dialect.</summary>
-    public OutputSchemaDialectId DefaultDialect { get; }
+    public JsonSchemaDialectId DefaultDialect { get; }
     /// <summary>Gets supported dialects in ordinal canonical order.</summary>
-    public ImmutableArray<OutputSchemaDialectId> SupportedDialects { get; }
+    public ImmutableArray<JsonSchemaDialectId> SupportedDialects { get; }
     /// <summary>Gets supported assertion keywords in ordinal canonical order.</summary>
     public ImmutableArray<string> AssertionKeywords { get; }
     /// <summary>Gets supported annotation keywords in ordinal canonical order.</summary>

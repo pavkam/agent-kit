@@ -118,6 +118,13 @@ output.
 
 ## Schema engine and preflight evidence
 
+JSON Schema dialect identity is the shared `JsonSchemaDialectId` contract in
+AgentKit.Abstractions. This intentionally replaces the former public
+`OutputSchemaDialectId` name without an implicit conversion or compatibility
+alias: output schemas consume the same provider-neutral dialect identity as tool
+and other schema owners. Existing configured dialect text and validation
+semantics remain unchanged.
+
 `IOutputSchemaEngine` is a separate replaceable contract in
 AgentKit.Abstractions. It owns local schema preflight and evaluation;
 `IOutputValidator` owns additional application validation. The first-party

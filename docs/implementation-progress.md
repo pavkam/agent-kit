@@ -65,6 +65,22 @@ owning spec.
 
 ## Latest integration evidence
 
+The shared-schema checkpoint passed formatting, repository lint, a Release build
+with no warnings or errors, and all 5,650 tests in an isolated checkout over
+`89708cc`. `JsonSchemaDialectId` replaces `OutputSchemaDialectId` across output
+profiles, preflight evidence, and validation without changing configured dialect
+text or selection behavior. This is an intentional public type rename; callers
+must update references, with no implicit compatibility conversion.
+
+The new `JsonSchema` value captures an explicit dialect and owns a cloned object
+or boolean document. It rejects invalid roots and conflicting, repeated, or
+non-string root dialect declarations. It preserves ordinary duplicate fields and
+unknown keywords for later engine preflight; construction does not claim schema
+support or perform reference resolution. Tests cover exact guards,
+disposed-source lifetime, retained content, and structural equality. The full
+output suite passes; complete tool descriptors and catalog integration remain
+open.
+
 The tool identity and projection-policy value checkpoint passed formatting,
 repository lint, a Release build with no warnings or errors, and all 5,630 tests
 in an isolated checkout over `3451ddf`. Fourteen additive values represent exact

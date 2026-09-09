@@ -360,8 +360,8 @@ public static class ArgumentExceptionExtensions
         /// <param name="annotationKeywordsParamName">The parameter name attributed to invalid annotations.</param>
         /// <exception cref="ArgumentException">A set is default, empty where required, contains blank or duplicate values, overlaps another vocabulary set, or omits its default dialect.</exception>
         public static void ThrowIfInvalidOutputSchemaProfile(
-            OutputSchemaDialectId defaultDialect,
-            ImmutableArray<OutputSchemaDialectId> supportedDialects,
+            JsonSchemaDialectId defaultDialect,
+            ImmutableArray<JsonSchemaDialectId> supportedDialects,
             ImmutableArray<string> assertionKeywords,
             ImmutableArray<string> annotationKeywords,
             [CallerArgumentExpression(nameof(defaultDialect))] string? defaultDialectParamName = null,
@@ -373,7 +373,7 @@ public static class ArgumentExceptionExtensions
             ArgumentException.ThrowIfDefaultOrEmpty(supportedDialects, supportedDialectsParamName);
             ArgumentException.ThrowIfDefault(assertionKeywords, assertionKeywordsParamName);
             ArgumentException.ThrowIfDefault(annotationKeywords, annotationKeywordsParamName);
-            var dialects = new HashSet<OutputSchemaDialectId>();
+            var dialects = new HashSet<JsonSchemaDialectId>();
             foreach (var dialect in supportedDialects)
             {
                 ArgumentException.ThrowIfNullOrWhiteSpace(dialect.Value, supportedDialectsParamName);
@@ -419,7 +419,7 @@ public static class ArgumentExceptionExtensions
         /// </exception>
         public static void ThrowIfUnsupportedOutputSchemaDialect(
             OutputSchemaEngineProfile profile,
-            OutputSchemaDialectId dialect,
+            JsonSchemaDialectId dialect,
             [CallerArgumentExpression(nameof(dialect))] string? paramName = null)
         {
             ArgumentNullException.ThrowIfNull(profile);

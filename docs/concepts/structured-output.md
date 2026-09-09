@@ -62,6 +62,11 @@ independently of which validator is selected.
 
 ## Schema capabilities and preflight
 
+The shared `JsonSchemaDialectId` value names JSON Schema dialects across
+components. It intentionally replaces the output-specific
+`OutputSchemaDialectId` type name while preserving exact configured identity
+text; no implicit conversion or fallback dialect is introduced.
+
 An output processor's selected schema validator declares its dialect and
 supported vocabulary explicitly. A schema's application version is not its JSON
 Schema dialect. A generic structured-output capability flag is insufficient to

@@ -16,7 +16,7 @@ public sealed record OutputSchemaPreflightManifest
     /// <exception cref="ArgumentNullException"><paramref name="profile"/> or <paramref name="limits"/> is null, or a value-backed identity is default.</exception>
     /// <exception cref="ArgumentException"><paramref name="dialect"/> is unsupported or <paramref name="schemaFingerprint"/> is blank.</exception>
     /// <exception cref="ArgumentOutOfRangeException">An observed count is not positive or exceeds its corresponding limit.</exception>
-    public OutputSchemaPreflightManifest(OutputSchemaEngineProfile profile, OutputSchemaDialectId dialect, ContentHash schemaFingerprint, OutputSchemaProcessingLimits limits, int observedDepth, int observedNodes)
+    public OutputSchemaPreflightManifest(OutputSchemaEngineProfile profile, JsonSchemaDialectId dialect, ContentHash schemaFingerprint, OutputSchemaProcessingLimits limits, int observedDepth, int observedNodes)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentException.ThrowIfUnsupportedOutputSchemaDialect(profile, dialect);
@@ -37,7 +37,7 @@ public sealed record OutputSchemaPreflightManifest
     /// <summary>Gets issuing profile evidence.</summary><value>An immutable profile descriptor.</value>
     public OutputSchemaEngineProfile Profile { get; }
     /// <summary>Gets the preflight dialect.</summary><value>A profile-supported dialect.</value>
-    public OutputSchemaDialectId Dialect { get; }
+    public JsonSchemaDialectId Dialect { get; }
     /// <summary>Gets deterministic retained-schema fingerprint evidence.</summary><value>Evidence only; evaluation revalidates.</value>
     public ContentHash SchemaFingerprint { get; }
     /// <summary>Gets preflight bounds.</summary><value>Immutable processing limits.</value>

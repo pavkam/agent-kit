@@ -347,8 +347,8 @@ namespace AgentKit
             public static void ThrowIfInvalidBudgetExecutionBinding(AgentKit.BudgetScopeAddress address, AgentKit.ExecutionIdentity identity, AgentKit.OperationCorrelation correlation, [System.Runtime.CompilerServices.CallerArgumentExpression("address")] string? paramName = null) { }
             public static void ThrowIfInvalidDurableOperationBinding(AgentKit.DurableOperationAddress address, AgentKit.DurableExecutionContext executionContext, [System.Runtime.CompilerServices.CallerArgumentExpression("executionContext")] string? paramName = null) { }
             public static void ThrowIfRecoveryEvidenceCheckpointDoesNotMatchBinding(AgentKit.DurableOperationBinding binding, AgentKit.DurableCheckpoint? latestCheckpoint, [System.Runtime.CompilerServices.CallerArgumentExpression("latestCheckpoint")] string? paramName = null) { }
-            public static void ThrowIfInvalidOutputSchemaProfile(AgentKit.OutputSchemaDialectId defaultDialect, System.Collections.Immutable.ImmutableArray<AgentKit.OutputSchemaDialectId> supportedDialects, System.Collections.Immutable.ImmutableArray<string> assertionKeywords, System.Collections.Immutable.ImmutableArray<string> annotationKeywords, [System.Runtime.CompilerServices.CallerArgumentExpression("defaultDialect")] string? defaultDialectParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("supportedDialects")] string? supportedDialectsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("assertionKeywords")] string? assertionKeywordsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("annotationKeywords")] string? annotationKeywordsParamName = null) { }
-            public static void ThrowIfUnsupportedOutputSchemaDialect(AgentKit.OutputSchemaEngineProfile profile, AgentKit.OutputSchemaDialectId dialect, [System.Runtime.CompilerServices.CallerArgumentExpression("dialect")] string? paramName = null) { }
+            public static void ThrowIfInvalidOutputSchemaProfile(AgentKit.JsonSchemaDialectId defaultDialect, System.Collections.Immutable.ImmutableArray<AgentKit.JsonSchemaDialectId> supportedDialects, System.Collections.Immutable.ImmutableArray<string> assertionKeywords, System.Collections.Immutable.ImmutableArray<string> annotationKeywords, [System.Runtime.CompilerServices.CallerArgumentExpression("defaultDialect")] string? defaultDialectParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("supportedDialects")] string? supportedDialectsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("assertionKeywords")] string? assertionKeywordsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("annotationKeywords")] string? annotationKeywordsParamName = null) { }
+            public static void ThrowIfUnsupportedOutputSchemaDialect(AgentKit.OutputSchemaEngineProfile profile, AgentKit.JsonSchemaDialectId dialect, [System.Runtime.CompilerServices.CallerArgumentExpression("dialect")] string? paramName = null) { }
             public static void ThrowIfDuplicateAgentDefinitionSourceIds(System.Collections.Immutable.ImmutableArray<AgentKit.IAgentDefinitionSource> sources, [System.Runtime.CompilerServices.CallerArgumentExpression("sources")] string? paramName = null) { }
             public static void ThrowIfDuplicateAgentDefinitionSnapshotSourceIds(System.Collections.Immutable.ImmutableArray<AgentKit.AgentDefinitionSourceSnapshot> snapshots, [System.Runtime.CompilerServices.CallerArgumentExpression("snapshots")] string? paramName = null) { }
             public static void ThrowIfUnknownAgentDefinitionSource(System.Collections.Immutable.ImmutableArray<AgentKit.AgentDefinitionSourceSnapshot> snapshots, System.Collections.Immutable.ImmutableArray<AgentKit.IAgentDefinitionSource> sources, [System.Runtime.CompilerServices.CallerArgumentExpression("snapshots")] string? snapshotsParamName = null, [System.Runtime.CompilerServices.CallerArgumentExpression("sources")] string? sourcesParamName = null) { }
@@ -3739,6 +3739,20 @@ namespace AgentKit
         public InvalidModelPolicy(string reason) { }
         public string Reason { get; init; }
     }
+    public sealed class JsonSchema : System.IEquatable<AgentKit.JsonSchema>
+    {
+        public JsonSchema(AgentKit.JsonSchemaDialectId dialect, System.Text.Json.JsonElement document) { }
+        public AgentKit.JsonSchemaDialectId Dialect { get; }
+        public System.Text.Json.JsonElement Document { get; }
+        public bool Equals(AgentKit.JsonSchema? other) { }
+        public override int GetHashCode() { }
+    }
+    public readonly struct JsonSchemaDialectId : System.IEquatable<AgentKit.JsonSchemaDialectId>
+    {
+        public JsonSchemaDialectId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
     public sealed class JsonSchemaDocument : System.IEquatable<AgentKit.JsonSchemaDocument>
     {
         public JsonSchemaDocument(string name, AgentKit.SchemaVersion version, System.Text.Json.JsonElement schema) { }
@@ -4668,20 +4682,14 @@ namespace AgentKit
         ResourceLimitExceeded = 4,
         PreflightEvidenceMismatch = 5,
     }
-    public readonly struct OutputSchemaDialectId : System.IEquatable<AgentKit.OutputSchemaDialectId>
-    {
-        public OutputSchemaDialectId(string value) { }
-        public string Value { get; }
-        public override string ToString() { }
-    }
     public sealed class OutputSchemaEngineProfile : System.IEquatable<AgentKit.OutputSchemaEngineProfile>
     {
-        public OutputSchemaEngineProfile(AgentKit.OutputSchemaProfileId id, AgentKit.OutputSchemaProfileVersion version, AgentKit.OutputSchemaDialectId defaultDialect, System.Collections.Immutable.ImmutableArray<AgentKit.OutputSchemaDialectId> supportedDialects, System.Collections.Immutable.ImmutableArray<string> assertionKeywords, System.Collections.Immutable.ImmutableArray<string> annotationKeywords) { }
+        public OutputSchemaEngineProfile(AgentKit.OutputSchemaProfileId id, AgentKit.OutputSchemaProfileVersion version, AgentKit.JsonSchemaDialectId defaultDialect, System.Collections.Immutable.ImmutableArray<AgentKit.JsonSchemaDialectId> supportedDialects, System.Collections.Immutable.ImmutableArray<string> assertionKeywords, System.Collections.Immutable.ImmutableArray<string> annotationKeywords) { }
         public System.Collections.Immutable.ImmutableArray<string> AnnotationKeywords { get; }
         public System.Collections.Immutable.ImmutableArray<string> AssertionKeywords { get; }
-        public AgentKit.OutputSchemaDialectId DefaultDialect { get; }
+        public AgentKit.JsonSchemaDialectId DefaultDialect { get; }
         public AgentKit.OutputSchemaProfileId Id { get; }
-        public System.Collections.Immutable.ImmutableArray<AgentKit.OutputSchemaDialectId> SupportedDialects { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.JsonSchemaDialectId> SupportedDialects { get; }
         public AgentKit.OutputSchemaProfileVersion Version { get; }
         public bool Equals(AgentKit.OutputSchemaEngineProfile? other) { }
         public override int GetHashCode() { }
@@ -4713,8 +4721,8 @@ namespace AgentKit
     }
     public sealed class OutputSchemaPreflightManifest : System.IEquatable<AgentKit.OutputSchemaPreflightManifest>
     {
-        public OutputSchemaPreflightManifest(AgentKit.OutputSchemaEngineProfile profile, AgentKit.OutputSchemaDialectId dialect, AgentKit.ContentHash schemaFingerprint, AgentKit.OutputSchemaProcessingLimits limits, int observedDepth, int observedNodes) { }
-        public AgentKit.OutputSchemaDialectId Dialect { get; }
+        public OutputSchemaPreflightManifest(AgentKit.OutputSchemaEngineProfile profile, AgentKit.JsonSchemaDialectId dialect, AgentKit.ContentHash schemaFingerprint, AgentKit.OutputSchemaProcessingLimits limits, int observedDepth, int observedNodes) { }
+        public AgentKit.JsonSchemaDialectId Dialect { get; }
         public AgentKit.OutputSchemaProcessingLimits Limits { get; }
         public int ObservedDepth { get; }
         public int ObservedNodes { get; }

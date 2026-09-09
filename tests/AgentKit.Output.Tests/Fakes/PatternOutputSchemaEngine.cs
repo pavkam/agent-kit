@@ -8,7 +8,7 @@ using System.Security.Cryptography;
 /// <summary>Implements a deterministic test-only lowercase-pattern schema profile.</summary>
 internal sealed class PatternOutputSchemaEngine: IOutputSchemaEngine
 {
-    private static readonly OutputSchemaDialectId _dialect = new("urn:agentkit:test:lowercase-pattern:v1");
+    private static readonly JsonSchemaDialectId _dialect = new("urn:agentkit:test:lowercase-pattern:v1");
 
     /// <inheritdoc/>
     public OutputSchemaEngineProfile Profile { get; } = new(
