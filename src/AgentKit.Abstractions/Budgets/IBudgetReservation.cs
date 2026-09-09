@@ -15,8 +15,9 @@ namespace AgentKit;
 /// when the handle is disposed or its lease expires. A successful attempt is
 /// settled through <see cref="CommitAsync"/>, and later authoritative evidence
 /// replaces that accounting through <see cref="CorrectAsync"/> with monotonic,
-/// idempotently replayable revisions. This handle is never captured by a
-/// singleton consumer.
+/// idempotently replayable revisions. Disposal is an asynchronous ledger
+/// transition and may be retried through a recreated handle after an unknown
+/// acknowledgement. This handle is never captured by a singleton consumer.
 /// </remarks>
 public interface IBudgetReservation: IAsyncDisposable
 {
@@ -41,7 +42,8 @@ public interface IBudgetReservation: IAsyncDisposable
     /// </remarks>
     /// <param name="cancellationToken">A token used to cancel the transition before it occurs.</param>
     /// <returns>A task producing the idempotent start outcome.</returns>
-    /// <exception cref="InvalidOperationException">The reservation was explicitly released before start or was already settled.</exception>
+    /// <exception cref="BudgetLedgerStateException">The reservation was explicitly released before start or was already settled.</exception>
+    /// <exception cref="BudgetLedgerPersistenceUnavailableException">The ledger cannot confirm the transition; retry the exact reservation when acknowledgement may be unknown.</exception>
     public ValueTask<BudgetStartResult> MarkStartedAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -52,11 +54,10 @@ public interface IBudgetReservation: IAsyncDisposable
     /// <param name="cancellationToken">A token used to cancel the commit.</param>
     /// <returns>A task producing the settlement outcome.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="actual"/> is negative.</exception>
-    /// <exception cref="InvalidOperationException">
-    /// This reservation was not started, was released before starting, or was
-    /// already committed. Disposal after a successful start retains unresolved
-    /// accounting and does not prevent later settlement.
-    /// </exception>
+    /// <remarks>An equal actual replays the original immutable settlement receipt, including after later corrections; a different actual conflicts.</remarks>
+    /// <exception cref="BudgetLedgerMutationConflictException">The reservation was settled with different actual usage.</exception>
+    /// <exception cref="BudgetLedgerStateException">The reservation was not started or was released before starting.</exception>
+    /// <exception cref="BudgetLedgerPersistenceUnavailableException">The ledger cannot confirm settlement; retry the exact actual when acknowledgement may be unknown.</exception>
     public ValueTask<BudgetCommitResult> CommitAsync(decimal actual, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -66,7 +67,7 @@ public interface IBudgetReservation: IAsyncDisposable
     /// <param name="correctedActual">The non-negative corrected actual amount.</param>
     /// <param name="revision">
     /// A positive revision greater than every different correction previously
-    /// applied. Replaying the latest revision with identical corrected usage
+    /// applied. Replaying any recorded revision with identical corrected usage
     /// returns its original receipt without changing accounting.
     /// </param>
     /// <param name="cancellationToken">A token used to cancel the correction before it occurs.</param>
@@ -74,11 +75,9 @@ public interface IBudgetReservation: IAsyncDisposable
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="correctedActual"/> is negative or <paramref name="revision"/> is not positive.
     /// </exception>
-    /// <exception cref="InvalidOperationException">
-    /// The reservation has not been committed; <paramref name="revision"/> is
-    /// older than the applied revision; or it reuses the latest revision with
-    /// different corrected usage.
-    /// </exception>
+    /// <exception cref="BudgetLedgerMutationConflictException">A recorded revision is replayed with different corrected usage.</exception>
+    /// <exception cref="BudgetLedgerStateException">The reservation is not settled or a fresh revision is older than the latest recorded revision.</exception>
+    /// <exception cref="BudgetLedgerPersistenceUnavailableException">The ledger cannot confirm correction; retry the exact revision and usage when acknowledgement may be unknown.</exception>
     public ValueTask<BudgetCorrectionResult> CorrectAsync(
         decimal correctedActual,
         long revision,

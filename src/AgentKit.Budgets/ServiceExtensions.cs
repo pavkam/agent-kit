@@ -8,22 +8,21 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 /// <summary>
-/// Dependency-injection registration for the built-in, in-memory
-/// hierarchical budget authority.
+/// Dependency-injection registration for the first-party ledger-backed budget runtime.
 /// </summary>
 public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
         /// <summary>
-        /// Registers the built-in <see cref="InMemoryBudgetAuthority"/> and
-        /// the first-party <c>agentkit.*</c> dimension descriptors.
+        /// Registers the ledger-backed budget authority and the first-party <c>agentkit.*</c> dimension descriptors.
         /// </summary>
         /// <param name="configure">Optional configuration for <see cref="AgentBudgetOptions"/>.</param>
         /// <returns>The same service collection, for chaining.</returns>
         /// <remarks>
-        /// Idempotent: every registration here uses <c>TryAdd</c> semantics,
-        /// so calling this more than once keeps the first registration.
+        /// Idempotent: calling this more than once keeps the first runtime registration.
+        /// This method never selects a storage adapter; applications must register exactly one
+        /// unkeyed <see cref="IBudgetLedger"/> explicitly when this authority is selected.
         /// </remarks>
         public IServiceCollection AddAgentBudgets(Action<AgentBudgetOptions>? configure = null)
         {
@@ -64,13 +63,18 @@ public static class ServiceExtensions
                 }
             }
 
-            services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IBudgetDimensionCatalog, InMemoryBudgetDimensionCatalog>();
-            services.TryAddSingleton<IIdentifierGenerator<BudgetScopeId>>(
-                static _ => new GuidIdentifierGenerator<BudgetScopeId>(static value => new BudgetScopeId(value)));
-            services.TryAddSingleton<IIdentifierGenerator<BudgetReservationId>>(
-                static _ => new GuidIdentifierGenerator<BudgetReservationId>(static value => new BudgetReservationId(value)));
-            services.TryAddSingleton<IBudgetAuthority, InMemoryBudgetAuthority>();
+            services.TryAddSingleton<IBudgetAuthority>(static provider =>
+            {
+                var ledgers = provider.GetServices<IBudgetLedger>().Take(2).ToArray();
+                return ledgers.Length == 1
+                    ? new BudgetAuthority(
+                        ledgers[0],
+                        provider.GetRequiredService<AgentBudgetOptionsSnapshot>(),
+                        provider.GetService<ILoggerFactory>())
+                    : throw new InvalidOperationException(
+                        "The first-party budget runtime requires exactly one explicitly selected unkeyed IBudgetLedger.");
+            });
 
             return services;
         }

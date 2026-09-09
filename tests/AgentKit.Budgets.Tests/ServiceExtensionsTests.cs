@@ -6,14 +6,15 @@ namespace AgentKit.Budgets.Tests;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
-    public void AddAgentBudgets_WhenCalled_RegistersInMemoryBudgetAuthority()
+    public void AddAgentBudgets_WhenLedgerSelected_RegistersLedgerBackedBudgetAuthority()
     {
         var services = new ServiceCollection();
 
         _ = services.AddAgentBudgets();
+        _ = services.AddSingleton<IBudgetLedger, BudgetRuntimeTests.RecordingLedger>();
 
         using var provider = services.BuildServiceProvider();
-        _ = provider.GetRequiredService<IBudgetAuthority>().ShouldBeOfType<InMemoryBudgetAuthority>();
+        _ = provider.GetRequiredService<IBudgetAuthority>().ShouldBeOfType<BudgetAuthority>();
     }
 
     [Fact]
@@ -23,6 +24,7 @@ public sealed class ServiceExtensionsTests
 
         _ = services.AddAgentBudgets();
         _ = services.AddAgentBudgets();
+        _ = services.AddSingleton<IBudgetLedger, BudgetRuntimeTests.RecordingLedger>();
 
         using var provider = services.BuildServiceProvider();
         provider.GetServices<IBudgetAuthority>().Count().ShouldBe(1);
@@ -49,6 +51,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
 
         _ = services.AddAgentBudgets(options => options.MaximumScopeDepth = depth);
+        _ = services.AddSingleton<IBudgetLedger, BudgetRuntimeTests.RecordingLedger>();
 
         using var provider = services.BuildServiceProvider();
         _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IBudgetAuthority>);
@@ -93,6 +96,32 @@ public sealed class ServiceExtensionsTests
 
         using var provider = services.BuildServiceProvider();
         _ = provider.GetRequiredService<IBudgetAuthority>().ShouldBeOfType<FakeBudgetAuthority>();
+    }
+
+    [Fact]
+    public void AddAgentBudgets_WhenNoLedgerSelected_FailsBeforeLedgerOperation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentBudgets();
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Should.Throw<InvalidOperationException>(provider.GetRequiredService<IBudgetAuthority>);
+        exception.Message.ShouldContain("exactly one");
+    }
+
+    [Fact]
+    public void AddAgentBudgets_WhenTwoLedgersSelected_FailsBeforeLedgerOperation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentBudgets();
+        _ = services.AddSingleton<IBudgetLedger, BudgetRuntimeTests.RecordingLedger>();
+        _ = services.AddSingleton<IBudgetLedger, BudgetRuntimeTests.RecordingLedger>();
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Should.Throw<InvalidOperationException>(provider.GetRequiredService<IBudgetAuthority>);
+        exception.Message.ShouldContain("exactly one");
     }
 
     [Fact]

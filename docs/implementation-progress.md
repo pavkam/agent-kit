@@ -65,6 +65,32 @@ owning spec.
 
 ## Latest integration evidence
 
+The ledger-backed budget runtime checkpoint passed formatting, repository lint,
+a Release build with no warnings or errors, and all 5,613 tests in an isolated
+checkout over `22cf16f`. The first-party authority and immutable
+scope/reservation handles now delegate accounting, expiration, identity
+allocation, replay, and settlement to the explicitly selected `IBudgetLedger`.
+Registration chooses no storage adapter or identifier generator. Selecting this
+authority requires one unkeyed ledger; replacing it with a custom authority
+remains independent.
+
+Typed held results preserve boundary hold evidence. Exact ledger receipts flow
+through commit and correction; disposal releases only unstarted work and leaves
+started unknown spend retained. A failed release can be retried on the same
+handle, including uncertain acknowledgement, with the same reference and no
+caller cancellation token. Safe runtime activities, bounded metrics, and typed
+log categories survive throwing listeners and logger factories. The 31 runtime
+cases cover delegation, cancellation, refusal, composed in-memory behavior, and
+retry forwarding; accounting conformance remains owned by the ledger suite.
+
+Two additive held-result types and shared diagnostic names have reviewed API
+snapshots. Ordinary scopes no longer falsely implement `IRunBudget`; explicit
+run-profile integration must supply that specialization. Old runtime-owned
+accounting and its duplicated tests are removed. Activation-time ledger
+selection is verified; feature-owned pure readiness, profile/policy
+requirements, operator security enforcement, consumer integration, and SQLite
+persistence remain open.
+
 The shared-schema checkpoint passed formatting, repository lint, a Release build
 with no warnings or errors, and all 5,650 tests in an isolated checkout over
 `89708cc`. `JsonSchemaDialectId` replaces `OutputSchemaDialectId` across output
@@ -1076,7 +1102,7 @@ not make that component a mandatory dependency of every engine.
 | Project structure             | Missing owners, declared graph activation, unchecked leaf protocol ownership and required project/test topology; project and pure component graph checks established   |
 | Composition and configuration | Full closed runnable graph, catalog publication/reload, keyed selection, scope ownership, readiness                                                                    |
 | Agent runtime                 | Explicit state transitions, waiter cancellation, recovery identity, settlement outcomes                                                                                |
-| Budgets                       | Explicit ledger abstraction and InMemory/Sqlite leaves; profile/policy/event contracts, consumer integration and full conformance                                      |
+| Budgets                       | SQLite ledger, declared capabilities, profile/policy/event contracts, consumer integration and full conformance                                                        |
 | Messages and history          | Immutable/loss-aware values, non-elevation, correlation and shared round-trip conformance                                                                              |
 | Input and output              | Admission, durable promotion, lane routing, fan-out, final publication and channel contracts                                                                           |
 | Structured output             | Complete candidate extraction, validation, repair decisions and conversion conformance                                                                                 |

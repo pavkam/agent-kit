@@ -5,13 +5,9 @@ namespace AgentKit.Budgets;
 
 /// <summary>Declares how the authority reacts when a committed actual amount overruns its reservation.</summary>
 /// <remarks>
-/// Both members currently produce the same observable behavior in
-/// <see cref="InMemoryBudgetAuthority"/>: the affected scope's dimension is
-/// blocked from further reservations until an operator or a future
-/// reconciliation path clears it. <see cref="RequireOperatorReconciliation"/>
-/// is declared for forward compatibility with a not-yet-implemented
-/// reconciliation workflow; this reduced implementation does not yet
-/// distinguish it from <see cref="RecordAndBlockFurtherReservations"/>.
+/// The first-party runtime captures this choice independently for every created
+/// scope. Automatic policy clears only after eligible corrected accounting;
+/// operator policy remains held until a separately authorized ledger resolution.
 /// </remarks>
 public enum BudgetOverrunBehavior
 {

@@ -31,6 +31,7 @@ public interface IBudgetScope
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A task producing the terminal reservation outcome.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    /// <exception cref="BudgetLedgerPersistenceUnavailableException">The ledger cannot confirm admission; retry the exact immutable request when acknowledgement may be unknown.</exception>
     public ValueTask<BudgetReservationResult> ReserveAsync(
         BudgetReservationRequest request, CancellationToken cancellationToken = default);
 
@@ -49,6 +50,7 @@ public interface IBudgetScope
     /// or duplicate item key, names another scope or operation, or expresses
     /// one dimension in incompatible units.
     /// </exception>
+    /// <exception cref="BudgetLedgerPersistenceUnavailableException">The ledger cannot confirm atomic admission; retry the exact ordered batch when acknowledgement may be unknown.</exception>
     public ValueTask<BudgetBatchReservationResult> ReserveBatchAsync(
         ImmutableArray<BudgetReservationRequest> requests,
         CancellationToken cancellationToken = default);
@@ -56,5 +58,6 @@ public interface IBudgetScope
     /// <summary>Captures a point-in-time observation of this scope's usage.</summary>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A task producing the current snapshot.</returns>
+    /// <exception cref="BudgetLedgerPersistenceUnavailableException">The ledger cannot confirm the snapshot or expiry cleanup acknowledgement.</exception>
     public ValueTask<BudgetSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default);
 }

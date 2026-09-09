@@ -107,6 +107,12 @@ public static class AgentKitMetricNames
     /// <summary>Gets the counter for terminal budget correction outcomes.</summary>
     public const string BudgetCorrectionCount = "agentkit.budget.correction.count";
 
+    /// <summary>Gets the counter name for terminal budget scope-creation outcomes.</summary>
+    public const string BudgetScopeCreateCount = "agentkit.budget.scope.create.count";
+
+    /// <summary>Gets the counter name for terminal budget snapshot-read outcomes.</summary>
+    public const string BudgetSnapshotCount = "agentkit.budget.snapshot.count";
+
     /// <summary>Gets the counter for terminal authoritative budget-ledger operations.</summary>
     public const string BudgetLedgerOperationCount = "agentkit.budget.ledger.operation.count";
 

@@ -6,7 +6,7 @@ namespace AgentKit.Budgets;
 /// <summary>Declares how the authority would react to an unknown-cost commitment.</summary>
 /// <remarks>
 /// This option is declared for parity with the full budgets architecture
-/// but is not yet enforced by <see cref="InMemoryBudgetAuthority"/>:
+/// but is not yet enforced by the ledger-backed first-party authority:
 /// <see cref="IBudgetReservation.CommitAsync"/> takes a non-nullable
 /// <see cref="decimal"/>, so there is no "unknown amount" input for this
 /// reduced contract to special-case yet. A future revision that admits a

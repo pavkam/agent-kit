@@ -5,8 +5,9 @@ namespace AgentKit;
 
 /// <summary>The closed terminal outcome of one atomic batch reservation request.</summary>
 /// <remarks>
-/// Concrete outcomes are <see cref="BudgetBatchReserved"/> and
-/// <see cref="BudgetBatchRejected"/>. No external assembly can add another outcome.
+/// Concrete outcomes are <see cref="BudgetBatchReserved"/>,
+/// <see cref="BudgetBatchRejected"/>, and <see cref="BudgetBatchHeld"/>.
+/// No external assembly can add another outcome.
 /// </remarks>
 public abstract record BudgetBatchReservationResult
 {

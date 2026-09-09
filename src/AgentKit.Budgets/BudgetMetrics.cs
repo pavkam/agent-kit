@@ -14,28 +14,56 @@ internal static class BudgetMetrics
         AgentKitMetricNames.BudgetStartCount);
     private static readonly Counter<long> _corrections = AgentKitDiagnostics.Metrics.CreateCounter<long>(
         AgentKitMetricNames.BudgetCorrectionCount);
+    private static readonly Counter<long> _scopeCreates = AgentKitDiagnostics.Metrics.CreateCounter<long>(
+        AgentKitMetricNames.BudgetScopeCreateCount);
+    private static readonly Counter<long> _snapshots = AgentKitDiagnostics.Metrics.CreateCounter<long>(
+        AgentKitMetricNames.BudgetSnapshotCount);
 
-    /// <summary>Increments the terminal reservation count using bounded outcome and registered dimension names.</summary>
+    /// <summary>Increments the terminal reservation count using only a bounded outcome.</summary>
     /// <param name="outcome">The normalized terminal outcome.</param>
-    /// <param name="dimension">The registered budget dimension; scope and operation identities are intentionally omitted.</param>
-    internal static void RecordReservation(string outcome, BudgetDimension dimension) =>
-        _reservations.Add(1, new(AgentKitTagNames.Outcome, outcome), new(AgentKitTagNames.BudgetDimension, dimension.ToString()));
+    internal static void RecordReservation(string outcome)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outcome);
+        _reservations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+    }
 
-    /// <summary>Increments terminal settlement counts using bounded outcome and registered dimension names.</summary>
+    /// <summary>Increments terminal settlement counts using only a bounded outcome.</summary>
     /// <param name="outcome">The normalized terminal settlement outcome.</param>
-    /// <param name="dimension">The registered budget dimension; reservation identity and amounts are intentionally omitted.</param>
-    internal static void RecordSettlement(string outcome, BudgetDimension dimension) =>
-        _settlements.Add(1, new(AgentKitTagNames.Outcome, outcome), new(AgentKitTagNames.BudgetDimension, dimension.ToString()));
+    internal static void RecordSettlement(string outcome)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outcome);
+        _settlements.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+    }
 
-    /// <summary>Increments start-accounting outcomes using only bounded outcome and dimension tags.</summary>
+    /// <summary>Increments start-accounting outcomes using only a bounded outcome.</summary>
     /// <param name="outcome">The normalized terminal start outcome.</param>
-    /// <param name="dimension">The registered dimension; reservation and scope identities are omitted.</param>
-    internal static void RecordStart(string outcome, BudgetDimension dimension) =>
-        _starts.Add(1, new(AgentKitTagNames.Outcome, outcome), new(AgentKitTagNames.BudgetDimension, dimension.ToString()));
+    internal static void RecordStart(string outcome)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outcome);
+        _starts.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+    }
 
-    /// <summary>Increments correction outcomes using only bounded outcome and dimension tags.</summary>
+    /// <summary>Increments correction outcomes using only a bounded outcome.</summary>
     /// <param name="outcome">The normalized terminal correction outcome.</param>
-    /// <param name="dimension">The registered dimension; revision, amounts, and identities are omitted.</param>
-    internal static void RecordCorrection(string outcome, BudgetDimension dimension) =>
-        _corrections.Add(1, new(AgentKitTagNames.Outcome, outcome), new(AgentKitTagNames.BudgetDimension, dimension.ToString()));
+    internal static void RecordCorrection(string outcome)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outcome);
+        _corrections.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+    }
+
+    /// <summary>Increments scope-creation outcomes without identity or caller-controlled dimensions.</summary>
+    /// <param name="outcome">The bounded terminal creation outcome.</param>
+    internal static void RecordScopeCreate(string outcome)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outcome);
+        _scopeCreates.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+    }
+
+    /// <summary>Increments snapshot-read outcomes without identity or caller-controlled dimensions.</summary>
+    /// <param name="outcome">The bounded terminal read outcome.</param>
+    internal static void RecordSnapshot(string outcome)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outcome);
+        _snapshots.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
+    }
 }

@@ -893,6 +893,13 @@ namespace AgentKit
         ConcurrentGauge = 2,
         Duration = 3,
     }
+    public sealed class BudgetBatchHeld : AgentKit.BudgetBatchReservationResult, System.IEquatable<AgentKit.BudgetBatchHeld>
+    {
+        public BudgetBatchHeld(System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> holds) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> Holds { get; }
+        public bool Equals(AgentKit.BudgetBatchHeld? other) { }
+        public override int GetHashCode() { }
+    }
     public sealed class BudgetBatchRejected : AgentKit.BudgetBatchReservationResult, System.IEquatable<AgentKit.BudgetBatchRejected>
     {
         public BudgetBatchRejected(AgentKit.BudgetLimitFailure failure) { }
@@ -1007,6 +1014,13 @@ namespace AgentKit
         public AgentKit.BudgetProfileKey ProfileKey { get; }
         public AgentKit.BudgetProfileVersion ProfileVersion { get; }
         public AgentKit.IBudgetScope Scope { get; }
+    }
+    public sealed class BudgetHeld : AgentKit.BudgetReservationResult, System.IEquatable<AgentKit.BudgetHeld>
+    {
+        public BudgetHeld(System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> holds) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.BudgetOverrunHold> Holds { get; }
+        public bool Equals(AgentKit.BudgetHeld? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class BudgetLedgerAlreadySettled : AgentKit.BudgetLedgerReleaseResult, System.IEquatable<AgentKit.BudgetLedgerAlreadySettled>
     {

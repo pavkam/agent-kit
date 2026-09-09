@@ -10,9 +10,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [InMemoryBudgetAuthorityTests](InMemoryBudgetAuthorityTests.cs)
-- [InMemoryBudgetScopeTests](InMemoryBudgetScopeTests.cs)
-- [ObservabilityTests](ObservabilityTests.cs)
+- [BudgetRuntimeTests](BudgetRuntimeTests.cs)
 - [ServiceExtensionsTests](ServiceExtensionsTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural

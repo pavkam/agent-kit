@@ -138,6 +138,12 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for replacing provisional budget accounting with a correction.</summary>
     public const string BudgetCorrection = "budget.correction";
 
+    /// <summary>Gets the name for reading one point-in-time budget snapshot.</summary>
+    public const string BudgetSnapshot = "budget.snapshot";
+
+    /// <summary>Gets the name for releasing or retaining one owned reservation during disposal.</summary>
+    public const string BudgetRelease = "budget.release";
+
     /// <summary>Gets the name for one authoritative budget-ledger operation.</summary>
     public const string BudgetLedgerOperation = "budget.ledger.operation";
 

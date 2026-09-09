@@ -9,7 +9,7 @@ namespace AgentKit;
 /// </summary>
 /// <remarks>
 /// This is a closed discriminated hierarchy. The concrete kinds are
-/// <see cref="BudgetReserved"/> and <see cref="BudgetRejected"/>. Its
+/// <see cref="BudgetReserved"/>, <see cref="BudgetRejected"/>, and <see cref="BudgetHeld"/>. Its
 /// constructor is <see langword="private protected"/>, so no assembly
 /// outside AgentKit.Abstractions can add a third kind.
 /// </remarks>

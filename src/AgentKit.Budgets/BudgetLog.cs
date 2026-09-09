@@ -109,4 +109,24 @@ internal static partial class BudgetLog
     [LoggerMessage(7041, LogLevel.Error, "Budget correction for scope {BudgetScopeId} dimension {BudgetDimension} failed with error type {ErrorType}.")]
     internal static partial void CorrectionFailed(
         ILogger logger, BudgetScopeId budgetScopeId, BudgetDimension budgetDimension, string errorType);
+
+    /// <summary>Records one content-free snapshot read outcome.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="budgetScopeId">The exact scope observed.</param>
+    /// <param name="outcome">The bounded read outcome.</param>
+    [LoggerMessage(7060, LogLevel.Debug, "Budget snapshot for scope {BudgetScopeId} completed with outcome {Outcome}.")]
+    internal static partial void SnapshotCompleted(ILogger logger, BudgetScopeId budgetScopeId, string outcome);
+
+    /// <summary>Records one failed snapshot read without accounting or content data.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="budgetScopeId">The exact scope being observed.</param>
+    /// <param name="errorType">The normalized exception type.</param>
+    [LoggerMessage(7061, LogLevel.Error, "Budget snapshot for scope {BudgetScopeId} failed with error type {ErrorType}.")]
+    internal static partial void SnapshotFailed(ILogger logger, BudgetScopeId budgetScopeId, string errorType);
+
+    /// <summary>Records caller cancellation of a snapshot read.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="budgetScopeId">The exact scope being observed.</param>
+    [LoggerMessage(7062, LogLevel.Debug, "Budget snapshot for scope {BudgetScopeId} was cancelled.")]
+    internal static partial void SnapshotCancelled(ILogger logger, BudgetScopeId budgetScopeId);
 }

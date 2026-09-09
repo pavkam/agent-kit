@@ -19,8 +19,10 @@ namespace AgentKit.Observability
         public const string BudgetCommit = "budget.commit";
         public const string BudgetCorrection = "budget.correction";
         public const string BudgetLedgerOperation = "budget.ledger.operation";
+        public const string BudgetRelease = "budget.release";
         public const string BudgetReserve = "budget.reserve";
         public const string BudgetScopeCreate = "budget.scope.create";
+        public const string BudgetSnapshot = "budget.snapshot";
         public const string BudgetStart = "budget.start";
         public const string Chat = "chat";
         public const string ContextCompact = "context.compact";
@@ -100,7 +102,9 @@ namespace AgentKit.Observability
         public const string BudgetLedgerOperationCount = "agentkit.budget.ledger.operation.count";
         public const string BudgetLedgerOperationDuration = "agentkit.budget.ledger.operation.duration";
         public const string BudgetReservationCount = "agentkit.budget.reservation.count";
+        public const string BudgetScopeCreateCount = "agentkit.budget.scope.create.count";
         public const string BudgetSettlementCount = "agentkit.budget.settlement.count";
+        public const string BudgetSnapshotCount = "agentkit.budget.snapshot.count";
         public const string BudgetStartCount = "agentkit.budget.start.count";
         public const string ContextCompactionCount = "agentkit.context.compaction.count";
         public const string ContextPreparationCount = "agentkit.context.prepare.count";
