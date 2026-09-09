@@ -27,6 +27,10 @@ namespace AgentKit;
 /// </remarks>
 public interface IBudgetLedger
 {
+    /// <summary>Gets immutable side-effect-free capability evidence for this ledger.</summary>
+    /// <value>A non-null descriptor that never probes or initializes storage when read.</value>
+    public BudgetLedgerDescriptor Descriptor { get; }
+
     /// <summary>Creates a scope or returns its prior receipt for an exact idempotency replay.</summary>
     /// <param name="request">The non-null original scope request and admission facts persisted with a newly created scope.</param>
     /// <param name="cancellationToken">Cancels before operation linearization; cancellation after a possible commit requires an exact replay.</param>

@@ -35,6 +35,23 @@ public sealed class InMemoryBudgetLedgerBoundaryTests
         _ = ledger.ShouldNotBeNull();
     }
 
+    /// <summary>Verifies the leaf truthfully declares stable process-local ephemeral coordination.</summary>
+    [Fact]
+    public void Descriptor_WhenRead_DeclaresStableProcessLocalEphemeralCapabilities()
+    {
+        var ledger = new InMemoryBudgetLedger(
+            TimeProvider.System,
+            new ScopeIdGenerator(),
+            new ReservationIdGenerator(),
+            new EmptyDimensionCatalog());
+
+        var first = ledger.Descriptor;
+        var second = ledger.Descriptor;
+
+        first.ShouldBe(new BudgetLedgerDescriptor(false, BudgetLedgerConcurrencyDomain.ProcessLocal));
+        second.ShouldBeSameAs(first);
+    }
+
     /// <summary>Verifies the registration extension validates its receiver.</summary>
     [Fact]
     public void AddInMemoryBudgetLedger_WhenServicesIsNull_ThrowsWithExactParameterName()
@@ -115,6 +132,7 @@ public sealed class InMemoryBudgetLedgerBoundaryTests
 
     private sealed class StubBudgetLedger: IBudgetLedger
     {
+        public BudgetLedgerDescriptor Descriptor { get; } = new(false, BudgetLedgerConcurrencyDomain.ProcessLocal);
         public ValueTask<BudgetLedgerScopeCreateResult> CreateScopeAsync(BudgetLedgerScopeCreateRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<BudgetLedgerBatchReserveResult> ReserveBatchAsync(BudgetLedgerBatchReserveRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<BudgetStartResult> MarkStartedAsync(BudgetLedgerReservationReference reservation, CancellationToken cancellationToken = default) => throw new NotSupportedException();

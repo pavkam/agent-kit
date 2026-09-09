@@ -65,6 +65,20 @@ owning spec.
 
 ## Latest integration evidence
 
+The ledger-descriptor checkpoint passed formatting, repository lint, a Release
+build with no warnings or errors, and all 5,636 tests in an isolated checkout
+over `9ea2cf5`. Every `IBudgetLedger` now publishes immutable, side-effect-free
+durability and concurrency-domain evidence. InMemory declares ephemeral,
+process-local behavior; durability and concurrency remain independent claims.
+The first-party budget authority rejects a missing descriptor before acquiring
+loggers or performing ledger work.
+
+Ten additional cases cover all valid descriptor combinations, exact enum/null
+guards, stable adapter metadata, and reusable descriptor conformance. The
+required interface property is an intentional implementor compatibility change;
+two API snapshots were reviewed. Profile compatibility validation, SQLite
+accounting, and complete consumer integration remain open.
+
 The complete tool-descriptor checkpoint passed formatting, repository lint, a
 Release build with no warnings or errors, and all 5,626 tests in an isolated
 checkout over `05af3a5`. Descriptors now require exact tool version and source,
@@ -1139,7 +1153,7 @@ not make that component a mandatory dependency of every engine.
 | Project structure             | Missing owners, declared graph activation, unchecked leaf protocol ownership and required project/test topology; project and pure component graph checks established   |
 | Composition and configuration | Full closed runnable graph, catalog publication/reload, keyed selection, scope ownership, readiness                                                                    |
 | Agent runtime                 | Explicit state transitions, waiter cancellation, recovery identity, settlement outcomes                                                                                |
-| Budgets                       | SQLite ledger, declared capabilities, profile/policy/event contracts, consumer integration and full conformance                                                        |
+| Budgets                       | SQLite ledger, profile compatibility, policy/event contracts, consumer integration and full conformance                                                                |
 | Messages and history          | Immutable/loss-aware values, non-elevation, correlation and shared round-trip conformance                                                                              |
 | Input and output              | Admission, durable promotion, lane routing, fan-out, final publication and channel contracts                                                                           |
 | Structured output             | Complete candidate extraction, validation, repair decisions and conversion conformance                                                                                 |

@@ -7,6 +7,7 @@ namespace AgentKit.Budgets.InMemory
     {
         public InMemoryBudgetLedger(System.TimeProvider timeProvider, AgentKit.IIdentifierGenerator<AgentKit.BudgetScopeId> scopeIds, AgentKit.IIdentifierGenerator<AgentKit.BudgetReservationId> reservationIds, AgentKit.IBudgetDimensionCatalog dimensions) { }
         public InMemoryBudgetLedger(System.TimeProvider timeProvider, AgentKit.IIdentifierGenerator<AgentKit.BudgetScopeId> scopeIds, AgentKit.IIdentifierGenerator<AgentKit.BudgetReservationId> reservationIds, AgentKit.IBudgetDimensionCatalog dimensions, Microsoft.Extensions.Logging.ILogger<AgentKit.Budgets.InMemory.InMemoryBudgetLedger>? logger) { }
+        public AgentKit.BudgetLedgerDescriptor Descriptor { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.BudgetCorrectionResult> CorrectAsync(AgentKit.BudgetLedgerCorrectionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerScopeCreateResult> CreateScopeAsync(AgentKit.BudgetLedgerScopeCreateRequest request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.BudgetSnapshot> GetSnapshotAsync(AgentKit.BudgetLedgerScopeReference scope, System.Threading.CancellationToken cancellationToken = default) { }

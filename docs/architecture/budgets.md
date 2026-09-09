@@ -527,6 +527,14 @@ and atomic compare-and-reserve semantics across every enforced parent. The
 common adapters run the same ledger conformance suite, but each advertises only
 its actual durability and ownership domain.
 
+`IBudgetLedger.Descriptor` is required immutable, side-effect-free composition
+evidence. Adding it is an intentional source and binary compatibility change for
+ledger implementers, which declare durability independently from the
+process-local, host-local, or distributed concurrency domain. The distributed
+domain includes authoritative fencing; it does not imply survival after loss of
+the whole domain. Reading a descriptor never opens, probes, initializes, or
+migrates storage.
+
 `AddAgentBudgets` is idempotent and `TryAdd`s one singular, replaceable
 authority, hierarchy policy, profile catalog, and event dispatcher. It expects a
 ledger through explicit DI composition but registers no concrete ledger. The

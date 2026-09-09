@@ -7,9 +7,9 @@ visible so composition can reject ambiguity.
 
 The adapter atomically stores scope topology, hierarchical reservations, start
 evidence, settlement, correction, reconciliation, and recovery watermarks. Its
-state is ephemeral and cannot support process-loss recovery. `AgentKit.Budgets`
-still contains the older in-memory authority mechanics until the separate
-runtime migration replaces them with this ledger.
+state is ephemeral and cannot support process-loss recovery. Its immutable
+descriptor therefore declares an ephemeral, process-local concurrency domain;
+reading that evidence invokes no clock, identity, catalog, or storage operation.
 
 Each dimension uses one fixed unit throughout a charged scope lineage because
 this adapter has no conversion policy. Snapshots report locally configured
@@ -24,7 +24,7 @@ dimensions, not a budget dimension. Exceeding it throws
 the adapter never fabricates dimension or unit metadata for that capacity
 failure.
 
-This storage leaf records truthful reservation and actual-usage facts and
-enforces captured finite ledger limits. Runtime authority migration and captured
-overrun-policy holds remain separate work; selecting this adapter alone does not
-provide the complete budget-authority policy layer.
+This storage leaf records truthful reservation and actual-usage facts, enforces
+captured finite ledger limits, and persists captured overrun holds for the
+process lifetime. The separately selected budget runtime supplies public owned
+handles; selecting this adapter alone does not create a budget authority.

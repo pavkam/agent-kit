@@ -8,6 +8,20 @@ namespace AgentKit.Conformance;
 public abstract class BudgetLedgerConformanceTests<TFixture>
     where TFixture : IBudgetLedgerConformanceFixture, new()
 {
+    /// <inheritdoc/>
+    [Fact]
+    public void Descriptor_WhenRead_IsStableAndMatchesDeclaredCapabilities()
+    {
+        var fixture = new TFixture();
+        var ledger = fixture.CreateLedger();
+
+        var first = ledger.Descriptor;
+        var second = ledger.Descriptor;
+
+        _ = first.ShouldNotBeNull();
+        first.ShouldBe(fixture.ExpectedDescriptor);
+        second.ShouldBeSameAs(first);
+    }
     private static readonly BudgetDimension Dimension = new("test.sum");
     private static readonly BudgetDimension MaximumDimension = new("test.maximum");
     private static readonly BudgetDimension GaugeDimension = new("test.gauge");

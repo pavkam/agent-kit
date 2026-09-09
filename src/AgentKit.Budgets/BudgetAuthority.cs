@@ -16,11 +16,12 @@ internal sealed class BudgetAuthority: IBudgetAuthority
     /// <param name="ledger">The singular authoritative ledger selected by application composition.</param>
     /// <param name="options">The validated admission policy captured for newly created scopes.</param>
     /// <param name="loggerFactory">The optional structured logger factory; null disables log publication.</param>
-    /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
+    /// <exception cref="ArgumentNullException">A required parameter is null or <paramref name="ledger"/> exposes a null descriptor.</exception>
     public BudgetAuthority(IBudgetLedger ledger, AgentBudgetOptionsSnapshot options, ILoggerFactory? loggerFactory = null)
     {
         ArgumentNullException.ThrowIfNull(ledger);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(ledger.Descriptor, nameof(ledger));
         _ledger = ledger;
         _options = options;
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;

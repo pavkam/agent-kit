@@ -356,6 +356,7 @@ public sealed class BudgetRuntimeTests
 
     internal sealed class RecordingLedger: IBudgetLedger
     {
+        public BudgetLedgerDescriptor Descriptor { get; } = new(false, BudgetLedgerConcurrencyDomain.ProcessLocal);
         public BudgetLedgerScopeCreateResult CreateResult { get; set; } = null!;
         public BudgetLedgerBatchReserveResult ReserveResult { get; set; } = null!;
         public BudgetStartResult StartResult { get; set; } = null!;

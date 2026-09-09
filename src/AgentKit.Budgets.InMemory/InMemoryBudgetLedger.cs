@@ -7,6 +7,8 @@ namespace AgentKit.Budgets.InMemory;
 /// <remarks>State is ephemeral. One lock linearizes topology, accounting, replay, expiry, and recovery scans.</remarks>
 public sealed class InMemoryBudgetLedger: IBudgetLedger
 {
+    private static readonly BudgetLedgerDescriptor _descriptor = new(
+        durable: false, concurrencyDomain: BudgetLedgerConcurrencyDomain.ProcessLocal);
     private readonly Lock _gate = new();
     private readonly Dictionary<BudgetScopeId, ScopeState> _scopes = [];
     private readonly Dictionary<IdempotencyKey, ScopeState> _scopeKeys = [];
@@ -19,6 +21,9 @@ public sealed class InMemoryBudgetLedger: IBudgetLedger
     private readonly IBudgetDimensionCatalog _dimensions;
     private readonly ILogger<InMemoryBudgetLedger> _logger;
     private long _revision;
+
+    /// <inheritdoc/>
+    public BudgetLedgerDescriptor Descriptor => _descriptor;
 
     /// <summary>Creates an ephemeral ledger using the supplied deterministic clock.</summary>
     /// <param name="timeProvider">The clock used for expiry, snapshots, and start evidence.</param>

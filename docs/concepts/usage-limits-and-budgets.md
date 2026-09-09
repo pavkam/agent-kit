@@ -202,6 +202,11 @@ settlement, correction, and idempotency conformance suite. Only a restart-tested
 SQLite adapter may advertise durable local accounting, and neither local adapter
 may advertise distributed fencing without separate evidence.
 
+Every ledger exposes immutable side-effect-free capability evidence describing
+durability and its process-local, host-local, or distributed concurrency domain.
+These axes are independent. Distributed declares authoritative fencing and
+atomic coordination; durability separately declares restart persistence.
+
 ## Acceptance scenarios
 
 - Concurrent request reservations cannot oversubscribe one remaining slot.

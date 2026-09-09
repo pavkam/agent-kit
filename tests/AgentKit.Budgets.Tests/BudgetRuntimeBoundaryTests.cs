@@ -21,6 +21,19 @@ public sealed class BudgetRuntimeBoundaryTests
     }
 
     [Fact]
+    public void BudgetAuthority_WhenLedgerDescriptorNull_ReadsOnceAndThrowsBeforeLedgerOperation()
+    {
+        var ledger = new RecordingLedger { DescriptorValue = null };
+
+        var exception = Should.Throw<ArgumentNullException>(
+            () => new BudgetAuthority(ledger, TestFactory.DefaultOptions()));
+
+        exception.ParamName.ShouldBe("ledger");
+        ledger.DescriptorReads.ShouldBe(1);
+        ledger.Calls.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task CreateAndReserve_WhenRequestIsNullOrBatchInvalid_RejectBeforeLedger()
     {
         var ledger = new RecordingLedger();
@@ -107,6 +120,16 @@ public sealed class BudgetRuntimeBoundaryTests
 
     private sealed class RecordingLedger: IBudgetLedger
     {
+        public BudgetLedgerDescriptor? DescriptorValue { get; set; } = new(false, BudgetLedgerConcurrencyDomain.ProcessLocal);
+        public int DescriptorReads { get; private set; }
+        public BudgetLedgerDescriptor Descriptor
+        {
+            get
+            {
+                DescriptorReads++;
+                return DescriptorValue!;
+            }
+        }
         public int Calls { get; private set; }
         public bool Cancel { get; init; }
         public BudgetLedgerScopeCreateResult CreateResult { get; set; } = null!; public BudgetLedgerBatchReserveResult ReserveResult { get; set; } = null!;

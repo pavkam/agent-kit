@@ -1055,12 +1055,24 @@ namespace AgentKit
         public bool Equals(AgentKit.BudgetLedgerBatchReserved? other) { }
         public override int GetHashCode() { }
     }
+    public enum BudgetLedgerConcurrencyDomain
+    {
+        ProcessLocal = 0,
+        HostLocal = 1,
+        Distributed = 2,
+    }
     public sealed class BudgetLedgerCorrectionRequest : System.IEquatable<AgentKit.BudgetLedgerCorrectionRequest>
     {
         public BudgetLedgerCorrectionRequest(AgentKit.BudgetLedgerReservationReference reservation, decimal correctedActual, long revision) { }
         public decimal CorrectedActual { get; }
         public AgentKit.BudgetLedgerReservationReference Reservation { get; }
         public long Revision { get; }
+    }
+    public sealed class BudgetLedgerDescriptor : System.IEquatable<AgentKit.BudgetLedgerDescriptor>
+    {
+        public BudgetLedgerDescriptor(bool durable, AgentKit.BudgetLedgerConcurrencyDomain concurrencyDomain) { }
+        public AgentKit.BudgetLedgerConcurrencyDomain ConcurrencyDomain { get; }
+        public bool Durable { get; }
     }
     public sealed class BudgetLedgerMutationConflictException : System.InvalidOperationException
     {
@@ -2985,6 +2997,7 @@ namespace AgentKit
     }
     public interface IBudgetLedger
     {
+        AgentKit.BudgetLedgerDescriptor Descriptor { get; }
         System.Threading.Tasks.ValueTask<AgentKit.BudgetCorrectionResult> CorrectAsync(AgentKit.BudgetLedgerCorrectionRequest request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.BudgetLedgerScopeCreateResult> CreateScopeAsync(AgentKit.BudgetLedgerScopeCreateRequest request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.BudgetSnapshot> GetSnapshotAsync(AgentKit.BudgetLedgerScopeReference scope, System.Threading.CancellationToken cancellationToken = default);

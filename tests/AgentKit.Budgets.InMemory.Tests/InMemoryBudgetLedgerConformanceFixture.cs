@@ -6,6 +6,10 @@ namespace AgentKit.Budgets.InMemory.Tests;
 /// <summary>Creates deterministic isolated in-memory ledgers for the shared suite.</summary>
 public sealed class InMemoryBudgetLedgerConformanceFixture: IBudgetLedgerConformanceFixture
 {
+    /// <inheritdoc/>
+    public BudgetLedgerDescriptor ExpectedDescriptor { get; } = new(
+        false, BudgetLedgerConcurrencyDomain.ProcessLocal);
+
     private readonly ControllableTimeProvider _timeProvider = new();
     private readonly SequentialScopeIdGenerator _scopeIds = new();
     private readonly SequentialReservationIdGenerator _reservationIds = new();

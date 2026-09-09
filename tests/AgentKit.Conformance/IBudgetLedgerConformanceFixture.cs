@@ -6,6 +6,9 @@ namespace AgentKit.Conformance;
 /// <summary>Creates an isolated budget ledger for each reusable contract scenario.</summary>
 public interface IBudgetLedgerConformanceFixture
 {
+    /// <summary>Gets the exact immutable descriptor expected from each created ledger.</summary>
+    public BudgetLedgerDescriptor ExpectedDescriptor { get; }
+
     /// <summary>Creates a fresh ledger whose clock and identities are isolated from other cases.</summary>
     /// <returns>A non-null ledger.</returns>
     public IBudgetLedger CreateLedger();
