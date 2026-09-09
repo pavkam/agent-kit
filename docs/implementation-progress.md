@@ -65,6 +65,19 @@ owning spec.
 
 ## Latest integration evidence
 
+The configuration-source primitive checkpoint passed formatting, repository
+lint, a Release build with no warnings or errors, and all 5,682 tests in an
+isolated checkout over `5cb8982`. Source and path identities preserve ordinal
+text, source revisions are positive, and immutable source references retain
+explicit layer, trust, revision and fingerprint evidence. Uninitialized text
+identities expose nullable values and format safely as empty strings.
+
+Ten focused cases and the shared identity suite verify exact guards, defaults,
+boundaries, equality and retained fields. The additive API snapshot was
+reviewed. These values carry evidence; they do not authenticate sources, grant
+authority, verify hashes or compile setting paths. Effective configuration
+publication, merge, retention and run capture remain open.
+
 The configuration and toolset architecture checkpoint passed focused Markdown
 formatting and lint. Effective configuration now has a complete immutable
 semantic shape, source/contributor provenance, captured precedence, and typed

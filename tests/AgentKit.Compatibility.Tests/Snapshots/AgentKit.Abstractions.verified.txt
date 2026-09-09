@@ -1893,6 +1893,58 @@ namespace AgentKit
         public string SafeMessage { get; init; }
         public override string ToString() { }
     }
+    public enum ConfigurationLayerKind
+    {
+        LibraryDefaults = 0,
+        HostGlobal = 1,
+        TrustedOrganizationPolicy = 2,
+        ApplicationOrExternalResource = 3,
+        AgentDefinition = 4,
+        ComposedCapabilities = 5,
+        RunInvocation = 6,
+        NamedNextTurnOverride = 7,
+    }
+    public enum ConfigurationMergeOperation
+    {
+        Replace = 0,
+        DeepMerge = 1,
+        Append = 2,
+        KeyedMerge = 3,
+        RuleList = 4,
+        Reset = 5,
+    }
+    public readonly struct ConfigurationPath : System.IEquatable<AgentKit.ConfigurationPath>
+    {
+        public ConfigurationPath(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct ConfigurationSourceId : System.IEquatable<AgentKit.ConfigurationSourceId>
+    {
+        public ConfigurationSourceId(string value) { }
+        public string? Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ConfigurationSourceReference : System.IEquatable<AgentKit.ConfigurationSourceReference>
+    {
+        public ConfigurationSourceReference(AgentKit.ConfigurationSourceId sourceId, AgentKit.ConfigurationSourceVersion sourceVersion, AgentKit.ConfigurationLayerKind layer, AgentKit.ConfigurationTrustClass trust, AgentKit.ContentHash fingerprint) { }
+        public AgentKit.ContentHash Fingerprint { get; }
+        public AgentKit.ConfigurationLayerKind Layer { get; }
+        public AgentKit.ConfigurationSourceId SourceId { get; }
+        public AgentKit.ConfigurationSourceVersion SourceVersion { get; }
+        public AgentKit.ConfigurationTrustClass Trust { get; }
+    }
+    public readonly struct ConfigurationSourceVersion : System.IEquatable<AgentKit.ConfigurationSourceVersion>
+    {
+        public ConfigurationSourceVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public enum ConfigurationTrustClass
+    {
+        Untrusted = 0,
+        HostEstablished = 1,
+    }
     public readonly struct ConfigurationVersion : System.IEquatable<AgentKit.ConfigurationVersion>
     {
         public ConfigurationVersion(long value) { }
