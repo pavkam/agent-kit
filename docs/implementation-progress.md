@@ -65,6 +65,21 @@ owning spec.
 
 ## Latest integration evidence
 
+The tool identity and projection-policy value checkpoint passed formatting,
+repository lint, a Release build with no warnings or errors, and all 5,630 tests
+in an isolated checkout over `3451ddf`. Fourteen additive values represent exact
+aliases, source/catalog versions, canonical tool pairs, execution-policy
+references, and bounded versioned result-projection policy snapshots. They
+preserve ordinal identities and validate positive versions/bounds, supported
+transformation combinations, and initialized nested extension evidence.
+
+The focused catalog and projection-policy suites contain 41 cases, including
+exact exception types/parameter names, numeric boundaries, all known flag
+combinations, and structural equality. Catalog capture/resolution, complete tool
+descriptors, authoritative terminal recording and projection, and provider/loop
+migration remain open. These values provide prerequisites without fabricating
+runtime tool identity or default policy selections.
+
 The accepted-operation codec checkpoint passed formatting, repository lint, a
 Release build with no warnings or errors, and all 5,543 tests in an isolated
 checkout over `1966dd5`. The additive public codec preserves complete accepted

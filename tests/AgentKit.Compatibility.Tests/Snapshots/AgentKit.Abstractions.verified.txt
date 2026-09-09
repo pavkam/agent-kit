@@ -6805,6 +6805,12 @@ namespace AgentKit
         Markdown = 1,
         Code = 2,
     }
+    public readonly struct ToolAlias : System.IEquatable<AgentKit.ToolAlias>
+    {
+        public ToolAlias(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
     public sealed class ToolArgumentsContentDelta : AgentKit.ContentDelta, System.IEquatable<AgentKit.ToolArgumentsContentDelta>
     {
         public ToolArgumentsContentDelta(AgentKit.ToolCallId toolCallId, string jsonFragment) { }
@@ -6863,6 +6869,12 @@ namespace AgentKit
         public System.DateTimeOffset RequestedAt { get; init; }
         public AgentKit.ToolId ToolId { get; init; }
     }
+    public readonly struct ToolCatalogVersion : System.IEquatable<AgentKit.ToolCatalogVersion>
+    {
+        public ToolCatalogVersion(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
     public sealed class ToolDescriptor : System.IEquatable<AgentKit.ToolDescriptor>
     {
         public ToolDescriptor(AgentKit.ToolId id, AgentKit.ToolVersion? version, string name, string description, System.Text.Json.JsonElement inputSchema, AgentKit.ToolEffect effect, AgentKit.ExtensionData extensions) { }
@@ -6892,11 +6904,35 @@ namespace AgentKit
         public AgentKit.SessionProfileSnapshot? SessionProfile { get; }
         public AgentKit.ToolCallId ToolCallId { get; }
     }
+    public readonly struct ToolExecutionPolicyKey : System.IEquatable<AgentKit.ToolExecutionPolicyKey>
+    {
+        public ToolExecutionPolicyKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ToolExecutionPolicyReference : System.IEquatable<AgentKit.ToolExecutionPolicyReference>
+    {
+        public ToolExecutionPolicyReference(AgentKit.ToolExecutionPolicyKey key, AgentKit.ToolExecutionPolicyVersion version) { }
+        public AgentKit.ToolExecutionPolicyKey Key { get; }
+        public AgentKit.ToolExecutionPolicyVersion Version { get; }
+    }
+    public readonly struct ToolExecutionPolicyVersion : System.IEquatable<AgentKit.ToolExecutionPolicyVersion>
+    {
+        public ToolExecutionPolicyVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
     public readonly struct ToolId : System.IEquatable<AgentKit.ToolId>
     {
         public ToolId(string value) { }
         public string Value { get; }
         public override string ToString() { }
+    }
+    public readonly struct ToolIdentity : System.IEquatable<AgentKit.ToolIdentity>
+    {
+        public ToolIdentity(AgentKit.ToolId id, AgentKit.ToolVersion version) { }
+        public AgentKit.ToolId Id { get; }
+        public AgentKit.ToolVersion Version { get; }
     }
     public sealed class ToolInvocationRequest : System.IEquatable<AgentKit.ToolInvocationRequest>
     {
@@ -6933,6 +6969,60 @@ namespace AgentKit
         public AgentKit.ToolReference Tool { get; init; }
         public bool Equals(AgentKit.ToolResultPart? other) { }
         public override int GetHashCode() { }
+    }
+    public sealed class ToolResultProjectionBounds : System.IEquatable<AgentKit.ToolResultProjectionBounds>
+    {
+        public ToolResultProjectionBounds(long maximumBytes, int maximumParts) { }
+        public long MaximumBytes { get; }
+        public int MaximumParts { get; }
+    }
+    public readonly struct ToolResultProjectionPolicyKey : System.IEquatable<AgentKit.ToolResultProjectionPolicyKey>
+    {
+        public ToolResultProjectionPolicyKey(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ToolResultProjectionPolicyReference : System.IEquatable<AgentKit.ToolResultProjectionPolicyReference>
+    {
+        public ToolResultProjectionPolicyReference(AgentKit.ToolResultProjectionPolicyKey key, AgentKit.ToolResultProjectionPolicyVersion version) { }
+        public AgentKit.ToolResultProjectionPolicyKey Key { get; }
+        public AgentKit.ToolResultProjectionPolicyVersion Version { get; }
+    }
+    public sealed class ToolResultProjectionPolicySnapshot : System.IEquatable<AgentKit.ToolResultProjectionPolicySnapshot>
+    {
+        public ToolResultProjectionPolicySnapshot(AgentKit.ToolResultProjectionPolicyReference reference, AgentKit.ToolResultProjectionBounds bounds, AgentKit.ToolResultProjectionTransformations allowedTransformations, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ToolResultProjectionTransformations AllowedTransformations { get; }
+        public AgentKit.ToolResultProjectionBounds Bounds { get; }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.ToolResultProjectionPolicyReference Reference { get; }
+    }
+    public readonly struct ToolResultProjectionPolicyVersion : System.IEquatable<AgentKit.ToolResultProjectionPolicyVersion>
+    {
+        public ToolResultProjectionPolicyVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    [System.Flags]
+    public enum ToolResultProjectionTransformations
+    {
+        None = 0,
+        Redaction = 1,
+        Normalization = 2,
+        Summarization = 4,
+        Truncation = 8,
+        Externalization = 16,
+    }
+    public readonly struct ToolSourceId : System.IEquatable<AgentKit.ToolSourceId>
+    {
+        public ToolSourceId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct ToolSourceVersion : System.IEquatable<AgentKit.ToolSourceVersion>
+    {
+        public ToolSourceVersion(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
     }
     public readonly struct ToolVersion : System.IEquatable<AgentKit.ToolVersion>
     {
