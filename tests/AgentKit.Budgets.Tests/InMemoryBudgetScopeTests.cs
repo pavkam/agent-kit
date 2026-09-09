@@ -101,7 +101,7 @@ public sealed class InMemoryBudgetScopeTests
         rejected.Failure.Dimension.ShouldBe(TestFactory.TestDimension);
         rejected.Failure.Kind.ShouldBe(BudgetLimitKind.Hard);
         rejected.Failure.ConfiguredValue.ShouldBe(10m);
-        rejected.Failure.RequestedAmount.ShouldBe(11m);
+        rejected.Failure.RequestedAmount.ShouldBe(Quantity(11m));
     }
 
     [Fact]
@@ -198,7 +198,7 @@ public sealed class InMemoryBudgetScopeTests
         await reserved.Reservation.DisposeAsync();
 
         var snapshot = await scope.GetSnapshotAsync(TestContext.Current.CancellationToken);
-        snapshot.Usages.Single(u => u.Dimension == TestFactory.TestDimension).Reserved.ShouldBe(0m);
+        snapshot.Usages.Single(u => u.Dimension == TestFactory.TestDimension).Reserved.ShouldBe(Quantity(0m));
     }
 
     [Fact]
@@ -215,8 +215,8 @@ public sealed class InMemoryBudgetScopeTests
 
         var snapshot = await scope.GetSnapshotAsync(TestContext.Current.CancellationToken);
         var usage = snapshot.Usages.Single(u => u.Dimension == TestFactory.TestDimension);
-        usage.Committed.ShouldBe(5m);
-        usage.Reserved.ShouldBe(0m);
+        usage.Committed.ShouldBe(Quantity(5m));
+        usage.Reserved.ShouldBe(Quantity(0m));
     }
 
     [Fact]
@@ -338,7 +338,7 @@ public sealed class InMemoryBudgetScopeTests
         _ = result.ShouldBeOfType<BudgetRejected>();
 
         var rootSnapshot = await root.GetSnapshotAsync(TestContext.Current.CancellationToken);
-        rootSnapshot.Usages.Single(u => u.Dimension == TestFactory.TestDimension).Reserved.ShouldBe(0m);
+        rootSnapshot.Usages.Single(u => u.Dimension == TestFactory.TestDimension).Reserved.ShouldBe(Quantity(0m));
     }
 
     [Fact]
@@ -354,7 +354,7 @@ public sealed class InMemoryBudgetScopeTests
         _ = result.ShouldBeOfType<BudgetReserved>();
 
         var rootSnapshot = await root.GetSnapshotAsync(TestContext.Current.CancellationToken);
-        rootSnapshot.Usages.Single(u => u.Dimension == TestFactory.TestDimension).Reserved.ShouldBe(6m);
+        rootSnapshot.Usages.Single(u => u.Dimension == TestFactory.TestDimension).Reserved.ShouldBe(Quantity(6m));
     }
 
     [Fact]
@@ -373,8 +373,8 @@ public sealed class InMemoryBudgetScopeTests
 
         var rootSnapshot = await root.GetSnapshotAsync(TestContext.Current.CancellationToken);
         var usage = rootSnapshot.Usages.Single(u => u.Dimension == TestFactory.TestDimension);
-        usage.Reserved.ShouldBe(0m);
-        usage.Committed.ShouldBe(3m);
+        usage.Reserved.ShouldBe(Quantity(0m));
+        usage.Committed.ShouldBe(Quantity(3m));
     }
 
     [Fact]
@@ -439,8 +439,8 @@ public sealed class InMemoryBudgetScopeTests
         var snapshot = await scope.GetSnapshotAsync(TestContext.Current.CancellationToken);
 
         var usage = snapshot.Usages.Single(u => u.Dimension == TestFactory.TestDimension);
-        usage.Reserved.ShouldBe(0m);
-        usage.Committed.ShouldBe(0m);
+        usage.Reserved.ShouldBe(Quantity(0m));
+        usage.Committed.ShouldBe(Quantity(0m));
         _ = usage.Limit.ShouldNotBeNull();
     }
 
@@ -461,8 +461,8 @@ public sealed class InMemoryBudgetScopeTests
 
         _ = await reserved.CommitAsync(3m, TestContext.Current.CancellationToken);
         var usage = (await scope.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single();
-        usage.Reserved.ShouldBe(0m);
-        usage.Committed.ShouldBe(3m);
+        usage.Reserved.ShouldBe(Quantity(0m));
+        usage.Committed.ShouldBe(Quantity(3m));
     }
 
     [Fact]
@@ -513,7 +513,7 @@ public sealed class InMemoryBudgetScopeTests
         _ = await Should.ThrowAsync<OperationCanceledException>(() => reserved.MarkStartedAsync(source.Token).AsTask());
         await reserved.DisposeAsync();
 
-        (await scope.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Reserved.ShouldBe(0m);
+        (await scope.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Reserved.ShouldBe(Quantity(0m));
     }
 
     [Fact]
@@ -535,8 +535,12 @@ public sealed class InMemoryBudgetScopeTests
 
         _ = (await child.ReserveBatchAsync(requests, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetBatchRejected>();
 
-        (await root.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Sum(static usage => usage.Reserved).ShouldBe(0m);
-        (await child.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Sum(static usage => usage.Reserved).ShouldBe(0m);
+        (await root.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages
+            .Aggregate(default(BudgetQuantity), static (total, usage) => total.Add(usage.Reserved))
+            .ShouldBe(Quantity(0m));
+        (await child.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages
+            .Aggregate(default(BudgetQuantity), static (total, usage) => total.Add(usage.Reserved))
+            .ShouldBe(Quantity(0m));
     }
 
     [Fact]
@@ -590,7 +594,7 @@ public sealed class InMemoryBudgetScopeTests
 
         results.Count(static result => result is BudgetBatchReserved).ShouldBe(1);
         results.Count(static result => result is BudgetBatchRejected).ShouldBe(1);
-        (await scope.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Reserved.ShouldBe(2m);
+        (await scope.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Reserved.ShouldBe(Quantity(2m));
     }
 
     [Fact]
@@ -609,7 +613,7 @@ public sealed class InMemoryBudgetScopeTests
         correction.PreviousActual.ShouldBe(8m);
         replay.PreviousActual.ShouldBe(8m);
         replay.CorrectedActual.ShouldBe(4m);
-        (await scope.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Committed.ShouldBe(4m);
+        (await scope.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Committed.ShouldBe(Quantity(4m));
         _ = await Should.ThrowAsync<InvalidOperationException>(
             () => reservation.CorrectAsync(3m, 1, TestContext.Current.CancellationToken).AsTask());
         _ = (await scope.ReserveAsync(TestFactory.ReservationRequest(scope.Id, TestFactory.TestDimension, 6m),
@@ -636,8 +640,8 @@ public sealed class InMemoryBudgetScopeTests
 
         _ = await reservation.CorrectAsync(2m, 1, TestContext.Current.CancellationToken);
 
-        (await child.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Committed.ShouldBe(2m);
-        (await root.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Committed.ShouldBe(2m);
+        (await child.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Committed.ShouldBe(Quantity(2m));
+        (await root.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Committed.ShouldBe(Quantity(2m));
     }
 
     [Fact]
@@ -663,8 +667,8 @@ public sealed class InMemoryBudgetScopeTests
         _ = await Should.ThrowAsync<InvalidOperationException>(
             () => child.ReserveBatchAsync(requests, TestContext.Current.CancellationToken).AsTask());
 
-        (await child.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Reserved.ShouldBe(0m);
-        (await root.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Reserved.ShouldBe(0m);
+        (await child.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Reserved.ShouldBe(Quantity(0m));
+        (await root.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Reserved.ShouldBe(Quantity(0m));
         var retry = await child.ReserveBatchAsync(requests, TestContext.Current.CancellationToken);
         _ = retry.ShouldBeOfType<BudgetBatchReserved>();
     }
@@ -682,8 +686,10 @@ public sealed class InMemoryBudgetScopeTests
                 TestContext.Current.CancellationToken).AsTask());
 
         exception.ParamName.ShouldBe("id");
-        (await scope.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Reserved.ShouldBe(0m);
+        (await scope.GetSnapshotAsync(TestContext.Current.CancellationToken)).Usages.Single().Reserved.ShouldBe(Quantity(0m));
     }
+
+    private static BudgetQuantity Quantity(decimal value) => BudgetQuantity.FromDecimal(value);
 
     private sealed class ThrowingReservationIdGenerator(int throwOnCall): IIdentifierGenerator<BudgetReservationId>
     {

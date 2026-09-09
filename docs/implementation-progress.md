@@ -65,6 +65,23 @@ owning spec.
 
 ## Latest integration evidence
 
+The exact-budget-quantity checkpoint passed formatting, repository lint, a
+Release build with no warnings or errors, and all 5,353 tests in an isolated
+checkout over `f66c39f`. `BudgetQuantity` preserves nonnegative base-ten
+aggregates beyond decimal magnitude and precision with canonical equality,
+hashing, comparison, addition, and invariant formatting. Decimal conversion is
+explicit and exact: unrepresentable values return a failed projection or throw
+the documented overflow exception.
+
+Four aggregate properties intentionally change from `decimal` to
+`BudgetQuantity`: reserved/committed snapshot usage and observed/requested limit
+failure amounts. Decimal constructors remain and retain their parameter-name
+validation contracts. Per-reservation actuals and configured ceilings remain
+decimal values. This corrects the public representation; the legacy authority
+still awaits migration to the ledger. Budget and provider diagnostics tests now
+filter their own operation and parent trace, closing observed parallel-listener
+races instead of relying on retries.
+
 The session-codec catalog checkpoint passed repository lint, a Release build
 with no warnings or errors, and all 5,332 tests in an isolated checkout over
 `ffc3c42`. The catalog captures descriptors once, selects exact local types and

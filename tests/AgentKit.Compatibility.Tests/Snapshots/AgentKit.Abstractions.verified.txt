@@ -930,11 +930,12 @@ namespace AgentKit
     }
     public sealed class BudgetDimensionUsage : System.IEquatable<AgentKit.BudgetDimensionUsage>
     {
+        public BudgetDimensionUsage(AgentKit.BudgetDimension dimension, AgentKit.BudgetUnit unit, AgentKit.BudgetQuantity reserved, AgentKit.BudgetQuantity committed, AgentKit.BudgetLimit? limit) { }
         public BudgetDimensionUsage(AgentKit.BudgetDimension dimension, AgentKit.BudgetUnit unit, decimal reserved, decimal committed, AgentKit.BudgetLimit? limit) { }
-        public decimal Committed { get; init; }
+        public AgentKit.BudgetQuantity Committed { get; init; }
         public AgentKit.BudgetDimension Dimension { get; init; }
         public AgentKit.BudgetLimit? Limit { get; init; }
-        public decimal Reserved { get; init; }
+        public AgentKit.BudgetQuantity Reserved { get; init; }
         public AgentKit.BudgetUnit Unit { get; init; }
     }
     public static class BudgetDimensions
@@ -1135,12 +1136,13 @@ namespace AgentKit
     }
     public sealed class BudgetLimitFailure : System.IEquatable<AgentKit.BudgetLimitFailure>
     {
+        public BudgetLimitFailure(AgentKit.BudgetScopeId scopeId, AgentKit.BudgetDimension dimension, AgentKit.BudgetLimitKind kind, decimal configuredValue, AgentKit.BudgetQuantity observedValue, AgentKit.BudgetQuantity requestedAmount, AgentKit.BudgetUnit unit, string safeMessage) { }
         public BudgetLimitFailure(AgentKit.BudgetScopeId scopeId, AgentKit.BudgetDimension dimension, AgentKit.BudgetLimitKind kind, decimal configuredValue, decimal observedValue, decimal requestedAmount, AgentKit.BudgetUnit unit, string safeMessage) { }
         public decimal ConfiguredValue { get; init; }
         public AgentKit.BudgetDimension Dimension { get; init; }
         public AgentKit.BudgetLimitKind Kind { get; init; }
-        public decimal ObservedValue { get; init; }
-        public decimal RequestedAmount { get; init; }
+        public AgentKit.BudgetQuantity ObservedValue { get; init; }
+        public AgentKit.BudgetQuantity RequestedAmount { get; init; }
         public string SafeMessage { get; init; }
         public AgentKit.BudgetScopeId ScopeId { get; init; }
         public AgentKit.BudgetUnit Unit { get; init; }
@@ -1165,6 +1167,22 @@ namespace AgentKit
         public BudgetProfileVersion(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public readonly struct BudgetQuantity : System.IComparable<AgentKit.BudgetQuantity>, System.IEquatable<AgentKit.BudgetQuantity>
+    {
+        public BudgetQuantity(System.Numerics.BigInteger coefficient, int scale) { }
+        public System.Numerics.BigInteger Coefficient { get; }
+        public int Scale { get; }
+        public AgentKit.BudgetQuantity Add(AgentKit.BudgetQuantity other) { }
+        public int CompareTo(AgentKit.BudgetQuantity other) { }
+        public decimal ToDecimalChecked() { }
+        public override string ToString() { }
+        public bool TryGetDecimal(out decimal value) { }
+        public static AgentKit.BudgetQuantity FromDecimal(decimal value) { }
+        public static bool operator <(AgentKit.BudgetQuantity left, AgentKit.BudgetQuantity right) { }
+        public static bool operator <=(AgentKit.BudgetQuantity left, AgentKit.BudgetQuantity right) { }
+        public static bool operator >(AgentKit.BudgetQuantity left, AgentKit.BudgetQuantity right) { }
+        public static bool operator >=(AgentKit.BudgetQuantity left, AgentKit.BudgetQuantity right) { }
     }
     public abstract class BudgetReconciliationEvidence : System.IEquatable<AgentKit.BudgetReconciliationEvidence> { }
     public sealed class BudgetRejected : AgentKit.BudgetReservationResult, System.IEquatable<AgentKit.BudgetRejected>

@@ -10,7 +10,9 @@ public sealed class ObservabilityTests
     public async Task RefreshAsync_WhenObserved_EmitsPublishedCatalogActivity()
     {
         Activity? stopped = null;
-        using var listener = CreateListener(activity => stopped = activity);
+        using var parent = new Activity("test.model.catalog.refresh").Start();
+        using var listener = CreateListener(AgentKitActivityNames.ModelCatalogRefresh, parent,
+            activity => stopped = activity);
         var source = new StaticModelDescriptorSource(
             new ModelDescriptorSourceId("observed-source"),
             [ProviderTestData.Model("observed-model")]);
@@ -28,7 +30,9 @@ public sealed class ObservabilityTests
     public async Task SelectAsync_WhenObserved_EmitsCorrelatedModelSelectionActivity()
     {
         Activity? stopped = null;
-        using var listener = CreateListener(activity => stopped = activity);
+        using var parent = new Activity("test.model.select").Start();
+        using var listener = CreateListener(AgentKitActivityNames.ModelSelect, parent,
+            activity => stopped = activity);
         var selector = new DefaultModelSelector(
             new DefaultModelCapabilityValidator(),
             NullLogger<DefaultModelSelector>.Instance);
@@ -45,18 +49,25 @@ public sealed class ObservabilityTests
         activity.GetTagItem(AgentKitTagNames.RequestModel).ShouldBe("selected-model");
     }
 
-    private static ActivityListener CreateListener(Action<Activity> stopped)
+    private static ActivityListener CreateListener(string operationName, Activity parent, Action<Activity> stopped)
     {
         var listener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = SampleAllData,
-            ActivityStopped = stopped,
+            Sample = (ref options) =>
+                options.Name == operationName && options.Parent.TraceId == parent.TraceId
+                    ? ActivitySamplingResult.AllDataAndRecorded
+                    : ActivitySamplingResult.None,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == operationName && activity.ParentSpanId == parent.SpanId)
+                {
+                    stopped(activity);
+                }
+            },
         };
         ActivitySource.AddActivityListener(listener);
         return listener;
     }
 
-    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
-        ActivitySamplingResult.AllDataAndRecorded;
 }

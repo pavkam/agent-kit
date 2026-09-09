@@ -107,6 +107,17 @@ Actual overrun MUST be fully recorded even when it exceeds a hard ceiling. It
 sets remaining capacity to zero and stops new work; the ledger MUST NOT clamp
 reported consumption or reject its truthful accounting.
 
+Aggregate reserved and committed quantities use an exact canonical base-ten
+representation. A decimal projection is only a compatibility view and fails when
+it would round or overflow; it never clamps a recorded amount. Each request,
+reservation, settlement, correction, and configured ceiling may still enter
+through its bounded decimal contract. The ledger converts those row values
+without rounding, then performs aggregate addition and comparison as
+`BudgetQuantity`. Snapshot reserved/committed values and rejection
+observed/requested values therefore expose exact quantities; callers that need
+`decimal` use an explicit checked projection and handle an unrepresentable
+total.
+
 The scheduler MUST NOT check `current < limit` independently in several tasks;
 that race is adorable until it charges the card four times.
 

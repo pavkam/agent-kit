@@ -206,6 +206,23 @@ uses the same capacity as three simultaneous one-slot reservations. An adapter
 cannot substitute sum aggregation for another kind as a conservative fallback;
 that changes the configured capacity semantics.
 
+Ledger aggregates use `BudgetQuantity`, a canonical nonnegative base-ten value
+with an arbitrary-size coefficient and at most 28 fractional digits. Addition,
+comparison, equality, hashing, and formatting remain exact even after a total
+exceeds `decimal` magnitude or precision. Individual request, reservation,
+commit, correction, and configured-limit values remain `decimal` at their
+existing caller boundaries; the ledger converts each row exactly before
+aggregation. A decimal projection of an aggregate is an explicit compatibility
+operation that fails on required rounding or overflow and never clamps the
+recorded value.
+
+This intentionally changes `BudgetDimensionUsage.Reserved`,
+`BudgetDimensionUsage.Committed`, `BudgetLimitFailure.ObservedValue`, and
+`BudgetLimitFailure.RequestedAmount` from `decimal` to `BudgetQuantity`.
+Compatibility constructors still accept nonnegative decimal row values, while
+consumers of aggregate properties must compare exact quantities or request a
+checked decimal projection.
+
 Disposal releases an unstarted reservation exactly once. Immediately before
 starting charged work, its owner calls `MarkStartedAsync`; failure starts no
 work. A started reservation is committed with known actual usage or retained as

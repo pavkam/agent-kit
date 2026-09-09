@@ -15,14 +15,19 @@ public sealed class ObservabilityTests
         var authority = TestFactory.Authority();
         var scope = await TestFactory.CreateRootScopeAsync(authority);
         var request = TestFactory.ReservationRequest(scope.Id, TestFactory.TestDimension, 1m);
+        using var parent = new Activity("budget.reserve.test").Start();
         Activity? stopped = null;
         using var listener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = SampleAllData,
+            Sample = (ref options) =>
+                options.Name == AgentKitActivityNames.BudgetReserve && options.Parent == parent.Context
+                    ? ActivitySamplingResult.AllDataAndRecorded
+                    : ActivitySamplingResult.None,
             ActivityStopped = activity =>
             {
                 if (activity.OperationName == AgentKitActivityNames.BudgetReserve
+                    && activity.ParentSpanId == parent.SpanId
                     && Equals(activity.GetTagItem(AgentKitTagNames.OperationId), request.OperationId.ToString()))
                 {
                     stopped = activity;
@@ -44,16 +49,24 @@ public sealed class ObservabilityTests
     {
         var authority = TestFactory.Authority();
         var scope = await TestFactory.CreateRootScopeAsync(authority);
+        using var parent = new Activity("budget.lifecycle.test").Start();
         var outcomes = new List<(string Name, string Outcome)>();
         using var listener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = SampleAllData,
+            Sample = (ref options) =>
+                (options.Name is AgentKitActivityNames.BudgetStart
+                    or AgentKitActivityNames.BudgetCommit
+                    or AgentKitActivityNames.BudgetCorrection)
+                && options.Parent == parent.Context
+                    ? ActivitySamplingResult.AllDataAndRecorded
+                    : ActivitySamplingResult.None,
             ActivityStopped = activity =>
             {
                 if ((activity.OperationName is AgentKitActivityNames.BudgetStart
                     or AgentKitActivityNames.BudgetCommit
                     or AgentKitActivityNames.BudgetCorrection)
+                    && activity.ParentSpanId == parent.SpanId
                     && Equals(activity.GetTagItem(AgentKitTagNames.BudgetScopeId), scope.Id.ToString()))
                 {
                     outcomes.Add((activity.OperationName, (string) activity.GetTagItem(AgentKitTagNames.Outcome)!));
@@ -83,14 +96,21 @@ public sealed class ObservabilityTests
     {
         var authority = TestFactory.Authority();
         var scope = await TestFactory.CreateRootScopeAsync(authority);
+        using var parent = new Activity("budget.cancellation.test").Start();
         var activities = new List<(string Name, string Outcome)>();
         using var listener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = SampleAllData,
+            Sample = (ref options) =>
+                (options.Name is AgentKitActivityNames.BudgetStart or AgentKitActivityNames.BudgetCorrection)
+                && options.Parent == parent.Context
+                    ? ActivitySamplingResult.AllDataAndRecorded
+                    : ActivitySamplingResult.None,
             ActivityStopped = activity =>
             {
-                if (activity.OperationName is AgentKitActivityNames.BudgetStart or AgentKitActivityNames.BudgetCorrection)
+                if ((activity.OperationName is AgentKitActivityNames.BudgetStart or AgentKitActivityNames.BudgetCorrection)
+                    && activity.ParentSpanId == parent.SpanId
+                    && Equals(activity.GetTagItem(AgentKitTagNames.BudgetScopeId), scope.Id.ToString()))
                 {
                     activities.Add((activity.OperationName, (string) activity.GetTagItem(AgentKitTagNames.Outcome)!));
                 }
@@ -175,7 +195,4 @@ public sealed class ObservabilityTests
         measurements.ShouldContain((AgentKitMetricNames.BudgetStartCount, "started", _observedDimension.Value, false));
         measurements.ShouldContain((AgentKitMetricNames.BudgetCorrectionCount, "corrected", _observedDimension.Value, false));
     }
-
-    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
-        ActivitySamplingResult.AllDataAndRecorded;
 }

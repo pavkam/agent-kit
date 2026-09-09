@@ -36,7 +36,9 @@ read the [modern C# rules](../references/modern-csharp.md).
    Sum and duration add usage; maximum compares live, committed, and candidate
    maxima; concurrent gauges sum live capacity-retaining amounts and retain no
    committed balance after proven completion or release. Never substitute row
-   count or a different aggregation as a fallback.
+   count or a different aggregation as a fallback. Convert bounded decimal row
+   values exactly and aggregate with `BudgetQuantity`; never round, clamp, or
+   fall back to decimal arithmetic for snapshot totals or limit observations.
 5. Enforce every shared scope and reserve every dimension of an indivisible
    batch atomically or none. Transfer/subdivide reserved capacity rather than
    charging the same work again at a lower layer.
