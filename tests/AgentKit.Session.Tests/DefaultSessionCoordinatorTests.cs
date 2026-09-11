@@ -263,6 +263,7 @@ public sealed class DefaultSessionCoordinatorTests
     [Fact]
     public async Task LookupInputAsync_WhenCapabilitySelectedDifferentCoordinator_RejectsBeforeAuthorityOrRouting()
     {
+        using var parent = new Activity("input-lookup-parent").Start();
         Activity? stopped = null;
         using var listener = new ActivityListener
         {
@@ -271,7 +272,14 @@ public sealed class DefaultSessionCoordinatorTests
                 options.Name == AgentKitActivityNames.SessionInputLookup
                     ? ActivitySamplingResult.AllData
                     : ActivitySamplingResult.None,
-            ActivityStopped = activity => stopped = activity,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.SessionInputLookup
+                    && activity.TraceId == parent.TraceId)
+                {
+                    stopped = activity;
+                }
+            },
         };
         ActivitySource.AddActivityListener(listener);
         var harness = new Harness();

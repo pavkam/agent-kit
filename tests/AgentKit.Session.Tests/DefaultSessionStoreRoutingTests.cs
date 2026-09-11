@@ -138,6 +138,7 @@ public sealed class DefaultSessionStoreRoutingTests
     [Fact]
     public async Task SelectForCreateAsync_WhenMetricObserverThrows_PreservesSelection()
     {
+        using var parent = new Activity("routing-metric-parent").Start();
         using var listener = new MeterListener
         {
             InstrumentPublished = (instrument, current) =>
@@ -151,7 +152,8 @@ public sealed class DefaultSessionStoreRoutingTests
         };
         listener.SetMeasurementEventCallback<long>((instrument, _, tags, _) =>
         {
-            if (instrument.Name == AgentKitMetricNames.SessionOperationCount
+            if (Activity.Current?.TraceId == parent.TraceId
+                && instrument.Name == AgentKitMetricNames.SessionOperationCount
                 && HasSelectTag(tags))
             {
                 throw new InvalidOperationException("observer");

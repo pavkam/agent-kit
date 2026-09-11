@@ -315,7 +315,7 @@ public sealed class SessionEntryCodecCatalogTests
             },
         };
         ActivitySource.AddActivityListener(activityListener);
-        using var meterListener = CreateThrowingMeterListener();
+        using var meterListener = CreateThrowingMeterListener(parent.TraceId);
 
         _ = new SessionEntryCodecCatalog([new FakeCodec()], new ThrowingTimeProvider(), logger: new ThrowingLogger())
             .Encode(new TestEntry()).ShouldBeOfType<SessionEntryEncoded>();
@@ -344,7 +344,7 @@ public sealed class SessionEntryCodecCatalogTests
         };
         ActivitySource.AddActivityListener(activityListener);
         var expected = new CodecException();
-        using var meterListener = CreateThrowingMeterListener();
+        using var meterListener = CreateThrowingMeterListener(parent.TraceId);
         var codec = new FakeCodec { EncodeException = expected };
         var catalog = new SessionEntryCodecCatalog([codec], new ThrowingTimeProvider(), logger: new ThrowingLogger());
 
@@ -469,7 +469,10 @@ public sealed class SessionEntryCodecCatalogTests
         completed.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("rejected");
     }
 
-    private static MeterListener CreateThrowingMeterListener()
+    /// <summary>Creates an owned fault-injection listener confined to one test's codec operations.</summary>
+    /// <param name="traceId">The trace identity of the test-owned parent activity.</param>
+    /// <returns>A started listener that throws only for measurements within the supplied trace; the caller disposes it.</returns>
+    private static MeterListener CreateThrowingMeterListener(ActivityTraceId traceId)
     {
         var listener = new MeterListener
         {
@@ -483,8 +486,20 @@ public sealed class SessionEntryCodecCatalogTests
                 }
             }
         };
-        listener.SetMeasurementEventCallback<long>(static (_, _, _, _) => throw new InvalidOperationException("meter"));
-        listener.SetMeasurementEventCallback<double>(static (_, _, _, _) => throw new InvalidOperationException("meter"));
+        listener.SetMeasurementEventCallback<long>((_, _, _, _) =>
+        {
+            if (Activity.Current?.TraceId == traceId)
+            {
+                throw new InvalidOperationException("meter");
+            }
+        });
+        listener.SetMeasurementEventCallback<double>((_, _, _, _) =>
+        {
+            if (Activity.Current?.TraceId == traceId)
+            {
+                throw new InvalidOperationException("meter");
+            }
+        });
         listener.Start();
         return listener;
     }

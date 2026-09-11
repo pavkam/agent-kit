@@ -19,6 +19,15 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 These are entry points into the suite, not a claim of complete architectural
 conformance.
 
+## Diagnostic listeners
+
+Observation and fault-injection callbacks filter by the test-owned trace and
+operation. `ActivityListener.Sample` does not restrict callbacks when another
+subscriber samples an activity. The lease tests exercise both another operation
+and another lease trace while the throwing listener is installed, and verify
+that the intended callback still throws. Metric fault injection uses the same
+trace isolation so parallel tests retain their observations.
+
 ## Run this project
 
 From the repository root:

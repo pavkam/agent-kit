@@ -458,33 +458,79 @@ public sealed class DefaultSessionRunCoordinatorTests
         bool throwOnStart, bool throwOnStop)
     {
         var scenario = Scenario.Create();
+        var observerFailures = 0;
         using var parent = new Activity("lease-parent").Start();
         using var listener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
             Sample = SampleLeaseOnly,
-            ActivityStarted = throwOnStart ? static _ => throw new InvalidOperationException("observer") : null,
-            ActivityStopped = throwOnStop ? static _ => throw new InvalidOperationException("observer") : null,
+            ActivityStarted = activity =>
+            {
+                if (throwOnStart && activity.OperationName == AgentKitActivityNames.SessionLeaseAcquire
+                    && activity.TraceId == parent.TraceId)
+                {
+                    observerFailures++;
+                    throw new InvalidOperationException("observer");
+                }
+            },
+            ActivityStopped = activity =>
+            {
+                if (throwOnStop && activity.OperationName == AgentKitActivityNames.SessionLeaseAcquire
+                    && activity.TraceId == parent.TraceId)
+                {
+                    observerFailures++;
+                    throw new InvalidOperationException("observer");
+                }
+            },
         };
         ActivitySource.AddActivityListener(listener);
+
+        // Another subscriber can sample activities this listener did not request.
+        var unrelatedTraceId = ActivityTraceId.CreateRandom();
+        using var otherListener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) => options.Parent.TraceId == unrelatedTraceId
+                ? ActivitySamplingResult.AllData
+                : ActivitySamplingResult.None,
+        };
+        ActivitySource.AddActivityListener(otherListener);
+        using (var unrelatedParent = new Activity("unrelated-parent")
+            .SetParentId(unrelatedTraceId, ActivitySpanId.CreateRandom(), ActivityTraceFlags.None)
+            .Start())
+        {
+            using var unrelated = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.SessionEntryCodec);
+            _ = unrelated.ShouldNotBeNull();
+            using var unrelatedLease = AgentKitDiagnostics.Activities.StartActivity(AgentKitActivityNames.SessionLeaseAcquire);
+            _ = unrelatedLease.ShouldNotBeNull();
+        }
 
         var result = await scenario.Coordinator.AcquireAsync(scenario.Request, scenario.Capability,
             TestContext.Current.CancellationToken);
 
         var acquired = result.ShouldBeOfType<SessionRunLeaseAcquired>();
         Activity.Current.ShouldBeSameAs(parent);
+        observerFailures.ShouldBeGreaterThan(0);
         await acquired.Lease.DisposeAsync();
     }
 
     [Fact]
     public async Task AcquireAsync_WhenObserved_EmitsExactTenantLaneAndRunCorrelation()
     {
+        using var parent = new Activity("observed-lease-parent").Start();
         Activity? stopped = null;
         using var listener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
             Sample = SampleLeaseOnly,
-            ActivityStopped = activity => stopped = activity,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == AgentKitActivityNames.SessionLeaseAcquire
+                    && activity.TraceId == parent.TraceId)
+                {
+                    stopped = activity;
+                }
+            },
         };
         ActivitySource.AddActivityListener(listener);
         var scenario = Scenario.Create();
@@ -543,6 +589,7 @@ public sealed class DefaultSessionRunCoordinatorTests
     [Fact]
     public async Task AcquireAsync_WhenMetricCallbackThrows_PreservesAcquisition()
     {
+        using var parent = new Activity("metric-lease-parent").Start();
         var scenario = Scenario.Create();
         using var listener = new MeterListener
         {
@@ -555,11 +602,12 @@ public sealed class DefaultSessionRunCoordinatorTests
                 }
             },
         };
-        listener.SetMeasurementEventCallback<long>(static (_, _, tags, _) =>
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
         {
             foreach (var tag in tags)
             {
-                if (tag.Key == AgentKitTagNames.SessionOperation
+                if (Activity.Current?.TraceId == parent.TraceId
+                    && tag.Key == AgentKitTagNames.SessionOperation
                     && Equals(tag.Value, AgentKitActivityNames.SessionLeaseAcquire))
                 {
                     throw new InvalidOperationException("observer");
