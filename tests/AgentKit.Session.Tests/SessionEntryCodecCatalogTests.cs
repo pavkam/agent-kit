@@ -8,40 +8,28 @@ using System.Diagnostics.Metrics;
 
 using Microsoft.Extensions.Logging;
 
+/// <summary>Verifies SessionEntryCodecCatalog behavior and contracts.</summary>
 public sealed class SessionEntryCodecCatalogTests
 {
     [Fact]
     public void Constructor_WhenDescriptorIsReadTwiceByTheCatalog_WouldThrowButCapturesOnce()
     {
         var codec = new FakeCodec(throwOnSecondDescriptorRead: true);
-
         _ = new SessionEntryCodecCatalog([codec], TimeProvider.System);
-
         codec.DescriptorReads.ShouldBe(1);
     }
 
     [Fact]
-    public void Constructor_WhenTimeProviderIsNull_ThrowsArgumentNullException()
-    {
-        Should.Throw<ArgumentNullException>(() => new SessionEntryCodecCatalog([], null!))
-            .ParamName.ShouldBe("timeProvider");
-    }
+    public void Constructor_WhenTimeProviderIsNull_ThrowsArgumentNullException() => Should.Throw<ArgumentNullException>(() => new SessionEntryCodecCatalog([], null!)).ParamName.ShouldBe("timeProvider");
 
     [Fact]
-    public void Constructor_WhenCodecDescriptorIsNull_ThrowsArgumentException()
-    {
-        Should.Throw<ArgumentException>(() => new SessionEntryCodecCatalog([new FakeCodec { ReturnNullDescriptor = true }], TimeProvider.System))
-            .ParamName.ShouldBe("codecs");
-    }
+    public void Constructor_WhenCodecDescriptorIsNull_ThrowsArgumentException() => Should.Throw<ArgumentException>(() => new SessionEntryCodecCatalog([new FakeCodec { ReturnNullDescriptor = true }], TimeProvider.System)).ParamName.ShouldBe("codecs");
 
     [Fact]
     public void ThrowIfNullSessionEntryCodecDescriptor_WhenDescriptorIsNull_ThrowsWithInferredParameterName()
     {
         SessionEntryCodecDescriptor? descriptor = null;
-
-        var exception = Should.Throw<ArgumentException>(
-            () => ArgumentException.ThrowIfNullSessionEntryCodecDescriptor(descriptor));
-
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfNullSessionEntryCodecDescriptor(descriptor));
         exception.GetType().ShouldBe(typeof(ArgumentException));
         exception.ParamName.ShouldBe("descriptor");
     }
@@ -51,28 +39,10 @@ public sealed class SessionEntryCodecCatalogTests
     {
         var first = new FakeCodec();
         var second = new FakeCodec();
-        IReadOnlyList<SessionEntryCodecBinding> bindings =
-        [
-            new SessionEntryCodecBinding(first, first.Descriptor),
-            new SessionEntryCodecBinding(second, second.Descriptor),
-        ];
-
-        var exception = Should.Throw<ArgumentException>(
-            () => ArgumentException.ThrowIfDuplicateSessionEntryCodecBindings(bindings));
-
+        IReadOnlyList<SessionEntryCodecBinding> bindings = [new SessionEntryCodecBinding(first, first.Descriptor), new SessionEntryCodecBinding(second, second.Descriptor),];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateSessionEntryCodecBindings(bindings));
         exception.GetType().ShouldBe(typeof(ArgumentException));
         exception.ParamName.ShouldBe("bindings");
-    }
-
-    [Fact]
-    public void SessionEntryCodecBinding_WhenCodecOrDescriptorIsNull_ThrowsExactArgumentNullException()
-    {
-        var codec = new FakeCodec();
-
-        Should.Throw<ArgumentNullException>(() => new SessionEntryCodecBinding(null!, codec.Descriptor))
-            .ParamName.ShouldBe("codec");
-        Should.Throw<ArgumentNullException>(() => new SessionEntryCodecBinding(codec, null!))
-            .ParamName.ShouldBe("descriptor");
     }
 
     [Fact]
@@ -80,7 +50,6 @@ public sealed class SessionEntryCodecCatalogTests
     {
         var codec = new FakeCodec();
         var catalog = new SessionEntryCodecCatalog([codec], TimeProvider.System);
-
         _ = catalog.Decode(new SessionEntryWireEnvelope(new SessionEntryTypeId("other"), Version, [1])).ShouldBeOfType<SessionEntryOpaque>();
         _ = catalog.Decode(new SessionEntryWireEnvelope(Type, new SchemaVersion("other"), [1])).ShouldBeOfType<SessionEntryOpaque>();
         codec.DecodeCalls.ShouldBe(0);
@@ -92,7 +61,6 @@ public sealed class SessionEntryCodecCatalogTests
         var codec = new FakeCodec();
         var catalog = new SessionEntryCodecCatalog([codec], TimeProvider.System);
         var entry = new TestEntry();
-
         _ = catalog.Encode(entry).ShouldBeOfType<SessionEntryEncoded>();
         _ = catalog.Decode(codec.Wire).ShouldBeOfType<SessionEntryDecoded>();
         codec.EncodeCalls.ShouldBe(1);
@@ -107,12 +75,8 @@ public sealed class SessionEntryCodecCatalogTests
     {
         var codec = new FakeCodec
         {
-            EncodeWire = new SessionEntryWireEnvelope(
-            wrongType ? new SessionEntryTypeId("wrong") : Type,
-            wrongVersion ? new SchemaVersion("wrong") : Version,
-            oversized ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] : [1])
+            EncodeWire = new SessionEntryWireEnvelope(wrongType ? new SessionEntryTypeId("wrong") : Type, wrongVersion ? new SchemaVersion("wrong") : Version, oversized ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] : [1])
         };
-
         _ = new SessionEntryCodecCatalog([codec], TimeProvider.System).Encode(new TestEntry()).ShouldBeOfType<SessionEntryEncodeRejected>();
     }
 
@@ -121,7 +85,6 @@ public sealed class SessionEntryCodecCatalogTests
     {
         var codec = new FakeCodec();
         var result = new SessionEntryCodecCatalog([codec], TimeProvider.System).Decode(new SessionEntryWireEnvelope(Type, Version, [.. Enumerable.Repeat((byte) 1, 17)]));
-
         _ = result.ShouldBeOfType<SessionEntryDecodeRejected>();
         codec.DecodeCalls.ShouldBe(0);
     }
@@ -131,55 +94,30 @@ public sealed class SessionEntryCodecCatalogTests
     {
         var codec = new FakeCodec();
         var catalog = new SessionEntryCodecCatalog([codec], TimeProvider.System, new SessionEntryCodecCatalogOptions(1));
-
         _ = catalog.Decode(new SessionEntryWireEnvelope(new SessionEntryTypeId("unknown"), Version, [1, 2])).ShouldBeOfType<SessionEntryDecodeRejected>();
         codec.DecodeCalls.ShouldBe(0);
     }
 
     [Fact]
-    public void Decode_WhenUnknownPayloadIsAtGlobalLimit_ReturnsOpaque()
-    {
-        _ = new SessionEntryCodecCatalog([], TimeProvider.System, new SessionEntryCodecCatalogOptions(1))
-            .Decode(new SessionEntryWireEnvelope(new SessionEntryTypeId("unknown"), Version, [255]))
-            .ShouldBeOfType<SessionEntryOpaque>();
-    }
+    public void Decode_WhenUnknownPayloadIsAtGlobalLimit_ReturnsOpaque() => _ = new SessionEntryCodecCatalog([], TimeProvider.System, new SessionEntryCodecCatalogOptions(1)).Decode(new SessionEntryWireEnvelope(new SessionEntryTypeId("unknown"), Version, [255])).ShouldBeOfType<SessionEntryOpaque>();
 
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void Options_WhenMaximumPayloadIsNotPositive_ThrowsArgumentOutOfRangeException(int maximumPayloadBytes)
-    {
-        Should.Throw<ArgumentOutOfRangeException>(() => new SessionEntryCodecCatalogOptions(maximumPayloadBytes))
-            .ParamName.ShouldBe("maximumPayloadBytes");
-    }
+    public void Options_WhenMaximumPayloadIsNotPositive_ThrowsArgumentOutOfRangeException(int maximumPayloadBytes) => Should.Throw<ArgumentOutOfRangeException>(() => new SessionEntryCodecCatalogOptions(maximumPayloadBytes)).ParamName.ShouldBe("maximumPayloadBytes");
 
     [Fact]
     public void Options_WhenMaximumPayloadIsPositive_PreservesValue() => new SessionEntryCodecCatalogOptions(int.MaxValue).MaximumPayloadBytes.ShouldBe(int.MaxValue);
-
     [Fact]
-    public void Constructor_WhenOptionsIsNull_UsesDocumentedDefault()
-    {
-        _ = new SessionEntryCodecCatalog([], TimeProvider.System, null)
-            .Decode(new SessionEntryWireEnvelope(new SessionEntryTypeId("unknown"), Version, [1]))
-            .ShouldBeOfType<SessionEntryOpaque>();
-    }
-
-    [Fact]
-    public void AddAgentSession_WhenRepeated_RegistersOneReplaceableCatalog()
-    {
-        var services = new ServiceCollection();
-        _ = services.AddAgentSession();
-        _ = services.AddAgentSession();
-        using var provider = services.BuildServiceProvider();
-
-        _ = provider.GetRequiredService<ISessionEntryCodecCatalog>().ShouldBeOfType<SessionEntryCodecCatalog>();
-    }
+    public void Constructor_WhenOptionsIsNull_UsesDocumentedDefault() => _ = new SessionEntryCodecCatalog([], TimeProvider.System, null).Decode(new SessionEntryWireEnvelope(new SessionEntryTypeId("unknown"), Version, [1])).ShouldBeOfType<SessionEntryOpaque>();
 
     [Fact]
     public void Decode_WhenCodecReplacesInputWire_Rejects()
     {
-        var codec = new FakeCodec { ReplaceDecodeWire = true };
-
+        var codec = new FakeCodec
+        {
+            ReplaceDecodeWire = true
+        };
         _ = new SessionEntryCodecCatalog([codec], TimeProvider.System).Decode(codec.Wire).ShouldBeOfType<SessionEntryDecodeRejected>();
     }
 
@@ -187,13 +125,15 @@ public sealed class SessionEntryCodecCatalogTests
     public void EncodeOrDecode_WhenCodecReturnsNull_Rejects()
     {
         _ = new SessionEntryCodecCatalog([new FakeCodec { ReturnNullEncode = true }], TimeProvider.System).Encode(new TestEntry()).ShouldBeOfType<SessionEntryEncodeRejected>();
-        var codec = new FakeCodec { ReturnNullDecode = true };
+        var codec = new FakeCodec
+        {
+            ReturnNullDecode = true
+        };
         _ = new SessionEntryCodecCatalog([codec], TimeProvider.System).Decode(codec.Wire).ShouldBeOfType<SessionEntryDecodeRejected>();
     }
 
     [Fact]
     public void Constructor_WhenDistinctCodecsReuseTypeOrWire_ThrowsArgumentException() => Should.Throw<ArgumentException>(() => new SessionEntryCodecCatalog([new FakeCodec(), new FakeCodec()], TimeProvider.System)).ParamName.ShouldBe("codecs");
-
     [Fact]
     public void Encode_WhenObserved_EmitsSafeCorrelatedDiagnostics()
     {
@@ -203,14 +143,10 @@ public sealed class SessionEntryCodecCatalogTests
         using var activityListener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = (ref options) =>
-                options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context
-                    ? ActivitySamplingResult.AllData
-                    : ActivitySamplingResult.None,
+            Sample = (ref options) => options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
             ActivityStopped = activity =>
             {
-                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec
-                    && activity.ParentSpanId == parent.SpanId)
+                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec && activity.ParentSpanId == parent.SpanId)
                 {
                     completed = activity;
                 }
@@ -221,9 +157,7 @@ public sealed class SessionEntryCodecCatalogTests
         using var meterListener = new MeterListener();
         meterListener.InstrumentPublished = (instrument, listener) =>
         {
-            if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
-                && instrument.Name is AgentKitMetricNames.SessionEntryCodecCount
-                    or AgentKitMetricNames.SessionEntryCodecDuration)
+            if (instrument.Meter.Name == AgentKitDiagnostics.MeterName && instrument.Name is AgentKitMetricNames.SessionEntryCodecCount or AgentKitMetricNames.SessionEntryCodecDuration)
             {
                 listener.EnableMeasurementEvents(instrument);
             }
@@ -244,20 +178,14 @@ public sealed class SessionEntryCodecCatalogTests
         });
         meterListener.Start();
         var logger = new RecordingLogger();
-
-        _ = new SessionEntryCodecCatalog([new FakeCodec()], TimeProvider.System, logger: logger)
-            .Encode(new TestEntry());
-
+        _ = new SessionEntryCodecCatalog([new FakeCodec()], TimeProvider.System, logger: logger).Encode(new TestEntry());
         _ = completed.ShouldNotBeNull();
         completed.ParentSpanId.ShouldBe(parent.SpanId);
         completed.Status.ShouldBe(ActivityStatusCode.Ok);
         completed.GetTagItem(AgentKitTagNames.SessionEntryCodecOperation).ShouldBe("encode");
         completed.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("encoded");
-        measurements.ShouldContain(measurement => measurement.Name == AgentKitMetricNames.SessionEntryCodecCount
-            && (string?) measurement.Tags[AgentKitTagNames.SessionEntryCodecOperation] == "encode"
-            && (string?) measurement.Tags[AgentKitTagNames.Outcome] == "encoded");
-        measurements.ShouldContain(measurement => measurement.Name == AgentKitMetricNames.SessionEntryCodecDuration
-            && measurement.Value >= 0);
+        measurements.ShouldContain(measurement => measurement.Name == AgentKitMetricNames.SessionEntryCodecCount && (string?) measurement.Tags[AgentKitTagNames.SessionEntryCodecOperation] == "encode" && (string?) measurement.Tags[AgentKitTagNames.Outcome] == "encoded");
+        measurements.ShouldContain(measurement => measurement.Name == AgentKitMetricNames.SessionEntryCodecDuration && measurement.Value >= 0);
         var log = logger.Entries.ShouldHaveSingleItem();
         log.EventId.Id.ShouldBe(6009);
         log.Properties.Count.ShouldBe(3);
@@ -274,14 +202,10 @@ public sealed class SessionEntryCodecCatalogTests
         using var activityListener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = (ref options) =>
-                options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context
-                    ? ActivitySamplingResult.AllData
-                    : ActivitySamplingResult.None,
+            Sample = (ref options) => options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
             ActivityStarted = activity =>
             {
-                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec
-                    && activity.ParentSpanId == parent.SpanId)
+                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec && activity.ParentSpanId == parent.SpanId)
                 {
                     throw new Xunit.Sdk.XunitException("An activity must not start.");
                 }
@@ -289,7 +213,6 @@ public sealed class SessionEntryCodecCatalogTests
         };
         ActivitySource.AddActivityListener(activityListener);
         var catalog = new SessionEntryCodecCatalog([], TimeProvider.System, logger: logger);
-
         Should.Throw<ArgumentNullException>(() => catalog.Encode(null!)).ParamName.ShouldBe("entry");
         logger.Entries.ShouldBeEmpty();
     }
@@ -301,14 +224,10 @@ public sealed class SessionEntryCodecCatalogTests
         using var activityListener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = (ref options) =>
-                options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context
-                    ? ActivitySamplingResult.AllData
-                    : ActivitySamplingResult.None,
+            Sample = (ref options) => options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
             ActivityStarted = activity =>
             {
-                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec
-                    && activity.ParentSpanId == parent.SpanId)
+                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec && activity.ParentSpanId == parent.SpanId)
                 {
                     throw new InvalidOperationException("activity");
                 }
@@ -316,9 +235,7 @@ public sealed class SessionEntryCodecCatalogTests
         };
         ActivitySource.AddActivityListener(activityListener);
         using var meterListener = CreateThrowingMeterListener(parent.TraceId);
-
-        _ = new SessionEntryCodecCatalog([new FakeCodec()], new ThrowingTimeProvider(), logger: new ThrowingLogger())
-            .Encode(new TestEntry()).ShouldBeOfType<SessionEntryEncoded>();
+        _ = new SessionEntryCodecCatalog([new FakeCodec()], new ThrowingTimeProvider(), logger: new ThrowingLogger()).Encode(new TestEntry()).ShouldBeOfType<SessionEntryEncoded>();
         Activity.Current.ShouldBeSameAs(parent);
     }
 
@@ -329,14 +246,10 @@ public sealed class SessionEntryCodecCatalogTests
         using var activityListener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = (ref options) =>
-                options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context
-                    ? ActivitySamplingResult.AllData
-                    : ActivitySamplingResult.None,
+            Sample = (ref options) => options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
             ActivityStopped = activity =>
             {
-                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec
-                    && activity.ParentSpanId == parent.SpanId)
+                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec && activity.ParentSpanId == parent.SpanId)
                 {
                     throw new InvalidOperationException("activity stop");
                 }
@@ -345,9 +258,11 @@ public sealed class SessionEntryCodecCatalogTests
         ActivitySource.AddActivityListener(activityListener);
         var expected = new CodecException();
         using var meterListener = CreateThrowingMeterListener(parent.TraceId);
-        var codec = new FakeCodec { EncodeException = expected };
+        var codec = new FakeCodec
+        {
+            EncodeException = expected
+        };
         var catalog = new SessionEntryCodecCatalog([codec], new ThrowingTimeProvider(), logger: new ThrowingLogger());
-
         Should.Throw<CodecException>(() => catalog.Encode(new TestEntry())).ShouldBeSameAs(expected);
         Activity.Current.ShouldBeSameAs(parent);
     }
@@ -360,19 +275,14 @@ public sealed class SessionEntryCodecCatalogTests
         using var activityListener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = (ref options) =>
-                options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context
-                    ? ActivitySamplingResult.PropagationData
-                    : ActivitySamplingResult.None,
+            Sample = (ref options) => options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context ? ActivitySamplingResult.PropagationData : ActivitySamplingResult.None,
         };
         ActivitySource.AddActivityListener(activityListener);
         ConcurrentQueue<string> instrumentNames = [];
         using var listener = new MeterListener();
         listener.InstrumentPublished = (instrument, current) =>
         {
-            if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
-                && instrument.Name is AgentKitMetricNames.SessionEntryCodecCount
-                    or AgentKitMetricNames.SessionEntryCodecDuration)
+            if (instrument.Meter.Name == AgentKitDiagnostics.MeterName && instrument.Name is AgentKitMetricNames.SessionEntryCodecCount or AgentKitMetricNames.SessionEntryCodecDuration)
             {
                 current.EnableMeasurementEvents(instrument);
             }
@@ -392,9 +302,7 @@ public sealed class SessionEntryCodecCatalogTests
             }
         });
         listener.Start();
-
         _ = new SessionEntryCodecCatalog([new FakeCodec()], new ThrowingTimeProvider()).Encode(new TestEntry());
-
         instrumentNames.ShouldContain(AgentKitMetricNames.SessionEntryCodecCount);
         instrumentNames.ShouldNotContain(AgentKitMetricNames.SessionEntryCodecDuration);
     }
@@ -407,14 +315,10 @@ public sealed class SessionEntryCodecCatalogTests
         using var listener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = (ref options) =>
-                options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context
-                    ? ActivitySamplingResult.AllData
-                    : ActivitySamplingResult.None,
+            Sample = (ref options) => options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
             ActivityStopped = activity =>
             {
-                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec
-                    && activity.ParentSpanId == parent.SpanId)
+                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec && activity.ParentSpanId == parent.SpanId)
                 {
                     completed = activity;
                 }
@@ -424,7 +328,6 @@ public sealed class SessionEntryCodecCatalogTests
         var expected = new CodecException();
         var logger = new RecordingLogger();
         var catalog = new SessionEntryCodecCatalog([new FakeCodec { EncodeException = expected }], TimeProvider.System, logger: logger);
-
         Should.Throw<CodecException>(() => catalog.Encode(new TestEntry())).ShouldBeSameAs(expected);
         _ = completed.ShouldNotBeNull();
         completed.Status.ShouldBe(ActivityStatusCode.Error);
@@ -446,31 +349,24 @@ public sealed class SessionEntryCodecCatalogTests
         using var listener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
-            Sample = (ref options) =>
-                options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context
-                    ? ActivitySamplingResult.AllData
-                    : ActivitySamplingResult.None,
+            Sample = (ref options) => options.Name == AgentKitActivityNames.SessionEntryCodec && options.Parent == parent.Context ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
             ActivityStopped = activity =>
             {
-                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec
-                    && activity.ParentSpanId == parent.SpanId)
+                if (activity.OperationName == AgentKitActivityNames.SessionEntryCodec && activity.ParentSpanId == parent.SpanId)
                 {
                     completed = activity;
                 }
             },
         };
         ActivitySource.AddActivityListener(listener);
-
-        _ = new SessionEntryCodecCatalog([], TimeProvider.System).Encode(new TestEntry())
-            .ShouldBeOfType<SessionEntryEncodeRejected>();
-
+        _ = new SessionEntryCodecCatalog([], TimeProvider.System).Encode(new TestEntry()).ShouldBeOfType<SessionEntryEncodeRejected>();
         _ = completed.ShouldNotBeNull();
         completed.Status.ShouldBe(ActivityStatusCode.Error);
         completed.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("rejected");
     }
 
     /// <summary>Creates an owned fault-injection listener confined to one test's codec operations.</summary>
-    /// <param name="traceId">The trace identity of the test-owned parent activity.</param>
+    /// <param name = "traceId">The trace identity of the test-owned parent activity.</param>
     /// <returns>A started listener that throws only for measurements within the supplied trace; the caller disposes it.</returns>
     private static MeterListener CreateThrowingMeterListener(ActivityTraceId traceId)
     {
@@ -478,9 +374,7 @@ public sealed class SessionEntryCodecCatalogTests
         {
             InstrumentPublished = (instrument, current) =>
             {
-                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
-                    && instrument.Name is AgentKitMetricNames.SessionEntryCodecCount
-                        or AgentKitMetricNames.SessionEntryCodecDuration)
+                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName && instrument.Name is AgentKitMetricNames.SessionEntryCodecCount or AgentKitMetricNames.SessionEntryCodecDuration)
                 {
                     current.EnableMeasurementEvents(instrument);
                 }
@@ -505,15 +399,11 @@ public sealed class SessionEntryCodecCatalogTests
     }
 
     /// <summary>Returns whether a synchronous metric callback belongs to this test's codec activity.</summary>
-    /// <param name="parentSpanId">The span identity of the test-owned parent activity.</param>
-    /// <returns><see langword="true"/> only for the codec activity directly parented by <paramref name="parentSpanId"/>.</returns>
-    private static bool IsCodecObservationUnder(ActivitySpanId parentSpanId) =>
-        Activity.Current is { OperationName: AgentKitActivityNames.SessionEntryCodec } activity
-        && activity.ParentSpanId == parentSpanId;
-
+    /// <param name = "parentSpanId">The span identity of the test-owned parent activity.</param>
+    /// <returns><see langword="true"/> only for the codec activity directly parented by <paramref name = "parentSpanId"/>.</returns>
+    private static bool IsCodecObservationUnder(ActivitySpanId parentSpanId) => Activity.Current is { OperationName: AgentKitActivityNames.SessionEntryCodec } activity && activity.ParentSpanId == parentSpanId;
     private static readonly SessionEntryTypeId Type = new("agentkit.test/v1");
     private static readonly SchemaVersion Version = new("agentkit.test/v1");
-
     private sealed class FakeCodec(bool throwOnSecondDescriptorRead = false): ISessionEntryCodec
     {
         public int DescriptorReads { get; private set; }
@@ -527,7 +417,13 @@ public sealed class SessionEntryCodecCatalogTests
         public Exception? EncodeException { get; init; }
         public bool ReturnNullDescriptor { get; init; }
         public SessionEntryCodecDescriptor Descriptor { get => ReturnNullDescriptor ? null! : ++DescriptorReads > 1 && throwOnSecondDescriptorRead ? throw new InvalidOperationException() : field; } = new(Type, typeof(TestEntry), Version, [Version], new SessionEntryCodecLimits(16, 1, 1, 2));
-        public SessionEntryEncodeResult Encode(SessionEntry entry) { EncodeCalls++; return EncodeException is { } exception ? throw exception : ReturnNullEncode ? null! : new SessionEntryEncoded(EncodeWire ?? Wire); }
+
+        public SessionEntryEncodeResult Encode(SessionEntry entry)
+        {
+            EncodeCalls++;
+            return EncodeException is { } exception ? throw exception : ReturnNullEncode ? null! : new SessionEntryEncoded(EncodeWire ?? Wire);
+        }
+
         public SessionEntryDecodeResult Decode(SessionEntryWireEnvelope wire)
         {
             DecodeCalls++;
@@ -543,11 +439,12 @@ public sealed class SessionEntryCodecCatalogTests
 
     private sealed record TestEntry: SessionEntry
     {
-        public TestEntry() : base(default, new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid())), new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null), new BranchId(Guid.NewGuid()), new SessionSequence(1), null, DateTimeOffset.UnixEpoch, Version) { }
+        public TestEntry() : base(default, new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid())), new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null), new BranchId(Guid.NewGuid()), new SessionSequence(1), null, DateTimeOffset.UnixEpoch, Version)
+        {
+        }
     }
 
     private sealed class CodecException: Exception;
-
     private sealed class ThrowingTimeProvider: TimeProvider
     {
         public override long GetTimestamp() => throw new InvalidOperationException("clock");
@@ -555,23 +452,22 @@ public sealed class SessionEntryCodecCatalogTests
 
     private sealed class ThrowingLogger: ILogger<SessionEntryCodecCatalog>
     {
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter) => throw new InvalidOperationException("logger");
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => throw new InvalidOperationException("logger");
     }
 
     private sealed class RecordingLogger: ILogger<SessionEntryCodecCatalog>
     {
         public List<(EventId EventId, IReadOnlyDictionary<string, object?> Properties)> Entries { get; } = [];
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            var properties = state is IEnumerable<KeyValuePair<string, object?>> values
-                ? values.ToDictionary(static pair => pair.Key, static pair => pair.Value)
-                : throw new InvalidOperationException("Structured log state was expected.");
+            var properties = state is IEnumerable<KeyValuePair<string, object?>> values ? values.ToDictionary(static pair => pair.Key, static pair => pair.Value) : throw new InvalidOperationException("Structured log state was expected.");
             Entries.Add((eventId, properties));
         }
     }

@@ -12,14 +12,14 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 ## Start with these tests
 
 - [GoogleVertexAIAuthorizationHeaderFactoryTests](Authorization/GoogleVertexAIAuthorizationHeaderFactoryTests.cs)
-- [GoogleVertexAIEmbeddingModelEndToEndTests](GoogleVertexAIEmbeddingModelEndToEndTests.cs)
+- [GoogleVertexAIEmbeddingModelTests](GoogleVertexAIEmbeddingModelTests.cs)
 - [GoogleVertexAIEmbeddingRequestTranslatorTests](Translation/GoogleVertexAIEmbeddingRequestTranslatorTests.cs)
 - [GoogleVertexAIEmbeddingResponseParserTests](Parsing/GoogleVertexAIEmbeddingResponseParserTests.cs)
-- [GoogleVertexAILlmModelEndToEndTests](GoogleVertexAILlmModelEndToEndTests.cs)
+- [GoogleVertexAILlmModelTests](GoogleVertexAILlmModelTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
-conformance. Provider pipeline tests use controlled fixtures; `EndToEndTests`
-does not mean a live provider account is required.
+conformance. Provider pipeline tests use controlled fixtures and do not require
+a live provider account.
 
 ## Run this project
 

@@ -3,6 +3,9 @@
 
 namespace AgentKit.Abstractions.Tests.Artifacts;
 
+
+
+/// <summary>Verifies ArtifactSecurityBinding behavior and contracts.</summary>
 public sealed class ArtifactSecurityBindingTests
 {
     [Theory]
@@ -15,36 +18,27 @@ public sealed class ArtifactSecurityBindingTests
     public void Binding_WhenIdentityIsEmpty_ThrowsExactParameter(string operation, string expectedParameter)
     {
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => InvokeWithEmptyIdentity(operation));
-
         exception.ParamName.ShouldBe(expectedParameter);
     }
 
     [Fact]
     public void PrepareFingerprint_WhenDirectoryIsEmpty_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentException>(() => ArtifactSecurityBinding.PrepareFingerprint(
-            ArtifactId(), PreparationId(), Version(), ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(),
-            default, Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)));
-
+        var exception = Should.Throw<ArgumentException>(() => ArtifactSecurityBinding.PrepareFingerprint(ArtifactId(), PreparationId(), Version(), ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(), default, Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)));
         exception.ParamName.ShouldBe("directoryId");
     }
 
     [Fact]
     public void PrepareFingerprint_WhenMetadataIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => ArtifactSecurityBinding.PrepareFingerprint(
-            ArtifactId(), PreparationId(), Version(), ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(),
-            DirectoryId(), null!, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)));
-
+        var exception = Should.Throw<ArgumentNullException>(() => ArtifactSecurityBinding.PrepareFingerprint(ArtifactId(), PreparationId(), Version(), ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(), DirectoryId(), null!, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)));
         exception.ParamName.ShouldBe("metadata");
     }
 
     [Fact]
     public void AbortFingerprint_WhenReasonIsUndefined_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => ArtifactSecurityBinding.AbortFingerprint(
-            PreparationId(), (ArtifactAbortReason) 999));
-
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => ArtifactSecurityBinding.AbortFingerprint(PreparationId(), (ArtifactAbortReason) 999));
         exception.ParamName.ShouldBe("reason");
     }
 
@@ -53,10 +47,7 @@ public sealed class ArtifactSecurityBindingTests
     [InlineData("delete")]
     public void ReferenceFingerprint_WhenReferenceIsNull_ThrowsExactParameter(string operation)
     {
-        var exception = Should.Throw<ArgumentNullException>(() => operation == "read"
-            ? ArtifactSecurityBinding.ReadFingerprint(null!)
-            : ArtifactSecurityBinding.DeleteFingerprint(null!));
-
+        var exception = Should.Throw<ArgumentNullException>(() => operation == "read" ? ArtifactSecurityBinding.ReadFingerprint(null!) : ArtifactSecurityBinding.DeleteFingerprint(null!));
         exception.ParamName.ShouldBe("reference");
     }
 
@@ -65,20 +56,14 @@ public sealed class ArtifactSecurityBindingTests
     {
         var first = PrepareFingerprint();
         var second = PrepareFingerprint();
-
         second.ShouldBe(first);
     }
 
     [Fact]
     public void PrepareFingerprint_WhenTimestampsRepresentSameInstants_IsStable()
     {
-        var utc = PrepareFingerprint(
-            createdAt: new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero),
-            expiresAt: new DateTimeOffset(2026, 9, 7, 13, 0, 0, TimeSpan.Zero));
-        var offset = PrepareFingerprint(
-            createdAt: new DateTimeOffset(2026, 9, 7, 14, 0, 0, TimeSpan.FromHours(2)),
-            expiresAt: new DateTimeOffset(2026, 9, 7, 15, 0, 0, TimeSpan.FromHours(2)));
-
+        var utc = PrepareFingerprint(createdAt: new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero), expiresAt: new DateTimeOffset(2026, 9, 7, 13, 0, 0, TimeSpan.Zero));
+        var offset = PrepareFingerprint(createdAt: new DateTimeOffset(2026, 9, 7, 14, 0, 0, TimeSpan.FromHours(2)), expiresAt: new DateTimeOffset(2026, 9, 7, 15, 0, 0, TimeSpan.FromHours(2)));
         offset.ShouldBe(utc);
     }
 
@@ -89,34 +74,19 @@ public sealed class ArtifactSecurityBindingTests
     [InlineData("tenant", "tenantId", typeof(ArgumentNullException))]
     [InlineData("creator", "createdBy", typeof(ArgumentNullException))]
     [InlineData("duration", "expiresAt", typeof(ArgumentOutOfRangeException))]
-    public void PrepareFingerprint_WhenBoundValueIsInvalid_ThrowsExactParameter(
-        string field, string expectedParameter, Type expectedExceptionType)
+    public void PrepareFingerprint_WhenBoundValueIsInvalid_ThrowsExactParameter(string field, string expectedParameter, Type expectedExceptionType)
     {
         Action action = field switch
         {
-            "version" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(
-                ArtifactId(), PreparationId(), default, ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(),
-                DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)),
-            "profile-key" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(
-                ArtifactId(), PreparationId(), Version(), default, ProfileVersion(), TenantId(), PrincipalId(),
-                DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)),
-            "profile-version" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(
-                ArtifactId(), PreparationId(), Version(), ProfileKey(), default, TenantId(), PrincipalId(),
-                DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)),
-            "tenant" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(
-                ArtifactId(), PreparationId(), Version(), ProfileKey(), ProfileVersion(), default, PrincipalId(),
-                DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)),
-            "creator" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(
-                ArtifactId(), PreparationId(), Version(), ProfileKey(), ProfileVersion(), TenantId(), default,
-                DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)),
-            "duration" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(
-                ArtifactId(), PreparationId(), Version(), ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(),
-                DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch),
+            "version" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(ArtifactId(), PreparationId(), default, ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(), DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)),
+            "profile-key" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(ArtifactId(), PreparationId(), Version(), default, ProfileVersion(), TenantId(), PrincipalId(), DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)),
+            "profile-version" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(ArtifactId(), PreparationId(), Version(), ProfileKey(), default, TenantId(), PrincipalId(), DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)),
+            "tenant" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(ArtifactId(), PreparationId(), Version(), ProfileKey(), ProfileVersion(), default, PrincipalId(), DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)),
+            "creator" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(ArtifactId(), PreparationId(), Version(), ProfileKey(), ProfileVersion(), TenantId(), default, DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)),
+            "duration" => () => _ = ArtifactSecurityBinding.PrepareFingerprint(ArtifactId(), PreparationId(), Version(), ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(), DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch),
             _ => throw new ArgumentOutOfRangeException(nameof(field)),
         };
-
         var exception = Should.Throw<ArgumentException>(action);
-
         exception.GetType().ShouldBe(expectedExceptionType);
         exception.ParamName.ShouldBe(expectedParameter);
     }
@@ -140,7 +110,6 @@ public sealed class ArtifactSecurityBindingTests
             PrepareFingerprint(createdAt: DateTimeOffset.UnixEpoch.AddSeconds(1), expiresAt: DateTimeOffset.UnixEpoch.AddMinutes(5).AddSeconds(1)),
             PrepareFingerprint(expiresAt: DateTimeOffset.UnixEpoch.AddMinutes(6)),
         };
-
         mutations.ShouldAllBe(fingerprint => fingerprint != baseline);
     }
 
@@ -178,7 +147,6 @@ public sealed class ArtifactSecurityBindingTests
             Reference(legalHold: true),
             Reference(createdAt: DateTimeOffset.UnixEpoch.AddSeconds(1)),
         };
-
         mutations.ShouldAllBe(reference => ArtifactSecurityBinding.ReadFingerprint(reference) != ArtifactSecurityBinding.ReadFingerprint(baseline));
         mutations.ShouldAllBe(reference => ArtifactSecurityBinding.DeleteFingerprint(reference) != ArtifactSecurityBinding.DeleteFingerprint(baseline));
     }
@@ -189,55 +157,17 @@ public sealed class ArtifactSecurityBindingTests
         {
             "artifact-resource" => ArtifactSecurityBinding.ArtifactResource(default).ToString(),
             "preparation-resource" => ArtifactSecurityBinding.PreparationResource(default).ToString(),
-            "prepare-artifact" => ArtifactSecurityBinding.PrepareFingerprint(
-                default, PreparationId(), Version(), ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(),
-                DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)).ToString(),
-            "prepare-preparation" => ArtifactSecurityBinding.PrepareFingerprint(
-                ArtifactId(), default, Version(), ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(),
-                DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)).ToString(),
+            "prepare-artifact" => ArtifactSecurityBinding.PrepareFingerprint(default, PreparationId(), Version(), ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(), DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)).ToString(),
+            "prepare-preparation" => ArtifactSecurityBinding.PrepareFingerprint(ArtifactId(), default, Version(), ProfileKey(), ProfileVersion(), TenantId(), PrincipalId(), DirectoryId(), Metadata(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)).ToString(),
             "finalize" => ArtifactSecurityBinding.FinalizeFingerprint(default).ToString(),
             "abort-preparation" => ArtifactSecurityBinding.AbortFingerprint(default, ArtifactAbortReason.Cancelled).ToString(),
             _ => throw new ArgumentOutOfRangeException(nameof(operation)),
         };
     }
 
-    private static ArtifactMetadata Metadata(string mediaType = "text/plain", bool legalHold = false) => new(
-        new ArtifactOwnerId("owner"), mediaType, 7, new ContentHash("hash"), ArtifactDataClassification.Internal,
-        ArtifactOwnershipKind.Session, ArtifactMutability.Immutable,
-        new ArtifactRetention(new ArtifactRetentionPolicyKey("retention"), null, legalHold));
-
-    private static InputFingerprint PrepareFingerprint(
-        ArtifactId? artifactId = null,
-        ArtifactPreparationId? preparationId = null,
-        ArtifactVersion? version = null,
-        ArtifactProfileKey? profileKey = null,
-        ArtifactProfileVersion? profileVersion = null,
-        TenantId? tenantId = null,
-        PrincipalId? createdBy = null,
-        ArtifactDirectoryId? directoryId = null,
-        ArtifactMetadata? metadata = null,
-        DateTimeOffset? createdAt = null,
-        DateTimeOffset? expiresAt = null) => ArtifactSecurityBinding.PrepareFingerprint(
-            artifactId ?? ArtifactId(), preparationId ?? PreparationId(), version ?? Version(),
-            profileKey ?? ProfileKey(), profileVersion ?? ProfileVersion(), tenantId ?? TenantId(),
-            createdBy ?? PrincipalId(), directoryId ?? DirectoryId(), metadata ?? Metadata(),
-            createdAt ?? DateTimeOffset.UnixEpoch, expiresAt ?? DateTimeOffset.UnixEpoch.AddMinutes(5));
-
-    private static ArtifactReference Reference(
-        Guid? id = null, string version = "1", string directoryId = "output", string profileKey = "profile", long profileVersion = 1,
-        string tenantId = "tenant", string ownerId = "owner", string createdBy = "principal",
-        string mediaType = "text/plain", long length = 7, string contentHash = "hash",
-        DateTimeOffset? verifiedAt = null, ArtifactDataClassification classification = ArtifactDataClassification.Internal,
-        ArtifactOwnershipKind ownership = ArtifactOwnershipKind.Session,
-        ArtifactMutability mutability = ArtifactMutability.Immutable, string retentionPolicy = "retention",
-        DateTimeOffset? retentionExpiresAt = null, bool legalHold = false, DateTimeOffset? createdAt = null) => new(
-            new ArtifactId(id ?? Guid.Parse("10000000-0000-0000-0000-000000000001")), new ArtifactVersion(version),
-            new ArtifactDirectoryId(directoryId), new ArtifactProfileKey(profileKey),
-            new ArtifactProfileVersion(profileVersion), new TenantId(tenantId), new ArtifactOwnerId(ownerId),
-            new PrincipalId(createdBy), mediaType, length, new ArtifactIntegrity(new ContentHash(contentHash), verifiedAt ?? DateTimeOffset.UnixEpoch),
-            classification, ownership, mutability, new ArtifactRetention(new ArtifactRetentionPolicyKey(retentionPolicy), retentionExpiresAt, legalHold),
-            createdAt ?? DateTimeOffset.UnixEpoch);
-
+    private static ArtifactMetadata Metadata(string mediaType = "text/plain", bool legalHold = false) => new(new ArtifactOwnerId("owner"), mediaType, 7, new ContentHash("hash"), ArtifactDataClassification.Internal, ArtifactOwnershipKind.Session, ArtifactMutability.Immutable, new ArtifactRetention(new ArtifactRetentionPolicyKey("retention"), null, legalHold));
+    private static InputFingerprint PrepareFingerprint(ArtifactId? artifactId = null, ArtifactPreparationId? preparationId = null, ArtifactVersion? version = null, ArtifactProfileKey? profileKey = null, ArtifactProfileVersion? profileVersion = null, TenantId? tenantId = null, PrincipalId? createdBy = null, ArtifactDirectoryId? directoryId = null, ArtifactMetadata? metadata = null, DateTimeOffset? createdAt = null, DateTimeOffset? expiresAt = null) => ArtifactSecurityBinding.PrepareFingerprint(artifactId ?? ArtifactId(), preparationId ?? PreparationId(), version ?? Version(), profileKey ?? ProfileKey(), profileVersion ?? ProfileVersion(), tenantId ?? TenantId(), createdBy ?? PrincipalId(), directoryId ?? DirectoryId(), metadata ?? Metadata(), createdAt ?? DateTimeOffset.UnixEpoch, expiresAt ?? DateTimeOffset.UnixEpoch.AddMinutes(5));
+    private static ArtifactReference Reference(Guid? id = null, string version = "1", string directoryId = "output", string profileKey = "profile", long profileVersion = 1, string tenantId = "tenant", string ownerId = "owner", string createdBy = "principal", string mediaType = "text/plain", long length = 7, string contentHash = "hash", DateTimeOffset? verifiedAt = null, ArtifactDataClassification classification = ArtifactDataClassification.Internal, ArtifactOwnershipKind ownership = ArtifactOwnershipKind.Session, ArtifactMutability mutability = ArtifactMutability.Immutable, string retentionPolicy = "retention", DateTimeOffset? retentionExpiresAt = null, bool legalHold = false, DateTimeOffset? createdAt = null) => new(new ArtifactId(id ?? Guid.Parse("10000000-0000-0000-0000-000000000001")), new ArtifactVersion(version), new ArtifactDirectoryId(directoryId), new ArtifactProfileKey(profileKey), new ArtifactProfileVersion(profileVersion), new TenantId(tenantId), new ArtifactOwnerId(ownerId), new PrincipalId(createdBy), mediaType, length, new ArtifactIntegrity(new ContentHash(contentHash), verifiedAt ?? DateTimeOffset.UnixEpoch), classification, ownership, mutability, new ArtifactRetention(new ArtifactRetentionPolicyKey(retentionPolicy), retentionExpiresAt, legalHold), createdAt ?? DateTimeOffset.UnixEpoch);
     private static ArtifactId ArtifactId() => new(Guid.Parse("10000000-0000-0000-0000-000000000001"));
     private static ArtifactPreparationId PreparationId() => new(Guid.Parse("20000000-0000-0000-0000-000000000002"));
     private static ArtifactDirectoryId DirectoryId() => new("output");
@@ -246,4 +176,15 @@ public sealed class ArtifactSecurityBindingTests
     private static ArtifactProfileVersion ProfileVersion() => new(1);
     private static TenantId TenantId() => new("tenant");
     private static PrincipalId PrincipalId() => new("principal");
+    [Fact]
+    public void ArtifactSecurityBinding_WhenVersionChanges_ChangesReadAndDeleteEvidence()
+    {
+        var first = ReferenceArtifactContracts(version: "1");
+        var second = ReferenceArtifactContracts(version: "2");
+        ArtifactSecurityBinding.ReadFingerprint(first).ShouldNotBe(ArtifactSecurityBinding.ReadFingerprint(second));
+        ArtifactSecurityBinding.DeleteFingerprint(first).ShouldNotBe(ArtifactSecurityBinding.DeleteFingerprint(second));
+    }
+
+    private static ArtifactReference ReferenceArtifactContracts(ArtifactId? id = null, string version = "1") => new(id ?? new ArtifactId(Guid.Parse("10000000-0000-0000-0000-000000000001")), new ArtifactVersion(version), new ArtifactDirectoryId("output"), new ArtifactProfileKey("test"), new ArtifactProfileVersion(1), Identity().TenantId, new ArtifactOwnerId("session:owner"), Identity().PrincipalId, "text/plain", 7, new ArtifactIntegrity(new ContentHash("hash"), DateTimeOffset.UnixEpoch), ArtifactDataClassification.Internal, ArtifactOwnershipKind.Session, ArtifactMutability.Immutable, new ArtifactRetention(new ArtifactRetentionPolicyKey("session"), null, false), DateTimeOffset.UnixEpoch);
+    private static ExecutionIdentity Identity() => TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
 }

@@ -15,12 +15,10 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 - [AgentRunOutcomeTests](Results/AgentRunOutcomeTests.cs)
 - [DeferredOperationRequestTests](Results/DeferredOperationRequestTests.cs)
 - [RunUsageTests](Usage/RunUsageTests.cs)
-- [UsageContractTests](Usage/UsageContractTests.cs)
 - [AgentHookEventArgsTests](Hooks/AgentHookEventArgsTests.cs)
-- [AgentMessageHierarchyTests](Messages/AgentMessageHierarchyTests.cs)
-- [AgentRunProfilePublicationContractsTests](Composition/AgentRunProfilePublicationContractsTests.cs)
+- [UserMessageTests](Messages/UserMessageTests.cs)
+- [AgentRunProfilePublicationTests](Composition/AgentRunProfilePublicationTests.cs)
 - [ArgumentExceptionExtensionsTests](ArgumentExceptionExtensionsTests.cs)
-- [ArgumentExceptionExtensionsTests](Budgets/ArgumentExceptionExtensionsTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

@@ -5,7 +5,7 @@ namespace AgentKit.Abstractions.Tests.Host;
 
 using AgentKit;
 
-public sealed class FileSystemPathTests
+public sealed class FileSystemPathTests: Conformance.StringIdentityConformanceTests<FileSystemPath>
 {
     [Fact]
     public void Constructor_WhenValueNull_ThrowsArgumentNullException()
@@ -98,4 +98,10 @@ public sealed class FileSystemPathTests
 
         first.ShouldNotBe(second);
     }
+
+    /// <inheritdoc/>
+    protected override FileSystemPath Create(string value) => new(value);
+
+    /// <inheritdoc/>
+    protected override string? GetValue(FileSystemPath subject) => subject.Value;
 }

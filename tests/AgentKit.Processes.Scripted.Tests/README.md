@@ -11,7 +11,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [ScriptedProcessTests](ScriptedProcessTests.cs)
+- [ScriptedProcessRunnerTests](ScriptedProcessRunnerTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

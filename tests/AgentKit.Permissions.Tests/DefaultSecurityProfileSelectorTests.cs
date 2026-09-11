@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 using TestSupport;
 
-/// <summary>Verifies exact, fail-closed, and observational security-profile capture behavior.</summary>
+/// <summary>Verifies DefaultSecurityProfileSelector behavior and contracts.</summary>
 public sealed class DefaultSecurityProfileSelectorTests
 {
     [Fact]
@@ -19,10 +19,8 @@ public sealed class DefaultSecurityProfileSelectorTests
         var publication = Publication(request);
         var reader = new RecordingReader(new SecurityProfilePublicationFound(publication));
         var selector = Selector(reader);
-
         var first = await selector.SelectAsync(request, TestContext.Current.CancellationToken);
         var second = await selector.SelectAsync(request, TestContext.Current.CancellationToken);
-
         var firstContext = first.ShouldBeOfType<SecurityAuthorizationCaptured>().Authorization;
         var secondContext = second.ShouldBeOfType<SecurityAuthorizationCaptured>().Authorization;
         firstContext.ShouldNotBeSameAs(secondContext);
@@ -45,11 +43,8 @@ public sealed class DefaultSecurityProfileSelectorTests
     [Fact]
     public async Task SelectAsync_WhenPublicationIsUnavailable_ReturnsGenericTypedUnavailableWithoutLeakingReaderReason()
     {
-        var selector = Selector(new RecordingReader(
-            new SecurityProfilePublicationUnavailable("sensitive internal publication failure")));
-
+        var selector = Selector(new RecordingReader(new SecurityProfilePublicationUnavailable("sensitive internal publication failure")));
         var result = await selector.SelectAsync(Request(), TestContext.Current.CancellationToken);
-
         var unavailable = result.ShouldBeOfType<SecurityAuthorizationCaptureUnavailable>();
         unavailable.SafeReason.ShouldNotContain("sensitive");
     }
@@ -58,9 +53,7 @@ public sealed class DefaultSecurityProfileSelectorTests
     public async Task SelectAsync_WhenReaderReturnsNull_ReturnsTypedUnavailable()
     {
         var selector = Selector(new RecordingReader(null!));
-
         var result = await selector.SelectAsync(Request(), TestContext.Current.CancellationToken);
-
         _ = result.ShouldBeOfType<SecurityAuthorizationCaptureUnavailable>();
     }
 
@@ -75,13 +68,10 @@ public sealed class DefaultSecurityProfileSelectorTests
             Publication(request, configurationVersion: new ConfigurationVersion(request.ConfigurationVersion.Value + 1)),
             Publication(request, profileKey: new SecurityProfileKey("security.other")),
         };
-
         foreach (var publication in mismatches)
         {
             var selector = Selector(new RecordingReader(new SecurityProfilePublicationFound(publication)));
-
             var result = await selector.SelectAsync(request, TestContext.Current.CancellationToken);
-
             _ = result.ShouldBeOfType<SecurityAuthorizationCaptureUnavailable>();
         }
     }
@@ -93,13 +83,11 @@ public sealed class DefaultSecurityProfileSelectorTests
         var reader = new AwaitingReader();
         var selector = Selector(reader);
         using var cancellation = new CancellationTokenSource();
-
         var selection = selector.SelectAsync(request, cancellation.Token).AsTask();
         await reader.Started.Task.WaitAsync(TestContext.Current.CancellationToken);
         await cancellation.CancelAsync();
         reader.Completion.SetResult(new SecurityProfilePublicationFound(Publication(request)));
         var exception = await Should.ThrowAsync<OperationCanceledException>(selection);
-
         exception.CancellationToken.ShouldBe(cancellation.Token);
     }
 
@@ -108,10 +96,7 @@ public sealed class DefaultSecurityProfileSelectorTests
     {
         var expected = new InvalidOperationException("reader failed");
         var selector = Selector(new ThrowingReader(expected));
-
-        var exception = await Should.ThrowAsync<InvalidOperationException>(async () =>
-            await selector.SelectAsync(Request(), TestContext.Current.CancellationToken));
-
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await selector.SelectAsync(Request(), TestContext.Current.CancellationToken));
         exception.ShouldBeSameAs(expected);
     }
 
@@ -120,10 +105,7 @@ public sealed class DefaultSecurityProfileSelectorTests
     {
         var reader = new RecordingReader(new SecurityProfilePublicationUnavailable("Unavailable."));
         var selector = Selector(reader, new ThrowingTimeProvider(throwOnCall: 1));
-
-        var exception = await Should.ThrowAsync<ArgumentNullException>(async () =>
-            await selector.SelectAsync(null!, TestContext.Current.CancellationToken));
-
+        var exception = await Should.ThrowAsync<ArgumentNullException>(async () => await selector.SelectAsync(null!, TestContext.Current.CancellationToken));
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("request");
         reader.CallCount.ShouldBe(0);
@@ -132,34 +114,19 @@ public sealed class DefaultSecurityProfileSelectorTests
     [Fact]
     public void Constructor_WhenDependenciesAreNull_ThrowsWithExactParameterNames()
     {
-        AssertExact<ArgumentNullException>(
-            () => new DefaultSecurityProfileSelector(null!, TimeProvider.System),
-            "publications");
-        AssertExact<ArgumentNullException>(
-            () => new DefaultSecurityProfileSelector(
-                new RecordingReader(new SecurityProfilePublicationUnavailable("Unavailable.")),
-                null!),
-            "timeProvider");
+        AssertExact<ArgumentNullException>(() => new DefaultSecurityProfileSelector(null!, TimeProvider.System), "publications");
+        AssertExact<ArgumentNullException>(() => new DefaultSecurityProfileSelector(new RecordingReader(new SecurityProfilePublicationUnavailable("Unavailable.")), null!), "timeProvider");
     }
 
     [Fact]
     public void RecordProfileCapture_WhenOutcomeIsUndefinedOrDurationIsNegative_ThrowsWithExactParameterNames()
     {
-        AssertExact<ArgumentOutOfRangeException>(
-            () => SecurityMetrics.RecordProfileCapture((SecurityProfileCaptureOutcome) 99, null),
-            "outcome");
-        AssertExact<ArgumentOutOfRangeException>(
-            () => SecurityMetrics.RecordProfileCapture(SecurityProfileCaptureOutcome.Captured, TimeSpan.FromTicks(-1)),
-            "elapsed");
+        AssertExact<ArgumentOutOfRangeException>(() => SecurityMetrics.RecordProfileCapture((SecurityProfileCaptureOutcome) 99, null), "outcome");
+        AssertExact<ArgumentOutOfRangeException>(() => SecurityMetrics.RecordProfileCapture(SecurityProfileCaptureOutcome.Captured, TimeSpan.FromTicks(-1)), "elapsed");
     }
 
     [Fact]
-    public void ToStableValue_WhenOutcomeIsUndefined_ThrowsWithExactParameterName()
-    {
-        AssertExact<ArgumentOutOfRangeException>(
-            () => ((SecurityProfileCaptureOutcome) 99).ToStableValue(),
-            "outcome");
-    }
+    public void ToStableValue_WhenOutcomeIsUndefined_ThrowsWithExactParameterName() => AssertExact<ArgumentOutOfRangeException>(() => ((SecurityProfileCaptureOutcome) 99).ToStableValue(), "outcome");
 
     [Fact]
     public async Task SelectAsync_WhenObserved_EmitsSafeParentedActivityStructuredLogsAndBoundedMetrics()
@@ -176,30 +143,21 @@ public sealed class DefaultSecurityProfileSelectorTests
             Sample = SampleAllData,
             ActivityStopped = activity =>
             {
-                if (activity.OperationName == AgentKitActivityNames.SecurityProfileCapture
-                    && activity.ParentId == parent.Id)
+                if (activity.OperationName == AgentKitActivityNames.SecurityProfileCapture && activity.ParentId == parent.Id)
                 {
                     stopped = activity;
                 }
             },
         };
         ActivitySource.AddActivityListener(activityListener);
-        using var meterListener = MeterListenerForCapture(
-            (measurement, tags) =>
-            {
-                count += measurement;
-                metricTags.AddRange(tags.ToArray());
-            },
-            (_, _) => durationCount++);
+        using var meterListener = MeterListenerForCapture((measurement, tags) =>
+        {
+            count += measurement;
+            metricTags.AddRange(tags.ToArray());
+        }, (_, _) => durationCount++);
         var logger = new RecordingLogger();
-        var selector = Selector(
-            new RecordingReader(new SecurityProfilePublicationFound(Publication(
-                request,
-                fingerprint: "sensitive-policy-fingerprint"))),
-            logger: logger);
-
+        var selector = Selector(new RecordingReader(new SecurityProfilePublicationFound(Publication(request, fingerprint: "sensitive-policy-fingerprint"))), logger: logger);
         _ = await selector.SelectAsync(request, TestContext.Current.CancellationToken);
-
         var activity = stopped.ShouldNotBeNull();
         activity.Status.ShouldBe(ActivityStatusCode.Ok);
         activity.GetTagItem(AgentKitTagNames.SecurityProfileKey).ShouldBe(request.ProfileKey.ToString());
@@ -209,8 +167,7 @@ public sealed class DefaultSecurityProfileSelectorTests
         activity.GetTagItem(AgentKitTagNames.OperationId).ShouldBe(request.Scope.Correlation.OperationId.ToString());
         activity.TagObjects.Select(static tag => tag.Value?.ToString()).ShouldNotContain("sensitive-policy-fingerprint");
         logger.EventIds.ShouldBe([5016, 5017]);
-        logger.Messages.ShouldAllBe(static message =>
-            !message.Contains("sensitive-policy-fingerprint", StringComparison.Ordinal));
+        logger.Messages.ShouldAllBe(static message => !message.Contains("sensitive-policy-fingerprint", StringComparison.Ordinal));
         count.ShouldBe(1);
         durationCount.ShouldBe(1);
         metricTags.Select(static tag => tag.Key).Distinct().ShouldBe([AgentKitTagNames.Outcome]);
@@ -235,26 +192,16 @@ public sealed class DefaultSecurityProfileSelectorTests
             },
         };
         ActivitySource.AddActivityListener(listener);
-        using var meterListener = MeterListenerForCapture(
-            (_, tags) => outcomes.Add(OutcomeFrom(tags)),
-            static (_, _) => { });
+        using var meterListener = MeterListenerForCapture((_, tags) => outcomes.Add(OutcomeFrom(tags)), static (_, _) =>
+        {
+        });
         var request = Request();
-
-        _ = await Selector(new RecordingReader(new SecurityProfilePublicationUnavailable("Unavailable.")))
-            .SelectAsync(request, TestContext.Current.CancellationToken);
-        _ = await Selector(new RecordingReader(new SecurityProfilePublicationFound(Publication(
-            request,
-            profileKey: new SecurityProfileKey("security.other")))))
-            .SelectAsync(request, TestContext.Current.CancellationToken);
+        _ = await Selector(new RecordingReader(new SecurityProfilePublicationUnavailable("Unavailable."))).SelectAsync(request, TestContext.Current.CancellationToken);
+        _ = await Selector(new RecordingReader(new SecurityProfilePublicationFound(Publication(request, profileKey: new SecurityProfileKey("security.other"))))).SelectAsync(request, TestContext.Current.CancellationToken);
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
-        _ = await Should.ThrowAsync<OperationCanceledException>(async () =>
-            await Selector(new RecordingReader(new SecurityProfilePublicationFound(Publication(request))))
-                .SelectAsync(request, cancellation.Token));
-        _ = await Should.ThrowAsync<InvalidOperationException>(async () =>
-            await Selector(new ThrowingReader(new InvalidOperationException("failure")))
-                .SelectAsync(request, TestContext.Current.CancellationToken));
-
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await Selector(new RecordingReader(new SecurityProfilePublicationFound(Publication(request)))).SelectAsync(request, cancellation.Token));
+        _ = await Should.ThrowAsync<InvalidOperationException>(async () => await Selector(new ThrowingReader(new InvalidOperationException("failure"))).SelectAsync(request, TestContext.Current.CancellationToken));
         AssertTerminalActivity(stopped, "unavailable", "unavailable");
         AssertTerminalActivity(stopped, "mismatched_publication", "mismatched_publication");
         AssertTerminalActivity(stopped, "cancelled", nameof(OperationCanceledException));
@@ -267,17 +214,10 @@ public sealed class DefaultSecurityProfileSelectorTests
     {
         var count = 0L;
         var durations = 0;
-        using var meterListener = MeterListenerForCapture(
-            (measurement, _) => count += measurement,
-            (_, _) => durations++);
+        using var meterListener = MeterListenerForCapture((measurement, _) => count += measurement, (_, _) => durations++);
         var request = Request();
-        var selector = Selector(
-            new RecordingReader(new SecurityProfilePublicationFound(Publication(request))),
-            new ThrowingTimeProvider(throwOnCall: 1),
-            new ThrowingLogger());
-
+        var selector = Selector(new RecordingReader(new SecurityProfilePublicationFound(Publication(request))), new ThrowingTimeProvider(throwOnCall: 1), new ThrowingLogger());
         var result = await selector.SelectAsync(request, TestContext.Current.CancellationToken);
-
         _ = result.ShouldBeOfType<SecurityAuthorizationCaptured>();
         count.ShouldBe(1);
         durations.ShouldBe(0);
@@ -295,18 +235,11 @@ public sealed class DefaultSecurityProfileSelectorTests
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
             Sample = failureStage == "sample" ? ThrowingCaptureSample : SampleCaptureOnly,
-            ActivityStarted = failureStage == "started"
-                ? static _ => throw new InvalidOperationException("observer")
-                : null,
-            ActivityStopped = failureStage == "stopped"
-                ? static _ => throw new InvalidOperationException("observer")
-                : null,
+            ActivityStarted = failureStage == "started" ? static _ => throw new InvalidOperationException("observer") : null,
+            ActivityStopped = failureStage == "stopped" ? static _ => throw new InvalidOperationException("observer") : null,
         };
         ActivitySource.AddActivityListener(listener);
-
-        var result = await Selector(new RecordingReader(new SecurityProfilePublicationFound(Publication(request))))
-            .SelectAsync(request, TestContext.Current.CancellationToken);
-
+        var result = await Selector(new RecordingReader(new SecurityProfilePublicationFound(Publication(request)))).SelectAsync(request, TestContext.Current.CancellationToken);
         _ = result.ShouldBeOfType<SecurityAuthorizationCaptured>();
         Activity.Current.ShouldBeSameAs(parent);
     }
@@ -316,88 +249,22 @@ public sealed class DefaultSecurityProfileSelectorTests
     {
         var request = Request();
         var selector = Selector(new RecordingReader(new SecurityProfilePublicationFound(Publication(request))));
-
         _ = await selector.SelectAsync(request, TestContext.Current.CancellationToken);
-        using var meterListener = MeterListenerForCapture(
-            static (_, _) => throw new InvalidOperationException("observer"),
-            static (_, _) => throw new InvalidOperationException("observer"));
+        using var meterListener = MeterListenerForCapture(static (_, _) => throw new InvalidOperationException("observer"), static (_, _) => throw new InvalidOperationException("observer"));
         var observed = await selector.SelectAsync(request, TestContext.Current.CancellationToken);
-
         _ = observed.ShouldBeOfType<SecurityAuthorizationCaptured>();
     }
 
-    [Fact]
-    public async Task AddAgentPermissions_WhenPublicationIsRegistered_ResolvesSingletonDefaultCaptureAxes()
-    {
-        var request = Request();
-        var services = new ServiceCollection();
-        _ = services.AddSecurityProfilePublication(Publication(request));
-        _ = services.AddAgentPermissions();
-        using var provider = services.BuildServiceProvider();
-
-        var firstReader = provider.GetRequiredService<ISecurityProfilePublicationReader>();
-        var secondReader = provider.GetRequiredService<ISecurityProfilePublicationReader>();
-        var firstSelector = provider.GetRequiredService<ISecurityProfileSelector>();
-        var secondSelector = provider.GetRequiredService<ISecurityProfileSelector>();
-        var result = await firstSelector.SelectAsync(request, TestContext.Current.CancellationToken);
-
-        firstReader.ShouldBeSameAs(secondReader);
-        firstSelector.ShouldBeSameAs(secondSelector);
-        _ = result.ShouldBeOfType<SecurityAuthorizationCaptured>();
-    }
-
-    private static DefaultSecurityProfileSelector Selector(
-        ISecurityProfilePublicationReader reader,
-        TimeProvider? timeProvider = null,
-        ILogger<DefaultSecurityProfileSelector>? logger = null) => new(
-        reader,
-        timeProvider ?? TimeProvider.System,
-        logger);
-
-    private static SecurityAuthorizationCaptureRequest Request() => new(
-        new SecurityAuthorizationScope(
-            new AgentId(Guid.Parse("c1111111-1111-1111-1111-111111111111")),
-            new SessionId(Guid.Parse("c2222222-2222-2222-2222-222222222222")),
-            new BeforeRunOperationCorrelation(
-                new OperationId(Guid.Parse("c3333333-3333-3333-3333-333333333333")),
-                new AdmissionId(Guid.Parse("c4444444-4444-4444-4444-444444444444")))),
-        new SecurityProfileKey("security.primary"),
-        new AgentDefinitionRevision(2),
-        new ConfigurationVersion(3),
-        TestExecutionIdentity.Create(
-            new TenantId("tenant"),
-            new PrincipalId("principal"),
-            ExecutionSubjectKind.Human));
-
-    private static SecurityProfilePublication Publication(
-        SecurityAuthorizationCaptureRequest request,
-        AgentId? agentId = null,
-        AgentDefinitionRevision? definitionRevision = null,
-        ConfigurationVersion? configurationVersion = null,
-        SecurityProfileKey? profileKey = null,
-        string fingerprint = "sha256:policy") => new(
-        agentId ?? request.Scope.AgentId,
-        definitionRevision ?? request.AgentDefinitionRevision,
-        configurationVersion ?? request.ConfigurationVersion,
-        profileKey ?? request.ProfileKey,
-        new SecurityProfileVersion(4),
-        new SecurityPolicySnapshotReference(
-            new SecurityPolicySnapshotId(Guid.Parse("c5555555-5555-5555-5555-555555555555")),
-            new SecurityPolicyVersion(5),
-            new ContentHash(fingerprint)),
-        new ComponentKey<ISecurityAuthority>("authority.primary"));
-
-    private static MeterListener MeterListenerForCapture(
-        Action<long, ReadOnlySpan<KeyValuePair<string, object?>>> onCount,
-        Action<double, ReadOnlySpan<KeyValuePair<string, object?>>> onDuration)
+    private static DefaultSecurityProfileSelector Selector(ISecurityProfilePublicationReader reader, TimeProvider? timeProvider = null, ILogger<DefaultSecurityProfileSelector>? logger = null) => new(reader, timeProvider ?? TimeProvider.System, logger);
+    private static SecurityAuthorizationCaptureRequest Request() => new(new SecurityAuthorizationScope(new AgentId(Guid.Parse("c1111111-1111-1111-1111-111111111111")), new SessionId(Guid.Parse("c2222222-2222-2222-2222-222222222222")), new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("c3333333-3333-3333-3333-333333333333")), new AdmissionId(Guid.Parse("c4444444-4444-4444-4444-444444444444")))), new SecurityProfileKey("security.primary"), new AgentDefinitionRevision(2), new ConfigurationVersion(3), TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human));
+    private static SecurityProfilePublication Publication(SecurityAuthorizationCaptureRequest request, AgentId? agentId = null, AgentDefinitionRevision? definitionRevision = null, ConfigurationVersion? configurationVersion = null, SecurityProfileKey? profileKey = null, string fingerprint = "sha256:policy") => new(agentId ?? request.Scope.AgentId, definitionRevision ?? request.AgentDefinitionRevision, configurationVersion ?? request.ConfigurationVersion, profileKey ?? request.ProfileKey, new SecurityProfileVersion(4), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("c5555555-5555-5555-5555-555555555555")), new SecurityPolicyVersion(5), new ContentHash(fingerprint)), new ComponentKey<ISecurityAuthority>("authority.primary"));
+    private static MeterListener MeterListenerForCapture(Action<long, ReadOnlySpan<KeyValuePair<string, object?>>> onCount, Action<double, ReadOnlySpan<KeyValuePair<string, object?>>> onDuration)
     {
         var listener = new MeterListener
         {
             InstrumentPublished = (instrument, current) =>
             {
-                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
-                    && instrument.Name is AgentKitMetricNames.SecurityProfileCaptureCount
-                        or AgentKitMetricNames.SecurityProfileCaptureDuration)
+                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName && instrument.Name is AgentKitMetricNames.SecurityProfileCaptureCount or AgentKitMetricNames.SecurityProfileCaptureDuration)
                 {
                     current.EnableMeasurementEvents(instrument);
                 }
@@ -421,13 +288,9 @@ public sealed class DefaultSecurityProfileSelectorTests
         return listener;
     }
 
-    private static void AssertTerminalActivity(
-        IEnumerable<Activity> activities,
-        string outcome,
-        string errorType)
+    private static void AssertTerminalActivity(IEnumerable<Activity> activities, string outcome, string errorType)
     {
-        var activity = activities.Where(activity =>
-            activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == outcome).ShouldHaveSingleItem();
+        var activity = activities.Where(activity => activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == outcome).ShouldHaveSingleItem();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.ErrorType).ShouldBe(errorType);
     }
@@ -461,19 +324,9 @@ public sealed class DefaultSecurityProfileSelectorTests
         exception.ParamName.ShouldBe(parameterName);
     }
 
-    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
-        ActivitySamplingResult.AllDataAndRecorded;
-
-    private static ActivitySamplingResult SampleCaptureOnly(ref ActivityCreationOptions<ActivityContext> options) =>
-        options.Name == AgentKitActivityNames.SecurityProfileCapture
-            ? ActivitySamplingResult.AllDataAndRecorded
-            : ActivitySamplingResult.None;
-
-    private static ActivitySamplingResult ThrowingCaptureSample(ref ActivityCreationOptions<ActivityContext> options) =>
-        options.Name == AgentKitActivityNames.SecurityProfileCapture
-            ? throw new InvalidOperationException("observer")
-            : ActivitySamplingResult.None;
-
+    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded;
+    private static ActivitySamplingResult SampleCaptureOnly(ref ActivityCreationOptions<ActivityContext> options) => options.Name == AgentKitActivityNames.SecurityProfileCapture ? ActivitySamplingResult.AllDataAndRecorded : ActivitySamplingResult.None;
+    private static ActivitySamplingResult ThrowingCaptureSample(ref ActivityCreationOptions<ActivityContext> options) => options.Name == AgentKitActivityNames.SecurityProfileCapture ? throw new InvalidOperationException("observer") : ActivitySamplingResult.None;
     private sealed class RecordingReader(SecurityProfilePublicationResult result): ISecurityProfilePublicationReader
     {
         public int CallCount { get; private set; }
@@ -483,12 +336,7 @@ public sealed class DefaultSecurityProfileSelectorTests
         public SecurityProfileKey ProfileKey { get; private set; }
         public CancellationToken CancellationToken { get; private set; }
 
-        public ValueTask<SecurityProfilePublicationResult> ReadAsync(
-            AgentId agentId,
-            AgentDefinitionRevision agentDefinitionRevision,
-            ConfigurationVersion configurationVersion,
-            SecurityProfileKey profileKey,
-            CancellationToken cancellationToken = default)
+        public ValueTask<SecurityProfilePublicationResult> ReadAsync(AgentId agentId, AgentDefinitionRevision agentDefinitionRevision, ConfigurationVersion configurationVersion, SecurityProfileKey profileKey, CancellationToken cancellationToken = default)
         {
             CallCount++;
             AgentId = agentId;
@@ -505,12 +353,7 @@ public sealed class DefaultSecurityProfileSelectorTests
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<SecurityProfilePublicationResult> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public async ValueTask<SecurityProfilePublicationResult> ReadAsync(
-            AgentId agentId,
-            AgentDefinitionRevision agentDefinitionRevision,
-            ConfigurationVersion configurationVersion,
-            SecurityProfileKey profileKey,
-            CancellationToken cancellationToken = default)
+        public async ValueTask<SecurityProfilePublicationResult> ReadAsync(AgentId agentId, AgentDefinitionRevision agentDefinitionRevision, ConfigurationVersion configurationVersion, SecurityProfileKey profileKey, CancellationToken cancellationToken = default)
         {
             Started.SetResult();
             return await Completion.Task.ConfigureAwait(false);
@@ -519,13 +362,7 @@ public sealed class DefaultSecurityProfileSelectorTests
 
     private sealed class ThrowingReader(Exception exception): ISecurityProfilePublicationReader
     {
-        public ValueTask<SecurityProfilePublicationResult> ReadAsync(
-            AgentId agentId,
-            AgentDefinitionRevision agentDefinitionRevision,
-            ConfigurationVersion configurationVersion,
-            SecurityProfileKey profileKey,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromException<SecurityProfilePublicationResult>(exception);
+        public ValueTask<SecurityProfilePublicationResult> ReadAsync(AgentId agentId, AgentDefinitionRevision agentDefinitionRevision, ConfigurationVersion configurationVersion, SecurityProfileKey profileKey, CancellationToken cancellationToken = default) => ValueTask.FromException<SecurityProfilePublicationResult>(exception);
     }
 
     private sealed class RecordingLogger: ILogger<DefaultSecurityProfileSelector>
@@ -535,15 +372,8 @@ public sealed class DefaultSecurityProfileSelectorTests
 
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
-
         public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
             EventIds.Add(eventId.Id);
             Messages.Add(formatter(state, exception));
@@ -554,15 +384,8 @@ public sealed class DefaultSecurityProfileSelectorTests
     {
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
-
         public bool IsEnabled(LogLevel logLevel) => throw new InvalidOperationException("observer");
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
         }
     }
@@ -570,11 +393,8 @@ public sealed class DefaultSecurityProfileSelectorTests
     private sealed class ThrowingTimeProvider(int throwOnCall): TimeProvider
     {
         private int _calls;
-
         public override long TimestampFrequency => 1_000;
 
-        public override long GetTimestamp() => ++_calls == throwOnCall
-            ? throw new InvalidOperationException("clock")
-            : _calls * 100;
+        public override long GetTimestamp() => ++_calls == throwOnCall ? throw new InvalidOperationException("clock") : _calls * 100;
     }
 }

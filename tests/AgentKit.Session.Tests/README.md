@@ -13,7 +13,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 - [ArgumentExceptionExtensionsTests](ArgumentExceptionExtensionsTests.cs)
 - [DefaultSessionCoordinatorTests](DefaultSessionCoordinatorTests.cs)
 - [DefaultSessionRunCoordinatorTests](DefaultSessionRunCoordinatorTests.cs)
-- [DefaultSessionStoreRoutingTests](DefaultSessionStoreRoutingTests.cs)
+- [DefaultSessionStoreSelectorTests](DefaultSessionStoreSelectorTests.cs)
 - [InMemorySessionDirectoryTests](InMemorySessionDirectoryTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural

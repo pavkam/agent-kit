@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 using TestSupport;
 
-/// <summary>Verifies exact-key, fail-closed, and observational behavior of the default authority selector.</summary>
+/// <summary>Verifies DefaultSecurityAuthoritySelector behavior and contracts.</summary>
 public sealed class DefaultSecurityAuthoritySelectorTests
 {
     [Fact]
@@ -20,9 +20,7 @@ public sealed class DefaultSecurityAuthoritySelectorTests
         var authority = new DenyAllSecurityAuthority();
         var context = Context(key);
         var selector = Selector([new SecurityAuthorityBinding(key, authority)]);
-
         var result = await selector.SelectAsync(context, TestContext.Current.CancellationToken);
-
         var selected = result.ShouldBeOfType<SecurityAuthoritySelected>();
         selected.Authority.ShouldBeSameAs(authority);
         selected.Authorization.ShouldBeSameAs(context);
@@ -34,9 +32,7 @@ public sealed class DefaultSecurityAuthoritySelectorTests
         var requested = new ComponentKey<ISecurityAuthority>("security.requested");
         var alternate = new ComponentKey<ISecurityAuthority>("security.alternate");
         var selector = Selector([new SecurityAuthorityBinding(alternate, new DenyAllSecurityAuthority())]);
-
         var result = await selector.SelectAsync(Context(requested), TestContext.Current.CancellationToken);
-
         var unavailable = result.ShouldBeOfType<SecurityAuthoritySelectionUnavailable>();
         unavailable.Authorization.AuthorityKey.ShouldBe(requested);
         unavailable.SafeReason.ShouldNotContain("alternate");
@@ -48,19 +44,14 @@ public sealed class DefaultSecurityAuthoritySelectorTests
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
         var selector = Selector([]);
-
-        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
-            await selector.SelectAsync(Context(new ComponentKey<ISecurityAuthority>("security.primary")), cancellation.Token));
-
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () => await selector.SelectAsync(Context(new ComponentKey<ISecurityAuthority>("security.primary")), cancellation.Token));
         exception.CancellationToken.ShouldBe(cancellation.Token);
     }
 
     [Fact]
     public async Task SelectAsync_WhenAuthorizationIsNull_ThrowsArgumentNullException()
     {
-        var exception = await Should.ThrowAsync<ArgumentNullException>(async () =>
-            await Selector([]).SelectAsync(null!, TestContext.Current.CancellationToken));
-
+        var exception = await Should.ThrowAsync<ArgumentNullException>(async () => await Selector([]).SelectAsync(null!, TestContext.Current.CancellationToken));
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("authorization");
     }
@@ -69,12 +60,7 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     public void Constructor_WhenBindingsDuplicateAKey_ThrowsArgumentExceptionForBindings()
     {
         var key = new ComponentKey<ISecurityAuthority>("security.primary");
-
-        var exception = Should.Throw<ArgumentException>(() => Selector([
-            new SecurityAuthorityBinding(key, new DenyAllSecurityAuthority()),
-            new SecurityAuthorityBinding(key, new DenyAllSecurityAuthority()),
-        ]));
-
+        var exception = Should.Throw<ArgumentException>(() => Selector([new SecurityAuthorityBinding(key, new DenyAllSecurityAuthority()), new SecurityAuthorityBinding(key, new DenyAllSecurityAuthority()),]));
         exception.ParamName.ShouldBe("bindings");
     }
 
@@ -82,9 +68,7 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     public void ThrowIfDuplicateSecurityAuthorityBinding_WhenSnapshotIsValidOrEmpty_DoesNotThrow()
     {
         IReadOnlyList<SecurityAuthorityBinding> empty = [];
-        IReadOnlyList<SecurityAuthorityBinding> one = [new(
-            new ComponentKey<ISecurityAuthority>("security.primary"), new DenyAllSecurityAuthority())];
-
+        IReadOnlyList<SecurityAuthorityBinding> one = [new(new ComponentKey<ISecurityAuthority>("security.primary"), new DenyAllSecurityAuthority())];
         Should.NotThrow(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(empty));
         Should.NotThrow(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(one));
     }
@@ -92,16 +76,9 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     [Fact]
     public void ThrowIfDuplicateSecurityAuthorityBinding_WhenSnapshotHasDuplicate_ReportsInferredAndExplicitParameterNames()
     {
-        IReadOnlyList<SecurityAuthorityBinding> bindings = [
-            new(new ComponentKey<ISecurityAuthority>("security.primary"), new DenyAllSecurityAuthority()),
-            new(new ComponentKey<ISecurityAuthority>("security.primary"), new DenyAllSecurityAuthority()),
-        ];
-
-        var inferred = Should.Throw<ArgumentException>(() =>
-            ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(bindings));
-        var explicitName = Should.Throw<ArgumentException>(() =>
-            ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(bindings, "authorityBindings"));
-
+        IReadOnlyList<SecurityAuthorityBinding> bindings = [new(new ComponentKey<ISecurityAuthority>("security.primary"), new DenyAllSecurityAuthority()), new(new ComponentKey<ISecurityAuthority>("security.primary"), new DenyAllSecurityAuthority()),];
+        var inferred = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(bindings));
+        var explicitName = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(bindings, "authorityBindings"));
         inferred.ParamName.ShouldBe(nameof(bindings));
         explicitName.ParamName.ShouldBe("authorityBindings");
     }
@@ -109,12 +86,9 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     [Fact]
     public void ThrowIfDuplicateSecurityAuthorityBinding_WhenSnapshotOrEntryIsNull_ThrowsArgumentNullException()
     {
-        var nullSnapshot = Should.Throw<ArgumentNullException>(() =>
-            ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(null!));
+        var nullSnapshot = Should.Throw<ArgumentNullException>(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(null!));
         IReadOnlyList<SecurityAuthorityBinding> nullEntry = [null!];
-        var nullBinding = Should.Throw<ArgumentNullException>(() =>
-            ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(nullEntry));
-
+        var nullBinding = Should.Throw<ArgumentNullException>(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(nullEntry));
         nullSnapshot.GetType().ShouldBe(typeof(ArgumentNullException));
         nullSnapshot.ParamName.ShouldBe("null");
         nullBinding.GetType().ShouldBe(typeof(ArgumentNullException));
@@ -125,7 +99,6 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     public void ConstructorAndBinding_WhenArgumentsAreInvalid_ThrowWithExactParameterNames()
     {
         var key = new ComponentKey<ISecurityAuthority>("security.primary");
-
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuthoritySelector(null!, TimeProvider.System), "bindings");
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuthoritySelector([], null!), "timeProvider");
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuthoritySelector([null!], TimeProvider.System), "bindings");
@@ -137,7 +110,6 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     public void SelectionResults_WhenArgumentsAreInvalid_ThrowWithExactParameterNames()
     {
         var context = Context(new ComponentKey<ISecurityAuthority>("security.primary"));
-
         AssertExact<ArgumentNullException>(() => new SecurityAuthoritySelected(null!, new DenyAllSecurityAuthority()), "authorization");
         AssertExact<ArgumentNullException>(() => new SecurityAuthoritySelected(context, null!), "authority");
         AssertExact<ArgumentNullException>(() => new SecurityAuthoritySelectionUnavailable(null!, "safe"), "authorization");
@@ -146,57 +118,10 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     }
 
     [Fact]
-    public void AddSecurityAuthority_WhenArgumentsAreInvalid_ThrowsWithExactParameterNames()
-    {
-        var services = new ServiceCollection();
-
-        AssertExact<ArgumentNullException>(() => ServiceExtensions.AddSecurityAuthority(
-            null!, new ComponentKey<ISecurityAuthority>("security.primary"), new DenyAllSecurityAuthority()), "services");
-        AssertExact<ArgumentNullException>(() => services.AddSecurityAuthority(default, new DenyAllSecurityAuthority()), "authorityKey");
-        services.ShouldBeEmpty();
-        AssertExact<ArgumentNullException>(() => services.AddSecurityAuthority(
-            new ComponentKey<ISecurityAuthority>("security.primary"), null!), "authority");
-        services.ShouldBeEmpty();
-    }
-
-    [Fact]
     public void RecordAuthoritySelection_WhenOutcomeIsUndefinedOrDurationIsNegative_ThrowsWithExactParameterNames()
     {
-        AssertExact<ArgumentOutOfRangeException>(
-            () => SecurityMetrics.RecordAuthoritySelection((SecurityAuthoritySelectionOutcome) 99, null), "outcome");
-        AssertExact<ArgumentOutOfRangeException>(
-            () => SecurityMetrics.RecordAuthoritySelection(SecurityAuthoritySelectionOutcome.Selected, TimeSpan.FromTicks(-1)), "elapsed");
-    }
-
-    [Fact]
-    public async Task AddSecurityAuthority_WhenExplicitlyBound_RegistersItForExactSelectorResolution()
-    {
-        var key = new ComponentKey<ISecurityAuthority>("security.host-owned");
-        var authority = new DenyAllSecurityAuthority();
-        var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
-        _ = services.AddSecurityAuthority(key, authority);
-        using var provider = services.BuildServiceProvider();
-
-        var selector = provider.GetRequiredService<ISecurityAuthoritySelector>();
-        var result = await selector.SelectAsync(Context(key), TestContext.Current.CancellationToken);
-
-        result.ShouldBeOfType<SecurityAuthoritySelected>().Authority.ShouldBeSameAs(authority);
-    }
-
-    [Fact]
-    public async Task AddAgentPermissions_WhenNoAuthorityBindingIsAdded_DoesNotSelectItsLegacyUnkeyedAuthority()
-    {
-        var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
-        using var provider = services.BuildServiceProvider();
-
-        var result = await provider.GetRequiredService<ISecurityAuthoritySelector>().SelectAsync(
-            Context(new ComponentKey<ISecurityAuthority>("security.unbound")),
-            TestContext.Current.CancellationToken);
-
-        _ = result.ShouldBeOfType<SecurityAuthoritySelectionUnavailable>();
-        services.Count(static descriptor => descriptor.ServiceType == typeof(ISecurityAuthority)).ShouldBe(1);
+        AssertExact<ArgumentOutOfRangeException>(() => SecurityMetrics.RecordAuthoritySelection((SecurityAuthoritySelectionOutcome) 99, null), "outcome");
+        AssertExact<ArgumentOutOfRangeException>(() => SecurityMetrics.RecordAuthoritySelection(SecurityAuthoritySelectionOutcome.Selected, TimeSpan.FromTicks(-1)), "elapsed");
     }
 
     [Fact]
@@ -221,18 +146,14 @@ public sealed class DefaultSecurityAuthoritySelectorTests
             },
         };
         ActivitySource.AddActivityListener(activityListener);
-        using var meterListener = MeterListenerForSelector(
-            (measurement, tags) =>
-            {
-                counts += measurement;
-                metricTags.AddRange(tags.ToArray());
-            },
-            (_, _) => durations++);
+        using var meterListener = MeterListenerForSelector((measurement, tags) =>
+        {
+            counts += measurement;
+            metricTags.AddRange(tags.ToArray());
+        }, (_, _) => durations++);
         var logger = new RecordingLogger();
         var selector = Selector([new SecurityAuthorityBinding(key, new DenyAllSecurityAuthority())], logger: logger);
-
         _ = await selector.SelectAsync(Context(key, "sensitive-policy-fingerprint"), TestContext.Current.CancellationToken);
-
         var activity = stopped.ShouldNotBeNull();
         activity.Status.ShouldBe(ActivityStatusCode.Ok);
         activity.GetTagItem(AgentKitTagNames.SecurityAuthorityKey).ShouldBe(key.ToString());
@@ -249,16 +170,9 @@ public sealed class DefaultSecurityAuthoritySelectorTests
         var key = new ComponentKey<ISecurityAuthority>("security.primary");
         var count = 0L;
         var durations = 0;
-        using var meterListener = MeterListenerForSelector(
-            (measurement, _) => count += measurement,
-            (_, _) => durations++);
-        var selector = Selector(
-            [new SecurityAuthorityBinding(key, new DenyAllSecurityAuthority())],
-            timeProvider: new ThrowingTimeProvider(throwOnCall: 1),
-            logger: new ThrowingLogger());
-
+        using var meterListener = MeterListenerForSelector((measurement, _) => count += measurement, (_, _) => durations++);
+        var selector = Selector([new SecurityAuthorityBinding(key, new DenyAllSecurityAuthority())], timeProvider: new ThrowingTimeProvider(throwOnCall: 1), logger: new ThrowingLogger());
         var result = await selector.SelectAsync(Context(key), TestContext.Current.CancellationToken);
-
         _ = result.ShouldBeOfType<SecurityAuthoritySelected>();
         count.ShouldBe(1);
         durations.ShouldBe(0);
@@ -276,21 +190,16 @@ public sealed class DefaultSecurityAuthoritySelectorTests
             ActivityStopped = stopped.Add,
         };
         ActivitySource.AddActivityListener(listener);
-        using var meterListener = MeterListenerForSelector(
-            (_, tags) => outcomes.Add(OutcomeFrom(tags)),
-            static (_, _) => { });
+        using var meterListener = MeterListenerForSelector((_, tags) => outcomes.Add(OutcomeFrom(tags)), static (_, _) =>
+        {
+        });
         var selector = Selector([]);
-
         _ = await selector.SelectAsync(Context(new ComponentKey<ISecurityAuthority>("security.missing")), TestContext.Current.CancellationToken);
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
-        _ = await Should.ThrowAsync<OperationCanceledException>(async () =>
-            await selector.SelectAsync(Context(new ComponentKey<ISecurityAuthority>("security.missing")), cancellation.Token));
-
-        _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error
-            && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "unavailable").ShouldHaveSingleItem();
-        _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error
-            && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "cancelled").ShouldHaveSingleItem();
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await selector.SelectAsync(Context(new ComponentKey<ISecurityAuthority>("security.missing")), cancellation.Token));
+        _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "unavailable").ShouldHaveSingleItem();
+        _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "cancelled").ShouldHaveSingleItem();
         outcomes.ShouldBe(["unavailable", "cancelled"], ignoreOrder: true);
     }
 
@@ -310,10 +219,7 @@ public sealed class DefaultSecurityAuthoritySelectorTests
             ActivityStopped = throwOnStop ? static _ => throw new InvalidOperationException("observer") : null,
         };
         ActivitySource.AddActivityListener(listener);
-
-        var result = await Selector([new SecurityAuthorityBinding(key, new DenyAllSecurityAuthority())])
-            .SelectAsync(Context(key), TestContext.Current.CancellationToken);
-
+        var result = await Selector([new SecurityAuthorityBinding(key, new DenyAllSecurityAuthority())]).SelectAsync(Context(key), TestContext.Current.CancellationToken);
         _ = result.ShouldBeOfType<SecurityAuthoritySelected>();
         Activity.Current.ShouldBeSameAs(parent);
     }
@@ -323,56 +229,20 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     {
         var key = new ComponentKey<ISecurityAuthority>("security.primary");
         var selector = Selector([new SecurityAuthorityBinding(key, new DenyAllSecurityAuthority())]);
-
         _ = await selector.SelectAsync(Context(key), TestContext.Current.CancellationToken);
-        using var meterListener = MeterListenerForSelector(
-            static (_, _) => throw new InvalidOperationException("observer"),
-            static (_, _) => throw new InvalidOperationException("observer"));
+        using var meterListener = MeterListenerForSelector(static (_, _) => throw new InvalidOperationException("observer"), static (_, _) => throw new InvalidOperationException("observer"));
         _ = await selector.SelectAsync(Context(key), TestContext.Current.CancellationToken);
     }
 
-    private static DefaultSecurityAuthoritySelector Selector(
-        IEnumerable<SecurityAuthorityBinding> bindings,
-        TimeProvider? timeProvider = null,
-        ILogger<DefaultSecurityAuthoritySelector>? logger = null) => new(
-        bindings,
-        timeProvider ?? TimeProvider.System,
-        logger);
-
-    private static SecurityAuthorizationContext Context(
-        ComponentKey<ISecurityAuthority> authorityKey,
-        string fingerprint = "policy-fingerprint") => new(
-        new SecurityProfileKey("security.profile"),
-        new SecurityProfileVersion(1),
-        new SecurityPolicySnapshotReference(
-            new SecurityPolicySnapshotId(Guid.Parse("d1111111-1111-1111-1111-111111111111")),
-            new SecurityPolicyVersion(1),
-            new ContentHash(fingerprint)),
-        authorityKey,
-        new AgentDefinitionRevision(1),
-        new ConfigurationVersion(1),
-        new SecurityAuthorizationScope(
-            new AgentId(Guid.Parse("d2222222-2222-2222-2222-222222222222")),
-            new SessionId(Guid.Parse("d3333333-3333-3333-3333-333333333333")),
-            new BeforeRunOperationCorrelation(
-                new OperationId(Guid.Parse("d4444444-4444-4444-4444-444444444444")),
-                new AdmissionId(Guid.Parse("d5555555-5555-5555-5555-555555555555")))),
-        TestExecutionIdentity.Create(
-            new TenantId("tenant"),
-            new PrincipalId("principal"),
-            ExecutionSubjectKind.Human));
-
-    private static MeterListener MeterListenerForSelector(
-        Action<long, ReadOnlySpan<KeyValuePair<string, object?>>> onCount,
-        Action<double, ReadOnlySpan<KeyValuePair<string, object?>>> onDuration)
+    private static DefaultSecurityAuthoritySelector Selector(IEnumerable<SecurityAuthorityBinding> bindings, TimeProvider? timeProvider = null, ILogger<DefaultSecurityAuthoritySelector>? logger = null) => new(bindings, timeProvider ?? TimeProvider.System, logger);
+    private static SecurityAuthorizationContext Context(ComponentKey<ISecurityAuthority> authorityKey, string fingerprint = "policy-fingerprint") => new(new SecurityProfileKey("security.profile"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("d1111111-1111-1111-1111-111111111111")), new SecurityPolicyVersion(1), new ContentHash(fingerprint)), authorityKey, new AgentDefinitionRevision(1), new ConfigurationVersion(1), new SecurityAuthorizationScope(new AgentId(Guid.Parse("d2222222-2222-2222-2222-222222222222")), new SessionId(Guid.Parse("d3333333-3333-3333-3333-333333333333")), new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("d4444444-4444-4444-4444-444444444444")), new AdmissionId(Guid.Parse("d5555555-5555-5555-5555-555555555555")))), TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human));
+    private static MeterListener MeterListenerForSelector(Action<long, ReadOnlySpan<KeyValuePair<string, object?>>> onCount, Action<double, ReadOnlySpan<KeyValuePair<string, object?>>> onDuration)
     {
         var listener = new MeterListener
         {
             InstrumentPublished = (instrument, current) =>
             {
-                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
-                    && instrument.Name is AgentKitMetricNames.SecurityAuthoritySelectionCount
-                        or AgentKitMetricNames.SecurityAuthoritySelectionDuration)
+                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName && instrument.Name is AgentKitMetricNames.SecurityAuthoritySelectionCount or AgentKitMetricNames.SecurityAuthoritySelectionDuration)
                 {
                     current.EnableMeasurementEvents(instrument);
                 }
@@ -418,41 +288,29 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     }
 
     private static void AssertExact<TException>(Func<object?> factory, string parameterName)
-        where TException : ArgumentException => AssertExact<TException>(() => { _ = factory(); }, parameterName);
-
-    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
-        ActivitySamplingResult.AllDataAndRecorded;
-
-    private static ActivitySamplingResult SampleSelectorOnly(ref ActivityCreationOptions<ActivityContext> options) =>
-        options.Name == AgentKitActivityNames.SecurityAuthoritySelect
-            ? ActivitySamplingResult.AllDataAndRecorded
-            : ActivitySamplingResult.None;
-
-    private static ActivitySamplingResult ThrowingSelectorSample(ref ActivityCreationOptions<ActivityContext> options) =>
-        options.Name == AgentKitActivityNames.SecurityAuthoritySelect
-            ? throw new InvalidOperationException("observer")
-            : ActivitySamplingResult.None;
-
+        where TException : ArgumentException => AssertExact<TException>(() =>
+    {
+        _ = factory();
+    }, parameterName);
+    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded;
+    private static ActivitySamplingResult SampleSelectorOnly(ref ActivityCreationOptions<ActivityContext> options) => options.Name == AgentKitActivityNames.SecurityAuthoritySelect ? ActivitySamplingResult.AllDataAndRecorded : ActivitySamplingResult.None;
+    private static ActivitySamplingResult ThrowingSelectorSample(ref ActivityCreationOptions<ActivityContext> options) => options.Name == AgentKitActivityNames.SecurityAuthoritySelect ? throw new InvalidOperationException("observer") : ActivitySamplingResult.None;
     private sealed class RecordingLogger: ILogger<DefaultSecurityAuthoritySelector>
     {
         public List<string> Messages { get; } = [];
 
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter) => Messages.Add(formatter(state, exception));
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => Messages.Add(formatter(state, exception));
     }
 
     private sealed class ThrowingLogger: ILogger<DefaultSecurityAuthoritySelector>
     {
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => throw new InvalidOperationException("observer");
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
         }
     }
@@ -460,11 +318,8 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     private sealed class ThrowingTimeProvider(int throwOnCall): TimeProvider
     {
         private int _calls;
-
         public override long TimestampFrequency => 1_000;
 
-        public override long GetTimestamp() => ++_calls == throwOnCall
-            ? throw new InvalidOperationException("clock")
-            : _calls * 100;
+        public override long GetTimestamp() => ++_calls == throwOnCall ? throw new InvalidOperationException("clock") : _calls * 100;
     }
 }

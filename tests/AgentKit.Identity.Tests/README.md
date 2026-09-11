@@ -10,8 +10,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [DefaultIdentityNormalizerConformanceTests](DefaultIdentityNormalizerConformanceTests.cs)
-- [IdentityRuntimeTests](IdentityRuntimeTests.cs)
+- [ExecutionIdentityResolverTests](ExecutionIdentityResolverTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

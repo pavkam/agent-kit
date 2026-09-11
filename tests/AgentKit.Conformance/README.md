@@ -23,11 +23,19 @@ concrete adapter fixtures; building this project alone is not a conformance run.
 
 Fixture interfaces define how each adapter supplies the services and scenarios
 needed by its suite. Keep reusable behavior here and implementation-specific
-regressions in the owning test project.
+regressions in the owning `<ProductionClass>Tests` fixture.
 
 The run-stream suite currently exercises the public stream contract through the
 internal I/O adapter. Complete publisher registration and DI conformance remain
 open until durable publication is integrated.
+
+The value suites use typed constructors and accessors supplied by each concrete
+fixture, without discovering members through reflection:
+
+- [GuidIdentityConformanceTests](GuidIdentityConformanceTests.cs)
+- [StringIdentityConformanceTests](StringIdentityConformanceTests.cs)
+- [LongIdentityConformanceTests](LongIdentityConformanceTests.cs)
+- [SingleMessageLeafConformanceTests](SingleMessageLeafConformanceTests.cs)
 
 ## Run a concrete implementation
 

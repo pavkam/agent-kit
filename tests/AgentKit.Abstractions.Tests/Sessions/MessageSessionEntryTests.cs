@@ -1,0 +1,30 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Abstractions.Tests.Sessions;
+
+using AgentKit;
+
+/// <summary>Verifies MessageSessionEntry behavior and contracts.</summary>
+public sealed class MessageSessionEntryTests
+{
+    private static readonly Guid _agentGuid = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid _sessionGuid = Guid.Parse("22222222-2222-2222-2222-222222222222");
+    private static readonly Guid _branchGuid = Guid.Parse("33333333-3333-3333-3333-333333333333");
+    private static readonly Guid _operationGuid = Guid.Parse("44444444-4444-4444-4444-444444444444");
+    private static readonly Guid _runGuid = Guid.Parse("55555555-5555-5555-5555-555555555555");
+    private static readonly Guid _entryGuid = Guid.Parse("66666666-6666-6666-6666-666666666666");
+    [Fact]
+    public void MessageSessionEntry_Constructor_WhenMessageNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new MessageSessionEntry(new SessionEntryId(_entryGuid), Address(), Correlation(), BranchId, new SessionSequence(1), null, DateTimeOffset.UnixEpoch, new SchemaVersion("1"), null!));
+        exception.ParamName.ShouldBe("message");
+    }
+
+    private static AgentId AgentId => new(_agentGuid);
+    private static SessionId SessionId => new(_sessionGuid);
+    private static BranchId BranchId => new(_branchGuid);
+
+    private static InRunOperationCorrelation Correlation() => new(new OperationId(_operationGuid), new RunId(_runGuid), null);
+    private static SessionAddress Address() => new(AgentId, SessionId);
+}

@@ -3,10 +3,9 @@
 
 namespace AgentKit.Providers.Cohere.Tests;
 
-/// <summary>
-/// Verifies <see cref="CohereProviderDefaults.BuildChatUri"/> and the
-/// shared provider identity/capability defaults.
-/// </summary>
+
+
+/// <summary>Verifies CohereProviderDefaults behavior and contracts.</summary>
 public sealed class CohereProviderDefaultsTests
 {
     [Fact]
@@ -17,13 +16,8 @@ public sealed class CohereProviderDefaultsTests
             BaseAddress = new Uri("https://example.test/"),
             ChatPath = "v3/chat",
         };
-
         CohereProviderDefaults.BuildChatUri(options).ShouldBe(new Uri("https://example.test/v3/chat"));
     }
-
-    [Fact]
-    public void ProviderId_IsStableCohereIdentity() =>
-        CohereProviderDefaults.ProviderId.ShouldBe(new ProviderId("cohere"));
 
     [Fact]
     public void DefaultCapabilities_SupportsReasoningButNotVisionOrStructuredOutput()
@@ -43,14 +37,11 @@ public sealed class CohereProviderDefaultsTests
             BaseAddress = new Uri("https://example.test/"),
             EmbedPath = "v3/embed",
         };
-
         CohereProviderDefaults.BuildEmbedUri(options).ShouldBe(new Uri("https://example.test/v3/embed"));
     }
 
     [Fact]
-    public void EmbeddingApiFamily_IsStableCohereEmbedIdentity() =>
-        CohereProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("cohere-embed-v2"));
-
+    public void EmbeddingApiFamily_IsStableCohereEmbedIdentity() => CohereProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("cohere-embed-v2"));
     [Fact]
     public void DefaultEmbeddingCapabilities_SupportsBatchDimensionsPurposeEncodingAndTruncation()
     {
@@ -62,6 +53,5 @@ public sealed class CohereProviderDefaultsTests
     }
 
     [Fact]
-    public void DefaultEmbeddingLimits_CapsInputsAtNinetySix() =>
-        CohereProviderDefaults.DefaultEmbeddingLimits.MaxInputsPerRequest.ShouldBe(96);
+    public void DefaultEmbeddingLimits_CapsInputsAtNinetySix() => CohereProviderDefaults.DefaultEmbeddingLimits.MaxInputsPerRequest.ShouldBe(96);
 }

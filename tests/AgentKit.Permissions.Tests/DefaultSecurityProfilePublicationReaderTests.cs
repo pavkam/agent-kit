@@ -7,7 +7,7 @@ using System.Diagnostics.Metrics;
 
 using Microsoft.Extensions.Logging;
 
-/// <summary>Verifies exact immutable security-profile publication lookup and composition behavior.</summary>
+/// <summary>Verifies DefaultSecurityProfilePublicationReader behavior and contracts.</summary>
 public sealed class DefaultSecurityProfilePublicationReaderTests
 {
     [Fact]
@@ -15,14 +15,7 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
     {
         var publication = Publication();
         var reader = new DefaultSecurityProfilePublicationReader([publication]);
-
-        var result = await reader.ReadAsync(
-            publication.AgentId,
-            publication.AgentDefinitionRevision,
-            publication.ConfigurationVersion,
-            publication.ProfileKey,
-            TestContext.Current.CancellationToken);
-
+        var result = await reader.ReadAsync(publication.AgentId, publication.AgentDefinitionRevision, publication.ConfigurationVersion, publication.ProfileKey, TestContext.Current.CancellationToken);
         result.ShouldBeOfType<SecurityProfilePublicationFound>().Publication.ShouldBeSameAs(publication);
     }
 
@@ -38,16 +31,9 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
             (publication.AgentId, publication.AgentDefinitionRevision, new ConfigurationVersion(publication.ConfigurationVersion.Value + 1), publication.ProfileKey),
             (publication.AgentId, publication.AgentDefinitionRevision, publication.ConfigurationVersion, new SecurityProfileKey("security.other")),
         };
-
         foreach (var (agentId, definitionRevision, configurationVersion, profileKey) in queries)
         {
-            var result = await reader.ReadAsync(
-                agentId,
-                definitionRevision,
-                configurationVersion,
-                profileKey,
-                TestContext.Current.CancellationToken);
-
+            var result = await reader.ReadAsync(agentId, definitionRevision, configurationVersion, profileKey, TestContext.Current.CancellationToken);
             _ = result.ShouldBeOfType<SecurityProfilePublicationUnavailable>();
         }
     }
@@ -57,24 +43,15 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
     {
         var original = Publication();
         var later = Publication(profileKey: new SecurityProfileKey("security.later"));
-        var registrations = new List<SecurityProfilePublication> { original };
+        var registrations = new List<SecurityProfilePublication>
+        {
+            original
+        };
         var reader = new DefaultSecurityProfilePublicationReader(registrations);
         registrations.Clear();
         registrations.Add(later);
-
-        var originalResult = await reader.ReadAsync(
-            original.AgentId,
-            original.AgentDefinitionRevision,
-            original.ConfigurationVersion,
-            original.ProfileKey,
-            TestContext.Current.CancellationToken);
-        var laterResult = await reader.ReadAsync(
-            later.AgentId,
-            later.AgentDefinitionRevision,
-            later.ConfigurationVersion,
-            later.ProfileKey,
-            TestContext.Current.CancellationToken);
-
+        var originalResult = await reader.ReadAsync(original.AgentId, original.AgentDefinitionRevision, original.ConfigurationVersion, original.ProfileKey, TestContext.Current.CancellationToken);
+        var laterResult = await reader.ReadAsync(later.AgentId, later.AgentDefinitionRevision, later.ConfigurationVersion, later.ProfileKey, TestContext.Current.CancellationToken);
         originalResult.ShouldBeOfType<SecurityProfilePublicationFound>().Publication.ShouldBeSameAs(original);
         _ = laterResult.ShouldBeOfType<SecurityProfilePublicationUnavailable>();
     }
@@ -85,16 +62,9 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
         var reader = new DefaultSecurityProfilePublicationReader([]);
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
-
-        await AssertExactAsync<ArgumentOutOfRangeException>(
-            () => reader.ReadAsync(default, DefinitionRevision(), ConfigurationVersion(), ProfileKey(), cancellation.Token),
-            "agentId");
-        await AssertExactAsync<ArgumentOutOfRangeException>(
-            () => reader.ReadAsync(AgentId(), DefinitionRevision(), default, ProfileKey(), cancellation.Token),
-            "configurationVersion");
-        await AssertExactAsync<ArgumentNullException>(
-            () => reader.ReadAsync(AgentId(), DefinitionRevision(), ConfigurationVersion(), default, cancellation.Token),
-            "profileKey");
+        await AssertExactAsync<ArgumentOutOfRangeException>(() => reader.ReadAsync(default, DefinitionRevision(), ConfigurationVersion(), ProfileKey(), cancellation.Token), "agentId");
+        await AssertExactAsync<ArgumentOutOfRangeException>(() => reader.ReadAsync(AgentId(), DefinitionRevision(), default, ProfileKey(), cancellation.Token), "configurationVersion");
+        await AssertExactAsync<ArgumentNullException>(() => reader.ReadAsync(AgentId(), DefinitionRevision(), ConfigurationVersion(), default, cancellation.Token), "profileKey");
     }
 
     [Fact]
@@ -103,14 +73,7 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
         var reader = new DefaultSecurityProfilePublicationReader([Publication()]);
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
-
-        var exception = await Should.ThrowAsync<OperationCanceledException>(async () => await reader.ReadAsync(
-            AgentId(),
-            DefinitionRevision(),
-            ConfigurationVersion(),
-            ProfileKey(),
-            cancellation.Token));
-
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () => await reader.ReadAsync(AgentId(), DefinitionRevision(), ConfigurationVersion(), ProfileKey(), cancellation.Token));
         exception.CancellationToken.ShouldBe(cancellation.Token);
     }
 
@@ -118,12 +81,7 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
     public void Constructor_WhenPublicationCoordinatesAreDuplicated_ThrowsForPublications()
     {
         var publication = Publication();
-
-        var exception = Should.Throw<ArgumentException>(() => new DefaultSecurityProfilePublicationReader([
-            publication,
-            Publication(profileVersion: new SecurityProfileVersion(99)),
-        ]));
-
+        var exception = Should.Throw<ArgumentException>(() => new DefaultSecurityProfilePublicationReader([publication, Publication(profileVersion: new SecurityProfileVersion(99)),]));
         exception.ParamName.ShouldBe("publications");
     }
 
@@ -132,7 +90,6 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
     {
         IReadOnlyList<SecurityProfilePublication> empty = [];
         IReadOnlyList<SecurityProfilePublication> distinct = [Publication(), Publication(profileKey: new SecurityProfileKey("security.other"))];
-
         Should.NotThrow(() => ArgumentException.ThrowIfDuplicateSecurityProfilePublication(empty));
         Should.NotThrow(() => ArgumentException.ThrowIfDuplicateSecurityProfilePublication(distinct));
     }
@@ -141,12 +98,8 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
     public void ThrowIfDuplicateSecurityProfilePublication_WhenSnapshotHasDuplicate_ReportsInferredAndExplicitParameterNames()
     {
         IReadOnlyList<SecurityProfilePublication> publications = [Publication(), Publication(profileVersion: new SecurityProfileVersion(99))];
-
-        var inferred = Should.Throw<ArgumentException>(() =>
-            ArgumentException.ThrowIfDuplicateSecurityProfilePublication(publications));
-        var explicitName = Should.Throw<ArgumentException>(() =>
-            ArgumentException.ThrowIfDuplicateSecurityProfilePublication(publications, "profilePublications"));
-
+        var inferred = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateSecurityProfilePublication(publications));
+        var explicitName = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateSecurityProfilePublication(publications, "profilePublications"));
         inferred.ParamName.ShouldBe(nameof(publications));
         explicitName.ParamName.ShouldBe("profilePublications");
     }
@@ -154,12 +107,9 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
     [Fact]
     public void ThrowIfDuplicateSecurityProfilePublication_WhenSnapshotOrEntryIsNull_ThrowsArgumentNullException()
     {
-        var nullSnapshot = Should.Throw<ArgumentNullException>(() =>
-            ArgumentException.ThrowIfDuplicateSecurityProfilePublication(null!));
+        var nullSnapshot = Should.Throw<ArgumentNullException>(() => ArgumentException.ThrowIfDuplicateSecurityProfilePublication(null!));
         IReadOnlyList<SecurityProfilePublication> nullEntry = [null!];
-        var nullPublication = Should.Throw<ArgumentNullException>(() =>
-            ArgumentException.ThrowIfDuplicateSecurityProfilePublication(nullEntry));
-
+        var nullPublication = Should.Throw<ArgumentNullException>(() => ArgumentException.ThrowIfDuplicateSecurityProfilePublication(nullEntry));
         nullSnapshot.GetType().ShouldBe(typeof(ArgumentNullException));
         nullSnapshot.ParamName.ShouldBe("null");
         nullPublication.GetType().ShouldBe(typeof(ArgumentNullException));
@@ -170,7 +120,6 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
     public void Constructor_WhenPublicationsAreNull_ThrowsWithExactParameterName()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultSecurityProfilePublicationReader(null!));
-
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("publications");
     }
@@ -178,9 +127,7 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
     [Fact]
     public void RecordProfilePublicationRead_WhenOutcomeIsUndefined_ThrowsWithExactParameterName()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() =>
-            SecurityMetrics.RecordProfilePublicationRead((SecurityProfilePublicationReadOutcome) 99));
-
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => SecurityMetrics.RecordProfilePublicationRead((SecurityProfilePublicationReadOutcome) 99));
         exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
         exception.ParamName.ShouldBe("outcome");
     }
@@ -188,9 +135,7 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
     [Fact]
     public void ToStableValue_WhenPublicationReadOutcomeIsUndefined_ThrowsWithExactParameterName()
     {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() =>
-            ((SecurityProfilePublicationReadOutcome) 99).ToStableValue());
-
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => ((SecurityProfilePublicationReadOutcome) 99).ToStableValue());
         exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
         exception.ParamName.ShouldBe("outcome");
     }
@@ -209,28 +154,11 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
         var logger = new RecordingLogger();
         var publication = Publication();
         var reader = new DefaultSecurityProfilePublicationReader([publication], logger);
-
-        _ = await reader.ReadAsync(
-            publication.AgentId,
-            publication.AgentDefinitionRevision,
-            publication.ConfigurationVersion,
-            publication.ProfileKey,
-            TestContext.Current.CancellationToken);
-        _ = await reader.ReadAsync(
-            publication.AgentId,
-            publication.AgentDefinitionRevision,
-            new ConfigurationVersion(publication.ConfigurationVersion.Value + 1),
-            publication.ProfileKey,
-            TestContext.Current.CancellationToken);
+        _ = await reader.ReadAsync(publication.AgentId, publication.AgentDefinitionRevision, publication.ConfigurationVersion, publication.ProfileKey, TestContext.Current.CancellationToken);
+        _ = await reader.ReadAsync(publication.AgentId, publication.AgentDefinitionRevision, new ConfigurationVersion(publication.ConfigurationVersion.Value + 1), publication.ProfileKey, TestContext.Current.CancellationToken);
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
-        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await reader.ReadAsync(
-            publication.AgentId,
-            publication.AgentDefinitionRevision,
-            publication.ConfigurationVersion,
-            publication.ProfileKey,
-            cancellation.Token));
-
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await reader.ReadAsync(publication.AgentId, publication.AgentDefinitionRevision, publication.ConfigurationVersion, publication.ProfileKey, cancellation.Token));
         outcomes.ShouldBe(["found", "unavailable", "cancelled"]);
         tags.Select(static tag => tag.Key).Distinct().ShouldBe([AgentKitTagNames.Outcome]);
         logger.EventIds.ShouldBe([5021, 5022, 5023]);
@@ -243,132 +171,25 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
     {
         var publication = Publication();
         var reader = new DefaultSecurityProfilePublicationReader([publication], new ThrowingLogger());
-        using var meterListener = MeterListenerForPublicationReads(
-            static (_, _) => throw new InvalidOperationException("observer"));
-
-        var found = await reader.ReadAsync(
-            publication.AgentId,
-            publication.AgentDefinitionRevision,
-            publication.ConfigurationVersion,
-            publication.ProfileKey,
-            TestContext.Current.CancellationToken);
-        var unavailable = await reader.ReadAsync(
-            publication.AgentId,
-            publication.AgentDefinitionRevision,
-            new ConfigurationVersion(publication.ConfigurationVersion.Value + 1),
-            publication.ProfileKey,
-            TestContext.Current.CancellationToken);
-
+        using var meterListener = MeterListenerForPublicationReads(static (_, _) => throw new InvalidOperationException("observer"));
+        var found = await reader.ReadAsync(publication.AgentId, publication.AgentDefinitionRevision, publication.ConfigurationVersion, publication.ProfileKey, TestContext.Current.CancellationToken);
+        var unavailable = await reader.ReadAsync(publication.AgentId, publication.AgentDefinitionRevision, new ConfigurationVersion(publication.ConfigurationVersion.Value + 1), publication.ProfileKey, TestContext.Current.CancellationToken);
         _ = found.ShouldBeOfType<SecurityProfilePublicationFound>();
         _ = unavailable.ShouldBeOfType<SecurityProfilePublicationUnavailable>();
     }
 
-    [Fact]
-    public async Task AddSecurityProfilePublication_WhenRegistrationsAreDistinct_ResolvesEachExactPublication()
-    {
-        var first = Publication();
-        var second = Publication(profileKey: new SecurityProfileKey("security.other"));
-        var services = new ServiceCollection();
-        _ = services.AddSecurityProfilePublication(first);
-        _ = services.AddAgentPermissions();
-        _ = services.AddSecurityProfilePublication(second);
-        using var provider = services.BuildServiceProvider();
-        var reader = provider.GetRequiredService<ISecurityProfilePublicationReader>();
-
-        var firstResult = await reader.ReadAsync(
-            first.AgentId,
-            first.AgentDefinitionRevision,
-            first.ConfigurationVersion,
-            first.ProfileKey,
-            TestContext.Current.CancellationToken);
-        var secondResult = await reader.ReadAsync(
-            second.AgentId,
-            second.AgentDefinitionRevision,
-            second.ConfigurationVersion,
-            second.ProfileKey,
-            TestContext.Current.CancellationToken);
-
-        firstResult.ShouldBeOfType<SecurityProfilePublicationFound>().Publication.ShouldBeSameAs(first);
-        secondResult.ShouldBeOfType<SecurityProfilePublicationFound>().Publication.ShouldBeSameAs(second);
-    }
-
-    [Fact]
-    public void AddSecurityProfilePublication_WhenExactCoordinatesAreDuplicated_FailsWhenReaderFreezesComposition()
-    {
-        var publication = Publication();
-        var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
-        _ = services.AddSecurityProfilePublication(publication);
-        _ = services.AddSecurityProfilePublication(Publication(profileVersion: new SecurityProfileVersion(99)));
-        using var provider = services.BuildServiceProvider();
-
-        var exception = Should.Throw<ArgumentException>(
-            provider.GetRequiredService<ISecurityProfilePublicationReader>);
-
-        exception.ParamName.ShouldBe("publications");
-    }
-
-    [Fact]
-    public void AddSecurityProfilePublication_WhenArgumentsAreInvalid_DoesNotMutateServices()
-    {
-        var services = new ServiceCollection();
-
-        var nullServices = Should.Throw<ArgumentNullException>(() =>
-            ServiceExtensions.AddSecurityProfilePublication(null!, Publication()));
-        var nullPublication = Should.Throw<ArgumentNullException>(() => services.AddSecurityProfilePublication(null!));
-
-        nullServices.ParamName.ShouldBe("services");
-        nullPublication.ParamName.ShouldBe("publication");
-        services.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public void AddAgentPermissions_WhenCaptureAxesAreHostSupplied_PreservesReplaceableSingletons()
-    {
-        var reader = new StubPublicationReader();
-        var selector = new StubProfileSelector();
-        var services = new ServiceCollection();
-        _ = services.AddSingleton<ISecurityProfilePublicationReader>(reader);
-        _ = services.AddSingleton<ISecurityProfileSelector>(selector);
-
-        _ = services.AddAgentPermissions();
-        _ = services.AddAgentPermissions();
-        using var provider = services.BuildServiceProvider();
-
-        provider.GetServices<ISecurityProfilePublicationReader>().ShouldHaveSingleItem().ShouldBeSameAs(reader);
-        provider.GetServices<ISecurityProfileSelector>().ShouldHaveSingleItem().ShouldBeSameAs(selector);
-        provider.GetRequiredService<ISecurityProfilePublicationReader>().ShouldBeSameAs(reader);
-        provider.GetRequiredService<ISecurityProfileSelector>().ShouldBeSameAs(selector);
-    }
-
-    private static SecurityProfilePublication Publication(
-        SecurityProfileKey? profileKey = null,
-        SecurityProfileVersion? profileVersion = null) => new(
-        AgentId(),
-        DefinitionRevision(),
-        ConfigurationVersion(),
-        profileKey ?? ProfileKey(),
-        profileVersion ?? new SecurityProfileVersion(4),
-        new SecurityPolicySnapshotReference(
-            new SecurityPolicySnapshotId(Guid.Parse("b2222222-2222-2222-2222-222222222222")),
-            new SecurityPolicyVersion(5),
-            new ContentHash("sha256:policy")),
-        new ComponentKey<ISecurityAuthority>("authority.primary"));
-
+    private static SecurityProfilePublication Publication(SecurityProfileKey? profileKey = null, SecurityProfileVersion? profileVersion = null) => new(AgentId(), DefinitionRevision(), ConfigurationVersion(), profileKey ?? ProfileKey(), profileVersion ?? new SecurityProfileVersion(4), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("b2222222-2222-2222-2222-222222222222")), new SecurityPolicyVersion(5), new ContentHash("sha256:policy")), new ComponentKey<ISecurityAuthority>("authority.primary"));
     private static AgentId AgentId() => new(Guid.Parse("b1111111-1111-1111-1111-111111111111"));
     private static AgentDefinitionRevision DefinitionRevision() => new(2);
     private static ConfigurationVersion ConfigurationVersion() => new(3);
     private static SecurityProfileKey ProfileKey() => new("security.primary");
-
-    private static MeterListener MeterListenerForPublicationReads(
-        Action<long, ReadOnlySpan<KeyValuePair<string, object?>>> onCount)
+    private static MeterListener MeterListenerForPublicationReads(Action<long, ReadOnlySpan<KeyValuePair<string, object?>>> onCount)
     {
         var listener = new MeterListener
         {
             InstrumentPublished = (instrument, current) =>
             {
-                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
-                    && instrument.Name == AgentKitMetricNames.SecurityProfilePublicationReadCount)
+                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName && instrument.Name == AgentKitMetricNames.SecurityProfilePublicationReadCount)
                 {
                     current.EnableMeasurementEvents(instrument);
                 }
@@ -398,35 +219,12 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
         throw new InvalidOperationException("Publication-read metric did not include its bounded outcome tag.");
     }
 
-    private static async Task AssertExactAsync<TException>(
-        Func<ValueTask<SecurityProfilePublicationResult>> action,
-        string parameterName)
+    private static async Task AssertExactAsync<TException>(Func<ValueTask<SecurityProfilePublicationResult>> action, string parameterName)
         where TException : ArgumentException
     {
         var exception = await Should.ThrowAsync<TException>(async () => await action());
         exception.GetType().ShouldBe(typeof(TException));
         exception.ParamName.ShouldBe(parameterName);
-    }
-
-    private sealed class StubPublicationReader: ISecurityProfilePublicationReader
-    {
-        public ValueTask<SecurityProfilePublicationResult> ReadAsync(
-            AgentId agentId,
-            AgentDefinitionRevision agentDefinitionRevision,
-            ConfigurationVersion configurationVersion,
-            SecurityProfileKey profileKey,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<SecurityProfilePublicationResult>(
-                new SecurityProfilePublicationUnavailable("Unavailable."));
-    }
-
-    private sealed class StubProfileSelector: ISecurityProfileSelector
-    {
-        public ValueTask<SecurityAuthorizationCaptureResult> SelectAsync(
-            SecurityAuthorizationCaptureRequest request,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<SecurityAuthorizationCaptureResult>(
-                new SecurityAuthorizationCaptureUnavailable("Unavailable."));
     }
 
     private sealed class RecordingLogger: ILogger<DefaultSecurityProfilePublicationReader>
@@ -436,15 +234,8 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
 
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
-
         public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
             EventIds.Add(eventId.Id);
             Messages.Add(formatter(state, exception));
@@ -455,15 +246,8 @@ public sealed class DefaultSecurityProfilePublicationReaderTests
     {
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
-
         public bool IsEnabled(LogLevel logLevel) => throw new InvalidOperationException("observer");
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
         }
     }

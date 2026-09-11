@@ -3,11 +3,9 @@
 
 namespace AgentKit.Abstractions.Tests.Output;
 
-using System.Text.Json;
-
 using AgentKit;
 
-/// <summary>Verifies construction and record-copy invariants for output definitions and alternatives.</summary>
+/// <summary>Verifies OutputDefinition behavior and contracts.</summary>
 public sealed class OutputDefinitionTests
 {
     [Theory]
@@ -15,12 +13,7 @@ public sealed class OutputDefinitionTests
     [InlineData(false)]
     public void Constructor_WhenIdentityOrVersionIsDefault_ThrowsArgumentOutOfRangeException(bool defaultIdentity)
     {
-        var exception = ShouldThrowExact<ArgumentOutOfRangeException>(() => CreateDefinitionCore(
-            defaultIdentity ? default : new OutputDefinitionId("output"),
-            defaultIdentity ? new OutputDefinitionVersion("1") : default,
-            [],
-            []));
-
+        var exception = ShouldThrowExact<ArgumentOutOfRangeException>(() => CreateDefinitionCore(defaultIdentity ? default : new OutputDefinitionId("output"), defaultIdentity ? new OutputDefinitionVersion("1") : default, [], []));
         exception.ParamName.ShouldBe(defaultIdentity ? "id" : "version");
     }
 
@@ -28,18 +21,14 @@ public sealed class OutputDefinitionTests
     public void Constructor_WhenAlternativesContainsNull_ThrowsArgumentException()
     {
         ImmutableArray<OutputAlternative> alternatives = [null!];
-
         var exception = ShouldThrowExact<ArgumentException>(() => CreateDefinition(alternatives: alternatives));
-
         exception.ParamName.ShouldBe("alternatives");
     }
 
     [Fact]
     public void Constructor_WhenValidatorsContainsDefaultReference_ThrowsArgumentNullException()
     {
-        var exception = ShouldThrowExact<ArgumentNullException>(
-            () => CreateDefinition(validators: [default]));
-
+        var exception = ShouldThrowExact<ArgumentNullException>(() => CreateDefinition(validators: [default]));
         exception.ParamName.ShouldBe("validators");
     }
 
@@ -48,19 +37,7 @@ public sealed class OutputDefinitionTests
     [InlineData("retryPolicy")]
     public void Constructor_WhenPolicyIsNull_ThrowsArgumentNullException(string parameter)
     {
-        var exception = ShouldThrowExact<ArgumentNullException>(() => _ = new OutputDefinition(
-            new OutputDefinitionId("output"),
-            new OutputDefinitionVersion("1"),
-            "Output",
-            OutputMode.Text,
-            schema: null,
-            runtimeType: null,
-            [],
-            [],
-            parameter == "validationPolicy" ? null! : OutputValidationPolicy.RejectOnFirstFailure,
-            parameter == "retryPolicy" ? null! : OutputRetryPolicy.None,
-            OutputEndStrategy.Graceful));
-
+        var exception = ShouldThrowExact<ArgumentNullException>(() => _ = new OutputDefinition(new OutputDefinitionId("output"), new OutputDefinitionVersion("1"), "Output", OutputMode.Text, schema: null, runtimeType: null, [], [], parameter == "validationPolicy" ? null! : OutputValidationPolicy.RejectOnFirstFailure, parameter == "retryPolicy" ? null! : OutputRetryPolicy.None, OutputEndStrategy.Graceful));
         exception.ParamName.ShouldBe(parameter);
     }
 
@@ -69,12 +46,7 @@ public sealed class OutputDefinitionTests
     [InlineData("validators")]
     public void Constructor_WhenCollectionIsDefault_ThrowsArgumentException(string parameter)
     {
-        var exception = ShouldThrowExact<ArgumentException>(() => CreateDefinitionCore(
-            new OutputDefinitionId("output"),
-            new OutputDefinitionVersion("1"),
-            parameter == "alternatives" ? default : [],
-            parameter == "validators" ? default : []));
-
+        var exception = ShouldThrowExact<ArgumentException>(() => CreateDefinitionCore(new OutputDefinitionId("output"), new OutputDefinitionVersion("1"), parameter == "alternatives" ? default : [], parameter == "validators" ? default : []));
         exception.ParamName.ShouldBe(parameter);
     }
 
@@ -84,11 +56,7 @@ public sealed class OutputDefinitionTests
     public void With_WhenIdentityOrVersionIsDefault_ThrowsArgumentOutOfRangeException(string property)
     {
         var definition = CreateDefinition();
-
-        var exception = ShouldThrowExact<ArgumentOutOfRangeException>(() => _ = property == "Id"
-            ? definition with { Id = default }
-            : definition with { Version = default });
-
+        var exception = ShouldThrowExact<ArgumentOutOfRangeException>(() => _ = property == "Id" ? definition with { Id = default } : definition with { Version = default });
         exception.ParamName.ShouldBe(property);
     }
 
@@ -99,7 +67,6 @@ public sealed class OutputDefinitionTests
     public void With_WhenNameIsInvalid_ThrowsExactException(string? name, Type exceptionType)
     {
         var definition = CreateDefinition();
-
         var exception = ShouldThrowExact(() => _ = definition with { Name = name! }, exceptionType);
         exception.ParamName.ShouldBe("Name");
     }
@@ -110,11 +77,7 @@ public sealed class OutputDefinitionTests
     public void With_WhenEnumIsUndefined_ThrowsArgumentOutOfRangeException(string property)
     {
         var definition = CreateDefinition();
-
-        var exception = ShouldThrowExact<ArgumentOutOfRangeException>(() => _ = property == "Mode"
-            ? definition with { Mode = (OutputMode) int.MaxValue }
-            : definition with { EndStrategy = (OutputEndStrategy) int.MaxValue });
-
+        var exception = ShouldThrowExact<ArgumentOutOfRangeException>(() => _ = property == "Mode" ? definition with { Mode = (OutputMode) int.MaxValue } : definition with { EndStrategy = (OutputEndStrategy) int.MaxValue });
         exception.ParamName.ShouldBe(property);
     }
 
@@ -122,10 +85,7 @@ public sealed class OutputDefinitionTests
     public void With_WhenAlternativesContainsNull_ThrowsArgumentException()
     {
         var definition = CreateDefinition();
-
-        var exception = ShouldThrowExact<ArgumentException>(
-            () => _ = definition with { Alternatives = [null!] });
-
+        var exception = ShouldThrowExact<ArgumentException>(() => _ = definition with { Alternatives = [null!] });
         exception.ParamName.ShouldBe("Alternatives");
     }
 
@@ -133,10 +93,7 @@ public sealed class OutputDefinitionTests
     public void With_WhenValidatorsContainsDefaultReference_ThrowsArgumentNullException()
     {
         var definition = CreateDefinition();
-
-        var exception = ShouldThrowExact<ArgumentNullException>(
-            () => _ = definition with { Validators = [default] });
-
+        var exception = ShouldThrowExact<ArgumentNullException>(() => _ = definition with { Validators = [default] });
         exception.ParamName.ShouldBe("Validators");
     }
 
@@ -146,11 +103,7 @@ public sealed class OutputDefinitionTests
     public void With_WhenCollectionIsDefault_ThrowsArgumentException(string property)
     {
         var definition = CreateDefinition();
-
-        var exception = ShouldThrowExact<ArgumentException>(() => _ = property == "Alternatives"
-            ? definition with { Alternatives = default }
-            : definition with { Validators = default });
-
+        var exception = ShouldThrowExact<ArgumentException>(() => _ = property == "Alternatives" ? definition with { Alternatives = default } : definition with { Validators = default });
         exception.ParamName.ShouldBe(property);
     }
 
@@ -160,11 +113,7 @@ public sealed class OutputDefinitionTests
     public void With_WhenPolicyIsNull_ThrowsArgumentNullException(string property)
     {
         var definition = CreateDefinition();
-
-        var exception = ShouldThrowExact<ArgumentNullException>(() => _ = property == "ValidationPolicy"
-            ? definition with { ValidationPolicy = null! }
-            : definition with { RetryPolicy = null! });
-
+        var exception = ShouldThrowExact<ArgumentNullException>(() => _ = property == "ValidationPolicy" ? definition with { ValidationPolicy = null! } : definition with { RetryPolicy = null! });
         exception.ParamName.ShouldBe(property);
     }
 
@@ -172,13 +121,11 @@ public sealed class OutputDefinitionTests
     public void With_WhenValuesAreValid_CreatesEqualCopyAndAcceptsEmptyCollections()
     {
         var definition = CreateDefinition();
-
         var copy = definition with
         {
             Alternatives = [],
             Validators = [],
         };
-
         copy.ShouldBe(definition);
         copy.GetHashCode().ShouldBe(definition.GetHashCode());
     }
@@ -187,7 +134,6 @@ public sealed class OutputDefinitionTests
     public void With_WhenValuesChange_CreatesChangedCopyAndPreservesOriginal()
     {
         var definition = CreateDefinition();
-
         var changed = definition with
         {
             Name = "Changed",
@@ -195,7 +141,6 @@ public sealed class OutputDefinitionTests
             Validators = [new OutputValidatorReference("semantic")],
             EndStrategy = OutputEndStrategy.Exhaustive,
         };
-
         changed.Name.ShouldBe("Changed");
         changed.Mode.ShouldBe(OutputMode.Prompted);
         changed.Validators.ShouldHaveSingleItem().Name.ShouldBe("semantic");
@@ -206,93 +151,8 @@ public sealed class OutputDefinitionTests
         definition.EndStrategy.ShouldBe(OutputEndStrategy.Graceful);
     }
 
-    [Fact]
-    public void OutputAlternative_WithInvalidValues_ThrowsAttributedExceptions()
-    {
-        var alternative = new OutputAlternative("primary", CreateSchema());
-
-        ShouldThrowExact<ArgumentException>(() => _ = alternative with { Name = " " }).ParamName.ShouldBe("Name");
-        ShouldThrowExact<ArgumentNullException>(() => _ = alternative with { Schema = null! }).ParamName.ShouldBe("Schema");
-    }
-
-    [Theory]
-    [InlineData(null, typeof(ArgumentNullException))]
-    [InlineData("", typeof(ArgumentException))]
-    [InlineData(" ", typeof(ArgumentException))]
-    public void OutputAlternative_ConstructorWhenNameIsInvalid_ThrowsExactException(string? name, Type exceptionType)
-    {
-        var exception = ShouldThrowExact(() => _ = new OutputAlternative(name!, CreateSchema()), exceptionType);
-        exception.ParamName.ShouldBe("name");
-    }
-
-    [Fact]
-    public void OutputAlternative_ConstructorWhenSchemaIsNull_ThrowsArgumentNullException()
-    {
-        var exception = ShouldThrowExact<ArgumentNullException>(() => _ = new OutputAlternative("primary", null!));
-
-        exception.ParamName.ShouldBe("schema");
-    }
-
-    [Theory]
-    [InlineData(null, typeof(ArgumentNullException))]
-    [InlineData("", typeof(ArgumentException))]
-    [InlineData(" ", typeof(ArgumentException))]
-    public void OutputAlternative_WithWhenNameIsInvalid_ThrowsExactException(string? name, Type exceptionType)
-    {
-        var alternative = new OutputAlternative("primary", CreateSchema());
-
-        var exception = ShouldThrowExact(() => _ = alternative with { Name = name! }, exceptionType);
-        exception.ParamName.ShouldBe("Name");
-    }
-
-    [Fact]
-    public void OutputAlternative_WithValidValues_CreatesChangedCopyAndLeavesOriginalUnchanged()
-    {
-        var schema = CreateSchema();
-        var alternative = new OutputAlternative("primary", schema);
-
-        var changed = alternative with { Name = "secondary" };
-
-        changed.Name.ShouldBe("secondary");
-        changed.Schema.ShouldBe(schema);
-        alternative.Name.ShouldBe("primary");
-    }
-
-    private static OutputDefinition CreateDefinition(
-        OutputDefinitionId? id = null,
-        OutputDefinitionVersion? version = null,
-        ImmutableArray<OutputAlternative>? alternatives = null,
-        ImmutableArray<OutputValidatorReference>? validators = null) =>
-        CreateDefinitionCore(
-            id ?? new OutputDefinitionId("output"),
-            version ?? new OutputDefinitionVersion("1"),
-            alternatives ?? [],
-            validators ?? []);
-
-    private static OutputDefinition CreateDefinitionCore(
-        OutputDefinitionId id,
-        OutputDefinitionVersion version,
-        ImmutableArray<OutputAlternative> alternatives,
-        ImmutableArray<OutputValidatorReference> validators) =>
-        new(
-            id,
-            version,
-            "Output",
-            OutputMode.Text,
-            schema: null,
-            runtimeType: null,
-            alternatives,
-            validators,
-            OutputValidationPolicy.RejectOnFirstFailure,
-            OutputRetryPolicy.None,
-            OutputEndStrategy.Graceful);
-
-    private static JsonSchemaDocument CreateSchema()
-    {
-        using var document = JsonDocument.Parse("true");
-        return new JsonSchemaDocument("schema", new SchemaVersion("1"), document.RootElement);
-    }
-
+    private static OutputDefinition CreateDefinition(OutputDefinitionId? id = null, OutputDefinitionVersion? version = null, ImmutableArray<OutputAlternative>? alternatives = null, ImmutableArray<OutputValidatorReference>? validators = null) => CreateDefinitionCore(id ?? new OutputDefinitionId("output"), version ?? new OutputDefinitionVersion("1"), alternatives ?? [], validators ?? []);
+    private static OutputDefinition CreateDefinitionCore(OutputDefinitionId id, OutputDefinitionVersion version, ImmutableArray<OutputAlternative> alternatives, ImmutableArray<OutputValidatorReference> validators) => new(id, version, "Output", OutputMode.Text, schema: null, runtimeType: null, alternatives, validators, OutputValidationPolicy.RejectOnFirstFailure, OutputRetryPolicy.None, OutputEndStrategy.Graceful);
     private static TException ShouldThrowExact<TException>(Action action)
         where TException : Exception
     {

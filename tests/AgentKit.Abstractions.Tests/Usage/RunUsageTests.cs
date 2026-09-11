@@ -5,14 +5,13 @@ namespace AgentKit.Abstractions.Tests.Usage;
 
 using System.Numerics;
 
+/// <summary>Verifies RunUsage behavior and contracts.</summary>
 public sealed class RunUsageTests
 {
     internal static readonly RunId Run = new(Guid.Parse("30000000-0000-0000-0000-000000000001"));
     internal static readonly OperationId Operation = new(Guid.Parse("40000000-0000-0000-0000-000000000001"));
     internal static readonly BudgetUnit Tokens = new("tokens");
-    internal static readonly ModelUsageAttribution Model = new(new ModelRequestId(Guid.Parse("50000000-0000-0000-0000-000000000001")),
-        new ProviderId("provider"), new ApiFamilyId("family"), new ModelId("model"));
-
+    internal static readonly ModelUsageAttribution Model = new(new ModelRequestId(Guid.Parse("50000000-0000-0000-0000-000000000001")), new ProviderId("provider"), new ApiFamilyId("family"), new ModelId("model"));
     [Fact]
     public void Apply_WhenInterimIsReplacedByFinalAndCorrected_CountsLatestEvidenceOnceAndPreservesPriorSnapshots()
     {
@@ -21,7 +20,6 @@ public sealed class RunUsageTests
         var terminal = Entry(1, [Measure(12)], revision: 2, reportState: ModelUsageReportState.Final);
         var final = original.Apply(terminal);
         var corrected = final.Apply(Entry(1, [Measure(9)], revision: 3, reportState: ModelUsageReportState.Final));
-
         Total(original).Amount.ShouldBe(BudgetQuantity.FromDecimal(20));
         Total(original).HasEstimates.ShouldBeTrue();
         Total(final).Amount.ShouldBe(BudgetQuantity.FromDecimal(12));
@@ -39,7 +37,6 @@ public sealed class RunUsageTests
         var retry = Entry(2, [Measure(11)]);
         var usage = new RunUsage(Run, []).Apply(first).Apply(retry);
         var corrected = usage.Apply(Entry(1, [Measure(4)], revision: 2));
-
         Total(usage).Amount.ShouldBe(BudgetQuantity.FromDecimal(18));
         Total(corrected).Amount.ShouldBe(BudgetQuantity.FromDecimal(15));
         corrected.Entries.Select(static entry => entry.Id).ShouldBe([first.Id, retry.Id]);
@@ -61,12 +58,16 @@ public sealed class RunUsageTests
             _ => [Measure(0)],
         };
         var usage = new RunUsage(Run, [Entry(1, [Measure(8)]), Entry(2, observations)]);
-
         var total = Total(usage);
-
         total.KnownAmount.ShouldBe(BudgetQuantity.FromDecimal(8));
-        if (scenario is "missing" or "unknown") { total.Amount.ShouldBeNull(); }
-        else { total.Amount.ShouldBe(BudgetQuantity.FromDecimal(8)); }
+        if (scenario is "missing" or "unknown")
+        {
+            total.Amount.ShouldBeNull();
+        }
+        else
+        {
+            total.Amount.ShouldBe(BudgetQuantity.FromDecimal(8));
+        }
     }
 
     [Fact]
@@ -102,19 +103,11 @@ public sealed class RunUsageTests
     public void GetAggregate_WhenValuesExceedDecimalRange_PreservesExactSumAndMixedQualities()
     {
         var huge = new BudgetQuantity(BigInteger.Parse("999999999999999999999999999999999999999", System.Globalization.CultureInfo.InvariantCulture), 0);
-        var usage = new RunUsage(Run,
-        [
-            Entry(1, [new(BudgetDimensions.InputTokens, Tokens, huge, UsageMeasurementQuality.ProviderReported)]),
-            Entry(2, [Measure(1, UsageMeasurementQuality.Measured)]),
-            Entry(3, [Measure(2, UsageMeasurementQuality.Estimated)]),
-        ]);
-
+        var usage = new RunUsage(Run, [Entry(1, [new(BudgetDimensions.InputTokens, Tokens, huge, UsageMeasurementQuality.ProviderReported)]), Entry(2, [Measure(1, UsageMeasurementQuality.Measured)]), Entry(3, [Measure(2, UsageMeasurementQuality.Estimated)]),]);
         var aggregate = Total(usage);
-
         aggregate.Amount.ShouldBe(huge.Add(BudgetQuantity.FromDecimal(3)));
         aggregate.HasEstimates.ShouldBeTrue();
-        aggregate.Measurements.Select(static value => value.Quality).ShouldBe([
-            UsageMeasurementQuality.ProviderReported, UsageMeasurementQuality.Measured, UsageMeasurementQuality.Estimated]);
+        aggregate.Measurements.Select(static value => value.Quality).ShouldBe([UsageMeasurementQuality.ProviderReported, UsageMeasurementQuality.Measured, UsageMeasurementQuality.Estimated]);
     }
 
     [Fact]
@@ -123,16 +116,10 @@ public sealed class RunUsageTests
         var usd = new BudgetUnit("usd");
         var eur = new BudgetUnit("eur");
         var pricing = new UsagePricingReference("test pricing catalog", "revision-4");
-        var usage = new RunUsage(Run,
-        [
-            Entry(1, [new(BudgetDimensions.Cost, usd, BudgetQuantity.FromDecimal(1.2m), UsageMeasurementQuality.Estimated, pricing)]),
-            Entry(2, [new(BudgetDimensions.Cost, eur, BudgetQuantity.FromDecimal(2.3m), UsageMeasurementQuality.ProviderReported)]),
-        ]);
+        var usage = new RunUsage(Run, [Entry(1, [new(BudgetDimensions.Cost, usd, BudgetQuantity.FromDecimal(1.2m), UsageMeasurementQuality.Estimated, pricing)]), Entry(2, [new(BudgetDimensions.Cost, eur, BudgetQuantity.FromDecimal(2.3m), UsageMeasurementQuality.ProviderReported)]),]);
         var descriptor = new BudgetDimensionDescriptor(BudgetDimensions.Cost, BudgetAggregationKind.Sum, [usd, eur]);
-
         var dollars = usage.GetAggregate(descriptor, usd);
         var euros = usage.GetAggregate(descriptor, eur);
-
         dollars.Amount.ShouldBe(BudgetQuantity.FromDecimal(1.2m));
         euros.Amount.ShouldBe(BudgetQuantity.FromDecimal(2.3m));
         dollars.Measurements[0].Pricing.ShouldBe(pricing);
@@ -143,11 +130,16 @@ public sealed class RunUsageTests
     [Fact]
     public void GetAggregate_WhenTokenCategoriesOverlap_RetainsIndependentDimensionsWithoutInventingTotalTokens()
     {
-        var dimensions = new[] { BudgetDimensions.InputTokens, BudgetDimensions.OutputTokens, BudgetDimensions.ReasoningTokens,
-            BudgetDimensions.CachedReadTokens, BudgetDimensions.CachedWriteTokens };
+        var dimensions = new[]
+        {
+            BudgetDimensions.InputTokens,
+            BudgetDimensions.OutputTokens,
+            BudgetDimensions.ReasoningTokens,
+            BudgetDimensions.CachedReadTokens,
+            BudgetDimensions.CachedWriteTokens
+        };
         var measurements = dimensions.Select((dimension, index) => new UsageMeasurement(dimension, Tokens, BudgetQuantity.FromDecimal(index + 1), UsageMeasurementQuality.ProviderReported)).ToImmutableArray();
         var usage = new RunUsage(Run, [Entry(1, measurements)]);
-
         for (var index = 0; index < dimensions.Length; index++)
         {
             usage.GetAggregate(new(dimensions[index], BudgetAggregationKind.Sum, [Tokens]), Tokens).Amount.ShouldBe(BudgetQuantity.FromDecimal(index + 1));
@@ -168,15 +160,8 @@ public sealed class RunUsageTests
         var current = Entry(1, [Measure(4)], revision: 2, reportState: ModelUsageReportState.Final);
         var usage = new RunUsage(Run, [current]);
         var changedModel = new ModelUsageAttribution(Model.RequestId, Model.ProviderId, Model.ApiFamily, new ModelId("changed"));
-        var update = Entry(conflict == "new-revision" ? 2 : 1, [Measure(9)],
-            revision: conflict == "old-revision" ? 1 : conflict is "new-revision" or "conflicting-replay" ? 2 : conflict == "skipped-revision" ? 4 : 3,
-            runId: conflict == "run" ? new RunId(Guid.Parse("30000000-0000-0000-0000-000000000099")) : Run,
-            operation: conflict == "operation" ? new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000099")) : Operation,
-            model: conflict == "model" ? changedModel : Model,
-            reportState: conflict == "report-regression" ? ModelUsageReportState.Interim : ModelUsageReportState.Final);
-
+        var update = Entry(conflict == "new-revision" ? 2 : 1, [Measure(9)], revision: conflict == "old-revision" ? 1 : conflict is "new-revision" or "conflicting-replay" ? 2 : conflict == "skipped-revision" ? 4 : 3, runId: conflict == "run" ? new RunId(Guid.Parse("30000000-0000-0000-0000-000000000099")) : Run, operation: conflict == "operation" ? new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000099")) : Operation, model: conflict == "model" ? changedModel : Model, reportState: conflict == "report-regression" ? ModelUsageReportState.Interim : ModelUsageReportState.Final);
         var exception = Should.Throw<ArgumentException>(() => usage.Apply(update));
-
         exception.GetType().ShouldBe(typeof(ArgumentException));
         exception.ParamName.ShouldBe("entry");
         usage.Entries.ShouldHaveSingleItem().ShouldBeSameAs(current);
@@ -193,7 +178,11 @@ public sealed class RunUsageTests
         first.Entries[0].GetHashCode().ShouldBe(second.Entries[0].GetHashCode());
         Total(first).ShouldBe(Total(second));
         Total(first).GetHashCode().ShouldBe(Total(second).GetHashCode());
-        (first with { }).ShouldBe(first);
+        (first with
+        {
+        }
+
+        ).ShouldBe(first);
     }
 
     [Fact]
@@ -203,11 +192,8 @@ public sealed class RunUsageTests
         var adjustment = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("billing.correction", new([116, 114, 117, 101])));
         var basis = Entry(1, [Measure(3)]);
         var report = new ModelUsage(ModelUsageReportState.Final, 3, 4, 2, 1, null, "usd", native);
-        var entry = new UsageAccountingEntry(basis.Id, Run, Operation, new(2), new UsageAccountingRevision(1),
-            [Measure(3)], Model, report, adjustment);
-
+        var entry = new UsageAccountingEntry(basis.Id, Run, Operation, new(2), new UsageAccountingRevision(1), [Measure(3)], Model, report, adjustment);
         var updated = new RunUsage(Run, [basis]).Apply(entry);
-
         updated.Entries[0].ProviderUsage.ShouldBeSameAs(report);
         updated.Entries[0].ProviderUsage!.Extensions.ShouldBe(native);
         updated.Entries[0].Extensions.ShouldBe(adjustment);
@@ -222,14 +208,76 @@ public sealed class RunUsageTests
         usage.Entries[0].ProviderUsage!.ReportState.ShouldBe(ModelUsageReportState.Interim);
     }
 
-    internal static UsageMeasurement Measure(decimal amount, UsageMeasurementQuality quality = UsageMeasurementQuality.ProviderReported) =>
-        new(BudgetDimensions.InputTokens, Tokens, BudgetQuantity.FromDecimal(amount), quality);
-
-    internal static UsageAccountingEntry Entry(int id, ImmutableArray<UsageMeasurement> measurements, long revision = 1,
-        RunId? runId = null, OperationId? operation = null, ModelUsageAttribution? model = null, ModelUsageReportState reportState = ModelUsageReportState.NotReported) =>
-        new(new UsageEntryId(new Guid(id, 0, 0, new byte[8])), runId ?? Run, operation ?? Operation,
-            new UsageAccountingRevision(revision), revision == 1 ? null : new UsageAccountingRevision(revision - 1),
-            measurements, model ?? Model, new ModelUsage(reportState, null, null, null, null, null, null, ExtensionData.Empty), ExtensionData.Empty);
-
+    internal static UsageMeasurement Measure(decimal amount, UsageMeasurementQuality quality = UsageMeasurementQuality.ProviderReported) => new(BudgetDimensions.InputTokens, Tokens, BudgetQuantity.FromDecimal(amount), quality);
+    internal static UsageAccountingEntry Entry(int id, ImmutableArray<UsageMeasurement> measurements, long revision = 1, RunId? runId = null, OperationId? operation = null, ModelUsageAttribution? model = null, ModelUsageReportState reportState = ModelUsageReportState.NotReported) => new(new UsageEntryId(new Guid(id, 0, 0, new byte[8])), runId ?? Run, operation ?? Operation, new UsageAccountingRevision(revision), revision == 1 ? null : new UsageAccountingRevision(revision - 1), measurements, model ?? Model, new ModelUsage(reportState, null, null, null, null, null, null, ExtensionData.Empty), ExtensionData.Empty);
     private static RunUsageAggregate Total(RunUsage usage) => usage.GetAggregate(new(BudgetDimensions.InputTokens, BudgetAggregationKind.Sum, [Tokens]), Tokens);
+    [Theory]
+    [InlineData("default")]
+    [InlineData("null")]
+    [InlineData("duplicate")]
+    [InlineData("foreign")]
+    public void Constructor_WhenSnapshotEntriesAreInvalid_RejectsExactCollection(string kind)
+    {
+        var entry = Entry(1, []);
+        ImmutableArray<UsageAccountingEntry> entries = kind switch
+        {
+            "default" => default,
+            "null" => [null!],
+            "duplicate" => [entry, entry],
+            _ => [Entry(1, [], runId: new RunId(Guid.Parse("00000000-0000-0000-0000-000000000099")))],
+        };
+        var exception = Should.Throw<ArgumentException>(() => new RunUsage(Run, entries));
+        exception.ParamName.ShouldBe("entries");
+        exception.GetType().ShouldBe(kind == "null" ? typeof(ArgumentNullException) : typeof(ArgumentException));
+    }
+
+    [Fact]
+    public void Constructor_WhenSnapshotRunIsDefault_RejectsExactArgument() => Should.Throw<ArgumentOutOfRangeException>(() => new RunUsage(default, [])).ParamName.ShouldBe("runId");
+    [Theory]
+    [InlineData("null")]
+    [InlineData("dimension")]
+    [InlineData("aggregation")]
+    [InlineData("default-units")]
+    [InlineData("empty-units")]
+    [InlineData("default-unit")]
+    [InlineData("duplicate-units")]
+    [InlineData("unknown-unit")]
+    [InlineData("selected-default")]
+    public void GetAggregate_WhenDescriptorOrUnitIsInvalid_RejectsExactArgument(string invalid)
+    {
+        var basis = new BudgetDimensionDescriptor(BudgetDimensions.InputTokens, BudgetAggregationKind.Sum, [Tokens]);
+        var descriptor = invalid switch
+        {
+            "null" => null,
+            "dimension" => basis with
+            {
+                Dimension = default
+            },
+            "aggregation" => basis with
+            {
+                Aggregation = (BudgetAggregationKind) (-1)
+            },
+            "default-units" => basis with
+            {
+                AllowedUnits = default
+            },
+            "empty-units" => basis with
+            {
+                AllowedUnits = []
+            },
+            "default-unit" => basis with
+            {
+                AllowedUnits = [default]
+            },
+            "duplicate-units" => basis with
+            {
+                AllowedUnits = [Tokens, Tokens]
+            },
+            _ => basis,
+        };
+        var unit = invalid == "selected-default" ? default : invalid == "unknown-unit" ? new BudgetUnit("different") : Tokens;
+        var exception = Should.Throw<ArgumentException>(() => new RunUsage(Run, []).GetAggregate(descriptor!, unit));
+        exception.ParamName.ShouldBe(invalid is "selected-default" or "unknown-unit" ? "unit" : "descriptor");
+        exception.GetType().ShouldBe(invalid == "null" ? typeof(ArgumentNullException) : invalid is "dimension" or "aggregation" or "default-unit" or "selected-default" ? typeof(ArgumentOutOfRangeException) : typeof(ArgumentException));
+    }
 }

@@ -11,7 +11,7 @@ using AgentKit;
 /// Exercises the fencing token's allocation guard and its ordering contract,
 /// which is what lets a store reject a stale worker's write.
 /// </summary>
-public sealed class FencingTokenTests
+public sealed class FencingTokenTests: Conformance.LongIdentityConformanceTests<FencingToken>
 {
     [Fact]
     public void Constructor_WhenValueIsZero_ThrowsArgumentOutOfRangeException()
@@ -76,4 +76,13 @@ public sealed class FencingTokenTests
     [Fact]
     public void ToString_ReturnsInvariantCultureText() =>
         new FencingToken(42).ToString().ShouldBe(42.ToString(CultureInfo.InvariantCulture));
+
+    /// <inheritdoc/>
+    protected override FencingToken Create(long value) => new(value);
+
+    /// <inheritdoc/>
+    protected override long GetValue(FencingToken subject) => subject.Value;
+
+    /// <inheritdoc/>
+    protected override bool RequiresPositiveValue => true;
 }

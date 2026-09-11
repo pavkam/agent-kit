@@ -17,6 +17,15 @@ disposal tests. AgentKit.Test.Shared contains deterministic fakes and fixtures;
 AgentKit.Conformance contains reusable behavioral suites; and
 AgentKit.Compatibility.Tests snapshots every packable public API.
 
+Concrete fixtures are named `<ProductionClass>Tests` and contain that class's
+argument checks, behavioral cases, diagnostics, and regressions. Merge these
+cases into the existing fixture instead of creating scenario or invariant
+fixtures. Concrete fixtures inherit applicable abstract conformance suites;
+shared value suites use typed factories and accessors supplied by the owning
+fixture. Behavioral construction and assertions do not discover constructors or
+properties through reflection. Reflection is appropriate when reflection or API
+metadata is itself the contract being tested.
+
 Provider packages that reuse OpenAICompatible run both the shared protocol
 family suite and their concrete provider suite. The latter verifies the
 [provider-request contract](../concepts/provider-request-pipeline.md), including

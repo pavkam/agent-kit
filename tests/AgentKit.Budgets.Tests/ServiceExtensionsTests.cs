@@ -11,7 +11,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
 
         _ = services.AddAgentBudgets();
-        _ = services.AddSingleton<IBudgetLedger, BudgetRuntimeTests.RecordingLedger>();
+        _ = services.AddSingleton<IBudgetLedger, RecordingBudgetLedger>();
 
         using var provider = services.BuildServiceProvider();
         _ = provider.GetRequiredService<IBudgetAuthority>().ShouldBeOfType<BudgetAuthority>();
@@ -24,7 +24,7 @@ public sealed class ServiceExtensionsTests
 
         _ = services.AddAgentBudgets();
         _ = services.AddAgentBudgets();
-        _ = services.AddSingleton<IBudgetLedger, BudgetRuntimeTests.RecordingLedger>();
+        _ = services.AddSingleton<IBudgetLedger, RecordingBudgetLedger>();
 
         using var provider = services.BuildServiceProvider();
         provider.GetServices<IBudgetAuthority>().Count().ShouldBe(1);
@@ -51,7 +51,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
 
         _ = services.AddAgentBudgets(options => options.MaximumScopeDepth = depth);
-        _ = services.AddSingleton<IBudgetLedger, BudgetRuntimeTests.RecordingLedger>();
+        _ = services.AddSingleton<IBudgetLedger, RecordingBudgetLedger>();
 
         using var provider = services.BuildServiceProvider();
         _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IBudgetAuthority>);
@@ -115,8 +115,8 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddAgentBudgets();
-        _ = services.AddSingleton<IBudgetLedger, BudgetRuntimeTests.RecordingLedger>();
-        _ = services.AddSingleton<IBudgetLedger, BudgetRuntimeTests.RecordingLedger>();
+        _ = services.AddSingleton<IBudgetLedger, RecordingBudgetLedger>();
+        _ = services.AddSingleton<IBudgetLedger, RecordingBudgetLedger>();
 
         using var provider = services.BuildServiceProvider();
 

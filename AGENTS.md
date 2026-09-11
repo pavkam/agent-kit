@@ -464,6 +464,11 @@ The architecture index defines document authority and change rules.
   an existing fixture when present. Do not split a class's tests by scenario or
   invariant, or group tests from different production classes. Concrete fixtures
   also inherit applicable reusable contract suites.
+- Behavioral tests use strongly typed constructors, accessors, and fixture
+  factories. Treat reflection-based construction or member discovery as a sign
+  to revisit the test abstraction; do not hide it inside a shared base fixture.
+  Reflection remains appropriate when the contract under test is itself
+  reflective, such as API extraction or metadata discovery.
 - Write reusable conformance suites for every swappable contract, then run the
   same suite against every adapter. Storage suites must cover the common
   contract for both `.InMemory` and `.Sqlite`, with separate capability tests

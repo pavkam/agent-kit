@@ -9,11 +9,7 @@ using AgentKit.Providers.ZAI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
-/// <summary>
-/// Verifies the <c>AddOpenAI*</c> dependency-injection registration
-/// surface: endpoint options, credential source selection, and additive
-/// model registration.
-/// </summary>
+/// <summary>Verifies ServiceExtensions behavior and contracts.</summary>
 public sealed class ServiceExtensionsTests
 {
     [Fact]
@@ -21,10 +17,8 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddOpenAI();
-
         using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<OpenAIProviderOptions>>().Value;
-
         options.BaseAddress.ShouldBe(OpenAIProviderDefaults.DefaultBaseAddress);
         options.ChatCompletionsPath.ShouldBe(OpenAIProviderDefaults.DefaultChatCompletionsPath);
     }
@@ -38,10 +32,8 @@ public sealed class ServiceExtensionsTests
             options.BaseAddress = new Uri("https://example.test/");
             options.PreferStreaming = false;
         });
-
         using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<OpenAIProviderOptions>>().Value;
-
         options.BaseAddress.ShouldBe(new Uri("https://example.test/"));
         options.PreferStreaming.ShouldBeFalse();
     }
@@ -51,11 +43,8 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddOpenAI(options => options.BaseAddress = new Uri("not-absolute", UriKind.Relative));
-
         using var provider = services.BuildServiceProvider();
-
-        _ = Should.Throw<OptionsValidationException>(
-            () => provider.GetRequiredService<IStartupValidator>().Validate());
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
     }
 
     [Theory]
@@ -65,11 +54,8 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddOpenAI(options => options.ChatCompletionsPath = path);
-
         using var provider = services.BuildServiceProvider();
-
-        _ = Should.Throw<OptionsValidationException>(
-            () => provider.GetRequiredService<IStartupValidator>().Validate());
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
     }
 
     [Fact]
@@ -78,10 +64,8 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddOpenAI();
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
-
         using var provider = services.BuildServiceProvider();
         var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId);
-
         _ = source.ShouldBeOfType<StaticApiKeyCredentialSource>();
     }
 
@@ -92,10 +76,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAI();
         _ = services.AddOpenAIOAuthCredential<StaticOAuthTokenProviderRegistration>();
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
-
         using var provider = services.BuildServiceProvider();
         var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId);
-
         _ = source.ShouldBeOfType<DelegatingOAuthCredentialSource>();
     }
 
@@ -107,13 +89,10 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAILlmModel(new ModelAlias("fast"), new ModelId("gpt-4o-mini"));
         _ = services.AddOpenAILlmModel(new ModelAlias("smart"), new ModelId("gpt-4o"));
-
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<ILlmModel>().ToArray();
-
         models.Length.ShouldBe(2);
         models.Select(m => m.Alias.Value).ShouldBe(["fast", "smart"], ignoreOrder: true);
-
         await Task.CompletedTask;
     }
 
@@ -124,22 +103,13 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAIApiKeyCredential("openai-key");
         _ = services.AddOpenRouterApiKeyCredential("openrouter-key");
         _ = services.AddZAIApiKeyCredential("zai-key");
-
         using var provider = services.BuildServiceProvider();
         var openAI = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId);
         var openRouter = provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenRouterProviderDefaults.ProviderId);
         var zAI = provider.GetRequiredKeyedService<IProviderCredentialSource>(ZAIProviderDefaults.ProviderId);
-
-        var openAICredential = await openAI.GetCredentialAsync(
-            OpenAIProviderDefaults.ProviderId,
-            TestContext.Current.CancellationToken);
-        var openRouterCredential = await openRouter.GetCredentialAsync(
-            OpenRouterProviderDefaults.ProviderId,
-            TestContext.Current.CancellationToken);
-        var zAICredential = await zAI.GetCredentialAsync(
-            ZAIProviderDefaults.ProviderId,
-            TestContext.Current.CancellationToken);
-
+        var openAICredential = await openAI.GetCredentialAsync(OpenAIProviderDefaults.ProviderId, TestContext.Current.CancellationToken);
+        var openRouterCredential = await openRouter.GetCredentialAsync(OpenRouterProviderDefaults.ProviderId, TestContext.Current.CancellationToken);
+        var zAICredential = await zAI.GetCredentialAsync(ZAIProviderDefaults.ProviderId, TestContext.Current.CancellationToken);
         openAICredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("openai-key");
         openRouterCredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("openrouter-key");
         zAICredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("zai-key");
@@ -152,10 +122,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAI();
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAILlmModel(new ModelAlias("chat"), new ModelId("gpt-4o"));
-
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OpenAILlmModel>();
-
         model.Alias.ShouldBe(new ModelAlias("chat"));
     }
 
@@ -164,11 +132,8 @@ public sealed class ServiceExtensionsTests
     {
         var services = new ServiceCollection();
         _ = services.AddOpenAI(options => options.EmbeddingsPath = "https://evil.example.test/embeddings");
-
         using var provider = services.BuildServiceProvider();
-
-        _ = Should.Throw<OptionsValidationException>(
-            () => provider.GetRequiredService<IStartupValidator>().Validate());
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
     }
 
     [Fact]
@@ -179,10 +144,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("small"), new ModelId("text-embedding-3-small"));
         _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("large"), new ModelId("text-embedding-3-large"));
-
         using var provider = services.BuildServiceProvider();
         var models = provider.GetServices<IEmbeddingModel>().ToArray();
-
         models.Length.ShouldBe(2);
         models.Select(m => m.Alias.Value).ShouldBe(["small", "large"], ignoreOrder: true);
     }
@@ -194,10 +157,8 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAI();
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("embed"), new ModelId("text-embedding-3-small"));
-
         using var provider = services.BuildServiceProvider();
         var model = provider.GetRequiredService<IEmbeddingModel>().ShouldBeOfType<OpenAIEmbeddingModel>();
-
         model.Alias.ShouldBe(new EmbeddingModelAlias("embed"));
     }
 
@@ -209,16 +170,44 @@ public sealed class ServiceExtensionsTests
         _ = services.AddOpenAIApiKeyCredential("sk-test-key");
         _ = services.AddOpenAILlmModel(new ModelAlias("chat"), new ModelId("gpt-4o"));
         _ = services.AddOpenAIEmbeddingModel(new EmbeddingModelAlias("chat"), new ModelId("text-embedding-3-small"));
-
         using var provider = services.BuildServiceProvider();
-
         provider.GetRequiredService<ILlmModel>().Alias.ShouldBe(new ModelAlias("chat"));
         provider.GetRequiredService<IEmbeddingModel>().Alias.ShouldBe(new EmbeddingModelAlias("chat"));
     }
 
     private sealed class StaticOAuthTokenProviderRegistration: IOAuthAccessTokenProvider
     {
-        public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new OAuthTokenProviderCredential("token", null));
+        public ValueTask<OAuthTokenProviderCredential> GetAccessTokenAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult(new OAuthTokenProviderCredential("token", null));
+    }
+
+    [Fact]
+    public async Task AddProviderCredentials_WhenAllProvidersCoexist_ResolvesEachProviderOwnCredential()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOpenAI();
+        _ = services.AddOpenAIApiKeyCredential("openai-key");
+        _ = services.AddOpenAILlmModel(new ModelAlias("openai-chat"), new ModelId("gpt-test"));
+        _ = services.AddOpenRouter();
+        _ = services.AddOpenRouterApiKeyCredential("openrouter-key");
+        _ = services.AddOpenRouterLlmModel(new ModelAlias("openrouter-chat"), new ModelId("provider/model-test"));
+        _ = services.AddZAI();
+        _ = services.AddZAIApiKeyCredential("zai-key");
+        _ = services.AddZAILlmModel(new ModelAlias("zai-chat"), new ModelId("glm-test"));
+        await using var provider = services.BuildServiceProvider();
+        var models = provider.GetServices<ILlmModel>().ToArray();
+        models.Select(model => model.Alias.Value).ShouldBe(["openai-chat", "openrouter-chat", "zai-chat"], ignoreOrder: true);
+        var openAICredential = await ResolveApiKeyAsync(provider, OpenAIProviderDefaults.ProviderId);
+        var openRouterCredential = await ResolveApiKeyAsync(provider, OpenRouterProviderDefaults.ProviderId);
+        var zAICredential = await ResolveApiKeyAsync(provider, ZAIProviderDefaults.ProviderId);
+        openAICredential.ApiKey.ShouldBe("openai-key");
+        openRouterCredential.ApiKey.ShouldBe("openrouter-key");
+        zAICredential.ApiKey.ShouldBe("zai-key");
+    }
+
+    private static async ValueTask<ApiKeyProviderCredential> ResolveApiKeyAsync(IServiceProvider provider, ProviderId providerId)
+    {
+        var source = provider.GetRequiredKeyedService<IProviderCredentialSource>(providerId);
+        var credential = await source.GetCredentialAsync(providerId, TestContext.Current.CancellationToken).ConfigureAwait(false);
+        return credential.ShouldBeOfType<ApiKeyProviderCredential>();
     }
 }

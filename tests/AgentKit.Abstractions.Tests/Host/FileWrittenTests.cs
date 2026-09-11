@@ -1,0 +1,24 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Abstractions.Tests.Host;
+
+using AgentKit;
+
+/// <summary>Verifies FileWritten behavior and contracts.</summary>
+public sealed class FileWrittenTests
+{
+    [Fact]
+    public void FileWritten_Constructor_WhenBytesWrittenNegative_ThrowsArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new FileWritten(-1));
+        exception.ParamName.ShouldBe("bytesWritten");
+    }
+
+    [Fact]
+    public void FileWritten_Constructor_WhenValid_RoundTripsBytesWritten()
+    {
+        var written = new FileWritten(42);
+        written.BytesWritten.ShouldBe(42);
+    }
+}

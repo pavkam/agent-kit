@@ -7,7 +7,7 @@ using System.Text.Json;
 
 using AgentKit.TestSupport;
 
-public sealed class DeferredRequestIdTests
+public sealed class DeferredRequestIdTests: Conformance.GuidIdentityConformanceTests<DeferredRequestId>
 {
     [Fact]
     public void Constructor_WhenDeferredIdentityIsEmpty_RejectsAndPreservesValidJsonRoundTrip()
@@ -17,4 +17,10 @@ public sealed class DeferredRequestIdTests
         JsonSerializer.Deserialize<DeferredRequestId>(JsonSerializer.Serialize(id)).ShouldBe(id);
         _ = Should.Throw<ArgumentOutOfRangeException>(() => JsonSerializer.Deserialize<DeferredRequestId>("{\"Value\":\"00000000-0000-0000-0000-000000000000\"}"));
     }
+
+    /// <inheritdoc/>
+    protected override DeferredRequestId Create(Guid value) => new(value);
+
+    /// <inheritdoc/>
+    protected override Guid GetValue(DeferredRequestId subject) => subject.Value;
 }

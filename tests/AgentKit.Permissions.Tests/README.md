@@ -11,7 +11,6 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [DefaultSecurityAuditDispatcherConformanceTests](DefaultSecurityAuditDispatcherConformanceTests.cs)
 - [DefaultSecurityAuditDispatcherTests](DefaultSecurityAuditDispatcherTests.cs)
 - [DefaultSecurityAuthoritySelectorTests](DefaultSecurityAuthoritySelectorTests.cs)
 - [DefaultSecurityProfilePublicationReaderTests](DefaultSecurityProfilePublicationReaderTests.cs)

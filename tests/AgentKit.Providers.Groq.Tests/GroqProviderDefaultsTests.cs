@@ -3,11 +3,9 @@
 
 namespace AgentKit.Providers.Groq.Tests;
 
-/// <summary>
-/// Verifies <see cref="GroqProviderDefaults.CreateProfile"/> maps
-/// <see cref="GroqProviderOptions"/> onto the wire-behavior fields an
-/// <see cref="OpenAICompatibilityProfile"/> needs.
-/// </summary>
+
+
+/// <summary>Verifies GroqProviderDefaults behavior and contracts.</summary>
 public sealed class GroqProviderDefaultsTests
 {
     [Fact]
@@ -20,9 +18,7 @@ public sealed class GroqProviderDefaultsTests
             PreferStreaming = false,
             IncludeStreamUsage = false,
         };
-
         var profile = GroqProviderDefaults.CreateProfile(options);
-
         profile.BaseAddress.ShouldBe(options.BaseAddress);
         profile.ChatCompletionsPath.ShouldBe(options.ChatCompletionsPath);
         profile.PreferStreaming.ShouldBeFalse();
@@ -31,8 +27,4 @@ public sealed class GroqProviderDefaultsTests
         profile.SendDeveloperRoleAsSystem.ShouldBeTrue();
         profile.ChatCompletionsUri.ShouldBe(new Uri("https://example.test/v2/chat"));
     }
-
-    [Fact]
-    public void ProviderId_IsStableGroqIdentity() =>
-        GroqProviderDefaults.ProviderId.ShouldBe(new ProviderId("groq"));
 }

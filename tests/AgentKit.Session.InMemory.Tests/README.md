@@ -11,11 +11,8 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [AppendAsyncTests](AppendAsyncTests.cs)
-- [AtomicRunAcceptanceTests](AtomicRunAcceptanceTests.cs)
-- [BranchAsyncTests](BranchAsyncTests.cs)
-- [CoordinatorSecurityIntegrationTests](CoordinatorSecurityIntegrationTests.cs)
-- [CreateAsyncTests](CreateAsyncTests.cs)
+- [InMemorySessionStoreTests](InMemorySessionStoreTests.cs)
+- [DefaultSessionCoordinatorTests](DefaultSessionCoordinatorTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

@@ -11,14 +11,14 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [OllamaEmbeddingModelEndToEndTests](OllamaEmbeddingModelEndToEndTests.cs)
-- [OllamaLlmModelEndToEndTests](OllamaLlmModelEndToEndTests.cs)
+- [OllamaEmbeddingModelTests](OllamaEmbeddingModelTests.cs)
+- [OllamaLlmModelTests](OllamaLlmModelTests.cs)
 - [OllamaProviderDefaultsTests](OllamaProviderDefaultsTests.cs)
 - [ServiceExtensionsTests](ServiceExtensionsTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
-conformance. Provider pipeline tests use controlled fixtures; `EndToEndTests`
-does not mean a live provider account is required.
+conformance. Provider pipeline tests use controlled fixtures and do not require
+a live provider account.
 
 ## Run this project
 

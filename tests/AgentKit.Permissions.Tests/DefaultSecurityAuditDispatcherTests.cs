@@ -6,31 +6,29 @@ namespace AgentKit.Permissions.Tests;
 using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 
+using AgentKit.Conformance;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-/// <summary>Verifies required audit delivery and its non-controlling observability seam.</summary>
-public sealed class DefaultSecurityAuditDispatcherTests
+/// <summary>Verifies DefaultSecurityAuditDispatcher behavior and contracts.</summary>
+public sealed class DefaultSecurityAuditDispatcherTests: SecurityAuditDispatcherConformanceTests<DefaultSecurityAuditDispatcherConformanceFixture>
 {
     [Fact]
     public async Task DispatchAsync_WhenRequiredDeliveryHasNoCompatibleDurableSink_ReturnsUnavailableBeforeWriting()
     {
         var sink = new RecordingSink();
         var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.BestEffort, durable: false, sink)]);
-
         var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
-
         _ = result.ShouldBeOfType<SecurityAuditUnavailable>();
         sink.Records.ShouldBeEmpty();
     }
 
     [Fact]
-    public async Task DispatchAsync_WhenRequiredSinkFails_ReturnsFailed()
+    public async Task DispatchAsync_WhenConfiguredRequiredSinkFails_ReturnsFailed()
     {
         var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, new ThrowingSink())]);
-
         var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
-
         _ = result.ShouldBeOfType<SecurityAuditFailed>();
     }
 
@@ -38,9 +36,7 @@ public sealed class DefaultSecurityAuditDispatcherTests
     public async Task DispatchAsync_WhenOnlyBestEffortDurableSinkFails_DoesNotReportAcceptedUnderGlobalRequiredPolicy()
     {
         var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.BestEffort, durable: true, new ThrowingSink())]);
-
         var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
-
         _ = result.ShouldBeOfType<SecurityAuditFailed>();
     }
 
@@ -48,9 +44,7 @@ public sealed class DefaultSecurityAuditDispatcherTests
     public async Task DispatchAsync_WhenOptionalSinkFails_IsolatesTheObserverFailure()
     {
         var dispatcher = Dispatcher(SecurityAuditDelivery.BestEffort, [Binding(SecurityAuditDelivery.BestEffort, durable: false, new ThrowingSink())]);
-
         var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
-
         _ = result.ShouldBeOfType<SecurityAuditAccepted>();
     }
 
@@ -60,10 +54,7 @@ public sealed class DefaultSecurityAuditDispatcherTests
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
         var dispatcher = Dispatcher(SecurityAuditDelivery.Required, []);
-
-        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
-            await dispatcher.DispatchAsync(Record(), cancellation.Token));
-
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () => await dispatcher.DispatchAsync(Record(), cancellation.Token));
         exception.CancellationToken.ShouldBe(cancellation.Token);
     }
 
@@ -72,16 +63,8 @@ public sealed class DefaultSecurityAuditDispatcherTests
     {
         using var cancellation = new CancellationTokenSource();
         var laterSink = new RecordingSink();
-        var dispatcher = Dispatcher(
-            SecurityAuditDelivery.Required,
-            [
-                Binding(SecurityAuditDelivery.Required, durable: true, new CancellingSink(cancellation)),
-                Binding(SecurityAuditDelivery.Required, durable: true, laterSink),
-            ]);
-
-        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
-            await dispatcher.DispatchAsync(Record(), cancellation.Token));
-
+        var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, new CancellingSink(cancellation)), Binding(SecurityAuditDelivery.Required, durable: true, laterSink),]);
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () => await dispatcher.DispatchAsync(Record(), cancellation.Token));
         exception.CancellationToken.ShouldBe(cancellation.Token);
         laterSink.Records.ShouldBeEmpty();
     }
@@ -90,29 +73,21 @@ public sealed class DefaultSecurityAuditDispatcherTests
     [InlineData(false, true)]
     [InlineData(true, true)]
     [InlineData(false, false)]
-    public async Task DispatchAsync_WhenSinkCancelsAndFails_PropagatesCancellationWithoutBeginningAnotherSink(
-        bool required,
-        bool includeLaterSink)
+    public async Task DispatchAsync_WhenSinkCancelsAndFails_PropagatesCancellationWithoutBeginningAnotherSink(bool required, bool includeLaterSink)
     {
         using var cancellation = new CancellationTokenSource();
         var laterSink = includeLaterSink ? new RecordingSink() : null;
         var bindings = new List<SecurityAuditSinkBinding>
         {
-            Binding(required ? SecurityAuditDelivery.Required : SecurityAuditDelivery.BestEffort, durable: required,
-                new CancellingAndThrowingSink(cancellation)),
+            Binding(required ? SecurityAuditDelivery.Required : SecurityAuditDelivery.BestEffort, durable: required, new CancellingAndThrowingSink(cancellation)),
         };
         if (laterSink is not null)
         {
             bindings.Add(Binding(SecurityAuditDelivery.Required, durable: true, laterSink));
         }
 
-        var dispatcher = Dispatcher(
-            includeLaterSink ? SecurityAuditDelivery.Required : SecurityAuditDelivery.BestEffort,
-            bindings);
-
-        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
-            await dispatcher.DispatchAsync(Record(), cancellation.Token));
-
+        var dispatcher = Dispatcher(includeLaterSink ? SecurityAuditDelivery.Required : SecurityAuditDelivery.BestEffort, bindings);
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () => await dispatcher.DispatchAsync(Record(), cancellation.Token));
         exception.CancellationToken.ShouldBe(cancellation.Token);
         laterSink?.Records.ShouldBeEmpty();
     }
@@ -123,21 +98,11 @@ public sealed class DefaultSecurityAuditDispatcherTests
         var timeProvider = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
         var blocking = new BlockingSink();
         var durable = new RecordingSink();
-        var dispatcher = Dispatcher(
-            SecurityAuditDelivery.Required,
-            [
-                Binding(SecurityAuditDelivery.BestEffort, durable: false, blocking),
-                Binding(SecurityAuditDelivery.Required, durable: true, durable),
-            ],
-            timeProvider: timeProvider,
-            deliveryTimeout: TimeSpan.FromSeconds(1));
-
+        var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.BestEffort, durable: false, blocking), Binding(SecurityAuditDelivery.Required, durable: true, durable),], timeProvider: timeProvider, deliveryTimeout: TimeSpan.FromSeconds(1));
         var dispatch = dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken).AsTask();
         await blocking.Started;
         timeProvider.Advance(TimeSpan.FromSeconds(1));
-
         var result = await dispatch;
-
         _ = result.ShouldBeOfType<SecurityAuditAccepted>();
         _ = durable.Records.ShouldHaveSingleItem();
     }
@@ -147,18 +112,11 @@ public sealed class DefaultSecurityAuditDispatcherTests
     {
         var timeProvider = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
         var blocking = new BlockingSink();
-        var dispatcher = Dispatcher(
-            SecurityAuditDelivery.Required,
-            [Binding(SecurityAuditDelivery.BestEffort, durable: true, blocking)],
-            timeProvider: timeProvider,
-            deliveryTimeout: TimeSpan.FromSeconds(1));
-
+        var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.BestEffort, durable: true, blocking)], timeProvider: timeProvider, deliveryTimeout: TimeSpan.FromSeconds(1));
         var dispatch = dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken).AsTask();
         await blocking.Started;
         timeProvider.Advance(TimeSpan.FromSeconds(1));
-
         var result = await dispatch;
-
         _ = result.ShouldBeOfType<SecurityAuditTimedOut>();
         blocking.DeliveryCancellation.IsCancellationRequested.ShouldBeTrue();
         blocking.Complete();
@@ -179,24 +137,15 @@ public sealed class DefaultSecurityAuditDispatcherTests
             ActivityStopped = activity => stopped = activity,
         };
         ActivitySource.AddActivityListener(activityListener);
-        using var meterListener = MeterListenerForAudit((_, tags) => outcomes.Enqueue(OutcomeFrom(tags)), static (_, _) => { });
+        using var meterListener = MeterListenerForAudit((_, tags) => outcomes.Enqueue(OutcomeFrom(tags)), static (_, _) =>
+        {
+        });
         var logger = new RecordingLogger();
-        var dispatcher = Dispatcher(
-            SecurityAuditDelivery.Required,
-            [
-                Binding(SecurityAuditDelivery.Required, durable: true, blocking),
-                Binding(SecurityAuditDelivery.Required, durable: true, laterSink),
-            ],
-            timeProvider: timeProvider,
-            logger: logger,
-            deliveryTimeout: TimeSpan.FromSeconds(1));
-
+        var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, blocking), Binding(SecurityAuditDelivery.Required, durable: true, laterSink),], timeProvider: timeProvider, logger: logger, deliveryTimeout: TimeSpan.FromSeconds(1));
         var dispatch = dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken).AsTask();
         await blocking.Started;
         timeProvider.Advance(TimeSpan.FromSeconds(1));
-
         var result = await dispatch;
-
         result.ShouldBeOfType<SecurityAuditTimedOut>().SafeReason.ShouldContain("unknown");
         laterSink.Records.ShouldBeEmpty();
         var activity = stopped.ShouldNotBeNull();
@@ -213,18 +162,11 @@ public sealed class DefaultSecurityAuditDispatcherTests
     {
         using var cancellation = new CancellationTokenSource();
         var blocking = new BlockingSink();
-        var dispatcher = Dispatcher(
-            SecurityAuditDelivery.Required,
-            [Binding(SecurityAuditDelivery.Required, durable: true, blocking)],
-            timeProvider: new FakeTimeProvider(DateTimeOffset.UnixEpoch),
-            deliveryTimeout: TimeSpan.FromSeconds(1));
-
+        var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, blocking)], timeProvider: new FakeTimeProvider(DateTimeOffset.UnixEpoch), deliveryTimeout: TimeSpan.FromSeconds(1));
         var dispatch = dispatcher.DispatchAsync(Record(), cancellation.Token).AsTask();
         await blocking.Started;
         await cancellation.CancelAsync();
-
         var exception = await Should.ThrowAsync<OperationCanceledException>(async () => await dispatch);
-
         exception.CancellationToken.ShouldBe(cancellation.Token);
     }
 
@@ -234,14 +176,11 @@ public sealed class DefaultSecurityAuditDispatcherTests
         var timeProvider = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
         var blocking = new BlockingSink();
         ConcurrentQueue<string> outcomes = [];
-        using var meterListener = MeterListenerForAudit((_, tags) => outcomes.Enqueue(OutcomeFrom(tags)), static (_, _) => { });
+        using var meterListener = MeterListenerForAudit((_, tags) => outcomes.Enqueue(OutcomeFrom(tags)), static (_, _) =>
+        {
+        });
         var record = Record();
-        var dispatcher = Dispatcher(
-            SecurityAuditDelivery.Required,
-            [Binding(SecurityAuditDelivery.Required, durable: true, blocking)],
-            timeProvider: timeProvider,
-            deliveryTimeout: TimeSpan.FromSeconds(1));
-
+        var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, blocking)], timeProvider: timeProvider, deliveryTimeout: TimeSpan.FromSeconds(1));
         var dispatch = dispatcher.DispatchAsync(record, TestContext.Current.CancellationToken).AsTask();
         await blocking.Started;
         timeProvider.Advance(TimeSpan.FromSeconds(1));
@@ -249,7 +188,6 @@ public sealed class DefaultSecurityAuditDispatcherTests
         blocking.Fail();
         _ = await Should.ThrowAsync<InvalidOperationException>(async () => await blocking.Completion);
         await Task.Yield();
-
         blocking.Records.ShouldBe([record]);
         blocking.Records[0].Id.ShouldBe(record.Id);
         outcomes.ShouldBe(["timed_out"]);
@@ -276,26 +214,18 @@ public sealed class DefaultSecurityAuditDispatcherTests
             },
         };
         ActivitySource.AddActivityListener(activityListener);
-        using var meterListener = MeterListenerForAudit(
-            (measurement, tags) =>
+        using var meterListener = MeterListenerForAudit((measurement, tags) =>
+        {
+            count += measurement;
+            foreach (var tag in tags)
             {
-                count += measurement;
-                foreach (var tag in tags)
-                {
-                    metricTags.Enqueue(tag);
-                }
-            },
-            (_, _) => durations++);
+                metricTags.Enqueue(tag);
+            }
+        }, (_, _) => durations++);
         var logger = new RecordingLogger();
-        var record = Record(fields: [new KeyValuePair<string, RedactedAuditValue>(
-            "safe-field", RedactedAuditValue.FromPolicyId(new SecurityPolicyId("sensitive-audit-value")))]);
-        var dispatcher = Dispatcher(
-            SecurityAuditDelivery.Required,
-            [Binding(SecurityAuditDelivery.Required, durable: true, new RecordingSink())],
-            logger: logger);
-
+        var record = Record(fields: [new KeyValuePair<string, RedactedAuditValue>("safe-field", RedactedAuditValue.FromPolicyId(new SecurityPolicyId("sensitive-audit-value")))]);
+        var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, new RecordingSink())], logger: logger);
         _ = await dispatcher.DispatchAsync(record, TestContext.Current.CancellationToken);
-
         var activity = stopped.ShouldNotBeNull();
         activity.Status.ShouldBe(ActivityStatusCode.Ok);
         activity.GetTagItem(AgentKitTagNames.SecurityAuditRecordId).ShouldBe(record.Id.ToString());
@@ -322,29 +252,20 @@ public sealed class DefaultSecurityAuditDispatcherTests
             ActivityStopped = stopped.Enqueue,
         };
         ActivitySource.AddActivityListener(listener);
-        using var meterListener = MeterListenerForAudit(
-            (_, tags) => outcomes.Enqueue(OutcomeFrom(tags)),
-            static (_, _) => { });
+        using var meterListener = MeterListenerForAudit((_, tags) => outcomes.Enqueue(OutcomeFrom(tags)), static (_, _) =>
+        {
+        });
         var logger = new RecordingLogger();
         var unavailable = Dispatcher(SecurityAuditDelivery.Required, [], logger: logger);
-        var failed = Dispatcher(
-            SecurityAuditDelivery.Required,
-            [Binding(SecurityAuditDelivery.Required, durable: true, new ThrowingSink())],
-            logger: logger);
-
+        var failed = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, new ThrowingSink())], logger: logger);
         _ = await unavailable.DispatchAsync(Record(), TestContext.Current.CancellationToken);
         _ = await failed.DispatchAsync(Record(), TestContext.Current.CancellationToken);
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
-        _ = await Should.ThrowAsync<OperationCanceledException>(async () =>
-            await unavailable.DispatchAsync(Record(), cancellation.Token));
-
-        _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error
-            && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "unavailable").ShouldHaveSingleItem();
-        _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error
-            && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "failed").ShouldHaveSingleItem();
-        _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error
-            && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "cancelled").ShouldHaveSingleItem();
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await unavailable.DispatchAsync(Record(), cancellation.Token));
+        _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "unavailable").ShouldHaveSingleItem();
+        _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "failed").ShouldHaveSingleItem();
+        _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "cancelled").ShouldHaveSingleItem();
         outcomes.ShouldBe(["unavailable", "failed", "cancelled"]);
         logger.EventIds.ShouldContain(new EventId(5012));
         logger.EventIds.ShouldContain(new EventId(5013));
@@ -367,9 +288,7 @@ public sealed class DefaultSecurityAuditDispatcherTests
         };
         ActivitySource.AddActivityListener(listener);
         var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, new RecordingSink())]);
-
         var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
-
         _ = result.ShouldBeOfType<SecurityAuditAccepted>();
         Activity.Current.ShouldBeSameAs(parent);
     }
@@ -379,17 +298,9 @@ public sealed class DefaultSecurityAuditDispatcherTests
     {
         var count = 0L;
         var durations = 0;
-        using var meterListener = MeterListenerForAudit(
-            (measurement, _) => count += measurement,
-            (_, _) => durations++);
-        var dispatcher = Dispatcher(
-            SecurityAuditDelivery.Required,
-            [Binding(SecurityAuditDelivery.Required, durable: true, new RecordingSink())],
-            timeProvider: new ThrowingTimeProvider(throwOnCall: 1),
-            logger: new ThrowingLogger());
-
+        using var meterListener = MeterListenerForAudit((measurement, _) => count += measurement, (_, _) => durations++);
+        var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, new RecordingSink())], timeProvider: new ThrowingTimeProvider(throwOnCall: 1), logger: new ThrowingLogger());
         var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
-
         _ = result.ShouldBeOfType<SecurityAuditAccepted>();
         count.ShouldBe(1);
         durations.ShouldBe(0);
@@ -399,12 +310,8 @@ public sealed class DefaultSecurityAuditDispatcherTests
     public async Task DispatchAsync_WhenMeterListenerThrowsOrObserversAreDisabled_PreservesSemanticDelivery()
     {
         var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, new RecordingSink())]);
-
         _ = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
-        using var meterListener = MeterListenerForAudit(
-            static (_, _) => throw new InvalidOperationException("observer"),
-            static (_, _) => throw new InvalidOperationException("observer"));
-
+        using var meterListener = MeterListenerForAudit(static (_, _) => throw new InvalidOperationException("observer"), static (_, _) => throw new InvalidOperationException("observer"));
         _ = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
     }
 
@@ -414,10 +321,8 @@ public sealed class DefaultSecurityAuditDispatcherTests
         var sink = new RecordingSink();
         var record = Record();
         var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, sink)]);
-
         _ = await dispatcher.DispatchAsync(record, TestContext.Current.CancellationToken);
         _ = await dispatcher.DispatchAsync(record, TestContext.Current.CancellationToken);
-
         sink.Records.ShouldBe([record, record]);
         sink.Records.ShouldAllBe(value => value.Id == record.Id);
     }
@@ -429,24 +334,14 @@ public sealed class DefaultSecurityAuditDispatcherTests
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuditDispatcher([], null!, TimeProvider.System), "options");
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuditDispatcher([], Options.Create(new AgentPermissionOptions()), null!), "timeProvider");
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuditDispatcher([null!], Options.Create(new AgentPermissionOptions()), TimeProvider.System), "bindings");
-        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher(
-            [], Options.Create(new AgentPermissionOptions { AuditDelivery = (SecurityAuditDelivery) 99 }), TimeProvider.System), "options");
-        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher(
-            [], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = TimeSpan.Zero }), TimeProvider.System), "options");
-        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher(
-            [], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = TimeSpan.FromTicks(-1) }), TimeProvider.System), "options");
-        _ = Should.NotThrow(() => new DefaultSecurityAuditDispatcher(
-            [], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = AgentPermissionOptions.MaximumAuditDeliveryTimeout }), TimeProvider.System));
-        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher(
-            [], Options.Create(new AgentPermissionOptions
-            {
-                AuditDeliveryTimeout = AgentPermissionOptions.MaximumAuditDeliveryTimeout.Add(TimeSpan.FromTicks(1)),
-            }), TimeProvider.System), "options");
-        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher(
-            [], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = TimeSpan.MaxValue }), TimeProvider.System), "options");
+        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher([], Options.Create(new AgentPermissionOptions { AuditDelivery = (SecurityAuditDelivery) 99 }), TimeProvider.System), "options");
+        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher([], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = TimeSpan.Zero }), TimeProvider.System), "options");
+        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher([], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = TimeSpan.FromTicks(-1) }), TimeProvider.System), "options");
+        _ = Should.NotThrow(() => new DefaultSecurityAuditDispatcher([], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = AgentPermissionOptions.MaximumAuditDeliveryTimeout }), TimeProvider.System));
+        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher([], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = AgentPermissionOptions.MaximumAuditDeliveryTimeout.Add(TimeSpan.FromTicks(1)), }), TimeProvider.System), "options");
+        AssertExact<ArgumentOutOfRangeException>(() => new DefaultSecurityAuditDispatcher([], Options.Create(new AgentPermissionOptions { AuditDeliveryTimeout = TimeSpan.MaxValue }), TimeProvider.System), "options");
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuditDispatcher([], new NullOptions(), TimeProvider.System), "options");
-        var exception = await Should.ThrowAsync<ArgumentNullException>(async () =>
-            await Dispatcher(SecurityAuditDelivery.Required, []).DispatchAsync(null!));
+        var exception = await Should.ThrowAsync<ArgumentNullException>(async () => await Dispatcher(SecurityAuditDelivery.Required, []).DispatchAsync(null!));
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("record");
     }
@@ -456,165 +351,30 @@ public sealed class DefaultSecurityAuditDispatcherTests
     {
         var options = new CountingOptions(new AgentPermissionOptions { AuditDelivery = SecurityAuditDelivery.Required });
         var dispatcher = new DefaultSecurityAuditDispatcher([], options, TimeProvider.System);
-
         options.Reads.ShouldBe(1);
         options.Current.AuditDelivery = SecurityAuditDelivery.BestEffort;
-
         var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
-
         _ = result.ShouldBeOfType<SecurityAuditUnavailable>();
         options.Reads.ShouldBe(1);
-    }
-
-    [Fact]
-    public async Task AddAgentPermissions_WhenAuditDispatcherIsUnconfigured_RegistersTheDefaultRequiredDispatcher()
-    {
-        var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
-        using var provider = services.BuildServiceProvider();
-
-        var dispatcher = provider.GetRequiredService<ISecurityAuditDispatcher>();
-        var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
-
-        _ = dispatcher.ShouldBeOfType<DefaultSecurityAuditDispatcher>();
-        _ = result.ShouldBeOfType<SecurityAuditUnavailable>();
-    }
-
-    [Fact]
-    public void AddAgentPermissions_WhenAuditDeliveryTimeoutIsInvalid_RejectsItBeforeDispatcherActivation()
-    {
-        var services = new ServiceCollection();
-        _ = services.AddAgentPermissions(options => options.AuditDeliveryTimeout = TimeSpan.Zero);
-        using var provider = services.BuildServiceProvider();
-
-        var exception = Should.Throw<OptionsValidationException>(provider.GetRequiredService<ISecurityAuditDispatcher>);
-
-        exception.GetType().ShouldBe(typeof(OptionsValidationException));
-    }
-
-    [Fact]
-    public void AddAgentPermissions_WhenAuditDispatcherIsHostSupplied_PreservesTheReplacement()
-    {
-        var replacement = new FixedAuditDispatcher();
-        var services = new ServiceCollection();
-        _ = services.AddSingleton<ISecurityAuditDispatcher>(replacement);
-        _ = services.AddAgentPermissions();
-        using var provider = services.BuildServiceProvider();
-
-        provider.GetRequiredService<ISecurityAuditDispatcher>().ShouldBeSameAs(replacement);
-    }
-
-    [Fact]
-    public async Task AddSecurityAuditSink_WhenCalledMoreThanOnce_BindsAllAdditiveSinks()
-    {
-        var first = new RecordingSink();
-        var second = new RecordingSink();
-        var registration = new SecurityAuditSinkRegistration(
-            [SecurityAuditEventKind.GrantConsumptionIntent],
-            SecurityAuditDelivery.Required,
-            providesDurableAcceptance: true);
-        var services = new ServiceCollection();
-        _ = services.AddAgentPermissions();
-        _ = services.AddSecurityAuditSink(registration, first);
-        _ = services.AddSecurityAuditSink(registration, second);
-        using var provider = services.BuildServiceProvider();
-
-        var result = await provider.GetRequiredService<ISecurityAuditDispatcher>()
-            .DispatchAsync(Record(), TestContext.Current.CancellationToken);
-
-        _ = result.ShouldBeOfType<SecurityAuditAccepted>();
-        _ = first.Records.ShouldHaveSingleItem();
-        _ = second.Records.ShouldHaveSingleItem();
-    }
-
-    [Fact]
-    public void AddSecurityAuditSink_WhenArgumentsAreInvalid_ThrowsBeforeMutatingTheCollection()
-    {
-        var registration = new SecurityAuditSinkRegistration(
-            [SecurityAuditEventKind.GrantConsumptionIntent],
-            SecurityAuditDelivery.Required,
-            providesDurableAcceptance: true);
-        var sink = new RecordingSink();
-        var services = new ServiceCollection();
-
-        AssertExact<ArgumentNullException>(
-            () => ServiceExtensions.AddSecurityAuditSink(null!, registration, sink), "services");
-        services.ShouldBeEmpty();
-        AssertExact<ArgumentNullException>(() => services.AddSecurityAuditSink(null!, sink), "registration");
-        services.ShouldBeEmpty();
-        AssertExact<ArgumentNullException>(() => services.AddSecurityAuditSink(registration, null!), "sink");
-        services.ShouldBeEmpty();
     }
 
     [Fact]
     public void RecordAuditDispatch_WhenOutcomeIsUndefinedOrDurationIsNegative_ThrowsWithExactParameterNames()
     {
-        AssertExact<ArgumentOutOfRangeException>(
-            () => SecurityMetrics.RecordAuditDispatch((SecurityAuditDispatchOutcome) 99, null), "outcome");
-        AssertExact<ArgumentOutOfRangeException>(
-            () => SecurityMetrics.RecordAuditDispatch(SecurityAuditDispatchOutcome.Accepted, TimeSpan.FromTicks(-1)), "elapsed");
+        AssertExact<ArgumentOutOfRangeException>(() => SecurityMetrics.RecordAuditDispatch((SecurityAuditDispatchOutcome) 99, null), "outcome");
+        AssertExact<ArgumentOutOfRangeException>(() => SecurityMetrics.RecordAuditDispatch(SecurityAuditDispatchOutcome.Accepted, TimeSpan.FromTicks(-1)), "elapsed");
     }
 
-    [Fact]
-    public void SecurityAuditRecord_WhenRequiredOrPresentOptionalIdentitiesAreDefault_RejectsTheExactParameter()
-    {
-        Should.Throw<ArgumentOutOfRangeException>(() => Record(requestId: new SecurityRequestId())).ParamName.ShouldBe("requestId");
-        Should.Throw<ArgumentOutOfRangeException>(() => Record(policyVersion: new SecurityPolicyVersion())).ParamName.ShouldBe("policyVersion");
-        Should.Throw<ArgumentOutOfRangeException>(() => Record(grantId: default(GrantId))).ParamName.ShouldBe("grantId");
-        Should.Throw<ArgumentOutOfRangeException>(() => Record(approvalRequestId: default(ApprovalRequestId))).ParamName.ShouldBe("approvalRequestId");
-    }
-
-    private static DefaultSecurityAuditDispatcher Dispatcher(
-        SecurityAuditDelivery delivery,
-        IEnumerable<SecurityAuditSinkBinding> bindings,
-        TimeProvider? timeProvider = null,
-        ILogger<DefaultSecurityAuditDispatcher>? logger = null,
-        TimeSpan? deliveryTimeout = null) => new(
-        bindings,
-        Options.Create(new AgentPermissionOptions
-        {
-            AuditDelivery = delivery,
-            AuditDeliveryTimeout = deliveryTimeout ?? TimeSpan.FromSeconds(30),
-        }),
-        timeProvider ?? TimeProvider.System,
-        logger);
-
-    private static SecurityAuditSinkBinding Binding(SecurityAuditDelivery delivery, bool durable, ISecurityAuditSink sink) => new(
-        new SecurityAuditSinkRegistration([SecurityAuditEventKind.GrantConsumptionIntent], delivery, durable), sink);
-
-    private static SecurityAuditRecord Record(
-        SecurityRequestId? requestId = null,
-        GrantId? grantId = null,
-        ApprovalRequestId? approvalRequestId = null,
-        SecurityPolicyVersion? policyVersion = null,
-        IEnumerable<KeyValuePair<string, RedactedAuditValue>>? fields = null) => new(
-        new SecurityAuditRecordId(Guid.Parse("a1111111-1111-1111-1111-111111111111")),
-        new SecurityAuthorizationScope(
-            new AgentId(Guid.Parse("a2222222-2222-2222-2222-222222222222")),
-            new SessionId(Guid.Parse("a3333333-3333-3333-3333-333333333333")),
-            new BeforeRunOperationCorrelation(
-                new OperationId(Guid.Parse("a4444444-4444-4444-4444-444444444444")),
-                new AdmissionId(Guid.Parse("a5555555-5555-5555-5555-555555555555")))),
-        requestId ?? new SecurityRequestId(Guid.Parse("a6666666-6666-6666-6666-666666666666")),
-        grantId ?? new GrantId(Guid.Parse("a7777777-7777-7777-7777-777777777777")),
-        approvalRequestId,
-        SecurityAuditEventKind.GrantConsumptionIntent,
-        SecurityAuditOutcome.Accepted,
-        policyVersion ?? new SecurityPolicyVersion(1),
-        fields?.ToImmutableDictionary() ?? [],
-        DateTimeOffset.UnixEpoch);
-
-    private static MeterListener MeterListenerForAudit(
-        Action<long, ReadOnlySpan<KeyValuePair<string, object?>>> onCount,
-        Action<double, ReadOnlySpan<KeyValuePair<string, object?>>> onDuration)
+    private static DefaultSecurityAuditDispatcher Dispatcher(SecurityAuditDelivery delivery, IEnumerable<SecurityAuditSinkBinding> bindings, TimeProvider? timeProvider = null, ILogger<DefaultSecurityAuditDispatcher>? logger = null, TimeSpan? deliveryTimeout = null) => new(bindings, Options.Create(new AgentPermissionOptions { AuditDelivery = delivery, AuditDeliveryTimeout = deliveryTimeout ?? TimeSpan.FromSeconds(30), }), timeProvider ?? TimeProvider.System, logger);
+    private static SecurityAuditSinkBinding Binding(SecurityAuditDelivery delivery, bool durable, ISecurityAuditSink sink) => new(new SecurityAuditSinkRegistration([SecurityAuditEventKind.GrantConsumptionIntent], delivery, durable), sink);
+    private static SecurityAuditRecord Record(SecurityRequestId? requestId = null, GrantId? grantId = null, ApprovalRequestId? approvalRequestId = null, SecurityPolicyVersion? policyVersion = null, IEnumerable<KeyValuePair<string, RedactedAuditValue>>? fields = null) => new(new SecurityAuditRecordId(Guid.Parse("a1111111-1111-1111-1111-111111111111")), new SecurityAuthorizationScope(new AgentId(Guid.Parse("a2222222-2222-2222-2222-222222222222")), new SessionId(Guid.Parse("a3333333-3333-3333-3333-333333333333")), new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("a4444444-4444-4444-4444-444444444444")), new AdmissionId(Guid.Parse("a5555555-5555-5555-5555-555555555555")))), requestId ?? new SecurityRequestId(Guid.Parse("a6666666-6666-6666-6666-666666666666")), grantId ?? new GrantId(Guid.Parse("a7777777-7777-7777-7777-777777777777")), approvalRequestId, SecurityAuditEventKind.GrantConsumptionIntent, SecurityAuditOutcome.Accepted, policyVersion ?? new SecurityPolicyVersion(1), fields?.ToImmutableDictionary() ?? [], DateTimeOffset.UnixEpoch);
+    private static MeterListener MeterListenerForAudit(Action<long, ReadOnlySpan<KeyValuePair<string, object?>>> onCount, Action<double, ReadOnlySpan<KeyValuePair<string, object?>>> onDuration)
     {
         var listener = new MeterListener
         {
             InstrumentPublished = (instrument, current) =>
             {
-                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
-                    && instrument.Name is AgentKitMetricNames.SecurityAuditDispatchCount
-                        or AgentKitMetricNames.SecurityAuditDispatchDuration)
+                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName && instrument.Name is AgentKitMetricNames.SecurityAuditDispatchCount or AgentKitMetricNames.SecurityAuditDispatchDuration)
                 {
                     current.EnableMeasurementEvents(instrument);
                 }
@@ -660,21 +420,13 @@ public sealed class DefaultSecurityAuditDispatcherTests
     }
 
     private static void AssertExact<TException>(Func<object?> factory, string parameterName)
-        where TException : ArgumentException => AssertExact<TException>(() => { _ = factory(); }, parameterName);
-
-    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
-        ActivitySamplingResult.AllDataAndRecorded;
-
-    private static ActivitySamplingResult SampleAuditOnly(ref ActivityCreationOptions<ActivityContext> options) =>
-        options.Name == AgentKitActivityNames.SecurityAuditDispatch
-            ? ActivitySamplingResult.AllDataAndRecorded
-            : ActivitySamplingResult.None;
-
-    private static ActivitySamplingResult ThrowingAuditSample(ref ActivityCreationOptions<ActivityContext> options) =>
-        options.Name == AgentKitActivityNames.SecurityAuditDispatch
-            ? throw new InvalidOperationException("observer")
-            : ActivitySamplingResult.None;
-
+        where TException : ArgumentException => AssertExact<TException>(() =>
+    {
+        _ = factory();
+    }, parameterName);
+    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded;
+    private static ActivitySamplingResult SampleAuditOnly(ref ActivityCreationOptions<ActivityContext> options) => options.Name == AgentKitActivityNames.SecurityAuditDispatch ? ActivitySamplingResult.AllDataAndRecorded : ActivitySamplingResult.None;
+    private static ActivitySamplingResult ThrowingAuditSample(ref ActivityCreationOptions<ActivityContext> options) => options.Name == AgentKitActivityNames.SecurityAuditDispatch ? throw new InvalidOperationException("observer") : ActivitySamplingResult.None;
     private sealed class RecordingSink: ISecurityAuditSink
     {
         public List<SecurityAuditRecord> Records { get; } = [];
@@ -688,8 +440,7 @@ public sealed class DefaultSecurityAuditDispatcherTests
 
     private sealed class ThrowingSink: ISecurityAuditSink
     {
-        public ValueTask WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default) =>
-            ValueTask.FromException(new InvalidOperationException("sink"));
+        public ValueTask WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default) => ValueTask.FromException(new InvalidOperationException("sink"));
     }
 
     private sealed class CancellingSink(CancellationTokenSource cancellation): ISecurityAuditSink
@@ -714,19 +465,13 @@ public sealed class DefaultSecurityAuditDispatcherTests
     {
         private readonly TaskCompletionSource<bool> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<bool> _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
         public Task Completion => _completion.Task;
-
         public List<SecurityAuditRecord> Records { get; } = [];
-
         public Task Started => _started.Task;
-
         public CancellationToken DeliveryCancellation { get; private set; }
 
         public void Complete() => _completion.TrySetResult(true);
-
         public void Fail() => _completion.TrySetException(new InvalidOperationException("late sink fault"));
-
         public ValueTask WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default)
         {
             Records.Add(record);
@@ -736,25 +481,15 @@ public sealed class DefaultSecurityAuditDispatcherTests
         }
     }
 
-    private sealed class FixedAuditDispatcher: ISecurityAuditDispatcher
-    {
-        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(
-            SecurityAuditRecord record,
-            CancellationToken cancellationToken = default) => ValueTask.FromResult<SecurityAuditDispatchResult>(new SecurityAuditAccepted());
-    }
-
     private sealed class RecordingLogger: ILogger<DefaultSecurityAuditDispatcher>
     {
         public List<string> Messages { get; } = [];
-
         public List<EventId> EventIds { get; } = [];
 
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
             EventIds.Add(eventId);
             Messages.Add(formatter(state, exception));
@@ -763,12 +498,10 @@ public sealed class DefaultSecurityAuditDispatcherTests
 
     private sealed class ThrowingLogger: ILogger<DefaultSecurityAuditDispatcher>
     {
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => throw new InvalidOperationException("observer");
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
         }
     }
@@ -776,18 +509,14 @@ public sealed class DefaultSecurityAuditDispatcherTests
     private sealed class ThrowingTimeProvider(int throwOnCall): TimeProvider
     {
         private int _calls;
-
         public override long TimestampFrequency => 1_000;
 
-        public override long GetTimestamp() => ++_calls == throwOnCall
-            ? throw new InvalidOperationException("clock")
-            : _calls * 100;
+        public override long GetTimestamp() => ++_calls == throwOnCall ? throw new InvalidOperationException("clock") : _calls * 100;
     }
 
     private sealed class CountingOptions(AgentPermissionOptions value): IOptions<AgentPermissionOptions>
     {
         public int Reads { get; private set; }
-
         public AgentPermissionOptions Current => value;
 
         public AgentPermissionOptions Value
@@ -804,4 +533,8 @@ public sealed class DefaultSecurityAuditDispatcherTests
     {
         public AgentPermissionOptions Value => null!;
     }
+
+    /// <summary>Creates isolated default dispatcher composition with a deterministic fixture clock.</summary>
+    /// <returns>The fixture used by the inherited contract case.</returns>
+    protected override DefaultSecurityAuditDispatcherConformanceFixture CreateFixture() => new();
 }

@@ -11,15 +11,14 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [AwsBedrockLlmModelEndToEndTests](AwsBedrockLlmModelEndToEndTests.cs)
+- [AwsBedrockLlmModelTests](AwsBedrockLlmModelTests.cs)
 - [AwsBedrockProviderDefaultsTests](AwsBedrockProviderDefaultsTests.cs)
 - [AwsBedrockRequestTranslatorTests](Translation/AwsBedrockRequestTranslatorTests.cs)
-- [AwsBedrockResponseParserBufferedTests](Parsing/AwsBedrockResponseParserBufferedTests.cs)
-- [AwsBedrockResponseParserStreamingTests](Parsing/AwsBedrockResponseParserStreamingTests.cs)
+- [AwsBedrockResponseParserTests](Parsing/AwsBedrockResponseParserTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
-conformance. Provider pipeline tests use controlled fixtures; `EndToEndTests`
-does not mean a live provider account is required.
+conformance. Provider pipeline tests use controlled fixtures and do not require
+a live provider account.
 
 ## Run this project
 

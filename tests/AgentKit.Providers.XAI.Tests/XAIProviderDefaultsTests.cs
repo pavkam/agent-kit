@@ -3,11 +3,9 @@
 
 namespace AgentKit.Providers.XAI.Tests;
 
-/// <summary>
-/// Verifies <see cref="XAIProviderDefaults.CreateProfile"/> maps
-/// <see cref="XAIProviderOptions"/> onto the wire-behavior fields an
-/// <see cref="OpenAICompatibilityProfile"/> needs.
-/// </summary>
+
+
+/// <summary>Verifies XAIProviderDefaults behavior and contracts.</summary>
 public sealed class XAIProviderDefaultsTests
 {
     [Fact]
@@ -20,9 +18,7 @@ public sealed class XAIProviderDefaultsTests
             PreferStreaming = false,
             IncludeStreamUsage = false,
         };
-
         var profile = XAIProviderDefaults.CreateProfile(options);
-
         profile.BaseAddress.ShouldBe(options.BaseAddress);
         profile.ChatCompletionsPath.ShouldBe(options.ChatCompletionsPath);
         profile.PreferStreaming.ShouldBeFalse();
@@ -34,10 +30,5 @@ public sealed class XAIProviderDefaultsTests
     }
 
     [Fact]
-    public void ProviderId_IsStableXAIIdentity() =>
-        XAIProviderDefaults.ProviderId.ShouldBe(new ProviderId("xai"));
-
-    [Fact]
-    public void EmbeddingApiFamily_IsStableXAIEmbeddingsIdentity() =>
-        XAIProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("xai-embeddings"));
+    public void EmbeddingApiFamily_IsStableXAIEmbeddingsIdentity() => XAIProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("xai-embeddings"));
 }

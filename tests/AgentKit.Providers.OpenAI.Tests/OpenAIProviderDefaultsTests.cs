@@ -3,11 +3,9 @@
 
 namespace AgentKit.Providers.OpenAI.Tests;
 
-/// <summary>
-/// Verifies <see cref="OpenAIProviderDefaults.CreateProfile"/> maps
-/// <see cref="OpenAIProviderOptions"/> onto the wire-behavior fields an
-/// <see cref="OpenAICompatibilityProfile"/> needs.
-/// </summary>
+
+
+/// <summary>Verifies OpenAIProviderDefaults behavior and contracts.</summary>
 public sealed class OpenAIProviderDefaultsTests
 {
     [Fact]
@@ -21,9 +19,7 @@ public sealed class OpenAIProviderDefaultsTests
             IncludeStreamUsage = false,
             UseMaxCompletionTokensField = false,
         };
-
         var profile = OpenAIProviderDefaults.CreateProfile(options);
-
         profile.BaseAddress.ShouldBe(options.BaseAddress);
         profile.ChatCompletionsPath.ShouldBe(options.ChatCompletionsPath);
         profile.PreferStreaming.ShouldBeFalse();
@@ -41,19 +37,12 @@ public sealed class OpenAIProviderDefaultsTests
             BaseAddress = new Uri("https://example.test/"),
             EmbeddingsPath = "v2/embeddings",
         };
-
         var profile = OpenAIProviderDefaults.CreateProfile(options);
-
         profile.EmbeddingsUri.ShouldBe(new Uri("https://example.test/v2/embeddings"));
     }
 
     [Fact]
-    public void ProviderId_IsStableOpenAIIdentity() => OpenAIProviderDefaults.ProviderId.ShouldBe(new ProviderId("openai"));
-
-    [Fact]
-    public void EmbeddingApiFamily_IsStableOpenAIEmbeddingsIdentity() =>
-        OpenAIProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("openai-embeddings"));
-
+    public void EmbeddingApiFamily_IsStableOpenAIEmbeddingsIdentity() => OpenAIProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("openai-embeddings"));
     [Fact]
     public void DefaultCapabilities_SupportsToolCallsAndStreaming()
     {

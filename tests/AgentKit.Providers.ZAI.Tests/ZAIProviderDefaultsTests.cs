@@ -3,11 +3,9 @@
 
 namespace AgentKit.Providers.ZAI.Tests;
 
-/// <summary>
-/// Verifies <see cref="ZAIProviderDefaults.CreateProfile"/> maps
-/// <see cref="ZAIProviderOptions"/> onto the wire-behavior fields an
-/// <see cref="OpenAICompatibilityProfile"/> needs.
-/// </summary>
+
+
+/// <summary>Verifies ZAIProviderDefaults behavior and contracts.</summary>
 public sealed class ZAIProviderDefaultsTests
 {
     [Fact]
@@ -20,9 +18,7 @@ public sealed class ZAIProviderDefaultsTests
             PreferStreaming = false,
             IncludeStreamUsage = false,
         };
-
         var profile = ZAIProviderDefaults.CreateProfile(options);
-
         profile.BaseAddress.ShouldBe(options.BaseAddress);
         profile.ChatCompletionsPath.ShouldBe(options.ChatCompletionsPath);
         profile.PreferStreaming.ShouldBeFalse();
@@ -33,13 +29,7 @@ public sealed class ZAIProviderDefaultsTests
     }
 
     [Fact]
-    public void ProviderId_IsStableZAIIdentity() => ZAIProviderDefaults.ProviderId.ShouldBe(new ProviderId("z-ai"));
-
+    public void DefaultCapabilities_DoesNotClaimParallelToolCalls() => ZAIProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeFalse();
     [Fact]
-    public void DefaultCapabilities_DoesNotClaimParallelToolCalls() =>
-        ZAIProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeFalse();
-
-    [Fact]
-    public void DefaultBaseAddress_DiffersFromCodingPlanBaseAddress() =>
-        ZAIProviderDefaults.DefaultBaseAddress.ShouldNotBe(ZAIProviderDefaults.CodingPlanBaseAddress);
+    public void DefaultBaseAddress_DiffersFromCodingPlanBaseAddress() => ZAIProviderDefaults.DefaultBaseAddress.ShouldNotBe(ZAIProviderDefaults.CodingPlanBaseAddress);
 }

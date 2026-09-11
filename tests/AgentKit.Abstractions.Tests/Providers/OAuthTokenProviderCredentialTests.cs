@@ -1,0 +1,15 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Abstractions.Tests.Providers;
+
+using AgentKit;
+
+/// <summary>Verifies OAuthTokenProviderCredential behavior and contracts.</summary>
+public sealed class OAuthTokenProviderCredentialTests
+{
+    [Fact]
+    public void OAuthTokenProviderCredential_Constructor_WhenTokenInvalid_ThrowsArgumentException() => _ = Should.Throw<ArgumentException>(() => new OAuthTokenProviderCredential(" ", null));
+    [Fact]
+    public void OAuthTokenProviderCredential_Equality_WhenSameValues_InstancesAreEqual() => new OAuthTokenProviderCredential("token", null).ShouldBe(new OAuthTokenProviderCredential("token", null));
+}

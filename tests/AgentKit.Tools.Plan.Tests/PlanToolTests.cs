@@ -3,6 +3,9 @@
 
 namespace AgentKit.Tools.Plan.Tests;
 
+
+
+/// <summary>Verifies PlanTool behavior and contracts.</summary>
 public sealed class PlanToolTests
 {
     private const string ReplaceArguments = /*lang=json,strict*/ """
@@ -15,21 +18,18 @@ public sealed class PlanToolTests
           ]
         }
         """;
-
     [Theory]
-    [InlineData(/*lang=json,strict*/ "{}")]
-    [InlineData(/*lang=json,strict*/ "{\"action\":\"get\",\"title\":\"extra\"}")]
-    [InlineData(/*lang=json,strict*/ "{\"action\":\"replace\",\"title\":\"T\",\"items\":[]}")]
-    [InlineData(/*lang=json,strict*/ "{\"action\":\"replace\",\"title\":\"T\",\"items\":[{\"id\":\"x\",\"text\":\"X\",\"status\":\"in_progress\"},{\"id\":\"y\",\"text\":\"Y\",\"status\":\"in_progress\"}]}")]
-    [InlineData(/*lang=json,strict*/ "{\"action\":\"set_status\",\"item_id\":\"x\",\"status\":\"completed\"}")]
+    [InlineData( /*lang=json,strict*/"{}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"get\",\"title\":\"extra\"}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"replace\",\"title\":\"T\",\"items\":[]}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"replace\",\"title\":\"T\",\"items\":[{\"id\":\"x\",\"text\":\"X\",\"status\":\"in_progress\"},{\"id\":\"y\",\"text\":\"Y\",\"status\":\"in_progress\"}]}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"set_status\",\"item_id\":\"x\",\"status\":\"completed\"}")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoAuthorizationOrStateAccess(string json)
     {
         var store = new RecordingPlanStateStore();
         var authority = new RecordingSecurityAuthority();
         var ids = new FixedSecurityRequestIdGenerator();
-
         var result = await Tool(store, authority, ids).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
-
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         ids.Calls.ShouldBe(0);
         authority.Requests.ShouldBeEmpty();
@@ -43,11 +43,7 @@ public sealed class PlanToolTests
     {
         var store = new RecordingPlanStateStore();
         var authority = new RecordingSecurityAuthority();
-
-        var result = await Tool(store, authority).InvokeAsync(
-            Request(/*lang=json,strict*/ "{\"action\":\"get\"}", includeSession: false),
-            TestContext.Current.CancellationToken);
-
+        var result = await Tool(store, authority).InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"get\"}", includeSession: false), TestContext.Current.CancellationToken);
         result.Outcome.FailureReason!.ShouldContain("requires a session");
         authority.Requests.ShouldBeEmpty();
         store.Reads.ShouldBeEmpty();
@@ -58,11 +54,7 @@ public sealed class PlanToolTests
     {
         var store = new RecordingPlanStateStore();
         var authority = new RecordingSecurityAuthority();
-
-        var result = await Tool(store, authority).InvokeAsync(
-            Request(/*lang=json,strict*/ "{\"action\":\"get\"}"),
-            TestContext.Current.CancellationToken);
-
+        var result = await Tool(store, authority).InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
         var security = authority.Requests.ShouldHaveSingleItem();
         security.Kind.ShouldBe(SecurityOperationKind.StateRead);
@@ -77,11 +69,12 @@ public sealed class PlanToolTests
     public async Task InvokeAsync_WhenReplacing_BindsFullMutationAndProjectsVersionedPlan()
     {
         var plan = TestData.Plan();
-        var store = new RecordingPlanStateStore { Result = new PlanStateFound(plan) };
+        var store = new RecordingPlanStateStore
+        {
+            Result = new PlanStateFound(plan)
+        };
         var authority = new RecordingSecurityAuthority();
-
         var result = await Tool(store, authority).InvokeAsync(Request(ReplaceArguments), TestContext.Current.CancellationToken);
-
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
         var replacement = store.Replacements.ShouldHaveSingleItem();
         replacement.ExpectedRevision.ShouldBeNull();
@@ -89,8 +82,7 @@ public sealed class PlanToolTests
         var security = authority.Requests.ShouldHaveSingleItem();
         security.Kind.ShouldBe(SecurityOperationKind.StateMutation);
         security.Effect.ShouldBe(SecurityEffect.Mutate);
-        security.InputFingerprint.ShouldBe(PlanSecurityBinding.ReplaceFingerprint(
-            TestData.Context.ToAddress(), replacement.Title, replacement.Items, null));
+        security.InputFingerprint.ShouldBe(PlanSecurityBinding.ReplaceFingerprint(TestData.Context.ToAddress(), replacement.Title, replacement.Items, null));
         using var json = Json(result);
         json.RootElement.GetProperty("plan").GetProperty("revision").GetInt64().ShouldBe(1);
     }
@@ -98,28 +90,23 @@ public sealed class PlanToolTests
     [Fact]
     public async Task InvokeAsync_WhenSettingStatus_RequiresAndBindsExpectedRevision()
     {
-        var store = new RecordingPlanStateStore { Result = new PlanStateFound(TestData.Plan(3)) };
+        var store = new RecordingPlanStateStore
+        {
+            Result = new PlanStateFound(TestData.Plan(3))
+        };
         var authority = new RecordingSecurityAuthority();
-
-        _ = await Tool(store, authority).InvokeAsync(
-            Request(/*lang=json,strict*/ "{\"action\":\"set_status\",\"item_id\":\"one\",\"status\":\"completed\",\"expected_revision\":2}"),
-            TestContext.Current.CancellationToken);
-
+        _ = await Tool(store, authority).InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"set_status\",\"item_id\":\"one\",\"status\":\"completed\",\"expected_revision\":2}"), TestContext.Current.CancellationToken);
         var change = store.StatusChanges.ShouldHaveSingleItem();
         change.ExpectedRevision.ShouldBe(new PlanRevision(2));
         change.Status.ShouldBe(PlanItemStatus.Completed);
-        authority.Requests.ShouldHaveSingleItem().InputFingerprint.ShouldBe(PlanSecurityBinding.StatusFingerprint(
-            TestData.Context.ToAddress(), new PlanItemId("one"), PlanItemStatus.Completed, new PlanRevision(2)));
+        authority.Requests.ShouldHaveSingleItem().InputFingerprint.ShouldBe(PlanSecurityBinding.StatusFingerprint(TestData.Context.ToAddress(), new PlanItemId("one"), PlanItemStatus.Completed, new PlanRevision(2)));
     }
 
     [Fact]
     public async Task InvokeAsync_WhenAuthorityDenies_ReturnsRejectedWithoutStateAccess()
     {
         var store = new RecordingPlanStateStore();
-
-        var result = await Tool(store, new RecordingSecurityAuthority(false)).InvokeAsync(
-            Request(/*lang=json,strict*/ "{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
-
+        var result = await Tool(store, new RecordingSecurityAuthority(false)).InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
         store.Reads.ShouldBeEmpty();
     }
@@ -127,11 +114,11 @@ public sealed class PlanToolTests
     [Fact]
     public async Task InvokeAsync_WhenStoreRejectsGrant_ReturnsRejected()
     {
-        var store = new RecordingPlanStateStore { Result = new PlanStateDenied("Grant mismatch.") };
-
-        var result = await Tool(store, new RecordingSecurityAuthority()).InvokeAsync(
-            Request(/*lang=json,strict*/ "{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
-
+        var store = new RecordingPlanStateStore
+        {
+            Result = new PlanStateDenied("Grant mismatch.")
+        };
+        var result = await Tool(store, new RecordingSecurityAuthority()).InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
         result.Outcome.FailureReason.ShouldBe("Grant mismatch.");
     }
@@ -139,77 +126,17 @@ public sealed class PlanToolTests
     [Fact]
     public async Task InvokeAsync_WhenRevisionConflicts_ReturnsCurrentRevisionWithoutContent()
     {
-        var store = new RecordingPlanStateStore { Result = new PlanStateConflict(new PlanRevision(7)) };
-
-        var result = await Tool(store, new RecordingSecurityAuthority()).InvokeAsync(
-            Request(ReplaceArguments), TestContext.Current.CancellationToken);
-
+        var store = new RecordingPlanStateStore
+        {
+            Result = new PlanStateConflict(new PlanRevision(7))
+        };
+        var result = await Tool(store, new RecordingSecurityAuthority()).InvokeAsync(Request(ReplaceArguments), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         result.Outcome.FailureReason!.ShouldContain("revision is 7");
         result.Content.ShouldBeEmpty();
     }
 
-    [Fact]
-    public void AddPlanTool_WhenCalledTwice_RegistersEachDefaultOnce()
-    {
-        var services = new ServiceCollection();
-
-        _ = services.AddPlanTool().AddPlanTool();
-
-        services.Count(descriptor => descriptor.ServiceType == typeof(ITool)
-            && descriptor.ImplementationType == typeof(PlanTool)).ShouldBe(1);
-        services.Count(descriptor => descriptor.ServiceType == typeof(ITool)
-            && descriptor.ImplementationType == typeof(TodoTool)).ShouldBe(1);
-        services.Count(descriptor => descriptor.ServiceType == typeof(IPlanStateStore)).ShouldBe(1);
-        services.Count(descriptor => descriptor.ServiceType == typeof(IIdentifierGenerator<PlanId>)).ShouldBe(1);
-        services.Count(descriptor => descriptor.ServiceType == typeof(IIdentifierGenerator<SessionEntryId>)).ShouldBe(1);
-        services.Count(descriptor =>
-            descriptor.ServiceType == typeof(IIdentifierGenerator<SecurityEnforcementIntentId>)).ShouldBe(1);
-    }
-
-    [Fact]
-    public async Task TodoTool_WhenInvoked_UsesSameCanonicalStateAndSecurityBinding()
-    {
-        var store = new RecordingPlanStateStore();
-        var authority = new RecordingSecurityAuthority();
-        var tool = new TodoTool(
-            store,
-            authority,
-            new FixedSecurityRequestIdGenerator(),
-            new FixedTimeProvider(),
-            Options.Create(new PlanToolOptions()));
-
-        var result = await tool.InvokeAsync(
-            Request(/*lang=json,strict*/ "{\"action\":\"get\"}"),
-            TestContext.Current.CancellationToken);
-
-        tool.Descriptor.Id.ShouldBe(TodoTool.Id);
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
-        _ = store.Reads.ShouldHaveSingleItem();
-        authority.Requests.ShouldHaveSingleItem().InputFingerprint.ShouldBe(
-            PlanSecurityBinding.ReadFingerprint(TestData.Context.ToAddress()));
-    }
-
-    private static PlanTool Tool(
-        IPlanStateStore store,
-        ISecurityAuthority authority,
-        FixedSecurityRequestIdGenerator? ids = null) => new(
-            store,
-            authority,
-            ids ?? new FixedSecurityRequestIdGenerator(),
-            new FixedTimeProvider(),
-            Options.Create(new PlanToolOptions()));
-
-    private static ToolInvocationRequest Request(string json, bool includeSession = true) => new(
-        TestSupport.TestSecurityEvidence.ToolContext(
-            TestData.AgentId,
-            includeSession ? TestData.SessionId : null,
-            TestData.ToolCallId,
-            TestData.Correlation,
-            TestData.Identity),
-        JsonDocument.Parse(json).RootElement,
-        DateTimeOffset.UnixEpoch);
-
-    private static JsonDocument Json(ToolInvocationResult result) =>
-        JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
+    private static PlanTool Tool(IPlanStateStore store, ISecurityAuthority authority, FixedSecurityRequestIdGenerator? ids = null) => new(store, authority, ids ?? new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new PlanToolOptions()));
+    private static ToolInvocationRequest Request(string json, bool includeSession = true) => new(TestSupport.TestSecurityEvidence.ToolContext(TestData.AgentId, includeSession ? TestData.SessionId : null, TestData.ToolCallId, TestData.Correlation, TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
+    private static JsonDocument Json(ToolInvocationResult result) => JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
 }

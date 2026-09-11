@@ -11,7 +11,6 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 ## Start with these tests
 
 - [DefaultAgentLoopTests](DefaultAgentLoopTests.cs)
-- [DefaultRunContinuationPolicyObservabilityTests](DefaultRunContinuationPolicyObservabilityTests.cs)
 - [DefaultRunContinuationPolicyTests](DefaultRunContinuationPolicyTests.cs)
 - [ServiceExtensionsTests](ServiceExtensionsTests.cs)
 

@@ -3,11 +3,9 @@
 
 namespace AgentKit.Providers.Ollama.Tests;
 
-/// <summary>
-/// Verifies <see cref="OllamaProviderDefaults.CreateProfile"/> maps
-/// <see cref="OllamaProviderOptions"/> onto the wire-behavior fields an
-/// <see cref="OpenAICompatibilityProfile"/> needs.
-/// </summary>
+
+
+/// <summary>Verifies OllamaProviderDefaults behavior and contracts.</summary>
 public sealed class OllamaProviderDefaultsTests
 {
     [Fact]
@@ -20,9 +18,7 @@ public sealed class OllamaProviderDefaultsTests
             PreferStreaming = false,
             IncludeStreamUsage = false,
         };
-
         var profile = OllamaProviderDefaults.CreateProfile(options);
-
         profile.BaseAddress.ShouldBe(options.BaseAddress);
         profile.ChatCompletionsPath.ShouldBe(options.ChatCompletionsPath);
         profile.PreferStreaming.ShouldBeFalse();
@@ -34,10 +30,5 @@ public sealed class OllamaProviderDefaultsTests
     }
 
     [Fact]
-    public void ProviderId_IsStableOllamaIdentity() =>
-        OllamaProviderDefaults.ProviderId.ShouldBe(new ProviderId("ollama"));
-
-    [Fact]
-    public void EmbeddingApiFamily_IsStableOllamaEmbeddingsIdentity() =>
-        OllamaProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("ollama-openai-compatible-embeddings"));
+    public void EmbeddingApiFamily_IsStableOllamaEmbeddingsIdentity() => OllamaProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("ollama-openai-compatible-embeddings"));
 }

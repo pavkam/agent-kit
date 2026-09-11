@@ -3,21 +3,19 @@
 
 namespace AgentKit.Hooks.Tests;
 
+
+
+/// <summary>Verifies DefaultHookDispatcher behavior and contracts.</summary>
 public sealed class DefaultHookDispatcherTests
 {
     private static readonly HookPointId _point = new("test.point");
-
-    private static Func<TestHook, TestHookEventArgs, HookDispatchScope, CancellationToken, Task> Invoker =>
-        static (hook, args, scope, ct) => hook.InvokeAsync(args, scope, ct);
+    private static Func<TestHook, TestHookEventArgs, HookDispatchScope, CancellationToken, Task> Invoker => static (hook, args, scope, ct) => hook.InvokeAsync(args, scope, ct);
 
     [Fact]
     public async Task DispatchAsync_WhenHooksNull_ThrowsArgumentNullException()
     {
         var dispatcher = new DefaultHookDispatcher();
-
-        var exception = await Should.ThrowAsync<ArgumentNullException>(() => dispatcher.DispatchAsync(
-            _point, null!, new TestHookEventArgs(), Invoker, HookDispatchScope.Root));
-
+        var exception = await Should.ThrowAsync<ArgumentNullException>(() => dispatcher.DispatchAsync(_point, null!, new TestHookEventArgs(), Invoker, HookDispatchScope.Root));
         exception.ParamName.ShouldBe("hooks");
     }
 
@@ -25,10 +23,7 @@ public sealed class DefaultHookDispatcherTests
     public async Task DispatchAsync_WhenArgsNull_ThrowsArgumentNullException()
     {
         var dispatcher = new DefaultHookDispatcher();
-
-        var exception = await Should.ThrowAsync<ArgumentNullException>(() => dispatcher.DispatchAsync(
-            _point, Array.Empty<TestHook>(), null!, Invoker, HookDispatchScope.Root));
-
+        var exception = await Should.ThrowAsync<ArgumentNullException>(() => dispatcher.DispatchAsync(_point, Array.Empty<TestHook>(), null!, Invoker, HookDispatchScope.Root));
         exception.ParamName.ShouldBe("args");
     }
 
@@ -36,10 +31,7 @@ public sealed class DefaultHookDispatcherTests
     public async Task DispatchAsync_WhenInvokeNull_ThrowsArgumentNullException()
     {
         var dispatcher = new DefaultHookDispatcher();
-
-        var exception = await Should.ThrowAsync<ArgumentNullException>(() => dispatcher.DispatchAsync(
-            _point, Array.Empty<TestHook>(), new TestHookEventArgs(), null!, HookDispatchScope.Root));
-
+        var exception = await Should.ThrowAsync<ArgumentNullException>(() => dispatcher.DispatchAsync(_point, Array.Empty<TestHook>(), new TestHookEventArgs(), null!, HookDispatchScope.Root));
         exception.ParamName.ShouldBe("invoke");
     }
 
@@ -47,10 +39,7 @@ public sealed class DefaultHookDispatcherTests
     public async Task DispatchAsync_WhenScopeNull_ThrowsArgumentNullException()
     {
         var dispatcher = new DefaultHookDispatcher();
-
-        var exception = await Should.ThrowAsync<ArgumentNullException>(() => dispatcher.DispatchAsync(
-            _point, Array.Empty<TestHook>(), new TestHookEventArgs(), Invoker, null!));
-
+        var exception = await Should.ThrowAsync<ArgumentNullException>(() => dispatcher.DispatchAsync(_point, Array.Empty<TestHook>(), new TestHookEventArgs(), Invoker, null!));
         exception.ParamName.ShouldBe("scope");
     }
 
@@ -58,11 +47,14 @@ public sealed class DefaultHookDispatcherTests
     public async Task DispatchAsync_WhenNoOrderingConstraints_InvokesInRegistrationOrder()
     {
         var dispatcher = new DefaultHookDispatcher();
-        var hooks = new[] { Hook("a"), Hook("b"), Hook("c") };
+        var hooks = new[]
+        {
+            Hook("a"),
+            Hook("b"),
+            Hook("c")
+        };
         var args = new TestHookEventArgs();
-
         await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
-
         args.InvocationOrder.ShouldBe([new HookId("a"), new HookId("b"), new HookId("c")]);
     }
 
@@ -74,12 +66,14 @@ public sealed class DefaultHookDispatcherTests
         {
             Hook("a"),
             Hook("b"),
-            new TestHook { Id = new HookId("c"), RunsBefore = [new HookId("a"), new HookId("b")] }
+            new TestHook
+            {
+                Id = new HookId("c"),
+                RunsBefore = [new HookId("a"), new HookId("b")]
+            }
         };
         var args = new TestHookEventArgs();
-
         await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
-
         args.InvocationOrder.ShouldBe([new HookId("c"), new HookId("a"), new HookId("b")]);
     }
 
@@ -91,12 +85,14 @@ public sealed class DefaultHookDispatcherTests
         {
             Hook("a"),
             Hook("b"),
-            new TestHook { Id = new HookId("c"), RunsBefore = [new HookId("a")] }
+            new TestHook
+            {
+                Id = new HookId("c"),
+                RunsBefore = [new HookId("a")]
+            }
         };
         var args = new TestHookEventArgs();
-
         await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
-
         // c must run before a, but has no declared relationship to b, so b
         // (registered before c) keeps its earlier position.
         args.InvocationOrder.ShouldBe([new HookId("b"), new HookId("c"), new HookId("a")]);
@@ -108,14 +104,16 @@ public sealed class DefaultHookDispatcherTests
         var dispatcher = new DefaultHookDispatcher();
         var hooks = new[]
         {
-            new TestHook { Id = new HookId("a"), RunsAfter = [new HookId("c")] },
+            new TestHook
+            {
+                Id = new HookId("a"),
+                RunsAfter = [new HookId("c")]
+            },
             Hook("b"),
             Hook("c")
         };
         var args = new TestHookEventArgs();
-
         await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
-
         args.InvocationOrder.ShouldBe([new HookId("b"), new HookId("c"), new HookId("a")]);
     }
 
@@ -125,13 +123,15 @@ public sealed class DefaultHookDispatcherTests
         var dispatcher = new DefaultHookDispatcher();
         var hooks = new[]
         {
-            new TestHook { Id = new HookId("a"), DependsOn = [new HookId("b")] },
+            new TestHook
+            {
+                Id = new HookId("a"),
+                DependsOn = [new HookId("b")]
+            },
             Hook("b")
         };
         var args = new TestHookEventArgs();
-
         await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
-
         args.InvocationOrder.ShouldBe([new HookId("b"), new HookId("a")]);
     }
 
@@ -139,21 +139,33 @@ public sealed class DefaultHookDispatcherTests
     public async Task DispatchAsync_WhenDependsOnMissing_ThrowsHookCompositionException()
     {
         var dispatcher = new DefaultHookDispatcher();
-        var hooks = new[] { new TestHook { Id = new HookId("a"), DependsOn = [new HookId("missing")] } };
-
-        _ = await Should.ThrowAsync<HookCompositionException>(() => dispatcher.DispatchAsync(
-            _point, hooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                DependsOn = [new HookId("missing")]
+            }
+        };
+        _ = await Should.ThrowAsync<HookCompositionException>(() => dispatcher.DispatchAsync(_point, hooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task DispatchAsync_WhenPriorityFirstDeclared_RunsFirst()
     {
         var dispatcher = new DefaultHookDispatcher();
-        var hooks = new[] { Hook("a"), Hook("b"), new TestHook { Id = new HookId("c"), Priority = HookPriority.First } };
+        var hooks = new[]
+        {
+            Hook("a"),
+            Hook("b"),
+            new TestHook
+            {
+                Id = new HookId("c"),
+                Priority = HookPriority.First
+            }
+        };
         var args = new TestHookEventArgs();
-
         await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
-
         args.InvocationOrder[0].ShouldBe(new HookId("c"));
     }
 
@@ -161,11 +173,18 @@ public sealed class DefaultHookDispatcherTests
     public async Task DispatchAsync_WhenPriorityLastDeclared_RunsLast()
     {
         var dispatcher = new DefaultHookDispatcher();
-        var hooks = new[] { new TestHook { Id = new HookId("c"), Priority = HookPriority.Last }, Hook("a"), Hook("b") };
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("c"),
+                Priority = HookPriority.Last
+            },
+            Hook("a"),
+            Hook("b")
+        };
         var args = new TestHookEventArgs();
-
         await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
-
         args.InvocationOrder[^1].ShouldBe(new HookId("c"));
     }
 
@@ -175,12 +194,18 @@ public sealed class DefaultHookDispatcherTests
         var dispatcher = new DefaultHookDispatcher();
         var hooks = new[]
         {
-            new TestHook { Id = new HookId("a"), Priority = HookPriority.First },
-            new TestHook { Id = new HookId("b"), Priority = HookPriority.First }
+            new TestHook
+            {
+                Id = new HookId("a"),
+                Priority = HookPriority.First
+            },
+            new TestHook
+            {
+                Id = new HookId("b"),
+                Priority = HookPriority.First
+            }
         };
-
-        _ = await Should.ThrowAsync<HookCompositionException>(() => dispatcher.DispatchAsync(
-            _point, hooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<HookCompositionException>(() => dispatcher.DispatchAsync(_point, hooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -189,22 +214,30 @@ public sealed class DefaultHookDispatcherTests
         var dispatcher = new DefaultHookDispatcher();
         var hooks = new[]
         {
-            new TestHook { Id = new HookId("a"), Priority = HookPriority.Last },
-            new TestHook { Id = new HookId("b"), Priority = HookPriority.Last }
+            new TestHook
+            {
+                Id = new HookId("a"),
+                Priority = HookPriority.Last
+            },
+            new TestHook
+            {
+                Id = new HookId("b"),
+                Priority = HookPriority.Last
+            }
         };
-
-        _ = await Should.ThrowAsync<HookCompositionException>(() => dispatcher.DispatchAsync(
-            _point, hooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<HookCompositionException>(() => dispatcher.DispatchAsync(_point, hooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task DispatchAsync_WhenDuplicateHookId_ThrowsHookCompositionException()
     {
         var dispatcher = new DefaultHookDispatcher();
-        var hooks = new[] { Hook("a"), Hook("a") };
-
-        _ = await Should.ThrowAsync<HookCompositionException>(() => dispatcher.DispatchAsync(
-            _point, hooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
+        var hooks = new[]
+        {
+            Hook("a"),
+            Hook("a")
+        };
+        _ = await Should.ThrowAsync<HookCompositionException>(() => dispatcher.DispatchAsync(_point, hooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -213,12 +246,18 @@ public sealed class DefaultHookDispatcherTests
         var dispatcher = new DefaultHookDispatcher();
         var hooks = new[]
         {
-            new TestHook { Id = new HookId("a"), RunsAfter = [new HookId("b")] },
-            new TestHook { Id = new HookId("b"), RunsAfter = [new HookId("a")] }
+            new TestHook
+            {
+                Id = new HookId("a"),
+                RunsAfter = [new HookId("b")]
+            },
+            new TestHook
+            {
+                Id = new HookId("b"),
+                RunsAfter = [new HookId("a")]
+            }
         };
-
-        _ = await Should.ThrowAsync<HookCompositionException>(() => dispatcher.DispatchAsync(
-            _point, hooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<HookCompositionException>(() => dispatcher.DispatchAsync(_point, hooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -227,14 +266,19 @@ public sealed class DefaultHookDispatcherTests
         var dispatcher = new DefaultHookDispatcher();
         var hooks = new[]
         {
-            new TestHook { Id = new HookId("a"), OnInvoke = static (args, _, _) => { args.RejectPayload = true; return Task.CompletedTask; } },
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (args, _, _) =>
+                {
+                    args.RejectPayload = true;
+                    return Task.CompletedTask;
+                }
+            },
             Hook("b")
         };
         var args = new TestHookEventArgs();
-
-        _ = await Should.ThrowAsync<HookValidationException>(() => dispatcher.DispatchAsync(
-            _point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
-
+        _ = await Should.ThrowAsync<HookValidationException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
         args.InvocationOrder.ShouldBe([new HookId("a")]);
     }
 
@@ -244,14 +288,20 @@ public sealed class DefaultHookDispatcherTests
         var dispatcher = new DefaultHookDispatcher();
         var hooks = new[]
         {
-            new TestHook { Id = new HookId("a"), OnInvoke = static (args, _, _) => { args.IsShortCircuited = true; return Task.CompletedTask; } },
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (args, _, _) =>
+                {
+                    args.IsShortCircuited = true;
+                    return Task.CompletedTask;
+                }
+            },
             Hook("b"),
             Hook("c")
         };
         var args = new TestHookEventArgs();
-
         await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
-
         args.InvocationOrder.ShouldBe([new HookId("a")]);
     }
 
@@ -261,14 +311,15 @@ public sealed class DefaultHookDispatcherTests
         var dispatcher = new DefaultHookDispatcher();
         var hooks = new[]
         {
-            new TestHook { Id = new HookId("a"), OnInvoke = static (_, _, _) => throw new InvalidOperationException("boom") },
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (_, _, _) => throw new InvalidOperationException("boom")
+            },
             Hook("b")
         };
         var args = new TestHookEventArgs();
-
-        _ = await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchAsync(
-            _point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.FailOperation, cancellationToken: TestContext.Current.CancellationToken));
-
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.FailOperation, cancellationToken: TestContext.Current.CancellationToken));
         args.InvocationOrder.ShouldBe([new HookId("a")]);
     }
 
@@ -278,14 +329,15 @@ public sealed class DefaultHookDispatcherTests
         var dispatcher = new DefaultHookDispatcher();
         var hooks = new[]
         {
-            new TestHook { Id = new HookId("a"), OnInvoke = static (_, _, _) => throw new InvalidOperationException("boom") },
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (_, _, _) => throw new InvalidOperationException("boom")
+            },
             Hook("b")
         };
         var args = new TestHookEventArgs();
-
-        await dispatcher.DispatchAsync(
-            _point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
-
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
         args.InvocationOrder.ShouldBe([new HookId("a"), new HookId("b")]);
     }
 
@@ -303,10 +355,7 @@ public sealed class DefaultHookDispatcherTests
             Hook("b")
         };
         var args = new TestHookEventArgs();
-
-        _ = await Should.ThrowAsync<OperationCanceledException>(() => dispatcher.DispatchAsync(
-            _point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken));
-
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken));
         args.InvocationOrder.ShouldBe([new HookId("a")]);
     }
 
@@ -328,16 +377,7 @@ public sealed class DefaultHookDispatcherTests
             Hook("b")
         };
         var args = new TestHookEventArgs();
-
-        _ = await Should.ThrowAsync<HookValidationException>(() => dispatcher.DispatchAsync(
-            _point,
-            hooks,
-            args,
-            Invoker,
-            HookDispatchScope.Root,
-            HookFailureMode.Isolate,
-            cancellationToken: TestContext.Current.CancellationToken));
-
+        _ = await Should.ThrowAsync<HookValidationException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken));
         args.InvocationOrder.ShouldBe([new HookId("a")]);
     }
 
@@ -348,14 +388,19 @@ public sealed class DefaultHookDispatcherTests
         using var cts = new CancellationTokenSource();
         var hooks = new[]
         {
-            new TestHook { Id = new HookId("a"), OnInvoke = (_, _, _) => { cts.Cancel(); return Task.CompletedTask; } },
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = (_, _, _) =>
+                {
+                    cts.Cancel();
+                    return Task.CompletedTask;
+                }
+            },
             Hook("b")
         };
         var args = new TestHookEventArgs();
-
-        _ = await Should.ThrowAsync<OperationCanceledException>(
-            () => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: cts.Token));
-
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: cts.Token));
         args.InvocationOrder.ShouldBe([new HookId("a")]);
     }
 
@@ -363,21 +408,20 @@ public sealed class DefaultHookDispatcherTests
     public async Task DispatchAsync_WhenReentrantWithinMaxDepth_Succeeds()
     {
         var dispatcher = new DefaultHookDispatcher();
-        var innerHooks = new[] { Hook("inner") };
+        var innerHooks = new[]
+        {
+            Hook("inner")
+        };
         var outerHooks = new[]
         {
             new TestHook
             {
                 Id = new HookId("outer"),
-                OnInvoke = async (args, scope, ct) =>
-                    await dispatcher.DispatchAsync(_point, innerHooks, args, Invoker, scope, maxReentrantDepth: 2, cancellationToken: ct)
+                OnInvoke = async (args, scope, ct) => await dispatcher.DispatchAsync(_point, innerHooks, args, Invoker, scope, maxReentrantDepth: 2, cancellationToken: ct)
             }
         };
         var outerArgs = new TestHookEventArgs();
-
-        await dispatcher.DispatchAsync(
-            _point, outerHooks, outerArgs, Invoker, HookDispatchScope.Root, maxReentrantDepth: 2, cancellationToken: TestContext.Current.CancellationToken);
-
+        await dispatcher.DispatchAsync(_point, outerHooks, outerArgs, Invoker, HookDispatchScope.Root, maxReentrantDepth: 2, cancellationToken: TestContext.Current.CancellationToken);
         outerArgs.InvocationOrder.ShouldBe([new HookId("outer"), new HookId("inner")]);
     }
 
@@ -385,19 +429,19 @@ public sealed class DefaultHookDispatcherTests
     public async Task DispatchAsync_WhenReentrantBeyondMaxDepth_ThrowsHookReentrancyException()
     {
         var dispatcher = new DefaultHookDispatcher();
-        var innerHooks = new[] { Hook("inner") };
+        var innerHooks = new[]
+        {
+            Hook("inner")
+        };
         var outerHooks = new[]
         {
             new TestHook
             {
                 Id = new HookId("outer"),
-                OnInvoke = async (args, scope, ct) =>
-                    await dispatcher.DispatchAsync(_point, innerHooks, args, Invoker, scope, cancellationToken: ct)
+                OnInvoke = async (args, scope, ct) => await dispatcher.DispatchAsync(_point, innerHooks, args, Invoker, scope, cancellationToken: ct)
             }
         };
-
-        _ = await Should.ThrowAsync<HookReentrancyException>(() => dispatcher.DispatchAsync(
-            _point, outerHooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
+        _ = await Should.ThrowAsync<HookReentrancyException>(() => dispatcher.DispatchAsync(_point, outerHooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -405,12 +449,33 @@ public sealed class DefaultHookDispatcherTests
     {
         var dispatcher = new DefaultHookDispatcher();
         var args = new TestHookEventArgs();
-
-        await dispatcher.DispatchAsync(
-            _point, Array.Empty<TestHook>(), args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
-
+        await dispatcher.DispatchAsync(_point, Array.Empty<TestHook>(), args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
         args.InvocationOrder.ShouldBeEmpty();
     }
 
-    private static TestHook Hook(string id) => new() { Id = new HookId(id) };
+    private static TestHook Hook(string id) => new()
+    {
+        Id = new HookId(id)
+    };
+    [Fact]
+    public async Task DispatchAsync_WhenObserved_EmitsCorrelatedTerminalActivity()
+    {
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = activity => stopped = activity,
+        };
+        ActivitySource.AddActivityListener(listener);
+        var args = new TestHookEventArgs();
+        var dispatcher = new DefaultHookDispatcher();
+        await dispatcher.DispatchAsync<TestHook, TestHookEventArgs>(new HookPointId("test.observed"), [], args, static (_, _, _, _) => Task.CompletedTask, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
+        var activity = stopped.ShouldNotBeNull();
+        activity.OperationName.ShouldBe(AgentKitActivityNames.HookDispatch);
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.GetTagItem(AgentKitTagNames.HookInvocationId).ShouldBe(args.InvocationId.ToString());
+    }
+
+    private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded;
 }

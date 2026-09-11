@@ -3,22 +3,22 @@
 
 namespace AgentKit.Tools.Resource.Tests;
 
+
+
+/// <summary>Verifies ResourceTool behavior and contracts.</summary>
 public sealed class ResourceToolTests
 {
     [Theory]
-    [InlineData(/*lang=json,strict*/ "{}")]
-    [InlineData(/*lang=json,strict*/ "{\"action\":\"unknown\"}")]
-    [InlineData(/*lang=json,strict*/ "{\"action\":\"read\"}")]
-    [InlineData(/*lang=json,strict*/ "{\"action\":\"list\",\"id\":\"docs\"}")]
-    [InlineData(/*lang=json,strict*/ "{\"action\":\"read\",\"id\":\"\"}")]
+    [InlineData( /*lang=json,strict*/"{}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"unknown\"}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"read\"}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"list\",\"id\":\"docs\"}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"read\",\"id\":\"\"}")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoAuthorizationOrRead(string json)
     {
         var reader = new RecordingSnapshotReader();
         var authority = new RecordingSecurityAuthority();
-
-        var result = await Tool(reader, authority).InvokeAsync(
-            Request(json), TestContext.Current.CancellationToken);
-
+        var result = await Tool(reader, authority).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         authority.Requests.ShouldBeEmpty();
         reader.Requests.ShouldBeEmpty();
@@ -29,11 +29,7 @@ public sealed class ResourceToolTests
     {
         var reader = new RecordingSnapshotReader();
         var authority = new RecordingSecurityAuthority();
-
-        var result = await Tool(reader, authority).InvokeAsync(
-            Request(/*lang=json,strict*/ """{"action":"list"}"""),
-            TestContext.Current.CancellationToken);
-
+        var result = await Tool(reader, authority).InvokeAsync(Request( /*lang=json,strict*/"""{"action":"list"}"""), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
         authority.Requests.ShouldBeEmpty();
         reader.Requests.ShouldBeEmpty();
@@ -48,11 +44,7 @@ public sealed class ResourceToolTests
     {
         var reader = new RecordingSnapshotReader();
         var authority = new RecordingSecurityAuthority();
-
-        var result = await Tool(reader, authority).InvokeAsync(
-            Request(/*lang=json,strict*/ """{"action":"read","id":"missing"}"""),
-            TestContext.Current.CancellationToken);
-
+        var result = await Tool(reader, authority).InvokeAsync(Request( /*lang=json,strict*/"""{"action":"read","id":"missing"}"""), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         authority.Requests.ShouldBeEmpty();
         reader.Requests.ShouldBeEmpty();
@@ -62,12 +54,11 @@ public sealed class ResourceToolTests
     public async Task InvokeAsync_WhenAuthorityDenies_PerformsNoSnapshotRead()
     {
         var reader = new RecordingSnapshotReader();
-        var authority = new RecordingSecurityAuthority { Allow = false };
-
-        var result = await Tool(reader, authority).InvokeAsync(
-            Request(/*lang=json,strict*/ """{"action":"read","id":"docs"}"""),
-            TestContext.Current.CancellationToken);
-
+        var authority = new RecordingSecurityAuthority
+        {
+            Allow = false
+        };
+        var result = await Tool(reader, authority).InvokeAsync(Request( /*lang=json,strict*/"""{"action":"read","id":"docs"}"""), TestContext.Current.CancellationToken);
         result.Outcome.FailureReason.ShouldBe("Denied.");
         reader.Requests.ShouldBeEmpty();
     }
@@ -75,19 +66,17 @@ public sealed class ResourceToolTests
     [Fact]
     public async Task InvokeAsync_WhenAuthorized_UsesExactSnapshotEvidenceAndMarksContentNonAuthoritative()
     {
-        var reader = new RecordingSnapshotReader { Result = RecordingSnapshotReader.Success("hello") };
+        var reader = new RecordingSnapshotReader
+        {
+            Result = RecordingSnapshotReader.Success("hello")
+        };
         var authority = new RecordingSecurityAuthority();
-
-        var result = await Tool(reader, authority).InvokeAsync(
-            Request(/*lang=json,strict*/ """{"action":"read","id":"docs"}"""),
-            TestContext.Current.CancellationToken);
-
+        var result = await Tool(reader, authority).InvokeAsync(Request( /*lang=json,strict*/"""{"action":"read","id":"docs"}"""), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
         var security = authority.Requests.ShouldHaveSingleItem();
         security.Audience.ShouldBe(reader.SecurityAudience);
         security.Resources.ShouldBe([FileSecurityBinding.Resource(new FileSystemPath("private/source.md"))]);
-        security.InputFingerprint.ShouldBe(
-            FileSecurityBinding.SnapshotFingerprint(new FileSystemPath("private/source.md"), 1_024));
+        security.InputFingerprint.ShouldBe(FileSecurityBinding.SnapshotFingerprint(new FileSystemPath("private/source.md"), 1_024));
         var snapshot = reader.Requests.ShouldHaveSingleItem();
         snapshot.Grant.RequestId.ShouldBe(security.Id);
         using var json = Json(result);
@@ -101,12 +90,11 @@ public sealed class ResourceToolTests
     {
         var options = OptionsForTool();
         options.MaximumCharacters = 3;
-        var reader = new RecordingSnapshotReader { Result = RecordingSnapshotReader.Success("abcdef") };
-
-        var result = await Tool(reader, new RecordingSecurityAuthority(), options).InvokeAsync(
-            Request(/*lang=json,strict*/ """{"action":"read","id":"docs"}"""),
-            TestContext.Current.CancellationToken);
-
+        var reader = new RecordingSnapshotReader
+        {
+            Result = RecordingSnapshotReader.Success("abcdef")
+        };
+        var result = await Tool(reader, new RecordingSecurityAuthority(), options).InvokeAsync(Request( /*lang=json,strict*/"""{"action":"read","id":"docs"}"""), TestContext.Current.CancellationToken);
         using var json = Json(result);
         json.RootElement.GetProperty("truncated").GetBoolean().ShouldBeTrue();
         json.RootElement.GetProperty("content").GetString().ShouldBe("abc");
@@ -116,12 +104,11 @@ public sealed class ResourceToolTests
     public async Task InvokeAsync_WhenIntegrityPinDiffers_ReturnsFailureWithoutContent()
     {
         var options = OptionsForTool(expectedHash: new ContentHash("sha256:wrong"));
-        var reader = new RecordingSnapshotReader { Result = RecordingSnapshotReader.Success("changed") };
-
-        var result = await Tool(reader, new RecordingSecurityAuthority(), options).InvokeAsync(
-            Request(/*lang=json,strict*/ """{"action":"read","id":"docs"}"""),
-            TestContext.Current.CancellationToken);
-
+        var reader = new RecordingSnapshotReader
+        {
+            Result = RecordingSnapshotReader.Success("changed")
+        };
+        var result = await Tool(reader, new RecordingSecurityAuthority(), options).InvokeAsync(Request( /*lang=json,strict*/"""{"action":"read","id":"docs"}"""), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         result.Outcome.FailureReason!.ShouldContain("integrity");
         result.Content.ShouldBeEmpty();
@@ -132,17 +119,9 @@ public sealed class ResourceToolTests
     {
         var reader = new RecordingSnapshotReader
         {
-            Result = new FileSnapshotResult(
-                FileSnapshotStatus.Success,
-                [0xff],
-                FileSecurityBinding.ContentFingerprint([0xff]),
-                null),
+            Result = new FileSnapshotResult(FileSnapshotStatus.Success, [0xff], FileSecurityBinding.ContentFingerprint([0xff]), null),
         };
-
-        var result = await Tool(reader, new RecordingSecurityAuthority()).InvokeAsync(
-            Request(/*lang=json,strict*/ """{"action":"read","id":"docs"}"""),
-            TestContext.Current.CancellationToken);
-
+        var result = await Tool(reader, new RecordingSecurityAuthority()).InvokeAsync(Request( /*lang=json,strict*/"""{"action":"read","id":"docs"}"""), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         result.Outcome.FailureReason!.ShouldContain("UTF-8");
     }
@@ -153,31 +132,10 @@ public sealed class ResourceToolTests
         var options = OptionsForTool();
         options.Resources.Add(Definition());
         var action = () => Tool(new RecordingSnapshotReader(), new RecordingSecurityAuthority(), options);
-
         action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("options");
     }
 
-    [Fact]
-    public void AddResourceTool_WhenCalledTwice_AddsOneToolDescriptor()
-    {
-        var services = new ServiceCollection();
-
-        _ = services.AddResourceTool().AddResourceTool();
-
-        services.Count(descriptor => descriptor.ServiceType == typeof(ITool)
-            && descriptor.ImplementationType == typeof(ResourceTool)).ShouldBe(1);
-    }
-
-    private static ResourceTool Tool(
-        IFileSnapshotReader reader,
-        ISecurityAuthority authority,
-        ResourceToolOptions? options = null) => new(
-            reader,
-            authority,
-            new FixedSecurityRequestIdGenerator(),
-            new FixedTimeProvider(),
-            Options.Create(options ?? OptionsForTool()));
-
+    private static ResourceTool Tool(IFileSnapshotReader reader, ISecurityAuthority authority, ResourceToolOptions? options = null) => new(reader, authority, new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? OptionsForTool()));
     private static ResourceToolOptions OptionsForTool(ContentHash? expectedHash = null)
     {
         var options = new ResourceToolOptions
@@ -190,31 +148,7 @@ public sealed class ResourceToolTests
         return options;
     }
 
-    private static FileResourceDefinition Definition(ContentHash? expectedHash = null) => new(
-        new ResourceId("docs"),
-        ResourceKind.Documentation,
-        ResourceTrust.Workspace,
-        "Project documentation.",
-        new FileSystemPath("private/source.md"),
-        "text/markdown",
-        expectedHash);
-
-    private static JsonDocument Json(ToolInvocationResult result) =>
-        JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
-
-    private static ToolInvocationRequest Request(string json) => new(
-        TestSupport.TestSecurityEvidence.ToolContext(
-            new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
-            new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
-            new ToolCallId(Guid.Parse("50000000-0000-0000-0000-000000000005")),
-            new InRunOperationCorrelation(
-                new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")),
-                new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")),
-                null),
-            TestSupport.TestExecutionIdentity.Create(
-                new TenantId("tenant"),
-                new PrincipalId("principal"),
-                ExecutionSubjectKind.Human)),
-        JsonDocument.Parse(json).RootElement,
-        DateTimeOffset.UnixEpoch);
+    private static FileResourceDefinition Definition(ContentHash? expectedHash = null) => new(new ResourceId("docs"), ResourceKind.Documentation, ResourceTrust.Workspace, "Project documentation.", new FileSystemPath("private/source.md"), "text/markdown", expectedHash);
+    private static JsonDocument Json(ToolInvocationResult result) => JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
+    private static ToolInvocationRequest Request(string json) => new(TestSupport.TestSecurityEvidence.ToolContext(new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000003")), new SessionId(Guid.Parse("40000000-0000-0000-0000-000000000004")), new ToolCallId(Guid.Parse("50000000-0000-0000-0000-000000000005")), new InRunOperationCorrelation(new OperationId(Guid.Parse("60000000-0000-0000-0000-000000000006")), new RunId(Guid.Parse("70000000-0000-0000-0000-000000000007")), null), TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human)), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
 }

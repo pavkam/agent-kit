@@ -12,10 +12,8 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 - [AgentCompositionBuildObservabilityTests](AgentCompositionBuildObservabilityTests.cs)
 - [AgentEngineBuilderTests](AgentEngineBuilderTests.cs)
-- [FacadeServiceCardinalityTests](FacadeServiceCardinalityTests.cs)
 - [AgentEngineTests](AgentEngineTests.cs)
 - [AgentKitServiceProviderFactoryTests](AgentKitServiceProviderFactoryTests.cs)
-- [AgentRunProfileCompositionTests](AgentRunProfileCompositionTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

@@ -17,9 +17,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 - [RunEventHubOptionsTests](RunEventHubOptionsTests.cs)
 - [RunEventHubMetricsTests](RunEventHubMetricsTests.cs)
 - [DefaultHumanQuestionBrokerTests](DefaultHumanQuestionBrokerTests.cs)
-- [DefaultInputPromotionPolicyConformanceTests](DefaultInputPromotionPolicyConformanceTests.cs)
 - [DefaultInputPromotionPolicyTests](DefaultInputPromotionPolicyTests.cs)
-- [InputPromotionObservabilityTests](InputPromotionObservabilityTests.cs)
 - [InputPromotionPlanOutcomeExtensionsTests](InputPromotionPlanOutcomeExtensionsTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural

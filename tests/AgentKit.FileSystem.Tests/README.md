@@ -11,9 +11,6 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [SandboxedFileSystemEditTests](SandboxedFileSystemEditTests.cs)
-- [SandboxedFileSystemPatchTests](SandboxedFileSystemPatchTests.cs)
-- [SandboxedFileSystemSearchTests](SandboxedFileSystemSearchTests.cs)
 - [SandboxedFileSystemTests](SandboxedFileSystemTests.cs)
 - [ServiceExtensionsTests](ServiceExtensionsTests.cs)
 

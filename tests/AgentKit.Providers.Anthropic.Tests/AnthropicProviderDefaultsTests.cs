@@ -3,10 +3,9 @@
 
 namespace AgentKit.Providers.Anthropic.Tests;
 
-/// <summary>
-/// Verifies <see cref="AnthropicProviderDefaults.BuildMessagesUri"/> and the
-/// shared provider identity/capability defaults.
-/// </summary>
+
+
+/// <summary>Verifies AnthropicProviderDefaults behavior and contracts.</summary>
 public sealed class AnthropicProviderDefaultsTests
 {
     [Fact]
@@ -17,13 +16,8 @@ public sealed class AnthropicProviderDefaultsTests
             BaseAddress = new Uri("https://example.test/"),
             MessagesPath = "v2/messages",
         };
-
         AnthropicProviderDefaults.BuildMessagesUri(options).ShouldBe(new Uri("https://example.test/v2/messages"));
     }
-
-    [Fact]
-    public void ProviderId_IsStableAnthropicIdentity() =>
-        AnthropicProviderDefaults.ProviderId.ShouldBe(new ProviderId("anthropic"));
 
     [Fact]
     public void DefaultCapabilities_SupportsReasoningButNotVisionOrStructuredOutput()

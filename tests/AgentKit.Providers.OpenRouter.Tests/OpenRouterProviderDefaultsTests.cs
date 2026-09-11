@@ -3,19 +3,15 @@
 
 namespace AgentKit.Providers.OpenRouter.Tests;
 
-/// <summary>
-/// Verifies <see cref="OpenRouterProviderDefaults.CreateProfile"/> maps
-/// <see cref="OpenRouterProviderOptions"/> onto the wire-behavior fields an
-/// <see cref="OpenAICompatibilityProfile"/> needs, including OpenRouter's
-/// optional attribution and routing-metadata headers.
-/// </summary>
+
+
+/// <summary>Verifies OpenRouterProviderDefaults behavior and contracts.</summary>
 public sealed class OpenRouterProviderDefaultsTests
 {
     [Fact]
     public void CreateProfile_WhenNoAttributionConfigured_HasNoAdditionalHeaders()
     {
         var profile = OpenRouterProviderDefaults.CreateProfile(new OpenRouterProviderOptions());
-
         profile.DefaultRequestHeaders.ShouldBeEmpty();
         profile.UseMaxCompletionTokensField.ShouldBeFalse();
     }
@@ -29,9 +25,7 @@ public sealed class OpenRouterProviderDefaultsTests
             ApplicationTitle = "My App",
             IncludeRoutingMetadata = true,
         };
-
         var profile = OpenRouterProviderDefaults.CreateProfile(options);
-
         profile.DefaultRequestHeaders["HTTP-Referer"].ShouldBe("https://example.test/");
         profile.DefaultRequestHeaders["X-OpenRouter-Title"].ShouldBe("My App");
         profile.DefaultRequestHeaders["X-OpenRouter-Metadata"].ShouldBe("enabled");
@@ -47,9 +41,7 @@ public sealed class OpenRouterProviderDefaultsTests
             PreferStreaming = false,
             IncludeStreamUsage = false,
         };
-
         var profile = OpenRouterProviderDefaults.CreateProfile(options);
-
         profile.BaseAddress.ShouldBe(options.BaseAddress);
         profile.ChatCompletionsPath.ShouldBe(options.ChatCompletionsPath);
         profile.PreferStreaming.ShouldBeFalse();
@@ -59,18 +51,9 @@ public sealed class OpenRouterProviderDefaultsTests
     }
 
     [Fact]
-    public void CreateProfile_WhenGivenOptions_EnablesEmbeddingPurposeSupport() =>
-        OpenRouterProviderDefaults.CreateProfile(new OpenRouterProviderOptions()).SupportsEmbeddingPurpose.ShouldBeTrue();
-
+    public void CreateProfile_WhenGivenOptions_EnablesEmbeddingPurposeSupport() => OpenRouterProviderDefaults.CreateProfile(new OpenRouterProviderOptions()).SupportsEmbeddingPurpose.ShouldBeTrue();
     [Fact]
-    public void ProviderId_IsStableOpenRouterIdentity() =>
-        OpenRouterProviderDefaults.ProviderId.ShouldBe(new ProviderId("openrouter"));
-
+    public void EmbeddingApiFamily_IsStableOpenRouterEmbeddingsIdentity() => OpenRouterProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("openrouter-embeddings"));
     [Fact]
-    public void EmbeddingApiFamily_IsStableOpenRouterEmbeddingsIdentity() =>
-        OpenRouterProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("openrouter-embeddings"));
-
-    [Fact]
-    public void DefaultEmbeddingCapabilities_SupportsPurposeUnlikePlainOpenAI() =>
-        OpenRouterProviderDefaults.DefaultEmbeddingCapabilities.SupportsPurpose.ShouldBeTrue();
+    public void DefaultEmbeddingCapabilities_SupportsPurposeUnlikePlainOpenAI() => OpenRouterProviderDefaults.DefaultEmbeddingCapabilities.SupportsPurpose.ShouldBeTrue();
 }

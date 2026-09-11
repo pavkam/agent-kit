@@ -3,11 +3,9 @@
 
 namespace AgentKit.Providers.MoonshotKimi.Tests;
 
-/// <summary>
-/// Verifies <see cref="MoonshotKimiProviderDefaults.CreateProfile"/> maps
-/// <see cref="MoonshotKimiProviderOptions"/> onto the wire-behavior fields an
-/// <see cref="OpenAICompatibilityProfile"/> needs.
-/// </summary>
+
+
+/// <summary>Verifies MoonshotKimiProviderDefaults behavior and contracts.</summary>
 public sealed class MoonshotKimiProviderDefaultsTests
 {
     [Fact]
@@ -20,9 +18,7 @@ public sealed class MoonshotKimiProviderDefaultsTests
             PreferStreaming = false,
             IncludeStreamUsage = false,
         };
-
         var profile = MoonshotKimiProviderDefaults.CreateProfile(options);
-
         profile.BaseAddress.ShouldBe(options.BaseAddress);
         profile.ChatCompletionsPath.ShouldBe(options.ChatCompletionsPath);
         profile.PreferStreaming.ShouldBeFalse();
@@ -31,8 +27,4 @@ public sealed class MoonshotKimiProviderDefaultsTests
         profile.SendDeveloperRoleAsSystem.ShouldBeTrue();
         profile.ChatCompletionsUri.ShouldBe(new Uri("https://example.test/v2/chat"));
     }
-
-    [Fact]
-    public void ProviderId_IsStableMoonshotKimiIdentity() =>
-        MoonshotKimiProviderDefaults.ProviderId.ShouldBe(new ProviderId("moonshot-kimi"));
 }

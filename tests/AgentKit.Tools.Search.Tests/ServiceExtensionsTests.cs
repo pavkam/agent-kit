@@ -3,6 +3,9 @@
 
 namespace AgentKit.Tools.Search.Tests;
 
+
+
+/// <summary>Verifies ServiceExtensions behavior and contracts.</summary>
 public sealed class ServiceExtensionsTests
 {
     [Fact]
@@ -12,7 +15,6 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSearchTool();
         _ = services.AddSearchTool();
         using var provider = services.BuildServiceProvider();
-
         _ = provider.GetServices<ITool>().ShouldHaveSingleItem().ShouldBeOfType<SearchTool>();
     }
 
@@ -22,23 +24,7 @@ public sealed class ServiceExtensionsTests
         var services = CreateServices();
         _ = services.AddSearchTool(static options => options.DefaultMaximumBytes = options.MaximumBytes + 1);
         using var provider = services.BuildServiceProvider();
-
         _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<SearchToolOptions>>().Value);
-    }
-
-    [Fact]
-    public void SearchTool_WhenDirectOptionsInvalid_ThrowsExactConstraint()
-    {
-        var options = new SearchToolOptions { MaximumFiles = 0 };
-
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new SearchTool(
-            new FakeFileContentSearcher(),
-            new RecordingSecurityAuthority(),
-            new StubSecurityRequestIdGenerator(),
-            new FixedTimeProvider(),
-            Options.Create(options)));
-
-        exception.ParamName.ShouldBe("MaximumFiles");
     }
 
     private static ServiceCollection CreateServices()

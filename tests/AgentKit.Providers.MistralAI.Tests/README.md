@@ -12,14 +12,14 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 ## Start with these tests
 
 - [MistralAIAuthorizationHeaderFactoryTests](Authorization/MistralAIAuthorizationHeaderFactoryTests.cs)
-- [MistralAIEmbeddingModelEndToEndTests](MistralAIEmbeddingModelEndToEndTests.cs)
+- [MistralAIEmbeddingModelTests](MistralAIEmbeddingModelTests.cs)
 - [MistralAIEmbeddingRequestTranslatorTests](Translation/MistralAIEmbeddingRequestTranslatorTests.cs)
 - [MistralAIEmbeddingResponseParserTests](Parsing/MistralAIEmbeddingResponseParserTests.cs)
-- [MistralAILlmModelEndToEndTests](MistralAILlmModelEndToEndTests.cs)
+- [MistralAILlmModelTests](MistralAILlmModelTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
-conformance. Provider pipeline tests use controlled fixtures; `EndToEndTests`
-does not mean a live provider account is required.
+conformance. Provider pipeline tests use controlled fixtures and do not require
+a live provider account.
 
 ## Run this project
 

@@ -3,6 +3,9 @@
 
 namespace AgentKit.Tools.Task.Tests;
 
+
+
+/// <summary>Verifies TaskTool behavior and contracts.</summary>
 public sealed class TaskToolTests
 {
     private static string ValidArguments => $$"""
@@ -18,19 +21,17 @@ public sealed class TaskToolTests
         """;
 
     [Theory]
-    [InlineData(/*lang=json,strict*/ "{}")]
-    [InlineData(/*lang=json,strict*/ "{\"target_agent_id\":\"bad\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[]}")]
-    [InlineData(/*lang=json,strict*/ "{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[],\"allowed_tools\":[]}")]
-    [InlineData(/*lang=json,strict*/ "{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[\"read\",\"read\"]}")]
-    [InlineData(/*lang=json,strict*/ "{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[],\"max_turns\":0}")]
+    [InlineData( /*lang=json,strict*/"{}")]
+    [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"bad\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[]}")]
+    [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[],\"allowed_tools\":[]}")]
+    [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[\"read\",\"read\"]}")]
+    [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[],\"max_turns\":0}")]
     public async System.Threading.Tasks.Task InvokeAsync_WhenArgumentsInvalid_PerformsNoIdentityAllocationAuthorizationOrDispatch(string json)
     {
         var broker = new RecordingDelegationBroker();
         var authority = new RecordingSecurityAuthority();
         var ids = new FixedDelegationIdGenerator();
-
         var result = await Tool(broker, authority, ids).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
-
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         ids.Calls.ShouldBe(0);
         authority.Requests.ShouldBeEmpty();
@@ -42,9 +43,7 @@ public sealed class TaskToolTests
     {
         var broker = new RecordingDelegationBroker();
         var authority = new RecordingSecurityAuthority();
-
         var result = await Tool(broker, authority).InvokeAsync(Request(ValidArguments), TestContext.Current.CancellationToken);
-
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
         var security = authority.Requests.ShouldHaveSingleItem();
         security.Kind.ShouldBe(SecurityOperationKind.Delegation);
@@ -62,9 +61,7 @@ public sealed class TaskToolTests
     public async System.Threading.Tasks.Task InvokeAsync_WhenAuthorityDenies_PerformsNoDispatch()
     {
         var broker = new RecordingDelegationBroker();
-
         var result = await Tool(broker, new RecordingSecurityAuthority(false)).InvokeAsync(Request(ValidArguments), TestContext.Current.CancellationToken);
-
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
         broker.Requests.ShouldBeEmpty();
     }
@@ -73,7 +70,6 @@ public sealed class TaskToolTests
     public async System.Threading.Tasks.Task InvokeAsync_WhenChildSucceeds_ProjectsTypedNonAuthoritativeResult()
     {
         var result = await Tool(new RecordingDelegationBroker(), new RecordingSecurityAuthority()).InvokeAsync(Request(ValidArguments), TestContext.Current.CancellationToken);
-
         using var json = JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
         json.RootElement.GetProperty("child_goal_id").GetString().ShouldBe(TestData.GoalId.ToString());
         json.RootElement.GetProperty("status").GetString().ShouldBe("succeeded");
@@ -87,9 +83,7 @@ public sealed class TaskToolTests
         {
             Result = static request => new TaskDelegationChildResult(request.Prompt.Id, TestData.GoalId, TestData.ParentAgentId, TestData.ChildSessionId, null, null, TaskDelegationStatus.Succeeded, "Injected.", SideEffectCertainty.DefinitelyNotPerformed),
         };
-
         var result = await Tool(broker, new RecordingSecurityAuthority()).InvokeAsync(Request(ValidArguments), TestContext.Current.CancellationToken);
-
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         result.Content.ShouldBeEmpty();
     }
@@ -101,9 +95,7 @@ public sealed class TaskToolTests
         {
             Result = static request => new TaskDelegationChildResult(request.Prompt.Id, TestData.GoalId, request.Prompt.TargetAgentId, TestData.ChildSessionId, TestData.AttemptId, TestData.ChildRunId, TaskDelegationStatus.Failed, "Tests failed.", SideEffectCertainty.DefinitelyPerformed),
         };
-
         var result = await Tool(broker, new RecordingSecurityAuthority()).InvokeAsync(Request(ValidArguments), TestContext.Current.CancellationToken);
-
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         result.Outcome.FailureReason.ShouldBe("Tests failed.");
         using var json = JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
@@ -116,35 +108,12 @@ public sealed class TaskToolTests
     {
         var broker = new RecordingDelegationBroker();
         var authority = new RecordingSecurityAuthority();
-
         var result = await Tool(broker, authority).InvokeAsync(Request(ValidArguments, withSession: false), TestContext.Current.CancellationToken);
-
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         authority.Requests.ShouldBeEmpty();
         broker.Requests.ShouldBeEmpty();
     }
 
-    [Fact]
-    public void AddTaskTool_WhenCalledTwice_RegistersOneToolAndOneIdentitySource()
-    {
-        var services = new ServiceCollection();
-
-        _ = services.AddTaskTool().AddTaskTool();
-
-        services.Count(descriptor => descriptor.ServiceType == typeof(ITool) && descriptor.ImplementationType == typeof(TaskTool)).ShouldBe(1);
-        services.Count(descriptor => descriptor.ServiceType == typeof(IIdentifierGenerator<DelegationId>)).ShouldBe(1);
-    }
-
-    private static TaskTool Tool(ITaskDelegationBroker broker, ISecurityAuthority authority, FixedDelegationIdGenerator? ids = null) => new(
-        broker, authority, new FixedSecurityRequestIdGenerator(), ids ?? new FixedDelegationIdGenerator(), new FixedTimeProvider(), Options.Create(new TaskToolOptions()));
-
-    private static ToolInvocationRequest Request(string json, bool withSession = true) => new(
-        TestSupport.TestSecurityEvidence.ToolContext(
-            TestData.ParentAgentId,
-            withSession ? TestData.ParentSessionId : null,
-            TestData.ToolCallId,
-            new InRunOperationCorrelation(TestData.OperationId, TestData.ParentRunId, null),
-            TestData.Identity),
-        JsonDocument.Parse(json).RootElement,
-        DateTimeOffset.UnixEpoch);
+    private static TaskTool Tool(ITaskDelegationBroker broker, ISecurityAuthority authority, FixedDelegationIdGenerator? ids = null) => new(broker, authority, new FixedSecurityRequestIdGenerator(), ids ?? new FixedDelegationIdGenerator(), new FixedTimeProvider(), Options.Create(new TaskToolOptions()));
+    private static ToolInvocationRequest Request(string json, bool withSession = true) => new(TestSupport.TestSecurityEvidence.ToolContext(TestData.ParentAgentId, withSession ? TestData.ParentSessionId : null, TestData.ToolCallId, new InRunOperationCorrelation(TestData.OperationId, TestData.ParentRunId, null), TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
 }

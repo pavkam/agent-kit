@@ -3,10 +3,9 @@
 
 namespace AgentKit.Providers.MistralAI.Tests;
 
-/// <summary>
-/// Verifies <see cref="MistralAIProviderDefaults.BuildChatCompletionsUri"/>
-/// and the shared provider identity/capability defaults.
-/// </summary>
+
+
+/// <summary>Verifies MistralAIProviderDefaults behavior and contracts.</summary>
 public sealed class MistralAIProviderDefaultsTests
 {
     [Fact]
@@ -17,7 +16,6 @@ public sealed class MistralAIProviderDefaultsTests
             BaseAddress = new Uri("https://example.test/"),
             ChatCompletionsPath = "v2/chat/completions",
         };
-
         MistralAIProviderDefaults.BuildChatCompletionsUri(options).ShouldBe(new Uri("https://example.test/v2/chat/completions"));
     }
 
@@ -29,18 +27,11 @@ public sealed class MistralAIProviderDefaultsTests
             BaseAddress = new Uri("https://example.test/"),
             EmbeddingsPath = "v2/embeddings",
         };
-
         MistralAIProviderDefaults.BuildEmbeddingsUri(options).ShouldBe(new Uri("https://example.test/v2/embeddings"));
     }
 
     [Fact]
-    public void ProviderId_IsStableMistralAIIdentity() =>
-        MistralAIProviderDefaults.ProviderId.ShouldBe(new ProviderId("mistral-ai"));
-
-    [Fact]
-    public void EmbeddingApiFamily_IsStableMistralAIEmbeddingsIdentity() =>
-        MistralAIProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("mistral-embeddings"));
-
+    public void EmbeddingApiFamily_IsStableMistralAIEmbeddingsIdentity() => MistralAIProviderDefaults.EmbeddingApiFamily.ShouldBe(new ApiFamilyId("mistral-embeddings"));
     [Fact]
     public void DefaultEmbeddingCapabilities_SupportsEncodingSelectionAndDimensionsButNotPurpose()
     {

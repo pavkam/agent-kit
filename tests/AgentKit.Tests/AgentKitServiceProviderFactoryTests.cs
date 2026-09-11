@@ -12,15 +12,14 @@ using AgentKit.Observability;
 
 using Microsoft.Extensions.Logging;
 
+/// <summary>Verifies AgentKitServiceProviderFactory behavior and contracts.</summary>
 public sealed class AgentKitServiceProviderFactoryTests
 {
     private static readonly AsyncLocal<ActivityTraceId?> _activeMetricTrace = new();
-
     [Fact]
     public void Constructor_WhenOptionsIsNull_ThrowsExactArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new AgentKitServiceProviderFactory(null!));
-
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("options");
     }
@@ -28,9 +27,7 @@ public sealed class AgentKitServiceProviderFactoryTests
     [Fact]
     public void Constructor_WhenCompositionOptionsIsNull_ThrowsExactArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() =>
-            new AgentKitServiceProviderFactory(null!, new ServiceProviderOptions()));
-
+        var exception = Should.Throw<ArgumentNullException>(() => new AgentKitServiceProviderFactory(null!, new ServiceProviderOptions()));
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("compositionOptions");
     }
@@ -38,9 +35,7 @@ public sealed class AgentKitServiceProviderFactoryTests
     [Fact]
     public void Constructor_WhenInjectedLoggerOverloadOptionsIsNull_ThrowsExactArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() =>
-            new AgentKitServiceProviderFactory(null!, new RecordingLogger()));
-
+        var exception = Should.Throw<ArgumentNullException>(() => new AgentKitServiceProviderFactory(null!, new RecordingLogger()));
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("options");
     }
@@ -49,10 +44,7 @@ public sealed class AgentKitServiceProviderFactoryTests
     public void Constructor_WhenLoggerIsNull_ThrowsExactArgumentNullExceptionBeforeCapturingOptions()
     {
         var options = new ServiceProviderOptions();
-
-        var exception = Should.Throw<ArgumentNullException>(() =>
-            new AgentKitServiceProviderFactory(options, null!));
-
+        var exception = Should.Throw<ArgumentNullException>(() => new AgentKitServiceProviderFactory(options, null!));
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("logger");
     }
@@ -60,10 +52,7 @@ public sealed class AgentKitServiceProviderFactoryTests
     [Fact]
     public void Constructor_WhenTimeProviderIsNull_ThrowsExactArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() =>
-            new AgentKitServiceProviderFactory(
-                new ServiceProviderOptions(), new RecordingLogger(), null!));
-
+        var exception = Should.Throw<ArgumentNullException>(() => new AgentKitServiceProviderFactory(new ServiceProviderOptions(), new RecordingLogger(), null!));
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("timeProvider");
     }
@@ -71,13 +60,7 @@ public sealed class AgentKitServiceProviderFactoryTests
     [Fact]
     public void Constructor_WhenObservationOverloadCompositionOptionsIsNull_ThrowsExactArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() =>
-            new AgentKitServiceProviderFactory(
-                new ServiceProviderOptions(),
-                new RecordingLogger(),
-                TimeProvider.System,
-                null!));
-
+        var exception = Should.Throw<ArgumentNullException>(() => new AgentKitServiceProviderFactory(new ServiceProviderOptions(), new RecordingLogger(), TimeProvider.System, null!));
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("compositionOptions");
     }
@@ -86,9 +69,7 @@ public sealed class AgentKitServiceProviderFactoryTests
     public void CreateBuilder_WhenServicesIsNull_ThrowsExactArgumentNullException()
     {
         var factory = new AgentKitServiceProviderFactory();
-
         var exception = Should.Throw<ArgumentNullException>(() => factory.CreateBuilder(null!));
-
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("services");
     }
@@ -98,9 +79,7 @@ public sealed class AgentKitServiceProviderFactoryTests
     {
         var services = new ServiceCollection();
         var factory = new AgentKitServiceProviderFactory();
-
         var builder = factory.CreateBuilder(services);
-
         builder.ShouldBeSameAs(services);
     }
 
@@ -108,9 +87,7 @@ public sealed class AgentKitServiceProviderFactoryTests
     public void CreateServiceProvider_WhenBuilderIsNull_ThrowsExactArgumentNullException()
     {
         var factory = new AgentKitServiceProviderFactory();
-
         var exception = Should.Throw<ArgumentNullException>(() => factory.CreateServiceProvider(null!));
-
         exception.GetType().ShouldBe(typeof(ArgumentNullException));
         exception.ParamName.ShouldBe("containerBuilder");
     }
@@ -121,36 +98,31 @@ public sealed class AgentKitServiceProviderFactoryTests
         var applicationFactoryCalls = 0;
         var services = new NullContainingServiceCollection
         {
-            ServiceDescriptor.Singleton<ILeaf>(
-                _ =>
-                {
-                    applicationFactoryCalls++;
-                    return new Leaf();
-                }),
+            ServiceDescriptor.Singleton<ILeaf>(_ =>
+            {
+                applicationFactoryCalls++;
+                return new Leaf();
+            }),
             null!,
         };
         var logger = new RecordingLogger();
         var observedActivities = 0;
         using var parent = new Activity("null-descriptor-parent").Start();
-        using var listener = BuildActivityListener(
-            started: activity =>
+        using var listener = BuildActivityListener(started: activity =>
+        {
+            if (activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
             {
-                if (activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
-                {
-                    observedActivities++;
-                }
-            },
-            stopped: activity =>
+                observedActivities++;
+            }
+        }, stopped: activity =>
+        {
+            if (activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
             {
-                if (activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
-                {
-                    observedActivities++;
-                }
-            });
+                observedActivities++;
+            }
+        });
         var factory = new AgentKitServiceProviderFactory(new ServiceProviderOptions(), logger);
-
         var exception = Should.Throw<ArgumentException>(() => factory.CreateServiceProvider(services));
-
         exception.GetType().ShouldBe(typeof(ArgumentException));
         exception.ParamName.ShouldBe("containerBuilder");
         applicationFactoryCalls.ShouldBe(0);
@@ -172,10 +144,7 @@ public sealed class AgentKitServiceProviderFactoryTests
         var services = new ServiceCollection();
         _ = services.AddScoped<ScopedDependency>();
         _ = services.AddSingleton<SingletonCapturingScoped>();
-
-        var exception = Should.Throw<AggregateException>(() =>
-            factory.CreateServiceProvider(factory.CreateBuilder(services)));
-
+        var exception = Should.Throw<AggregateException>(() => factory.CreateServiceProvider(factory.CreateBuilder(services)));
         exception.ToString().ShouldContain("Cannot consume scoped service");
     }
 
@@ -187,9 +156,7 @@ public sealed class AgentKitServiceProviderFactoryTests
         var factory = new AgentKitServiceProviderFactory();
         var provider = (ServiceProvider) factory.CreateServiceProvider(factory.CreateBuilder(services));
         var singleton = provider.GetRequiredService<TrackingDisposable>();
-
         await provider.DisposeAsync();
-
         singleton.DisposeCount.ShouldBe(1);
     }
 
@@ -199,37 +166,27 @@ public sealed class AgentKitServiceProviderFactoryTests
         const string protectedKey = "must-not-appear";
         using var parent = new Activity("provider-build-parent").Start();
         var activities = new ConcurrentQueue<Activity>();
-        using var activityListener = BuildActivityListener(
-            stopped: activity =>
+        using var activityListener = BuildActivityListener(stopped: activity =>
+        {
+            if (activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
             {
-                if (activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
-                {
-                    activities.Enqueue(activity);
-                }
-            });
+                activities.Enqueue(activity);
+            }
+        });
         using var metrics = new BuildMetricCollector(parent.TraceId);
         var logger = new RecordingLogger();
         var services = new ServiceCollection();
         _ = services.AddKeyedSingleton<ILeaf, Leaf>(protectedKey);
         var factory = new AgentKitServiceProviderFactory(new ServiceProviderOptions(), logger);
-
         await using var provider = (ServiceProvider) factory.CreateServiceProvider(services);
-
         Activity.Current.ShouldBe(parent);
         var activity = activities.ShouldHaveSingleItem();
         activity.OperationName.ShouldBe(AgentKitActivityNames.AgentCompositionBuild);
         activity.Status.ShouldBe(ActivityStatusCode.Ok);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("built");
-        activity.Tags.Any(static tag =>
-            tag.Value is not null && tag.Value.Contains(protectedKey, StringComparison.Ordinal)).ShouldBeFalse();
-        metrics.Measurements.ShouldContain(measurement =>
-            measurement.Name == AgentKitMetricNames.AgentCompositionBuildCount
-            && measurement.Outcome == "built"
-            && measurement.Value == 1);
-        metrics.Measurements.ShouldContain(measurement =>
-            measurement.Name == AgentKitMetricNames.AgentCompositionBuildDuration
-            && measurement.Outcome == "built"
-            && measurement.Value >= 0);
+        activity.Tags.Any(static tag => tag.Value is not null && tag.Value.Contains(protectedKey, StringComparison.Ordinal)).ShouldBeFalse();
+        metrics.Measurements.ShouldContain(measurement => measurement.Name == AgentKitMetricNames.AgentCompositionBuildCount && measurement.Outcome == "built" && measurement.Value == 1);
+        metrics.Measurements.ShouldContain(measurement => measurement.Name == AgentKitMetricNames.AgentCompositionBuildDuration && measurement.Outcome == "built" && measurement.Value >= 0);
         var log = logger.Entries.ShouldHaveSingleItem();
         log.EventId.Id.ShouldBe(18004);
         log.Level.ShouldBe(LogLevel.Debug);
@@ -244,58 +201,41 @@ public sealed class AgentKitServiceProviderFactoryTests
         var applicationFactoryCalls = 0;
         using var parent = new Activity("provider-rejection-parent").Start();
         var activities = new ConcurrentQueue<Activity>();
-        using var activityListener = BuildActivityListener(
-            stopped: activity =>
+        using var activityListener = BuildActivityListener(stopped: activity =>
+        {
+            if (activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
             {
-                if (activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
-                {
-                    activities.Enqueue(activity);
-                }
-            });
+                activities.Enqueue(activity);
+            }
+        });
         using var metrics = new BuildMetricCollector(parent.TraceId);
         var logger = new RecordingLogger();
-        var services = duplicateCoreService
-            ? CompositionTestData.RunnableBuilder().Services
-            : new ServiceCollection();
-        _ = services.AddSingleton<ILeaf>(
-            _ =>
-            {
-                applicationFactoryCalls++;
-                return new Leaf();
-            });
-        _ = duplicateCoreService
-            ? services.AddSingleton<TimeProvider>(_ =>
-            {
-                applicationFactoryCalls++;
-                throw new InvalidOperationException("Protected application factory content must not escape.");
-            })
-            : services.DeclareAgentKitComponent(Registration(ServiceLifetime.Scoped));
+        var services = duplicateCoreService ? CompositionTestData.RunnableBuilder().Services : new ServiceCollection();
+        _ = services.AddSingleton<ILeaf>(_ =>
+        {
+            applicationFactoryCalls++;
+            return new Leaf();
+        });
+        _ = duplicateCoreService ? services.AddSingleton<TimeProvider>(_ =>
+        {
+            applicationFactoryCalls++;
+            throw new InvalidOperationException("Protected application factory content must not escape.");
+        }) : services.DeclareAgentKitComponent(Registration(ServiceLifetime.Scoped));
         var factory = new AgentKitServiceProviderFactory(new ServiceProviderOptions(), logger);
-
         var exception = Should.Throw<AgentCompositionException>(() => factory.CreateServiceProvider(services));
-
-        exception.Diagnostics.ShouldContain(
-            diagnostic => diagnostic.Code == (duplicateCoreService
-                ? "agentkit.time.ambiguous"
-                : "agentkit.component-registration.lifetime-mismatch"));
+        exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == (duplicateCoreService ? "agentkit.time.ambiguous" : "agentkit.component-registration.lifetime-mismatch"));
         applicationFactoryCalls.ShouldBe(0);
         Activity.Current.ShouldBe(parent);
         var activity = activities.ShouldHaveSingleItem();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("rejected");
         activity.GetTagItem(AgentKitTagNames.ErrorType).ShouldBe(nameof(AgentCompositionException));
-        metrics.Measurements.ShouldContain(measurement =>
-            measurement.Name == AgentKitMetricNames.AgentCompositionBuildCount
-            && measurement.Outcome == "rejected");
-        metrics.Measurements.ShouldContain(measurement =>
-            measurement.Name == AgentKitMetricNames.AgentCompositionBuildDuration
-            && measurement.Outcome == "rejected"
-            && measurement.Value >= 0);
+        metrics.Measurements.ShouldContain(measurement => measurement.Name == AgentKitMetricNames.AgentCompositionBuildCount && measurement.Outcome == "rejected");
+        metrics.Measurements.ShouldContain(measurement => measurement.Name == AgentKitMetricNames.AgentCompositionBuildDuration && measurement.Outcome == "rejected" && measurement.Value >= 0);
         var log = logger.Entries.ShouldHaveSingleItem();
         log.EventId.Id.ShouldBe(18005);
         log.Message.ShouldNotContain("Protected application factory content");
-        activity.TagObjects.ShouldNotContain(static tag =>
-            tag.Value != null && tag.Value.ToString()!.Contains("Protected application factory content", StringComparison.Ordinal));
+        activity.TagObjects.ShouldNotContain(static tag => tag.Value != null && tag.Value.ToString()!.Contains("Protected application factory content", StringComparison.Ordinal));
         log.Properties["ErrorType"].ShouldBe(nameof(AgentCompositionException));
     }
 
@@ -305,19 +245,14 @@ public sealed class AgentKitServiceProviderFactoryTests
         var applicationFactoryCalls = 0;
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
-        _ = services.AddSingleton<ILeaf>(
-            _ =>
-            {
-                applicationFactoryCalls++;
-                return new Leaf();
-            });
+        _ = services.AddSingleton<ILeaf>(_ =>
+        {
+            applicationFactoryCalls++;
+            return new Leaf();
+        });
         var factory = new AgentKitServiceProviderFactory();
-
-        var exception = Should.Throw<AgentCompositionException>(() =>
-            factory.CreateServiceProvider(factory.CreateBuilder(services)));
-
-        exception.Diagnostics.ShouldContain(
-            static diagnostic => diagnostic.Code == "agentkit.security-grant-store.missing");
+        var exception = Should.Throw<AgentCompositionException>(() => factory.CreateServiceProvider(factory.CreateBuilder(services)));
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.security-grant-store.missing");
         applicationFactoryCalls.ShouldBe(0);
     }
 
@@ -326,32 +261,26 @@ public sealed class AgentKitServiceProviderFactoryTests
     {
         using var parent = new Activity("provider-failure-parent").Start();
         var activities = new ConcurrentQueue<Activity>();
-        using var activityListener = BuildActivityListener(
-            stopped: activity =>
+        using var activityListener = BuildActivityListener(stopped: activity =>
+        {
+            if (activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
             {
-                if (activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
-                {
-                    activities.Enqueue(activity);
-                }
-            });
+                activities.Enqueue(activity);
+            }
+        });
         using var metrics = new BuildMetricCollector(parent.TraceId);
         var logger = new RecordingLogger();
         var services = new ServiceCollection();
         _ = services.AddScoped<ScopedDependency>();
         _ = services.AddSingleton<SingletonCapturingScoped>();
-        var factory = new AgentKitServiceProviderFactory(
-            new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true }, logger);
-
+        var factory = new AgentKitServiceProviderFactory(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true }, logger);
         _ = Should.Throw<AggregateException>(() => factory.CreateServiceProvider(services));
-
         Activity.Current.ShouldBe(parent);
         var activity = activities.ShouldHaveSingleItem();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("failed");
         activity.GetTagItem(AgentKitTagNames.ErrorType).ShouldBe(nameof(AggregateException));
-        metrics.Measurements.ShouldContain(measurement =>
-            measurement.Name == AgentKitMetricNames.AgentCompositionBuildCount
-            && measurement.Outcome == "failed");
+        metrics.Measurements.ShouldContain(measurement => measurement.Name == AgentKitMetricNames.AgentCompositionBuildCount && measurement.Outcome == "failed");
         var log = logger.Entries.ShouldHaveSingleItem();
         log.EventId.Id.ShouldBe(18006);
         log.Properties["ErrorType"].ShouldBe(nameof(AggregateException));
@@ -363,13 +292,9 @@ public sealed class AgentKitServiceProviderFactoryTests
     public async Task CreateServiceProvider_WhenActivityCallbackThrows_PreservesProviderAndParentage(bool throwOnStart)
     {
         using var parent = new Activity("hostile-activity-parent").Start();
-        using var listener = BuildActivityListener(
-            started: activity => ThrowForExactBuild(activity, parent, throwOnStart),
-            stopped: activity => ThrowForExactBuild(activity, parent, !throwOnStart));
+        using var listener = BuildActivityListener(started: activity => ThrowForExactBuild(activity, parent, throwOnStart), stopped: activity => ThrowForExactBuild(activity, parent, !throwOnStart));
         var factory = new AgentKitServiceProviderFactory();
-
         await using var provider = (ServiceProvider) factory.CreateServiceProvider(new ServiceCollection());
-
         _ = provider.ShouldNotBeNull();
         Activity.Current.ShouldBe(parent);
     }
@@ -383,9 +308,7 @@ public sealed class AgentKitServiceProviderFactoryTests
         using var meterListener = new MeterListener();
         meterListener.InstrumentPublished = (instrument, listener) =>
         {
-            if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
-                && instrument.Name is AgentKitMetricNames.AgentCompositionBuildCount
-                    or AgentKitMetricNames.AgentCompositionBuildDuration)
+            if (instrument.Meter.Name == AgentKitDiagnostics.MeterName && instrument.Name is AgentKitMetricNames.AgentCompositionBuildCount or AgentKitMetricNames.AgentCompositionBuildDuration)
             {
                 listener.EnableMeasurementEvents(instrument);
             }
@@ -398,9 +321,7 @@ public sealed class AgentKitServiceProviderFactoryTests
         var factory = new AgentKitServiceProviderFactory(new ServiceProviderOptions(), new ThrowingLogger());
         var provider = (ServiceProvider) factory.CreateServiceProvider(services);
         var singleton = provider.GetRequiredService<TrackingDisposable>();
-
         await provider.DisposeAsync();
-
         singleton.DisposeCount.ShouldBe(1);
         Activity.Current.ShouldBe(parent);
     }
@@ -410,24 +331,19 @@ public sealed class AgentKitServiceProviderFactoryTests
     {
         var factoryCalls = 0;
         using var parent = new Activity("hostile-rejection-parent").Start();
-        using var activityListener = BuildActivityListener(
-            stopped: activity => ThrowForExactBuild(activity, parent, enabled: true));
+        using var activityListener = BuildActivityListener(stopped: activity => ThrowForExactBuild(activity, parent, enabled: true));
         using var metricScope = new MetricTraceScope(parent.TraceId);
         using var meterListener = ThrowingBuildMeterListener(parent.TraceId);
         var services = new ServiceCollection();
-        _ = services.AddSingleton<ILeaf>(
-            _ =>
-            {
-                factoryCalls++;
-                return new Leaf();
-            });
+        _ = services.AddSingleton<ILeaf>(_ =>
+        {
+            factoryCalls++;
+            return new Leaf();
+        });
         _ = services.DeclareAgentKitComponent(Registration(ServiceLifetime.Scoped));
         var factory = new AgentKitServiceProviderFactory(new ServiceProviderOptions(), new ThrowingLogger());
-
         var exception = Should.Throw<AgentCompositionException>(() => factory.CreateServiceProvider(services));
-
-        exception.Diagnostics.ShouldContain(
-            static diagnostic => diagnostic.Code == "agentkit.component-registration.lifetime-mismatch");
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.component-registration.lifetime-mismatch");
         factoryCalls.ShouldBe(0);
         Activity.Current.ShouldBe(parent);
     }
@@ -436,8 +352,7 @@ public sealed class AgentKitServiceProviderFactoryTests
     [InlineData("initial")]
     [InlineData("negative")]
     [InlineData("elapsed")]
-    public async Task CreateServiceProvider_WhenDurationClockIsUnavailableOrNegative_OmitsDurationOnly(
-        string scenario)
+    public async Task CreateServiceProvider_WhenDurationClockIsUnavailableOrNegative_OmitsDurationOnly(string scenario)
     {
         using var parent = new Activity("unavailable-duration-parent").Start();
         using var activityListener = BuildActivityListener();
@@ -449,17 +364,11 @@ public sealed class AgentKitServiceProviderFactoryTests
             "elapsed" => new EndingTimestampThrowsProvider(),
             _ => new DecreasingTimestampProvider(),
         };
-        var factory = new AgentKitServiceProviderFactory(
-            new ServiceProviderOptions(), logger, timeProvider);
-
+        var factory = new AgentKitServiceProviderFactory(new ServiceProviderOptions(), logger, timeProvider);
         await using var provider = (ServiceProvider) factory.CreateServiceProvider(new ServiceCollection());
-
         _ = provider.ShouldNotBeNull();
-        metrics.Measurements.ShouldContain(measurement =>
-            measurement.Name == AgentKitMetricNames.AgentCompositionBuildCount
-            && measurement.Outcome == "built");
-        metrics.Measurements.ShouldNotContain(measurement =>
-            measurement.Name == AgentKitMetricNames.AgentCompositionBuildDuration);
+        metrics.Measurements.ShouldContain(measurement => measurement.Name == AgentKitMetricNames.AgentCompositionBuildCount && measurement.Outcome == "built");
+        metrics.Measurements.ShouldNotContain(measurement => measurement.Name == AgentKitMetricNames.AgentCompositionBuildDuration);
         logger.Entries.ShouldHaveSingleItem().EventId.Id.ShouldBe(18004);
         Activity.Current.ShouldBe(parent);
     }
@@ -467,32 +376,19 @@ public sealed class AgentKitServiceProviderFactoryTests
     [Theory]
     [InlineData(0)]
     [InlineData(3)]
-    public async Task CreateServiceProvider_WhenDurationClockSucceeds_RecordsExactSeconds(
-        int elapsedSeconds)
+    public async Task CreateServiceProvider_WhenDurationClockSucceeds_RecordsExactSeconds(int elapsedSeconds)
     {
         using var parent = new Activity("exact-duration-parent").Start();
         using var activityListener = BuildActivityListener();
         using var metrics = new BuildMetricCollector(parent.TraceId);
-        var factory = new AgentKitServiceProviderFactory(
-            new ServiceProviderOptions(),
-            new RecordingLogger(),
-            new FixedElapsedTimeProvider(elapsedSeconds));
-
+        var factory = new AgentKitServiceProviderFactory(new ServiceProviderOptions(), new RecordingLogger(), new FixedElapsedTimeProvider(elapsedSeconds));
         await using var provider = (ServiceProvider) factory.CreateServiceProvider(new ServiceCollection());
-
-        metrics.Measurements.ShouldContain(measurement =>
-            measurement.Name == AgentKitMetricNames.AgentCompositionBuildDuration
-            && measurement.Outcome == "built"
-            && measurement.Value == elapsedSeconds);
+        metrics.Measurements.ShouldContain(measurement => measurement.Name == AgentKitMetricNames.AgentCompositionBuildDuration && measurement.Outcome == "built" && measurement.Value == elapsedSeconds);
         Activity.Current.ShouldBe(parent);
     }
 
-    private static ComponentRegistrationDescriptor Registration(ServiceLifetime lifetime) => new(
-        ComponentContractReference.Unkeyed<ILeaf>(), typeof(Leaf), lifetime, []);
-
-    private static ActivityListener BuildActivityListener(
-        Action<Activity>? started = null,
-        Action<Activity>? stopped = null)
+    private static ComponentRegistrationDescriptor Registration(ServiceLifetime lifetime) => new(ComponentContractReference.Unkeyed<ILeaf>(), typeof(Leaf), lifetime, []);
+    private static ActivityListener BuildActivityListener(Action<Activity>? started = null, Action<Activity>? stopped = null)
     {
         var listener = new ActivityListener
         {
@@ -507,10 +403,7 @@ public sealed class AgentKitServiceProviderFactoryTests
 
     private static void ThrowForExactBuild(Activity activity, Activity parent, bool enabled)
     {
-        if (enabled
-            && activity.OperationName == AgentKitActivityNames.AgentCompositionBuild
-            && activity.TraceId == parent.TraceId
-            && activity.ParentSpanId == parent.SpanId)
+        if (enabled && activity.OperationName == AgentKitActivityNames.AgentCompositionBuild && activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
         {
             throw new TestObserverException();
         }
@@ -522,9 +415,7 @@ public sealed class AgentKitServiceProviderFactoryTests
         {
             InstrumentPublished = (instrument, value) =>
             {
-                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
-                    && instrument.Name is AgentKitMetricNames.AgentCompositionBuildCount
-                        or AgentKitMetricNames.AgentCompositionBuildDuration)
+                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName && instrument.Name is AgentKitMetricNames.AgentCompositionBuildCount or AgentKitMetricNames.AgentCompositionBuildDuration)
                 {
                     value.EnableMeasurementEvents(instrument);
                 }
@@ -545,7 +436,6 @@ public sealed class AgentKitServiceProviderFactoryTests
     }
 
     private sealed class ScopedDependency;
-
     private sealed class SingletonCapturingScoped(ScopedDependency dependency)
     {
         public ScopedDependency Dependency { get; } = dependency;
@@ -563,13 +453,9 @@ public sealed class AgentKitServiceProviderFactoryTests
     }
 
     private interface ILeaf;
-
     private sealed class Leaf: ILeaf;
-
     private sealed class NullContainingServiceCollection: List<ServiceDescriptor>, IServiceCollection;
-
     private sealed class TestObserverException: Exception;
-
     private sealed class ThrowingTimestampProvider: TimeProvider
     {
         public override long GetTimestamp() => throw new TestObserverException();
@@ -578,7 +464,6 @@ public sealed class AgentKitServiceProviderFactoryTests
     private sealed class DecreasingTimestampProvider: TimeProvider
     {
         private long _timestamp = 2;
-
         public override long TimestampFrequency => 1;
 
         public override long GetTimestamp() => Interlocked.Decrement(ref _timestamp);
@@ -587,93 +472,60 @@ public sealed class AgentKitServiceProviderFactoryTests
     private sealed class EndingTimestampThrowsProvider: TimeProvider
     {
         private int _calls;
-
-        public override long GetTimestamp() => Interlocked.Increment(ref _calls) == 1
-            ? 1
-            : throw new TestObserverException();
+        public override long GetTimestamp() => Interlocked.Increment(ref _calls) == 1 ? 1 : throw new TestObserverException();
     }
 
     private sealed class FixedElapsedTimeProvider(long elapsedSeconds): TimeProvider
     {
         private int _calls;
-
         public override long TimestampFrequency => 1;
 
-        public override long GetTimestamp() => Interlocked.Increment(ref _calls) == 1
-            ? 10
-            : 10 + elapsedSeconds;
+        public override long GetTimestamp() => Interlocked.Increment(ref _calls) == 1 ? 10 : 10 + elapsedSeconds;
     }
 
     private sealed class ThrowingLogger: ILogger<AgentKitServiceProviderFactory>
     {
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
-
         public bool IsEnabled(LogLevel logLevel) => throw new TestObserverException();
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter) => throw new TestObserverException();
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => throw new TestObserverException();
     }
 
     private sealed class RecordingLogger: ILogger<AgentKitServiceProviderFactory>
     {
         private readonly ConcurrentQueue<LogEntry> _entries = new();
-
         public IReadOnlyList<LogEntry> Entries => _entries.ToArray();
 
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
-
         public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            var properties = state is IEnumerable<KeyValuePair<string, object?>> values
-                ? values.ToDictionary(static value => value.Key, static value => value.Value, StringComparer.Ordinal)
-                : new Dictionary<string, object?>(StringComparer.Ordinal);
+            var properties = state is IEnumerable<KeyValuePair<string, object?>> values ? values.ToDictionary(static value => value.Key, static value => value.Value, StringComparer.Ordinal) : new Dictionary<string, object?>(StringComparer.Ordinal);
             _entries.Enqueue(new LogEntry(logLevel, eventId, formatter(state, exception), properties));
         }
     }
 
-    private sealed record LogEntry(
-        LogLevel Level,
-        EventId EventId,
-        string Message,
-        IReadOnlyDictionary<string, object?> Properties);
-
+    private sealed record LogEntry(LogLevel Level, EventId EventId, string Message, IReadOnlyDictionary<string, object?> Properties);
     private sealed class BuildMetricCollector: IDisposable
     {
         private readonly ConcurrentQueue<MetricMeasurement> _measurements = new();
         private readonly MeterListener _listener = new();
         private readonly MetricTraceScope _scope;
         private readonly ActivityTraceId _traceId;
-
         public BuildMetricCollector(ActivityTraceId traceId)
         {
             _traceId = traceId;
             _scope = new MetricTraceScope(traceId);
             _listener.InstrumentPublished = (instrument, listener) =>
             {
-                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
-                    && instrument.Name is AgentKitMetricNames.AgentCompositionBuildCount
-                        or AgentKitMetricNames.AgentCompositionBuildDuration)
+                if (instrument.Meter.Name == AgentKitDiagnostics.MeterName && instrument.Name is AgentKitMetricNames.AgentCompositionBuildCount or AgentKitMetricNames.AgentCompositionBuildDuration)
                 {
                     listener.EnableMeasurementEvents(instrument);
                 }
             };
-            _listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
-                Record(instrument, value, tags));
-            _listener.SetMeasurementEventCallback<double>((instrument, value, tags, _) =>
-                Record(instrument, value, tags));
+            _listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) => Record(instrument, value, tags));
+            _listener.SetMeasurementEventCallback<double>((instrument, value, tags, _) => Record(instrument, value, tags));
             _listener.Start();
         }
 
@@ -693,24 +545,17 @@ public sealed class AgentKitServiceProviderFactoryTests
                 return;
             }
 
-            var outcome = tags.ToArray().SingleOrDefault(
-                static tag => tag.Key == AgentKitTagNames.Outcome).Value as string;
-            _measurements.Enqueue(new MetricMeasurement(
-                instrument.Name,
-                Convert.ToDouble(value, CultureInfo.InvariantCulture),
-                outcome));
+            var outcome = tags.ToArray().SingleOrDefault(static tag => tag.Key == AgentKitTagNames.Outcome).Value as string;
+            _measurements.Enqueue(new MetricMeasurement(instrument.Name, Convert.ToDouble(value, CultureInfo.InvariantCulture), outcome));
         }
     }
 
     private sealed record MetricMeasurement(string Name, double Value, string? Outcome);
-
     private sealed class MetricTraceScope: IDisposable
     {
         private readonly ActivityTraceId? _previous = _activeMetricTrace.Value;
         private bool _disposed;
-
         public MetricTraceScope(ActivityTraceId traceId) => _activeMetricTrace.Value = traceId;
-
         public void Dispose()
         {
             if (_disposed)
@@ -721,5 +566,186 @@ public sealed class AgentKitServiceProviderFactoryTests
             _disposed = true;
             _activeMetricTrace.Value = _previous;
         }
+    }
+
+    [Fact]
+    public void HostManagedEngine_WhenConfiguredSourceHasNoBootstrapSnapshot_RejectsNotReadyWithoutReading()
+    {
+        ThrowingBootstrapTestSource.Reset();
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+        CompositionTestData.AddRequiredSecurityGrantStore(services);
+        _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
+        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
+        using var provider = CompositionTestData.BuildHostedProvider(services);
+        var exception = Should.Throw<AgentCompositionException>(provider.GetRequiredService<AgentEngine>);
+        exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.catalog.not-ready");
+        ThrowingBootstrapTestSource.Reads.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task HostManagedEngine_WhenCompleteBootstrapProvided_NeverCallsSourceReadAsync()
+    {
+        ThrowingBootstrapTestSource.Reset();
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
+        var definition = CompositionTestData.Definition();
+        _ = services.AddAgentDefinitionSnapshot(new AgentDefinitionSourceSnapshot(new AgentDefinitionSourceId("test-source"), new AgentDefinitionSourceVersion(1), 0, [definition]));
+        CompositionTestData.AddRunProfiles(services, definition);
+        await using var provider = CompositionTestData.BuildHostedProvider(services);
+        var engine = provider.GetRequiredService<AgentEngine>();
+        _ = engine.ShouldNotBeNull();
+        ThrowingBootstrapTestSource.Reads.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task HostedAndStandalone_WhenRegistrationsMatch_CaptureEquivalentReadinessEvidence()
+    {
+        var registration = RegistrationComponentRegistrationComposition<ILeaf, Leaf>(ServiceLifetime.Singleton);
+        var standaloneBuilder = CompositionTestData.RunnableBuilder();
+        _ = standaloneBuilder.Services.AddSingleton<ILeaf, Leaf>();
+        _ = standaloneBuilder.Services.DeclareAgentKitComponent(registration);
+        await using var standalone = standaloneBuilder.Build();
+        var hostedServices = new ServiceCollection();
+        ConfigureRunnable(hostedServices);
+        _ = hostedServices.AddSingleton<ILeaf, Leaf>();
+        _ = hostedServices.DeclareAgentKitComponent(registration);
+        await using var provider = CompositionTestData.BuildHostedProvider(hostedServices);
+        var hosted = provider.GetRequiredService<AgentEngine>();
+        hosted.ComponentRegistrations.Registrations.ShouldBe(standalone.ComponentRegistrations.Registrations);
+        hosted.ComponentRegistrations.UnrepresentedRequiredSpine.ShouldBe(standalone.ComponentRegistrations.UnrepresentedRequiredSpine);
+        hosted.ComponentRegistrations.RepresentsCompleteRunnableGraph.ShouldBeFalse();
+        standalone.ComponentRegistrations.RepresentsCompleteRunnableGraph.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task HostedProviders_WhenCollectionChanges_CapturePerProviderWithoutChangingEarlierEngine()
+    {
+        var services = new ServiceCollection();
+        ConfigureRunnable(services);
+        await using var firstProvider = CompositionTestData.BuildHostedProvider(services);
+        var first = firstProvider.GetRequiredService<AgentEngine>();
+        var firstServiceCount = first.ComponentRegistrations.Services.Length;
+        _ = services.AddSingleton<ILeaf, Leaf>();
+        _ = services.DeclareAgentKitComponent(RegistrationComponentRegistrationComposition<ILeaf, Leaf>(ServiceLifetime.Scoped));
+        var exception = Should.Throw<AgentCompositionException>(() => CompositionTestData.BuildHostedProvider(services));
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.component-registration.lifetime-mismatch");
+        first.ComponentRegistrations.Registrations.ShouldBeEmpty();
+        first.ComponentRegistrations.Services.Length.ShouldBe(firstServiceCount);
+    }
+
+    [Fact]
+    public async Task HostedProvider_WhenCollectionChangesBeforeDelayedEngineResolution_RetainsItsBuiltGraph()
+    {
+        var services = new ServiceCollection();
+        ConfigureRunnable(services);
+        await using var firstProvider = CompositionTestData.BuildHostedProvider(services);
+        _ = services.AddSingleton<ILeaf, Leaf>();
+        _ = services.DeclareAgentKitComponent(RegistrationComponentRegistrationComposition<ILeaf, Leaf>(ServiceLifetime.Singleton));
+        var first = firstProvider.GetRequiredService<AgentEngine>();
+        await using var secondProvider = CompositionTestData.BuildHostedProvider(services);
+        var second = secondProvider.GetRequiredService<AgentEngine>();
+        first.ComponentRegistrations.Registrations.ShouldBeEmpty();
+        first.ComponentRegistrations.Services.Count(static descriptor => descriptor.ServiceType == typeof(ILeaf)).ShouldBe(0);
+        _ = second.ComponentRegistrations.Registrations.ShouldHaveSingleItem();
+        second.ComponentRegistrations.Services.Count(static descriptor => descriptor.ServiceType == typeof(ILeaf)).ShouldBe(1);
+        second.ComponentRegistrations.ShouldNotBeSameAs(first.ComponentRegistrations);
+        first.ComponentRegistrations.Services.Count(static descriptor => descriptor.ServiceType == typeof(ComponentRegistrationSnapshot)).ShouldBe(1);
+        second.ComponentRegistrations.Services.Count(static descriptor => descriptor.ServiceType == typeof(ComponentRegistrationSnapshot)).ShouldBe(1);
+    }
+
+    [Fact]
+    public void HostedProvider_WhenBuiltWithoutAgentKitFactory_FailsClosedAtEngineResolution()
+    {
+        var services = new ServiceCollection();
+        ConfigureRunnable(services);
+        using var provider = services.BuildServiceProvider();
+        var exception = Should.Throw<AgentCompositionException>(provider.GetRequiredService<AgentEngine>);
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.component-registration.snapshot-missing");
+    }
+
+    private static void ConfigureRunnable(IServiceCollection services)
+    {
+        _ = services.AddAgentKit();
+        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        var definition = CompositionTestData.Definition();
+        _ = services.AddAgent(definition);
+        CompositionTestData.AddRunProfiles(services, definition);
+    }
+
+    private static ComponentRegistrationDescriptor RegistrationComponentRegistrationComposition<TContract, TImplementation>(ServiceLifetime lifetime, params ComponentContractReference[] dependencies)
+        where TContract : class where TImplementation : class, TContract => new(ComponentContractReference.Unkeyed<TContract>(), typeof(TImplementation), lifetime, [.. dependencies.Select(static dependency => new ComponentDependencyDescriptor(dependency, ComponentDependencyCardinality.RequiredSingular))]);
+    public static TheoryData<Type, string> RequiredServices => new()
+    {
+        {
+            typeof(AgentEngine),
+            "agentkit.engine"
+        },
+        {
+            typeof(IAgentDefinitionCatalog),
+            "agentkit.catalog"
+        },
+        {
+            typeof(IAgentRunProfilePublicationReader),
+            "agentkit.run-profile-reader"
+        },
+        {
+            typeof(ISecurityProfileSelector),
+            "agentkit.security-profile-selector"
+        },
+        {
+            typeof(ISecurityGrantStore),
+            "agentkit.security-grant-store"
+        },
+        {
+            typeof(TimeProvider),
+            "agentkit.time"
+        },
+        {
+            typeof(IIdentifierGenerator<RunId>),
+            "agentkit.runid"
+        },
+        {
+            typeof(IIdentifierGenerator<OperationId>),
+            "agentkit.operationid"
+        },
+        {
+            typeof(IAgentLoop),
+            "agentkit.loop"
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(RequiredServices))]
+    public void CreateServiceProvider_WhenSingularServiceIsDuplicated_RejectsBeforeBuildingHostProvider(Type serviceType, string code)
+    {
+        // Arrange
+        var builder = CompositionTestData.RunnableBuilder();
+        var factoryCalls = 0;
+        _ = builder.Services.AddSingleton(serviceType, _ =>
+        {
+            factoryCalls++;
+            throw new InvalidOperationException("Duplicate service factories must never run.");
+        });
+        var factory = new AgentKitServiceProviderFactory(new ServiceProviderOptions { ValidateOnBuild = false, ValidateScopes = false, });
+        // Act
+        var exception = Should.Throw<AgentCompositionException>(() => factory.CreateServiceProvider(factory.CreateBuilder(builder.Services)));
+        // Assert
+        exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == $"{code}.ambiguous");
+        factoryCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public void CreateServiceProvider_WhenFacadeIsAbsent_DoesNotRequireRunnableSpine()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(TimeProvider.System);
+        _ = services.AddSingleton(TimeProvider.System);
+        var factory = new AgentKitServiceProviderFactory();
+        using var provider = (ServiceProvider) factory.CreateServiceProvider(services);
+        provider.GetServices<TimeProvider>().Count().ShouldBe(2);
     }
 }
