@@ -107,6 +107,13 @@ completion and cleanup failure; cleanup is never retried implicitly. Closed
 source acquisition returns an unavailable result for the exact requested
 identity. Cancellation before transfer acquires no resource.
 
+A pending asynchronous source acquisition also retains its catalog. Closing the
+catalog before ownership transfer releases a late source lease before completing
+closure. The catalog verifies the complete selected descriptor and source
+version before transferring a lease; a malformed source result cannot substitute
+a binding. The catalog releases any lease it received before returning a
+rejection.
+
 Failed or cancelled capture releases its partial acquisitions and advertises
 nothing. Borrowed host-DI instances keep their original disposal owner; release
 never proves an external effect stopped.
@@ -219,6 +226,13 @@ declared and authorized effect.
   the same run ID.
 - A failed or cancelled capture releases owned acquisitions once; closing it
   blocks new acquisitions without invalidating an outstanding invoker lease.
+- Closure during an asynchronous source acquisition waits for and releases a
+  late lease without transferring it. Cancellation preserves its original token
+  when cleanup succeeds; cleanup failure stays observable.
+- Catalog acquisition rejects mismatched lease descriptors, source versions, and
+  invalid results while releasing any owned lease before returning.
+- A failed source cleanup does not prevent the other owned sources from being
+  released; repeated catalog disposal does not retry any source.
 - Closing a capture drains outstanding leases before releasing an owned DI
   scope. Borrowed scopes remain host-owned, and cleanup failure is shared by all
   waiters without a repeated cleanup attempt.

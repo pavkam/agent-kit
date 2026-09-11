@@ -8,6 +8,10 @@ tools.
 Use this suite when changing that component or investigating a regression. It is
 a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
+`ToolCatalogCaptureTests` runs the reusable catalog-capture suite and adds exact
+source-graph validation, hostile metadata and lease responses, cleanup failure
+aggregation, owned/borrowed DI scopes, and safe diagnostic/observer coverage.
+
 ## Start with these tests
 
 - [ToolProviderCaptureTests](ToolProviderCaptureTests.cs) — reusable

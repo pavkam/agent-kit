@@ -7,6 +7,10 @@ Reference this package when supplying an alternative implementation or
 integration. It defines contracts shared by engines and components without
 depending on their implementations.
 
+The retained `IToolCatalogCapture` contract owns an exact run-bound source
+graph, validates transferred invoker leases against selected descriptor/version
+evidence, and drains pending acquisitions and leases before source cleanup.
+
 ## Use this project
 
 Start with the contracts for the component you are implementing. The

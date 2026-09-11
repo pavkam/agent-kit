@@ -70,6 +70,34 @@ owning spec.
 
 ## Latest integration evidence
 
+The retained catalog-lifetime checkpoint adds `IToolCatalogCapture` and
+`ToolCatalogCapture`. An already merged catalog now owns its exact source graph,
+including selected empty sources. Construction checks complete descriptor and
+source-version evidence before ownership transfer. Acquisition validates
+returned source leases rather than trusting identity alone, and no live metadata
+lookup can redirect an existing catalog.
+
+Closure drains asynchronous acquisitions and transferred leases. A late source
+lease after closure or cancellation is released before returning. Every source
+cleanup starts once; multiple failures retain deterministic source-ID order and
+one failure never skips another owner. Borrowed invokers keep their original
+owner. Typed conformance, implementation, real DI-scope, and diagnostic tests
+cover the lifecycle and adversarial responses.
+
+Provider discovery/registration, catalog merge policy and coordinator, canonical
+alias resolution, the legacy invoker/request migration, terminal recording and
+projection, message codecs, and durable output publication remain open. The
+retained graph is a dependency for that migration; the loop and `AddAgentTools`
+still use the legacy catalog and combined invoker.
+
+Verification: all 7,008 Release tests pass with zero build warnings, errors,
+failures, or skips. The Tools suite has 166 cases, including 48 new
+catalog-capture cases. All 68 compatibility checks pass with three reviewed
+additive snapshots; repository C# formatting, Prettier, and Markdown lint pass.
+A temporary weakened lease comparison caused exactly the descriptor-content
+regression to fail; the full comparison was restored before the passing focused
+and solution runs.
+
 The retained source-capture runtime adds `ToolProviderCapture`,
 `IToolProviderCapture`, and `IToolInvokerLease`. It pins a complete exact
 identity-to-invoker graph to one immutable source publication and never resolves

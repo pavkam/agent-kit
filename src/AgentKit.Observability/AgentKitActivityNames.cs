@@ -7,6 +7,15 @@ namespace AgentKit.Observability;
 /// <remarks>Names describe operations, never high-cardinality identities or content.</remarks>
 public static class AgentKitActivityNames
 {
+    /// <summary>Names exact invoker acquisition through a retained catalog graph.</summary>
+    public const string ToolCatalogInvokerAcquire = "tool.catalog.invoker.acquire";
+    /// <summary>Names release of a catalog-owned source invoker lease.</summary>
+    public const string ToolCatalogInvokerRelease = "tool.catalog.invoker.release";
+    /// <summary>Names catalog closure while pending acquisitions and leases drain.</summary>
+    public const string ToolCatalogCaptureClose = "tool.catalog.capture.close";
+    /// <summary>Names disposal of every retained source after catalog work drains.</summary>
+    public const string ToolCatalogCaptureDisposeSources = "tool.catalog.capture.dispose_sources";
+
     /// <summary>Identifies exact invoker acquisition from a retained source capture.</summary>
     /// <remarks>Successful acquisition retains a lifetime only; it never describes a tool invocation.</remarks>
     public const string ToolInvokerAcquire = "tool.invoker.acquire";

@@ -322,11 +322,13 @@ The architecture index defines document authority and change rules.
 - Provider and catalog captures retain exact source publications and own their
   acquisitions. Resolution uses those captures to acquire invoker leases;
   immutable snapshots never imply a lookup against current DI registrations.
-  Closure drains outstanding leases before owned cleanup. Repeated disposal
-  shares completion and failure without retrying cleanup or disposing borrowed
-  host instances directly. Invokers return raw attempt evidence. The executor
-  owns normalization and terminal construction using retained admission,
-  acceptance, and policy evidence.
+  Closure drains pending acquisitions and outstanding leases before owned
+  cleanup. Catalog acquisition validates the full selected descriptor and source
+  version before transferring a lease. Repeated disposal shares completion and
+  failure without retrying cleanup or disposing borrowed host instances
+  directly. Invokers return raw attempt evidence. The executor owns
+  normalization and terminal construction using retained admission, acceptance,
+  and policy evidence.
 - A model requests a tool; it never directly executes one. Every call passes
   schema validation and the configured security authority before invocation.
 - Unknown tools, invalid arguments, missing policy context, and unsupported

@@ -77,6 +77,10 @@ namespace AgentKit.Observability
         public const string SessionStoreOperation = "session.store.operation";
         public const string TaskDelegationDispatch = "task.delegation.dispatch";
         public const string ToolBatch = "tool.batch";
+        public const string ToolCatalogCaptureClose = "tool.catalog.capture.close";
+        public const string ToolCatalogCaptureDisposeSources = "tool.catalog.capture.dispose_sources";
+        public const string ToolCatalogInvokerAcquire = "tool.catalog.invoker.acquire";
+        public const string ToolCatalogInvokerRelease = "tool.catalog.invoker.release";
         public const string ToolInvokerAcquire = "tool.invoker.acquire";
         public const string ToolInvokerRelease = "tool.invoker.release";
         public const string ToolProviderCaptureClose = "tool.provider.capture.close";
@@ -155,6 +159,8 @@ namespace AgentKit.Observability
         public const string TaskDelegationPublicationDuration = "agentkit.task_delegation.publication.duration";
         public const string ToolCallCount = "agentkit.tool.call.count";
         public const string ToolCallDuration = "agentkit.tool.call.duration";
+        public const string ToolCatalogCaptureOperationCount = "agentkit.tool.catalog.capture.operation.count";
+        public const string ToolCatalogCaptureOperationDuration = "agentkit.tool.catalog.capture.operation.duration";
         public const string ToolProviderCaptureOperationCount = "agentkit.tool.provider.capture.operation.count";
         public const string ToolProviderCaptureOperationDuration = "agentkit.tool.provider.capture.operation.duration";
         public const string ToolResultProjectionPolicyResolutionCount = "agentkit.tool.result.projection_policy.resolution.count";
@@ -223,6 +229,7 @@ namespace AgentKit.Observability
         public const string SessionOperation = "agentkit.session.operation";
         public const string TenantId = "agentkit.tenant.id";
         public const string ToolCallId = "agentkit.tool_call.id";
+        public const string ToolCatalogVersion = "agentkit.tool.catalog.version";
         public const string ToolId = "agentkit.tool.id";
         public const string ToolName = "gen_ai.tool.name";
         public const string ToolResultProjectionPolicyKey = "agentkit.tool.result.projection_policy.key";

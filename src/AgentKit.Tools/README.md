@@ -18,6 +18,26 @@ example, follow [Getting started](../../docs/getting-started.md). Complete
 engine composition is described in the
 [composition guide](../../docs/guides/composition.md).
 
+## Retained catalog captures
+
+[ToolCatalogCapture](ToolCatalogCapture.cs) takes an already merged
+`ToolCatalogSnapshot` and its exact map of owned source captures. Construction
+checks every selected descriptor and source version before taking ownership;
+unselected source tools cannot be acquired through the catalog. Source snapshots
+are read once, and later metadata changes never redirect an acquisition.
+
+The catalog validates each returned source lease in full and wraps its
+ownership. Closing waits for pending acquisitions and leases. A late lease after
+closure or cancellation is released before returning. Source cleanup starts for
+every owner, including empty sources; failures remain observable without
+suppressing another cleanup or retrying a previous one. Callers release their
+leases before awaiting catalog closure. Borrowed invokers keep their original
+disposal owner.
+
+This object supplies retained catalog lifetime. Discovery, merge decisions,
+provider registration, and replacement of the legacy `IToolCatalog` coordinator
+remain separate work; `AddAgentTools` still selects the legacy runtime.
+
 ## Retained source captures
 
 Providers create a [ToolProviderCapture](ToolProviderCapture.cs) from one

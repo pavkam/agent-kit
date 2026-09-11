@@ -42,10 +42,14 @@ network, or process enforcement.
   current DI registrations or descriptor names. Preserve requested aliases and
   catalog versions through resolution and validation, with explicit ownership
   and cleanup on capture/acquisition failure or cancellation.
-- Close acquisition before draining outstanding leases and owned source
-  resources. Share repeated disposal completion/failure, never retry cleanup
-  implicitly, and retain host ownership of borrowed invokers. A caller must
-  release its leases before awaiting capture closure on the same control path.
+- Close acquisition before draining pending acquisitions, outstanding leases,
+  and owned source resources. Share repeated disposal completion/failure, never
+  retry cleanup implicitly, and retain host ownership of borrowed invokers. A
+  caller must release its leases before awaiting capture closure on the same
+  control path. Catalogs validate returned descriptor and source-version
+  evidence before transferring a lease and release late acquisitions after
+  closure or cancellation. One failing source cleanup must not suppress the
+  other owned cleanups.
 - The model requests a tool; it never executes one. Record accepted calls before
   effects. Every bounded, identified request—including pre-invocation
   rejection—produces exactly one authoritative terminal `ToolCallResult` through

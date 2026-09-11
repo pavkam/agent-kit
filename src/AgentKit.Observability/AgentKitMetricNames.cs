@@ -7,6 +7,11 @@ namespace AgentKit.Observability;
 /// <remarks>Metric names use lowercase dotted namespaces and never embed identities.</remarks>
 public static class AgentKitMetricNames
 {
+    /// <summary>Counts completed catalog-capture operations with bounded operation and outcome dimensions.</summary>
+    public const string ToolCatalogCaptureOperationCount = "agentkit.tool.catalog.capture.operation.count";
+    /// <summary>Measures catalog-capture elapsed seconds when the diagnostic clock is available.</summary>
+    public const string ToolCatalogCaptureOperationDuration = "agentkit.tool.catalog.capture.operation.duration";
+
     /// <summary>Counts completed invoker acquisition, release, capture closure, and owned cleanup operations.</summary>
     /// <remarks>Dimensions are restricted to the bounded operation and outcome vocabularies.</remarks>
     public const string ToolProviderCaptureOperationCount = "agentkit.tool.provider.capture.operation.count";

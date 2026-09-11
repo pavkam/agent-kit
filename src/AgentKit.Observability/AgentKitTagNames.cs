@@ -10,6 +10,9 @@ namespace AgentKit.Observability;
 /// </remarks>
 public static class AgentKitTagNames
 {
+    /// <summary>Identifies the exact retained tool catalog version on traces; never a metric dimension.</summary>
+    public const string ToolCatalogVersion = "agentkit.tool.catalog.version";
+
     /// <summary>Identifies a resolved canonical tool on logs and traces.</summary>
     /// <remarks>This high-cardinality identity is distinct from a provider alias and is never a metric dimension.</remarks>
     public const string ToolId = "agentkit.tool.id";

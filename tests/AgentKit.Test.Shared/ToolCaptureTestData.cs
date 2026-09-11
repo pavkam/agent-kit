@@ -10,10 +10,12 @@ using System.Text.Json;
 public static class ToolCaptureTestData
 {
     /// <summary>Creates an immutable same-source descriptor with an owned canonical input schema.</summary>
+    /// <param name="source">The nonblank stable source identity.</param>
     /// <param name="id">The nonblank canonical identity.</param><param name="version">The nonblank exact tool version.</param><param name="description">The descriptor content, optionally containing a redaction sentinel.</param>
     /// <returns>The immutable test descriptor.</returns>
-    public static ToolDescriptor Descriptor(string id = "tool.read", string version = "1", string description = "Read captured data")
+    public static ToolDescriptor Descriptor(string id = "tool.read", string version = "1", string description = "Read captured data", string source = "source.tests")
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(source);
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(version);
         ArgumentException.ThrowIfNullOrWhiteSpace(description);
@@ -21,7 +23,7 @@ public static class ToolCaptureTestData
         return new ToolDescriptor(new ToolId(id), new ToolVersion(version), "read", description,
             new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), document.RootElement),
             null, new ToolEffects(ToolEffect.ReadOnly, null, null),
-            new ToolExecutionHints(ToolSchedulingMode.Unspecified, null, null, null), new ToolSourceId("source.tests"), ExtensionData.Empty);
+            new ToolExecutionHints(ToolSchedulingMode.Unspecified, null, null, null), new ToolSourceId(source), ExtensionData.Empty);
     }
 
     /// <summary>Captures ordered descriptors under one explicitly selected test source version.</summary>
@@ -43,4 +45,23 @@ public static class ToolCaptureTestData
         ArgumentNullException.ThrowIfNull(invoker);
         return ImmutableDictionary<ToolIdentity, IToolInvoker>.Empty.Add(new ToolIdentity(tool.Id, tool.Version), invoker);
     }
+    /// <summary>Builds a deterministic run-bound catalog selecting an explicit descriptor subset.</summary>
+    /// <param name="sources">Initialized exact source publications, including empty sources.</param><param name="tools">Initialized selected descriptors.</param><param name="version">The nonblank catalog version.</param>
+    /// <returns>The locally validated selection evidence; this helper acquires no live binding.</returns>
+    public static ToolCatalogSnapshot Catalog(ImmutableArray<ToolProviderSnapshot> sources, ImmutableArray<ToolDescriptor> tools, string version = "catalog-1")
+    {
+        ArgumentException.ThrowIfContainsNull(sources);
+        ArgumentException.ThrowIfContainsNull(tools);
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+        return new ToolCatalogSnapshot(
+            new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111")),
+            new SessionId(Guid.Parse("22222222-2222-2222-2222-222222222222")),
+            new RunId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
+            TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human),
+            new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("44444444-4444-4444-4444-444444444444")), new SecurityPolicyVersion(1), new ContentHash("sha256:test")),
+            new AgentDefinitionRevision(0), new ConfigurationVersion(1), new ToolCatalogVersion(version),
+            sources.ToImmutableDictionary(static source => source.SourceId, static source => source.SourceVersion), tools,
+            tools.ToImmutableDictionary(static tool => new ToolIdentity(tool.Id, tool.Version), static _ => new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1))), []);
+    }
+
 }

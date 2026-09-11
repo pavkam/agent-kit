@@ -7,6 +7,10 @@ project, so replacing an implementation preserves observable behavior.
 This is non-packable test infrastructure. Abstract suites are exercised through
 concrete adapter fixtures; building this project alone is not a conformance run.
 
+`ToolCatalogCaptureConformanceTests` exercises selected-source binding, pending
+acquisition/closure races, independent leases, cancellation, and exact ownership
+through a typed factory returning `IToolCatalogCapture`.
+
 ## Available suites
 
 - [AgentRunStreamConformance](AgentRunStreamConformance.cs) — subscription

@@ -845,6 +845,30 @@ acquisition rather than registering it as an engine-wide singleton. Its
 synchronized transitions run cleanup and diagnostic callbacks outside the state
 gate.
 
+The first-party `ToolCatalogCapture` owns the source graph for an already merged
+`ToolCatalogSnapshot`. Construction normalizes source keys, validates the exact
+source-version keyset and every selected descriptor against its source, and
+reads each source snapshot once. Rejection leaves every source with the caller.
+Unselected source descriptors remain unavailable through the catalog; a merge
+coordinator must decide selection and collisions before construction.
+
+Each pending source acquisition retains the catalog until it either transfers a
+validated lease or releases its temporary acquisition. A successful source lease
+must match the full descriptor and source version and supply a nonnull invoker.
+Cancellation or catalog closure before transfer releases a late lease before
+returning. Malformed source results fail without redirecting to another source.
+The catalog wraps each successful source lease so repeated release has one
+owner.
+
+Catalog closure waits for pending acquisition and transferred leases before
+starting every owned source cleanup once. It starts all source cleanups before
+awaiting any, including empty or fully filtered sources. One cleanup failure is
+preserved; multiple failures are aggregated in ordinal source-ID order rather
+than completion order. Acquisition or lease-release failure does not hide a
+second cleanup failure. Source callbacks never run under the catalog state gate.
+This class is created per capture, not registered as a singleton; discovery,
+merge policy, and the catalog coordinator retain their separate ownership.
+
 ### Execution, durable state, and observation
 
 ```csharp

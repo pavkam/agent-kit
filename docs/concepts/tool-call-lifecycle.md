@@ -63,9 +63,10 @@ the requested alias and catalog version unchanged. No stage silently looks up a
 current provider or service registration.
 
 The executor releases its invoker leases before awaiting capture closure.
-Capture closure drains remaining leases and owned resources; it cannot force a
-tool effect to stop or change its recorded certainty. Cleanup failure does not
-authorize another invocation or another implicit cleanup attempt.
+Capture closure drains pending acquisitions, remaining leases, and owned
+resources; it cannot force a tool effect to stop or change its recorded
+certainty. Cleanup failure does not authorize another invocation or another
+implicit cleanup attempt.
 
 Unknown or ambiguous tools fail closed before side effects.
 

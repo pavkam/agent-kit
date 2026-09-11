@@ -6,6 +6,16 @@ namespace AgentKit.Tools;
 /// <summary>Defines allocation-efficient structured tool-lifecycle log events.</summary>
 internal static partial class ToolLog
 {
+    /// <summary>Records a catalog acquisition or lifetime stage before source callbacks.</summary>
+    /// <param name="logger">The capture-specific logger.</param><param name="operation">The bounded stage name.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The authenticated principal.</param><param name="agentId">The catalog agent.</param><param name="sessionId">The owning session.</param><param name="runId">The captured active run.</param><param name="catalogVersion">The exact retained catalog version.</param>
+    [LoggerMessage(4040, LogLevel.Debug, "Starting {Operation} for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId} and tool catalog {CatalogVersion}.")]
+    internal static partial void CatalogCaptureStarted(ILogger logger, string operation, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId, ToolCatalogVersion catalogVersion);
+
+    /// <summary>Records a terminal catalog stage without arbitrary source reasons or exception content.</summary>
+    /// <param name="logger">The capture-specific logger.</param><param name="level">The severity selected from the bounded semantic outcome.</param><param name="operation">The bounded stage name.</param><param name="outcome">The bounded terminal outcome.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The authenticated principal.</param><param name="agentId">The catalog agent.</param><param name="sessionId">The owning session.</param><param name="runId">The captured active run.</param><param name="catalogVersion">The exact catalog version.</param><param name="errorType">Only the caught CLR type name, or null when no exception occurred.</param>
+    [LoggerMessage(EventId = 4041, Message = "Completed {Operation} with {Outcome} for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId} and tool catalog {CatalogVersion}; error type {ErrorType}.")]
+    internal static partial void CatalogCaptureCompleted(ILogger logger, LogLevel level, string operation, string outcome, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId, ToolCatalogVersion catalogVersion, string? errorType);
+
     /// <summary>Records a retained source-capture operation before observable work.</summary>
     /// <param name="logger">The capture's type-specific logger.</param><param name="operation">The bounded operation name.</param><param name="sourceId">The captured source identity.</param><param name="sourceVersion">The exact source publication.</param>
     [LoggerMessage(4030, LogLevel.Debug, "Starting {Operation} for tool source {SourceId} at version {SourceVersion}.")]

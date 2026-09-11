@@ -6,6 +6,13 @@ Use the common diagnostics surface to subscribe through standard .NET
 instrumentation. This package carries no exporter SDK; hosts choose their own
 logging and telemetry backends.
 
+Retained catalog captures use `tool.catalog.invoker.acquire`,
+`tool.catalog.invoker.release`, `tool.catalog.capture.close`, and
+`tool.catalog.capture.dispose_sources`. Their operation count/duration
+instruments carry only bounded operation/outcome dimensions; traces and logs
+retain captured tenant, principal, agent, session, run, and catalog-version
+correlation.
+
 ## Use this project
 
 Start with `AddAgentKitObservability` in

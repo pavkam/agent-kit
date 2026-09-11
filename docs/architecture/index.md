@@ -254,8 +254,8 @@ expand AgentKit's mandatory runtime spine.
 | Identity and artifacts               | Immutable execution identity plus keyed artifact coordinator/store contracts                                      | `AddAgentIdentity` at trusted ingress and `AddAgentArtifacts` with explicit backend leaves                                                                                                                                                  |
 | Evaluation                           | Singular `IEvaluationRunner`, keyed additive evaluators/stores/exporters                                          | `AddAgentEvaluation`; optional and uses only public engine surfaces                                                                                                                                                                         |
 
-Retained tool-source captures close acquisition and drain invoker leases before
-owned cleanup. Their
+Retained tool-source and catalog captures close acquisition and drain pending
+acquisitions and invoker leases before owned cleanup. Their
 [lifetime contract](tools.md#discovery-resolution-validation-and-selection)
 preserves borrowed host ownership and shares cleanup failure without retrying
 it.
