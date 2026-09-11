@@ -108,7 +108,7 @@ public sealed class CommandTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (!TryParse(request.Arguments, out var parsed, out var error))
         {
-            return Failure(error!, "InvalidArguments", []);
+            return Failure(error!, "InvalidArguments", [], ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var arguments = _shellArguments.Add(parsed.Command);
@@ -132,7 +132,14 @@ public sealed class CommandTool: ITool
             return Failure(
                 resolution.SafeMessage ?? "The command intent could not be resolved safely.",
                 resolution.Status.ToString(),
-                []);
+                [], resolution.Status switch
+                {
+                    ProcessResolutionStatus.InvalidIntent => ToolTerminalStatus.InvalidArguments,
+                    ProcessResolutionStatus.ExecutableRejected or ProcessResolutionStatus.WorkingDirectoryRejected => ToolTerminalStatus.Unsupported,
+                    ProcessResolutionStatus.Failed => ToolTerminalStatus.InvocationFailed,
+                    ProcessResolutionStatus.Resolved => ToolTerminalStatus.ProtocolFailed,
+                    _ => ToolTerminalStatus.ProtocolFailed,
+                }, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var intent = resolution.Intent;
@@ -152,12 +159,12 @@ public sealed class CommandTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {
-            return Failure(denied.Denial.SafeMessage, "Denied", []);
+            return Failure(denied.Denial.SafeMessage, "Denied", [], ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return Failure("The security authority returned an unsupported decision.", "Denied", []);
+            return Failure("The security authority returned an unsupported decision.", "Denied", [], ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var result = await _runner.RunAsync(new ProcessRunRequest(intent, allowed.Grant), cancellationToken)
@@ -165,12 +172,28 @@ public sealed class CommandTool: ITool
         var content = Project(result);
         return result.Status == ProcessRunStatus.Exited && result.ExitCode == 0
             ? new ToolInvocationResult(
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, null, Status(result.Status.ToString())), content)
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, EffectCertainty(result.EffectCertainty), false, null, Status(result.Status.ToString())), content)
             : Failure(
                 result.SafeMessage ?? ExitFailure(result),
                 result.Status.ToString(),
-                content);
+                content, result.Status switch
+                {
+                    ProcessRunStatus.Denied => ToolTerminalStatus.Denied,
+                    ProcessRunStatus.SandboxUnavailable => ToolTerminalStatus.Unsupported,
+                    ProcessRunStatus.TimedOut => ToolTerminalStatus.TimedOut,
+                    ProcessRunStatus.Cancelled => ToolTerminalStatus.Cancelled,
+                    ProcessRunStatus.Exited or ProcessRunStatus.ResolutionFailed or ProcessRunStatus.LimitExceeded or ProcessRunStatus.Failed => ToolTerminalStatus.InvocationFailed,
+                    _ => ToolTerminalStatus.InvocationFailed,
+                }, EffectCertainty(result.EffectCertainty));
     }
+
+    private static SideEffectCertainty EffectCertainty(ProcessSideEffectCertainty certainty) => certainty switch
+    {
+        ProcessSideEffectCertainty.NotStarted => SideEffectCertainty.DefinitelyNotPerformed,
+        ProcessSideEffectCertainty.Completed => SideEffectCertainty.DefinitelyPerformed,
+        ProcessSideEffectCertainty.MayHaveOccurred => SideEffectCertainty.Unknown,
+        _ => SideEffectCertainty.Unknown,
+    };
 
     private bool TryParse(JsonElement arguments, out ParsedArguments parsed, out string? error)
     {
@@ -368,8 +391,8 @@ public sealed class CommandTool: ITool
     private static ToolInvocationResult Failure(
         string reason,
         string status,
-        ImmutableArray<ContentPart> content) => new(
-            new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)), content);
+        ImmutableArray<ContentPart> content, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+            new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), content);
 
     private readonly record struct ParsedArguments(
         string Command,

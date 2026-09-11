@@ -19,7 +19,9 @@ public sealed class PatchToolTests
         var result = await CreateTool(snapshot, applier, authority).InvokeAsync(
             Request(json), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         authority.Requests.ShouldBeEmpty();
         snapshot.Requests.ShouldBeEmpty();
         applier.Requests.ShouldBeEmpty();
@@ -172,8 +174,10 @@ public sealed class PatchToolTests
             move.SourcePath, move.DestinationPath, move.ExpectedContentFingerprint));
     }
 
-    [Fact]
-    public async Task InvokeAsync_WhenHostReportsPartial_ReturnsFailureWithPerEntrySettlementContent()
+    [Theory]
+    [InlineData(WorkspacePatchEntryStatus.Unchanged, SideEffectCertainty.PartiallyPerformed)]
+    [InlineData(WorkspacePatchEntryStatus.Uncertain, SideEffectCertainty.Unknown)]
+    public async Task InvokeAsync_WhenHostReportsPartial_ReturnsFailureWithPerEntrySettlementContent(WorkspacePatchEntryStatus secondStatus, SideEffectCertainty certainty)
     {
         var snapshot = new FakeSnapshotReader();
         var applier = new FakePatchApplier
@@ -192,7 +196,7 @@ public sealed class PatchToolTests
                     new WorkspacePatchEntryResult(
                         1,
                         WorkspacePatchEntryKind.Create,
-                        WorkspacePatchEntryStatus.Unchanged,
+                        secondStatus,
                         new FileSystemPath("two.txt"),
                         null,
                         null,
@@ -213,10 +217,13 @@ public sealed class PatchToolTests
             Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.SideEffectCertainty.ShouldBe(certainty);
+        result.Outcome.Retryable.ShouldBeFalse();
         Status(result).ShouldBe("\"Partial\"");
         using var json = JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
         json.RootElement.GetProperty("entries")[0].GetProperty("status").GetString().ShouldBe("Committed");
-        json.RootElement.GetProperty("entries")[1].GetProperty("status").GetString().ShouldBe("Unchanged");
+        json.RootElement.GetProperty("entries")[1].GetProperty("status").GetString().ShouldBe(secondStatus.ToString());
     }
 
     private static PatchTool CreateTool(

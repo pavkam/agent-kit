@@ -85,17 +85,17 @@ public sealed class TaskTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (request.Context.SessionId is not { } sessionId)
         {
-            return Failure("Task delegation requires a durable parent session.", "SessionRequired");
+            return Failure("Task delegation requires a durable parent session.", "SessionRequired", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (request.Context.Correlation is not InRunOperationCorrelation correlation)
         {
-            return Failure("Task delegation requires an active parent run.", "RunRequired");
+            return Failure("Task delegation requires an active parent run.", "RunRequired", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (!TryParse(request.Arguments, out var parsed))
         {
-            return Failure("A valid target, bounded objective, criteria, tool allow-list, budget, and timeout are required.", "InvalidArguments");
+            return Failure("A valid target, bounded objective, criteria, tool allow-list, budget, and timeout are required.", "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var id = _delegationIds.Create();
@@ -130,22 +130,22 @@ public sealed class TaskTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {
-            return Rejected(denied.Denial.SafeMessage, "Denied");
+            return Rejected(denied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return Rejected("The security authority returned an unsupported decision.", "Denied");
+            return Rejected("The security authority returned an unsupported decision.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var result = await _broker.DelegateAsync(new TaskDelegationRequest(prompt, allowed.Grant), cancellationToken).ConfigureAwait(false);
         return result.Id != id
-            ? Failure("The delegation broker returned a result for a different request.", "InvalidBrokerResult")
+            ? Failure("The delegation broker returned a result for a different request.", "InvalidBrokerResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown)
             : result switch
             {
-                TaskDelegationRejected rejected => Rejected(rejected.SafeMessage, "Rejected"),
+                TaskDelegationRejected rejected => Rejected(rejected.SafeMessage, "Rejected", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
                 TaskDelegationChildResult child => Project(child, parsed),
-                _ => Failure("The delegation broker returned an unsupported result.", "InvalidBrokerResult"),
+                _ => Failure("The delegation broker returned an unsupported result.", "InvalidBrokerResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown),
             };
     }
 
@@ -153,7 +153,7 @@ public sealed class TaskTool: ITool
     {
         if (child.ChildAgentId != parsed.TargetAgentId || child.Summary.Length > _options.MaximumSummaryCharacters)
         {
-            return Failure("The delegation broker returned a result outside the authorized shape.", "InvalidBrokerResult");
+            return Failure("The delegation broker returned a result outside the authorized shape.", "InvalidBrokerResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown);
         }
 
         var projection = JsonSerializer.Serialize(new
@@ -169,9 +169,12 @@ public sealed class TaskTool: ITool
             side_effect_certainty = child.SideEffectCertainty.ToString(),
             instruction_authority = false,
         });
+        // A child without its own effect boundary still has a durably created delegation goal.
+        var certainty = child.SideEffectCertainty is SideEffectCertainty.NotApplicable
+            ? SideEffectCertainty.DefinitelyPerformed : child.SideEffectCertainty;
         return child.Status == TaskDelegationStatus.Succeeded
-            ? Success(projection, "Succeeded")
-            : FailureWithContent(projection, child.Summary, child.Status.ToString());
+            ? Success(projection, "Succeeded", certainty)
+            : FailureWithContent(projection, child.Summary, child.Status.ToString(), child.Status is TaskDelegationStatus.Cancelled ? ToolTerminalStatus.Cancelled : ToolTerminalStatus.InvocationFailed, certainty);
     }
 
     private bool TryParse(JsonElement arguments, out ParsedArguments parsed)
@@ -301,10 +304,10 @@ public sealed class TaskTool: ITool
 
     private static DateTimeOffset Min(DateTimeOffset first, DateTimeOffset second) => first <= second ? first : second;
 
-    private static ToolInvocationResult Success(string json, string status) => new(new ToolCallOutcome(ToolCallOutcomeKind.Success, null, Status(status)), [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
-    private static ToolInvocationResult Failure(string reason, string status) => new(new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)), []);
-    private static ToolInvocationResult FailureWithContent(string json, string reason, string status) => new(new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)), [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
-    private static ToolInvocationResult Rejected(string reason, string status) => new(new ToolCallOutcome(ToolCallOutcomeKind.Rejected, reason, Status(status)), []);
+    private static ToolInvocationResult Success(string json, string status, SideEffectCertainty certainty) => new(new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, certainty, false, null, Status(status)), [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
+    private static ToolInvocationResult Failure(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), []);
+    private static ToolInvocationResult FailureWithContent(string json, string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
+    private static ToolInvocationResult Rejected(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), []);
     private static ExtensionData Status(string status) => new(ImmutableDictionary<string, ExtensionValue>.Empty.Add("agentkit.task.status", new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(status)])));
 
     private readonly record struct ParsedArguments(AgentId TargetAgentId, string Objective, ImmutableArray<string> AcceptanceCriteria, ImmutableArray<ToolId> AllowedTools, int MaximumTurns, int MaximumToolCalls, TimeSpan Timeout);

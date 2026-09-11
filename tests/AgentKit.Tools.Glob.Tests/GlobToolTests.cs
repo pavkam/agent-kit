@@ -18,7 +18,9 @@ public sealed class GlobToolTests
 
         var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         authority.Requests.ShouldBeEmpty();
         globber.Requests.ShouldBeEmpty();
     }

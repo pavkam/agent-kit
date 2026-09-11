@@ -26,7 +26,7 @@ public sealed class OpenAIRequestTranslatorTests
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000001"));
         var toolReference = new ToolReference(new ToolId("get_weather"), null, "get_weather");
         var assistantMessage = TestMessages.Assistant(new ToolCallPart(callId, toolReference, JsonDocument.Parse("""{"location":"Paris"}""").RootElement, new ProviderToolCallId("call_abc123"), ExtensionData.Empty));
-        var toolMessage = TestMessages.Tool(new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty), [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty));
+        var toolMessage = TestMessages.Tool(new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty));
         var messages = ImmutableArray.Create<AgentMessage>(TestMessages.System("You are a weather assistant."), TestMessages.User("What's the weather in Paris?"), assistantMessage, toolMessage);
         var tools = ImmutableArray.Create(new LlmToolDefinition(new ToolId("get_weather"), "get_weather", "Gets the current weather for a location.", JsonDocument.Parse("""
                     {
@@ -134,7 +134,7 @@ public sealed class OpenAIRequestTranslatorTests
         var toolReference = new ToolReference(new ToolId("t"), null, "t");
         var callIdA = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-0000000000a1"));
         var callIdB = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-0000000000b2"));
-        var toolMessage = TestMessages.Tool(new ToolResultPart(callIdA, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty), [new TextPart("result A", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty), new ToolResultPart(callIdB, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty), [new TextPart("result B", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty));
+        var toolMessage = TestMessages.Tool(new ToolResultPart(callIdA, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("result A", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty), new ToolResultPart(callIdB, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("result B", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty));
         var body = Translate([toolMessage]);
         var messages = body["messages"]!.AsArray();
         messages.Count.ShouldBe(2);

@@ -32,7 +32,9 @@ public sealed class TaskToolTests
         var authority = new RecordingSecurityAuthority();
         var ids = new FixedDelegationIdGenerator();
         var result = await Tool(broker, authority, ids).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         ids.Calls.ShouldBe(0);
         authority.Requests.ShouldBeEmpty();
         broker.Requests.ShouldBeEmpty();
@@ -109,9 +111,31 @@ public sealed class TaskToolTests
         var broker = new RecordingDelegationBroker();
         var authority = new RecordingSecurityAuthority();
         var result = await Tool(broker, authority).InvokeAsync(Request(ValidArguments, withSession: false), TestContext.Current.CancellationToken);
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
         authority.Requests.ShouldBeEmpty();
         broker.Requests.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(TaskDelegationStatus.Succeeded, SideEffectCertainty.DefinitelyNotPerformed, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(TaskDelegationStatus.Succeeded, SideEffectCertainty.Unknown, ToolTerminalStatus.Succeeded, SideEffectCertainty.Unknown)]
+    [InlineData(TaskDelegationStatus.Failed, SideEffectCertainty.DefinitelyPerformed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyPerformed)]
+    [InlineData(TaskDelegationStatus.Cancelled, SideEffectCertainty.PartiallyPerformed, ToolTerminalStatus.Cancelled, SideEffectCertainty.PartiallyPerformed)]
+    [InlineData(TaskDelegationStatus.Blocked, SideEffectCertainty.Unknown, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
+    [InlineData(TaskDelegationStatus.Succeeded, SideEffectCertainty.NotApplicable, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed)]
+    public async System.Threading.Tasks.Task InvokeAsync_WhenChildSettles_PreservesEffectEvidenceAndCancellation(TaskDelegationStatus status, SideEffectCertainty childCertainty, ToolTerminalStatus expectedStatus, SideEffectCertainty expectedCertainty)
+    {
+        var broker = new RecordingDelegationBroker
+        {
+            Result = request => new TaskDelegationChildResult(request.Prompt.Id, TestData.GoalId, request.Prompt.TargetAgentId,
+                TestData.ChildSessionId, TestData.AttemptId, TestData.ChildRunId, status, "Child settled.", childCertainty),
+        };
+        var result = await Tool(broker, new RecordingSecurityAuthority()).InvokeAsync(Request(ValidArguments), TestContext.Current.CancellationToken);
+        result.Outcome.SourceStatus.ShouldBe(expectedStatus);
+        result.Outcome.SideEffectCertainty.ShouldBe(expectedCertainty);
+        result.Outcome.Retryable.ShouldBeFalse();
+        using var content = JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
+        content.RootElement.GetProperty("side_effect_certainty").GetString().ShouldBe(childCertainty.ToString());
     }
 
     private static TaskTool Tool(ITaskDelegationBroker broker, ISecurityAuthority authority, FixedDelegationIdGenerator? ids = null) => new(broker, authority, new FixedSecurityRequestIdGenerator(), ids ?? new FixedDelegationIdGenerator(), new FixedTimeProvider(), Options.Create(new TaskToolOptions()));

@@ -88,7 +88,7 @@ public sealed class ListDirectoryTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (!TryParse(request.Arguments, out var path, out var maximumEntries, out var cursor, out var error))
         {
-            return Failed(error!, "invalid_arguments");
+            return Failed(error!, "invalid_arguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var context = request.Context;
@@ -107,12 +107,12 @@ public sealed class ListDirectoryTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {
-            return Failed(denied.Denial.SafeMessage, "denied");
+            return Failed(denied.Denial.SafeMessage, "denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return Failed("The security authority returned an unsupported decision.", "denied");
+            return Failed("The security authority returned an unsupported decision.", "denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var result = await _directoryReader.EnumerateAsync(
@@ -120,7 +120,7 @@ public sealed class ListDirectoryTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (result.Status != DirectoryEnumerationStatus.Success)
         {
-            return Failed(result.SafeMessage!, result.Status.ToString());
+            return Failed(result.SafeMessage!, result.Status.ToString(), result.Status switch { DirectoryEnumerationStatus.Denied => ToolTerminalStatus.Denied, DirectoryEnumerationStatus.Success or DirectoryEnumerationStatus.NotFound or DirectoryEnumerationStatus.LimitExceeded or DirectoryEnumerationStatus.SnapshotChanged or DirectoryEnumerationStatus.Failed => ToolTerminalStatus.InvocationFailed, _ => ToolTerminalStatus.InvocationFailed }, result.Status is DirectoryEnumerationStatus.Denied or DirectoryEnumerationStatus.NotFound ? SideEffectCertainty.DefinitelyNotPerformed : SideEffectCertainty.Unknown);
         }
 
         var json = JsonSerializer.Serialize(new
@@ -136,7 +136,7 @@ public sealed class ListDirectoryTool: ITool
                 },
         });
         return new ToolInvocationResult(
-            new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
             [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
     }
 
@@ -214,9 +214,8 @@ public sealed class ListDirectoryTool: ITool
         return true;
     }
 
-    private static ToolInvocationResult Failed(string reason, string status) => new(
-        new ToolCallOutcome(
-            ToolCallOutcomeKind.Failed,
+    private static ToolInvocationResult Failed(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false,
             reason,
             new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add(
                 "agentkit.directory.status",

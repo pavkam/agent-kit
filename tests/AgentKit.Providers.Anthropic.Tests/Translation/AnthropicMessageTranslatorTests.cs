@@ -62,7 +62,7 @@ public sealed class AnthropicMessageTranslatorTests
             new ToolResultPart(
                 callId,
                 toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
                 [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)],
                 ExtensionData.Empty));
 

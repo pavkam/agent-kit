@@ -70,6 +70,25 @@ owning spec.
 
 ## Latest integration evidence
 
+The tool-outcome migration implements the required exact terminal status, effect
+certainty, retry advice, and immutable portable disposition.
+`ToolTerminalStatus.ToOutcomeKind()` supplies the closed mapping; unknown
+numeric statuses survive unchanged and map to failure. Construction rejects
+inconsistent kinds, invalid certainty, malformed extension buffers, and failure
+text on success. This intentionally replaces the old three-argument constructor
+and writable outcome properties; callers cannot fabricate omitted evidence
+through a compatibility default.
+
+Every first-party tool producer and test fixture now supplies explicit evidence.
+Process outcomes retain host start/completion certainty; partial or uncertain
+patch entries remain partial or unknown; an unchanged edit reports no target
+mutation; denied redirect continuations retain earlier egress; child-task
+settlement retains child certainty and cancellation. All current adapters
+conservatively decline automatic retry advice. The outcome is still invocation
+evidence until the executor normalizes and records it. Canonical alias
+resolution, accepted/terminal recording, bounded projection, message codecs, and
+durable output publication remain open.
+
 The security-selector test ownership follow-up moves direct composition-guard,
 binding-constructor, selection-result, and metric-validation assertions into
 their production-class fixtures. The package-local guard and binding stay in
@@ -98,6 +117,12 @@ terminal activities, bounded metrics, and throwing observers/clocks. Value tests
 exercise the closed resolution family with typed construction and copy paths.
 Complete tool-result projection, canonical alias resolution, terminal recording,
 message codecs, and durable output publication remain open.
+
+Verification: all 6,877 Release tests pass without skips, with zero build
+warnings or errors. The 84 additional cases cover value constraints and status
+mapping, host effect evidence, and loop/session/next-request preservation. The
+reviewed API snapshot contains the intentional constructor/property change and
+the shared status mapping; all 68 compatibility checks pass.
 
 Verification: the Tools suite passes 76 cases and Abstractions passes 3,470. All
 6,791 Release tests pass without skips, with zero build warnings or errors. The

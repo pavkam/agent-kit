@@ -19,7 +19,7 @@ internal sealed class FakeTool: ITool
         return OnInvoke is not null
             ? OnInvoke(request, cancellationToken)
             : Task.FromResult(new ToolInvocationResult(
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
                 []));
     }
 }

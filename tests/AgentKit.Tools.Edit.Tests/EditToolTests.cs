@@ -19,7 +19,9 @@ public sealed class EditToolTests
         var result = await CreateTool(snapshot, replacer, authority).InvokeAsync(
             Request(json), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         authority.Requests.ShouldBeEmpty();
         snapshot.Requests.ShouldBeEmpty();
         replacer.Requests.ShouldBeEmpty();
@@ -81,6 +83,8 @@ public sealed class EditToolTests
             Request(Arguments("old", "🚀")), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
         var mutation = replacer.Requests.ShouldHaveSingleItem();
         byte[] expected = [0xef, 0xbb, 0xbf, .. Encoding.UTF8.GetBytes("α 🚀\r\nlast")];
         mutation.Content.ShouldBe(expected);
@@ -124,6 +128,8 @@ public sealed class EditToolTests
             Request(Arguments("old", "old")), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
         Status(result).ShouldBe("\"NoChange\"");
         authority.Requests.Count.ShouldBe(1);
         replacer.Requests.ShouldBeEmpty();
@@ -143,6 +149,8 @@ public sealed class EditToolTests
             Request(Arguments("old", "new")), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
         result.Outcome.FailureReason.ShouldBe("Changed.");
         Status(result).ShouldBe("\"Conflict\"");
     }

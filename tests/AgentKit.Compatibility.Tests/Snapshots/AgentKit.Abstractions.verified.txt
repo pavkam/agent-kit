@@ -7598,10 +7598,13 @@ namespace AgentKit
     }
     public sealed class ToolCallOutcome : System.IEquatable<AgentKit.ToolCallOutcome>
     {
-        public ToolCallOutcome(AgentKit.ToolCallOutcomeKind kind, string? failureReason, AgentKit.ExtensionData extensions) { }
-        public AgentKit.ExtensionData Extensions { get; init; }
-        public string? FailureReason { get; init; }
-        public AgentKit.ToolCallOutcomeKind Kind { get; init; }
+        public ToolCallOutcome(AgentKit.ToolCallOutcomeKind kind, AgentKit.ToolTerminalStatus sourceStatus, AgentKit.SideEffectCertainty sideEffectCertainty, bool retryable, string? failureReason, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; }
+        public string? FailureReason { get; }
+        public AgentKit.ToolCallOutcomeKind Kind { get; }
+        public bool Retryable { get; }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; }
+        public AgentKit.ToolTerminalStatus SourceStatus { get; }
     }
     public enum ToolCallOutcomeKind
     {
@@ -8056,6 +8059,13 @@ namespace AgentKit
         ResultNormalizationFailed = 12,
         ResultSerializationFailed = 13,
         ProtocolFailed = 14,
+    }
+    public static class ToolTerminalStatusExtensions
+    {
+        extension(AgentKit.ToolTerminalStatus status)
+        {
+            public AgentKit.ToolCallOutcomeKind ToOutcomeKind() { }
+        }
     }
     public sealed class ToolUsage : System.IEquatable<AgentKit.ToolUsage>
     {

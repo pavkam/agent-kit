@@ -108,7 +108,7 @@ public sealed class QuestionTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (!TryParse(request.Arguments, out var parsed, out var error))
         {
-            return Failure(error!, "InvalidArguments");
+            return Failure(error!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var questionId = _questionIds.Create();
@@ -136,12 +136,12 @@ public sealed class QuestionTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {
-            return Rejected(denied.Denial.SafeMessage, "Denied");
+            return Rejected(denied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return Rejected("The security authority returned an unsupported decision.", "Denied");
+            return Rejected("The security authority returned an unsupported decision.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var result = await _broker.AskAsync(
@@ -160,13 +160,13 @@ public sealed class QuestionTool: ITool
             cancellationToken).ConfigureAwait(false);
 
         return result.QuestionId != questionId
-            ? Failure("The question broker returned a result for a different question.", "InvalidBrokerResult")
+            ? Failure("The question broker returned a result for a different question.", "InvalidBrokerResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown)
             : result switch
             {
                 HumanQuestionAnswered answered => ProjectAnswer(questionId, answered.Answer, parsed),
-                HumanQuestionTimedOut => Failure("No answer arrived before the question deadline.", "TimedOut"),
-                HumanQuestionUnavailable unavailable => Failure(unavailable.SafeMessage, "Unavailable"),
-                _ => Failure("The question broker returned an unsupported result.", "InvalidBrokerResult"),
+                HumanQuestionTimedOut => Failure("No answer arrived before the question deadline.", "TimedOut", ToolTerminalStatus.TimedOut, SideEffectCertainty.Unknown),
+                HumanQuestionUnavailable unavailable => Failure(unavailable.SafeMessage, "Unavailable", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
+                _ => Failure("The question broker returned an unsupported result.", "InvalidBrokerResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown),
             };
     }
 
@@ -180,7 +180,7 @@ public sealed class QuestionTool: ITool
             || (!question.AllowsFreeText && !string.IsNullOrEmpty(answer.FreeText))
             || (answer.FreeText?.Length ?? 0) > _maximumAnswerCharacters)
         {
-            return Failure("The question broker returned an answer outside the authorized response shape.", "InvalidBrokerResult");
+            return Failure("The question broker returned an answer outside the authorized response shape.", "InvalidBrokerResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown);
         }
 
         var projection = JsonSerializer.Serialize(new
@@ -315,15 +315,15 @@ public sealed class QuestionTool: ITool
     private static DateTimeOffset Min(DateTimeOffset first, DateTimeOffset second) => first <= second ? first : second;
 
     private static ToolInvocationResult Success(string json, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Success, null, Status(status)),
+        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, Status(status)),
         [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
 
-    private static ToolInvocationResult Failure(string reason, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)),
+    private static ToolInvocationResult Failure(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)),
         []);
 
-    private static ToolInvocationResult Rejected(string reason, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Rejected, reason, Status(status)),
+    private static ToolInvocationResult Rejected(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)),
         []);
 
     private static ExtensionData Status(string status) => new(

@@ -128,7 +128,7 @@ public sealed class ToolCatalogTests: Conformance.ToolCatalogConformanceTests<To
             InvocationCount++;
             ReceivedRequest = request;
             ReceivedToken = cancellationToken;
-            return Task.FromResult(new ToolInvocationResult(new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty), []));
+            return Task.FromResult(new ToolInvocationResult(new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), []));
         }
 
         public void Dispose() => DisposeCount++;

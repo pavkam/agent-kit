@@ -60,7 +60,7 @@ public sealed class CohereRequestTranslatorTests
             new ToolResultPart(
                 callId,
                 toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
                 [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)],
                 ExtensionData.Empty));
 
@@ -328,13 +328,13 @@ public sealed class CohereRequestTranslatorTests
             new ToolResultPart(
                 callIdA,
                 toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
                 [new TextPart("result a", TextSemantics.Plain, ExtensionData.Empty)],
                 ExtensionData.Empty),
             new ToolResultPart(
                 callIdB,
                 toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Failed, "boom", ExtensionData.Empty),
+                new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, "boom", ExtensionData.Empty),
                 [],
                 ExtensionData.Empty));
 

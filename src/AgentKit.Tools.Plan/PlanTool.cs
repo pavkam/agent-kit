@@ -100,12 +100,12 @@ public sealed class PlanTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (request.Context.SessionId is not { } sessionId)
         {
-            return Failure("The plan tool requires a session.", "SessionRequired");
+            return Failure("The plan tool requires a session.", "SessionRequired", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (request.Context.SessionProfile is not { } sessionProfile)
         {
-            return Failure("The plan tool requires a captured session profile.", "SessionProfileRequired");
+            return Failure("The plan tool requires a captured session profile.", "SessionProfileRequired", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (!TryParse(
@@ -118,7 +118,7 @@ public sealed class PlanTool: ITool
                 out var expectedRevision,
                 out var error))
         {
-            return Failure(error!, "InvalidArguments");
+            return Failure(error!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var context = request.Context;
@@ -155,12 +155,12 @@ public sealed class PlanTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {
-            return Rejected(denied.Denial.SafeMessage, "Denied");
+            return Rejected(denied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return Rejected("The security authority returned an unsupported decision.", "Denied");
+            return Rejected("The security authority returned an unsupported decision.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var result = action switch
@@ -215,10 +215,10 @@ public sealed class PlanTool: ITool
             conflict.CurrentRevision is { } revision
                 ? $"The plan changed; its current revision is {revision.Value}. Read it and retry."
                 : "The plan changed; read it and retry.",
-            "Conflict"),
-        PlanStateDenied denied => Rejected(denied.SafeMessage, "Denied"),
-        PlanStateFailed failed => Failure(failed.SafeMessage, "Failed"),
-        _ => Failure("The plan store returned an unsupported result.", "Failed"),
+            "Conflict", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
+        PlanStateDenied denied => Rejected(denied.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
+        PlanStateFailed failed => Failure(failed.SafeMessage, "Failed", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
+        _ => Failure("The plan store returned an unsupported result.", "Failed", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
     };
 
     private bool TryParse(
@@ -404,15 +404,15 @@ public sealed class PlanTool: ITool
     }
 
     private static ToolInvocationResult Success(string json, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Success, null, OutcomeStatus(status)),
+        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, OutcomeStatus(status)),
         [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
 
-    private static ToolInvocationResult Failure(string reason, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, OutcomeStatus(status)),
+    private static ToolInvocationResult Failure(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, OutcomeStatus(status)),
         []);
 
-    private static ToolInvocationResult Rejected(string reason, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Rejected, reason, OutcomeStatus(status)),
+    private static ToolInvocationResult Rejected(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, OutcomeStatus(status)),
         []);
 
     private static ExtensionData OutcomeStatus(string status) => new(

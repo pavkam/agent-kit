@@ -82,17 +82,17 @@ public sealed class WriteFileTool: ITool
 
         if (!ToolArguments.TryGetRequiredString(request.Arguments, "path", out var pathText, out var pathError))
         {
-            return Failed(pathError);
+            return Failed(pathError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (!ToolArguments.TryGetRequiredString(request.Arguments, "content", out var content, out var contentError))
         {
-            return Failed(contentError);
+            return Failed(contentError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (!TryParseMode(request.Arguments, out var mode, out var modeError))
         {
-            return Failed(modeError);
+            return Failed(modeError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         FileSystemPath path;
@@ -102,7 +102,7 @@ public sealed class WriteFileTool: ITool
         }
         catch (ArgumentException ex)
         {
-            return Failed($"Invalid path: {ex.Message}");
+            return Failed($"Invalid path: {ex.Message}", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var context = request.Context;
@@ -120,12 +120,12 @@ public sealed class WriteFileTool: ITool
         var decision = await _securityAuthority.AuthorizeAsync(securityRequest, cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied authorizationDenied)
         {
-            return Failed(authorizationDenied.Denial.SafeMessage);
+            return Failed(authorizationDenied.Denial.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return Failed("The security authority returned an unsupported decision.");
+            return Failed("The security authority returned an unsupported decision.", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var result = await _fileSystem.WriteAsync(
@@ -134,10 +134,10 @@ public sealed class WriteFileTool: ITool
         return result switch
         {
             FileWritten written => Success($"Wrote {written.BytesWritten} byte(s) to '{pathText}'."),
-            FileAlreadyExists => Failed($"A file already exists at '{pathText}'."),
-            FileWriteDenied denied => Failed(denied.SafeMessage),
-            FileWriteFailed failed => Failed(failed.SafeMessage),
-            _ => Failed("The file system returned an unrecognized outcome.")
+            FileAlreadyExists => Failed($"A file already exists at '{pathText}'.", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
+            FileWriteDenied denied => Failed(denied.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
+            FileWriteFailed failed => Failed(failed.SafeMessage, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
+            _ => Failed("The file system returned an unrecognized outcome.", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown)
         };
     }
 
@@ -172,10 +172,10 @@ public sealed class WriteFileTool: ITool
     }
 
     private static ToolInvocationResult Success(string message) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
         [new TextPart(message, TextSemantics.Plain, ExtensionData.Empty)]);
 
-    private static ToolInvocationResult Failed(string reason) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, ExtensionData.Empty),
+    private static ToolInvocationResult Failed(string reason, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, ExtensionData.Empty),
         []);
 }

@@ -87,7 +87,7 @@ public sealed class SearchTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (!TryParse(request.Arguments, out var parsed, out var error))
         {
-            return Failure(error!, "InvalidArguments", []);
+            return Failure(error!, "InvalidArguments", [], ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var context = request.Context;
@@ -107,12 +107,12 @@ public sealed class SearchTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {
-            return Failure(denied.Denial.SafeMessage, "Denied", []);
+            return Failure(denied.Denial.SafeMessage, "Denied", [], ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return Failure("The security authority returned an unsupported decision.", "Denied", []);
+            return Failure("The security authority returned an unsupported decision.", "Denied", [], ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var result = await _searcher.SearchAsync(ToRequest(parsed, allowed.Grant), cancellationToken).ConfigureAwait(false);
@@ -139,8 +139,8 @@ public sealed class SearchTool: ITool
             new TextPart(json, TextSemantics.Code, ExtensionData.Empty));
         return result.Status is FileSearchStatus.Success or FileSearchStatus.NoMatches
             ? new ToolInvocationResult(
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, null, Status(result.Status.ToString())), content)
-            : Failure(result.SafeMessage!, result.Status.ToString(), content);
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, Status(result.Status.ToString())), content)
+            : Failure(result.SafeMessage!, result.Status.ToString(), content, result.Status switch { FileSearchStatus.Denied => ToolTerminalStatus.Denied, FileSearchStatus.TimedOut => ToolTerminalStatus.TimedOut, FileSearchStatus.Success or FileSearchStatus.NoMatches or FileSearchStatus.NotFound or FileSearchStatus.LimitExceeded or FileSearchStatus.Failed => ToolTerminalStatus.InvocationFailed, _ => ToolTerminalStatus.InvocationFailed }, result.Status is FileSearchStatus.Denied or FileSearchStatus.NotFound ? SideEffectCertainty.DefinitelyNotPerformed : result.VisitedFiles > 0 || result.VisitedBytes > 0 ? SideEffectCertainty.PartiallyPerformed : SideEffectCertainty.Unknown);
     }
 
     private bool TryParse(JsonElement arguments, out ParsedArguments parsed, out string? error)
@@ -309,8 +309,8 @@ public sealed class SearchTool: ITool
     private static ToolInvocationResult Failure(
         string reason,
         string status,
-        ImmutableArray<ContentPart> content) => new(
-            new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)), content);
+        ImmutableArray<ContentPart> content, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+            new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), content);
 
     private readonly record struct ParsedArguments(
         FileSystemPath? BasePath,

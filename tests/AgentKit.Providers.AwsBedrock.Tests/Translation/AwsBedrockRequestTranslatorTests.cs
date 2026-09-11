@@ -60,7 +60,7 @@ public sealed class AwsBedrockRequestTranslatorTests
             new ToolResultPart(
                 callId,
                 toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
                 [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)],
                 ExtensionData.Empty));
 
@@ -321,7 +321,7 @@ public sealed class AwsBedrockRequestTranslatorTests
             new ToolResultPart(
                 callId,
                 toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Failed, "boom", ExtensionData.Empty),
+                new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, "boom", ExtensionData.Empty),
                 [new TextPart("failed", TextSemantics.Plain, ExtensionData.Empty)],
                 ExtensionData.Empty));
 

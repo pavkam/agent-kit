@@ -22,7 +22,9 @@ public sealed class WebSearchToolTests
         var authority = new RecordingSecurityAuthority();
         var ids = new FixedSearchRequestIdGenerator();
         var result = await Tool(provider, authority, ids).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         ids.Calls.ShouldBe(0);
         authority.Requests.ShouldBeEmpty();
         provider.Requests.ShouldBeEmpty();

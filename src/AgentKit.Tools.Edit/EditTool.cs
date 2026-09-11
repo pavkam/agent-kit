@@ -98,18 +98,18 @@ public sealed class EditTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (!TryParse(request.Arguments, out var arguments, out var error))
         {
-            return Failure(error!, "InvalidArguments");
+            return Failure(error!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var readDecision = await AuthorizeReadAsync(request.Context, arguments, cancellationToken).ConfigureAwait(false);
         if (readDecision is SecurityDenied readDenied)
         {
-            return Failure(readDenied.Denial.SafeMessage, "Denied");
+            return Failure(readDenied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (readDecision is not SecurityAllowed readAllowed)
         {
-            return Failure("The security authority returned an unsupported decision.", "Denied");
+            return Failure("The security authority returned an unsupported decision.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var snapshot = await _snapshotReader.ReadSnapshotAsync(
@@ -117,7 +117,7 @@ public sealed class EditTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (snapshot.Status != FileSnapshotStatus.Success || snapshot.ContentFingerprint is null)
         {
-            return Failure(snapshot.SafeMessage ?? "The file snapshot failed.", snapshot.Status.ToString());
+            return Failure(snapshot.SafeMessage ?? "The file snapshot failed.", snapshot.Status.ToString(), snapshot.Status is FileSnapshotStatus.Denied ? ToolTerminalStatus.Denied : ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         string original;
@@ -127,23 +127,23 @@ public sealed class EditTool: ITool
         }
         catch (DecoderFallbackException)
         {
-            return Failure("The edit target is not strict UTF-8 text.", "BinaryOrInvalidText");
+            return Failure("The edit target is not strict UTF-8 text.", "BinaryOrInvalidText", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (original.Contains('\0', StringComparison.Ordinal))
         {
-            return Failure("The edit target is binary content.", "BinaryOrInvalidText");
+            return Failure("The edit target is binary content.", "BinaryOrInvalidText", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var occurrences = CountOccurrences(original, arguments.OldText);
         if (occurrences == 0)
         {
-            return Failure("The exact old text was not found.", "NoMatch");
+            return Failure("The exact old text was not found.", "NoMatch", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (occurrences > 1 && !arguments.ReplaceAll)
         {
-            return Failure($"The exact old text matched {occurrences} locations; set replace_all to replace all.", "Ambiguous");
+            return Failure($"The exact old text matched {occurrences} locations; set replace_all to replace all.", "Ambiguous", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var replacements = arguments.ReplaceAll ? occurrences : 1;
@@ -153,12 +153,12 @@ public sealed class EditTool: ITool
         var finalBytes = ImmutableArray.CreateRange(_strictUtf8.GetBytes(updated));
         if (finalBytes.Length > arguments.MaximumBytes)
         {
-            return Failure("The final content exceeds the requested complete-file byte bound.", "LimitExceeded");
+            return Failure("The final content exceeds the requested complete-file byte bound.", "LimitExceeded", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (finalBytes.AsSpan().SequenceEqual(snapshot.Content.AsSpan()))
         {
-            return Success("NoChange", arguments.Path, replacements, snapshot.ContentFingerprint.Value, snapshot.ContentFingerprint.Value, finalBytes.Length);
+            return Success(SideEffectCertainty.DefinitelyNotPerformed, "NoChange", arguments.Path, replacements, snapshot.ContentFingerprint.Value, snapshot.ContentFingerprint.Value, finalBytes.Length);
         }
 
         var mutationId = _mutationIds.Create();
@@ -171,12 +171,12 @@ public sealed class EditTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (writeDecision is SecurityDenied writeDenied)
         {
-            return Failure(writeDenied.Denial.SafeMessage, "Denied");
+            return Failure(writeDenied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (writeDecision is not SecurityAllowed writeAllowed)
         {
-            return Failure("The security authority returned an unsupported decision.", "Denied");
+            return Failure("The security authority returned an unsupported decision.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var replacement = await _replacer.ReplaceAsync(
@@ -189,14 +189,14 @@ public sealed class EditTool: ITool
             cancellationToken).ConfigureAwait(false);
         return replacement.Status == AtomicFileReplaceStatus.Committed && replacement.ContentFingerprint is { } finalHash
             ? Success(
-                replacement.Status.ToString(),
+                SideEffectCertainty.DefinitelyPerformed, replacement.Status.ToString(),
                 arguments.Path,
                 replacements,
                 snapshot.ContentFingerprint.Value,
                 finalHash,
                 replacement.Bytes,
                 replacement.SafeMessage)
-            : Failure(replacement.SafeMessage ?? "The replacement failed.", replacement.Status.ToString());
+            : Failure(replacement.SafeMessage ?? "The replacement failed.", replacement.Status.ToString(), replacement.Status is AtomicFileReplaceStatus.Denied ? ToolTerminalStatus.Denied : ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
     }
 
     private async ValueTask<SecurityDecision> AuthorizeReadAsync(
@@ -318,6 +318,7 @@ public sealed class EditTool: ITool
     }
 
     private static ToolInvocationResult Success(
+        SideEffectCertainty certainty,
         string status,
         FileSystemPath path,
         int replacements,
@@ -338,12 +339,12 @@ public sealed class EditTool: ITool
             warning,
         });
         return new ToolInvocationResult(
-            new ToolCallOutcome(ToolCallOutcomeKind.Success, null, Status(status)),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, certainty, false, null, Status(status)),
             [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
     }
 
-    private static ToolInvocationResult Failure(string reason, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)), []);
+    private static ToolInvocationResult Failure(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), []);
 
     private static ExtensionData Status(string status) => new(
         ImmutableDictionary<string, ExtensionValue>.Empty.Add(

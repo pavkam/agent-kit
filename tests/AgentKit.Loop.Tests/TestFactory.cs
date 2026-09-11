@@ -179,6 +179,6 @@ internal static class TestFactory
 
     public static ToolInvocationResult SuccessResult(string text = "ok") =>
         new(
-            new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
             [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)]);
 }

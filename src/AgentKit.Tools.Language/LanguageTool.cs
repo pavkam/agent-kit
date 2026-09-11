@@ -100,7 +100,7 @@ public sealed class LanguageTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (!TryParse(request.Arguments, out var parsed, out var error))
         {
-            return Failure(error!, "InvalidArguments", []);
+            return Failure(error!, "InvalidArguments", [], ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var queryId = _queryIds.Create();
@@ -129,12 +129,12 @@ public sealed class LanguageTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {
-            return Failure(denied.Denial.SafeMessage, "Denied", []);
+            return Failure(denied.Denial.SafeMessage, "Denied", [], ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return Failure("The security authority returned an unsupported decision.", "Denied", []);
+            return Failure("The security authority returned an unsupported decision.", "Denied", [], ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var result = await _service.QueryAsync(
@@ -151,9 +151,9 @@ public sealed class LanguageTool: ITool
         var content = Project(result, parsed.MaximumResults);
         return result.Status == LanguageQueryStatus.Success
             ? new ToolInvocationResult(
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, null, Status(result.Status.ToString())),
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, Status(result.Status.ToString())),
                 content)
-            : Failure(result.SafeMessage!, result.Status.ToString(), content);
+            : Failure(result.SafeMessage!, result.Status.ToString(), content, result.Status switch { LanguageQueryStatus.Denied => ToolTerminalStatus.Denied, LanguageQueryStatus.TimedOut => ToolTerminalStatus.TimedOut, LanguageQueryStatus.Cancelled => ToolTerminalStatus.Cancelled, LanguageQueryStatus.Unsupported => ToolTerminalStatus.Unsupported, LanguageQueryStatus.Success or LanguageQueryStatus.Unavailable or LanguageQueryStatus.Stale or LanguageQueryStatus.Failed => ToolTerminalStatus.InvocationFailed, _ => ToolTerminalStatus.InvocationFailed }, result.Status is LanguageQueryStatus.Denied or LanguageQueryStatus.Unsupported or LanguageQueryStatus.Unavailable ? SideEffectCertainty.DefinitelyNotPerformed : SideEffectCertainty.Unknown);
     }
 
     private bool TryParse(JsonElement arguments, out ParsedArguments parsed, out string? error)
@@ -404,8 +404,8 @@ public sealed class LanguageTool: ITool
     private static ToolInvocationResult Failure(
         string reason,
         string status,
-        ImmutableArray<ContentPart> content) => new(
-            new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)),
+        ImmutableArray<ContentPart> content, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+            new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)),
             content);
 
     private readonly record struct ParsedArguments(

@@ -20,7 +20,9 @@ public sealed class LanguageToolTests
         var service = new RecordingLanguageService();
         var authority = new RecordingSecurityAuthority();
         var result = await CreateTool(service, authority).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         authority.Requests.ShouldBeEmpty();
         service.Requests.ShouldBeEmpty();
     }
@@ -119,6 +121,27 @@ public sealed class LanguageToolTests
         result.Outcome.FailureReason.ShouldBe("Document changed.");
         using var json = JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
         json.RootElement.GetProperty("status").GetString().ShouldBe("Stale");
+    }
+
+    [Theory]
+    [InlineData(LanguageQueryStatus.Denied, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(LanguageQueryStatus.Unsupported, ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(LanguageQueryStatus.Unavailable, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(LanguageQueryStatus.Stale, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
+    [InlineData(LanguageQueryStatus.TimedOut, ToolTerminalStatus.TimedOut, SideEffectCertainty.Unknown)]
+    [InlineData(LanguageQueryStatus.Cancelled, ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown)]
+    [InlineData(LanguageQueryStatus.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
+    public async Task InvokeAsync_WhenQueryDoesNotSucceed_PreservesExactStageAndCertainty(LanguageQueryStatus status, ToolTerminalStatus expectedStatus, SideEffectCertainty expectedCertainty)
+    {
+        var service = new RecordingLanguageService
+        {
+            Result = new LanguageQueryResult(status, LanguageQueryKind.Diagnostics, null, [], [], [], false, "Query stopped."),
+        };
+        var result = await CreateTool(service, new RecordingSecurityAuthority()).InvokeAsync(
+            Request(/*lang=json,strict*/ """{"action":"diagnostics","path":"a.cs"}"""), TestContext.Current.CancellationToken);
+        result.Outcome.SourceStatus.ShouldBe(expectedStatus);
+        result.Outcome.SideEffectCertainty.ShouldBe(expectedCertainty);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     private static LanguageTool CreateTool(ILanguageIntelligenceService service, ISecurityAuthority authority, LanguageToolOptions? options = null) => new(service, authority, new FixedSecurityRequestIdGenerator(), new FixedLanguageQueryIdGenerator(), new FixedTimeProvider(), Options.Create(options ?? OptionsForTool()));

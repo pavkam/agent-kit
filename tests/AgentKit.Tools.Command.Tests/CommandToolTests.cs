@@ -20,7 +20,9 @@ public sealed class CommandToolTests
         var result = await CreateTool(resolver, runner, authority).InvokeAsync(
             Request(json), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         resolver.Requests.ShouldBeEmpty();
         authority.Requests.ShouldBeEmpty();
         runner.Requests.ShouldBeEmpty();
@@ -99,7 +101,7 @@ public sealed class CommandToolTests
         unresolved.Limits.Timeout.ShouldBe(TimeSpan.FromMilliseconds(500));
         unresolved.Limits.MaximumOutputBytes.ShouldBe(12);
 
-        var host = runner.Requests.ShouldHaveSingleItem();
+        var host = _ = runner.Requests.ShouldHaveSingleItem();
         var security = authority.Requests.ShouldHaveSingleItem();
         security.Audience.ShouldBe(runner.SecurityAudience);
         security.Kind.ShouldBe(SecurityOperationKind.Process);
@@ -221,6 +223,52 @@ public sealed class CommandToolTests
         ArtifactMutability.Immutable,
         new ArtifactRetention(new ArtifactRetentionPolicyKey("session"), null, false),
         DateTimeOffset.UnixEpoch);
+
+    [Theory]
+    [InlineData(ProcessRunStatus.Exited, ProcessSideEffectCertainty.Completed, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed)]
+    [InlineData(ProcessRunStatus.Denied, ProcessSideEffectCertainty.NotStarted, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ProcessRunStatus.SandboxUnavailable, ProcessSideEffectCertainty.NotStarted, ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ProcessRunStatus.ResolutionFailed, ProcessSideEffectCertainty.NotStarted, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ProcessRunStatus.LimitExceeded, ProcessSideEffectCertainty.NotStarted, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ProcessRunStatus.TimedOut, ProcessSideEffectCertainty.MayHaveOccurred, ToolTerminalStatus.TimedOut, SideEffectCertainty.Unknown)]
+    [InlineData(ProcessRunStatus.Cancelled, ProcessSideEffectCertainty.MayHaveOccurred, ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown)]
+    [InlineData(ProcessRunStatus.Failed, ProcessSideEffectCertainty.MayHaveOccurred, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
+    public async Task InvokeAsync_WhenHostSettles_PreservesStageAndEffectEvidence(ProcessRunStatus status, ProcessSideEffectCertainty hostCertainty, ToolTerminalStatus expectedStatus, SideEffectCertainty expectedCertainty)
+    {
+        // Arrange
+        var runner = new RecordingProcessRunner
+        {
+            Result = new ProcessRunResult(status, status is ProcessRunStatus.Exited ? 0 : null, [], [], 0, 0, false, false, hostCertainty, "Host settlement."),
+        };
+
+        // Act
+        var result = await CreateTool(new RecordingProcessResolver(), runner, new RecordingSecurityAuthority()).InvokeAsync(
+            Request(/*lang=json,strict*/ """{"command":"work"}"""), TestContext.Current.CancellationToken);
+
+        // Assert
+        result.Outcome.SourceStatus.ShouldBe(expectedStatus);
+        result.Outcome.SideEffectCertainty.ShouldBe(expectedCertainty);
+        result.Outcome.Retryable.ShouldBeFalse();
+        _ = runner.Requests.ShouldHaveSingleItem();
+    }
+
+    [Theory]
+    [InlineData(ProcessResolutionStatus.ExecutableRejected, ToolTerminalStatus.Unsupported)]
+    [InlineData(ProcessResolutionStatus.WorkingDirectoryRejected, ToolTerminalStatus.Unsupported)]
+    [InlineData(ProcessResolutionStatus.InvalidIntent, ToolTerminalStatus.InvalidArguments)]
+    [InlineData(ProcessResolutionStatus.Failed, ToolTerminalStatus.InvocationFailed)]
+    public async Task InvokeAsync_WhenResolutionDoesNotProduceIntent_PreservesStageWithoutStartingProcess(ProcessResolutionStatus status, ToolTerminalStatus expectedStatus)
+    {
+        var resolver = new RecordingProcessResolver { Result = new ProcessResolutionResult(status, null, "Unavailable.") };
+        var runner = new RecordingProcessRunner();
+        var authority = new RecordingSecurityAuthority();
+        var result = await CreateTool(resolver, runner, authority).InvokeAsync(Request(/*lang=json,strict*/ """{"command":"work"}"""), TestContext.Current.CancellationToken);
+        result.Outcome.SourceStatus.ShouldBe(expectedStatus);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
+        authority.Requests.ShouldBeEmpty();
+        runner.Requests.ShouldBeEmpty();
+    }
 
     private static CommandTool CreateTool(
         IProcessIntentResolver resolver,

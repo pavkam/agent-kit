@@ -9,15 +9,12 @@ namespace AgentKit;
 /// eventually carries, paired with the result content to return.
 /// </summary>
 /// <remarks>
-/// This type is an immutable value object with structural equality over its
-/// fields. It carries no mutable state and is safe to share across threads
-/// without synchronization. Reusing <see cref="ToolCallOutcome"/> here,
-/// rather than defining a second parallel outcome hierarchy at the
-/// execution-pipeline layer, keeps exactly one portable vocabulary for
-/// "what happened to this call" from invocation through to durable
-/// history: whatever invoked this tool constructs the eventual
-/// <see cref="ToolResultPart"/> directly from this instance's
-/// <see cref="Outcome"/> and <see cref="Content"/>.
+/// This is invocation evidence and owned content from the current tool adapter
+/// boundary. It is not an authoritative <see cref="ToolCallResult"/> and does
+/// not prove normalization, recording, or publication. The tool executor must
+/// retain accepted-call correlation, normalize content under its captured policy,
+/// record one terminal result, and project that record under the retained
+/// projection policy. A publication retry must never repeat the tool effect.
 /// </remarks>
 public sealed record ToolInvocationResult
 {

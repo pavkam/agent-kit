@@ -29,7 +29,9 @@ public sealed class QuestionToolTests
         var authority = new RecordingSecurityAuthority();
         var ids = new FixedQuestionIdGenerator();
         var result = await Tool(broker, authority, ids).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         ids.Calls.ShouldBe(0);
         authority.Requests.ShouldBeEmpty();
         broker.Requests.ShouldBeEmpty();

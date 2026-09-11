@@ -395,15 +395,49 @@ public sealed class DefaultAgentLoopTests
         coordinator.Entries.Count.ShouldBe(2);
     }
 
+    [Theory]
+    [InlineData(ToolTerminalStatus.InvocationFailed, ToolCallOutcomeKind.Failed, SideEffectCertainty.Unknown)]
+    [InlineData(ToolTerminalStatus.Cancelled, ToolCallOutcomeKind.Cancelled, SideEffectCertainty.PartiallyPerformed)]
+    [InlineData(ToolTerminalStatus.Succeeded, ToolCallOutcomeKind.Success, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData((ToolTerminalStatus) 99, ToolCallOutcomeKind.Failed, SideEffectCertainty.Unknown)]
+    public async Task RunAsync_WhenToolReturnsPreciseEvidence_RetainsItInSessionAndNextModelRequest(ToolTerminalStatus status, ToolCallOutcomeKind kind, SideEffectCertainty certainty)
+    {
+        var callId = new ToolCallId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
+        var requestId = new ModelRequestId(Guid.Parse("20000000-0000-0000-0000-000000000002"));
+        var outcome = new ToolCallOutcome(kind, status, certainty, false, null, ExtensionData.Empty);
+        var invocation = new ToolInvocationResult(outcome, []);
+        var calls = 0;
+        ToolCallOutcome? nextRequestOutcome = null;
+        var loop = CreateLoop(out var coordinator, out var invoker, request =>
+        {
+            if (++calls == 1)
+            {
+                return TestFactory.CompletedWithToolCall(requestId, callId);
+            }
+            nextRequestOutcome = request.Context.Messages.OfType<ToolMessage>().Single().Parts.OfType<ToolResultPart>().Single().Outcome;
+            return TestFactory.CompletedWithText(requestId);
+        }, toolResult: invocation);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        nextRequestOutcome.ShouldBe(outcome);
+        result.NewMessages.OfType<ToolMessage>().Single().Parts.OfType<ToolResultPart>().Single().Outcome.ShouldBe(outcome);
+        coordinator.Entries.OfType<MessageSessionEntry>().Select(static entry => entry.Message).OfType<ToolMessage>()
+            .Single().Parts.OfType<ToolResultPart>().Single().Outcome.ShouldBe(outcome);
+        invoker.ReceivedRequests.Count.ShouldBe(1);
+    }
+
     private DefaultAgentLoop CreateLoop(
         out FakeSessionCoordinator coordinator,
         out FakeToolInvoker toolInvoker,
         Func<LlmModelRequest, ModelAttemptResult> respond,
-        int maxTurns = 8)
+        int maxTurns = 8,
+        ToolInvocationResult? toolResult = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
-        toolInvoker = new FakeToolInvoker(_ => TestFactory.SuccessResult());
+        toolInvoker = new FakeToolInvoker(_ => toolResult ?? TestFactory.SuccessResult());
         var adapter = new RespondingLlmModel(new ModelAlias("chat"), respond);
         var descriptor = TestFactory.Model();
 

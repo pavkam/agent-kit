@@ -18,7 +18,9 @@ public sealed class SearchToolTests
         var searcher = new FakeFileContentSearcher();
         var authority = new RecordingSecurityAuthority();
         var result = await CreateTool(searcher, authority).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         authority.Requests.ShouldBeEmpty();
         searcher.Requests.ShouldBeEmpty();
     }

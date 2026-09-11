@@ -11,6 +11,9 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
+- [ToolCallOutcomeTests](Messages/Content/ToolCallOutcomeTests.cs)
+- [ToolTerminalStatusExtensionsTests](Tools/ToolTerminalStatusExtensionsTests.cs)
+
 - [SecurityAuthoritySelectedTests](Security/SecurityAuthoritySelectedTests.cs)
 - [SecurityAuthoritySelectionUnavailableTests](Security/SecurityAuthoritySelectionUnavailableTests.cs)
 

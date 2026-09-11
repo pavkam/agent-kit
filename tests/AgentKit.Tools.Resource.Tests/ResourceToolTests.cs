@@ -19,7 +19,9 @@ public sealed class ResourceToolTests
         var reader = new RecordingSnapshotReader();
         var authority = new RecordingSecurityAuthority();
         var result = await Tool(reader, authority).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         authority.Requests.ShouldBeEmpty();
         reader.Requests.ShouldBeEmpty();
     }

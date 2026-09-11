@@ -77,7 +77,7 @@ public sealed class DefaultToolInvoker: IToolInvoker
             activity.SetFailed("unknown_tool", "unknown_tool");
             ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "unknown_tool"));
             ToolLog.Unknown(_logger, context.ToolCallId, request.ToolId);
-            return Rejected($"Tool '{request.ToolId}' is not registered.");
+            return Rejected(ToolTerminalStatus.UnknownTool, $"Tool '{request.ToolId}' is not registered.");
         }
 
         var authorization = await _authorizer.AuthorizeAsync(
@@ -88,7 +88,7 @@ public sealed class DefaultToolInvoker: IToolInvoker
             activity.SetFailed("denied", "permission_denied");
             ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "denied"));
             ToolLog.Denied(_logger, context.ToolCallId, request.ToolId);
-            return Rejected(denied.SafeMessage);
+            return Rejected(ToolTerminalStatus.Denied, denied.SafeMessage);
         }
 
         var invocationRequest = new ToolInvocationRequest(request.Context, request.Arguments, request.RequestedAt);
@@ -152,11 +152,11 @@ public sealed class DefaultToolInvoker: IToolInvoker
         return tags;
     }
 
-    private static ToolInvocationResult Rejected(string safeMessage) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Rejected, safeMessage, ExtensionData.Empty),
+    private static ToolInvocationResult Rejected(ToolTerminalStatus status, string safeMessage) => new(
+        new ToolCallOutcome(ToolCallOutcomeKind.Rejected, status, SideEffectCertainty.DefinitelyNotPerformed, false, safeMessage, ExtensionData.Empty),
         []);
 
     private static ToolInvocationResult Failed(string safeMessage) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Failed, safeMessage, ExtensionData.Empty),
+        new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, safeMessage, ExtensionData.Empty),
         []);
 }

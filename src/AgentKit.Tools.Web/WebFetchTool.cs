@@ -88,7 +88,7 @@ public sealed class WebFetchTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (!TryParse(request.Arguments, out var parsed, out var error))
         {
-            return Failure(error!, "InvalidArguments");
+            return Failure(error!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var deadline = _timeProvider.GetUtcNow().Add(parsed.Timeout);
@@ -96,10 +96,11 @@ public sealed class WebFetchTool: ITool
         var redirects = ImmutableArray.CreateBuilder<string>();
         for (var redirectCount = 0; ; redirectCount++)
         {
+            var priorEffects = redirectCount == 0 ? SideEffectCertainty.DefinitelyNotPerformed : SideEffectCertainty.PartiallyPerformed;
             var remaining = deadline - _timeProvider.GetUtcNow();
             if (remaining <= TimeSpan.Zero)
             {
-                return Failure("The web fetch exceeded its overall deadline.", "TimedOut");
+                return Failure("The web fetch exceeded its overall deadline.", "TimedOut", ToolTerminalStatus.TimedOut, priorEffects);
             }
 
             var bounds = new NetworkBounds(
@@ -117,7 +118,7 @@ public sealed class WebFetchTool: ITool
                 cancellationToken).ConfigureAwait(false);
             if (resolutionGrant is null)
             {
-                return Failure("Network resolution was denied.", "Denied");
+                return Failure("Network resolution was denied.", "Denied", priorEffects is SideEffectCertainty.DefinitelyNotPerformed ? ToolTerminalStatus.Denied : ToolTerminalStatus.InvocationFailed, priorEffects);
             }
 
             var resolution = await _resolver.ResolveAsync(
@@ -125,7 +126,7 @@ public sealed class WebFetchTool: ITool
                 cancellationToken).ConfigureAwait(false);
             if (resolution is not NetworkResolved resolved)
             {
-                return ResolutionFailure(resolution);
+                return ResolutionFailure(resolution, priorEffects);
             }
 
             var headers = new NetworkHeaderSet(
@@ -149,7 +150,7 @@ public sealed class WebFetchTool: ITool
                 cancellationToken).ConfigureAwait(false);
             if (sendGrant is null)
             {
-                return Failure("Network egress was denied.", "Denied");
+                return Failure("Network egress was denied.", "Denied", priorEffects is SideEffectCertainty.DefinitelyNotPerformed ? ToolTerminalStatus.Denied : ToolTerminalStatus.InvocationFailed, priorEffects);
             }
 
             var send = await _transport.SendAsync(
@@ -168,7 +169,7 @@ public sealed class WebFetchTool: ITool
             {
                 if (redirectCount >= _options.MaximumRedirects)
                 {
-                    return Failure("The web fetch exceeded its redirect boundary.", "RedirectLimitExceeded");
+                    return Failure("The web fetch exceeded its redirect boundary.", "RedirectLimitExceeded", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.PartiallyPerformed);
                 }
 
                 redirects.Add(SafeDisplayUrl(destination));
@@ -219,7 +220,7 @@ public sealed class WebFetchTool: ITool
     {
         if (send is not NetworkResponseReceived received)
         {
-            return SendFailure(send);
+            return SendFailure(send, redirects.IsEmpty ? SideEffectCertainty.DefinitelyNotPerformed : SideEffectCertainty.PartiallyPerformed);
         }
 
         await using var response = received.Response;
@@ -227,13 +228,13 @@ public sealed class WebFetchTool: ITool
         if (headers.Length > _options.MaximumHeaderCount
             || headers.Sum(static header => header.Name.Length + header.Value.Length) > _options.MaximumHeaderCharacters)
         {
-            return Failure("The response headers exceeded the configured boundary.", "HeaderLimitExceeded");
+            return Failure("The response headers exceeded the configured boundary.", "HeaderLimitExceeded", ToolTerminalStatus.ResultNormalizationFailed, SideEffectCertainty.PartiallyPerformed);
         }
 
         if (response.Metadata.Headers.GetValues("Content-Encoding")
             .Any(static value => !string.Equals(value, "identity", StringComparison.OrdinalIgnoreCase)))
         {
-            return Failure("Compressed response content is not supported by this fetch profile.", "UnsupportedEncoding");
+            return Failure("Compressed response content is not supported by this fetch profile.", "UnsupportedEncoding", ToolTerminalStatus.ResultNormalizationFailed, SideEffectCertainty.PartiallyPerformed);
         }
 
         byte[] bytes;
@@ -245,11 +246,11 @@ public sealed class WebFetchTool: ITool
         }
         catch (NetworkResponseTooLargeException)
         {
-            return Failure("The response body exceeded the configured byte boundary.", "ResponseLimitExceeded");
+            return Failure("The response body exceeded the configured byte boundary.", "ResponseLimitExceeded", ToolTerminalStatus.ResultNormalizationFailed, SideEffectCertainty.PartiallyPerformed);
         }
         catch (NetworkResponseTimedOutException)
         {
-            return Failure("The response body exceeded the overall deadline.", "TimedOut");
+            return Failure("The response body exceeded the overall deadline.", "TimedOut", ToolTerminalStatus.TimedOut, SideEffectCertainty.PartiallyPerformed);
         }
 
         WebContentProjection projection;
@@ -262,7 +263,7 @@ public sealed class WebFetchTool: ITool
         }
         catch (InvalidDataException exception)
         {
-            return Failure(exception.Message, "UnsupportedContent");
+            return Failure(exception.Message, "UnsupportedContent", ToolTerminalStatus.ResultNormalizationFailed, SideEffectCertainty.DefinitelyPerformed);
         }
 
         var content = JsonSerializer.Serialize(new
@@ -284,11 +285,10 @@ public sealed class WebFetchTool: ITool
         var parts = ImmutableArray.Create<ContentPart>(new TextPart(content, TextSemantics.Code, ExtensionData.Empty));
         return response.Metadata.StatusCode is >= 200 and <= 299
             ? new ToolInvocationResult(
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, null, Status("Success")),
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, Status("Success")),
                 parts)
             : new ToolInvocationResult(
-                new ToolCallOutcome(
-                    ToolCallOutcomeKind.Failed,
+                new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyPerformed, false,
                     $"The remote server returned HTTP {response.Metadata.StatusCode}.",
                     Status("HttpError")),
                 parts);
@@ -401,21 +401,21 @@ public sealed class WebFetchTool: ITool
         return property.TryGetInt32(out value) && value > 0 && value <= ceiling;
     }
 
-    private static ToolInvocationResult ResolutionFailure(NetworkResolutionResult result) => result switch
+    private static ToolInvocationResult ResolutionFailure(NetworkResolutionResult result, SideEffectCertainty priorEffects) => result switch
     {
-        NetworkResolutionDenied denied => Failure(denied.SafeMessage, "Denied"),
-        NetworkResolutionFailed failed => Failure(failed.SafeMessage, failed.Kind.ToString()),
-        _ => Failure("The resolver returned an unsupported result.", "Failed"),
+        NetworkResolutionDenied denied => Failure(denied.SafeMessage, "Denied", priorEffects is SideEffectCertainty.DefinitelyNotPerformed ? ToolTerminalStatus.Denied : ToolTerminalStatus.InvocationFailed, priorEffects),
+        NetworkResolutionFailed failed => Failure(failed.SafeMessage, failed.Kind.ToString(), TerminalStatus(failed.Kind), priorEffects),
+        _ => Failure("The resolver returned an unsupported result.", "Failed", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
     };
 
-    private static ToolInvocationResult SendFailure(NetworkSendResult result) => result switch
+    private static ToolInvocationResult SendFailure(NetworkSendResult result, SideEffectCertainty priorEffects) => result switch
     {
-        NetworkDenied denied => Failure(denied.SafeMessage, "Denied"),
-        NetworkRequestFailed failed => Failure(failed.SafeMessage, failed.Kind.ToString()),
-        NetworkResponseLimitExceeded => Failure("The response exceeded the configured byte boundary.", "ResponseLimitExceeded"),
-        NetworkRedirectLimitExceeded => Failure("The response exceeded the configured redirect boundary.", "RedirectLimitExceeded"),
-        NetworkCancelled => Failure("The network request was cancelled.", "Cancelled"),
-        _ => Failure("The transport returned an unsupported result.", "Failed"),
+        NetworkDenied denied => Failure(denied.SafeMessage, "Denied", priorEffects is SideEffectCertainty.DefinitelyNotPerformed ? ToolTerminalStatus.Denied : ToolTerminalStatus.InvocationFailed, priorEffects),
+        NetworkRequestFailed failed => Failure(failed.SafeMessage, failed.Kind.ToString(), TerminalStatus(failed.Kind), SideEffectCertainty.Unknown),
+        NetworkResponseLimitExceeded => Failure("The response exceeded the configured byte boundary.", "ResponseLimitExceeded", ToolTerminalStatus.ResultNormalizationFailed, SideEffectCertainty.PartiallyPerformed),
+        NetworkRedirectLimitExceeded => Failure("The response exceeded the configured redirect boundary.", "RedirectLimitExceeded", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.PartiallyPerformed),
+        NetworkCancelled => Failure("The network request was cancelled.", "Cancelled", ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown),
+        _ => Failure("The transport returned an unsupported result.", "Failed", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
     };
 
     private static void ValidateOptions(WebFetchToolOptions value)
@@ -441,8 +441,18 @@ public sealed class WebFetchTool: ITool
             "agentkit.web.status",
             new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(status)])));
 
-    private static ToolInvocationResult Failure(string reason, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)),
+    private static ToolTerminalStatus TerminalStatus(NetworkFailureKind kind) => kind switch
+    {
+        NetworkFailureKind.Timeout => ToolTerminalStatus.TimedOut,
+        NetworkFailureKind.Cancelled => ToolTerminalStatus.Cancelled,
+        NetworkFailureKind.UnsupportedScheme => ToolTerminalStatus.Unsupported,
+        NetworkFailureKind.ProtocolViolation => ToolTerminalStatus.ProtocolFailed,
+        NetworkFailureKind.DnsResolutionFailed or NetworkFailureKind.ConnectionFailed or NetworkFailureKind.TlsFailure or NetworkFailureKind.Unknown => ToolTerminalStatus.InvocationFailed,
+        _ => ToolTerminalStatus.InvocationFailed,
+    };
+
+    private static ToolInvocationResult Failure(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)),
         []);
 
     private readonly record struct ParsedArguments(

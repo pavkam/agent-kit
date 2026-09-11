@@ -78,7 +78,7 @@ internal static class TestFactory
     public static ToolResultPart ToolResult(ToolCallId callId, string toolName = "search") => new(
         callId,
         new ToolReference(new ToolId(toolName), null, toolName),
-        new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
         [new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty)],
         ExtensionData.Empty);
 

@@ -23,6 +23,6 @@ internal sealed class StubTool: ITool
         ToolInvocationRequest request,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(new ToolInvocationResult(
-            new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
             []));
 }

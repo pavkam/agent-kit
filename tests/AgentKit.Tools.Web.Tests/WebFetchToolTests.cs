@@ -17,7 +17,9 @@ public sealed class WebFetchToolTests
 
         var result = await fixture.Tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         fixture.Authority.Requests.ShouldBeEmpty();
         fixture.Resolver.Traces.ShouldBeEmpty();
         fixture.Transport.Traces.ShouldBeEmpty();
@@ -32,7 +34,7 @@ public sealed class WebFetchToolTests
             Request(/*lang=json,strict*/ """{"url":"https://example.test/"}"""),
             TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
         fixture.Authority.Requests.Count.ShouldBe(1);
         fixture.Resolver.Traces.ShouldBeEmpty();
         fixture.Transport.Traces.ShouldBeEmpty();
@@ -99,7 +101,7 @@ public sealed class WebFetchToolTests
             Request(/*lang=json,strict*/ """{"url":"https://example.test/"}"""),
             TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
         fixture.Resolver.Traces.Count.ShouldBe(1);
         fixture.Transport.Traces.ShouldBeEmpty();
     }
@@ -152,6 +154,26 @@ public sealed class WebFetchToolTests
         json.RootElement.GetProperty("status").GetInt32().ShouldBe(404);
         json.RootElement.GetProperty("content").GetString().ShouldBe("missing");
         json.RootElement.GetProperty("remote_content_trusted").GetBoolean().ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task InvokeAsync_WhenAuthorityDeniesAfterRedirect_PreservesPriorEgress(int denialRequest)
+    {
+        var fixture = new Fixture { Authority = { DenyAtRequest = denialRequest } };
+        var redirected = Destination("other.test", "/final");
+        fixture.Resolver.Script(fixture.Origin, new NetworkResolved([Address()]));
+        fixture.Transport.Script(fixture.Origin, new NetworkRedirectReceived(redirected, crossOrigin: true));
+        fixture.Resolver.Script(redirected, new NetworkResolved([Address()]));
+
+        var result = await fixture.Tool.InvokeAsync(Request(/*lang=json,strict*/ """{"url":"https://example.test/"}"""), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.PartiallyPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
+        _ = fixture.Transport.Traces.ShouldHaveSingleItem();
     }
 
     private static NetworkDestination Destination(string host, string route) => new(

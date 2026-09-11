@@ -51,6 +51,21 @@ enter a terminal `RunDeferred` outcome. These values and `IOutputPublisher`
 define contracts; complete publisher, resolution and settlement implementations
 remain under construction.
 
+## Tool outcome evidence
+
+`ToolCallOutcome` requires an exact `ToolTerminalStatus`, effect certainty, and
+retry advice alongside its portable kind. `ToOutcomeKind()` provides the closed
+status mapping: unknown numeric statuses remain intact and map to failure.
+Construction rejects a contradictory kind, undefined certainty, inapplicable
+certainty, and failure text on success. Failure and cancellation can retain
+partial or uncertain effects; success can truthfully report no target change.
+
+This intentionally replaces the old three-argument constructor and removes
+outcome property initializers. Callers must supply evidence at the boundary that
+knows it. Retry advice is never authorization to repeat a recorded effect.
+Invocation results still require executor-owned normalization, terminal
+recording, and policy-bound projection before durable publication.
+
 ## Tool-result projection provenance
 
 `ToolResultProjectionInfo` retains the captured projection-policy key/version,

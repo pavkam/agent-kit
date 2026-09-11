@@ -97,7 +97,7 @@ public sealed class ResourceTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (!TryArguments(request.Arguments, out var action, out var id, out var error))
         {
-            return Failure(error!, "InvalidArguments");
+            return Failure(error!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (action == "list")
@@ -108,7 +108,7 @@ public sealed class ResourceTool: ITool
         var resource = _resources.FirstOrDefault(candidate => candidate.Id == id);
         if (resource is null)
         {
-            return Failure("No configured resource has that identity.", "NotFound");
+            return Failure("No configured resource has that identity.", "NotFound", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var context = request.Context;
@@ -128,12 +128,12 @@ public sealed class ResourceTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {
-            return Failure(denied.Denial.SafeMessage, "Denied");
+            return Failure(denied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return Failure("The security authority returned an unsupported decision.", "Denied");
+            return Failure("The security authority returned an unsupported decision.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var snapshot = await _reader.ReadSnapshotAsync(
@@ -141,17 +141,17 @@ public sealed class ResourceTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (snapshot.Status != FileSnapshotStatus.Success)
         {
-            return Failure(snapshot.SafeMessage ?? SnapshotMessage(snapshot.Status), snapshot.Status.ToString());
+            return Failure(snapshot.SafeMessage ?? SnapshotMessage(snapshot.Status), snapshot.Status.ToString(), snapshot.Status is FileSnapshotStatus.Denied ? ToolTerminalStatus.Denied : ToolTerminalStatus.InvocationFailed, snapshot.Status is FileSnapshotStatus.Denied or FileSnapshotStatus.NotFound ? SideEffectCertainty.DefinitelyNotPerformed : SideEffectCertainty.Unknown);
         }
 
         if (snapshot.ContentFingerprint is not { } actualHash)
         {
-            return Failure("The resource snapshot omitted its required content fingerprint.", "Failed");
+            return Failure("The resource snapshot omitted its required content fingerprint.", "Failed", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown);
         }
 
         if (resource.ExpectedContentHash is { } expectedHash && expectedHash != actualHash)
         {
-            return Failure("The resource content did not match its configured integrity fingerprint.", "IntegrityMismatch");
+            return Failure("The resource content did not match its configured integrity fingerprint.", "IntegrityMismatch", ToolTerminalStatus.ResultNormalizationFailed, SideEffectCertainty.DefinitelyPerformed);
         }
 
         string text;
@@ -167,7 +167,7 @@ public sealed class ResourceTool: ITool
         }
         catch (DecoderFallbackException)
         {
-            return Failure("The configured resource is not valid UTF-8 text.", "InvalidEncoding");
+            return Failure("The configured resource is not valid UTF-8 text.", "InvalidEncoding", ToolTerminalStatus.ResultNormalizationFailed, SideEffectCertainty.DefinitelyPerformed);
         }
 
         var truncated = text.Length > _maximumCharacters;
@@ -281,11 +281,11 @@ public sealed class ResourceTool: ITool
     };
 
     private static ToolInvocationResult Success(string json, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Success, null, Status(status)),
+        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, Status(status)),
         [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
 
-    private static ToolInvocationResult Failure(string reason, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)),
+    private static ToolInvocationResult Failure(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)),
         []);
 
     private static ExtensionData Status(string status) => new(

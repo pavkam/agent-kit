@@ -78,7 +78,7 @@ public sealed class ReadFileTool: ITool
 
         if (!ToolArguments.TryGetRequiredString(request.Arguments, "path", out var pathText, out var pathError))
         {
-            return Failed(pathError);
+            return Failed(pathError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         FileSystemPath path;
@@ -88,22 +88,22 @@ public sealed class ReadFileTool: ITool
         }
         catch (ArgumentException ex)
         {
-            return Failed($"Invalid path: {ex.Message}");
+            return Failed($"Invalid path: {ex.Message}", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (!ToolArguments.TryGetOptionalInt(request.Arguments, "offset", out var offset, out var offsetError))
         {
-            return Failed(offsetError);
+            return Failed(offsetError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (!ToolArguments.TryGetOptionalInt(request.Arguments, "limit", out var limit, out var limitError))
         {
-            return Failed(limitError);
+            return Failed(limitError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (offset is < 1 || limit is < 1)
         {
-            return Failed("'offset' and 'limit' must be positive integers when provided.");
+            return Failed("'offset' and 'limit' must be positive integers when provided.", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var context = request.Context;
@@ -121,12 +121,12 @@ public sealed class ReadFileTool: ITool
         var decision = await _securityAuthority.AuthorizeAsync(securityRequest, cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied authorizationDenied)
         {
-            return Failed(authorizationDenied.Denial.SafeMessage);
+            return Failed(authorizationDenied.Denial.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return Failed("The security authority returned an unsupported decision.");
+            return Failed("The security authority returned an unsupported decision.", ToolTerminalStatus.Unsupported, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var result = await _fileSystem.ReadAsync(new FileReadRequest(path, allowed.Grant), cancellationToken).ConfigureAwait(false);
@@ -134,10 +134,10 @@ public sealed class ReadFileTool: ITool
         return result switch
         {
             FileRead read => Success(ApplyRange(read.Content, offset, limit)),
-            FileNotFound => Failed($"No file exists at '{pathText}'."),
-            FileReadDenied denied => Failed(denied.SafeMessage),
-            FileReadFailed failed => Failed(failed.SafeMessage),
-            _ => Failed("The file system returned an unrecognized outcome.")
+            FileNotFound => Failed($"No file exists at '{pathText}'.", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed),
+            FileReadDenied denied => Failed(denied.SafeMessage, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
+            FileReadFailed failed => Failed(failed.SafeMessage, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
+            _ => Failed("The file system returned an unrecognized outcome.", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown)
         };
     }
 
@@ -156,10 +156,10 @@ public sealed class ReadFileTool: ITool
     }
 
     private static ToolInvocationResult Success(string content) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
         [new TextPart(content, TextSemantics.Plain, ExtensionData.Empty)]);
 
-    private static ToolInvocationResult Failed(string reason) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, ExtensionData.Empty),
+    private static ToolInvocationResult Failed(string reason, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, ExtensionData.Empty),
         []);
 }

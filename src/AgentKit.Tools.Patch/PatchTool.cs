@@ -90,7 +90,7 @@ public sealed class PatchTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (!TryGetPatchText(request.Arguments, out var patchText, out var argumentError))
         {
-            return Failure(argumentError!, "InvalidArguments");
+            return Failure(argumentError!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         int patchBytes;
@@ -100,12 +100,12 @@ public sealed class PatchTool: ITool
         }
         catch (EncoderFallbackException)
         {
-            return Failure("The patch syntax contains invalid Unicode scalar data.", "InvalidPatch");
+            return Failure("The patch syntax contains invalid Unicode scalar data.", "InvalidPatch", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (patchBytes > _options.MaximumPatchBytes)
         {
-            return Failure("The patch syntax exceeds its configured byte bound.", "LimitExceeded");
+            return Failure("The patch syntax exceeds its configured byte bound.", "LimitExceeded", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (!AgentKitPatchParser.TryParse(
@@ -114,7 +114,7 @@ public sealed class PatchTool: ITool
                 out var parsed,
                 out var parseError))
         {
-            return Failure(parseError!, "InvalidPatch");
+            return Failure(parseError!, "InvalidPatch", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var planned = ImmutableArray.CreateBuilder<PlannedPatchEntry>(parsed!.Entries.Length);
@@ -123,7 +123,7 @@ public sealed class PatchTool: ITool
             var source = await ObserveAsync(request.Context, entry.Path, cancellationToken).ConfigureAwait(false);
             if (source.Error is not null)
             {
-                return Failure(source.Error, source.Status);
+                return Failure(source.Error, source.Status, source.TerminalStatus, SideEffectCertainty.DefinitelyNotPerformed);
             }
 
             switch (entry.Kind)
@@ -131,7 +131,7 @@ public sealed class PatchTool: ITool
                 case ParsedPatchEntryKind.Add:
                     if (source.Snapshot!.Status != FileSnapshotStatus.NotFound)
                     {
-                        return Failure("An add-file target must not exist.", "Conflict");
+                        return Failure("An add-file target must not exist.", "Conflict", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
                     }
 
                     ImmutableArray<byte> addedContent;
@@ -141,11 +141,11 @@ public sealed class PatchTool: ITool
                     }
                     catch (EncoderFallbackException)
                     {
-                        return Failure("An added file contains invalid Unicode scalar data.", "InvalidPatch");
+                        return Failure("An added file contains invalid Unicode scalar data.", "InvalidPatch", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
                     }
                     if (addedContent.Length > _options.MaximumFileBytes)
                     {
-                        return Failure("An added file exceeds the configured file byte bound.", "LimitExceeded");
+                        return Failure("An added file exceeds the configured file byte bound.", "LimitExceeded", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
                     }
 
                     planned.Add(new PlannedPatchEntry(entry, _mutationIds.Create(), null, addedContent));
@@ -153,7 +153,7 @@ public sealed class PatchTool: ITool
                 case ParsedPatchEntryKind.Update:
                     if (!TryRequireSnapshot(source.Snapshot!, out var updateFingerprint, out var sourceError))
                     {
-                        return Failure(sourceError!, source.Snapshot!.Status.ToString());
+                        return Failure(sourceError!, source.Snapshot!.Status.ToString(), ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
                     }
 
                     if (!PatchTextPlanner.TryApply(
@@ -162,17 +162,17 @@ public sealed class PatchTool: ITool
                             out var finalContent,
                             out var planError))
                     {
-                        return Failure(planError!, "PatchConflict");
+                        return Failure(planError!, "PatchConflict", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
                     }
 
                     if (finalContent.Length > _options.MaximumFileBytes)
                     {
-                        return Failure("An updated file exceeds the configured file byte bound.", "LimitExceeded");
+                        return Failure("An updated file exceeds the configured file byte bound.", "LimitExceeded", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
                     }
 
                     if (finalContent.AsSpan().SequenceEqual(source.Snapshot.Content.AsSpan()))
                     {
-                        return Failure("An update hunk produced no byte change.", "NoChange");
+                        return Failure("An update hunk produced no byte change.", "NoChange", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
                     }
 
                     planned.Add(new PlannedPatchEntry(
@@ -181,7 +181,7 @@ public sealed class PatchTool: ITool
                 case ParsedPatchEntryKind.Delete:
                     if (!TryRequireSnapshot(source.Snapshot!, out var deleteFingerprint, out sourceError))
                     {
-                        return Failure(sourceError!, source.Snapshot!.Status.ToString());
+                        return Failure(sourceError!, source.Snapshot!.Status.ToString(), ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
                     }
 
                     planned.Add(new PlannedPatchEntry(entry, _mutationIds.Create(), deleteFingerprint, []));
@@ -189,19 +189,19 @@ public sealed class PatchTool: ITool
                 case ParsedPatchEntryKind.Move:
                     if (!TryRequireSnapshot(source.Snapshot!, out var moveFingerprint, out sourceError))
                     {
-                        return Failure(sourceError!, source.Snapshot!.Status.ToString());
+                        return Failure(sourceError!, source.Snapshot!.Status.ToString(), ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
                     }
 
                     var destination = await ObserveAsync(
                         request.Context, entry.DestinationPath!.Value, cancellationToken).ConfigureAwait(false);
                     if (destination.Error is not null)
                     {
-                        return Failure(destination.Error, destination.Status);
+                        return Failure(destination.Error, destination.Status, destination.TerminalStatus, SideEffectCertainty.DefinitelyNotPerformed);
                     }
 
                     if (destination.Snapshot!.Status != FileSnapshotStatus.NotFound)
                     {
-                        return Failure("A move destination must not exist.", "Conflict");
+                        return Failure("A move destination must not exist.", "Conflict", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
                     }
 
                     planned.Add(new PlannedPatchEntry(entry, _mutationIds.Create(), moveFingerprint, []));
@@ -218,12 +218,12 @@ public sealed class PatchTool: ITool
                 request.Context, entry, cancellationToken).ConfigureAwait(false);
             if (decision is SecurityDenied denied)
             {
-                return Failure(denied.Denial.SafeMessage, "Denied");
+                return Failure(denied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
             }
 
             if (decision is not SecurityAllowed allowed)
             {
-                return Failure("The security authority returned an unsupported decision.", "Denied");
+                return Failure("The security authority returned an unsupported decision.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
             }
 
             hostEntries.Add(ToHostEntry(entry, allowed.Grant));
@@ -235,7 +235,7 @@ public sealed class PatchTool: ITool
         return Result(result);
     }
 
-    private async ValueTask<(FileSnapshotResult? Snapshot, string? Error, string Status)> ObserveAsync(
+    private async ValueTask<(FileSnapshotResult? Snapshot, string? Error, string Status, ToolTerminalStatus TerminalStatus)> ObserveAsync(
         ToolExecutionContext context,
         FileSystemPath path,
         CancellationToken cancellationToken)
@@ -255,20 +255,20 @@ public sealed class PatchTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {
-            return (null, denied.Denial.SafeMessage, "Denied");
+            return (null, denied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return (null, "The security authority returned an unsupported decision.", "Denied");
+            return (null, "The security authority returned an unsupported decision.", "Denied", ToolTerminalStatus.Unsupported);
         }
 
         var snapshot = await _snapshotReader.ReadSnapshotAsync(
             new FileSnapshotRequest(path, _options.MaximumFileBytes, allowed.Grant),
             cancellationToken).ConfigureAwait(false);
         return snapshot.Status is FileSnapshotStatus.Success or FileSnapshotStatus.NotFound
-            ? (snapshot, null, snapshot.Status.ToString())
-            : (snapshot, snapshot.SafeMessage ?? "The patch source could not be observed.", snapshot.Status.ToString());
+            ? (snapshot, null, snapshot.Status.ToString(), ToolTerminalStatus.Succeeded)
+            : (snapshot, snapshot.SafeMessage ?? "The patch source could not be observed.", snapshot.Status.ToString(), snapshot.Status is FileSnapshotStatus.Denied ? ToolTerminalStatus.Denied : ToolTerminalStatus.InvocationFailed);
     }
 
     private async ValueTask<SecurityDecision> AuthorizeMutationAsync(
@@ -398,13 +398,20 @@ public sealed class PatchTool: ITool
         return new ToolInvocationResult(
             new ToolCallOutcome(
                 successful ? ToolCallOutcomeKind.Success : ToolCallOutcomeKind.Failed,
+                successful ? ToolTerminalStatus.Succeeded : ToolTerminalStatus.InvocationFailed,
+                result.Entries.Any(static entry => entry.Status is WorkspacePatchEntryStatus.Uncertain)
+                    ? SideEffectCertainty.Unknown
+                    : successful ? SideEffectCertainty.DefinitelyPerformed
+                    : result.Entries.Any(static entry => entry.Status is WorkspacePatchEntryStatus.Committed)
+                        ? SideEffectCertainty.PartiallyPerformed : SideEffectCertainty.DefinitelyNotPerformed,
+                false,
                 successful ? null : result.SafeMessage ?? "The patch did not fully commit.",
                 Status(result.Status.ToString())),
             [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
     }
 
-    private static ToolInvocationResult Failure(string reason, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)), []);
+    private static ToolInvocationResult Failure(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), []);
 
     private static ExtensionData Status(string status) => new(
         ImmutableDictionary<string, ExtensionValue>.Empty.Add(

@@ -60,7 +60,7 @@ public sealed class GoogleGeminiContentTranslatorTests
             new ToolResultPart(
                 callId,
                 toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
                 [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)],
                 ExtensionData.Empty));
 
@@ -351,7 +351,7 @@ public sealed class GoogleGeminiContentTranslatorTests
             new ToolResultPart(
                 callId,
                 toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Failed, "The location was not found.", ExtensionData.Empty),
+                new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, "The location was not found.", ExtensionData.Empty),
                 [],
                 ExtensionData.Empty));
 

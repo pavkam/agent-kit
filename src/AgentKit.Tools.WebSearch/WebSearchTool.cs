@@ -108,7 +108,7 @@ public sealed class WebSearchTool: ITool
                 out var timeout,
                 out var error))
         {
-            return Failure(error!, "InvalidArguments");
+            return Failure(error!, "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var searchId = _searchRequestIds.Create();
@@ -139,12 +139,12 @@ public sealed class WebSearchTool: ITool
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
         {
-            return Rejected(denied.Denial.SafeMessage, "Denied");
+            return Rejected(denied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (decision is not SecurityAllowed allowed)
         {
-            return Rejected("The security authority returned an unsupported decision.", "Denied");
+            return Rejected("The security authority returned an unsupported decision.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var result = await _provider.SearchAsync(
@@ -159,14 +159,14 @@ public sealed class WebSearchTool: ITool
                 allowed.Grant),
             cancellationToken).ConfigureAwait(false);
         return result.RequestId != searchId
-            ? Failure("The search provider returned a result for a different request.", "InvalidProviderResult")
+            ? Failure("The search provider returned a result for a different request.", "InvalidProviderResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown)
             : result switch
             {
                 WebSearchSucceeded success => Project(success, domains, maximumResults),
-                WebSearchDenied providerDenied => Rejected(providerDenied.SafeMessage, "Denied"),
-                WebSearchUnavailable unavailable => Failure(unavailable.SafeMessage, "Unavailable"),
-                WebSearchFailed failed => Failure(failed.SafeMessage, "Failed"),
-                _ => Failure("The search provider returned an unsupported result.", "InvalidProviderResult"),
+                WebSearchDenied providerDenied => Rejected(providerDenied.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed),
+                WebSearchUnavailable unavailable => Failure(unavailable.SafeMessage, "Unavailable", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
+                WebSearchFailed failed => Failure(failed.SafeMessage, "Failed", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown),
+                _ => Failure("The search provider returned an unsupported result.", "InvalidProviderResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown),
             };
     }
 
@@ -183,12 +183,12 @@ public sealed class WebSearchTool: ITool
                 ArgumentException.ThrowIfInvalidWebResultUri(item.Url);
                 if (!DomainAccepted(item.Url, domains))
                 {
-                    return Failure("The search provider returned a result outside the requested domain filter.", "InvalidProviderResult");
+                    return Failure("The search provider returned a result outside the requested domain filter.", "InvalidProviderResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown);
                 }
             }
             catch (ArgumentException)
             {
-                return Failure("The search provider returned an invalid result URL.", "InvalidProviderResult");
+                return Failure("The search provider returned an invalid result URL.", "InvalidProviderResult", ToolTerminalStatus.ProtocolFailed, SideEffectCertainty.Unknown);
             }
         }
 
@@ -388,15 +388,15 @@ public sealed class WebSearchTool: ITool
     }
 
     private static ToolInvocationResult Success(string json, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Success, null, Status(status)),
+        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, Status(status)),
         [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
 
-    private static ToolInvocationResult Failure(string reason, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)),
+    private static ToolInvocationResult Failure(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)),
         []);
 
-    private static ToolInvocationResult Rejected(string reason, string status) => new(
-        new ToolCallOutcome(ToolCallOutcomeKind.Rejected, reason, Status(status)),
+    private static ToolInvocationResult Rejected(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(
+        new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)),
         []);
 
     private static ExtensionData Status(string status) => new(

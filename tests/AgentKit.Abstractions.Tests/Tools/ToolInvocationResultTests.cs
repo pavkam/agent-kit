@@ -64,12 +64,12 @@ public sealed class ToolInvocationResultTests
 
         var first = new ToolInvocationResult(SuccessOutcome(), content);
         var second = new ToolInvocationResult(
-            new ToolCallOutcome(ToolCallOutcomeKind.Failed, "no", ExtensionData.Empty), content);
+            new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, "no", ExtensionData.Empty), content);
 
         first.ShouldNotBe(second);
     }
 
-    private static ToolCallOutcome SuccessOutcome() => new(ToolCallOutcomeKind.Success, null, ExtensionData.Empty);
+    private static ToolCallOutcome SuccessOutcome() => new(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty);
 
     private static TextPart Text(string value) => new(value, TextSemantics.Plain, ExtensionData.Empty);
 }

@@ -7,27 +7,23 @@ namespace AgentKit;
 /// The portable terminal disposition of one tool call.
 /// </summary>
 /// <remarks>
-/// Every accepted tool call reaches exactly one of these terminal
-/// dispositions, recorded on its <see cref="ToolCallOutcome"/>. Keeping
-/// authorization failures (<see cref="Rejected"/>) distinct from execution
-/// failures (<see cref="Failed"/>) and from cancellation
-/// (<see cref="Cancelled"/>) matters because each implies a different
-/// retry, telemetry, and user-facing story: a rejection means the caller
-/// was never allowed to try, a failure means it tried and did not succeed,
-/// and a cancellation means the run stopped waiting before either was
-/// determined.
+/// The kind is a coarse projection of <see cref="ToolCallOutcome.SourceStatus"/>.
+/// It never proves whether an effect occurred: failures and cancellation can
+/// retain uncertain or partial effects.
+/// Use <see cref="ToolCallOutcome.SideEffectCertainty"/> for that evidence and
+/// the authoritative terminal record for retry and recovery decisions.
 /// </remarks>
 public enum ToolCallOutcomeKind
 {
     /// <summary>The call executed and produced a successful result.</summary>
     Success,
 
-    /// <summary>The call was authorized and executed but failed.</summary>
+    /// <summary>Invocation or result processing failed, or the source status is not understood.</summary>
     Failed,
 
-    /// <summary>The call was denied authorization before execution ever began.</summary>
+    /// <summary>The requested operation was unknown, invalid, unsupported, or rejected by security or approval policy.</summary>
     Rejected,
 
-    /// <summary>The call was cancelled before it produced a result.</summary>
+    /// <summary>Cancellation or interruption ended the call; effects may already have occurred.</summary>
     Cancelled
 }

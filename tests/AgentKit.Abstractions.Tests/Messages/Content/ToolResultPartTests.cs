@@ -11,7 +11,7 @@ public sealed class ToolResultPartTests
     [Fact]
     public void ToolResultPart_WhenContentIsDefault_ThrowsArgumentException()
     {
-        var exception = Should.Throw<ArgumentException>(() => new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("read"), null, "read"), new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty), default, ExtensionData.Empty));
+        var exception = Should.Throw<ArgumentException>(() => new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("read"), null, "read"), new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), default, ExtensionData.Empty));
         exception.ParamName.ShouldBe("content");
     }
 
@@ -27,7 +27,7 @@ public sealed class ToolResultPartTests
     {
         var callId = new ToolCallId(Guid.NewGuid());
         var tool = new ToolReference(new ToolId("t"), null, "tool");
-        var outcome = new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty);
+        var outcome = new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty);
         var content = ImmutableArray.Create<ContentPart>(new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty));
         var first = new ToolResultPart(callId, tool, outcome, content, ExtensionData.Empty);
         var second = new ToolResultPart(callId, tool, outcome, content, ExtensionData.Empty);
@@ -40,7 +40,7 @@ public sealed class ToolResultPartTests
     {
         var callId = new ToolCallId(Guid.NewGuid());
         var tool = new ToolReference(new ToolId("t"), null, "tool");
-        var outcome = new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty);
+        var outcome = new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty);
         var first = new ToolResultPart(callId, tool, outcome, [new TextPart("a", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var second = new ToolResultPart(callId, tool, outcome, [new TextPart("b", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         first.ShouldNotBe(second);

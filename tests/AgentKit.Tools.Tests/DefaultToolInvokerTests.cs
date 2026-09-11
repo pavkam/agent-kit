@@ -37,6 +37,9 @@ public sealed class DefaultToolInvokerTests
         var request = TestFactory.CallRequest(new ToolId("missing"));
         var result = await invoker.InvokeAsync(request, TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.UnknownTool);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
         result.Outcome.FailureReason.ShouldNotBeNull().ShouldContain("missing");
     }
 
@@ -51,6 +54,9 @@ public sealed class DefaultToolInvokerTests
         var request = TestFactory.CallRequest(new ToolId("guarded"));
         var result = await invoker.InvokeAsync(request, TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Denied);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
         tool.ReceivedRequests.ShouldBeEmpty();
     }
 
@@ -61,7 +67,7 @@ public sealed class DefaultToolInvokerTests
         var tool = new FakeTool
         {
             Descriptor = TestFactory.Descriptor("allowed"),
-            OnInvoke = (_, _) => Task.FromResult(new ToolInvocationResult(new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty), expectedContent))
+            OnInvoke = (_, _) => Task.FromResult(new ToolInvocationResult(new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), expectedContent))
         };
         var invoker = CreateInvoker([tool], allowed: "allowed");
         var request = TestFactory.CallRequest(new ToolId("allowed"));
@@ -83,6 +89,9 @@ public sealed class DefaultToolInvokerTests
         var request = TestFactory.CallRequest(new ToolId("throws"));
         var result = await invoker.InvokeAsync(request, TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
@@ -112,6 +121,9 @@ public sealed class DefaultToolInvokerTests
         var request = TestFactory.CallRequest(new ToolId("cancels-itself"));
         var result = await invoker.InvokeAsync(request, CancellationToken.None);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
+        result.Outcome.Retryable.ShouldBeFalse();
         result.Outcome.FailureReason.ShouldNotBeNull().ShouldContain("cancels-itself");
     }
 
@@ -230,7 +242,7 @@ public sealed class DefaultToolInvokerTests
             InvocationCount++;
             ReceivedRequest = request;
             ReceivedToken = cancellationToken;
-            return Task.FromResult(new ToolInvocationResult(new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty), []));
+            return Task.FromResult(new ToolInvocationResult(new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), []));
         }
 
         public void Dispose() => DisposeCount++;

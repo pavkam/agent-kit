@@ -125,7 +125,7 @@ internal static class TestFactory
                     new ToolResultPart(
                         callId,
                         tool,
-                        new ToolCallOutcome(ToolCallOutcomeKind.Success, null, ExtensionData.Empty),
+                        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
                         [new TextPart("tool result", TextSemantics.Plain, ExtensionData.Empty)],
                         ExtensionData.Empty)
                 ],

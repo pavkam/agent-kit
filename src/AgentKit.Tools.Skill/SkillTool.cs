@@ -83,7 +83,7 @@ public sealed class SkillTool: ITool
         ArgumentNullException.ThrowIfNull(request);
         if (!TryArguments(request.Arguments, out var action, out var id))
         {
-            return Failure("'action' must be list without an ID or activate with one stable ID.", "InvalidArguments");
+            return Failure("'action' must be list without an ID or activate with one stable ID.", "InvalidArguments", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         if (action == "list")
@@ -94,7 +94,7 @@ public sealed class SkillTool: ITool
         var skill = _catalog.Snapshot.Skills.FirstOrDefault(candidate => candidate.Id == id);
         if (skill is null)
         {
-            return Failure("No captured skill has that identity.", "NotFound");
+            return Failure("No captured skill has that identity.", "NotFound", ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var context = request.Context;
@@ -115,8 +115,8 @@ public sealed class SkillTool: ITool
         if (decision is not SecurityAllowed allowed)
         {
             return decision is SecurityDenied denied
-                ? Failure(denied.Denial.SafeMessage, "Denied")
-                : Failure("The security authority returned an unsupported decision.", "Denied");
+                ? Failure(denied.Denial.SafeMessage, "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed)
+                : Failure("The security authority returned an unsupported decision.", "Denied", ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
         var snapshot = await _reader.ReadSnapshotAsync(new FileSnapshotRequest(skill.Path, _maximumBytes, allowed.Grant), cancellationToken).ConfigureAwait(false);
@@ -124,12 +124,12 @@ public sealed class SkillTool: ITool
         {
             return Failure(
                 snapshot.SafeMessage ?? "The skill could not be read as one complete snapshot.",
-                snapshot.Status == FileSnapshotStatus.Success ? "Failed" : snapshot.Status.ToString());
+                snapshot.Status == FileSnapshotStatus.Success ? "Failed" : snapshot.Status.ToString(), snapshot.Status is FileSnapshotStatus.Denied ? ToolTerminalStatus.Denied : ToolTerminalStatus.InvocationFailed, snapshot.Status is FileSnapshotStatus.Denied or FileSnapshotStatus.NotFound ? SideEffectCertainty.DefinitelyNotPerformed : SideEffectCertainty.Unknown);
         }
 
         if (skill.ExpectedContentHash is { } expectedHash && expectedHash != actualHash)
         {
-            return Failure("The skill content did not match its configured integrity fingerprint.", "IntegrityMismatch");
+            return Failure("The skill content did not match its configured integrity fingerprint.", "IntegrityMismatch", ToolTerminalStatus.ResultNormalizationFailed, SideEffectCertainty.DefinitelyPerformed);
         }
 
         string content;
@@ -145,7 +145,7 @@ public sealed class SkillTool: ITool
         }
         catch (DecoderFallbackException)
         {
-            return Failure("The captured skill is not valid UTF-8 text.", "InvalidEncoding");
+            return Failure("The captured skill is not valid UTF-8 text.", "InvalidEncoding", ToolTerminalStatus.ResultNormalizationFailed, SideEffectCertainty.DefinitelyPerformed);
         }
 
         var truncated = content.Length > _maximumCharacters;
@@ -199,7 +199,7 @@ public sealed class SkillTool: ITool
         }
     }
 
-    private static ToolInvocationResult Success(string json, string status) => new(new ToolCallOutcome(ToolCallOutcomeKind.Success, null, Status(status)), [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
-    private static ToolInvocationResult Failure(string reason, string status) => new(new ToolCallOutcome(ToolCallOutcomeKind.Failed, reason, Status(status)), []);
+    private static ToolInvocationResult Success(string json, string status) => new(new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, Status(status)), [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)]);
+    private static ToolInvocationResult Failure(string reason, string status, ToolTerminalStatus sourceStatus, SideEffectCertainty certainty) => new(new ToolCallOutcome(sourceStatus.ToOutcomeKind(), sourceStatus, certainty, false, reason, Status(status)), []);
     private static ExtensionData Status(string status) => new(ImmutableDictionary<string, ExtensionValue>.Empty.Add("agentkit.skill.status", new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(status)])));
 }

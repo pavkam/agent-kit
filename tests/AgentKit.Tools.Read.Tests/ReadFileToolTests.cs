@@ -38,33 +38,42 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenPathMissing_ReturnsFailed()
+    public async Task InvokeAsync_WhenPathMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request("{}"), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsFailed()
+    public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request("[]"), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenPathWhitespace_ReturnsFailed()
+    public async Task InvokeAsync_WhenPathWhitespace_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "   "}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
@@ -81,44 +90,56 @@ public sealed class ReadFileToolTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsFailed()
+    public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "../escape.txt"}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenOffsetNotAnInteger_ReturnsFailed()
+    public async Task InvokeAsync_WhenOffsetNotAnInteger_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": "two"}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenOffsetNotPositive_ReturnsFailed()
+    public async Task InvokeAsync_WhenOffsetNotPositive_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": 0}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenLimitNotAnInteger_ReturnsFailed()
+    public async Task InvokeAsync_WhenLimitNotAnInteger_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "limit": "two"}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
@@ -130,6 +151,9 @@ public sealed class ReadFileToolTests
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Succeeded);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
         TestFactory.ReadText(result).ShouldBe("line1\nline2\nline3");
     }
 
@@ -166,17 +190,23 @@ public sealed class ReadFileToolTests
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "missing.txt"}"""), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenFileSystemDenies_ReturnsFailed()
+    public async Task InvokeAsync_WhenFileSystemDenies_ReturnsRejected()
     {
         var fileSystem = new FakeFileSystem { OnRead = static _ => new FileReadDenied("outside sandbox") };
         var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Denied);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
         result.Outcome.FailureReason.ShouldBe("outside sandbox");
     }
 
@@ -190,7 +220,10 @@ public sealed class ReadFileToolTests
             TestFactory.Request(/*lang=json,strict*/ """{"path": "missing-or-secret.txt"}"""),
             TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Denied);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
         result.Outcome.FailureReason.ShouldBe("Denied by test policy.");
         fileSystem.ReceivedReads.ShouldBeEmpty();
     }
@@ -204,6 +237,9 @@ public sealed class ReadFileToolTests
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]

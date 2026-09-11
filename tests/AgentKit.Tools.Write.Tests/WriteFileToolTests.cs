@@ -38,66 +38,84 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenPathMissing_ReturnsFailed()
+    public async Task InvokeAsync_WhenPathMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"content": "hi"}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenContentMissing_ReturnsFailed()
+    public async Task InvokeAsync_WhenContentMissing_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsFailed()
+    public async Task InvokeAsync_WhenArgumentsNotAnObject_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(TestFactory.Request("[]"), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenPathWhitespace_ReturnsFailed()
+    public async Task InvokeAsync_WhenPathWhitespace_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "   ", "content": "hi"}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenModeInvalid_ReturnsFailed()
+    public async Task InvokeAsync_WhenModeInvalid_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "delete"}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsFailed()
+    public async Task InvokeAsync_WhenPathContainsTraversal_ReturnsRejected()
     {
         var tool = TestFactory.Tool();
 
         var result = await tool.InvokeAsync(
             TestFactory.Request(/*lang=json,strict*/ """{"path": "../escape.txt", "content": "hi"}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
@@ -135,6 +153,9 @@ public sealed class WriteFileToolTests
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Succeeded);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
         TestFactory.ReadText(result).ShouldContain("42");
     }
 
@@ -148,6 +169,9 @@ public sealed class WriteFileToolTests
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_new"}"""), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
@@ -160,17 +184,23 @@ public sealed class WriteFileToolTests
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
+        result.Outcome.Retryable.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenFileSystemDenies_ReturnsFailed()
+    public async Task InvokeAsync_WhenFileSystemDenies_ReturnsRejected()
     {
         var fileSystem = new FakeFileSystem { OnWrite = static _ => new FileWriteDenied("too large") };
         var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""), TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Denied);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
         result.Outcome.FailureReason.ShouldBe("too large");
     }
 
@@ -184,7 +214,10 @@ public sealed class WriteFileToolTests
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""),
             TestContext.Current.CancellationToken);
 
-        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Denied);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
         result.Outcome.FailureReason.ShouldBe("Denied by test policy.");
         fileSystem.ReceivedWrites.ShouldBeEmpty();
     }
