@@ -11,6 +11,9 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
+- [SecurityAuthoritySelectedTests](Security/SecurityAuthoritySelectedTests.cs)
+- [SecurityAuthoritySelectionUnavailableTests](Security/SecurityAuthoritySelectionUnavailableTests.cs)
+
 - [AgentRunFinishedTests](Results/AgentRunFinishedTests.cs)
 - [AgentRunOutcomeTests](Results/AgentRunOutcomeTests.cs)
 - [DeferredOperationRequestTests](Results/DeferredOperationRequestTests.cs)

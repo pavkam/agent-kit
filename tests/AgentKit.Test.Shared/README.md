@@ -9,6 +9,9 @@ no standalone test run or production registration API.
 
 ## Available helpers
 
+- [UninvokedSecurityAuthority](UninvokedSecurityAuthority.cs) — detects
+  unexpected authorization during binding, construction, or selection tests.
+
 - [RunResultTestData](RunResultTestData.cs) — deterministic final-result,
   deferral and correlated stream fixtures.
 - [TestExecutionIdentity](TestExecutionIdentity.cs) — execution identity

@@ -11,6 +11,10 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
+- [ArgumentExceptionExtensionsTests](ArgumentExceptionExtensionsTests.cs)
+- [SecurityAuthorityBindingTests](SecurityAuthorityBindingTests.cs)
+- [SecurityMetricsTests](SecurityMetricsTests.cs)
+
 - [DefaultSecurityAuditDispatcherTests](DefaultSecurityAuditDispatcherTests.cs)
 - [DefaultSecurityAuthoritySelectorTests](DefaultSecurityAuthoritySelectorTests.cs)
 - [DefaultSecurityProfilePublicationReaderTests](DefaultSecurityProfilePublicationReaderTests.cs)

@@ -65,63 +65,11 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     }
 
     [Fact]
-    public void ThrowIfDuplicateSecurityAuthorityBinding_WhenSnapshotIsValidOrEmpty_DoesNotThrow()
+    public void Constructor_WhenDependenciesAreInvalid_ThrowsWithExactParameterNames()
     {
-        IReadOnlyList<SecurityAuthorityBinding> empty = [];
-        IReadOnlyList<SecurityAuthorityBinding> one = [new(new ComponentKey<ISecurityAuthority>("security.primary"), new DenyAllSecurityAuthority())];
-        Should.NotThrow(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(empty));
-        Should.NotThrow(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(one));
-    }
-
-    [Fact]
-    public void ThrowIfDuplicateSecurityAuthorityBinding_WhenSnapshotHasDuplicate_ReportsInferredAndExplicitParameterNames()
-    {
-        IReadOnlyList<SecurityAuthorityBinding> bindings = [new(new ComponentKey<ISecurityAuthority>("security.primary"), new DenyAllSecurityAuthority()), new(new ComponentKey<ISecurityAuthority>("security.primary"), new DenyAllSecurityAuthority()),];
-        var inferred = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(bindings));
-        var explicitName = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(bindings, "authorityBindings"));
-        inferred.ParamName.ShouldBe(nameof(bindings));
-        explicitName.ParamName.ShouldBe("authorityBindings");
-    }
-
-    [Fact]
-    public void ThrowIfDuplicateSecurityAuthorityBinding_WhenSnapshotOrEntryIsNull_ThrowsArgumentNullException()
-    {
-        var nullSnapshot = Should.Throw<ArgumentNullException>(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(null!));
-        IReadOnlyList<SecurityAuthorityBinding> nullEntry = [null!];
-        var nullBinding = Should.Throw<ArgumentNullException>(() => ArgumentException.ThrowIfDuplicateSecurityAuthorityBinding(nullEntry));
-        nullSnapshot.GetType().ShouldBe(typeof(ArgumentNullException));
-        nullSnapshot.ParamName.ShouldBe("null");
-        nullBinding.GetType().ShouldBe(typeof(ArgumentNullException));
-        nullBinding.ParamName.ShouldBe(nameof(nullEntry));
-    }
-
-    [Fact]
-    public void ConstructorAndBinding_WhenArgumentsAreInvalid_ThrowWithExactParameterNames()
-    {
-        var key = new ComponentKey<ISecurityAuthority>("security.primary");
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuthoritySelector(null!, TimeProvider.System), "bindings");
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuthoritySelector([], null!), "timeProvider");
         AssertExact<ArgumentNullException>(() => new DefaultSecurityAuthoritySelector([null!], TimeProvider.System), "bindings");
-        AssertExact<ArgumentNullException>(() => new SecurityAuthorityBinding(default, new DenyAllSecurityAuthority()), "key");
-        AssertExact<ArgumentNullException>(() => new SecurityAuthorityBinding(key, null!), "authority");
-    }
-
-    [Fact]
-    public void SelectionResults_WhenArgumentsAreInvalid_ThrowWithExactParameterNames()
-    {
-        var context = Context(new ComponentKey<ISecurityAuthority>("security.primary"));
-        AssertExact<ArgumentNullException>(() => new SecurityAuthoritySelected(null!, new DenyAllSecurityAuthority()), "authorization");
-        AssertExact<ArgumentNullException>(() => new SecurityAuthoritySelected(context, null!), "authority");
-        AssertExact<ArgumentNullException>(() => new SecurityAuthoritySelectionUnavailable(null!, "safe"), "authorization");
-        AssertExact<ArgumentNullException>(() => new SecurityAuthoritySelectionUnavailable(context, null!), "safeReason");
-        AssertExact<ArgumentException>(() => new SecurityAuthoritySelectionUnavailable(context, " "), "safeReason");
-    }
-
-    [Fact]
-    public void RecordAuthoritySelection_WhenOutcomeIsUndefinedOrDurationIsNegative_ThrowsWithExactParameterNames()
-    {
-        AssertExact<ArgumentOutOfRangeException>(() => SecurityMetrics.RecordAuthoritySelection((SecurityAuthoritySelectionOutcome) 99, null), "outcome");
-        AssertExact<ArgumentOutOfRangeException>(() => SecurityMetrics.RecordAuthoritySelection(SecurityAuthoritySelectionOutcome.Selected, TimeSpan.FromTicks(-1)), "elapsed");
     }
 
     [Fact]

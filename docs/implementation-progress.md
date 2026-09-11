@@ -70,6 +70,18 @@ owning spec.
 
 ## Latest integration evidence
 
+The security-selector test ownership follow-up moves direct composition-guard,
+binding-constructor, selection-result, and metric-validation assertions into
+their production-class fixtures. The package-local guard and binding stay in
+Permissions tests; provider-neutral selection results move to Abstractions
+tests. The selector fixture retains its own validation, selection, cancellation,
+and diagnostic behavior. A shared authority fake rejects accidental evaluation
+during these value-only tests. Production code and public APIs are unchanged.
+
+Verification: all 6,793 Release tests pass without skips. Splitting mixed-owner
+methods accounts for the two additional discovered cases; the original
+assertions are preserved.
+
 The retained projection-policy catalog implements exact-version lookup over
 immutable configured snapshots. Resolved and unavailable outcomes retain the
 requested reference, equivalent duplicate snapshots are idempotent, and
