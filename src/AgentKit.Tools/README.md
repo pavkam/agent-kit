@@ -18,6 +18,32 @@ example, follow [Getting started](../../docs/getting-started.md). Complete
 engine composition is described in the
 [composition guide](../../docs/guides/composition.md).
 
+## Retained projection policies
+
+Register immutable policy snapshots with
+`AddToolResultProjectionPolicy(snapshot)`. `AddAgentTools` installs the
+replaceable `IToolResultProjectionPolicyCatalog`; it can also be registered
+independently with `AddToolResultProjectionPolicyCatalog()`.
+
+The catalog captures configured revisions once. Equivalent duplicates are
+idempotent; conflicting content under one reference rejects composition.
+`ResolveAsync` returns the exact snapshot or
+`ToolResultProjectionPolicyUnavailable` for that reference. It never selects the
+newest revision or creates a default. Keep revisions required by recorded
+results, including across host restarts, or use
+`ReplaceToolResultProjectionPolicyCatalog<TCatalog>()` to select another
+retention implementation. The built-in catalog is immutable configuration, not a
+persistent policy store.
+
+`ReplaceToolResultProjectionPolicy(snapshot)` is a composition-time replacement
+for one exact reference. It preserves other revisions and existing catalog
+instances, and rejects opaque snapshot registrations before changing services.
+It must not rewrite policy content required by retained results.
+
+Lookup emits content-free reference metadata, isolated activities/logs, and
+bounded outcome/count/duration metrics. The complete tool-result projector and
+executor integration remain under construction.
+
 ## Related projects
 
 - [AgentKit.Tools.Read](../AgentKit.Tools.Read/README.md) — read bounded file

@@ -365,6 +365,17 @@ and tests its behavior before effects start.
 
 ## Acceptance scenarios
 
+- An older captured projection-policy revision resolves even when a newer
+  revision is configured; a missing revision returns unavailable without
+  fallback.
+- Equivalent immutable projection-policy registrations are idempotent, while
+  conflicting content under the same reference rejects catalog composition.
+- Concurrent projection-policy lookup and publication retry preserve the exact
+  requested reference. Caller cancellation remains cancellation.
+- Policy lookup records safe reference metadata, terminal outcome, and bounded
+  duration metrics; observer failures do not change selection, and failed clock
+  measurements produce no fabricated duration.
+
 - Truncated tool arguments never execute.
 - A mutating timeout with unknown side-effect status is not retried blindly.
 - Retry backoff is deterministic under fake time and randomness.

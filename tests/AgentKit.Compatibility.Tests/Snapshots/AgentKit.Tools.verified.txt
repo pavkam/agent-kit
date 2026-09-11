@@ -24,6 +24,11 @@ namespace AgentKit.Tools
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentTools(System.Action<AgentKit.Tools.AgentToolsOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolResultProjectionPolicyCatalog() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolResultProjectionPolicy(AgentKit.ToolResultProjectionPolicySnapshot snapshot) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolResultProjectionPolicy(AgentKit.ToolResultProjectionPolicySnapshot snapshot) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolResultProjectionPolicyCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.IToolResultProjectionPolicyCatalog { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddTool<TTool>()
                 where TTool :  class, AgentKit.ITool { }
         }
@@ -34,5 +39,10 @@ namespace AgentKit.Tools
         public System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> Descriptors { get; }
         public bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool) { }
         public bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ToolDescriptor? descriptor) { }
+    }
+    public sealed class ToolResultProjectionPolicyCatalog : AgentKit.IToolResultProjectionPolicyCatalog
+    {
+        public ToolResultProjectionPolicyCatalog(System.Collections.Generic.IEnumerable<AgentKit.ToolResultProjectionPolicySnapshot> policies, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.ToolResultProjectionPolicyCatalog> logger) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolResultProjectionPolicyResolution> ResolveAsync(AgentKit.ToolResultProjectionPolicyReference reference, System.Threading.CancellationToken cancellationToken = default) { }
     }
 }

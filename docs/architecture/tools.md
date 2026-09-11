@@ -835,6 +835,21 @@ by the terminal record; `IToolResultProjector` deterministically creates the
 bounded message value and never performs or retries the tool effect. The loop
 depends only on `IToolExecutor`.
 
+Policy resolution has two closed outcomes: `ToolResultProjectionPolicyResolved`
+contains the immutable snapshot, and `ToolResultProjectionPolicyUnavailable`
+retains the requested reference. Cancellation propagates; an operational failure
+must not masquerade as an unavailable revision. No outcome permits selecting a
+newer revision or repeating the tool effect.
+
+The first-party `ToolResultProjectionPolicyCatalog` captures explicitly
+registered immutable snapshots once at composition. It accepts structurally
+equivalent duplicates and rejects different content under one reference.
+Reference matching is ordinal and version-exact; an empty catalog resolves all
+references as unavailable. This configuration catalog provides no mutable
+publication or persistence surface. Hosts retain every revision needed for
+recovery, or replace the catalog with an implementation that resolves retained
+policy content through its own storage boundary.
+
 `ToolExecutionCapability` is invocation-only and binds execution to the run's
 exact session profile/coordinators and budget profile/scope. The executor
 validates both bindings and every catalog policy reference against its exact
@@ -1076,6 +1091,17 @@ recorded result and captured rules; it does not call a model or tool. An
 externalization projection may select an authorized artifact reference that
 terminal normalization already recorded, but cannot create a new artifact after
 the terminal record is committed.
+
+`AddToolResultProjectionPolicyCatalog` can register the catalog independently,
+preserving an existing catalog or `TimeProvider` and adding logging without an
+exporter. `AddToolResultProjectionPolicy` registers a supplied snapshot; no
+default policy content is fabricated. `ReplaceToolResultProjectionPolicy`
+changes only the exact reference before catalog capture and leaves existing
+catalog instances unchanged. It rejects opaque unkeyed snapshot registrations
+before mutation because their reference cannot be inspected without activating
+services. Replacement must not rewrite retained content required by recorded
+results. `ReplaceToolResultProjectionPolicyCatalog<TCatalog>` replaces the
+singular catalog registration while preserving configured snapshots and clocks.
 
 Named toolsets and execution-policy strategies are keyed registrations. Agent
 definitions refer to typed toolset and policy keys; runtime components receive

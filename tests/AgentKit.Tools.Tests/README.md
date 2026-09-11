@@ -13,6 +13,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 - [AllowListToolAuthorizerTests](AllowListToolAuthorizerTests.cs)
 - [DefaultToolInvokerTests](DefaultToolInvokerTests.cs)
 - [ToolCatalogTests](ToolCatalogTests.cs)
+- [ToolResultProjectionPolicyCatalogTests](ToolResultProjectionPolicyCatalogTests.cs)
 - [ServiceExtensionsTests](ServiceExtensionsTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural

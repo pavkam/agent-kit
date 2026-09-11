@@ -53,6 +53,14 @@ public static class AgentKitMetricNames
     /// <summary>Gets the histogram for tool-call duration in seconds.</summary>
     public const string ToolCallDuration = "agentkit.tool.call.duration";
 
+    /// <summary>Counts exact projection-policy lookups by bounded terminal outcome.</summary>
+    /// <remarks>The counter uses resolution units and excludes policy identity and content from its dimensions.</remarks>
+    public const string ToolResultProjectionPolicyResolutionCount = "agentkit.tool.result.projection_policy.resolution.count";
+
+    /// <summary>Measures exact projection-policy lookup duration in seconds by bounded terminal outcome.</summary>
+    /// <remarks>The histogram records only valid measured durations; clock failures never become reported zero.</remarks>
+    public const string ToolResultProjectionPolicyResolutionDuration = "agentkit.tool.result.projection_policy.resolution.duration";
+
     /// <summary>Gets the counter for terminal security authorization decisions.</summary>
     public const string SecurityDecisionCount = "agentkit.security.decision.count";
 

@@ -48,6 +48,10 @@ public static class AgentKitActivityNames
     /// <summary>Gets the OpenTelemetry GenAI-compatible tool execution name.</summary>
     public const string ExecuteTool = "execute_tool";
 
+    /// <summary>Resolves the exact retained policy revision for one tool-result projection.</summary>
+    /// <remarks>The activity covers one lookup and its terminal outcome, without performing projection or tool invocation.</remarks>
+    public const string ToolResultProjectionPolicyResolve = "tool.result.projection_policy.resolve";
+
     /// <summary>Gets the name for validating a terminal structured output.</summary>
     public const string OutputValidate = "output.validate";
 

@@ -3844,6 +3844,10 @@ namespace AgentKit
     {
         System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolCallRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IToolResultProjectionPolicyCatalog
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ToolResultProjectionPolicyResolution> ResolveAsync(AgentKit.ToolResultProjectionPolicyReference reference, System.Threading.CancellationToken cancellationToken);
+    }
     public interface IWebSearchProvider
     {
         AgentKit.ProtectedResource Destination { get; }
@@ -7941,6 +7945,17 @@ namespace AgentKit
         public AgentKit.ToolResultProjectionPolicyKey Key { get; }
         public AgentKit.ToolResultProjectionPolicyVersion Version { get; }
     }
+    public abstract class ToolResultProjectionPolicyResolution : System.IEquatable<AgentKit.ToolResultProjectionPolicyResolution>
+    {
+        protected ToolResultProjectionPolicyResolution(AgentKit.ToolResultProjectionPolicyResolution original) { }
+        public abstract AgentKit.ToolResultProjectionPolicyReference Reference { get; }
+    }
+    public sealed class ToolResultProjectionPolicyResolved : AgentKit.ToolResultProjectionPolicyResolution, System.IEquatable<AgentKit.ToolResultProjectionPolicyResolved>
+    {
+        public ToolResultProjectionPolicyResolved(AgentKit.ToolResultProjectionPolicySnapshot snapshot) { }
+        public override AgentKit.ToolResultProjectionPolicyReference Reference { get; }
+        public AgentKit.ToolResultProjectionPolicySnapshot Snapshot { get; }
+    }
     public sealed class ToolResultProjectionPolicySnapshot : System.IEquatable<AgentKit.ToolResultProjectionPolicySnapshot>
     {
         public ToolResultProjectionPolicySnapshot(AgentKit.ToolResultProjectionPolicyReference reference, AgentKit.ToolResultProjectionBounds bounds, AgentKit.ToolResultProjectionTransformations allowedTransformations, AgentKit.ExtensionData extensions) { }
@@ -7948,6 +7963,11 @@ namespace AgentKit
         public AgentKit.ToolResultProjectionBounds Bounds { get; }
         public AgentKit.ExtensionData Extensions { get; }
         public AgentKit.ToolResultProjectionPolicyReference Reference { get; }
+    }
+    public sealed class ToolResultProjectionPolicyUnavailable : AgentKit.ToolResultProjectionPolicyResolution, System.IEquatable<AgentKit.ToolResultProjectionPolicyUnavailable>
+    {
+        public ToolResultProjectionPolicyUnavailable(AgentKit.ToolResultProjectionPolicyReference reference) { }
+        public override AgentKit.ToolResultProjectionPolicyReference Reference { get; }
     }
     public readonly struct ToolResultProjectionPolicyVersion : System.IEquatable<AgentKit.ToolResultProjectionPolicyVersion>
     {

@@ -66,6 +66,14 @@ public static class AgentKitTagNames
     /// <summary>Gets the AgentKit tool-call identity attribute.</summary>
     public const string ToolCallId = "agentkit.tool_call.id";
 
+    /// <summary>Identifies the captured projection-policy key on logs and traces, never as a metric dimension.</summary>
+    /// <remarks>The value is reference metadata; policy bounds, extensions, and projected content are not copied into this tag.</remarks>
+    public const string ToolResultProjectionPolicyKey = "agentkit.tool.result.projection_policy.key";
+
+    /// <summary>Identifies the exact retained projection-policy revision on logs and traces, never as a metric dimension.</summary>
+    /// <remarks>The positive numeric revision preserves the requested historical binding without selecting the current version.</remarks>
+    public const string ToolResultProjectionPolicyVersion = "agentkit.tool.result.projection_policy.version";
+
     /// <summary>Gets the stable human-question identity attribute for traces and structured logs.</summary>
     public const string QuestionId = "agentkit.question.id";
 

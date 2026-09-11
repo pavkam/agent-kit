@@ -16,6 +16,11 @@ no standalone test run or production registration API.
 - [TestSecurityEvidence](TestSecurityEvidence.cs) — security evidence fixtures.
 - [ActivityCollector](ActivityCollector.cs) — activity observation support.
 - [ActivityObservation](ActivityObservation.cs) — captured observation values.
+- [RecordingLogger](RecordingLogger.cs) and
+  [RecordingLogEntry](RecordingLogEntry.cs) — structured log capture and
+  deliberate observer failure.
+- [ToolProjectionPolicyTestData](ToolProjectionPolicyTestData.cs) — exact policy
+  revisions shared by value, runtime, and conformance tests.
 
 Add a helper when multiple test projects need it. Reusable contract assertions
 belong in AgentKit.Conformance; production packages must not depend on either

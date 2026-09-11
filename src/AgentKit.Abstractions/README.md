@@ -64,6 +64,12 @@ must measure content and enforce the captured policy. Integration into the
 canonical `ToolResultPart`, complete tool resolution, and message codecs remain
 under construction.
 
+`IToolResultProjectionPolicyCatalog` resolves the exact retained revision into
+`ToolResultProjectionPolicyResolved` or `ToolResultProjectionPolicyUnavailable`.
+Both outcomes preserve the requested reference; cancellation propagates.
+[AgentKit.Tools](../AgentKit.Tools/README.md#retained-projection-policies)
+provides the immutable configuration catalog and replaceable registration.
+
 ## Related projects
 
 - [AgentKit](../AgentKit/README.md) — compose a process-level engine that hosts

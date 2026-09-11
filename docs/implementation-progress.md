@@ -70,6 +70,28 @@ owning spec.
 
 ## Latest integration evidence
 
+The retained projection-policy catalog implements exact-version lookup over
+immutable configured snapshots. Resolved and unavailable outcomes retain the
+requested reference, equivalent duplicate snapshots are idempotent, and
+conflicting content rejects composition. Registration is replaceable, preserves
+host clocks, and neither fabricates policy content nor builds a service
+provider. Explicit snapshot replacement operates before capture and cannot
+mutate an existing catalog.
+
+The shared catalog conformance suite covers retained revisions, unavailable
+keys/versions, ordinal matching, cancellation, and concurrent resolution through
+public DI. Implementation tests cover collision handling, registration
+replacement, source-collection mutation, safe diagnostic fields, parented
+terminal activities, bounded metrics, and throwing observers/clocks. Value tests
+exercise the closed resolution family with typed construction and copy paths.
+Complete tool-result projection, canonical alias resolution, terminal recording,
+message codecs, and durable output publication remain open.
+
+Verification: the Tools suite passes 76 cases and Abstractions passes 3,470. All
+6,791 Release tests pass without skips, with zero build warnings or errors. The
+three reviewed API snapshots contain additive contracts, registration methods,
+and shared diagnostic names; all 68 compatibility checks pass.
+
 The projection-provenance checkpoint adds `ToolResultProjectionInfo` and the
 closed `ToolResultProjectionLoss` vocabulary. Provenance retains the exact
 captured policy reference, ordered and repeated loss evidence, and measured
