@@ -19,6 +19,21 @@ example, follow [Getting started](../../docs/getting-started.md). Complete
 engine composition is described in the
 [composition guide](../../docs/guides/composition.md).
 
+## Run usage values
+
+`RunUsage` captures current, revisioned usage for one run. Each charged attempt
+has a distinct `UsageEntryId`; `Apply` replaces its prior measurements and
+treats an equivalent current revision as a no-op. Earlier snapshots stay
+unchanged. `GetAggregate` takes an explicit dimension descriptor and unit, uses
+exact quantities, and preserves unknown values and measurement provenance.
+Estimated cost requires a pricing source and version; currencies remain
+separate.
+
+An omitted dimension contributes unknown unless explicitly not applicable.
+`KnownAmount` is only the known portion; a null `Amount` means no complete
+aggregate is available. Producers must bound and persist the evidence. These
+values do not provide a ledger, budget enforcement, or final-result publication.
+
 ## Related projects
 
 - [AgentKit](../AgentKit/README.md) — compose a process-level engine that hosts

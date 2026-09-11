@@ -4617,6 +4617,15 @@ namespace AgentKit
         public AgentKit.ModelUsageReportState ReportState { get; }
         public static AgentKit.ModelUsage NotReported { get; }
     }
+    public sealed class ModelUsageAttribution : System.IEquatable<AgentKit.ModelUsageAttribution>
+    {
+        public ModelUsageAttribution(AgentKit.ModelRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId = default) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; }
+        public AgentKit.DeploymentId? DeploymentId { get; }
+        public AgentKit.ModelId ModelId { get; }
+        public AgentKit.ProviderId ProviderId { get; }
+        public AgentKit.ModelRequestId RequestId { get; }
+    }
     public enum ModelUsageReportState
     {
         NotReported = 0,
@@ -5923,6 +5932,28 @@ namespace AgentKit
         public RunPolicyVersion(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public sealed class RunUsage : System.IEquatable<AgentKit.RunUsage>
+    {
+        public RunUsage(AgentKit.RunId runId, System.Collections.Immutable.ImmutableArray<AgentKit.UsageAccountingEntry> entries) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.UsageAccountingEntry> Entries { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.RunUsage Apply(AgentKit.UsageAccountingEntry entry) { }
+        public bool Equals(AgentKit.RunUsage? other) { }
+        public AgentKit.RunUsageAggregate GetAggregate(AgentKit.BudgetDimensionDescriptor descriptor, AgentKit.BudgetUnit unit) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class RunUsageAggregate : System.IEquatable<AgentKit.RunUsageAggregate>
+    {
+        public AgentKit.BudgetAggregationKind Aggregation { get; }
+        public AgentKit.BudgetQuantity? Amount { get; }
+        public AgentKit.BudgetDimension Dimension { get; }
+        public bool HasEstimates { get; }
+        public AgentKit.BudgetQuantity KnownAmount { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.UsageMeasurement> Measurements { get; }
+        public AgentKit.BudgetUnit Unit { get; }
+        public bool Equals(AgentKit.RunUsageAggregate? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class RuntimeMessage : AgentKit.AgentMessage, System.IEquatable<AgentKit.RuntimeMessage>
     {
@@ -7873,6 +7904,58 @@ namespace AgentKit
         public UnsupportedCapability(AgentKit.ModelCapabilityKind capability, string reason) { }
         public AgentKit.ModelCapabilityKind Capability { get; init; }
         public string Reason { get; init; }
+    }
+    public sealed class UsageAccountingEntry : System.IEquatable<AgentKit.UsageAccountingEntry>
+    {
+        public UsageAccountingEntry(AgentKit.UsageEntryId id, AgentKit.RunId runId, AgentKit.OperationId operationId, AgentKit.UsageAccountingRevision revision, AgentKit.UsageAccountingRevision? previousRevision, System.Collections.Immutable.ImmutableArray<AgentKit.UsageMeasurement> measurements, AgentKit.ModelUsageAttribution? model, AgentKit.ModelUsage? providerUsage, AgentKit.ExtensionData extensions) { }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.UsageEntryId Id { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.UsageMeasurement> Measurements { get; }
+        public AgentKit.ModelUsageAttribution? Model { get; }
+        public AgentKit.OperationId OperationId { get; }
+        public AgentKit.UsageAccountingRevision? PreviousRevision { get; }
+        public AgentKit.ModelUsage? ProviderUsage { get; }
+        public AgentKit.UsageAccountingRevision Revision { get; }
+        public AgentKit.RunId RunId { get; }
+        public bool Equals(AgentKit.UsageAccountingEntry? other) { }
+        public override int GetHashCode() { }
+    }
+    public readonly struct UsageAccountingRevision : System.IEquatable<AgentKit.UsageAccountingRevision>
+    {
+        [System.Text.Json.Serialization.JsonConstructor]
+        public UsageAccountingRevision(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct UsageEntryId : System.IEquatable<AgentKit.UsageEntryId>
+    {
+        [System.Text.Json.Serialization.JsonConstructor]
+        public UsageEntryId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class UsageMeasurement : System.IEquatable<AgentKit.UsageMeasurement>
+    {
+        public UsageMeasurement(AgentKit.BudgetDimension dimension, AgentKit.BudgetUnit unit, AgentKit.BudgetQuantity? amount, AgentKit.UsageMeasurementQuality quality, AgentKit.UsagePricingReference? pricing = null) { }
+        public AgentKit.BudgetQuantity? Amount { get; }
+        public AgentKit.BudgetDimension Dimension { get; }
+        public AgentKit.UsagePricingReference? Pricing { get; }
+        public AgentKit.UsageMeasurementQuality Quality { get; }
+        public AgentKit.BudgetUnit Unit { get; }
+    }
+    public enum UsageMeasurementQuality
+    {
+        Unknown = 0,
+        Measured = 1,
+        ProviderReported = 2,
+        Estimated = 3,
+        NotApplicable = 4,
+    }
+    public sealed class UsagePricingReference : System.IEquatable<AgentKit.UsagePricingReference>
+    {
+        public UsagePricingReference(string source, string version) { }
+        public string Source { get; }
+        public string Version { get; }
     }
     public sealed class UserMessage : AgentKit.AgentMessage, System.IEquatable<AgentKit.UserMessage>
     {

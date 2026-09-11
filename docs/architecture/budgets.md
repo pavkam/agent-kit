@@ -21,6 +21,13 @@ No component keeps a private counter for a shared dimension. Specialized
 policies may calculate estimates, but the common authority performs the atomic
 reservation. Goal and operation budgets are child scopes, not unrelated copies.
 
+`RunUsage`, `UsageAccountingEntry`, and their measurement/provenance values live
+in `AgentKit.Abstractions`. They provide the immutable run-result and progress
+projection defined by
+[usage accounting](../concepts/usage-limits-and-budgets.md#run-usage-projection).
+They do not reserve capacity or replace the budget authority. The session owner
+retains append-only usage revisions; publishers expose captured projections.
+
 ## Normative minimal contract shape
 
 Every named type belongs in its own matching source file.

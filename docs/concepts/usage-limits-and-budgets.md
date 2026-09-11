@@ -66,6 +66,50 @@ exists, and adjustment provenance. Terminal cleanup and conversation compaction
 do not delete billing evidence; recovery never treats a usage row as proof of an
 operation transition.
 
+## Run usage projection
+
+`RunUsage` is an immutable current projection for one `RunId`, separate from the
+append-only session usage ledger and the budget authority. Its
+`UsageAccountingEntry` values retain entry identity, operation, revision and
+previous revision, measurements, optional model/request attribution, original
+provider usage, and extension evidence. Each charged attempt has a distinct
+`UsageEntryId`, including retries sharing a model request and operation.
+
+An entry's first revision is one. Each correction replaces its entire previous
+measurement set and names the immediately preceding `UsageAccountingRevision`.
+Applying an equivalent current revision is a no-op. Conflicting, stale, skipped,
+foreign-run, or changed-attribution updates fail before returning a new
+projection. A final provider report cannot regress to interim or absent
+reporting. Restoring a captured current snapshot may begin with later revisions;
+the session ledger owns verification and retention of their earlier history.
+
+`UsageMeasurement` retains its dimension, unit, exact `BudgetQuantity`, quality,
+and optional pricing reference. Quality distinguishes measured,
+provider-reported, estimated, unknown, and explicitly not applicable. Unknown
+and not-applicable observations have no numeric amount. Estimated cost requires
+the captured pricing source and version. The original provider report retains
+provider-specific counters; normalized measurements do not discard it.
+
+Aggregation requires an explicit dimension descriptor and one legal unit. Sum,
+duration, and concurrent-gauge observations add their current amounts; maximum
+selects the largest. For gauges, proven completion supplies an explicit zero
+replacement; the projection never infers release from result availability. An
+omitted dimension contributes unknown unless explicitly not applicable. An entry
+reporting that dimension only in other units does not contribute to the selected
+unit. Currencies never convert implicitly.
+
+The aggregate retains every contribution's quality and pricing evidence.
+`KnownAmount` is only the aggregate of known observations; `Amount` is null when
+any applicable amount is unknown or no applicable evidence exists. No portable
+total-token formula combines potentially overlapping cached, reasoning, input,
+or output categories. A correction may lower the aggregate while previously
+returned snapshots remain unchanged.
+
+These values perform no persistence, authorization, reservations, or network
+access. The owning producer bounds entries and measurements, selects captured
+descriptors, authenticates corrections, and persists revisions before publishing
+them. A snapshot cannot prove ledger durability or shared-limit enforcement.
+
 ## Enforcement boundaries
 
 Before a [model request](provider-request-pipeline.md), the runtime MUST check
@@ -219,6 +263,14 @@ atomic coordination; durability separately declares restart persistence.
 - A failed first provider attempt and successful retry produce two attributable
   ledger rows but one correctly aggregated run total.
 - Fork usage is copied or reset only through an explicit policy.
+- A terminal or corrected report replaces its prior run-usage contribution;
+  replay cannot charge the same attempt twice or mutate an earlier snapshot.
+- A failed attempt with an omitted applicable measurement makes the aggregate
+  unknown even when a later successful attempt reports usage.
+- Mixed measured, reported and estimated contributions retain their individual
+  provenance; estimated cost retains its pricing source and version.
+- Independent currency and token-category aggregates never infer conversion or
+  add overlapping categories into a fabricated total.
 
 - Crash after provider send retains unknown spend and cannot reopen capacity.
 - A batch rejected on its last dimension starts no effects and reserves nothing.

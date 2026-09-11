@@ -398,6 +398,13 @@ or mutate the terminal output. Recovery status is queried through the original
 run/operation identity; a later recovery record never mutates a result already
 returned to a caller.
 
+`RunUsage` retains immutable, revisioned contribution evidence and exact
+aggregates as defined by
+[usage accounting](../concepts/usage-limits-and-budgets.md#run-usage-projection).
+Each charged retry has its own entry identity. Unknown measurements stay
+unknown, and later corrections create a new projection without mutating an
+already returned result. The session usage ledger remains the durable owner.
+
 `ContentDeltaEvent` and `MessageCommittedEvent` require a non-null `TurnId` at
 construction; their positional type matches the nullable base property exactly.
 A domain event's required correlation is validated before publication.

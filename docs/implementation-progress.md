@@ -70,6 +70,27 @@ owning spec.
 
 ## Latest integration evidence
 
+The run-usage checkpoint adds the immutable `RunUsage` dependency required by
+progress and final-result envelopes. Each charged attempt retains distinct entry
+identity, operation and model/request attribution, original provider usage,
+measurement quality, pricing provenance, and replacement revisions. Equivalent
+current replay is a no-op; stale, conflicting, skipped, foreign-run and
+changed-attribution updates reject. Corrections replace rather than accumulate
+prior usage, and previous snapshots remain unchanged.
+
+Aggregates use exact quantities and explicitly selected dimension/unit
+semantics. Missing observations remain unknown, currencies stay separate, and
+concurrent gauges require explicit zero replacement after proven completion.
+This is a current projection, not the append-only durable usage ledger or budget
+authority. Session ledger persistence, provider/tool projection integration,
+final-result and deferral contracts, settlement, and complete publisher
+activation remain open.
+
+Verification: all 6,407 Release tests pass without skips, with zero build
+warnings or errors. The new values add 87 focused usage cases and 10 shared
+identity-conformance cases. The reviewed API snapshot adds nine types without
+changing existing signatures, and all 68 compatibility checks pass.
+
 The I/O event-hub checkpoint implements the internal bounded fan-out mechanism
 required beneath the output publisher. Recipient capture and strict sequence
 validation are atomic. Subscriptions buffer before reading begins, support one
@@ -90,7 +111,7 @@ tests pass without skips. The reviewed API snapshot adds only the four shared
 observability constants; all 68 compatibility checks pass.
 
 Complete output publication remains open. Its missing prerequisites include the
-final result's usage, deferral and settlement contracts, durable sequence-range
+final result, deferral and settlement contracts, durable sequence-range
 reservation and publication intents, required sink delivery, replay/resnapshot,
 and canonical keyed activation. The internal hub does not claim those
 guarantees.
