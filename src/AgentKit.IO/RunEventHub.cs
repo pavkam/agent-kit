@@ -67,6 +67,18 @@ internal sealed class RunEventHub: IAsyncDisposable
         }
     }
 
+    /// <summary>Registers a typed non-owning stream with final-result waiting independent of event delivery.</summary>
+    /// <typeparam name="TOutput">The run's validated output snapshot type.</typeparam>
+    /// <param name="completion">The nonnull producer-owned task completed after the bounded settlement attempt.</param>
+    /// <returns>A caller-owned subscription whose event cancellation and disposal do not cancel final-result waiting.</returns>
+    /// <exception cref="ArgumentNullException">The completion task is null.</exception>
+    /// <exception cref="RunEventSubscriptionRejectedException">The hub is closed or its subscription bound is reached.</exception>
+    internal IAgentRunStream<TOutput> Subscribe<TOutput>(Task<AgentRunFinished<TOutput>> completion)
+    {
+        ArgumentNullException.ThrowIfNull(completion);
+        return new RunEventStream<TOutput>(Subscribe(), _agentId, _sessionId, _conversationId, _runId, completion, Observe);
+    }
+
     /// <summary>Captures recipients and offers one event atomically with the run-local sequence check.</summary>
     /// <param name="runEvent">The nonnull immutable event with exactly this hub's run correlation.</param>
     /// <param name="cancellationToken">Cancels before acceptance; after acceptance all captured recipients are offered the event synchronously.</param>

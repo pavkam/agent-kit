@@ -459,6 +459,11 @@ The architecture index defines document authority and change rules.
 - Mirror each source project with a .NET 10 executable, non-packable test
   project under `tests/`, following the Sharp Vision test-project setup.
 - Name tests `MethodName_WhenThis_ThatIsExpected`.
+- Name each concrete test class `<ProductionClass>Tests`. Keep argument checks,
+  invariants, diagnostics and regressions in that class's fixture, merging into
+  an existing fixture when present. Do not split a class's tests by scenario or
+  invariant, or group tests from different production classes. Concrete fixtures
+  also inherit applicable reusable contract suites.
 - Write reusable conformance suites for every swappable contract, then run the
   same suite against every adapter. Storage suites must cover the common
   contract for both `.InMemory` and `.Sqlite`, with separate capability tests

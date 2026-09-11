@@ -3,6 +3,8 @@
 
 namespace AgentKit.IO.Tests;
 
+using AgentKit.TestSupport;
+
 public sealed class RunEventHubTests
 {
     private static readonly AgentId Agent = new(Guid.Parse("10000000-0000-0000-0000-000000000001"));
@@ -11,17 +13,6 @@ public sealed class RunEventHubTests
     private static readonly TurnId Turn = new(Guid.Parse("40000000-0000-0000-0000-000000000001"));
     private static readonly MessageId Message = new(Guid.Parse("50000000-0000-0000-0000-000000000001"));
 
-    [Theory]
-    [InlineData(0, 1, "maximumSubscriptions")]
-    [InlineData(-1, 1, "maximumSubscriptions")]
-    [InlineData(1, 0, "capacityPerSubscription")]
-    [InlineData(1, -1, "capacityPerSubscription")]
-    public void Constructor_WhenBoundsAreInvalid_ThrowsExactArgumentOutOfRange(int subscribers, int capacity, string parameter)
-    {
-        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new RunEventHubOptions(subscribers, capacity));
-        exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
-        exception.ParamName.ShouldBe(parameter);
-    }
 
     [Theory]
     [InlineData("agentId")]
@@ -42,24 +33,6 @@ public sealed class RunEventHubTests
     public void Constructor_WhenOptionsAreNull_RejectsExactArgument() =>
         Should.Throw<ArgumentNullException>(() => new RunEventHub(Agent, Session, null, Run, null!, TimeProvider.System)).ParamName.ShouldBe("options");
 
-    [Fact]
-    public async Task ReadAllAsync_WhenRegisteredBeforeReading_DrainsAcceptedEventsInOrderAfterCompletion()
-    {
-        await using var hub = Hub();
-        await using var subscription = hub.Subscribe();
-        var first = Event(1);
-        var second = Event(2);
-        (await hub.PublishAsync(first, TestContext.Current.CancellationToken)).ShouldBe(RunEventPublicationOutcome.Published);
-        (await hub.PublishAsync(second, TestContext.Current.CancellationToken)).ShouldBe(RunEventPublicationOutcome.Published);
-        hub.Complete();
-        await hub.DisposeAsync();
-
-        var events = await ReadAsync(subscription);
-
-        events.ShouldBe([first, second]);
-        events[0].ShouldBeSameAs(first);
-        events[1].ShouldBeSameAs(second);
-    }
 
     [Fact]
     public async Task Subscribe_WhenPublicationAlreadyHappened_ReceivesOnlyLaterRecipientSnapshot()
@@ -111,62 +84,9 @@ public sealed class RunEventHubTests
         await using var replacement = hub.Subscribe();
     }
 
-    [Fact]
-    public async Task ReadAllAsync_WhenCancelled_ReleasesSubscriptionWithoutClosingHub()
-    {
-        await using var hub = Hub(subscribers: 1);
-        await using var subscription = hub.Subscribe();
-        using var cancellation = new CancellationTokenSource();
-        await using var reader = subscription.ReadAllAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
-        var pending = reader.MoveNextAsync().AsTask();
-        cancellation.Cancel();
-        (await Should.ThrowAsync<OperationCanceledException>(() => pending)).CancellationToken.ShouldBe(cancellation.Token);
-        subscription.State.ShouldBe(RunEventSubscriptionState.Cancelled);
-        await using var replacement = hub.Subscribe();
-        (await hub.PublishAsync(Event(1), TestContext.Current.CancellationToken)).ShouldBe(RunEventPublicationOutcome.Published);
-    }
 
-    [Fact]
-    public async Task ReadAllAsync_WhenAlreadyCancelled_ReleasesRegistrationAtFirstMove()
-    {
-        await using var hub = Hub(subscribers: 1);
-        await using var subscription = hub.Subscribe();
-        using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
-        await using var reader = subscription.ReadAllAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
-        _ = await Should.ThrowAsync<OperationCanceledException>(() => reader.MoveNextAsync().AsTask());
-        await using var replacement = hub.Subscribe();
-    }
 
-    [Fact]
-    public async Task ReadAllAsync_WhenEnumerationIsAbandoned_ReleasesRemainingBufferAndRegistration()
-    {
-        await using var hub = Hub(subscribers: 1);
-        var subscription = hub.Subscribe();
-        _ = await hub.PublishAsync(Event(1), TestContext.Current.CancellationToken);
-        _ = await hub.PublishAsync(Event(2), TestContext.Current.CancellationToken);
-        await foreach (var item in subscription.ReadAllAsync(TestContext.Current.CancellationToken))
-        {
-            item.Sequence.ShouldBe(1);
-            break;
-        }
-        subscription.State.ShouldBe(RunEventSubscriptionState.Disposed);
-        await using var replacement = hub.Subscribe();
-    }
 
-    [Fact]
-    public async Task ReadAllAsync_WhenSecondEnumerationStarts_RejectsWithoutClosingFirst()
-    {
-        await using var hub = Hub();
-        await using var subscription = hub.Subscribe();
-        await using var first = subscription.ReadAllAsync(TestContext.Current.CancellationToken).GetAsyncEnumerator(TestContext.Current.CancellationToken);
-        await using var second = subscription.ReadAllAsync(TestContext.Current.CancellationToken).GetAsyncEnumerator(TestContext.Current.CancellationToken);
-        var pending = first.MoveNextAsync().AsTask();
-        _ = await Should.ThrowAsync<InvalidOperationException>(() => second.MoveNextAsync().AsTask());
-        _ = await hub.PublishAsync(Event(1), TestContext.Current.CancellationToken);
-        (await pending).ShouldBeTrue();
-        first.Current.Sequence.ShouldBe(1);
-    }
 
     [Theory]
     [InlineData(true)]
@@ -270,64 +190,233 @@ public sealed class RunEventHubTests
     public void Constructor_WhenClockIsNull_RejectsBeforeObservation() =>
         Should.Throw<ArgumentNullException>(() => new RunEventHub(Agent, Session, null, Run, new RunEventHubOptions(), null!)).ParamName.ShouldBe("timeProvider");
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void Constructor_WhenSubscriptionCapacityIsInvalid_RejectsBeforeCallbacks(int capacity)
-    {
-        var calls = 0;
-        var error = Should.Throw<ArgumentOutOfRangeException>(() => new RunEventSubscription(capacity,
-            _ => calls++, _ => throw new InvalidOperationException("observe")));
-        error.ParamName.ShouldBe("capacity");
-        calls.ShouldBe(0);
-    }
 
-    [Theory]
-    [InlineData(true, "release")]
-    [InlineData(false, "observe")]
-    public void Constructor_WhenSubscriptionCallbackIsNull_RejectsExactArgument(bool nullRelease, string parameter)
-    {
-        var error = Should.Throw<ArgumentNullException>(() => new RunEventSubscription(1,
-            nullRelease ? null! : _ => { }, nullRelease ? _ => throw new InvalidOperationException() : null!));
-        error.ParamName.ShouldBe(parameter);
-    }
 
-    [Fact]
-    public async Task Offer_WhenEventIsNull_RejectsExactArgument()
-    {
-        await using var hub = Hub();
-        await using var subscription = hub.Subscribe();
-        Should.Throw<ArgumentNullException>(() => subscription.Offer(null!)).ParamName.ShouldBe("runEvent");
-    }
 
-    [Theory]
-    [InlineData(-1)]
-    [InlineData(2)]
-    public void Constructor_WhenSubscriptionRejectionIsUndefined_RejectsExactArgument(int reason) =>
-        Should.Throw<ArgumentOutOfRangeException>(() => new RunEventSubscriptionRejectedException((RunEventSubscriptionRejection) reason)).ParamName.ShouldBe("reason");
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(3)]
-    [InlineData(2)]
-    [InlineData(-1)]
-    public void Constructor_WhenClosureIsNotDeliveryFailure_RejectsExactArgument(int state) =>
-        Should.Throw<ArgumentException>(() => new RunEventSubscriptionClosedException((RunEventSubscriptionState) state, null)).ParamName.ShouldBe("state");
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void Constructor_WhenUnavailableSequenceIsInvalid_RejectsExactArgument(long sequence) =>
-        Should.Throw<ArgumentOutOfRangeException>(() => new RunEventSubscriptionClosedException(RunEventSubscriptionState.SlowConsumer, sequence)).ParamName.ShouldBe("firstUnavailableSequence");
 
     internal static RunEventHub Hub(int subscribers = 2, int capacity = 2) => new(Agent, Session, null, Run, new RunEventHubOptions(subscribers, capacity), TimeProvider.System);
     internal static MessageCommittedEvent Event(long sequence) => new(Agent, Session, null, Run, Turn, sequence, DateTimeOffset.UnixEpoch, Message, new SessionVersion(1));
 
-    private static async Task<List<RunEvent>> ReadAsync(RunEventSubscription subscription)
+    internal static async Task<List<RunEvent>> ReadAsync(RunEventSubscription subscription)
     {
         List<RunEvent> events = [];
         await foreach (var item in subscription.ReadAllAsync(TestContext.Current.CancellationToken)) { events.Add(item); }
         return events;
+    }
+
+    [Fact]
+    public async Task PublishAsync_WhenObserved_EmitsSafeParentedTraceLogAndBoundedMetrics()
+    {
+        using var parent = new Activity("hub-observation-parent").Start();
+        ConcurrentQueue<Activity> activities = [];
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) => options.Parent.TraceId == parent.TraceId ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
+            ActivityStopped = activity =>
+            {
+                if (activity.TraceId == parent.TraceId
+                    && (activity.GetTagItem(AgentKitTagNames.RunEventHubOperation) as string) == "Publish") { activities.Enqueue(activity); }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        ConcurrentQueue<(string Name, double Value, KeyValuePair<string, object?>[] Tags)> measurements = [];
+        using var meter = CreateMeter();
+        meter.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+        {
+            if (IsPublication(parent.TraceId, tags)) { measurements.Enqueue((instrument.Name, value, tags.ToArray())); }
+        });
+        meter.SetMeasurementEventCallback<double>((instrument, value, tags, _) =>
+        {
+            if (IsPublication(parent.TraceId, tags)) { measurements.Enqueue((instrument.Name, value, tags.ToArray())); }
+        });
+        meter.Start();
+        var logger = new HubLogger();
+        var basis = Event(1);
+        const string content = "seeded private prompt and tool payload";
+        var delta = new ContentDeltaEvent(basis.AgentId, basis.SessionId, null, basis.RunId, basis.TurnId,
+            1, DateTimeOffset.UnixEpoch, new ModelRequestId(Guid.NewGuid()), 0, new TextContentDelta(content));
+        await using var hub = CreateHub(logger, new FixedClock());
+
+        (await hub.PublishAsync(delta, TestContext.Current.CancellationToken)).ShouldBe(RunEventPublicationOutcome.Published);
+
+        Activity.Current.ShouldBeSameAs(parent);
+        var activity = activities.ShouldHaveSingleItem();
+        activity.OperationName.ShouldBe(AgentKitActivityNames.RunEventHub);
+        activity.ParentSpanId.ShouldBe(parent.SpanId);
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("Succeeded");
+        activity.GetTagItem(AgentKitTagNames.RunId).ShouldBe(basis.RunId.ToString());
+        activity.TagObjects.ShouldAllBe(tag => !Equals(tag.Value, content));
+        var (logId, logLevel, logFields) = logger.Entries.ShouldHaveSingleItem();
+        logId.ShouldBe(1006);
+        logLevel.ShouldBe(LogLevel.Debug);
+        logFields["Operation"].ShouldBe("Publish");
+        logFields["RunId"].ShouldBe(basis.RunId);
+        logFields.Values.ShouldNotContain(content);
+        measurements.Count.ShouldBe(2);
+        measurements.ShouldContain(item => item.Name == AgentKitMetricNames.RunEventHubOperationCount && item.Value == 1);
+        measurements.ShouldContain(item => item.Name == AgentKitMetricNames.RunEventHubOperationDuration && item.Value == 0);
+        foreach (var (_, _, tags) in measurements)
+        {
+            tags.Select(static tag => tag.Key).ShouldBe([AgentKitTagNames.RunEventHubOperation, AgentKitTagNames.Outcome]);
+            tags.ShouldAllBe(static tag => tag.Value is string);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PublishAsync_WhenActivityLoggerAndMetricsThrow_PreservesDeliveryAndParentage(bool throwOnStart)
+    {
+        using var parent = new Activity("hub-fault-parent").Start();
+        var failures = 0;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) => options.Parent.TraceId == parent.TraceId ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
+            ActivityStarted = activity =>
+            {
+                if (throwOnStart && IsPublication(activity, parent.TraceId)) { failures++; throw new InvalidOperationException("observer"); }
+            },
+            ActivityStopped = activity =>
+            {
+                if (!throwOnStart && IsPublication(activity, parent.TraceId)) { failures++; throw new InvalidOperationException("observer"); }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        using var meter = CreateMeter();
+        meter.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            if (IsPublication(parent.TraceId, tags)) { throw new InvalidOperationException("metric"); }
+        });
+        meter.Start();
+        await using var hub = CreateHub(new HubLogger(throws: true), new FixedClock());
+        await using var subscription = hub.Subscribe();
+
+        (await hub.PublishAsync(Event(1), TestContext.Current.CancellationToken)).ShouldBe(RunEventPublicationOutcome.Published);
+        hub.Complete();
+
+        Activity.Current.ShouldBeSameAs(parent);
+        failures.ShouldBe(1);
+        var count = 0;
+        await foreach (var item in subscription.ReadAllAsync(TestContext.Current.CancellationToken)) { count++; item.Sequence.ShouldBe(1); }
+        count.ShouldBe(1);
+        Activity.Current.ShouldBeSameAs(parent);
+    }
+
+    [Fact]
+    public async Task PublishAsync_WhenClockThrows_PreservesCountAndOmitsDuration()
+    {
+        using var parent = new Activity("hub-clock-parent").Start();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) => options.Parent.TraceId == parent.TraceId ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
+        };
+        ActivitySource.AddActivityListener(listener);
+        ConcurrentQueue<string> measurements = [];
+        using var meter = CreateMeter();
+        meter.SetMeasurementEventCallback<long>((instrument, _, tags, _) =>
+        {
+            if (IsPublication(parent.TraceId, tags)) { measurements.Enqueue(instrument.Name); }
+        });
+        meter.SetMeasurementEventCallback<double>((instrument, _, tags, _) =>
+        {
+            if (IsPublication(parent.TraceId, tags)) { measurements.Enqueue(instrument.Name); }
+        });
+        meter.Start();
+        await using var hub = CreateHub(new HubLogger(), new FixedClock(throws: true));
+
+        (await hub.PublishAsync(Event(1), TestContext.Current.CancellationToken)).ShouldBe(RunEventPublicationOutcome.Published);
+
+        measurements.ShouldBe([AgentKitMetricNames.RunEventHubOperationCount]);
+    }
+
+    [Theory]
+    [InlineData("out-of-order", "OutOfOrder")]
+    [InlineData("closed", "HubClosed")]
+    [InlineData("cancelled", "Cancelled")]
+    public async Task PublishAsync_WhenRejectedOrCancelled_ReportsTruthfulErrorOutcome(string scenario, string expected)
+    {
+        using var parent = new Activity("hub-rejection-parent").Start();
+        var logger = new HubLogger();
+        await using var hub = CreateHub(logger, new FixedClock());
+        _ = await hub.PublishAsync(Event(1), TestContext.Current.CancellationToken);
+        if (scenario == "closed") { hub.Complete(); }
+        logger.Entries.Clear();
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) => options.Parent.TraceId == parent.TraceId ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
+            ActivityStopped = activity => { if (IsPublication(activity, parent.TraceId)) { stopped = activity; } },
+        };
+        ActivitySource.AddActivityListener(listener);
+        using var cancellation = new CancellationTokenSource();
+        if (scenario == "cancelled")
+        {
+            cancellation.Cancel();
+            _ = await Should.ThrowAsync<OperationCanceledException>(() => hub.PublishAsync(Event(2), cancellation.Token).AsTask());
+        }
+        else { _ = await hub.PublishAsync(Event(1), TestContext.Current.CancellationToken); }
+
+        stopped.ShouldNotBeNull().Status.ShouldBe(ActivityStatusCode.Error);
+        stopped!.GetTagItem(AgentKitTagNames.Outcome).ShouldBe(expected);
+        logger.Entries.ShouldHaveSingleItem().Fields["Outcome"].ShouldBe(expected);
+    }
+
+    private static bool IsPublication(Activity activity, ActivityTraceId traceId) =>
+        activity.TraceId == traceId && (activity.GetTagItem(AgentKitTagNames.RunEventHubOperation) as string) == "Publish";
+
+    private static bool IsPublication(ActivityTraceId traceId, ReadOnlySpan<KeyValuePair<string, object?>> tags)
+    {
+        if (Activity.Current?.TraceId != traceId) { return false; }
+        foreach (var tag in tags) { if (tag.Key == AgentKitTagNames.RunEventHubOperation && Equals(tag.Value, "Publish")) { return true; } }
+        return false;
+    }
+
+    private static MeterListener CreateMeter() => new()
+    {
+        InstrumentPublished = static (instrument, listener) =>
+        {
+            if (instrument.Meter.Name == AgentKitDiagnostics.MeterName
+                && instrument.Name is AgentKitMetricNames.RunEventHubOperationCount or AgentKitMetricNames.RunEventHubOperationDuration)
+            { listener.EnableMeasurementEvents(instrument); }
+        },
+    };
+
+    private static RunEventHub CreateHub(ILogger<RunEventHub> logger, TimeProvider clock)
+    {
+        var basis = Event(1);
+        return new RunEventHub(basis.AgentId, basis.SessionId, null, basis.RunId, new RunEventHubOptions(), clock, logger);
+    }
+
+    internal sealed class FixedClock(bool throws = false): TimeProvider
+    {
+        public override long GetTimestamp() => throws ? throw new InvalidOperationException("clock") : 0;
+    }
+
+    internal sealed class HubLogger(bool throws = false): ILogger<RunEventHub>
+    {
+        internal ConcurrentQueue<(int Id, LogLevel Level, Dictionary<string, object?> Fields)> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (throws) { throw new InvalidOperationException("logger"); }
+            Entries.Enqueue((eventId.Id, logLevel, ((IEnumerable<KeyValuePair<string, object?>>) state!).ToDictionary()));
+        }
+    }
+
+    [Fact]
+    public async Task Subscribe_WhenCompletionTaskIsNull_RejectsBeforeAllocatingSubscriptionCapacity()
+    {
+        await using var hub = new RunEventHub(RunResultTestData.Agent, RunResultTestData.Session, null, RunResultTestData.Run, new(1), TimeProvider.System);
+        Should.Throw<ArgumentNullException>(() => hub.Subscribe<string>(null!)).ParamName.ShouldBe("completion");
+        await using var available = hub.Subscribe(Task.FromResult(RunResultTestData.Finished()));
+        (await available.Completion).IsCleanSuccess.ShouldBeTrue();
     }
 }

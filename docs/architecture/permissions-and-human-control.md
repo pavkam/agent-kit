@@ -25,6 +25,16 @@ set; the snapshot never supplies another operation's scope or identity.
 
 ## Normative minimal contract shape
 
+The neutral deferral values are defined by
+[deferred operations](../concepts/deferred-and-human-in-the-loop.md).
+`ProtectedOperation` captures normalized effect/resource evidence;
+`SecurityDecisionReference` points to an audited decision and policy snapshot.
+Neither is a grant. `DeferredOperationRequest` explicitly distinguishes runtime
+ownership from external handoff, records whether execution started, and retains
+the exact input fingerprint for later validation. The session owner persists
+requests and resolutions; the security authority revalidates permission at the
+effecting boundary.
+
 These C# 14 shapes are normative and minimal, not an exhaustive API listing.
 Each named type belongs in its own file in AgentKit.Abstractions. Shared
 `AgentId`, `SessionId`, `OperationCorrelation`, and

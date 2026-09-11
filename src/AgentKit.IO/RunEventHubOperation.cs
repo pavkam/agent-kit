@@ -16,6 +16,8 @@ internal enum RunEventHubOperation
     Disconnect,
     /// <summary>Reading one subscriber until end, abandonment or cancellation.</summary>
     Read,
+    /// <summary>Waiting for and validating the producer-owned final result independently of event delivery.</summary>
+    AwaitCompletion,
     /// <summary>Sealing normal producer event delivery.</summary>
     Complete,
     /// <summary>Releasing active hub-owned subscriptions.</summary>

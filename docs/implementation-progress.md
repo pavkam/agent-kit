@@ -70,6 +70,47 @@ owning spec.
 
 ## Latest integration evidence
 
+The final-result checkpoint adds the canonical accepted/rejected result and
+stream-start unions, seven semantic outcomes, and independent settlement
+outcomes. Finished envelopes validate cursor, history, usage and external
+handoff correlation before capture. Clean success requires both semantic success
+and completed settlement; recovery-required results retain their output and
+usage. Legacy reduced-loop outcomes still require explicit migration.
+
+All four closed families guard record-copy construction. Eight focused cases
+reproduced foreign/null-copy acceptance before the guard; normal built-in and
+legacy copies remain valid. The existing semantic outcome copy signature is
+preserved, with deliberate rejection of previously constructible foreign
+variants contrary to its documented closed-family contract. Tests in this
+checkpoint now live in fixtures named for their production classes; the concrete
+stream fixture inherits its shared conformance suite.
+
+Immutable deferral requests capture continuation ownership, effect-start
+evidence, normalized operations, exact input fingerprints and audited decision
+references. Runtime-owned provider suspension cannot become a terminal external
+handoff. The values validate structure; session persistence and authenticated
+resolution remain separate unfinished work.
+
+The internal event hub now supplies the public typed stream through a thin
+adapter. Cancellation, abandonment and overflow affect event delivery while the
+producer-owned completion remains independently awaitable. Final correlation is
+checked before exposure, and completion waiting uses the existing isolated logs,
+activities and bounded metrics. Four reusable conformance cases exercise the
+public stream contract through this internal adapter; complete publisher
+registration and DI conformance remain open.
+
+`IOutputPublisher` now defines the required publication boundary. No partial
+default publisher is registered. Durable sequence ranges, publication intents,
+required sinks, settlement integration, deferral resolution, facade/loop
+migration and complete keyed activation remain open.
+
+Verification: all 6,597 Release tests pass without skips, with zero build
+warnings or errors. The owning Abstractions and I/O suites pass 3,327 and 140
+tests respectively, including shared stream conformance. The reviewed API
+snapshot adds 30 result/deferral types and the external-handoff guard, and
+records the now-explicit semantic-outcome copy constructor. All 68 compatibility
+checks pass.
+
 The run-usage checkpoint adds the immutable `RunUsage` dependency required by
 progress and final-result envelopes. Each charged attempt retains distinct entry
 identity, operation and model/request attribution, original provider usage,
@@ -83,8 +124,8 @@ semantics. Missing observations remain unknown, currencies stay separate, and
 concurrent gauges require explicit zero replacement after proven completion.
 This is a current projection, not the append-only durable usage ledger or budget
 authority. Session ledger persistence, provider/tool projection integration,
-final-result and deferral contracts, settlement, and complete publisher
-activation remain open.
+final-result and deferral runtime integration, settlement, and complete
+publisher activation remain open.
 
 Verification: all 6,407 Release tests pass without skips, with zero build
 warnings or errors. The new values add 87 focused usage cases and 10 shared
@@ -110,11 +151,10 @@ The Release solution build passes with zero warnings or errors, and all 6,310
 tests pass without skips. The reviewed API snapshot adds only the four shared
 observability constants; all 68 compatibility checks pass.
 
-Complete output publication remains open. Its missing prerequisites include the
-final result, deferral and settlement contracts, durable sequence-range
-reservation and publication intents, required sink delivery, replay/resnapshot,
-and canonical keyed activation. The internal hub does not claim those
-guarantees.
+Complete output publication remains open. Its missing prerequisites include
+durable sequence-range reservation and publication intents, required sink
+delivery, settlement and deferral execution, replay/resnapshot, and canonical
+keyed activation. The internal hub does not claim those guarantees.
 
 The resumed facade checkpoint validates core service cardinality from captured
 DI descriptors before application activation. Missing or duplicate catalogs,

@@ -188,6 +188,11 @@ protocol before that envelope becomes observable.
 - `RunSettled` is the final run-lifecycle event; later reconciliation facts name
   the settled run only as causal evidence and do not reopen its lifecycle.
 - Settlement failure preserves semantic output and returns recovery required.
+- A final envelope rejects mismatched cursor, usage, message or deferred-request
+  correlation before publication; interrupted committed content retains its
+  explicit state.
+- Cancelling or disposing a stream releases its delivery buffer while its
+  repeatedly awaitable completion still returns the identical final envelope.
 - Retrying terminal publication uses the same outbox/event identity.
 - Failure of a required store append prevents a clean-success result.
 

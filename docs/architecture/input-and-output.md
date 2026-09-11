@@ -398,6 +398,31 @@ or mutate the terminal output. Recovery status is queried through the original
 run/operation identity; a later recovery record never mutates a result already
 returned to a caller.
 
+The canonical final envelope accepts the seven `Run*` semantic cases shown
+above. Legacy reduced-loop outcomes require an explicit mapping that preserves
+their error and effect evidence; they cannot enter the final envelope by
+accidental type compatibility. `CancellationReason` retains an `AgentError`
+whose exact code is `Cancelled`, keeping timeout distinct. `RunFailure` and
+`PolicyHalt` retain normalized errors, while `RunLimitFailure` retains exact
+budget failure, enforcement boundary, partial-output and effect-certainty
+evidence.
+
+Result, stream-start, semantic and settlement families are closed. Normal
+same-variant record copies preserve their evidence; copying a built-in value
+cannot construct a foreign variant.
+
+The envelope validates cursor, usage, message and handoff correlation before
+capturing evidence. New messages preserve their role and commit order, have
+unique nondefault IDs, and match the cursor branch. Only system/developer
+records may omit run identity; incomplete candidates cannot appear as committed
+new messages. Interrupted and suspended committed evidence remains explicit. The
+producer supplies a validated immutable `TOutput` snapshot; the generic
+container cannot freeze arbitrary mutable application objects.
+
+`IsCleanSuccess` is true only for `RunSucceeded` together with
+`RunSettlementCompleted`. It is false for idle completion and for a successful
+semantic result whose settlement requires recovery.
+
 `RunUsage` retains immutable, revisioned contribution evidence and exact
 aggregates as defined by
 [usage accounting](../concepts/usage-limits-and-budgets.md#run-usage-projection).

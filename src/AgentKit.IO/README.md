@@ -42,6 +42,13 @@ subscribers, deliver required sinks, or settle runs. Those publisher and session
 dependencies remain open. The implementation is not registered as a public
 publisher until that complete contract can be composed.
 
+The hub's typed subscription adapter implements `IAgentRunStream<TOutput>`.
+Event cancellation, overflow, abandonment, and disposal leave its producer-owned
+final-result task independent. The adapter validates the result's exact run
+correlation and exposes the same envelope on repeated awaits. This implements
+local stream ownership; a complete registered `IOutputPublisher` still requires
+durable sequence allocation, sink and settlement integration.
+
 ## Related projects
 
 - [AgentKit.Tools.Question](../AgentKit.Tools.Question/README.md) — ask a human

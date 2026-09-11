@@ -11,6 +11,9 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
+- [AgentRunFinishedTests](Results/AgentRunFinishedTests.cs)
+- [AgentRunOutcomeTests](Results/AgentRunOutcomeTests.cs)
+- [DeferredOperationRequestTests](Results/DeferredOperationRequestTests.cs)
 - [RunUsageTests](Usage/RunUsageTests.cs)
 - [UsageContractTests](Usage/UsageContractTests.cs)
 - [AgentHookEventArgsTests](Hooks/AgentHookEventArgsTests.cs)

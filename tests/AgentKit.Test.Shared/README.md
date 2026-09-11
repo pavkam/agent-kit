@@ -9,6 +9,8 @@ no standalone test run or production registration API.
 
 ## Available helpers
 
+- [RunResultTestData](RunResultTestData.cs) — deterministic final-result,
+  deferral and correlated stream fixtures.
 - [TestExecutionIdentity](TestExecutionIdentity.cs) — execution identity
   fixtures.
 - [TestSecurityEvidence](TestSecurityEvidence.cs) — security evidence fixtures.

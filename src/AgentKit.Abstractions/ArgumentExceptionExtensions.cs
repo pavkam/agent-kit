@@ -885,6 +885,30 @@ public static class ArgumentExceptionExtensions
             }
         }
 
+        /// <summary>Throws when deferred requests cannot form one coherent terminal external handoff.</summary>
+        /// <param name="requests">The initialized, nonnull, unique external requests to validate.</param>
+        /// <param name="allowEmpty">Whether an empty initialized collection is permitted.</param>
+        /// <param name="paramName">The parameter name inferred from the request collection expression when omitted.</param>
+        /// <exception cref="ArgumentNullException">A request is null.</exception>
+        /// <exception cref="ArgumentException">The collection is uninitialized, disallowed empty, duplicate, runtime-owned, or has inconsistent session/run correlation.</exception>
+        public static void ThrowIfInvalidExternalDeferrals(ImmutableArray<DeferredOperationRequest> requests, bool allowEmpty = false,
+            [CallerArgumentExpression(nameof(requests))] string? paramName = null)
+        {
+            ArgumentException.ThrowIfDefault(requests, paramName);
+            ArgumentException.ThrowIfNotEqual(allowEmpty || !requests.IsEmpty, true, paramName);
+            HashSet<DeferredRequestId> ids = [];
+            DeferredOperationRequest? first = null;
+            foreach (var request in requests)
+            {
+                ArgumentNullException.ThrowIfNull(request, paramName);
+                ArgumentException.ThrowIfNotEqual(request.ContinuationOwner, DeferralContinuationOwner.ExternalWorkflow, paramName);
+                ArgumentException.ThrowIfNotEqual(ids.Add(request.Id), true, paramName);
+                first ??= request;
+                ArgumentException.ThrowIfNotEqual(request.SessionId, first.SessionId, paramName);
+                ArgumentException.ThrowIfNotEqual(request.RunId, first.RunId, paramName);
+            }
+        }
+
         /// <summary>Throws when an outcome cannot support successful continuation completion.</summary>
         /// <param name="outcome">The non-null semantic run outcome to classify.</param>
         /// <param name="paramName">The parameter name inferred from the call-site expression when omitted.</param>
@@ -895,7 +919,7 @@ public static class ArgumentExceptionExtensions
             [CallerArgumentExpression(nameof(outcome))] string? paramName = null)
         {
             ArgumentNullException.ThrowIfNull(outcome, paramName);
-            if (outcome is not AgentRunCompleted and not AgentRunIdle)
+            if (outcome is not AgentRunCompleted and not AgentRunIdle and not RunSucceeded and not RunIdle)
             {
                 throw new ArgumentException("Outcome must represent successful output or idle completion.", paramName);
             }
@@ -921,7 +945,7 @@ public static class ArgumentExceptionExtensions
             [CallerArgumentExpression(nameof(outcome))] string? paramName = null)
         {
             ArgumentNullException.ThrowIfNull(outcome, paramName);
-            if (outcome is AgentRunCompleted or AgentRunIdle)
+            if (outcome is AgentRunCompleted or AgentRunIdle or RunSucceeded or RunIdle)
             {
                 throw new ArgumentException("A halt proposal cannot carry a successful outcome.", paramName);
             }

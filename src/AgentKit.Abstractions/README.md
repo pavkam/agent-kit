@@ -34,6 +34,23 @@ An omitted dimension contributes unknown unless explicitly not applicable.
 aggregate is available. Producers must bound and persist the evidence. These
 values do not provide a ledger, budget enforcement, or final-result publication.
 
+## Final results and deferral
+
+`AgentRunResult<TOutput>` separates rejection before admission from
+`AgentRunFinished<TOutput>` for accepted work. Finished results preserve
+semantic outcome and settlement separately, validate history/usage/handoff
+correlation, and report clean success only when both semantics and settlement
+succeeded. `IAgentRunStream<TOutput>` exposes incremental events and a
+repeatedly awaitable completion task. Disposing a subscription does not abort
+the run.
+
+Deferred requests retain explicit continuation ownership, effect-start evidence,
+normalized operations, input fingerprints and audited decision references.
+Provider suspension keeps the runtime operation open; only external handoffs can
+enter a terminal `RunDeferred` outcome. These values and `IOutputPublisher`
+define contracts; complete publisher, resolution and settlement implementations
+remain under construction.
+
 ## Related projects
 
 - [AgentKit](../AgentKit/README.md) — compose a process-level engine that hosts

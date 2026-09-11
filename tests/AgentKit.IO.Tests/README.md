@@ -10,9 +10,12 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
+- [RunEventStreamTests](RunEventStreamTests.cs)
 - [RunEventHubTests](RunEventHubTests.cs)
 - [RunEventHubObservationTests](RunEventHubObservationTests.cs)
-- [RunEventHubDiagnosticsArgumentTests](RunEventHubDiagnosticsArgumentTests.cs)
+- [RunEventSubscriptionTests](RunEventSubscriptionTests.cs)
+- [RunEventHubOptionsTests](RunEventHubOptionsTests.cs)
+- [RunEventHubMetricsTests](RunEventHubMetricsTests.cs)
 - [DefaultHumanQuestionBrokerTests](DefaultHumanQuestionBrokerTests.cs)
 - [DefaultInputPromotionPolicyConformanceTests](DefaultInputPromotionPolicyConformanceTests.cs)
 - [DefaultInputPromotionPolicyTests](DefaultInputPromotionPolicyTests.cs)

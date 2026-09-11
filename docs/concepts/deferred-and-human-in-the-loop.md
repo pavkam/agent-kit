@@ -46,6 +46,8 @@ public sealed record DeferredOperationRequest(
     RunId RunId,
     OperationId OperationId,
     DeferralKind Kind,
+    DeferralContinuationOwner ContinuationOwner,
+    DeferralEffectState Effects,
     ProtectedOperation Operation,
     InputFingerprint InputFingerprint,
     SecurityDecisionReference SecurityDecision,
@@ -54,6 +56,31 @@ public sealed record DeferredOperationRequest(
     SessionVersion SessionVersion,
     ExtensionData Extensions);
 ```
+
+`DeferralKind` distinguishes approval required, operation deferred, result
+pending, and provider suspended. Ownership and effect-start evidence are
+explicit and immutable:
+
+| Kind               | Continuation owner         | Execution state | Required resume evidence                                  |
+| ------------------ | -------------------------- | --------------- | --------------------------------------------------------- |
+| Approval required  | Runtime or external        | Not started     | Authenticated approval and fresh operation authorization  |
+| Operation deferred | External workflow          | Not started     | Correlated authenticated terminal operation result        |
+| Result pending     | Runtime or external        | Started         | Correlated authenticated result with effect certainty     |
+| Provider suspended | Original runtime operation | Started         | Original-route provider continuation and authorized drive |
+
+`Started` is not completion certainty and never authorizes replay.
+`RequiredEvidence` exposes the corresponding `DeferredResumeEvidenceKind`;
+resolution still verifies the exact request, operation, input, tenant, version,
+expiry and security authority. Optional expiry is exclusive and strictly after
+creation. Construction validates these structural rules without consulting a
+clock or attesting persistence.
+
+`ProtectedOperation` retains the effecting component, operation kind, exact
+effect disposition, and unique ordered canonical resources.
+`SecurityDecisionReference` names the evaluated security request, immutable
+policy snapshot, and audit record retaining the original decision. It contains
+no grant. The resolution owner loads that exact evidence and revalidates its
+scope and binding; possessing a reference cannot authorize an effect.
 
 Inputs and resources MUST be canonicalized and validated before deferral.
 Sensitive values require encrypted authorized storage and redacted presentation.
@@ -67,6 +94,12 @@ operation remains open. When an external worker or human-resolution workflow
 accepts a durable handoff, the current run MAY return a typed terminal
 `Deferred` outcome containing safe request summaries and durable IDs, settle,
 and later admit the resolution as a causally linked run.
+
+`RunDeferred` requires a nonempty ordered collection of unique external requests
+from one session and run. `AgentRunFinished<TOutput>` carries only external
+deferred requests, and its collection must equal the ordered outcome requests
+when its semantic outcome is `RunDeferred`. Runtime-owned requests cannot be
+turned into terminal handoff evidence merely to complete a result task.
 
 When the runtime retains ownership of the original operation, including a
 provider-suspended response or durable retry delay, a drive returns a typed
@@ -147,6 +180,11 @@ not turn waiting into settlement.
   event and later resumes the same operation identity.
 - A provider-deferred operation survives restart and can be polled only through
   its original compatible route.
+- Provider suspension rejects external ownership and cannot enter a finished
+  envelope; approval and operation deferral reject evidence that execution
+  already started.
+- A final deferred outcome and envelope cannot disagree about request order or
+  include requests from another run or session.
 
 ## Related specifications
 

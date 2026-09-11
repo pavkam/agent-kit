@@ -4,6 +4,7 @@
 namespace AgentKit.Abstractions.Tests;
 
 using AgentKit;
+using AgentKit.TestSupport;
 
 public sealed class ArgumentExceptionExtensionsTests
 {
@@ -191,5 +192,49 @@ public sealed class ArgumentExceptionExtensionsTests
         var exception = Should.Throw<ArgumentException>(() => new ProcessEnvironmentVariable("NAME", "bad\0value"));
 
         exception.ParamName.ShouldBe("value");
+    }
+
+    [Theory]
+    [InlineData("default")]
+    [InlineData("empty")]
+    [InlineData("null")]
+    [InlineData("duplicate")]
+    [InlineData("runtime")]
+    [InlineData("session")]
+    [InlineData("run")]
+    public void ThrowIfInvalidExternalDeferrals_WhenHandoffIsInvalid_InfersCollectionNameAndRejects(string invalid)
+    {
+        var basis = RunResultTestData.Deferred(); var id = Guid.Parse("00000000-0000-0000-0000-000000000099");
+        ImmutableArray<DeferredOperationRequest> requests = invalid switch
+        {
+            "default" => default,
+            "empty" => [],
+            "null" => [null!],
+            "duplicate" => [basis, basis],
+            "runtime" => [RunResultTestData.Deferred(kind: DeferralKind.ProviderSuspended, owner: DeferralContinuationOwner.RuntimeOperation, effects: DeferralEffectState.Started)],
+            "session" => [basis, RunResultTestData.Deferred(2, session: new SessionId(id))],
+            _ => [basis, RunResultTestData.Deferred(2, run: new RunId(id))],
+        };
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfInvalidExternalDeferrals(requests));
+        exception.ParamName.ShouldBe("requests");
+        exception.GetType().ShouldBe(invalid == "null" ? typeof(ArgumentNullException) : typeof(ArgumentException));
+    }
+
+    [Fact]
+    public void ThrowIfInvalidExternalDeferrals_WhenAllowed_HandlesEmptyBoundaryAndExplicitParameterName()
+    {
+        ArgumentException.ThrowIfInvalidExternalDeferrals([], allowEmpty: true);
+        ArgumentException.ThrowIfInvalidExternalDeferrals([RunResultTestData.Deferred()]);
+        Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfInvalidExternalDeferrals([], paramName: "handoff")).ParamName.ShouldBe("handoff");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ThrowIfNotSuccessfulRunOutcome_WhenCanonicalSuccessOrIdle_AcceptsCompletion(bool success)
+    {
+        AgentRunOutcome outcome = success ? new RunSucceeded() : new RunIdle();
+        ArgumentException.ThrowIfNotSuccessfulRunOutcome(outcome);
+        Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfSuccessfulRunOutcome(outcome)).ParamName.ShouldBe("outcome");
     }
 }

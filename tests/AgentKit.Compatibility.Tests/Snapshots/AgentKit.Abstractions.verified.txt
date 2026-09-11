@@ -308,6 +308,25 @@ namespace AgentKit
         public AgentRunFailed(AgentKit.ProviderFailure failure) { }
         public AgentKit.ProviderFailure Failure { get; init; }
     }
+    public sealed class AgentRunFinished<TOutput> : AgentKit.AgentRunResult<TOutput>, System.IEquatable<AgentKit.AgentRunFinished<TOutput>>
+    {
+        public AgentRunFinished(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.RunId runId, AgentKit.AgentRunOutcome outcome, AgentKit.RunSettlementOutcome settlement, TOutput? output, AgentKit.MessageCursor previousCursor, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> newMessages, AgentKit.RunUsage usage, System.Collections.Immutable.ImmutableArray<AgentKit.DeferredOperationRequest> deferredRequests, AgentKit.ExtensionData metadata) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.ConversationId? ConversationId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.DeferredOperationRequest> DeferredRequests { get; }
+        public bool IsCleanSuccess { get; }
+        public AgentKit.ExtensionData Metadata { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> NewMessages { get; }
+        public AgentKit.AgentRunOutcome Outcome { get; }
+        public TOutput Output { get; }
+        public AgentKit.MessageCursor PreviousCursor { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public AgentKit.RunSettlementOutcome Settlement { get; }
+        public AgentKit.RunUsage Usage { get; }
+        public bool Equals(AgentKit.AgentRunFinished<TOutput>? other) { }
+        public override int GetHashCode() { }
+    }
     public sealed class AgentRunIdle : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunIdle>
     {
         public AgentRunIdle() { }
@@ -323,7 +342,10 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<AgentKit.ModelSelectionDiagnostic> Diagnostics { get; init; }
         public string SafeReason { get; init; }
     }
-    public abstract class AgentRunOutcome : System.IEquatable<AgentKit.AgentRunOutcome> { }
+    public abstract class AgentRunOutcome : System.IEquatable<AgentKit.AgentRunOutcome>
+    {
+        protected AgentRunOutcome(AgentKit.AgentRunOutcome original) { }
+    }
     public sealed class AgentRunOutputRejected : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunOutputRejected>
     {
         public AgentRunOutputRejected(AgentKit.OutputConfigurationRejected rejection) { }
@@ -351,6 +373,13 @@ namespace AgentKit
     {
         public AgentRunProfilePublicationUnavailable(string safeReason) { }
         public string SafeReason { get; }
+    }
+    public sealed class AgentRunRejected<TOutput> : AgentKit.AgentRunResult<TOutput>, System.IEquatable<AgentKit.AgentRunRejected<TOutput>>
+    {
+        public AgentRunRejected(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.AgentError failure) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.AgentError Failure { get; }
+        public AgentKit.SessionId SessionId { get; }
     }
     public sealed class AgentRunRequest : System.IEquatable<AgentKit.AgentRunRequest>
     {
@@ -390,6 +419,10 @@ namespace AgentKit
         public bool Equals(AgentKit.AgentRunRequest? other) { }
         public override int GetHashCode() { }
     }
+    public abstract class AgentRunResult<TOutput> : System.IEquatable<AgentKit.AgentRunResult<TOutput>>
+    {
+        protected AgentRunResult(AgentKit.AgentRunResult<TOutput> original) { }
+    }
     public sealed class AgentRunSessionOperationFailed : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunSessionOperationFailed>
     {
         public AgentRunSessionOperationFailed(string safeMessage) { }
@@ -413,6 +446,20 @@ namespace AgentKit
         Failing = 13,
         Settling = 14,
         Settled = 15,
+    }
+    public sealed class AgentRunStreamRejected<TOutput> : AgentKit.AgentRunStreamStartResult<TOutput>, System.IEquatable<AgentKit.AgentRunStreamRejected<TOutput>>
+    {
+        public AgentRunStreamRejected(AgentKit.AgentRunRejected<TOutput> rejection) { }
+        public AgentKit.AgentRunRejected<TOutput> Rejection { get; }
+    }
+    public abstract class AgentRunStreamStartResult<TOutput> : System.IEquatable<AgentKit.AgentRunStreamStartResult<TOutput>>
+    {
+        protected AgentRunStreamStartResult(AgentKit.AgentRunStreamStartResult<TOutput> original) { }
+    }
+    public sealed class AgentRunStreamStarted<TOutput> : AgentKit.AgentRunStreamStartResult<TOutput>, System.IEquatable<AgentKit.AgentRunStreamStarted<TOutput>>
+    {
+        public AgentRunStreamStarted(AgentKit.IAgentRunStream<TOutput> stream) { }
+        public AgentKit.IAgentRunStream<TOutput> Stream { get; }
     }
     public sealed class AgentRunTurnLimitReached : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunTurnLimitReached>
     {
@@ -480,6 +527,7 @@ namespace AgentKit
             public static void ThrowIfInvalidBudgetReservationBatch(System.Collections.Immutable.ImmutableArray<AgentKit.BudgetReservationRequest> requests, AgentKit.BudgetScopeId scopeId, [System.Runtime.CompilerServices.CallerArgumentExpression("requests")] string? paramName = null) { }
             public static void ThrowIfInvalidBudgetScopeLimits(System.Collections.Immutable.ImmutableArray<AgentKit.BudgetLimit> limits, [System.Runtime.CompilerServices.CallerArgumentExpression("limits")] string? paramName = null) { }
             public static void ThrowIfNotReadable(System.IO.Stream stream, [System.Runtime.CompilerServices.CallerArgumentExpression("stream")] string? paramName = null) { }
+            public static void ThrowIfInvalidExternalDeferrals(System.Collections.Immutable.ImmutableArray<AgentKit.DeferredOperationRequest> requests, bool allowEmpty = false, [System.Runtime.CompilerServices.CallerArgumentExpression("requests")] string? paramName = null) { }
             public static void ThrowIfNotSuccessfulRunOutcome(AgentKit.AgentRunOutcome outcome, [System.Runtime.CompilerServices.CallerArgumentExpression("outcome")] string? paramName = null) { }
             public static void ThrowIfSuccessfulRunOutcome(AgentKit.AgentRunOutcome outcome, [System.Runtime.CompilerServices.CallerArgumentExpression("outcome")] string? paramName = null) { }
             public static void ThrowIfInvalidCommittedToolReferences(AgentKit.AssistantMessage response, System.Collections.Immutable.ImmutableArray<AgentKit.CommittedToolResultReference> toolResults, [System.Runtime.CompilerServices.CallerArgumentExpression("toolResults")] string? paramName = null) { }
@@ -1561,6 +1609,11 @@ namespace AgentKit
         public int PageSize { get; }
         public AgentKit.BudgetLedgerScopeReference Scope { get; }
     }
+    public sealed class CancellationReason : System.IEquatable<AgentKit.CancellationReason>
+    {
+        public CancellationReason(AgentKit.AgentError error) { }
+        public AgentKit.AgentError Error { get; }
+    }
     public enum CancellationSemantics
     {
         NotCancellable = 0,
@@ -2251,6 +2304,23 @@ namespace AgentKit
         public DefaultToolCallIdGenerator() { }
         public AgentKit.ToolCallId Create() { }
     }
+    public enum DeferralContinuationOwner
+    {
+        RuntimeOperation = 0,
+        ExternalWorkflow = 1,
+    }
+    public enum DeferralEffectState
+    {
+        NotStarted = 0,
+        Started = 1,
+    }
+    public enum DeferralKind
+    {
+        ApprovalRequired = 0,
+        OperationDeferred = 1,
+        ResultPending = 2,
+        ProviderSuspended = 3,
+    }
     public sealed class DeferredCompletionContinuationCause : AgentKit.RunContinuationCause, System.IEquatable<AgentKit.DeferredCompletionContinuationCause>
     {
         public DeferredCompletionContinuationCause(AgentKit.OperationId operationId) { }
@@ -2262,6 +2332,38 @@ namespace AgentKit
         public AgentKit.OperationId DeferredOperationId { get; }
         public AgentKit.ModelRequestId ModelRequestId { get; }
         public AgentKit.TurnId TurnId { get; }
+    }
+    public sealed class DeferredOperationRequest : System.IEquatable<AgentKit.DeferredOperationRequest>
+    {
+        public DeferredOperationRequest(AgentKit.DeferredRequestId id, AgentKit.SessionId sessionId, AgentKit.RunId runId, AgentKit.OperationId operationId, AgentKit.DeferralKind kind, AgentKit.DeferralContinuationOwner continuationOwner, AgentKit.DeferralEffectState effects, AgentKit.ProtectedOperation operation, AgentKit.InputFingerprint inputFingerprint, AgentKit.SecurityDecisionReference securityDecision, System.DateTimeOffset createdAt, System.DateTimeOffset? expiresAt, AgentKit.SessionVersion sessionVersion, AgentKit.ExtensionData extensions) { }
+        public AgentKit.DeferralContinuationOwner ContinuationOwner { get; }
+        public System.DateTimeOffset CreatedAt { get; }
+        public AgentKit.DeferralEffectState Effects { get; }
+        public System.DateTimeOffset? ExpiresAt { get; }
+        public AgentKit.ExtensionData Extensions { get; }
+        public AgentKit.DeferredRequestId Id { get; }
+        public AgentKit.InputFingerprint InputFingerprint { get; }
+        public AgentKit.DeferralKind Kind { get; }
+        public AgentKit.ProtectedOperation Operation { get; }
+        public AgentKit.OperationId OperationId { get; }
+        public AgentKit.DeferredResumeEvidenceKind RequiredEvidence { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SecurityDecisionReference SecurityDecision { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public AgentKit.SessionVersion SessionVersion { get; }
+    }
+    public readonly struct DeferredRequestId : System.IEquatable<AgentKit.DeferredRequestId>
+    {
+        [System.Text.Json.Serialization.JsonConstructor]
+        public DeferredRequestId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public enum DeferredResumeEvidenceKind
+    {
+        ApprovalResolution = 0,
+        OperationResult = 1,
+        ProviderContinuation = 2,
     }
     public sealed class DelegatedIdentityRequest : System.IEquatable<AgentKit.DelegatedIdentityRequest>
     {
@@ -3255,6 +3357,15 @@ namespace AgentKit
         AgentKit.AgentRunProfilePublicationSnapshot? CurrentSnapshot { get; }
         System.Threading.Tasks.ValueTask<AgentKit.AgentRunProfilePublicationResult> ReadAsync(AgentKit.AgentId agentId, AgentKit.AgentDefinitionRevision agentDefinitionRevision, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IAgentRunStream<TOutput> : System.IAsyncDisposable
+    {
+        AgentKit.AgentId AgentId { get; }
+        System.Threading.Tasks.Task<AgentKit.AgentRunFinished<TOutput>> Completion { get; }
+        AgentKit.ConversationId? ConversationId { get; }
+        AgentKit.RunId RunId { get; }
+        AgentKit.SessionId SessionId { get; }
+        System.Collections.Generic.IAsyncEnumerable<AgentKit.RunEvent> ReadAllAsync(System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IArtifactCoordinator
     {
         System.Threading.Tasks.ValueTask<AgentKit.ArtifactAbortResult> AbortAsync(AgentKit.ArtifactAbortRequest request, System.Threading.CancellationToken cancellationToken = default);
@@ -3528,6 +3639,11 @@ namespace AgentKit
     public interface IOutputProcessor
     {
         System.Threading.Tasks.ValueTask<AgentKit.OutputProcessingResult> ProcessAsync(AgentKit.OutputProcessingRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IOutputPublisher
+    {
+        System.Threading.Tasks.ValueTask CompleteAsync<TOutput>(AgentKit.AgentRunFinished<TOutput> result, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask PublishAsync(AgentKit.RunEvent runEvent, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IOutputSchemaEngine
     {
@@ -5308,6 +5424,11 @@ namespace AgentKit
         public AgentKit.PlanItemStatus Status { get; }
         public AgentKit.ToolCallId ToolCallId { get; }
     }
+    public sealed class PolicyHalt : System.IEquatable<AgentKit.PolicyHalt>
+    {
+        public PolicyHalt(AgentKit.AgentError reason) { }
+        public AgentKit.AgentError Error { get; }
+    }
     public readonly struct PrincipalId : System.IEquatable<AgentKit.PrincipalId>
     {
         public PrincipalId(string value) { }
@@ -5488,6 +5609,16 @@ namespace AgentKit
         AfterTurnCommitted = 1,
         AfterContinuationCheckpoint = 2,
         OtherwiseIdle = 3,
+    }
+    public sealed class ProtectedOperation : System.IEquatable<AgentKit.ProtectedOperation>
+    {
+        public ProtectedOperation(AgentKit.ComponentId audience, AgentKit.SecurityOperationKind kind, AgentKit.SecurityEffect effect, System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> resources) { }
+        public AgentKit.ComponentId Audience { get; }
+        public AgentKit.SecurityEffect Effect { get; }
+        public AgentKit.SecurityOperationKind Kind { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> Resources { get; }
+        public bool Equals(AgentKit.ProtectedOperation? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class ProtectedResource : System.IEquatable<AgentKit.ProtectedResource>
     {
@@ -5869,6 +6000,11 @@ namespace AgentKit
         public AgentKit.ModelRequestId ModelRequestId { get; }
         public AgentKit.TurnId TurnId { get; }
     }
+    public sealed class RunCancelled : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.RunCancelled>
+    {
+        public RunCancelled(AgentKit.CancellationReason reason) { }
+        public AgentKit.CancellationReason Reason { get; }
+    }
     public sealed class RunConfigurationReference : System.IEquatable<AgentKit.RunConfigurationReference>
     {
         public RunConfigurationReference(AgentKit.ConfigurationVersion configurationVersion, AgentKit.RunPolicyVersion policyVersion, AgentKit.ContentHash fingerprint) { }
@@ -5897,6 +6033,13 @@ namespace AgentKit
         public AgentKit.AgentRunState State { get; }
     }
     public abstract class RunContinuationDecision : System.IEquatable<AgentKit.RunContinuationDecision> { }
+    public sealed class RunDeferred : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.RunDeferred>
+    {
+        public RunDeferred(System.Collections.Immutable.ImmutableArray<AgentKit.DeferredOperationRequest> requests) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.DeferredOperationRequest> Requests { get; }
+        public bool Equals(AgentKit.RunDeferred? other) { }
+        public override int GetHashCode() { }
+    }
     public abstract class RunEvent : System.IEquatable<AgentKit.RunEvent>
     {
         protected RunEvent(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.RunId runId, AgentKit.TurnId? turnId, long sequence, System.DateTimeOffset occurredAt, AgentKit.RunEventDurability durability) { }
@@ -5914,11 +6057,38 @@ namespace AgentKit
         Live = 0,
         Durable = 1,
     }
+    public sealed class RunFailed : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.RunFailed>
+    {
+        public RunFailed(AgentKit.RunFailure failure) { }
+        public AgentKit.RunFailure Failure { get; }
+    }
+    public sealed class RunFailure : System.IEquatable<AgentKit.RunFailure>
+    {
+        public RunFailure(AgentKit.AgentError error) { }
+        public AgentKit.AgentError Error { get; }
+    }
     public readonly struct RunId : System.IEquatable<AgentKit.RunId>
     {
         public RunId(System.Guid value) { }
         public System.Guid Value { get; }
         public override string ToString() { }
+    }
+    public sealed class RunIdle : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.RunIdle>
+    {
+        public RunIdle() { }
+    }
+    public sealed class RunLimitFailure : System.IEquatable<AgentKit.RunLimitFailure>
+    {
+        public RunLimitFailure(AgentKit.BudgetLimitFailure limit, AgentKit.ComponentId enforcementBoundary, bool hasPartialOutput, AgentKit.SideEffectCertainty sideEffectCertainty) { }
+        public AgentKit.ComponentId EnforcementBoundary { get; }
+        public bool HasPartialOutput { get; }
+        public AgentKit.BudgetLimitFailure Limit { get; }
+        public AgentKit.SideEffectCertainty SideEffectCertainty { get; }
+    }
+    public sealed class RunLimitReached : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.RunLimitReached>
+    {
+        public RunLimitReached(AgentKit.RunLimitFailure limit) { }
+        public AgentKit.RunLimitFailure Limit { get; }
     }
     public sealed class RunPolicyDefaults : System.IEquatable<AgentKit.RunPolicyDefaults>
     {
@@ -5927,11 +6097,33 @@ namespace AgentKit
         public int MaxTurns { get; init; }
         public static AgentKit.RunPolicyDefaults Default { get; }
     }
+    public sealed class RunPolicyHalted : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.RunPolicyHalted>
+    {
+        public RunPolicyHalted(AgentKit.PolicyHalt reason) { }
+        public AgentKit.PolicyHalt Reason { get; }
+    }
     public readonly struct RunPolicyVersion : System.IEquatable<AgentKit.RunPolicyVersion>
     {
         public RunPolicyVersion(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public sealed class RunSettlementCompleted : AgentKit.RunSettlementOutcome, System.IEquatable<AgentKit.RunSettlementCompleted>
+    {
+        public RunSettlementCompleted() { }
+    }
+    public abstract class RunSettlementOutcome : System.IEquatable<AgentKit.RunSettlementOutcome>
+    {
+        protected RunSettlementOutcome(AgentKit.RunSettlementOutcome original) { }
+    }
+    public sealed class RunSettlementRecoveryRequired : AgentKit.RunSettlementOutcome, System.IEquatable<AgentKit.RunSettlementRecoveryRequired>
+    {
+        public RunSettlementRecoveryRequired(AgentKit.AgentError failure) { }
+        public AgentKit.AgentError Failure { get; }
+    }
+    public sealed class RunSucceeded : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.RunSucceeded>
+    {
+        public RunSucceeded() { }
     }
     public sealed class RunUsage : System.IEquatable<AgentKit.RunUsage>
     {
@@ -6111,6 +6303,13 @@ namespace AgentKit
     {
         public AgentKit.SecurityPolicyVersion PolicyVersion { get; init; }
         public AgentKit.SecurityRequestId RequestId { get; init; }
+    }
+    public sealed class SecurityDecisionReference : System.IEquatable<AgentKit.SecurityDecisionReference>
+    {
+        public SecurityDecisionReference(AgentKit.SecurityRequestId requestId, AgentKit.SecurityPolicySnapshotReference policySnapshot, AgentKit.SecurityAuditRecordId auditRecordId) { }
+        public AgentKit.SecurityAuditRecordId AuditRecordId { get; }
+        public AgentKit.SecurityPolicySnapshotReference PolicySnapshot { get; }
+        public AgentKit.SecurityRequestId RequestId { get; }
     }
     public sealed class SecurityDenial : System.IEquatable<AgentKit.SecurityDenial>
     {

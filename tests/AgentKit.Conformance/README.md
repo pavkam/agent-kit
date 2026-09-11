@@ -9,6 +9,8 @@ concrete adapter fixtures; building this project alone is not a conformance run.
 
 ## Available suites
 
+- [AgentRunStreamConformance](AgentRunStreamConformance.cs) — subscription
+  cancellation, disposal, single-reader ownership and independent completion.
 - [ArtifactStoreConformanceTests](ArtifactStoreConformanceTests.cs)
 - [IdentityNormalizerConformanceTests](IdentityNormalizerConformanceTests.cs)
 - [InputPromotionPolicyConformanceTests](InputPromotionPolicyConformanceTests.cs)
@@ -22,6 +24,10 @@ concrete adapter fixtures; building this project alone is not a conformance run.
 Fixture interfaces define how each adapter supplies the services and scenarios
 needed by its suite. Keep reusable behavior here and implementation-specific
 regressions in the owning test project.
+
+The run-stream suite currently exercises the public stream contract through the
+internal I/O adapter. Complete publisher registration and DI conformance remain
+open until durable publication is integrated.
 
 ## Run a concrete implementation
 
