@@ -13,6 +13,43 @@ public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
+        /// <summary>Registers the replaceable default catalog collision policy and its immutable merge coordinator.</summary>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>Idempotent default registration preserves host policy and clock choices, adds safe logging, and activates no service. It discovers no source and does not replace the legacy tool catalog.</remarks>
+        public IServiceCollection AddToolCatalogMerging()
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IToolCatalogMergePolicy, RejectingToolCatalogMergePolicy>();
+            services.TryAddSingleton(static provider =>
+            {
+                var policies = provider.GetServices<IToolCatalogMergePolicy>().ToArray();
+                return policies.Length == 1
+                    ? new ToolCatalogMerger(policies[0], provider.GetRequiredService<TimeProvider>(), provider.GetRequiredService<ILogger<ToolCatalogMerger>>())
+                    : throw new InvalidOperationException("Catalog merging requires exactly one unkeyed merge policy.");
+            });
+            return services;
+        }
+
+        /// <summary>Explicitly replaces the process-level policy for complete catalog collision decisions.</summary>
+        /// <typeparam name="TPolicy">The concurrently callable policy selecting only explicitly configured captured evidence.</typeparam>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>Removes all unkeyed policy registrations and adds one singleton without activation. Keyed host registrations and previously constructed hosts remain unchanged. Later default registration preserves this choice.</remarks>
+        public IServiceCollection ReplaceToolCatalogMergePolicy<TPolicy>() where TPolicy : class, IToolCatalogMergePolicy
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddToolCatalogMerging();
+            foreach (var descriptor in services.Where(static descriptor => !descriptor.IsKeyedService && descriptor.ServiceType == typeof(IToolCatalogMergePolicy)).ToArray())
+            {
+                _ = services.Remove(descriptor);
+            }
+            _ = services.AddSingleton<IToolCatalogMergePolicy, TPolicy>();
+            return services;
+        }
+
         /// <summary>Registers an immutable application tool source under its exact typed source key.</summary>
         /// <param name="snapshot">The nonnull explicit source publication, including its source version.</param>
         /// <param name="invokers">The complete nonnull borrowed binding map for the publication; the host owner keeps every instance alive through all captures and leases.</param>

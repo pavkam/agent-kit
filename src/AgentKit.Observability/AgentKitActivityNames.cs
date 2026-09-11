@@ -7,6 +7,10 @@ namespace AgentKit.Observability;
 /// <remarks>Names describe operations, never high-cardinality identities or content.</remarks>
 public static class AgentKitActivityNames
 {
+    /// <summary>Identifies validation and policy coordination for one captured tool catalog.</summary>
+    public const string ToolCatalogMerge = "tool.catalog.merge";
+    /// <summary>Identifies one complete catalog collision-policy decision.</summary>
+    public const string ToolCatalogMergePolicy = "tool.catalog.merge.policy";
     /// <summary>Names source discovery that transfers a retained tool-provider capture, without invoking a tool.</summary>
     public const string ToolProviderDiscover = "tool.provider.discover";
 

@@ -24,6 +24,11 @@ no standalone test run or production registration API.
   deliberate observer failure.
 - [ToolProjectionPolicyTestData](ToolProjectionPolicyTestData.cs) — exact policy
   revisions shared by value, runtime, and conformance tests.
+- [ToolCatalogMergeTestData](ToolCatalogMergeTestData.cs) — typed toolset,
+  source, alias, and candidate publications with coherent discovery requests.
+- [CallbackToolCatalogMergePolicy](CallbackToolCatalogMergePolicy.cs) — a typed
+  policy callback for explicit selection, rejection, cancellation, and hostile
+  decision tests.
 
 Add a helper when multiple test projects need it. Reusable contract assertions
 belong in AgentKit.Conformance; production packages must not depend on either

@@ -324,6 +324,13 @@ The architecture index defines document authority and change rules.
   toolsets, inferring aliases, or granting authority. Source registration is
   keyed by exact `ToolSourceId`; replacing a registration never redirects an
   existing provider, capture, or lease.
+- Catalog merging validates all selected publications before one policy call
+  over the complete deterministic collision set. The default rejects
+  unconfigured collisions. Policy may select only captured contributions;
+  source, descriptor, execution-policy, and explicit alias evidence must remain
+  coherent. It cannot omit missing targets, borrow unrelated toolset membership,
+  infer aliases, or reorder the catalog. Require one unkeyed merge policy and
+  preserve captured-source ownership on rejection, failure, or cancellation.
 - Provider and catalog captures retain exact source publications and own their
   acquisitions. Resolution uses those captures to acquire invoker leases;
   immutable snapshots never imply a lookup against current DI registrations.

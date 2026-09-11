@@ -18,6 +18,13 @@ correlation on traces/logs. The discovery count and duration instruments carry
 only bounded outcome tags; descriptors, schemas, and request content are
 omitted.
 
+Catalog merging and collision policy use `tool.catalog.merge` and
+`tool.catalog.merge.policy`. Their shared count/duration instruments use bounded
+operation and outcome tags. Outcomes are selected, rejected, cancelled, and
+failed; logs and traces retain run identity without aliases, descriptors,
+schemas, or exception-message content. Missing or reversed clock measurements
+omit duration, and observer failures cannot change the merge result.
+
 ## Use this project
 
 Start with `AddAgentKitObservability` in

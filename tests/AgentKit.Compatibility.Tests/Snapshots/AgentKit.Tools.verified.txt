@@ -19,10 +19,18 @@ namespace AgentKit.Tools
         public DefaultToolInvoker(AgentKit.IToolCatalog catalog, AgentKit.IToolAuthorizer authorizer, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.DefaultToolInvoker> logger) { }
         public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolCallRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class RejectingToolCatalogMergePolicy : AgentKit.IToolCatalogMergePolicy
+    {
+        public RejectingToolCatalogMergePolicy(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.RejectingToolCatalogMergePolicy> logger) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolCatalogMergeDecision> ResolveAsync(AgentKit.ToolCatalogMergeContext context, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolCatalogMerging() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolCatalogMergePolicy<TPolicy>()
+                where TPolicy :  class, AgentKit.IToolCatalogMergePolicy { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddStaticToolProvider(AgentKit.ToolProviderSnapshot snapshot, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.IToolInvoker> invokers) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceStaticToolProvider(AgentKit.ToolProviderSnapshot snapshot, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.IToolInvoker> invokers) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentTools(System.Action<AgentKit.Tools.AgentToolsOptions>? configure = null) { }

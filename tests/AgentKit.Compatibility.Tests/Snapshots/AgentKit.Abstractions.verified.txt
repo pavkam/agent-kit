@@ -3845,6 +3845,10 @@ namespace AgentKit
         AgentKit.ToolCatalogSnapshot Snapshot { get; }
         System.Threading.Tasks.ValueTask<AgentKit.ToolInvokerLeaseResult> AcquireInvokerAsync(AgentKit.ToolIdentity identity, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IToolCatalogMergePolicy
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ToolCatalogMergeDecision> ResolveAsync(AgentKit.ToolCatalogMergeContext context, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IToolInvoker
     {
         System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolCallRequest request, System.Threading.CancellationToken cancellationToken = default);
@@ -7710,6 +7714,60 @@ namespace AgentKit
         public AgentKit.TurnId TurnId { get; }
         public AgentKit.ToolUsage? Usage { get; }
         public bool Equals(AgentKit.ToolCallResult? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class ToolCatalogAliasCollision : AgentKit.ToolCatalogCollision, System.IEquatable<AgentKit.ToolCatalogAliasCollision>
+    {
+        public ToolCatalogAliasCollision(AgentKit.ToolAlias alias, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogCandidate> candidates) { }
+        public ToolCatalogAliasCollision(AgentKit.ToolAlias alias, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogCandidate> candidates, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogMissingAliasTarget> missingTargets) { }
+        public AgentKit.ToolAlias Alias { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogCandidate> Candidates { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogMissingAliasTarget> MissingTargets { get; }
+        public bool Equals(AgentKit.ToolCatalogAliasCollision? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class ToolCatalogCandidate : System.IEquatable<AgentKit.ToolCatalogCandidate>
+    {
+        public ToolCatalogCandidate(AgentKit.ToolsetPublication toolset, AgentKit.ToolProviderSnapshot source, AgentKit.ToolIdentity identity) { }
+        public AgentKit.ToolIdentity Identity { get; }
+        public AgentKit.ToolProviderSnapshot Source { get; }
+        public AgentKit.ToolDescriptor Tool { get; }
+        public AgentKit.ToolsetPublication Toolset { get; }
+    }
+    public abstract class ToolCatalogCollision : System.IEquatable<AgentKit.ToolCatalogCollision> { }
+    public sealed class ToolCatalogIdentityCollision : AgentKit.ToolCatalogCollision, System.IEquatable<AgentKit.ToolCatalogIdentityCollision>
+    {
+        public ToolCatalogIdentityCollision(System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogCandidate> candidates) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogCandidate> Candidates { get; }
+        public bool Equals(AgentKit.ToolCatalogIdentityCollision? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class ToolCatalogMergeContext : System.IEquatable<AgentKit.ToolCatalogMergeContext>
+    {
+        public ToolCatalogMergeContext(AgentKit.ToolDiscoveryRequest request, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogCandidate> candidates, System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogCollision> collisions) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogCandidate> Candidates { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogCollision> Collisions { get; }
+        public AgentKit.ToolDiscoveryRequest Request { get; }
+        public bool Equals(AgentKit.ToolCatalogMergeContext? other) { }
+        public override int GetHashCode() { }
+    }
+    public abstract class ToolCatalogMergeDecision : System.IEquatable<AgentKit.ToolCatalogMergeDecision> { }
+    public sealed class ToolCatalogMissingAliasTarget : AgentKit.ToolCatalogCollision, System.IEquatable<AgentKit.ToolCatalogMissingAliasTarget>
+    {
+        public ToolCatalogMissingAliasTarget(AgentKit.ToolsetPublication toolset, AgentKit.ToolAliasAssignment assignment) { }
+        public AgentKit.ToolAliasAssignment Assignment { get; }
+        public AgentKit.ToolsetPublication Toolset { get; }
+    }
+    public sealed class ToolCatalogRejection : AgentKit.ToolCatalogMergeDecision, System.IEquatable<AgentKit.ToolCatalogRejection>
+    {
+        public ToolCatalogRejection() { }
+    }
+    public sealed class ToolCatalogSelection : AgentKit.ToolCatalogMergeDecision, System.IEquatable<AgentKit.ToolCatalogSelection>
+    {
+        public ToolCatalogSelection(System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogCandidate> tools, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolAlias, AgentKit.ToolCatalogCandidate> aliases) { }
+        public System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolAlias, AgentKit.ToolCatalogCandidate> Aliases { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolCatalogCandidate> Tools { get; }
+        public bool Equals(AgentKit.ToolCatalogSelection? other) { }
         public override int GetHashCode() { }
     }
     public sealed class ToolCatalogSnapshot : System.IEquatable<AgentKit.ToolCatalogSnapshot>

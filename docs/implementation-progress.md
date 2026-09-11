@@ -70,6 +70,44 @@ owning spec.
 
 ## Latest integration evidence
 
+The catalog-merge checkpoint adds `IToolCatalogMergePolicy`, complete immutable
+candidate/collision evidence, and closed selection/rejection decisions.
+`RejectingToolCatalogMergePolicy` accepts collision-free graphs and rejects
+unconfigured collisions. The internal coordinator validates the complete
+selected publication graph, calls policy once, and revalidates every selected
+descriptor, source, execution-policy reference, and explicit alias before
+constructing a snapshot. It preserves authored identity order and selected empty
+sources. Missing alias targets cannot be borrowed from another toolset or
+silently omitted.
+
+`AddToolCatalogMerging` preserves host defaults and requires one unkeyed policy
+at composition. Explicit replacement preserves keyed policies and old hosts. The
+coordinator borrows snapshots; it does not discover or own source captures.
+Cancellation after policy completion prevents snapshot transfer. Safe logs,
+activities, and bounded metrics distinguish selection, rejection, cancellation,
+and failure while isolating observer and clock failures.
+
+Typed tests cover the complete collision set, altered publication evidence,
+hostile comparers, missing membership, alias/policy coherence, ordering,
+cardinality/replacement, and discovery-to-lease composition. A regression
+demonstrated that duplicate policy registrations silently selected the last
+registration before the explicit cardinality check. A second regression proved
+that duplicate aliases with missing targets lost their alias-collision evidence;
+the complete graph now retains both the collision and every missing assignment.
+
+Full catalog discovery/cleanup coordination and schema/capability preflight,
+generic dynamic-provider registration, canonical resolution/invocation, terminal
+records and projections, message codecs, and durable output remain open.
+`AddAgentTools` and the loop still use the legacy catalog and combined invoker.
+
+Verification: all 7,122 Release tests pass, with zero build warnings, errors,
+failures, or skips. This checkpoint adds 77 cases across owning-class fixtures
+and reusable typed policy conformance. Both regressions were observed failing
+before their fixes and pass in the complete suite. All 68 compatibility checks
+pass with three reviewed additive API snapshots. Repository C# formatting,
+Prettier, and Markdown lint pass; final fixture and evidence-only edits receive
+their corresponding focused checks before commit.
+
 The application-source discovery checkpoint adds `IToolProvider` and
 `StaticToolProvider`. Each discovery returns an independently owned source
 capture over one explicitly versioned immutable binding graph. Concurrent and

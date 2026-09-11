@@ -48,6 +48,14 @@ network, or process enforcement.
   current DI registrations or descriptor names. Preserve requested aliases and
   catalog versions through resolution and validation, with explicit ownership
   and cleanup on capture/acquisition failure or cancellation.
+- Validate every selected publication before constructing the complete ordered
+  merge context and calling collision policy once. Keep competing source,
+  descriptor, execution-policy, and explicit alias evidence together. Revalidate
+  the policy's complete selection; it cannot invent evidence, hide a missing
+  alias target, borrow unrelated toolset membership, or reorder the catalog.
+  Alias choices must agree with the selected binding. Preserve empty sources,
+  require one explicit merge policy, and retain capture ownership across merge
+  failure or cancellation.
 - Close acquisition before draining pending acquisitions, outstanding leases,
   and owned source resources. Share repeated disposal completion/failure, never
   retry cleanup implicitly, and retain host ownership of borrowed invokers. A

@@ -107,6 +107,26 @@ names across distinct identities are valid discovery data; catalog merge and
 alias policy decide exposure before model I/O. The catalog snapshot retains
 every acquired source version, including selected empty sources.
 
+Catalog merge policy receives every validated contribution and the complete
+deterministic collision set before exposure. Identity collisions retain all
+competing source, descriptor, and execution-policy evidence; alias collisions
+retain explicit assignments. A missing alias target remains tied to the toolset
+that authored it. It MUST NOT borrow membership from another toolset.
+
+The default policy rejects collisions, including equivalent overlapping
+toolsets. An explicitly configured policy MAY choose existing contributions, but
+the catalog MUST revalidate completeness and exact evidence. Every distinct
+identity retains one candidate, every authored alias retains one existing
+assignment, and alias choices agree with the selected source, descriptor, and
+execution policy. Policy MUST NOT invent evidence, drop unresolved assignments,
+or reorder the catalog. Different exact versions remain distinct identities;
+display names do not supply implicit aliases or precedence.
+
+Publication validation precedes policy callbacks. Policy runs once for the
+complete graph. Rejection exposes no partial snapshot, and cancellation after a
+policy await prevents transfer. The caller retains ownership of discovered
+captures throughout merge and cleans them up on failure or rejection.
+
 Snapshots contain only immutable evidence. Their companion provider and catalog
 captures own live acquisitions; a serialized snapshot cannot recover an invoker
 by looking up current registrations. Invoker leases retain the exact descriptor

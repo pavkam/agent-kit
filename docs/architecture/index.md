@@ -260,6 +260,13 @@ replacement under the exact typed source key affects later composition without
 redirecting retained providers or leases. Catalog selection and merge policy
 stay separate from discovery registration.
 
+Catalog merge policy now receives complete ordered candidate and collision
+evidence. The first-party default rejects collisions; configured policies can
+select existing contributions subject to complete source, descriptor, policy,
+and alias revalidation. Merge preserves authored order and empty sources and
+owns no captures. Full catalog discovery/preflight coordination and migration
+from the legacy loop path remain open.
+
 Retained tool-source and catalog captures close acquisition and drain pending
 acquisitions and invoker leases before owned cleanup. Their
 [lifetime contract](tools.md#discovery-resolution-validation-and-selection)

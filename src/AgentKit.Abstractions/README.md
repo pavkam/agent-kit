@@ -62,6 +62,14 @@ from `DiscoverAsync`. Discovery retains explicit source versions and exact
 bindings; it never invokes a tool or grants authority. The first-party static
 implementation and typed-key registration live in `AgentKit.Tools`.
 
+`IToolCatalogMergePolicy` receives a complete immutable
+`ToolCatalogMergeContext`. Candidates retain exact toolset/source publications
+and descriptors. Closed collision cases represent repeated identities, repeated
+explicit aliases, and missing alias targets. A policy returns rejection or a
+complete selection from that captured evidence; the catalog revalidates source,
+descriptor, policy, alias, and membership coherence before constructing a
+snapshot.
+
 `ToolDiscoveryRequest` validates matching agent, session, active run, complete
 identity, definition revision, and configuration before source discovery. It
 retains ordered selections with unique exact toolset keys.

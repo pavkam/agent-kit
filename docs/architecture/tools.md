@@ -430,6 +430,54 @@ first-party policy rejects every unconfigured descriptor, identity, source, or
 alias collision. Registration order, dictionary comparer behavior, descriptor
 names, and textual alias-to-ID equality never break ties.
 
+`ToolCatalogCandidate` retains its complete `ToolsetPublication`, exact
+`ToolProviderSnapshot`, and the descriptor found in that source. Candidates are
+ordered by authored toolset, source membership, then descriptor order. Repeated
+exact identities produce `ToolCatalogIdentityCollision`, preserving competing
+source, descriptor, and execution-policy evidence together. Even equivalent
+overlapping toolsets require explicit selection. Different versions of one
+canonical ID remain distinct identities. Repeated display names alone do not
+collide when explicit aliases are unambiguous.
+
+`ToolCatalogAliasCollision` retains every candidate and unresolved assignment
+for an explicitly assigned alias. A repeated alias still collides when one or
+every assignment has no descriptor. `ToolCatalogMissingAliasTarget` retains the
+originating toolset and exact missing assignment; another toolset's membership
+cannot repair it. The complete `ToolCatalogMergeContext` lists identity
+collisions first, alias collisions second, and missing assignments last,
+preserving first authored occurrence in each category. All selected source keys
+and publications must validate before policy runs. A malformed source map or a
+publication that differs from the authored selection is invalid input, not a
+precedence choice.
+
+The closed `ToolCatalogMergeDecision` is either `ToolCatalogRejection` or
+`ToolCatalogSelection`. A selection supplies exactly one existing candidate per
+distinct identity and one existing assignment per distinct authored alias. It
+cannot omit an unambiguous contribution, hide a missing target, or reorder the
+catalog. Alias contributions must agree with the selected descriptor, complete
+source publication, and exact execution policy. Equivalent toolset origins may
+contribute different aliases to that same selected binding. The catalog
+revalidates all evidence and preserves the first occurrence of each identity
+when ordering selected descriptors.
+
+`RejectingToolCatalogMergePolicy` accepts collision-free graphs and rejects
+every collision. `AddToolCatalogMerging` registers that replaceable default and
+the internal merge coordinator without source discovery or activation.
+Composition requires exactly one unkeyed policy; multiple registrations never
+select a winner by order. `ReplaceToolCatalogMergePolicy<TPolicy>` explicitly
+replaces unkeyed policies while preserving keyed registrations, host clocks, and
+old hosts. The merge coordinator borrows source snapshots and owns no capture;
+catalog capture still owns discovery, cleanup, schema/capability preflight, and
+model exposure. The legacy `AddAgentTools` coordinator is not yet migrated.
+
+Merge and policy operations use `tool.catalog.merge` and
+`tool.catalog.merge.policy`, with safe run correlation and bounded
+operation/outcome metrics. Cancellation is checked before policy and after its
+completion; a late decision transfers no snapshot. Rejection returns the
+complete collision context without a partial snapshot. Policy failure and
+invalid decisions propagate as failures, with observer and clock failures
+isolated from the semantic outcome.
+
 Every descriptor carries an exact nondefault tool version and explicit stable
 source identity. Its input and optional output use the shared owned `JsonSchema`
 value with an explicit `JsonSchemaDialectId`; accepting that value proves only
@@ -1327,6 +1375,15 @@ The toolset and capture contract has these acceptance scenarios:
 - A merge policy may choose only an identity and source already present in the
   validated collision set. A decision containing different evidence is rejected
   rather than treated as a new registration.
+- Collisions are collected across every selected publication before the single
+  policy call. Missing alias targets cannot be borrowed from an unrelated
+  toolset, dropped from a decision, or repaired by fabricated metadata.
+- A configured selection preserves descriptor order independently of the
+  selection array and retains every selected source version, including empty
+  sources. An alias cannot select a different source or execution policy from
+  its chosen descriptor.
+- Multiple unkeyed merge policies reject composition. Explicit policy
+  replacement preserves previously constructed hosts and keyed host policies.
 - A dynamic provider lease binds only descriptors from its own exact returned
   source snapshot. A changed or missing binding rejects resolution, and partial
   capture failure releases every owned acquisition exactly once.

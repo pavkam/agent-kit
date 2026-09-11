@@ -18,6 +18,15 @@ Registration validation, typed keys, and replacement stay in
 `ServiceExtensionsTests`; the shared binding graph has its own
 `ToolProviderBindingsTests` fixture.
 
+`RejectingToolCatalogMergePolicyTests` runs the reusable policy suite through
+public DI and adds default rejection and safe-observation checks.
+`ToolCatalogMergeGraphTests` covers complete deterministic collisions, missing
+membership, hostile comparers, exact selection validation, and retained order.
+`ToolCatalogMergerTests` composes static discovery, merge, catalog capture, and
+invoker acquisition, including cancellation and failed policy decisions.
+`ToolCatalogMergeObservationTests` covers diagnostic lifecycle and observer
+failures. Policy cardinality and replacement remain in `ServiceExtensionsTests`.
+
 ## Start with these tests
 
 - [ToolProviderCaptureTests](ToolProviderCaptureTests.cs) — reusable

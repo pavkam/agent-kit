@@ -6,6 +6,17 @@ namespace AgentKit.Tools;
 /// <summary>Defines allocation-efficient structured tool-lifecycle log events.</summary>
 internal static partial class ToolLog
 {
+    /// <summary>Records entry to a catalog merge boundary using identity evidence only.</summary>
+    /// <param name="logger">The emitting runtime type's logger.</param><param name="operation">One of the two stable merge operation names.</param>
+    /// <param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param>
+    [LoggerMessage(4060, LogLevel.Debug, "Starting {Operation} for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}.")]
+    internal static partial void CatalogMergeStarted(ILogger logger, string operation, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId);
+
+    /// <summary>Records a bounded terminal merge result without copying aliases, schemas, or policy exception text.</summary>
+    /// <param name="logger">The emitting runtime type's logger.</param><param name="level">Severity matching the semantic outcome.</param><param name="operation">One of the two stable merge operation names.</param>
+    /// <param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param><param name="outcome">A closed merge result.</param>
+    [LoggerMessage(EventId = 4061, Message = "Completed {Operation} for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId} with outcome {Outcome}.")]
+    internal static partial void CatalogMergeCompleted(ILogger logger, LogLevel level, string operation, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId, string outcome);
     /// <summary>Records source discovery before capture ownership transfers.</summary>
     /// <param name="logger">The provider-specific logger.</param><param name="sourceId">The stable selected source.</param><param name="tenantId">The request tenant.</param><param name="principalId">The authenticated principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The owning session.</param><param name="runId">The active run.</param>
     [LoggerMessage(4050, LogLevel.Debug, "Discovering tool source {SourceId} for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}.")]

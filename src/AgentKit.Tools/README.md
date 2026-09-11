@@ -39,6 +39,22 @@ protected remote discovery.
 Static discovery publishes configured metadata. The catalog still decides source
 selection, collisions, aliases, and model/schema support before exposure.
 
+## Catalog collision policy
+
+`AddToolCatalogMerging()` registers `RejectingToolCatalogMergePolicy` and the
+internal immutable merge coordinator. The default accepts unambiguous graphs and
+rejects identity, alias, and missing-target collisions. Hosts can use
+`ReplaceToolCatalogMergePolicy<TPolicy>()` to select explicitly configured
+captured contributions. Multiple unkeyed policies reject composition.
+
+The coordinator validates the full source graph before policy, preserves
+authored descriptor order and empty source versions, and revalidates every
+selected source, descriptor, policy, and alias. An alias must agree with its
+selected binding. Policy cannot fabricate metadata, drop a missing target, or
+publish a partial graph. Cancellation after policy completion prevents snapshot
+transfer. This component borrows metadata; discovery, capture cleanup, and
+schema/capability preflight still belong to catalog capture.
+
 ## Retained catalog captures
 
 [ToolCatalogCapture](ToolCatalogCapture.cs) takes an already merged
@@ -55,9 +71,9 @@ suppressing another cleanup or retrying a previous one. Callers release their
 leases before awaiting catalog closure. Borrowed invokers keep their original
 disposal owner.
 
-This object supplies retained catalog lifetime. Catalog merge decisions, dynamic
-provider registration, and replacement of the legacy `IToolCatalog` coordinator
-remain separate work; `AddAgentTools` still selects the legacy runtime.
+This object supplies retained catalog lifetime. Dynamic provider registration
+and replacement of the legacy `IToolCatalog` coordinator remain separate work;
+`AddAgentTools` still selects the legacy runtime.
 
 ## Retained source captures
 

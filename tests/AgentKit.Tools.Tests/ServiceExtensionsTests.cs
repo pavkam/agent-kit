@@ -10,6 +10,65 @@ using Microsoft.Extensions.Logging;
 
 public sealed class ServiceExtensionsTests
 {
+    [Fact]
+    public void AddToolCatalogMerging_WhenPolicyRegistrationsAmbiguous_RejectsInsteadOfSelectingLast()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<IToolCatalogMergePolicy>(new CallbackToolCatalogMergePolicy());
+        _ = services.AddSingleton<IToolCatalogMergePolicy>(new CallbackToolCatalogMergePolicy());
+        _ = services.AddToolCatalogMerging();
+        using var host = services.BuildServiceProvider();
+
+        _ = Should.Throw<InvalidOperationException>(host.GetRequiredService<ToolCatalogMerger>);
+    }
+
+    [Fact]
+    public void AddToolCatalogMerging_WhenRepeated_PreservesHostChoicesWithoutActivation()
+    {
+        var services = new ServiceCollection();
+        var policy = new CallbackToolCatalogMergePolicy();
+        var calls = 0;
+        var clock = new CallbackTimestampTimeProvider(static () => 0);
+        _ = services.AddSingleton<TimeProvider>(clock);
+        _ = services.AddSingleton<IToolCatalogMergePolicy>(_ => { calls++; return policy; });
+        services.AddToolCatalogMerging().ShouldBeSameAs(services);
+        services.AddToolCatalogMerging().ShouldBeSameAs(services);
+        calls.ShouldBe(0);
+        using var host = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        host.GetRequiredService<IToolCatalogMergePolicy>().ShouldBeSameAs(policy);
+        host.GetRequiredService<TimeProvider>().ShouldBeSameAs(clock);
+        host.GetRequiredService<ToolCatalogMerger>().ShouldBeSameAs(host.GetRequiredService<ToolCatalogMerger>());
+        host.GetServices<IToolCatalogMergePolicy>().Count().ShouldBe(1);
+        calls.ShouldBe(1);
+    }
+
+    [Fact]
+    public void ReplaceToolCatalogMergePolicy_WhenCalled_ReplacesUnkeyedPoliciesAndPreservesExistingHosts()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddToolCatalogMerging();
+        using var oldHost = services.BuildServiceProvider();
+        var old = oldHost.GetRequiredService<IToolCatalogMergePolicy>();
+        var keyed = new CallbackToolCatalogMergePolicy();
+        _ = services.AddKeyedSingleton<IToolCatalogMergePolicy>("host-key", keyed);
+        _ = services.AddSingleton<IToolCatalogMergePolicy>(_ => throw new InvalidOperationException("must-not-activate"));
+        services.ReplaceToolCatalogMergePolicy<CallbackToolCatalogMergePolicy>().ShouldBeSameAs(services);
+        _ = services.AddToolCatalogMerging();
+        using var newHost = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        _ = newHost.GetRequiredService<IToolCatalogMergePolicy>().ShouldBeOfType<CallbackToolCatalogMergePolicy>();
+        newHost.GetRequiredKeyedService<IToolCatalogMergePolicy>("host-key").ShouldBeSameAs(keyed);
+        newHost.GetServices<IToolCatalogMergePolicy>().Count().ShouldBe(1);
+        oldHost.GetRequiredService<IToolCatalogMergePolicy>().ShouldBeSameAs(old);
+    }
+
+    [Fact]
+    public void AddToolCatalogMerging_WhenCollectionNull_RejectsExactParameter()
+    {
+        IServiceCollection services = null!;
+        Should.Throw<ArgumentNullException>(services.AddToolCatalogMerging).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(services.ReplaceToolCatalogMergePolicy<CallbackToolCatalogMergePolicy>).ParamName.ShouldBe("services");
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

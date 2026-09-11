@@ -16,6 +16,11 @@ bindings, empty publications, independent repeated/concurrent captures, and
 pre-transfer cancellation through a typed provider factory. The static-provider
 fixture resolves the subject through public DI registration and owns its hosts.
 
+`ToolCatalogMergePolicyConformanceTests` exercises policies configured to accept
+unambiguous graphs and reject unconfigured collisions. It checks exact
+contributions, explicit aliases, empty catalogs, all closed collision cases,
+cancellation, and concurrent independent requests through a typed factory.
+
 ## Available suites
 
 - [AgentRunStreamConformance](AgentRunStreamConformance.cs) — subscription

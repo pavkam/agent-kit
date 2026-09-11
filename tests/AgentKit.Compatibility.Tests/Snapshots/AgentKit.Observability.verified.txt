@@ -81,6 +81,8 @@ namespace AgentKit.Observability
         public const string ToolCatalogCaptureDisposeSources = "tool.catalog.capture.dispose_sources";
         public const string ToolCatalogInvokerAcquire = "tool.catalog.invoker.acquire";
         public const string ToolCatalogInvokerRelease = "tool.catalog.invoker.release";
+        public const string ToolCatalogMerge = "tool.catalog.merge";
+        public const string ToolCatalogMergePolicy = "tool.catalog.merge.policy";
         public const string ToolInvokerAcquire = "tool.invoker.acquire";
         public const string ToolInvokerRelease = "tool.invoker.release";
         public const string ToolProviderCaptureClose = "tool.provider.capture.close";
@@ -162,6 +164,8 @@ namespace AgentKit.Observability
         public const string ToolCallDuration = "agentkit.tool.call.duration";
         public const string ToolCatalogCaptureOperationCount = "agentkit.tool.catalog.capture.operation.count";
         public const string ToolCatalogCaptureOperationDuration = "agentkit.tool.catalog.capture.operation.duration";
+        public const string ToolCatalogMergeCount = "agentkit.tool.catalog.merge.count";
+        public const string ToolCatalogMergeDuration = "agentkit.tool.catalog.merge.duration";
         public const string ToolProviderCaptureOperationCount = "agentkit.tool.provider.capture.operation.count";
         public const string ToolProviderCaptureOperationDuration = "agentkit.tool.provider.capture.operation.duration";
         public const string ToolProviderDiscoveryCount = "agentkit.tool.provider.discovery.count";
