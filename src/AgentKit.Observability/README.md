@@ -13,6 +13,11 @@ instruments carry only bounded operation/outcome dimensions; traces and logs
 retain captured tenant, principal, agent, session, run, and catalog-version
 correlation.
 
+Tool-provider discovery uses `tool.provider.discover`, with source and run
+correlation on traces/logs. The discovery count and duration instruments carry
+only bounded outcome tags; descriptors, schemas, and request content are
+omitted.
+
 ## Use this project
 
 Start with `AddAgentKitObservability` in

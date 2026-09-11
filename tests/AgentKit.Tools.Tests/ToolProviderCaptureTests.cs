@@ -18,6 +18,17 @@ public sealed class ToolProviderCaptureTests: ToolProviderCaptureConformanceTest
         new ToolProviderCapture(snapshot, invokers, lifetime, TimeProvider.System, NullLogger<ToolProviderCapture>.Instance);
 
     [Fact]
+    public void Constructor_WhenPrevalidatedDependenciesAreNull_RejectsBeforeLifetimeOwnership()
+    {
+        var bindings = new ToolProviderBindings(ToolCaptureTestData.Snapshot([]), []);
+        var owner = new CaptureLifetimeProbe();
+        AssertExact<ArgumentNullException>(() => _ = new ToolProviderCapture(null!, owner, TimeProvider.System, NullLogger<ToolProviderCapture>.Instance), "bindings");
+        AssertExact<ArgumentNullException>(() => _ = new ToolProviderCapture(bindings, owner, null!, NullLogger<ToolProviderCapture>.Instance), "timeProvider");
+        AssertExact<ArgumentNullException>(() => _ = new ToolProviderCapture(bindings, owner, TimeProvider.System, null!), "logger");
+        owner.Calls.ShouldBe(0);
+    }
+
+    [Fact]
     public void Constructor_WhenDependenciesAreInvalid_RejectsBeforeTakingOwnershipOrReadingClock()
     {
         var owner = new CaptureLifetimeProbe();

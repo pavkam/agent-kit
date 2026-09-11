@@ -18,6 +18,27 @@ example, follow [Getting started](../../docs/getting-started.md). Complete
 engine composition is described in the
 [composition guide](../../docs/guides/composition.md).
 
+## Static application discovery
+
+`AddStaticToolProvider(snapshot, invokers)` registers a
+[StaticToolProvider](StaticToolProvider.cs) under the snapshot's exact typed
+`ToolSourceId` key. Supply the complete immutable publication and its exact
+identity-to-invoker map; source versions and aliases are never invented.
+Duplicate source keys reject before mutation. Use `ReplaceStaticToolProvider`
+for an explicit change that affects later hosts while keeping old providers and
+captures intact. Registration preserves host logging and clocks and activates no
+services.
+
+The provider returns a fresh owned source capture for each `DiscoverAsync`
+request. Captures share the immutable binding graph and keep separate lease and
+closure state. Invokers remain borrowed from their original host owner, which
+must keep them alive through every outstanding capture and lease. Use a
+different provider for per-request instances, principal-specific data, or
+protected remote discovery.
+
+Static discovery publishes configured metadata. The catalog still decides source
+selection, collisions, aliases, and model/schema support before exposure.
+
 ## Retained catalog captures
 
 [ToolCatalogCapture](ToolCatalogCapture.cs) takes an already merged
@@ -34,7 +55,7 @@ suppressing another cleanup or retrying a previous one. Callers release their
 leases before awaiting catalog closure. Borrowed invokers keep their original
 disposal owner.
 
-This object supplies retained catalog lifetime. Discovery, merge decisions,
+This object supplies retained catalog lifetime. Catalog merge decisions, dynamic
 provider registration, and replacement of the legacy `IToolCatalog` coordinator
 remain separate work; `AddAgentTools` still selects the legacy runtime.
 
@@ -61,9 +82,9 @@ Acquisition, release, closure, and cleanup emit isolated structured logs,
 activities, and bounded operation/outcome metrics without descriptor content.
 
 The existing `AddAgentTools` path still uses the legacy catalog and combined
-invoker. Aggregate catalog capture, canonical resolution/invocation, and loop
-integration remain under construction; this source-capture component supplies
-their retained binding and lifetime boundary.
+invoker. Catalog coordination, canonical resolution/invocation, and loop
+integration remain under construction; source and catalog captures supply their
+retained binding and lifetime boundaries.
 
 ## Retained projection policies
 

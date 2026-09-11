@@ -23,6 +23,8 @@ namespace AgentKit.Tools
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddStaticToolProvider(AgentKit.ToolProviderSnapshot snapshot, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.IToolInvoker> invokers) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceStaticToolProvider(AgentKit.ToolProviderSnapshot snapshot, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.IToolInvoker> invokers) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentTools(System.Action<AgentKit.Tools.AgentToolsOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolResultProjectionPolicyCatalog() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolResultProjectionPolicy(AgentKit.ToolResultProjectionPolicySnapshot snapshot) { }
@@ -32,6 +34,12 @@ namespace AgentKit.Tools
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddTool<TTool>()
                 where TTool :  class, AgentKit.ITool { }
         }
+    }
+    public sealed class StaticToolProvider : AgentKit.IToolProvider
+    {
+        public StaticToolProvider(AgentKit.ToolProviderSnapshot snapshot, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.IToolInvoker> invokers, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.StaticToolProvider> logger, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.ToolProviderCapture> captureLogger) { }
+        public AgentKit.ToolSourceId SourceId { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.IToolProviderCapture> DiscoverAsync(AgentKit.ToolDiscoveryRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class ToolCatalog : AgentKit.IToolCatalog
     {

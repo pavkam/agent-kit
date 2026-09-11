@@ -12,6 +12,12 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 source-graph validation, hostile metadata and lease responses, cleanup failure
 aggregation, owned/borrowed DI scopes, and safe diagnostic/observer coverage.
 
+`StaticToolProviderTests` runs reusable discovery conformance plus static
+binding, DI scope, concurrent correlation, and observer-isolation checks.
+Registration validation, typed keys, and replacement stay in
+`ServiceExtensionsTests`; the shared binding graph has its own
+`ToolProviderBindingsTests` fixture.
+
 ## Start with these tests
 
 - [ToolProviderCaptureTests](ToolProviderCaptureTests.cs) — reusable

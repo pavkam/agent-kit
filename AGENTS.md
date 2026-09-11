@@ -319,6 +319,11 @@ The architecture index defines document authority and change rules.
 
 - Separate tool description, discovery, resolution, authorization, execution,
   and result recording.
+- Tool-provider discovery transfers an independent capture per request. Static
+  providers retain explicit versions and borrowed invokers without selecting
+  toolsets, inferring aliases, or granting authority. Source registration is
+  keyed by exact `ToolSourceId`; replacing a registration never redirects an
+  existing provider, capture, or lease.
 - Provider and catalog captures retain exact source publications and own their
   acquisitions. Resolution uses those captures to acquire invoker leases;
   immutable snapshots never imply a lookup against current DI registrations.

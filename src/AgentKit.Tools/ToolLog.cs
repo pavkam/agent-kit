@@ -6,6 +6,16 @@ namespace AgentKit.Tools;
 /// <summary>Defines allocation-efficient structured tool-lifecycle log events.</summary>
 internal static partial class ToolLog
 {
+    /// <summary>Records source discovery before capture ownership transfers.</summary>
+    /// <param name="logger">The provider-specific logger.</param><param name="sourceId">The stable selected source.</param><param name="tenantId">The request tenant.</param><param name="principalId">The authenticated principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The owning session.</param><param name="runId">The active run.</param>
+    [LoggerMessage(4050, LogLevel.Debug, "Discovering tool source {SourceId} for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}.")]
+    internal static partial void ProviderDiscoveryStarted(ILogger logger, ToolSourceId sourceId, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId);
+
+    /// <summary>Records the discovery outcome without tool descriptors or request content.</summary>
+    /// <param name="logger">The provider-specific logger.</param><param name="level">The outcome-derived severity.</param><param name="sourceId">The selected source.</param><param name="sourceVersion">The retained publication version.</param><param name="tenantId">The request tenant.</param><param name="principalId">The authenticated principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The owning session.</param><param name="runId">The active run.</param><param name="outcome">The bounded terminal outcome.</param>
+    [LoggerMessage(EventId = 4051, Message = "Tool source {SourceId} at version {SourceVersion} discovery {Outcome} for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}.")]
+    internal static partial void ProviderDiscoveryCompleted(ILogger logger, LogLevel level, ToolSourceId sourceId, ToolSourceVersion sourceVersion, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId, string outcome);
+
     /// <summary>Records a catalog acquisition or lifetime stage before source callbacks.</summary>
     /// <param name="logger">The capture-specific logger.</param><param name="operation">The bounded stage name.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The authenticated principal.</param><param name="agentId">The catalog agent.</param><param name="sessionId">The owning session.</param><param name="runId">The captured active run.</param><param name="catalogVersion">The exact retained catalog version.</param>
     [LoggerMessage(4040, LogLevel.Debug, "Starting {Operation} for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId} and tool catalog {CatalogVersion}.")]

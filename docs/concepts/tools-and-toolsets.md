@@ -88,6 +88,18 @@ keys are unique and compared exactly; an empty selection and definition revision
 zero are valid. Constructing the request validates local coherence, while the
 catalog still resolves publications and preflights capability/schema support.
 
+A provider's source identity is stable composition metadata and requires no I/O.
+Every successful discovery transfers an independently owned capture, even when
+successive captures share the same immutable publication. Closing an earlier
+capture cannot close a later discovery. Cancellation before transfer exposes no
+partial capture; cancellation after transfer does not revoke the returned owner.
+
+A static application provider may expose one explicitly configured,
+principal-independent publication without discovery effects. It still requires
+real source versions and exact bindings. It does not decide toolset selection,
+schema support, model exposure, or execution authority. Borrowed invokers remain
+alive under their original host owner through all captures and leases.
+
 A provider snapshot retains its explicit source ID, exact source version, and
 ordered descriptors. Every descriptor belongs to that source, and an exact
 tool/version identity appears at most once in the publication. Repeated display
@@ -216,6 +228,10 @@ declared and authorized effect.
 
 - Duplicate provider-visible names fail before model I/O.
 - A dynamic call resolves against its original catalog snapshot.
+- Repeated or concurrent discovery transfers independent captures; closing one
+  leaves the others usable, and later cancellation does not revoke a transfer.
+- Replacing a source registration affects a later host without changing an old
+  provider's captured source version or invoker binding.
 - A refreshed source cannot change an invoker acquired through the original
   capture; selected empty sources retain their publication versions.
 - A foreign descriptor source, repeated exact identity, or missing catalog

@@ -254,6 +254,12 @@ expand AgentKit's mandatory runtime spine.
 | Identity and artifacts               | Immutable execution identity plus keyed artifact coordinator/store contracts                                      | `AddAgentIdentity` at trusted ingress and `AddAgentArtifacts` with explicit backend leaves                                                                                                                                                  |
 | Evaluation                           | Singular `IEvaluationRunner`, keyed additive evaluators/stores/exporters                                          | `AddAgentEvaluation`; optional and uses only public engine surfaces                                                                                                                                                                         |
 
+Static application tool discovery uses explicit immutable source publications
+and exact borrowed invoker bindings. Each discovery owns a fresh capture;
+replacement under the exact typed source key affects later composition without
+redirecting retained providers or leases. Catalog selection and merge policy
+stay separate from discovery registration.
+
 Retained tool-source and catalog captures close acquisition and drain pending
 acquisitions and invoker leases before owned cleanup. Their
 [lifetime contract](tools.md#discovery-resolution-validation-and-selection)

@@ -70,6 +70,37 @@ owning spec.
 
 ## Latest integration evidence
 
+The application-source discovery checkpoint adds `IToolProvider` and
+`StaticToolProvider`. Each discovery returns an independently owned source
+capture over one explicitly versioned immutable binding graph. Concurrent and
+repeated requests share no closure or lease state. The provider is
+principal-independent, performs no I/O or invocation, and leaves toolset
+selection, aliasing, and schema/capability preflight to catalog composition.
+
+`AddStaticToolProvider` and `ReplaceStaticToolProvider` use exact typed source
+keys. They validate before mutation, preserve host diagnostics, and do not
+activate services during registration. Duplicate additions reject; replacement
+leaves other keys and existing hosts, providers, captures, and leases unchanged.
+Invokers retain their external disposal owner. Source capture and static
+discovery now share one immutable binding validator.
+
+Typed conformance and owning-class tests cover discovery/capture/catalog/lease
+composition, borrowed DI scopes, cancellation, independent concurrent captures,
+registration replacement, safe correlation, and throwing observers. Catalog
+merge policy and coordination, generic dynamic-provider registration, canonical
+resolution/invocation, terminal records and projections, message codecs, and
+durable output remain open. `AddAgentTools` and the loop still use the legacy
+catalog and combined invoker.
+
+Verification: all 7,045 Release tests pass without build warnings, errors,
+failures, or skips. The Tools suite has 203 cases, including 37 new discovery,
+registration, binding, and lifetime cases. Discovery conformance runs through
+the public typed-key DI registration. Both foreign-key equality regressions were
+observed failing before matching was restricted to actual `ToolSourceId` values;
+all focused and solution checks pass after the fix. All 68 compatibility checks
+pass with three reviewed additive snapshots. Repository C# formatting, Prettier,
+and Markdown lint pass, including the final DI-backed fixture change.
+
 The retained catalog-lifetime checkpoint adds `IToolCatalogCapture` and
 `ToolCatalogCapture`. An already merged catalog now owns its exact source graph,
 including selected empty sources. Construction checks complete descriptor and

@@ -834,6 +834,20 @@ publishes no partial catalog. Ownership transfer and release must be race-safe
 and dispose each owned acquisition once. Disposal never proves that an external
 effect stopped or was undone.
 
+The first-party `StaticToolProvider` implements `IToolProvider` over a
+host-supplied `ToolProviderSnapshot` and complete exact invoker map. It
+validates the binding graph once, preserves the explicit source version, and
+returns a fresh `ToolProviderCapture` for each discovery. Captures share
+immutable bindings but never share closure or lease state. Discovery does not
+read invoker metadata, perform I/O, or invoke a tool.
+
+This provider is deliberately principal-independent: it publishes the configured
+metadata for every locally coherent request. Toolset selection, model capability
+and schema preflight, alias assignment, and authorization remain at their owning
+boundaries. The host keeps borrowed invokers alive until all captures and leases
+have closed. Per-request instances, principal-specific filtering, and protected
+remote discovery require a provider that owns those acquisition mechanics.
+
 The first-party `ToolProviderCapture` captures a complete exact
 identity-to-invoker map beside one `ToolProviderSnapshot`. It validates missing,
 extra, default, null, and duplicate normalized bindings before taking ownership
@@ -1223,6 +1237,23 @@ before mutation because their reference cannot be inspected without activating
 services. Replacement must not rewrite retained content required by recorded
 results. `ReplaceToolResultProjectionPolicyCatalog<TCatalog>` replaces the
 singular catalog registration while preserving configured snapshots and clocks.
+
+`AddStaticToolProvider(snapshot, invokers)` registers one keyed singleton
+`IToolProvider`, using the exact `ToolSourceId` value as its DI key. It
+validates the full binding graph before changing registrations, rejects
+duplicate keys even for identical publications, and preserves host loggers and
+clocks. It builds no host, activates no service, and registers no unkeyed
+fallback. The provider owns no borrowed invoker lifetime; its returned captures
+belong to discovery callers.
+
+`ReplaceStaticToolProvider` changes only that exact typed source key, including
+opaque factory registrations, without activation. Other source keys and existing
+hosts, providers, captures, and leases are unchanged. Replacement does not
+reclaim an old invoker. Only actual `ToolSourceId` keys participate in matching;
+equality on a foreign host key cannot claim or replace a source. These
+registrations supply discovery sources; the catalog coordinator still selects
+sources from explicit toolset publications and never chooses a source through
+registration order.
 
 Named toolsets and execution-policy strategies are keyed registrations. Agent
 definitions refer to typed toolset and policy keys; runtime components receive

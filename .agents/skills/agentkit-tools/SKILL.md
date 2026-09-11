@@ -37,6 +37,12 @@ network, or process enforcement.
   AgentKit.Tools.ToolName and depend only on abstractions for host effects.
 - Resolve calls against the immutable catalog snapshot sent to the model. Bound
   and validate canonical arguments before authorization or invocation.
+- Keep provider discovery independent from catalog selection. Every successful
+  discovery transfers a fresh owned capture. Static providers share only
+  explicit immutable publication/binding evidence and retain external invoker
+  ownership; they do not infer aliases, filter principal-specific data, or grant
+  authority. Register sources under exact typed source IDs, and preserve old
+  captures when replacing registrations.
 - Retain provider and catalog captures explicitly. Acquire invoker leases only
   from the exact captured source versions; never recover a live binding from
   current DI registrations or descriptor names. Preserve requested aliases and

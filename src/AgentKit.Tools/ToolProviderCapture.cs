@@ -50,24 +50,27 @@ public sealed class ToolProviderCapture: IToolProviderCapture
         ArgumentNullException.ThrowIfNull(invokers);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
-        var captured = new Dictionary<ToolIdentity, IToolInvoker>();
-        foreach (var pair in invokers)
-        {
-            ArgumentOutOfRangeException.ThrowIfEqual(pair.Key, default, nameof(invokers));
-            ArgumentNullException.ThrowIfNull(pair.Value, nameof(invokers));
-            ArgumentException.ThrowIfNotEqual(captured.TryAdd(pair.Key, pair.Value), true, nameof(invokers));
-        }
-        ArgumentException.ThrowIfNotEqual(captured.Count, snapshot.Tools.Length, nameof(invokers));
-        var bindings = new Dictionary<ToolIdentity, (ToolDescriptor Tool, IToolInvoker Invoker)>();
-        foreach (var tool in snapshot.Tools)
-        {
-            var identity = new ToolIdentity(tool.Id, tool.Version);
-            ArgumentException.ThrowIfNotEqual(captured.ContainsKey(identity), true, nameof(invokers));
-            bindings.Add(identity, (tool, captured[identity]));
-        }
+        var bindings = new ToolProviderBindings(snapshot, invokers);
+        _bindings = bindings.Entries;
+        Snapshot = bindings.Snapshot;
+        _lifetime = lifetime;
+        _timeProvider = timeProvider;
+        _logger = logger;
+    }
 
-        _bindings = bindings.ToFrozenDictionary();
-        Snapshot = snapshot;
+    /// <summary>Creates an independent acquisition lifetime over a graph already validated by its publisher.</summary>
+    /// <param name="bindings">The nonnull immutable graph shared without sharing acquisition state.</param>
+    /// <param name="lifetime">Optional owned source lifetime; null retains external ownership.</param>
+    /// <param name="timeProvider">The nonnull diagnostic clock.</param>
+    /// <param name="logger">The nonnull capture-specific logger.</param>
+    /// <exception cref="ArgumentNullException">A required reference is null.</exception>
+    internal ToolProviderCapture(ToolProviderBindings bindings, IAsyncDisposable? lifetime, TimeProvider timeProvider, ILogger<ToolProviderCapture> logger)
+    {
+        ArgumentNullException.ThrowIfNull(bindings);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(logger);
+        _bindings = bindings.Entries;
+        Snapshot = bindings.Snapshot;
         _lifetime = lifetime;
         _timeProvider = timeProvider;
         _logger = logger;

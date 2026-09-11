@@ -7,6 +7,9 @@ namespace AgentKit.Observability;
 /// <remarks>Names describe operations, never high-cardinality identities or content.</remarks>
 public static class AgentKitActivityNames
 {
+    /// <summary>Names source discovery that transfers a retained tool-provider capture, without invoking a tool.</summary>
+    public const string ToolProviderDiscover = "tool.provider.discover";
+
     /// <summary>Names exact invoker acquisition through a retained catalog graph.</summary>
     public const string ToolCatalogInvokerAcquire = "tool.catalog.invoker.acquire";
     /// <summary>Names release of a catalog-owned source invoker lease.</summary>

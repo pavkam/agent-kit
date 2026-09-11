@@ -11,6 +11,11 @@ concrete adapter fixtures; building this project alone is not a conformance run.
 acquisition/closure races, independent leases, cancellation, and exact ownership
 through a typed factory returning `IToolCatalogCapture`.
 
+`ToolProviderConformanceTests` covers stable source identity, exact retained
+bindings, empty publications, independent repeated/concurrent captures, and
+pre-transfer cancellation through a typed provider factory. The static-provider
+fixture resolves the subject through public DI registration and owns its hosts.
+
 ## Available suites
 
 - [AgentRunStreamConformance](AgentRunStreamConformance.cs) — subscription

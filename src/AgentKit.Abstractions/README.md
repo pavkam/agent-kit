@@ -57,6 +57,11 @@ remain under construction.
 
 ## Tool discovery evidence
 
+`IToolProvider` supplies a stable source identity and independent owned captures
+from `DiscoverAsync`. Discovery retains explicit source versions and exact
+bindings; it never invokes a tool or grants authority. The first-party static
+implementation and typed-key registration live in `AgentKit.Tools`.
+
 `ToolDiscoveryRequest` validates matching agent, session, active run, complete
 identity, definition revision, and configuration before source discovery. It
 retains ordered selections with unique exact toolset keys.
@@ -72,8 +77,8 @@ These immutable values own no live invokers. `IToolProviderCapture` and
 returns the closed `ToolInvokerAcquired` or `ToolInvokerUnavailable` outcome;
 copies of an acquired result share one lease rather than creating another
 acquisition. Closure drains outstanding leases before owned cleanup, and
-repeated disposal shares its completion and failure. The first-party source
-capture lives in `AgentKit.Tools`; aggregate catalog capture and canonical
+repeated disposal shares its completion and failure. The first-party source and
+catalog captures live in `AgentKit.Tools`; catalog coordination and canonical
 resolver/invocation integration remain under construction.
 
 ## Tool outcome evidence

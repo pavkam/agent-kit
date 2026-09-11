@@ -6,9 +6,175 @@ namespace AgentKit.Tools.Tests;
 using AgentKit.TestSupport;
 
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 public sealed class ServiceExtensionsTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AddStaticToolProvider_WhenForeignKeyEqualityClaimsMatch_PreservesForeignRegistration(bool replace)
+    {
+        var snapshot = ToolCaptureTestData.Snapshot([]);
+        var services = new ServiceCollection();
+        var key = new EqualToAnyServiceKey();
+        var foreign = ServiceDescriptor.KeyedSingleton<IToolProvider>(key, (_, _) => throw new InvalidOperationException("unrelated provider"));
+        _ = services.Add(foreign);
+
+        var result = replace ? services.ReplaceStaticToolProvider(snapshot, []) : services.AddStaticToolProvider(snapshot, []);
+
+        result.ShouldBeSameAs(services);
+        services.ShouldContain(foreign);
+        key.Comparisons.ShouldBe(0);
+        services.Count(descriptor => descriptor.IsKeyedService && descriptor.ServiceType == typeof(IToolProvider)
+            && descriptor.ServiceKey is ToolSourceId sourceId && sourceId == snapshot.SourceId).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AddStaticToolProvider_WhenConfigured_RegistersExactKeyAndPreservesHostDiagnostics()
+    {
+        var tool = ToolCaptureTestData.Descriptor();
+        var invoker = new CaptureTestToolInvoker();
+        var snapshot = ToolCaptureTestData.Snapshot([tool]);
+        var services = new ServiceCollection();
+        var reads = 0;
+        var clock = new CallbackTimestampTimeProvider(() => ++reads);
+        var logger = new RecordingLogger<StaticToolProvider>();
+        var captureLogger = new RecordingLogger<ToolProviderCapture>();
+        _ = services.AddSingleton<TimeProvider>(clock);
+        _ = services.AddSingleton<ILogger<StaticToolProvider>>(logger);
+        _ = services.AddSingleton<ILogger<ToolProviderCapture>>(captureLogger);
+
+        services.AddStaticToolProvider(snapshot, ToolCaptureTestData.Bindings(tool, invoker)).ShouldBeSameAs(services);
+        reads.ShouldBe(0);
+        logger.Snapshot().ShouldBeEmpty();
+        await using var host = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        host.GetService<IToolProvider>().ShouldBeNull();
+        host.GetService<IToolCatalog>().ShouldBeNull();
+        host.GetKeyedService<IToolProvider>(snapshot.SourceId.Value).ShouldBeNull();
+        host.GetKeyedService<IToolProvider>(new ToolSourceId("SOURCE.TESTS")).ShouldBeNull();
+        var provider = host.GetRequiredKeyedService<IToolProvider>(snapshot.SourceId);
+        provider.ShouldBeSameAs(host.GetRequiredKeyedService<IToolProvider>(new ToolSourceId("source.tests")));
+        provider.ShouldBeOfType<StaticToolProvider>().SourceId.ShouldBe(snapshot.SourceId);
+        host.GetRequiredService<TimeProvider>().ShouldBeSameAs(clock);
+        await using (var capture = await provider.DiscoverAsync(ToolCaptureTestData.Discovery(), TestContext.Current.CancellationToken))
+        {
+            await using var lease = (await capture.AcquireInvokerAsync(new(tool.Id, tool.Version), TestContext.Current.CancellationToken)).ShouldBeOfType<ToolInvokerAcquired>().Lease;
+            lease.Invoker.ShouldBeSameAs(invoker);
+        }
+        logger.Snapshot().Select(static entry => entry.EventId.Id).ShouldBe([4050, 4051]);
+        captureLogger.Snapshot().ShouldNotBeEmpty();
+        reads.ShouldBeGreaterThan(0);
+        invoker.Invocations.ShouldBe(0);
+        invoker.Disposals.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AddStaticToolProvider_WhenSourceKeyAlreadyRegistered_RejectsWithoutActivationOrMutation(bool opaque)
+    {
+        var snapshot = ToolCaptureTestData.Snapshot([]);
+        var services = new ServiceCollection();
+        var activations = 0;
+        _ = opaque
+            ? services.AddKeyedSingleton<IToolProvider>(snapshot.SourceId, (_, _) => { activations++; throw new InvalidOperationException("must not activate"); })
+            : services.AddStaticToolProvider(snapshot, []);
+        var before = services.ToArray();
+
+        var error = Should.Throw<ArgumentException>(() => services.AddStaticToolProvider(snapshot, []));
+
+        error.GetType().ShouldBe(typeof(ArgumentException));
+        error.ParamName.ShouldBe("services");
+        services.ShouldBe(before);
+        activations.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AddStaticToolProvider_WhenInputIsInvalid_RejectsBeforeRegistrationChanges(bool replace)
+    {
+        var tool = ToolCaptureTestData.Descriptor();
+        var snapshot = ToolCaptureTestData.Snapshot([tool]);
+        var invoker = new CaptureTestToolInvoker();
+        var bindings = ToolCaptureTestData.Bindings(tool, invoker);
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(new object());
+        var before = services.ToArray();
+        void Register(IServiceCollection collection, ToolProviderSnapshot publication, ImmutableDictionary<ToolIdentity, IToolInvoker> map) => _ = replace ? collection.ReplaceStaticToolProvider(publication, map) : collection.AddStaticToolProvider(publication, map);
+        static void Exact<TException>(Action action, string parameter) where TException : ArgumentException
+        {
+            var error = Should.Throw<TException>(action);
+            error.GetType().ShouldBe(typeof(TException));
+            error.ParamName.ShouldBe(parameter);
+        }
+
+        Exact<ArgumentNullException>(() => Register(null!, snapshot, bindings), "services");
+        Exact<ArgumentNullException>(() => Register(services, null!, bindings), "snapshot");
+        Exact<ArgumentNullException>(() => Register(services, snapshot, null!), "invokers");
+        Exact<ArgumentNullException>(() => Register(services, snapshot, bindings.SetItem(new(tool.Id, tool.Version), null!)), "invokers");
+        Exact<ArgumentOutOfRangeException>(() => Register(services, snapshot, ImmutableDictionary<ToolIdentity, IToolInvoker>.Empty.Add(default, invoker)), "invokers");
+        Exact<ArgumentException>(() => Register(services, snapshot, []), "invokers");
+        services.ShouldBe(before);
+        invoker.Disposals.ShouldBe(0);
+        invoker.Invocations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ReplaceStaticToolProvider_WhenSourceChanges_PreservesExistingHostsAndCapturedBindings()
+    {
+        var tool = ToolCaptureTestData.Descriptor();
+        var oldInvoker = new CaptureTestToolInvoker();
+        var newInvoker = new CaptureTestToolInvoker();
+        var oldPublication = ToolCaptureTestData.Snapshot([tool], "old-publication");
+        var newPublication = ToolCaptureTestData.Snapshot([tool], "new-publication");
+        var services = new ServiceCollection();
+        _ = services.AddStaticToolProvider(oldPublication, ToolCaptureTestData.Bindings(tool, oldInvoker));
+        await using var oldHost = services.BuildServiceProvider();
+        var oldProvider = oldHost.GetRequiredKeyedService<IToolProvider>(oldPublication.SourceId);
+        await using var oldCapture = await oldProvider.DiscoverAsync(ToolCaptureTestData.Discovery(), TestContext.Current.CancellationToken);
+
+        services.ReplaceStaticToolProvider(newPublication, ToolCaptureTestData.Bindings(tool, newInvoker)).ShouldBeSameAs(services);
+        await using var newHost = services.BuildServiceProvider();
+        var newProvider = newHost.GetRequiredKeyedService<IToolProvider>(newPublication.SourceId);
+        await using var newCapture = await newProvider.DiscoverAsync(ToolCaptureTestData.Discovery(), TestContext.Current.CancellationToken);
+        await using var oldLease = (await oldCapture.AcquireInvokerAsync(new(tool.Id, tool.Version), TestContext.Current.CancellationToken)).ShouldBeOfType<ToolInvokerAcquired>().Lease;
+        await using var newLease = (await newCapture.AcquireInvokerAsync(new(tool.Id, tool.Version), TestContext.Current.CancellationToken)).ShouldBeOfType<ToolInvokerAcquired>().Lease;
+
+        oldLease.Invoker.ShouldBeSameAs(oldInvoker);
+        oldLease.SourceVersion.ShouldBe(oldPublication.SourceVersion);
+        newLease.Invoker.ShouldBeSameAs(newInvoker);
+        newLease.SourceVersion.ShouldBe(newPublication.SourceVersion);
+        oldHost.GetRequiredKeyedService<IToolProvider>(oldPublication.SourceId).ShouldBeSameAs(oldProvider);
+        newProvider.ShouldNotBeSameAs(oldProvider);
+    }
+
+    [Fact]
+    public async Task ReplaceStaticToolProvider_WhenOpaqueRegistrationsExist_ReplacesOnlyTheExactTypedKey()
+    {
+        var publication = ToolCaptureTestData.Snapshot([]);
+        var alternate = new ToolProviderSnapshot(new ToolSourceId("SOURCE.TESTS"), new ToolSourceVersion("other"), []);
+        var services = new ServiceCollection();
+        var activations = 0;
+        _ = services.AddKeyedSingleton<IToolProvider>(publication.SourceId, (_, _) => { activations++; throw new InvalidOperationException("opaque source"); });
+        _ = services.AddKeyedSingleton<IToolProvider>(publication.SourceId, (_, _) => { activations++; throw new InvalidOperationException("duplicate opaque source"); });
+        var unkeyed = ServiceDescriptor.Singleton<IToolProvider>(_ => throw new InvalidOperationException("unkeyed source"));
+        var stringKeyed = ServiceDescriptor.KeyedSingleton<IToolProvider>(publication.SourceId.Value, (_, _) => throw new InvalidOperationException("string key"));
+        _ = services.Add(unkeyed);
+        _ = services.Add(stringKeyed);
+        _ = services.AddStaticToolProvider(alternate, []);
+
+        _ = services.ReplaceStaticToolProvider(publication, []);
+        services.ShouldContain(unkeyed);
+        services.ShouldContain(stringKeyed);
+        services.Count(descriptor => descriptor.IsKeyedService && descriptor.ServiceType == typeof(IToolProvider) && Equals(descriptor.ServiceKey, publication.SourceId)).ShouldBe(1);
+        await using var host = services.BuildServiceProvider();
+        host.GetRequiredKeyedService<IToolProvider>(publication.SourceId).SourceId.ShouldBe(publication.SourceId);
+        host.GetRequiredKeyedService<IToolProvider>(alternate.SourceId).SourceId.ShouldBe(alternate.SourceId);
+        activations.ShouldBe(0);
+    }
+
     [Fact]
     public void AddAgentTools_WhenCalled_RegistersCatalogAuthorizerAndInvoker()
     {

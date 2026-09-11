@@ -13,6 +13,53 @@ public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
+        /// <summary>Registers an immutable application tool source under its exact typed source key.</summary>
+        /// <param name="snapshot">The nonnull explicit source publication, including its source version.</param>
+        /// <param name="invokers">The complete nonnull borrowed binding map for the publication; the host owner keeps every instance alive through all captures and leases.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/>, <paramref name="snapshot"/>, <paramref name="invokers"/>, or a binding is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A binding identity is default.</exception>
+        /// <exception cref="ArgumentException">Bindings do not exactly match the publication, or this source already has a keyed provider registration.</exception>
+        /// <remarks>
+        /// Adds one keyed singleton <see cref="IToolProvider"/> using <see cref="ToolSourceId"/> itself
+        /// as the service key. Duplicate source registration rejects before mutation, even for identical
+        /// content; use explicit replacement to change it. Captures are created per discovery. Logging
+        /// and a default clock are added without replacing host choices. This method builds no provider,
+        /// activates no service, registers no unkeyed fallback, and never takes ownership of invokers.
+        /// Catalog selection and model exposure remain separate from source registration.
+        /// </remarks>
+        public IServiceCollection AddStaticToolProvider(ToolProviderSnapshot snapshot, ImmutableDictionary<ToolIdentity, IToolInvoker> invokers)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(snapshot);
+            ArgumentNullException.ThrowIfNull(invokers);
+            var bindings = new ToolProviderBindings(snapshot, invokers);
+            return ToolServiceRegistration.RegisterStaticProvider(services, bindings, false);
+        }
+
+        /// <summary>Explicitly replaces the configured provider for one exact source key before a host is built.</summary>
+        /// <param name="snapshot">The nonnull replacement source publication with its explicit version.</param>
+        /// <param name="invokers">The complete borrowed binding map; previously captured bindings keep their original owners.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/>, <paramref name="snapshot"/>, <paramref name="invokers"/>, or a binding is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A binding identity is default.</exception>
+        /// <exception cref="ArgumentException">Bindings do not exactly match the supplied publication.</exception>
+        /// <remarks>
+        /// Removes only keyed <see cref="IToolProvider"/> registrations with this exact typed source
+        /// identity, including opaque factories, without activation. Other sources and unkeyed host
+        /// registrations remain intact. Missing sources are added. Existing hosts, providers, captures,
+        /// and leases are unchanged; replacement neither disposes nor reclaims their borrowed instances.
+        /// Invalid input rejects before mutation. No host, service, or source is activated here.
+        /// </remarks>
+        public IServiceCollection ReplaceStaticToolProvider(ToolProviderSnapshot snapshot, ImmutableDictionary<ToolIdentity, IToolInvoker> invokers)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(snapshot);
+            ArgumentNullException.ThrowIfNull(invokers);
+            var bindings = new ToolProviderBindings(snapshot, invokers);
+            return ToolServiceRegistration.RegisterStaticProvider(services, bindings, true);
+        }
+
         /// <summary>
         /// Registers the built-in tool catalog, allow-list authorizer, and
         /// invoker, together with the exact-version projection-policy catalog.
@@ -138,4 +185,5 @@ public static class ServiceExtensions
             return services;
         }
     }
+
 }

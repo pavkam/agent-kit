@@ -64,4 +64,23 @@ public static class ToolCaptureTestData
             tools.ToImmutableDictionary(static tool => new ToolIdentity(tool.Id, tool.Version), static _ => new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(1))), []);
     }
 
+    /// <summary>Creates a locally coherent discovery request with explicit deterministic security and configuration evidence.</summary>
+    /// <param name="principal">The nonblank test principal used for correlation-isolation scenarios.</param>
+    /// <param name="runId">An optional explicit run identity; null selects the deterministic test run.</param>
+    /// <returns>A complete immutable request with no authored toolset selection or authority grant.</returns>
+    public static ToolDiscoveryRequest Discovery(string principal = "principal", RunId? runId = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(principal);
+        var agent = new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
+        var session = new SessionId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
+        var run = runId ?? new RunId(Guid.Parse("33333333-3333-3333-3333-333333333333"));
+        ArgumentOutOfRangeException.ThrowIfEqual(run, default, nameof(runId));
+        var identity = TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId(principal), ExecutionSubjectKind.Human);
+        var correlation = new InRunOperationCorrelation(new OperationId(Guid.Parse("44444444-4444-4444-4444-444444444444")), run, null);
+        var authorization = TestSecurityEvidence.Authorization(agent, session, correlation, identity);
+        return new ToolDiscoveryRequest(agent, session, run, identity, authorization, authorization.AgentDefinitionRevision,
+            new EffectiveConfigurationSnapshot(authorization.ConfigurationVersion, new ContentHash("sha256:configuration"), [], []), [],
+            new ModelCapabilities(true, true, true, true, false, false, false, ExtensionData.Empty));
+    }
+
 }

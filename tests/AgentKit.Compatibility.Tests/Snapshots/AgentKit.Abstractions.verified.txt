@@ -3855,6 +3855,11 @@ namespace AgentKit
         AgentKit.ToolSourceVersion SourceVersion { get; }
         AgentKit.ToolDescriptor Tool { get; }
     }
+    public interface IToolProvider
+    {
+        AgentKit.ToolSourceId SourceId { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.IToolProviderCapture> DiscoverAsync(AgentKit.ToolDiscoveryRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IToolProviderCapture : System.IAsyncDisposable
     {
         AgentKit.ToolProviderSnapshot Snapshot { get; }
