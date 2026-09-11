@@ -319,6 +319,12 @@ The architecture index defines document authority and change rules.
 
 - Separate tool description, discovery, resolution, authorization, execution,
   and result recording.
+- Provider and catalog captures retain exact source publications and own their
+  acquisitions. Resolution uses those captures to acquire invoker leases;
+  immutable snapshots never imply a lookup against current DI registrations.
+  Invokers return raw attempt evidence. The executor owns normalization and
+  terminal construction using retained admission, acceptance, and policy
+  evidence.
 - A model requests a tool; it never directly executes one. Every call passes
   schema validation and the configured security authority before invocation.
 - Unknown tools, invalid arguments, missing policy context, and unsupported

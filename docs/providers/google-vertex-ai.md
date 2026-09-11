@@ -17,7 +17,7 @@ Use OAuth 2.0/Google Application Default Credentials:
 
 <code>Authorization: Bearer ACCESS_TOKEN</code>
 
-The principal needs the relevant <code>aiplatform.*</code> IAM permissions.
+The principal needs the relevant <code>aiplatform.\*</code> IAM permissions.
 Requests are regional unless a documented global endpoint is used. A publisher
 model resource is:
 
@@ -122,7 +122,7 @@ the <code>discoveryengine.googleapis.com</code> service, not a
 <code>aiplatform.googleapis.com</code> generative-model method:
 
 <code>POST
-/v1/{rankingConfig=projects/_/locations/_/rankingConfigs/*}:rank</code>
+/v1/{rankingConfig=projects/_/locations/_/rankingConfigs/\*}:rank</code>
 
 <code>RankRequest =
 {model?,topN?,query,records,userLabels?,ignoreRecordDetailsInResponse?}</code>

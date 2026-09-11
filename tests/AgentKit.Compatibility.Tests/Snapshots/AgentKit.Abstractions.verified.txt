@@ -7693,7 +7693,7 @@ namespace AgentKit
     }
     public sealed class ToolCatalogSnapshot : System.IEquatable<AgentKit.ToolCatalogSnapshot>
     {
-        public ToolCatalogSnapshot(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId runId, AgentKit.ExecutionIdentity identity, AgentKit.SecurityPolicySnapshotReference securityPolicy, AgentKit.AgentDefinitionRevision agentDefinitionRevision, AgentKit.ConfigurationVersion configurationVersion, AgentKit.ToolCatalogVersion version, System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> tools, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.ToolExecutionPolicyReference> executionPolicies, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolAlias, AgentKit.ToolIdentity> providerAliases) { }
+        public ToolCatalogSnapshot(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId runId, AgentKit.ExecutionIdentity identity, AgentKit.SecurityPolicySnapshotReference securityPolicy, AgentKit.AgentDefinitionRevision agentDefinitionRevision, AgentKit.ConfigurationVersion configurationVersion, AgentKit.ToolCatalogVersion version, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolSourceId, AgentKit.ToolSourceVersion> sourceVersions, System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> tools, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.ToolExecutionPolicyReference> executionPolicies, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolAlias, AgentKit.ToolIdentity> providerAliases) { }
         public AgentKit.AgentDefinitionRevision AgentDefinitionRevision { get; }
         public AgentKit.AgentId AgentId { get; }
         public AgentKit.ConfigurationVersion ConfigurationVersion { get; }
@@ -7703,6 +7703,7 @@ namespace AgentKit
         public AgentKit.RunId RunId { get; }
         public AgentKit.SecurityPolicySnapshotReference SecurityPolicy { get; }
         public AgentKit.SessionId SessionId { get; }
+        public System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolSourceId, AgentKit.ToolSourceVersion> SourceVersions { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> Tools { get; }
         public AgentKit.ToolCatalogVersion Version { get; }
         public bool Equals(AgentKit.ToolCatalogSnapshot? other) { }
@@ -7727,6 +7728,21 @@ namespace AgentKit
         public AgentKit.JsonSchema? OutputSchema { get; }
         public AgentKit.ToolSourceId SourceId { get; }
         public AgentKit.ToolVersion Version { get; }
+    }
+    public sealed class ToolDiscoveryRequest : System.IEquatable<AgentKit.ToolDiscoveryRequest>
+    {
+        public ToolDiscoveryRequest(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.RunId runId, AgentKit.ExecutionIdentity identity, AgentKit.SecurityAuthorizationContext authorization, AgentKit.AgentDefinitionRevision agentDefinitionRevision, AgentKit.EffectiveConfigurationSnapshot configuration, System.Collections.Immutable.ImmutableArray<AgentKit.ToolsetReference> toolsets, AgentKit.ModelCapabilities modelCapabilities) { }
+        public AgentKit.AgentDefinitionRevision AgentDefinitionRevision { get; }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public AgentKit.EffectiveConfigurationSnapshot Configuration { get; }
+        public AgentKit.ExecutionIdentity Identity { get; }
+        public AgentKit.ModelCapabilities ModelCapabilities { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId SessionId { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolsetReference> Toolsets { get; }
+        public bool Equals(AgentKit.ToolDiscoveryRequest? other) { }
+        public override int GetHashCode() { }
     }
     public enum ToolEffect
     {
@@ -7827,6 +7843,15 @@ namespace AgentKit
     public sealed class ToolMessage : AgentKit.AgentMessage, System.IEquatable<AgentKit.ToolMessage>
     {
         public ToolMessage(AgentKit.MessageId id, AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.BranchId branchId, AgentKit.RunId? runId, AgentKit.TurnId? turnId, System.DateTimeOffset createdAt, AgentKit.MessageState state, System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> parts, AgentKit.ExtensionData extensions) { }
+    }
+    public sealed class ToolProviderSnapshot : System.IEquatable<AgentKit.ToolProviderSnapshot>
+    {
+        public ToolProviderSnapshot(AgentKit.ToolSourceId sourceId, AgentKit.ToolSourceVersion sourceVersion, System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> tools) { }
+        public AgentKit.ToolSourceId SourceId { get; }
+        public AgentKit.ToolSourceVersion SourceVersion { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolDescriptor> Tools { get; }
+        public bool Equals(AgentKit.ToolProviderSnapshot? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class ToolReference : System.IEquatable<AgentKit.ToolReference>
     {

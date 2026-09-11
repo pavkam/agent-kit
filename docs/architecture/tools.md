@@ -383,6 +383,7 @@ public sealed record ToolCatalogSnapshot(
     AgentDefinitionRevision AgentDefinitionRevision,
     ConfigurationVersion ConfigurationVersion,
     ToolCatalogVersion Version,
+    ImmutableDictionary<ToolSourceId, ToolSourceVersion> SourceVersions,
     ImmutableArray<ToolDescriptor> Tools,
     ImmutableDictionary<ToolIdentity, ToolExecutionPolicyReference>
         ExecutionPolicies,
@@ -396,13 +397,21 @@ version, ordered source membership, and explicit provider-visible alias
 assignments. Source membership names a stable `ToolSourceId`; it does not ask an
 agent author to predict a dynamic provider's next `ToolSourceVersion`.
 
-Capture resolves every selected source once. Each acquired provider returns its
-exact `ToolProviderSnapshot` and a companion lease able to bind only identities
-from that same source ID and source version. The catalog pins those discovered
-source versions, exact descriptors, alias targets, execution-policy references,
-and invoker acquisitions for the run. A later provider refresh cannot alter the
-captured graph, and releasing the catalog lease releases only acquisitions it
-owns. Borrowed host-DI instances remain owned by their host scope.
+Capture resolves every selected source once. Each provider returns an owned
+`IToolProviderCapture` containing its exact `ToolProviderSnapshot` and the
+ability to acquire invokers only from that source publication. The catalog
+returns an owned `IToolCatalogCapture` that retains those provider captures
+alongside its immutable snapshot. A later provider refresh cannot alter the
+captured graph. Borrowed host-DI instances remain owned by their host scope.
+
+`SourceVersions` retains every acquired source's exact publication version,
+including selected sources that exposed no tools. Every descriptor's source must
+appear in this map. The map uses exact domain equality regardless of a supplied
+dictionary comparer. A provider snapshot contains only descriptors from its own
+source and rejects repeated exact tool identities; display names need not be
+unique within that publication. Cross-source and exposure collisions belong to
+catalog merging. These snapshots carry immutable evidence, not live invokers or
+proof that an acquisition remains available after process loss.
 
 Alias assignments target an exact `ToolIdentity`; capture verifies that the
 identity appears in exactly one selected source snapshot and that the captured
@@ -462,6 +471,14 @@ include the complete identity fingerprint plus authority, policy, definition,
 configuration, tool-source, and model-capability versions; they never cross one
 of those boundaries.
 
+`ToolDiscoveryRequest` also requires matching agent/session IDs and an
+`InRunOperationCorrelation` for the exact active run. Before-run or after-run
+correlation cannot substitute a causal run ID. Toolset selections have unique
+exact keys; an empty selection and definition revision zero are valid. Local
+construction establishes this correlation only. Publication resolution, model
+capability/schema preflight, and authorization of protected discovery remain
+runtime responsibilities.
+
 ```csharp
 namespace AgentKit;
 
@@ -487,6 +504,8 @@ public sealed record ResolvedToolCall(
     OperationId OperationId,
     ToolCallId CallId,
     SecurityAuthorizationContext Authorization,
+    ToolCatalogVersion CatalogVersion,
+    ToolAlias ProviderAlias,
     ToolDescriptor Tool,
     ToolVersion ToolVersion,
     ToolExecutionPolicyReference ExecutionPolicy,
@@ -503,6 +522,8 @@ public sealed record ValidatedToolCall(
     OperationId OperationId,
     ToolCallId CallId,
     SecurityAuthorizationContext Authorization,
+    ToolCatalogVersion CatalogVersion,
+    ToolAlias ProviderAlias,
     ToolDescriptor Tool,
     ToolVersion ToolVersion,
     ToolExecutionPolicyReference ExecutionPolicy,
@@ -699,22 +720,49 @@ namespace AgentKit;
 
 public interface IToolProvider
 {
-    ValueTask<ToolProviderSnapshot> DiscoverAsync(
+    ToolSourceId SourceId { get; }
+
+    ValueTask<IToolProviderCapture> DiscoverAsync(
         ToolDiscoveryRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface IToolProviderCapture : IAsyncDisposable
+{
+    ToolProviderSnapshot Snapshot { get; }
+
+    ValueTask<ToolInvokerLeaseResult> AcquireInvokerAsync(
+        ToolIdentity identity,
         CancellationToken cancellationToken);
 }
 
 public interface IToolCatalog
 {
-    ValueTask<ToolCatalogSnapshot> CaptureAsync(
+    ValueTask<IToolCatalogCapture> CaptureAsync(
         ToolDiscoveryRequest request,
         CancellationToken cancellationToken);
+}
+
+public interface IToolCatalogCapture : IAsyncDisposable
+{
+    ToolCatalogSnapshot Snapshot { get; }
+
+    ValueTask<ToolInvokerLeaseResult> AcquireInvokerAsync(
+        ToolIdentity identity,
+        CancellationToken cancellationToken);
+}
+
+public interface IToolInvokerLease : IAsyncDisposable
+{
+    ToolDescriptor Tool { get; }
+    ToolSourceVersion SourceVersion { get; }
+    IToolInvoker Invoker { get; }
 }
 
 public interface IToolResolver
 {
     ValueTask<ToolResolutionResult> ResolveAsync(
-        ToolCatalogSnapshot snapshot,
+        IToolCatalogCapture capture,
         ToolCallRequest request,
         CancellationToken cancellationToken);
 }
@@ -752,6 +800,31 @@ schema validation; and the execution policy chooses scheduling, result, and
 retry behavior. `ToolResolutionResult`, `ToolArgumentValidationResult`, and
 `ToolExecutionPlanResult` are discriminated results, not nullable successes.
 
+`IToolProvider.SourceId` is stable composition metadata that requires no I/O.
+Its capture must publish that same source. Capture snapshot access is stable and
+side-effect-free. `ToolInvokerLeaseResult` is closed: `ToolInvokerAcquired`
+carries an owned `IToolInvokerLease`; `ToolInvokerUnavailable` carries the exact
+requested identity and bounded safe reason. Acquiring an invoker never invokes
+the tool or grants authority. An acquired lease must match the full captured
+descriptor and its source version. It cannot substitute a newer implementation.
+
+The resolver validates the request's catalog, agent, session, run, identity,
+definition, and security/configuration evidence before acquiring an invoker. It
+resolves the requested alias only through the captured alias map. Unknown or
+ambiguous aliases fail before acquisition. Resolution success transfers both a
+`ResolvedToolCall` and its owned invoker lease to the executor; failure or
+cancellation releases any acquisition before returning or propagating. Resolved
+and validated values retain the original alias and catalog version. The executor
+retains the lease through validation, planning, and settlement and supplies that
+exact binding to the scheduler alongside the prepared call. Immutable call and
+terminal evidence never contains a live lease.
+
+Closing a capture rejects new acquisitions; outstanding invoker leases retain
+their exact bindings until released. A failed or cancelled catalog capture
+releases every acquisition it owns and publishes no partial catalog. Ownership
+transfer and release must be race-safe and dispose each owned acquisition once.
+Disposal never proves that an external effect stopped or was undone.
+
 ### Execution, durable state, and observation
 
 ```csharp
@@ -759,7 +832,7 @@ namespace AgentKit;
 
 public interface IToolInvoker
 {
-    ValueTask<ToolCallResult> InvokeAsync(
+    ValueTask<ToolInvocationResult> InvokeAsync(
         ToolInvocationContext context,
         CancellationToken cancellationToken);
 }
@@ -774,7 +847,7 @@ public interface IToolScheduler
 public interface IToolExecutor
 {
     Task<ToolBatchResult> ExecuteAsync(
-        ToolCatalogSnapshot snapshot,
+        IToolCatalogCapture capture,
         ImmutableArray<ToolCallRequest> calls,
         ToolExecutionCapability capability,
         HookDispatchContext hooks,
@@ -827,8 +900,12 @@ public interface IToolEventSink
 ```
 
 `IToolInvoker` performs one already validated and authorized attempt. It never
-discovers tools or decides policy. `IToolCallRecorder` owns accepted/terminal
-state and optimistic or idempotent recording; it is not an event sink.
+discovers tools or decides policy. It returns owned raw `ToolInvocationResult`
+evidence, which cannot establish successful terminal normalization or recording.
+The executor combines that evidence with the admitted call, acceptance record,
+and captured policies, applies the selected normalizer, and constructs the
+authoritative `ToolCallResult`. `IToolCallRecorder` owns accepted/terminal state
+and optimistic or idempotent recording; it is not an event sink.
 `IToolEventSink` observes immutable activity and cannot influence the result.
 `IToolResultProjectionPolicyCatalog` resolves the exact retained snapshot named
 by the terminal record; `IToolResultProjector` deterministically creates the
@@ -1114,13 +1191,15 @@ feature identity and must not replace host registrations implicitly.
 
 The catalog coordinator and scheduler may be thread-safe singletons, but the
 catalog coordinator retains only immutable registration/source metadata.
-`CaptureAsync` creates a run-bound `ToolCatalogSnapshot` and neither stores that
-snapshot nor captures run services. Mutable budgets, invocation state, progress
-reporters, resolved invoker bindings, and scoped tool instances are run- or
-operation-scoped. The owning DI scope disposes invokers once. Cancellation stops
-admission and awaiting, then follows the bounded settlement rules; it never
-claims synchronous or remote effects were undone. Retry delay uses injected
-`TimeProvider` and injectable randomness.
+`CaptureAsync` returns a run-owned `IToolCatalogCapture` with an immutable
+`ToolCatalogSnapshot`; the singleton coordinator retains neither the capture nor
+run services. Mutable budgets, invocation state, progress reporters, resolved
+invoker leases, and scoped tool instances are run- or operation-scoped. Capture
+and lease owners release their acquisitions; the owning DI scope disposes any
+borrowed invoker instances once. Cancellation stops admission and awaiting, then
+follows the bounded settlement rules; it never claims synchronous or remote
+effects were undone. Retry delay uses injected `TimeProvider` and injectable
+randomness.
 
 ## Composition validation and unsupported behavior
 
@@ -1178,6 +1257,15 @@ The toolset and capture contract has these acceptance scenarios:
   capture failure releases every owned acquisition exactly once.
 - Capturing or releasing borrowed host-DI tool instances never transfers or
   duplicates their owning scope's disposal responsibility.
+- A selected empty source remains in `SourceVersions`. Missing descriptor-source
+  versions and repeated identities within one provider publication reject
+  construction; provider display names remain subject to catalog alias policy.
+- Discovery rejects a substituted identity, session, active run, definition, or
+  configuration before contacting a source. After-run correlation with the same
+  causal run ID is still invalid.
+- Closing a capture blocks new acquisitions while an outstanding invoker lease
+  retains its binding. Cancellation during capture releases partial acquisitions
+  without advertising a partial graph.
 
 ## Call pipeline
 
@@ -1271,11 +1359,11 @@ execution-policy reference, algorithm revision, bounds, and allowed
 transformations. Its normalizer, not an arbitrary result constructor, owns
 canonical retained-content encoding and aggregate byte enforcement. Oversized
 content is rejected, transformed, or stored behind authorized
-[artifact references](artifacts.md) according to that snapshot. The normalizer
-coordinates artifact creation and the `IToolCallRecorder` terminal commit; the
-artifact component never calls back into the tool recorder. A separate
-deterministic projection then creates the tighter model/history
-`ToolResultPart`.
+[artifact references](artifacts.md) according to that snapshot. The executor
+coordinates normalization, authorized artifact creation, and the
+`IToolCallRecorder` terminal commit; the artifact component never calls back
+into the tool recorder. A separate deterministic projection then creates the
+tighter model/history `ToolResultPart`.
 
 Retries require both a retryable failure and safe execution semantics. A
 possibly-started mutating call needs a declared idempotency mechanism and its

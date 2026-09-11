@@ -183,6 +183,79 @@ public sealed class ToolCatalogSnapshotTests
         Create([tool], Policies(tool), changedAlias).ShouldNotBe(baseline);
     }
 
+    [Fact]
+    public void Constructor_WhenSourcePublicationIsMissingOrInvalid_RejectsExactParameter()
+    {
+        var tool = Descriptor("read", "1");
+        var nullMap = Should.Throw<ArgumentNullException>(() => CreateInvalid(InvalidField.SourceVersions));
+        nullMap.GetType().ShouldBe(typeof(ArgumentNullException));
+        nullMap.ParamName.ShouldBe("sourceVersions");
+        var absent = Should.Throw<ArgumentException>(() => Create([tool], Policies(tool), sourceVersions: []));
+        absent.GetType().ShouldBe(typeof(ArgumentException));
+        absent.ParamName.ShouldBe("sourceVersions");
+        var defaultSource = Should.Throw<ArgumentOutOfRangeException>(() => Create(sourceVersions:
+            ImmutableDictionary<ToolSourceId, ToolSourceVersion>.Empty.Add(default, new("source-7"))));
+        defaultSource.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
+        defaultSource.ParamName.ShouldBe("sourceVersions");
+        var defaultVersion = Should.Throw<ArgumentOutOfRangeException>(() => Create(sourceVersions:
+            ImmutableDictionary<ToolSourceId, ToolSourceVersion>.Empty.Add(new("source"), default)));
+        defaultVersion.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
+        defaultVersion.ParamName.ShouldBe("sourceVersions");
+    }
+
+    [Fact]
+    public void Constructor_WhenSelectedSourceExposesNoTools_RetainsItsExactVersion()
+    {
+        var sources = Sources().Add(new ToolSourceId("empty-source"), new ToolSourceVersion("empty-v3"));
+        var snapshot = Create(sourceVersions: sources);
+        snapshot.SourceVersions.ShouldBe(sources);
+        snapshot.Tools.ShouldBeEmpty();
+        Create(sourceVersions: []).SourceVersions.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Constructor_WhenSourceComparersWeakenIdentity_NormalizesThemWithoutChangingSpelling()
+    {
+        var keys = EqualityComparer<ToolSourceId>.Create(
+            static (left, right) => StringComparer.OrdinalIgnoreCase.Equals(left.Value, right.Value),
+            static source => StringComparer.OrdinalIgnoreCase.GetHashCode(source.Value));
+        var values = EqualityComparer<ToolSourceVersion>.Create(static (_, _) => true, static _ => 0);
+        var sources = ImmutableDictionary.Create(keys, values)
+            .Add(new ToolSourceId("Source"), new ToolSourceVersion("v1"));
+        var snapshot = Create(sourceVersions: sources);
+        snapshot.SourceVersions.KeyComparer.ShouldBe(EqualityComparer<ToolSourceId>.Default);
+        snapshot.SourceVersions.ValueComparer.ShouldBe(EqualityComparer<ToolSourceVersion>.Default);
+        snapshot.SourceVersions.ContainsKey(new ToolSourceId("source")).ShouldBeFalse();
+        snapshot.SourceVersions[new ToolSourceId("Source")].ShouldBe(new ToolSourceVersion("v1"));
+    }
+
+    [Fact]
+    public void Constructor_WhenSourceNormalizationRevealsDuplicates_RejectsInsteadOfChoosingRegistrationOrder()
+    {
+        var comparer = EqualityComparer<ToolSourceId>.Create(static (_, _) => false, static source => source.GetHashCode());
+        var sources = ImmutableDictionary.Create<ToolSourceId, ToolSourceVersion>(comparer)
+            .Add(new ToolSourceId("source"), new ToolSourceVersion("first"))
+            .Add(new ToolSourceId("source"), new ToolSourceVersion("second"));
+        var error = Should.Throw<ArgumentException>(() => Create(sourceVersions: sources));
+        error.GetType().ShouldBe(typeof(ArgumentException));
+        error.ParamName.ShouldBe("sourceVersions");
+    }
+
+    [Fact]
+    public void Equals_WhenSourcePublicationChanges_DistinguishesSameDescriptorsAndCatalogVersion()
+    {
+        var tool = Descriptor("read", "1");
+        var first = Create([tool], Policies(tool));
+        var equal = Create([Descriptor("read", "1")], Policies(tool), sourceVersions: Sources());
+        first.ShouldBe(equal);
+        first.GetHashCode().ShouldBe(equal.GetHashCode());
+        first.ShouldNotBe(Create([tool], Policies(tool), sourceVersions: Sources("source-8")));
+        first.ShouldNotBe(Create([tool], Policies(tool), sourceVersions: Sources().Add(new("empty-source"), new("v1"))));
+    }
+
+    private static ImmutableDictionary<ToolSourceId, ToolSourceVersion> Sources(string version = "source-7") =>
+        ImmutableDictionary<ToolSourceId, ToolSourceVersion>.Empty.Add(new ToolSourceId("agentkit.tools.tests"), new ToolSourceVersion(version));
+
     private static ToolCatalogSnapshot Create(
         ImmutableArray<ToolDescriptor>? tools = null,
         ImmutableDictionary<ToolIdentity, ToolExecutionPolicyReference>? executionPolicies = null,
@@ -193,11 +266,12 @@ public sealed class ToolCatalogSnapshotTests
         ExecutionIdentity? identity = null,
         SecurityPolicySnapshotReference? securityPolicy = null,
         ConfigurationVersion? configurationVersion = null,
-        ToolCatalogVersion? version = null) => new(
+        ToolCatalogVersion? version = null,
+        ImmutableDictionary<ToolSourceId, ToolSourceVersion>? sourceVersions = null) => new(
             agentId ?? Agent(), sessionId ?? Session(), runId ?? Run(), identity ?? Identity(),
             securityPolicy ?? SecurityPolicy(), new AgentDefinitionRevision(0),
             configurationVersion ?? new ConfigurationVersion(4), version ?? new ToolCatalogVersion("catalog-7"),
-            tools ?? [], executionPolicies ?? EmptyPolicies(),
+            sourceVersions ?? Sources(), tools ?? [], executionPolicies ?? EmptyPolicies(),
             providerAliases ?? EmptyAliases());
 
     private static ToolCatalogSnapshot CreateInvalid(InvalidField field) => new(
@@ -208,6 +282,7 @@ public sealed class ToolCatalogSnapshotTests
             field is InvalidField.SecurityPolicy ? null! : SecurityPolicy(), new AgentDefinitionRevision(0),
             field is InvalidField.ConfigurationVersion ? default : new ConfigurationVersion(4),
             field is InvalidField.Version ? default : new ToolCatalogVersion("catalog-7"),
+            field is InvalidField.SourceVersions ? null! : Sources(),
             field is InvalidField.Tools ? default : [],
             field is InvalidField.ExecutionPolicies ? null! : EmptyPolicies(),
             field is InvalidField.ProviderAliases ? null! : EmptyAliases());
@@ -276,6 +351,7 @@ public sealed class ToolCatalogSnapshotTests
         SecurityPolicy,
         ConfigurationVersion,
         Version,
+        SourceVersions,
         Tools,
         ExecutionPolicies,
         ProviderAliases,

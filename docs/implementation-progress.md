@@ -70,6 +70,43 @@ owning spec.
 
 ## Latest integration evidence
 
+The discovery-evidence checkpoint adds immutable `ToolDiscoveryRequest` and
+`ToolProviderSnapshot` values. Requests reject mismatched
+agent/session/active-run, identity, definition, and configuration evidence
+before source discovery. Provider snapshots retain ordered same-source
+descriptors and reject repeated exact identities. `ToolCatalogSnapshot` now
+requires source publication versions, including selected sources with no tools,
+and compares them structurally using exact domain equality. This intentionally
+changes its constructor; no version is fabricated for compatibility.
+
+The three production-class fixtures use typed constructors and accessors for
+coherence, rejection, ordinal identity, hostile dictionary comparers, and
+structural equality. The focused Abstractions suite passes 3,549 tests.
+
+The same review found publication-result assertions still grouped inside
+`SecurityProfilePublicationTests`. Those assertions now live in
+`SecurityProfilePublicationFoundTests`, `SecurityAuthorizationCapturedTests`,
+and the existing unavailable-result fixtures. Behavioral construction remains
+typed; reflection assertions inspect only the get-only public API contract.
+Splitting that mixed-owner method adds five discovered cases while preserving
+its exception and parameter assertions.
+
+The owner specification and normative concepts now make provider/catalog
+captures and invoker leases explicit. They also correct the invoker return
+contract to raw `ToolInvocationResult` evidence, with executor-owned
+normalization and terminal construction. This closes a specification gap:
+immutable snapshots cannot supply live bindings, and an invoker cannot construct
+authoritative admission/acceptance evidence absent from its context. Runtime
+capture/acquisition, canonical alias resolution, the invoker/executor migration,
+terminal recording, bounded projection, message codecs, and durable output
+publication remain open.
+
+Verification: all 6,907 Release tests pass without skips, with zero build
+warnings or errors. The checkpoint adds 25 discovery/source-publication cases
+and five cases from splitting mixed-owner assertions. All 68 compatibility
+checks pass; the reviewed Abstractions snapshot contains two additive values and
+the intentional catalog-constructor change.
+
 The tool-outcome migration implements the required exact terminal status, effect
 certainty, retry advice, and immutable portable disposition.
 `ToolTerminalStatus.ToOutcomeKind()` supplies the closed mapping; unknown
@@ -88,6 +125,12 @@ conservatively decline automatic retry advice. The outcome is still invocation
 evidence until the executor normalizes and records it. Canonical alias
 resolution, accepted/terminal recording, bounded projection, message codecs, and
 durable output publication remain open.
+
+Verification: all 6,877 Release tests pass without skips, with zero build
+warnings or errors. The 84 additional cases cover value constraints and status
+mapping, host effect evidence, and loop/session/next-request preservation. The
+reviewed API snapshot contains the intentional constructor/property change and
+the shared status mapping; all 68 compatibility checks pass.
 
 The security-selector test ownership follow-up moves direct composition-guard,
 binding-constructor, selection-result, and metric-validation assertions into
@@ -117,12 +160,6 @@ terminal activities, bounded metrics, and throwing observers/clocks. Value tests
 exercise the closed resolution family with typed construction and copy paths.
 Complete tool-result projection, canonical alias resolution, terminal recording,
 message codecs, and durable output publication remain open.
-
-Verification: all 6,877 Release tests pass without skips, with zero build
-warnings or errors. The 84 additional cases cover value constraints and status
-mapping, host effect evidence, and loop/session/next-request preservation. The
-reviewed API snapshot contains the intentional constructor/property change and
-the shared status mapping; all 68 compatibility checks pass.
 
 Verification: the Tools suite passes 76 cases and Abstractions passes 3,470. All
 6,791 Release tests pass without skips, with zero build warnings or errors. The

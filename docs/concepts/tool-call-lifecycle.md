@@ -53,6 +53,15 @@ request. The runtime MUST verify provider-visible alias, stable tool identity,
 and version. A tool removed after request dispatch does not silently resolve to
 a different implementation.
 
+The resolver receives the retained catalog capture, not only its serialized
+snapshot. It validates run, identity, definition, configuration, and catalog
+evidence before acquiring a binding. The alias maps only through that snapshot;
+unknown or ambiguous aliases reject before invoker acquisition. Success
+transfers an owned lease for the exact descriptor and source version to the
+executor, which retains it through settlement. Resolution and validation retain
+the requested alias and catalog version unchanged. No stage silently looks up a
+current provider or service registration.
+
 Unknown or ambiguous tools fail closed before side effects.
 
 ## Bounding, parsing, and validation
@@ -136,6 +145,12 @@ effect through an already authorized fingerprint.
 Terminal status, retryability, and side-effect certainty follow the
 [tool error and result contract](tool-errors-retries-and-results.md).
 
+An invoker returns owned raw `ToolInvocationResult` evidence. The executor owns
+normalization under captured policy and constructs `ToolCallResult` using the
+retained admission and acceptance evidence. A raw success does not prove
+successful normalization or terminal recording. Normalization or recording
+failure must not trigger another invocation to reconstruct missing evidence.
+
 The result MUST contain call ID, requested alias, resolved tool/version when
 available, terminal status, bounded typed content, safe structured data,
 normalized error when applicable, timestamps, usage or cost, retryability,
@@ -166,6 +181,11 @@ projection or append retry never returns to invocation.
 - A durable progress checkpoint that looks successful still recovers as unknown
   when the effect never settled.
 - Catalog changes after model dispatch cannot redirect a call.
+- Unknown aliases and mismatched catalog/run evidence reject before invoker
+  acquisition; a failed acquisition cannot leak a lease.
+- A raw invocation success followed by normalization failure produces the typed
+  normalization failure with the original effect certainty and no repeated
+  effect.
 - Every identified call has exactly one correlated terminal result and
   projection after settlement or repair; an accepted call has no second
   invocation during publication recovery.

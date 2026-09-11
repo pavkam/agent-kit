@@ -21,12 +21,13 @@ public sealed record ToolCatalogSnapshot
     /// <param name="agentDefinitionRevision">The nonnegative agent-definition revision.</param>
     /// <param name="configurationVersion">The positive effective-configuration version.</param>
     /// <param name="version">The nondefault immutable catalog version.</param>
+    /// <param name="sourceVersions">The exact nondefault publication version of every acquired source, including sources that exposed no selected tool.</param>
     /// <param name="tools">The initialized, ordered descriptors with unique exact identities.</param>
     /// <param name="executionPolicies">The exact policy reference for every descriptor identity.</param>
     /// <param name="providerAliases">The provider-visible aliases and their exact descriptor identities.</param>
     /// <exception cref="ArgumentOutOfRangeException">An identity or required version is default.</exception>
     /// <exception cref="ArgumentNullException">A required reference or dictionary is null.</exception>
-    /// <exception cref="ArgumentException">An array is uninitialized, an element is null, a descriptor identity is duplicated, dictionary normalization collides, the policy keyset differs from the descriptors, or an alias targets an absent descriptor.</exception>
+    /// <exception cref="ArgumentException">An array is uninitialized, an element is null, a descriptor identity is duplicated, dictionary normalization collides, a descriptor source is absent, the policy keyset differs from the descriptors, or an alias targets an absent descriptor.</exception>
     public ToolCatalogSnapshot(
         AgentId agentId,
         SessionId sessionId,
@@ -36,6 +37,7 @@ public sealed record ToolCatalogSnapshot
         AgentDefinitionRevision agentDefinitionRevision,
         ConfigurationVersion configurationVersion,
         ToolCatalogVersion version,
+        ImmutableDictionary<ToolSourceId, ToolSourceVersion> sourceVersions,
         ImmutableArray<ToolDescriptor> tools,
         ImmutableDictionary<ToolIdentity, ToolExecutionPolicyReference> executionPolicies,
         ImmutableDictionary<ToolAlias, ToolIdentity> providerAliases)
@@ -48,11 +50,17 @@ public sealed record ToolCatalogSnapshot
         ArgumentOutOfRangeException.ThrowIfNegative(agentDefinitionRevision.Value, nameof(agentDefinitionRevision));
         ArgumentOutOfRangeException.ThrowIfEqual(configurationVersion, default);
         ArgumentOutOfRangeException.ThrowIfEqual(version, default);
+        ArgumentNullException.ThrowIfNull(sourceVersions);
         ArgumentException.ThrowIfContainsNull(tools);
         ArgumentNullException.ThrowIfNull(executionPolicies);
         ArgumentNullException.ThrowIfNull(providerAliases);
 
+        var capturedSources = CaptureSources(sourceVersions);
         var identities = CaptureIdentities(tools);
+        foreach (var tool in tools)
+        {
+            ArgumentException.ThrowIfNotEqual(capturedSources.ContainsKey(tool.SourceId), true, nameof(sourceVersions));
+        }
         var capturedPolicies = CapturePolicies(executionPolicies);
         var capturedAliases = CaptureAliases(providerAliases);
         ArgumentException.ThrowIfNotEqual(capturedPolicies.Count, identities.Count, nameof(executionPolicies));
@@ -74,6 +82,7 @@ public sealed record ToolCatalogSnapshot
         AgentDefinitionRevision = agentDefinitionRevision;
         ConfigurationVersion = configurationVersion;
         Version = version;
+        SourceVersions = capturedSources;
         Tools = tools;
         ExecutionPolicies = capturedPolicies;
         ProviderAliases = capturedAliases;
@@ -103,6 +112,9 @@ public sealed record ToolCatalogSnapshot
     /// <summary>Gets the immutable catalog version.</summary>
     /// <value>An explicit nondefault version supplied by the catalog publisher.</value>
     public ToolCatalogVersion Version { get; }
+    /// <summary>Gets the exact publication version pinned for each acquired source.</summary>
+    /// <value>A default-comparer immutable map with a nondefault version for every descriptor source; entries for selected empty sources remain valid evidence.</value>
+    public ImmutableDictionary<ToolSourceId, ToolSourceVersion> SourceVersions { get; }
     /// <summary>Gets the ordered captured descriptors.</summary>
     /// <value>An initialized immutable sequence whose exact identities are unique.</value>
     public ImmutableArray<ToolDescriptor> Tools { get; }
@@ -115,7 +127,7 @@ public sealed record ToolCatalogSnapshot
 
     /// <summary>Determines whether another snapshot contains the same complete bound evidence.</summary>
     /// <param name="other">The snapshot to compare, or null.</param>
-    /// <returns>True when scalar evidence matches, descriptors match in order, and both maps contain the same exact entries independent of enumeration order.</returns>
+    /// <returns>True when scalar evidence matches, descriptors match in order, and all maps contain the same exact entries independent of enumeration order.</returns>
     public bool Equals(ToolCatalogSnapshot? other) =>
         other is not null &&
         AgentId == other.AgentId && SessionId == other.SessionId && RunId == other.RunId &&
@@ -123,6 +135,7 @@ public sealed record ToolCatalogSnapshot
         AgentDefinitionRevision == other.AgentDefinitionRevision &&
         ConfigurationVersion == other.ConfigurationVersion && Version == other.Version &&
         Tools.SequenceEqual(other.Tools) &&
+        MapsEqual(SourceVersions, other.SourceVersions) &&
         MapsEqual(ExecutionPolicies, other.ExecutionPolicies) &&
         MapsEqual(ProviderAliases, other.ProviderAliases);
 
@@ -139,6 +152,8 @@ public sealed record ToolCatalogSnapshot
         hash.Add(AgentDefinitionRevision);
         hash.Add(ConfigurationVersion);
         hash.Add(Version);
+        hash.Add(MapHash(SourceVersions));
+        hash.Add(SourceVersions.Count);
         foreach (var tool in Tools)
         {
             hash.Add(tool);
@@ -149,6 +164,20 @@ public sealed record ToolCatalogSnapshot
         hash.Add(MapHash(ProviderAliases));
         hash.Add(ProviderAliases.Count);
         return hash.ToHashCode();
+    }
+
+    private static ImmutableDictionary<ToolSourceId, ToolSourceVersion> CaptureSources(
+        ImmutableDictionary<ToolSourceId, ToolSourceVersion> sourceVersions)
+    {
+        Debug.Assert(sourceVersions is not null, "The public constructor rejects a null source-version map.");
+        var builder = ImmutableDictionary.CreateBuilder<ToolSourceId, ToolSourceVersion>();
+        foreach (var pair in sourceVersions)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(pair.Key, default, nameof(sourceVersions));
+            ArgumentOutOfRangeException.ThrowIfEqual(pair.Value, default, nameof(sourceVersions));
+            ArgumentException.ThrowIfNotEqual(builder.TryAdd(pair.Key, pair.Value), true, nameof(sourceVersions));
+        }
+        return builder.ToImmutable();
     }
 
     private static HashSet<ToolIdentity> CaptureIdentities(ImmutableArray<ToolDescriptor> tools)

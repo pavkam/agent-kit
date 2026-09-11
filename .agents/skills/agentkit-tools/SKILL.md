@@ -37,6 +37,11 @@ network, or process enforcement.
   AgentKit.Tools.ToolName and depend only on abstractions for host effects.
 - Resolve calls against the immutable catalog snapshot sent to the model. Bound
   and validate canonical arguments before authorization or invocation.
+- Retain provider and catalog captures explicitly. Acquire invoker leases only
+  from the exact captured source versions; never recover a live binding from
+  current DI registrations or descriptor names. Preserve requested aliases and
+  catalog versions through resolution and validation, with explicit ownership
+  and cleanup on capture/acquisition failure or cancellation.
 - The model requests a tool; it never executes one. Record accepted calls before
   effects. Every bounded, identified request—including pre-invocation
   rejection—produces exactly one authoritative terminal `ToolCallResult` through
@@ -44,11 +49,13 @@ network, or process enforcement.
 - Preflight batches, preserve source ordinals, use explicit barrier/concurrency
   rules, and publish durable results deterministically.
 - Bound and normalize outputs without silently stringifying unsupported media.
-  Project the recorded result separately into a bounded durable/model-facing
-  `ToolResultPart`; preserve exact status, uncertainty, source correlation, and
-  every projection loss plus the captured policy key/version. Preserve the
-  requested alias without fabricating resolved identity for unknown tools. A
-  publication retry never invokes the tool again.
+  Invokers return raw attempt evidence; the executor owns normalization and
+  constructs the terminal record from retained admission and acceptance
+  evidence. Project the recorded result separately into a bounded
+  durable/model-facing `ToolResultPart`; preserve exact status, uncertainty,
+  source correlation, and every projection loss plus the captured policy
+  key/version. Preserve the requested alias without fabricating resolved
+  identity for unknown tools. A publication retry never invokes the tool again.
 - Keep first-party file tools in `AgentKit.Tools.Read` and
   `AgentKit.Tools.Write`. Read line windows are incremental model-facing
   projections over host-bounded byte streams; writes require an explicit safe

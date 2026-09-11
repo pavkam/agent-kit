@@ -27,7 +27,7 @@ Kimi returns:
 
 - <code>Msh-Request-Timestamp</code>: Unix milliseconds when the request was
   accepted;
-- <code>Msh-Request-Signature</code>: opaque <code>reqsigv1_...</code> value.
+- <code>Msh-Request-Signature</code>: opaque <code>reqsigv1\_...</code> value.
 
 Verify with POST <code>/v1/signatures/verify</code> and
 <code>{nonce,timestamp,model,signature}</code>. A valid signature proves

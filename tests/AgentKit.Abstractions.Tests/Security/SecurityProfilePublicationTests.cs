@@ -20,27 +20,12 @@ public sealed class SecurityProfilePublicationTests
     }
 
     [Fact]
-    public void Constructor_WhenResultPartIsInvalid_ThrowsWithExactParameterName()
-    {
-        AssertExact<ArgumentNullException>(() => new SecurityProfilePublicationFound(null!), "publication");
-        AssertExact<ArgumentNullException>(() => new SecurityProfilePublicationUnavailable(null!), "safeReason");
-        AssertExact<ArgumentException>(() => new SecurityProfilePublicationUnavailable(" "), "safeReason");
-        AssertExact<ArgumentNullException>(() => new SecurityAuthorizationCaptured(null!), "authorization");
-        AssertExact<ArgumentNullException>(() => new SecurityAuthorizationCaptureUnavailable(null!), "safeReason");
-        AssertExact<ArgumentException>(() => new SecurityAuthorizationCaptureUnavailable(" "), "safeReason");
-    }
-
-    [Fact]
     public void Values_WhenConstructed_PreserveImmutableStructuralEvidence()
     {
         var publication = Publication();
         var equal = Publication();
-        var found = new SecurityProfilePublicationFound(publication);
         publication.ShouldBe(equal);
-        publication.PolicySnapshot.ShouldBeSameAs(found.Publication.PolicySnapshot);
         typeof(SecurityProfilePublication).GetProperties().ShouldAllBe(static property => property.SetMethod == null);
-        typeof(SecurityProfilePublicationFound).GetProperties().ShouldAllBe(static property => property.SetMethod == null);
-        typeof(SecurityAuthorizationCaptured).GetProperties().ShouldAllBe(static property => property.SetMethod == null);
     }
 
     private static SecurityProfilePublication Publication() => NewPublication(AgentId(), DefinitionRevision(), ConfigurationVersion(), ProfileKey(), ProfileVersion(), PolicySnapshot(), AuthorityKey());

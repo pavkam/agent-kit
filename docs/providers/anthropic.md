@@ -155,7 +155,7 @@ flattening content blocks into OpenAI-style choice deltas. Typical ordering:
 
 1. <code>message_start</code> with a partial Message;
 2. zero or more blocks, each framed by <code>content_block_start</code>,
-   <code>content_block_delta*</code>, <code>content_block_stop</code>;
+   <code>content_block_delta\*</code>, <code>content_block_stop</code>;
 3. <code>message_delta</code> containing stop reason and cumulative usage;
 4. <code>message_stop</code>.
 

@@ -39,13 +39,17 @@ metadata. They never grant authority.
 
 ## Contract separation
 
-- `IToolProvider` discovers descriptors from one source.
-- `IToolCatalog` combines snapshots and reports collisions.
-- `IToolResolver` binds a stable identity/version to an invoker.
+- `IToolProvider` discovers one source publication and returns an owned capture
+  that can acquire invokers from that exact publication.
+- `IToolCatalog` combines snapshots, reports collisions, and returns an owned
+  capture retaining the selected provider captures.
+- `IToolResolver` binds a stable identity/version to an invoker lease through
+  that catalog capture.
 - `IToolArgumentValidator` validates bounded parsed arguments.
 - `ISecurityAuthority` evaluates the canonical tool operation and returns allow
   with a bounded grant, deny, or require approval.
-- `IToolInvoker` performs one already-authorized invocation.
+- `IToolInvoker` performs one already-authorized invocation and returns raw
+  evidence for executor-owned normalization and terminal recording.
 - `IToolCallRecorder` commits accepted calls and their authoritative terminal
   results.
 - `IToolResultProjectionPolicyCatalog` retains captured policy versions, and
@@ -76,6 +80,29 @@ Principal-specific discovery is authorized, and caches include identity plus
 authority, policy, definition, configuration, source, and model-capability
 versions; a process-level engine never shares one agent's exposed catalog with
 another identity by accident.
+
+The discovery request requires the same agent, session, and active run in its
+authorization scope. Before-run or after-run correlation does not become an
+active-run scope merely by retaining the same causal run ID. Authored toolset
+keys are unique and compared exactly; an empty selection and definition revision
+zero are valid. Constructing the request validates local coherence, while the
+catalog still resolves publications and preflights capability/schema support.
+
+A provider snapshot retains its explicit source ID, exact source version, and
+ordered descriptors. Every descriptor belongs to that source, and an exact
+tool/version identity appears at most once in the publication. Repeated display
+names across distinct identities are valid discovery data; catalog merge and
+alias policy decide exposure before model I/O. The catalog snapshot retains
+every acquired source version, including selected empty sources.
+
+Snapshots contain only immutable evidence. Their companion provider and catalog
+captures own live acquisitions; a serialized snapshot cannot recover an invoker
+by looking up current registrations. Invoker leases retain the exact descriptor
+and source version. Closing a capture prevents new acquisitions while existing
+leases retain their bindings until released. Failed or cancelled capture
+releases its partial acquisitions and advertises nothing. Borrowed host-DI
+instances keep their original disposal owner; release never proves an external
+effect stopped.
 
 ## Schema rules
 
@@ -175,6 +202,16 @@ declared and authorized effect.
 
 - Duplicate provider-visible names fail before model I/O.
 - A dynamic call resolves against its original catalog snapshot.
+- A refreshed source cannot change an invoker acquired through the original
+  capture; selected empty sources retain their publication versions.
+- A foreign descriptor source, repeated exact identity, or missing catalog
+  source version rejects construction. Display-name collisions are resolved only
+  by explicit catalog policy.
+- Mismatched discovery identity, session, active run, definition, or
+  configuration fails before source I/O, including an after-run correlation with
+  the same run ID.
+- A failed or cancelled capture releases owned acquisitions once; closing it
+  blocks new acquisitions without invalidating an outstanding invoker lease.
 - A faster later result cannot activate a tool before its source-order result is
   materialized, and proposed unknown tools remain inactive.
 - Canonical validation remains strict after provider schema downgrade.

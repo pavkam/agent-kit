@@ -330,6 +330,13 @@ failed/uncertain result into ordinary successful-looking content.
 
 ## Result bounds and normalization
 
+`IToolInvoker` returns raw `ToolInvocationResult` evidence for one authorized
+attempt. The executor retains admission, acceptance, and policy evidence outside
+the invoker context, applies normalization, constructs the authoritative
+terminal record, and calls the recorder before projection. Raw success describes
+invocation only; it cannot claim normalization, recording, or publication
+succeeded. Failure in those later stages never authorizes repeating the effect.
+
 The terminal normalizer enforces the accepted `ToolResultNormalizationSnapshot`
 before a `ToolCallResult` is constructed. It uses canonical retained-content
 encoding to account for the complete closed content family and extension

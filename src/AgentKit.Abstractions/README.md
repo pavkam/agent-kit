@@ -51,6 +51,21 @@ enter a terminal `RunDeferred` outcome. These values and `IOutputPublisher`
 define contracts; complete publisher, resolution and settlement implementations
 remain under construction.
 
+## Tool discovery evidence
+
+`ToolDiscoveryRequest` validates matching agent, session, active run, complete
+identity, definition revision, and configuration before source discovery. It
+retains ordered selections with unique exact toolset keys.
+`ToolProviderSnapshot` retains one source publication and rejects foreign
+descriptors or repeated exact tool identities. Both values compare complete
+ordered evidence structurally.
+
+`ToolCatalogSnapshot` now requires an explicit `SourceVersions` map, including
+selected empty sources. Every descriptor source must be present. This is an
+intentional constructor change: callers must supply real publication versions.
+These immutable values own no live invokers. The canonical capture, acquisition,
+and resolver runtime remains under construction.
+
 ## Tool outcome evidence
 
 `ToolCallOutcome` requires an exact `ToolTerminalStatus`, effect certainty, and

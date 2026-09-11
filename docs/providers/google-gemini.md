@@ -41,13 +41,13 @@ global constant.
 
 | Resource/method        | REST path                                                                                               |
 | ---------------------- | ------------------------------------------------------------------------------------------------------- |
-| Generate               | POST <code>/v1beta/{model=models/*}:generateContent</code>                                              |
-| Stream generate        | POST <code>/v1beta/{model=models/*}:streamGenerateContent</code> with <code>alt=sse</code>              |
-| Count tokens           | POST <code>/v1beta/{model=models/*}:countTokens</code>                                                  |
+| Generate               | POST <code>/v1beta/{model=models/\*}:generateContent</code>                                             |
+| Stream generate        | POST <code>/v1beta/{model=models/\*}:streamGenerateContent</code> with <code>alt=sse</code>             |
+| Count tokens           | POST <code>/v1beta/{model=models/\*}:countTokens</code>                                                 |
 | Embed / batch embed    | POST <code>:embedContent</code>, <code>:batchEmbedContents</code>, <code>:asyncBatchEmbedContent</code> |
-| Async generation batch | POST <code>/v1beta/{batch.model=models/*}:batchGenerateContent</code>                                   |
+| Async generation batch | POST <code>/v1beta/{batch.model=models/\*}:batchGenerateContent</code>                                  |
 | Generic prediction     | POST <code>:predict</code>, <code>:predictLongRunning</code>                                            |
-| Models                 | GET <code>/v1beta/models</code>, <code>/v1beta/{name=models/*}</code>                                   |
+| Models                 | GET <code>/v1beta/models</code>, <code>/v1beta/{name=models/\*}</code>                                  |
 | Cached content         | create/list/get/update/delete <code>/v1beta/cachedContents</code>                                       |
 | Files                  | upload/register/list/get/delete under <code>/upload/v1beta/files</code> and <code>/v1beta/files</code>  |
 | File search stores     | CRUD, documents, import/upload operations under <code>/v1beta/fileSearchStores</code>                   |
@@ -183,11 +183,11 @@ require them on later turns.
 Under AgentKit's [semantic-operation contract](semantic-operations.md),
 embedding is a separate model operation with three execution modes:
 
-| Operation          | REST method                                                             | Semantics                             |
-| ------------------ | ----------------------------------------------------------------------- | ------------------------------------- |
-| Single             | POST <code>/v1beta/{model=models/*}:embedContent</code>                 | One embedding request                 |
-| Synchronous batch  | POST <code>/v1beta/{model=models/*}:batchEmbedContents</code>           | Multiple requests in one HTTP call    |
-| Asynchronous batch | POST <code>/v1beta/{batch.model=models/*}:asyncBatchEmbedContent</code> | Long-running batch resource/operation |
+| Operation          | REST method                                                              | Semantics                             |
+| ------------------ | ------------------------------------------------------------------------ | ------------------------------------- |
+| Single             | POST <code>/v1beta/{model=models/\*}:embedContent</code>                 | One embedding request                 |
+| Synchronous batch  | POST <code>/v1beta/{model=models/\*}:batchEmbedContents</code>           | Multiple requests in one HTTP call    |
+| Asynchronous batch | POST <code>/v1beta/{batch.model=models/\*}:asyncBatchEmbedContent</code> | Long-running batch resource/operation |
 
 <code>EmbedContentRequest</code> carries required <code>content</code> plus
 <code>embedContentConfig</code>. Current configuration fields include:
