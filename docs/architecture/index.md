@@ -272,8 +272,15 @@ Catalog merge policy now receives complete ordered candidate and collision
 evidence. The first-party default rejects collisions; configured policies can
 select existing contributions subject to complete source, descriptor, policy,
 and alias revalidation. Merge preserves authored order and empty sources and
-owns no captures. Full catalog discovery/preflight coordination and migration
-from the legacy loop path remain open.
+owns no captures. Canonical schema/model-capability preflight and migration from
+the legacy catalog/loop path remain open.
+
+Complete source acquisition now has an explicit internal discovery owner. It
+retains late and malformed captures for cleanup, freezes publications before
+merge/preflight, and transfers source ownership once without live metadata
+rereads. Cleanup starts every owner before awaiting any and preserves ordered
+failures. Schema/model-capability preflight and canonical catalog/loop migration
+remain open.
 
 Retained tool-source and catalog captures close acquisition and drain pending
 acquisitions and invoker leases before owned cleanup. Their

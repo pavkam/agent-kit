@@ -131,12 +131,16 @@ public sealed class DefaultToolInvokerTests
     public async Task InvokeAsync_WhenObserved_EmitsCorrelatedContentFreeActivity()
     {
         const string protectedArguments = "do-not-export-this-argument";
+        using var parent = new Activity("observed-tool-invocation").Start();
         Activity? stopped = null;
         using var listener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
             Sample = SampleAllData,
-            ActivityStopped = activity => stopped = activity,
+            ActivityStopped = activity =>
+            {
+                if (activity.TraceId == parent.TraceId && activity.OperationName == AgentKitActivityNames.ExecuteTool) { stopped = activity; }
+            },
         };
         ActivitySource.AddActivityListener(listener);
         var tool = new FakeTool
@@ -149,9 +153,11 @@ public sealed class DefaultToolInvokerTests
         _ = await invoker.InvokeAsync(request, TestContext.Current.CancellationToken);
         var activity = stopped.ShouldNotBeNull();
         activity.OperationName.ShouldBe(AgentKitActivityNames.ExecuteTool);
+        activity.ParentId.ShouldBe(parent.Id);
         activity.Status.ShouldBe(ActivityStatusCode.Ok);
         activity.GetTagItem(AgentKitTagNames.ToolCallId).ShouldBe(request.Context.ToolCallId.ToString());
         activity.TagObjects.Select(static tag => tag.Value?.ToString()).ShouldNotContain(protectedArguments);
+        Activity.Current.ShouldBeSameAs(parent);
     }
 
     private static DefaultToolInvoker CreateInvoker(IEnumerable<ITool> tools, params string[] allowed)

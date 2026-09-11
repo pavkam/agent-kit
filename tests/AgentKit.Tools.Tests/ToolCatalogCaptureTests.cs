@@ -18,6 +18,50 @@ public sealed class ToolCatalogCaptureTests: ToolCatalogCaptureConformanceTests
         new ToolCatalogCapture(snapshot, sources, TimeProvider.System, NullLogger<ToolCatalogCapture>.Instance);
 
     [Fact]
+    public void Constructor_WhenRetainedPublicationMapInvalid_RejectsBeforeLiveMetadataOrOwnership()
+    {
+        var publication = ToolCaptureTestData.Snapshot([]);
+        var source = new CallbackToolProviderCapture(publication);
+        var snapshot = ToolCaptureTestData.Catalog([publication], []);
+        var sources = Sources(publication, source);
+        var retained = ImmutableDictionary<ToolSourceId, ToolProviderSnapshot>.Empty.Add(publication.SourceId, publication);
+        var clock = TimeProvider.System;
+        var logger = NullLogger<ToolCatalogCapture>.Instance;
+        AssertExact<ArgumentNullException>(() => _ = new ToolCatalogCapture(null!, sources, retained, clock, logger), "snapshot");
+        AssertExact<ArgumentNullException>(() => _ = new ToolCatalogCapture(snapshot, null!, retained, clock, logger), "sources");
+        AssertExact<ArgumentNullException>(() => _ = new ToolCatalogCapture(snapshot, sources, null!, clock, logger), "sourceSnapshots");
+        AssertExact<ArgumentNullException>(() => _ = new ToolCatalogCapture(snapshot, sources, retained, null!, logger), "timeProvider");
+        AssertExact<ArgumentNullException>(() => _ = new ToolCatalogCapture(snapshot, sources, retained, clock, null!), "logger");
+        AssertExact<ArgumentNullException>(() => _ = new ToolCatalogCapture(snapshot, sources, retained.SetItem(publication.SourceId, null!), clock, logger), "sourceSnapshots");
+        AssertExact<ArgumentOutOfRangeException>(() => _ = new ToolCatalogCapture(snapshot, sources, retained.Add(default, publication), clock, logger), "sourceSnapshots");
+        AssertExact<ArgumentException>(() => _ = new ToolCatalogCapture(snapshot, sources, [], clock, logger), "sourceSnapshots");
+        AssertExact<ArgumentException>(() => _ = new ToolCatalogCapture(snapshot, sources, retained.Add(new("extra"), publication), clock, logger), "sourceSnapshots");
+        var other = ToolCatalogMergeTestData.Source("other", []);
+        AssertExact<ArgumentException>(() => _ = new ToolCatalogCapture(snapshot, sources, retained.SetItem(publication.SourceId, other), clock, logger), "sources");
+        source.SnapshotReads.ShouldBe(0);
+        source.Disposals.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Constructor_WhenTwoSourcesReuseOneOwner_RejectsBeforeMetadataOrOwnershipTransfer()
+    {
+        var first = ToolCatalogMergeTestData.Source("first", []);
+        var second = ToolCatalogMergeTestData.Source("second", []);
+        var reads = 0;
+        var source = new CallbackToolProviderCapture(first) { ReadSnapshot = () => ++reads == 1 ? first : second };
+        var sources = ImmutableDictionary<ToolSourceId, IToolProviderCapture>.Empty.Add(first.SourceId, source).Add(second.SourceId, source);
+        ToolCatalogCapture? unexpected = null;
+        try
+        {
+            AssertExact<ArgumentException>(() => unexpected = new ToolCatalogCapture(ToolCaptureTestData.Catalog([first, second], []), sources,
+                TimeProvider.System, NullLogger<ToolCatalogCapture>.Instance), "sources");
+            source.SnapshotReads.ShouldBe(0);
+            source.Disposals.ShouldBe(0);
+        }
+        finally { if (unexpected is not null) { await unexpected.DisposeAsync(); } }
+    }
+
+    [Fact]
     public void Constructor_WhenLocalArgumentsInvalid_RejectsBeforeReadingSourceOrTakingOwnership()
     {
         var publication = ToolCaptureTestData.Snapshot([]);

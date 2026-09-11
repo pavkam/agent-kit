@@ -6,6 +6,16 @@ namespace AgentKit.Tools;
 /// <summary>Defines allocation-efficient structured tool-lifecycle log events.</summary>
 internal static partial class ToolLog
 {
+    /// <summary>Records a discovery or ownership boundary using safe correlation only.</summary>
+    /// <param name="logger">The owner logger.</param><param name="operation">The closed discovery operation.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param><param name="sourceId">The exact source for a source stage, otherwise null.</param>
+    [LoggerMessage(4080, LogLevel.Debug, "Starting tool discovery operation {Operation} for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}, source {SourceId}.")]
+    internal static partial void DiscoveryStarted(ILogger logger, string operation, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId, ToolSourceId? sourceId);
+
+    /// <summary>Records a closed discovery outcome without publication or exception content.</summary>
+    /// <param name="logger">The owner logger.</param><param name="level">The outcome severity.</param><param name="operation">The closed discovery operation.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param><param name="sourceId">The exact source for a source stage, otherwise null.</param><param name="outcome">The bounded terminal result.</param>
+    [LoggerMessage(EventId = 4081, Message = "Completed tool discovery operation {Operation} for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}, source {SourceId} with outcome {Outcome}.")]
+    internal static partial void DiscoveryCompleted(ILogger logger, LogLevel level, string operation, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId, ToolSourceId? sourceId, string outcome);
+
     /// <summary>Records entry to complete registration selection without publication or alias content.</summary>
     /// <param name="logger">The registration catalog's logger.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param>
     [LoggerMessage(4070, LogLevel.Debug, "Selecting tool registrations for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}.")]

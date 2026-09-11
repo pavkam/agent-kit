@@ -32,6 +32,15 @@ results retain truthful terminal status. Publication, alias, policy, and
 exception content is omitted. Observer and clock failures do not change the
 selection; unavailable duration is omitted.
 
+Catalog discovery and preflight ownership use `tool.catalog.discover`,
+`tool.catalog.discover.source`, and `tool.catalog.discovery.transfer`, `.close`,
+`.dispose_sources`, and `.dispose_source`. Events 4080/4081 and spans retain
+safe run and applicable source identity. Each asynchronous source
+discovery/cleanup has its own activity under the coordinating stage.
+Count/duration metrics use only closed operation/outcome dimensions; aliases,
+publications, and exception messages never enter diagnostics. Cleanup failure
+remains failure even when the original discovery was cancelled.
+
 ## Use this project
 
 Start with `AddAgentKitObservability` in

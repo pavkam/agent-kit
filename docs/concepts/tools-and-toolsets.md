@@ -161,6 +161,20 @@ Failed or cancelled capture releases its partial acquisitions and advertises
 nothing. Borrowed host-DI instances keep their original disposal owner; release
 never proves an external effect stopped.
 
+A discovery owner retains every returned capture before checking post-await
+cancellation or reading its publication. Malformed metadata cannot orphan an
+acquisition. Distinct source keys MUST NOT share one capture instance. Failure
+starts all owned source cleanups before awaiting any; cleanup is not cancelled
+by the discovery token. Original discovery failure precedes cleanup failures,
+which retain ordinal source-ID order rather than completion order.
+
+A successful discovery graph retains exact publications through merge and
+preflight. Handoff and closure have one synchronized winner, and handoff MUST
+NOT reread live metadata or redirect a binding. Failed handoff leaves ownership
+with discovery; after success, closing the old owner does not close the catalog.
+Discovery itself neither validates canonical schemas nor authorizes model
+exposure.
+
 ## Schema rules
 
 Descriptors retain an owned `JsonSchema` for each input schema and optional

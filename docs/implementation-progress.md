@@ -70,6 +70,46 @@ owning spec.
 
 ## Latest integration evidence
 
+The source-discovery checkpoint adds internal `ToolCatalogDiscovery` and
+`ToolDiscoveryCapture` ownership from materialized selection through merge and
+preflight. Discovery calls each distinct source once in authored first-use
+order, validates provider/source identity, and retains a returned owner before
+cancellation or metadata access. Null, malformed, or reused captures reject
+without a partial result; late captures and prior acquisitions are cleaned up.
+
+Cleanup starts every release before awaiting any and preserves original failure
+followed by source-ID-ordered cleanup failures. Repeated closure shares
+completion and failure without retrying an effect. Handoff and closure have one
+winner; valid handoff creates a catalog from retained publications without
+another live snapshot read. Borrowed providers and invokers keep their original
+owner. Registration installs the coordinator without activation and validates
+that its registration view is singular. Every discovery and source cleanup stage
+has safe structured diagnostics with bounded operation/outcome metrics.
+
+A regression demonstrated that direct catalog construction could accept the same
+capture under two source IDs and then clean it up twice. Source normalization
+now rejects reused owners before metadata access. Concurrent tests also exposed
+an existing invoker activity test observing another fixture's registration
+activity; it now filters by its own trace and operation and asserts parentage. A
+typed test callback no longer replaces an intentionally null response with an
+empty success.
+
+Typed owning-class tests cover guards, complete/malformed/empty source graphs,
+late cancellation, independent concurrent requests, cleanup failure ordering,
+transfer/disposal races, safe diagnostics, and composed discovery, merge,
+catalog capture, and exact invoker acquisition. Canonical tool schema and model
+capability preflight, options-based toolset convenience, canonical catalog/loop
+migration, execution/recording/projection, and the broader architectural gaps
+remain open. This completes source acquisition ownership, not model exposure.
+
+Verification: all 7,248 Release tests pass with zero warnings, errors, failures,
+or skips, including 388 tool tests. This checkpoint adds 69 owning-class cases;
+all 68 compatibility checks pass with one reviewed additive observability
+snapshot. The reused-owner regression was observed failing before its fix, and
+the invoker activity isolation failure was observed under concurrent tests.
+Repository C# formatting, Prettier, and Markdown lint pass; the final evidence
+update receives its focused documentation checks.
+
 The registration-selection checkpoint adds `IToolRegistrationCatalog`,
 `ToolProviderBinding`, and complete `ToolDiscoverySelection` evidence. The
 first-party immutable catalog resolves every authored toolset and policy family
@@ -100,12 +140,10 @@ malformed publication with the documented `InvalidOperationException` before
 provider binding or discovery. The regression was observed failing before the
 explicit null check and is retained in `ServiceExtensionsTests`.
 
-Full catalog discovery/cleanup coordination and schema/capability preflight,
-options-based toolset authoring convenience, canonical resolution/invocation,
-terminal recording/projection, codecs, and durable output remain open. The
-legacy `AddAgentTools` and loop path have not migrated. Registration selection
-is a completed dependency of that coordinator, not a claim that catalog capture
-is fully integrated.
+At that checkpoint, catalog discovery/cleanup and schema/capability preflight
+remained open. Source acquisition ownership is now implemented above. Toolset
+authoring convenience, canonical catalog/loop integration, execution, recording,
+projection, codecs, and durable output remain unfinished.
 
 Verification: all 7,179 Release tests pass with zero warnings, errors, failures,
 or skips, including 319 tool tests and 3,583 abstraction tests. This checkpoint

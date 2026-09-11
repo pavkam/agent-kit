@@ -65,9 +65,38 @@ Additions reject duplicate exact keys before mutation; replacements preserve
 unrelated typed, string, keyed, and unkeyed registrations without activation.
 Registration order does not select a source or an execution-policy version.
 
-This view supplies selection evidence for catalog discovery. Discovery and
-capture cleanup coordination, schema/capability preflight, and migration of the
-legacy `IToolCatalog` path remain open.
+This view supplies selection evidence for catalog discovery. The source
+discovery owner described below retains acquisitions through the remaining
+schema/capability preflight and legacy `IToolCatalog` migration.
+
+## Discovery ownership
+
+`AddToolRegistrationCatalog()` also registers the internal
+`ToolCatalogDiscovery` coordinator, requiring one materialized registration
+view. It resolves the full request before contacting providers, discovers each
+distinct source once in first-use order, and checks the provider and returned
+publication against the exact registered source identity. It takes ownership of
+each returned capture before checking cancellation or reading metadata. Null,
+reused, or malformed captures reject without exposing a partial graph.
+
+The internal `ToolDiscoveryCapture` retains every exact publication and source
+owner through merge and schema/capability preflight. Disposing it releases every
+source, including empty or unselected publications. All cleanups start before
+any is awaited. A failing discovery retains its original exception followed by
+cleanup failures in source-ID order; successful cleanup preserves cancellation
+and its token. Provider services and borrowed invokers keep their original
+owner.
+
+After merge and preflight, the caller can transfer the graph once into
+`ToolCatalogCapture`. Transfer and closure have one synchronized winner. Failed
+construction retains ownership with discovery; successful handoff uses the
+captured publications without rereading live snapshot getters. Disposing the old
+discovery owner cannot close the transferred catalog or its leases. Repeated
+disposal shares completion and failure without retrying cleanup.
+
+This completes source acquisition and cleanup ownership. Canonical schema and
+model-capability preflight and replacement of the legacy `IToolCatalog` path
+remain open; discovery alone does not make a catalog ready for model exposure.
 
 ## Catalog collision policy
 
@@ -101,7 +130,7 @@ suppressing another cleanup or retrying a previous one. Callers release their
 leases before awaiting catalog closure. Borrowed invokers keep their original
 disposal owner.
 
-This object supplies retained catalog lifetime. Discovery coordination and
+This object supplies retained catalog lifetime. Schema/capability preflight and
 replacement of the legacy `IToolCatalog` coordinator remain separate work;
 `AddAgentTools` still selects the legacy runtime.
 

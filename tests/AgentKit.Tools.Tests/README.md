@@ -34,6 +34,17 @@ acquisition after replacement. Provider ownership, typed keys, cardinality, and
 registration replacement remain in `ServiceExtensionsTests`; internal marker and
 registration-helper guards stay in their respective owning-class fixtures.
 
+`ToolCatalogDiscoveryTests` covers complete selection, shared-source order,
+malformed and late captures, cancellation, ordered partial-cleanup failure,
+concurrent identity isolation, safe parentage, and discovery-to-merge-to-invoker
+composition. `ToolDiscoveryCaptureTests` covers guards, one-time handoff,
+retained metadata, lease ownership, repeated cleanup failure, and closure races.
+`ToolDiscoveryObservationTests` verifies all six bounded diagnostic stages,
+terminal status/severity, safe fields, clock failure, and observer isolation.
+Direct catalog construction rejects reused owners before metadata reads. The
+legacy invoker diagnostic test filters by its own trace and operation so other
+concurrent fixtures cannot replace the observed activity.
+
 ## Start with these tests
 
 - [ToolProviderCaptureTests](ToolProviderCaptureTests.cs) — reusable

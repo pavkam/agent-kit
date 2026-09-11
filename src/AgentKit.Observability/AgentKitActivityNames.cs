@@ -7,6 +7,18 @@ namespace AgentKit.Observability;
 /// <remarks>Names describe operations, never high-cardinality identities or content.</remarks>
 public static class AgentKitActivityNames
 {
+    /// <summary>Complete selected-source discovery and partial-owner cleanup.</summary>
+    public const string ToolCatalogDiscover = "tool.catalog.discover";
+    /// <summary>One exact provider discovery and publication validation.</summary>
+    public const string ToolCatalogDiscoverSource = "tool.catalog.discover.source";
+    /// <summary>Closure of a discovery owner before or after catalog handoff.</summary>
+    public const string ToolCatalogDiscoveryClose = "tool.catalog.discovery.close";
+    /// <summary>Complete or partial discovered-source cleanup.</summary>
+    public const string ToolCatalogDiscoveryDisposeSources = "tool.catalog.discovery.dispose_sources";
+    /// <summary>One exact discovered-source cleanup and its completion or failure.</summary>
+    public const string ToolCatalogDiscoveryDisposeSource = "tool.catalog.discovery.dispose_source";
+    /// <summary>Atomic handoff of retained discovery ownership to a validated catalog.</summary>
+    public const string ToolCatalogDiscoveryTransfer = "tool.catalog.discovery.transfer";
     /// <summary>Identifies complete local toolset and source-provider selection before discovery.</summary>
     public const string ToolRegistrationSelect = "tool.registration.select";
     /// <summary>Identifies validation and policy coordination for one captured tool catalog.</summary>

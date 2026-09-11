@@ -10,6 +10,41 @@ using Microsoft.Extensions.Logging;
 
 public sealed class ServiceExtensionsTests
 {
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("duplicate")]
+    [InlineData("null")]
+    public void AddToolRegistrationCatalog_WhenDiscoveryCatalogNotSingular_RejectsBeforeProviderDiscovery(string problem)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddToolRegistrationCatalog();
+        if (problem is "missing" or "null") { _ = services.RemoveAll<IToolRegistrationCatalog>(); }
+        if (problem == "duplicate") { _ = services.AddSingleton<IToolRegistrationCatalog>(new CallbackToolRegistrationCatalog()); }
+        if (problem == "null") { _ = services.AddSingleton<IToolRegistrationCatalog>(static _ => null!); }
+        using var host = services.BuildServiceProvider();
+        _ = Should.Throw<InvalidOperationException>(host.GetRequiredService<ToolCatalogDiscovery>);
+    }
+
+    [Fact]
+    public async Task AddToolRegistrationCatalog_WhenDiscoveryUsesReplacement_PreservesHostSelectionAndClock()
+    {
+        var services = new ServiceCollection();
+        var selections = 0;
+        var clock = new CallbackTimestampTimeProvider(static () => 0);
+        var catalog = new CallbackToolRegistrationCatalog { SelectRequest = (request, _) => { selections++; return new(request, [], []); } };
+        _ = services.AddSingleton<TimeProvider>(clock);
+        _ = services.AddSingleton<IToolRegistrationCatalog>(catalog);
+        _ = services.AddToolRegistrationCatalog();
+        _ = services.AddToolRegistrationCatalog();
+        selections.ShouldBe(0);
+        using var host = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        host.GetRequiredService<TimeProvider>().ShouldBeSameAs(clock);
+        var discovery = host.GetRequiredService<ToolCatalogDiscovery>();
+        discovery.ShouldBeSameAs(host.GetRequiredService<ToolCatalogDiscovery>());
+        await using var capture = await discovery.DiscoverAsync(ToolCaptureTestData.Discovery(), TestContext.Current.CancellationToken);
+        selections.ShouldBe(1);
+    }
+
     [Fact]
     public async Task AddToolProvider_WhenGeneric_UsesTypedServiceKeyAndHostOwnedSingleton()
     {

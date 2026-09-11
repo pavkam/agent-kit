@@ -338,6 +338,13 @@ The architecture index defines document authority and change rules.
   source's first use; empty selection exposes no fallback. Replacement affects
   later compositions without redirecting retained selections or taking provider
   disposal ownership.
+- Own every returned discovery capture before post-await cancellation or
+  metadata access. Reject reused owners and malformed source publications;
+  release all partial acquisitions on failure. Start every cleanup before
+  awaiting any and retain ordered cleanup failures after the original failure.
+  Keep exact publications through merge/preflight and hand off ownership once
+  without live metadata rereads. Closure and handoff have one synchronized
+  winner; neither discovery nor handoff replaces schema/capability preflight.
 - Provider and catalog captures retain exact source publications and own their
   acquisitions. Resolution uses those captures to acquire invoker leases;
   immutable snapshots never imply a lookup against current DI registrations.

@@ -50,6 +50,13 @@ network, or process enforcement.
   shared sources once; empty selection never falls back to registered tools.
   Replacement affects later compositions, while existing selections and provider
   disposal ownership remain intact.
+- Retain returned source owners before cancellation and snapshot validation.
+  Reject reused captures and release all partial acquisitions after discovery
+  failure. Start every source cleanup before awaiting any and preserve original
+  failure followed by source-ID-ordered cleanup failures. Hold exact
+  publications through merge/preflight; handoff and closure have one winner and
+  never reread live metadata or dispose a transferred catalog from the old
+  owner.
 - Retain provider and catalog captures explicitly. Acquire invoker leases only
   from the exact captured source versions; never recover a live binding from
   current DI registrations or descriptor names. Preserve requested aliases and

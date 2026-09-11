@@ -889,6 +889,47 @@ publishes no partial catalog. Ownership transfer and release must be race-safe
 and dispose each owned acquisition once. Disposal never proves that an external
 effect stopped or was undone.
 
+The internal first-party `ToolCatalogDiscovery` implements complete source
+acquisition through the materialized registration view. It rejects null or
+substituted request selections, calls each distinct provider once in authored
+first-use order, and validates provider identity immediately before discovery.
+Returned captures are owned before post-await cancellation or snapshot access.
+Null captures, null or foreign publications, throwing metadata getters, and
+reused capture instances reject the operation without a partial result. Earlier
+owners and late captures are released before failure escapes.
+
+`ToolDiscoveryCapture` owns the resulting selection, exact immutable source
+publications, and distinct source acquisitions until merge/preflight finishes.
+Its one-time handoff constructs `ToolCatalogCapture` from retained publications,
+without rereading third-party metadata. Catalog construction revalidates exact
+request correlation, source membership, versions, and selected descriptors.
+Failed handoff retains the discovery owner's sources; a successful handoff and
+closure have one synchronized winner. Closing the old discovery owner cannot
+close the transferred catalog. Metadata remains readable after closure.
+
+Discovery cleanup starts every source release before awaiting any, including
+empty sources. Failures are ordered by ordinal source ID, independently of
+completion order. A discovery failure or cancellation precedes all cleanup
+failures in the resulting aggregate; successful cleanup preserves the original
+exception and cancellation token. Repeated closure shares cleanup completion or
+failure and never retries an effect. Reused owner instances reject before
+metadata reads at direct catalog construction as well as during discovery.
+
+`AddToolRegistrationCatalog` installs this internal coordinator without
+activation and requires exactly one nonnull unkeyed registration view when
+resolved. Providers retain host or external disposal ownership; source captures
+own their acquired resources. The coordinator retains no mutable run state or
+container. Discovery, each source callback, transfer, closure, batch cleanup,
+and each source cleanup emit shared `tool.catalog.discover*` /
+`tool.catalog.discovery.*` activities and events 4080/4081 with safe run/source
+correlation. Metrics use only bounded operation/outcome dimensions. Observer
+failures are isolated and missing or reversed duration is omitted.
+
+This source-acquisition boundary is implemented. The combined canonical catalog
+still needs schema/model-capability preflight and migration from the legacy
+`IToolCatalog`/loop path. Neither source discovery nor handoff skips those
+requirements or claims model-ready schema support.
+
 The first-party `StaticToolProvider` implements `IToolProvider` over a
 host-supplied `ToolProviderSnapshot` and complete exact invoker map. It
 validates the binding graph once, preserves the explicit source version, and
@@ -1331,7 +1372,8 @@ and bounded outcome-only count/duration metrics. Traces and logs retain safe run
 identity without alias, policy, descriptor, or exception content. Cancellation
 prevents transfer; observer failures cannot change selection, and unknown or
 reversed timing omits duration. This materialized view is implemented separately
-from the remaining catalog discovery/cleanup and schema/capability coordinator.
+from source acquisition ownership and the remaining canonical schema/capability
+preflight and catalog integration.
 
 `AddStaticToolProvider(snapshot, invokers)` registers one keyed singleton
 `IToolProvider`, using the exact `ToolSourceId` value as its DI key. It
@@ -1444,6 +1486,17 @@ The toolset and capture contract has these acceptance scenarios:
   its chosen descriptor.
 - Multiple unkeyed merge policies reject composition. Explicit policy
   replacement preserves previously constructed hosts and keyed host policies.
+- A provider returning a capture after cancellation has that owner released
+  before cancellation propagates. A throwing, null, or foreign snapshot still
+  leaves the returned owner eligible for cleanup.
+- A later discovery failure starts every earlier cleanup before awaiting one.
+  Multiple cleanup failures retain source-ID order after the original failure;
+  cleanup is not cancelled by the discovery token.
+- A source graph survives merge rejection until its discovery owner closes it.
+  Successful handoff uses retained publication evidence without live metadata
+  reads and retains its invoker until the last lease is released.
+- Closure racing handoff has one winner. A capture reused for two source keys
+  rejects before direct catalog ownership or duplicate cleanup can occur.
 - A dynamic provider lease binds only descriptors from its own exact returned
   source snapshot. A changed or missing binding rejects resolution, and partial
   capture failure releases every owned acquisition exactly once.

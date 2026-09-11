@@ -16,13 +16,21 @@ public static class ServiceExtensions
         /// <summary>Registers the replaceable materialized catalog of explicitly published toolsets and source providers.</summary>
         /// <returns>The same collection for further composition.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
-        /// <remarks>Idempotent default registration preserves host catalog, clock, and logging choices. It activates no service, creates no default toolset, and registers no persistence adapter. Source and publication cardinality is validated when the catalog is materialized.</remarks>
+        /// <remarks>Idempotent default registration preserves host catalog, clock, and logging choices. It activates no service, creates no default toolset, and registers no persistence adapter. Source and publication cardinality is validated when the catalog is materialized. The internal discovery coordinator requires exactly one materialized view and retains source acquisitions through later merge/preflight; it does not publish model-facing tools.</remarks>
         public IServiceCollection AddToolRegistrationCatalog()
         {
             ArgumentNullException.ThrowIfNull(services);
             _ = services.AddAgentKitObservability();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton(ToolServiceRegistration.CreateRegistrationCatalog);
+            services.TryAddSingleton(provider =>
+            {
+                var catalogs = provider.GetServices<IToolRegistrationCatalog>().ToArray();
+                return catalogs.Length == 1 && catalogs[0] is { } catalog
+                    ? new ToolCatalogDiscovery(catalog, provider.GetRequiredService<TimeProvider>(), provider.GetRequiredService<ILogger<ToolCatalogDiscovery>>(),
+                        provider.GetRequiredService<ILogger<ToolDiscoveryCapture>>(), provider.GetRequiredService<ILogger<ToolCatalogCapture>>())
+                    : throw new InvalidOperationException("Tool discovery requires exactly one materialized registration catalog.");
+            });
             return services;
         }
 

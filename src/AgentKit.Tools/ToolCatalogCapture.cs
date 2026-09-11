@@ -26,12 +26,12 @@ public sealed class ToolCatalogCapture: IToolCatalogCapture
 
     /// <summary>Validates an exact retained source graph before accepting ownership of every source capture.</summary>
     /// <param name="snapshot">The nonnull already merged catalog, including selected empty sources.</param>
-    /// <param name="sources">One nonnull capture for each exact source-version entry, with no extra, missing, default, or duplicate normalized key. Each selected descriptor must match its source publication in full.</param>
+    /// <param name="sources">One nonnull capture for each exact source-version entry, with no extra, missing, default, or duplicate normalized key or reused owner instance. Each selected descriptor must match its source publication in full.</param>
     /// <param name="timeProvider">The nonnull replaceable clock used only for diagnostic duration.</param>
     /// <param name="logger">The nonnull type-specific logger for safe lifecycle metadata.</param>
     /// <exception cref="ArgumentNullException">A required reference, source capture, or source snapshot is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A key in <paramref name="sources"/> is default.</exception>
-    /// <exception cref="ArgumentException">Normalized source keys, versions, identities, or selected descriptor content differ from the supplied snapshot.</exception>
+    /// <exception cref="ArgumentException">Normalized source keys, versions, identities, or selected descriptor content differ from the supplied snapshot, or an owner is reused under multiple keys.</exception>
     /// <remarks>
     /// Reads each source snapshot once after validating local arguments. A rejected constructor leaves
     /// all sources with the caller, including when a third-party snapshot getter throws. Unselected
@@ -43,29 +43,43 @@ public sealed class ToolCatalogCapture: IToolCatalogCapture
         ImmutableDictionary<ToolSourceId, IToolProviderCapture> sources,
         TimeProvider timeProvider,
         ILogger<ToolCatalogCapture> logger)
+        : this(snapshot, sources, CapturePublications(snapshot, sources, timeProvider, logger), timeProvider, logger)
+    {
+    }
+
+    /// <summary>Accepts exact source publications already read and retained by the discovery owner.</summary>
+    /// <param name="snapshot">The nonnull merged catalog with complete source-version evidence.</param>
+    /// <param name="sources">The nonnull exact owned source map; ownership transfers only after complete validation.</param>
+    /// <param name="sourceSnapshots">The nonnull immutable publications captured from those sources during discovery.</param>
+    /// <param name="timeProvider">The nonnull observation-only clock.</param>
+    /// <param name="logger">The nonnull catalog logger.</param>
+    /// <exception cref="ArgumentNullException">A required reference, source capture, or publication is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A source key is default.</exception>
+    /// <exception cref="ArgumentException">Source membership, identity, version, or selected descriptor evidence differs, or an owner is reused.</exception>
+    /// <remarks>This path performs no live metadata reads. The internal discovery owner supplies the publications it retained before merge and preflight; failed construction leaves ownership with that caller.</remarks>
+    internal ToolCatalogCapture(ToolCatalogSnapshot snapshot, ImmutableDictionary<ToolSourceId, IToolProviderCapture> sources,
+        ImmutableDictionary<ToolSourceId, ToolProviderSnapshot> sourceSnapshots, TimeProvider timeProvider, ILogger<ToolCatalogCapture> logger)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(sourceSnapshots);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
-        var captured = new Dictionary<ToolSourceId, IToolProviderCapture>();
-        foreach (var pair in sources)
+        var captured = NormalizeSources(snapshot, sources);
+        var retained = new Dictionary<ToolSourceId, ToolProviderSnapshot>();
+        foreach (var pair in sourceSnapshots)
         {
-            ArgumentOutOfRangeException.ThrowIfEqual(pair.Key, default, nameof(sources));
-            ArgumentNullException.ThrowIfNull(pair.Value, nameof(sources));
-            ArgumentException.ThrowIfNotEqual(captured.TryAdd(pair.Key, pair.Value), true, nameof(sources));
+            ArgumentOutOfRangeException.ThrowIfEqual(pair.Key, default, nameof(sourceSnapshots));
+            ArgumentNullException.ThrowIfNull(pair.Value, nameof(sourceSnapshots));
+            ArgumentException.ThrowIfNotEqual(retained.TryAdd(pair.Key, pair.Value), true, nameof(sourceSnapshots));
+            ArgumentException.ThrowIfNotEqual(captured.ContainsKey(pair.Key), true, nameof(sourceSnapshots));
         }
-        ArgumentException.ThrowIfNotEqual(captured.Count, snapshot.SourceVersions.Count, nameof(sources));
-        foreach (var sourceId in captured.Keys)
-        {
-            ArgumentException.ThrowIfNotEqual(snapshot.SourceVersions.ContainsKey(sourceId), true, nameof(sources));
-        }
-
+        ArgumentException.ThrowIfNotEqual(retained.Count, captured.Count, nameof(sourceSnapshots));
         var publications = new Dictionary<ToolSourceId, Dictionary<ToolIdentity, ToolDescriptor>>();
         var ordered = captured.OrderBy(static pair => pair.Key.Value, StringComparer.Ordinal).ToArray();
         foreach (var pair in ordered)
         {
-            var publication = pair.Value.Snapshot;
+            var publication = retained[pair.Key];
             ArgumentNullException.ThrowIfNull(publication, nameof(sources));
             ArgumentException.ThrowIfNotEqual(publication.SourceId, pair.Key, nameof(sources));
             ArgumentException.ThrowIfNotEqual(publication.SourceVersion, snapshot.SourceVersions[pair.Key], nameof(sources));
@@ -85,6 +99,48 @@ public sealed class ToolCatalogCapture: IToolCatalogCapture
         Snapshot = snapshot;
         _timeProvider = timeProvider;
         _logger = logger;
+    }
+
+    private static Dictionary<ToolSourceId, IToolProviderCapture> NormalizeSources(ToolCatalogSnapshot snapshot, ImmutableDictionary<ToolSourceId, IToolProviderCapture> sources)
+    {
+        Debug.Assert(snapshot is not null && sources is not null, "Both constructor paths validate references before source normalization.");
+        var captured = new Dictionary<ToolSourceId, IToolProviderCapture>();
+        var owners = new HashSet<IToolProviderCapture>(ReferenceEqualityComparer.Instance);
+        foreach (var pair in sources)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(pair.Key, default, nameof(sources));
+            ArgumentNullException.ThrowIfNull(pair.Value, nameof(sources));
+            ArgumentException.ThrowIfNotEqual(owners.Add(pair.Value), true, nameof(sources));
+            ArgumentException.ThrowIfNotEqual(captured.TryAdd(pair.Key, pair.Value), true, nameof(sources));
+        }
+        ArgumentException.ThrowIfNotEqual(captured.Count, snapshot.SourceVersions.Count, nameof(sources));
+        foreach (var sourceId in captured.Keys)
+        {
+            ArgumentException.ThrowIfNotEqual(snapshot.SourceVersions.ContainsKey(sourceId), true, nameof(sources));
+        }
+
+        return captured;
+    }
+
+    private static ImmutableDictionary<ToolSourceId, ToolProviderSnapshot> CapturePublications(ToolCatalogSnapshot snapshot,
+        ImmutableDictionary<ToolSourceId, IToolProviderCapture> sources, TimeProvider timeProvider, ILogger<ToolCatalogCapture> logger)
+    {
+        // This constructor initializer receives unchecked public inputs, so runtime guards precede callbacks.
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(logger);
+        var captured = NormalizeSources(snapshot, sources);
+        var publications = ImmutableDictionary.CreateBuilder<ToolSourceId, ToolProviderSnapshot>();
+        foreach (var pair in captured.OrderBy(static pair => pair.Key.Value, StringComparer.Ordinal))
+        {
+            var publication = pair.Value.Snapshot;
+            ArgumentNullException.ThrowIfNull(publication, nameof(sources));
+            ArgumentException.ThrowIfNotEqual(publication.SourceId, pair.Key, nameof(sources));
+            ArgumentException.ThrowIfNotEqual(publication.SourceVersion, snapshot.SourceVersions[pair.Key], nameof(sources));
+            publications.Add(pair.Key, publication);
+        }
+        return publications.ToImmutable();
     }
 
     /// <inheritdoc/>

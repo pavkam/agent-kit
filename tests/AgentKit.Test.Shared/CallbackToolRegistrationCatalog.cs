@@ -15,6 +15,6 @@ public sealed class CallbackToolRegistrationCatalog: IToolRegistrationCatalog
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
-        return SelectRequest?.Invoke(request, cancellationToken) ?? new ToolDiscoverySelection(request, [], []);
+        return SelectRequest is { } select ? select(request, cancellationToken) : new ToolDiscoverySelection(request, [], []);
     }
 }
