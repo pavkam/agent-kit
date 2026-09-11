@@ -51,6 +51,19 @@ enter a terminal `RunDeferred` outcome. These values and `IOutputPublisher`
 define contracts; complete publisher, resolution and settlement implementations
 remain under construction.
 
+## Tool-result projection provenance
+
+`ToolResultProjectionInfo` retains the captured projection-policy key/version,
+ordered losses, and measured omitted byte and part counts. Positive omissions
+require a content-loss marker; status coarsening alone cannot explain missing
+content. Reconstructed values compare structurally, including loss order and
+repetition.
+
+This value is a prerequisite for durable tool-result messages. The projector
+must measure content and enforce the captured policy. Integration into the
+canonical `ToolResultPart`, complete tool resolution, and message codecs remain
+under construction.
+
 ## Related projects
 
 - [AgentKit](../AgentKit/README.md) — compose a process-level engine that hosts

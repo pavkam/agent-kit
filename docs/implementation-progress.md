@@ -70,6 +70,28 @@ owning spec.
 
 ## Latest integration evidence
 
+The projection-provenance checkpoint adds `ToolResultProjectionInfo` and the
+closed `ToolResultProjectionLoss` vocabulary. Provenance retains the exact
+captured policy reference, ordered and repeated loss evidence, and measured
+nonnegative omission counts. Positive omissions without content-loss evidence
+reject, including status-only claims. Reconstructed values compare structurally.
+
+The 27 focused cases use direct typed construction in
+`ToolResultProjectionInfoTests`. This additive value contract neither resolves
+policy snapshots nor enforces content bounds. Canonical `ToolReference`, richer
+`ToolCallOutcome`, integration into `ToolResultPart`, captured catalog
+resolution, terminal recording/projection, and the admitted-input/message codecs
+remain open before durable output publication can be completed.
+
+Verification: all 6,742 Release tests pass without skips, with zero build
+warnings or errors. The reviewed API snapshot adds only the two projection
+provenance types, and all 68 compatibility checks pass.
+
+The preceding fixture checkpoint (`4921ae2`) reorganized behavioral tests into
+their production-class fixtures and replaced reflection-based construction with
+typed factories and accessors. All 6,715 Release tests passed, together with
+formatting and lint; production APIs were unchanged.
+
 The final-result checkpoint adds the canonical accepted/rejected result and
 stream-start unions, seven semantic outcomes, and independent settlement
 outcomes. Finished envelopes validate cursor, history, usage and external

@@ -128,6 +128,15 @@ reference recorded with the accepted call and terminal result. It cannot
 recreate omitted authorization, usage, or diagnostic fields. History-publication
 retries reproject from the recorded terminal result and never repeat the effect.
 
+Projection provenance preserves the exact policy reference, ordered loss markers
+including repeated transformations, and measured nonnegative omitted byte and
+part counts. Positive omitted counts require content-loss evidence; status
+coarsening alone does not explain missing content. Transformations may leave
+byte and part counts unchanged, so zero counts do not erase a recorded loss.
+These counts exclude omissions already recorded during terminal-result
+normalization. Value validation does not replace policy enforcement or content
+measurement by the projector.
+
 Status mapping is loss-aware and fail-closed. Only an authoritative success maps
 to portable `Success`; pre-invocation invalid/unknown/denied outcomes map to
 `Rejected`; invocation or result-processing failures map to `Failed`; and
@@ -183,6 +192,10 @@ versions explicitly.
   status, uncertainty, source correlation, and projection loss.
 - An unknown provider alias remains unresolved while its rejected terminal
   result and projection retain that alias and the captured policy version.
+- Projection provenance rejects negative counts, undefined loss markers, and
+  positive omissions accompanied only by status coarsening or no loss evidence.
+- Reconstructed projection provenance compares by exact policy version, ordered
+  losses including repetition, and both omitted counts.
 
 ## Related specifications
 

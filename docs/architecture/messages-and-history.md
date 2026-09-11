@@ -460,6 +460,15 @@ non-negative omitted counts, initialized loss collections, and agreement between
 loss markers and omitted content. A projection cannot claim lossless status or
 content while carrying a coarsened status or non-zero omitted count.
 
+`ToolResultProjectionInfo` preserves the order and repetition of defined loss
+markers. A positive omitted byte or part count requires at least one
+content-loss marker; `StatusCoarsened` alone accounts for no omitted content. A
+content transformation may retain byte and part counts, so a loss marker with
+zero omitted counts is valid. These are measured projection counts, separate
+from earlier terminal-normalization omissions. The value validates local
+evidence; the projector remains responsible for measuring content, enforcing
+bounds, and checking the captured policy's allowed transformations.
+
 The projection cannot be used to recreate authorization, usage, diagnostics, or
 other fields omitted from the terminal record. If history materialization must
 be retried, the session/tool coordinator reprojects from the already recorded
