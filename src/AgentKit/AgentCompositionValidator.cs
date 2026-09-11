@@ -62,7 +62,7 @@ internal static class AgentCompositionValidator
         ArgumentNullException.ThrowIfNull(provider);
         ArgumentNullException.ThrowIfNull(componentRegistrations);
 
-        ValidateComponentRegistrations(componentRegistrations);
+        ValidateComponentRegistrations(componentRegistrations, requiresFacade: true);
 
         var diagnostics = ImmutableArray.CreateBuilder<CompositionDiagnostic>();
 
@@ -80,8 +80,6 @@ internal static class AgentCompositionValidator
             validatedRunProfiles = ValidateCatalog(catalog, profileReader, diagnostics);
         }
 
-        ValidateRunScopeRegistration(componentRegistrations, diagnostics);
-
         if (diagnostics.Count > 0)
         {
             throw new AgentCompositionException(diagnostics.ToImmutable());
@@ -94,9 +92,10 @@ internal static class AgentCompositionValidator
 
     /// <summary>Validates the declared closed graph and its actual DI correspondence before application services are resolved.</summary>
     /// <param name="snapshot">The non-null build-local registration evidence.</param>
+    /// <param name="requiresFacade">Whether the caller is constructing an engine even if its facade registration was removed. Otherwise feature-only hosts need no runnable spine.</param>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is <see langword="null"/>.</exception>
-    /// <exception cref="AgentCompositionException">The declared graph or its Microsoft DI correspondence is invalid. An absent declaration set remains explicitly partial and is not treated as complete graph validation.</exception>
-    internal static void ValidateComponentRegistrations(ComponentRegistrationSnapshot snapshot)
+    /// <exception cref="AgentCompositionException">The declared graph, its Microsoft DI correspondence, or required facade service cardinality is invalid. An absent declaration set remains explicitly partial and is not treated as complete graph validation.</exception>
+    internal static void ValidateComponentRegistrations(ComponentRegistrationSnapshot snapshot, bool requiresFacade = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -104,7 +103,7 @@ internal static class AgentCompositionValidator
         [
             .. ComponentDependencyGraphValidator.ValidateSnapshot(snapshot),
             .. ComponentRegistrationCorrespondenceValidator.Validate(snapshot),
-            .. ValidateRequiredFacadeServices(snapshot),
+            .. ValidateRequiredFacadeServices(snapshot, requiresFacade),
         ];
         if (!diagnostics.IsEmpty)
         {
@@ -114,37 +113,60 @@ internal static class AgentCompositionValidator
 
     /// <summary>Validates required singular facade services from exact build-local DI descriptors.</summary>
     /// <param name="snapshot">The non-null build-local registration evidence.</param>
+    /// <param name="requiresFacade">Whether engine construction requires the facade even when no unkeyed facade descriptor remains.</param>
     /// <returns>Bounded missing or ambiguous service diagnostics without resolving registrations.</returns>
     private static ImmutableArray<CompositionDiagnostic> ValidateRequiredFacadeServices(
-        ComponentRegistrationSnapshot snapshot)
+        ComponentRegistrationSnapshot snapshot,
+        bool requiresFacade)
     {
         Debug.Assert(snapshot is not null, "Component registration validation supplies a non-null snapshot.");
 
         var hasFacade = snapshot.Services.Any(static service =>
             !service.IsKeyedService && service.ServiceType == typeof(AgentEngine));
-        if (!hasFacade)
+        if (!hasFacade && !requiresFacade)
         {
             return [];
         }
 
-        var grantStoreCount = snapshot.Services.Count(static service =>
-            !service.IsKeyedService && service.ServiceType == typeof(ISecurityGrantStore));
-        return grantStoreCount switch
+        var diagnostics = ImmutableArray.CreateBuilder<CompositionDiagnostic>();
+        ValidateSingularRegistration<AgentEngine>(snapshot, diagnostics, "agentkit.engine");
+        ValidateSingularRegistration<IAgentDefinitionCatalog>(snapshot, diagnostics, "agentkit.catalog");
+        ValidateSingularRegistration<IAgentRunProfilePublicationReader>(snapshot, diagnostics, "agentkit.run-profile-reader");
+        ValidateSingularRegistration<ISecurityProfileSelector>(snapshot, diagnostics, "agentkit.security-profile-selector");
+        ValidateSingularRegistration<ISecurityGrantStore>(snapshot, diagnostics, "agentkit.security-grant-store");
+        ValidateSingularRegistration<TimeProvider>(snapshot, diagnostics, "agentkit.time");
+        ValidateSingularRegistration<IIdentifierGenerator<RunId>>(snapshot, diagnostics, "agentkit.runid");
+        ValidateSingularRegistration<IIdentifierGenerator<OperationId>>(snapshot, diagnostics, "agentkit.operationid");
+        ValidateSingularRegistration<IAgentLoop>(snapshot, diagnostics, "agentkit.loop", "unresolvable");
+        return diagnostics.ToImmutable();
+    }
+
+    /// <summary>Checks one required unkeyed registration without activating application services.</summary>
+    /// <typeparam name="TService">The singular service required by the current facade runtime.</typeparam>
+    /// <param name="snapshot">The non-null immutable build-local registrations.</param>
+    /// <param name="diagnostics">The initialized collector for deterministic missing and ambiguous diagnostics.</param>
+    /// <param name="code">The nonempty stable diagnostic-code prefix for this service.</param>
+    /// <param name="missingSuffix">The nonempty existing diagnostic suffix used when the service is missing.</param>
+    /// <remarks>Keyed alternatives do not satisfy or conflict with an unkeyed requirement. No service keys, factories, constructors, or instance callbacks are invoked.</remarks>
+    private static void ValidateSingularRegistration<TService>(
+        ComponentRegistrationSnapshot snapshot,
+        ImmutableArray<CompositionDiagnostic>.Builder diagnostics,
+        string code,
+        string missingSuffix = "missing")
+    {
+        Debug.Assert(snapshot is not null, "Composition validation supplies captured registrations.");
+        Debug.Assert(diagnostics is not null, "Composition validation owns an initialized diagnostic collector.");
+        Debug.Assert(!string.IsNullOrWhiteSpace(code), "Every required service has a stable diagnostic-code prefix.");
+        Debug.Assert(!string.IsNullOrWhiteSpace(missingSuffix), "Missing service diagnostics have a nonempty suffix.");
+
+        var count = snapshot.Services.Count(static descriptor =>
+            !descriptor.IsKeyedService && descriptor.ServiceType == typeof(TService));
+        if (count != 1)
         {
-            0 =>
-            [
-                new CompositionDiagnostic(
-                    "agentkit.security-grant-store.missing",
-                    "No unkeyed ISecurityGrantStore is registered. Select one security grant-store adapter explicitly."),
-            ],
-            1 => [],
-            _ =>
-            [
-                new CompositionDiagnostic(
-                    "agentkit.security-grant-store.ambiguous",
-                    "More than one unkeyed ISecurityGrantStore is registered. Register exactly one security grant-store adapter."),
-            ],
-        };
+            diagnostics.Add(new CompositionDiagnostic(
+                $"{code}.{(count == 0 ? missingSuffix : "ambiguous")}",
+                $"Expected exactly one unkeyed {typeof(TService).Name} registration; found {count}. Select one implementation explicitly."));
+        }
     }
 
     private static AgentRunProfilePublicationSnapshot? ValidateCatalog(
@@ -216,37 +238,6 @@ internal static class AgentCompositionValidator
         }
 
         return profileSnapshot;
-    }
-
-    /// <summary>Validates reduced loop readiness from frozen registration metadata without activating application services.</summary>
-    /// <param name="snapshot">The exact build-local service descriptors already captured for validation.</param>
-    /// <param name="diagnostics">The initialized collector that receives missing or ambiguous loop diagnostics.</param>
-    /// <remarks>
-    /// Constructor-graph validation remains Microsoft DI's responsibility. This check proves only that the current
-    /// reduced runtime has exactly one unkeyed loop registration; selected keyed loop validation belongs to the
-    /// canonical agent-component selection checkpoint.
-    /// </remarks>
-    private static void ValidateRunScopeRegistration(
-        ComponentRegistrationSnapshot snapshot,
-        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
-    {
-        Debug.Assert(snapshot is not null, "Composition validation supplies a non-null registration snapshot.");
-        Debug.Assert(diagnostics is not null, "Composition validation owns an initialized diagnostic collector.");
-
-        var registrations = snapshot.Services.Count(static descriptor =>
-            !descriptor.IsKeyedService && descriptor.ServiceType == typeof(IAgentLoop));
-        if (registrations == 0)
-        {
-            diagnostics.Add(new CompositionDiagnostic(
-                "agentkit.loop.unresolvable",
-                $"No unkeyed {nameof(IAgentLoop)} is registered for the current reduced runtime. Register one with AddAgentLoop."));
-        }
-        else if (registrations > 1)
-        {
-            diagnostics.Add(new CompositionDiagnostic(
-                "agentkit.loop.ambiguous",
-                $"More than one unkeyed {nameof(IAgentLoop)} is registered for the current reduced runtime. Register exactly one."));
-        }
     }
 
     private static TService? Resolve<TService>(

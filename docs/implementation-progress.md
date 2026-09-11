@@ -7,18 +7,16 @@ conformance to requirements it does not exercise.
 
 ## Objective and operating rules
 
-The broad architecture implementation goal was stopped at the user’s request on
-2026-09-09. Closeout is limited to the already-started SQLite budget ledger,
-provider compatibility values and usage-report state migration, followed by
-verification, commits and a push. Remaining architecture requirements stay open;
-no further checkpoint starts without a new instruction.
+The active goal resumed broad architecture implementation on 2026-09-11,
+starting with the high-level runnable composition and following its unfinished
+lower-level dependencies. Implementations, tests and docs move together; each
+verified checkpoint is committed and pushed. The September 9 closeout remains
+historical evidence, not a completion claim for the architecture.
 
-The original objective was to implement all missing parts of the documented
-architecture and correct divergent implementations. Terra and Sol agents perform
-implementation; the coordinating architect assigns ownership, reviews decisions
-and evidence, and commits verified checkpoints. Preserve concurrent work and
-record unresolved requirements rather than weakening specifications to match
-existing code.
+The objective is to implement all missing parts of the documented architecture
+and correct divergent implementations. Preserve concurrent work and record
+unresolved requirements rather than weakening specifications to match existing
+code.
 
 Each component closes only after its contracts, first-party implementations,
 registrations, capabilities, failure semantics, diagnostics, reusable
@@ -71,6 +69,31 @@ owning spec.
 | Exact authority selection                              | Isolated Release solution: 4,214 passed; Permissions: 52 passed; full format/lint passed; three additive API snapshots reviewed                                   | Explicit bindings, typed missing-key results and isolated diagnostics verified; policy capture, audit and session integration remain open             |
 
 ## Latest integration evidence
+
+The resumed facade checkpoint validates core service cardinality from captured
+DI descriptors before application activation. Missing or duplicate catalogs,
+run-profile readers, security-profile selectors, grant stores, clocks, run and
+operation identity generators, loops and facade registrations fail with stable
+diagnostics. Standalone and hosted builds share this validation; disabling
+Microsoft DI constructor validation does not disable it. Keyed alternatives do
+not satisfy or conflict with an unkeyed requirement. Hosts using feature
+packages without the facade remain independent of the runnable spine.
+
+Tests cover the two build paths, keyed alternatives, missing services, aggregate
+diagnostics, removal of the facade registration, and rejection logs, activities
+and bounded metrics. Full keyed runnable composition, first-party descriptor
+registration and run-plan activation remain open. Verification for this
+checkpoint: the Release build passed with zero warnings or errors, and all 6,244
+tests passed without skips, including 309 facade tests and 177 session tests.
+Public API compatibility checks passed without snapshot changes.
+
+The first full run exposed cross-test session diagnostics interference: an
+unfiltered lease fault-injection listener also threw for activities sampled by
+other tests. A deterministic two-case reproduction failed on the original
+callbacks. Session listeners now restrict observation and fault injection to the
+owning trace and operation; 177 focused session tests passed before final
+integration. The tests retain active fault injection and verify unrelated
+activities while the throwing listener remains installed.
 
 The usage-report lifecycle checkpoint passed a Release build with no warnings or
 errors and all 6,205 tests without skips in an isolated checkout over `da4cb59`.
@@ -1394,7 +1417,7 @@ not make that component a mandatory dependency of every engine.
 | Project structure             | Missing owners, declared graph activation, unchecked leaf protocol ownership and required project/test topology; project and pure component graph checks established   |
 | Composition and configuration | Full closed runnable graph, catalog publication/reload, keyed selection, scope ownership, readiness                                                                    |
 | Agent runtime                 | Explicit state transitions, waiter cancellation, recovery identity, settlement outcomes                                                                                |
-| Budgets                       | SQLite ledger, profile compatibility, policy/event contracts, consumer integration and full conformance                                                                |
+| Budgets                       | Profile compatibility, policy/event contracts, consumer integration and full conformance; SQLite ledger checkpoint verified                                            |
 | Messages and history          | Immutable/loss-aware values, non-elevation, correlation and shared round-trip conformance                                                                              |
 | Input and output              | Admission, durable promotion, lane routing, fan-out, final publication and channel contracts                                                                           |
 | Structured output             | Complete candidate extraction, validation, repair decisions and conversion conformance                                                                                 |
@@ -1403,7 +1426,7 @@ not make that component a mandatory dependency of every engine.
 | Identity                      | Verified normalization/derivation baseline; downstream revalidation, ingress integration and reusable conformance                                                      |
 | Model and embedding providers | All advertised operation/capability mappings, endpoint/account bindings, terminal/error/usage semantics                                                                |
 | Tools                         | Authoritative terminal records, rejection projections, scheduling, retries and focused feature contracts                                                               |
-| Permissions and human control | SQLite grant storage, policy algebra, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap                                      |
+| Permissions and human control | Policy algebra, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap; SQLite grant-store checkpoint verified                    |
 | Sessions                      | Lifecycle after accepted state, complete lane coordination, branch fencing, retention/export/import; missing SQLite backend                                            |
 | Durable execution             | Missing runtime and explicit backend; journals, codecs, leases, checkpoints, evidence and recovery                                                                     |
 | Memory and retrieval          | Missing runtime/storage ownership; documents/vectors, retrieval provenance, tombstones and purge                                                                       |

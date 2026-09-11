@@ -12,6 +12,7 @@ public sealed class CatalogBootstrapTests
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
         CompositionTestData.AddRequiredSecurityGrantStore(services);
+        _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
         _ = services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
         using var provider = CompositionTestData.BuildHostedProvider(services);
@@ -48,6 +49,7 @@ public sealed class CatalogBootstrapTests
         ThrowingBootstrapTestSource.Reset();
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
+        _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
         _ = builder.Services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
 

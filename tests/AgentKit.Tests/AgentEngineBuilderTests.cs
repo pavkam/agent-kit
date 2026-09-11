@@ -85,6 +85,7 @@ public sealed class AgentEngineBuilderTests
     {
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
+        _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
 
         var exception = Should.Throw<AgentCompositionException>(builder.Build);

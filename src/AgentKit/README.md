@@ -18,6 +18,21 @@ example, follow [Getting started](../../docs/getting-started.md). Complete
 engine composition is described in the
 [composition guide](../../docs/guides/composition.md).
 
+## Build validation
+
+Standalone builds and `AgentKitServiceProviderFactory` validate core service
+registrations before activating application services. Register exactly one
+unkeyed engine, agent-definition catalog, run-profile publication reader,
+security-profile selector, security grant store, clock, run identity generator,
+operation identity generator and loop. Replace a default with `Replace` or
+`RemoveAll` followed by an explicit registration; appending a second unkeyed
+implementation is rejected. Keyed alternatives remain independent.
+
+Missing and ambiguous services produce stable composition diagnostics, including
+when Microsoft DI constructor validation is disabled. Feature-only hosts using
+the provider factory do not need the engine's services. Full keyed run-plan
+compilation and activation remain tracked in the implementation ledger.
+
 ## Related projects
 
 - [AgentKit.Abstractions](../AgentKit.Abstractions/README.md) — implement

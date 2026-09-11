@@ -236,8 +236,10 @@ public sealed class AgentKitServiceProviderFactoryTests
         log.Message.ShouldNotContain(protectedKey);
     }
 
-    [Fact]
-    public void CreateServiceProvider_WhenDeclaredGraphIsRejected_ObservesRejectionBeforeFactories()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CreateServiceProvider_WhenCompositionIsRejected_ObservesRejectionBeforeFactories(bool duplicateCoreService)
     {
         var applicationFactoryCalls = 0;
         using var parent = new Activity("provider-rejection-parent").Start();
@@ -252,20 +254,30 @@ public sealed class AgentKitServiceProviderFactoryTests
             });
         using var metrics = new BuildMetricCollector(parent.TraceId);
         var logger = new RecordingLogger();
-        var services = new ServiceCollection();
+        var services = duplicateCoreService
+            ? CompositionTestData.RunnableBuilder().Services
+            : new ServiceCollection();
         _ = services.AddSingleton<ILeaf>(
             _ =>
             {
                 applicationFactoryCalls++;
                 return new Leaf();
             });
-        _ = services.DeclareAgentKitComponent(Registration(ServiceLifetime.Scoped));
+        _ = duplicateCoreService
+            ? services.AddSingleton<TimeProvider>(_ =>
+            {
+                applicationFactoryCalls++;
+                throw new InvalidOperationException("Protected application factory content must not escape.");
+            })
+            : services.DeclareAgentKitComponent(Registration(ServiceLifetime.Scoped));
         var factory = new AgentKitServiceProviderFactory(new ServiceProviderOptions(), logger);
 
         var exception = Should.Throw<AgentCompositionException>(() => factory.CreateServiceProvider(services));
 
         exception.Diagnostics.ShouldContain(
-            static diagnostic => diagnostic.Code == "agentkit.component-registration.lifetime-mismatch");
+            diagnostic => diagnostic.Code == (duplicateCoreService
+                ? "agentkit.time.ambiguous"
+                : "agentkit.component-registration.lifetime-mismatch"));
         applicationFactoryCalls.ShouldBe(0);
         Activity.Current.ShouldBe(parent);
         var activity = activities.ShouldHaveSingleItem();
@@ -281,6 +293,9 @@ public sealed class AgentKitServiceProviderFactoryTests
             && measurement.Value >= 0);
         var log = logger.Entries.ShouldHaveSingleItem();
         log.EventId.Id.ShouldBe(18005);
+        log.Message.ShouldNotContain("Protected application factory content");
+        activity.TagObjects.ShouldNotContain(static tag =>
+            tag.Value != null && tag.Value.ToString()!.Contains("Protected application factory content", StringComparison.Ordinal));
         log.Properties["ErrorType"].ShouldBe(nameof(AgentCompositionException));
     }
 

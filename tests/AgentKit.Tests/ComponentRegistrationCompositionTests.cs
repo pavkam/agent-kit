@@ -72,6 +72,8 @@ public sealed class ComponentRegistrationCompositionTests
         var applicationKey = new ThrowingServiceKey();
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
+        _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
+        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
         _ = services.AddSingleton<ISecurityGrantStore>(
             _ =>
             {
@@ -99,6 +101,8 @@ public sealed class ComponentRegistrationCompositionTests
         var grantStore = new StubSecurityGrantStore();
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
+        _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
+        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
         _ = services.AddKeyedSingleton<ISecurityGrantStore>(null, grantStore);
         var snapshot = ComponentRegistrationSnapshot.Capture(services);
         var store = snapshot.Services

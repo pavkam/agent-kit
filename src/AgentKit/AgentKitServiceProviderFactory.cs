@@ -152,7 +152,7 @@ public sealed class AgentKitServiceProviderFactory: IServiceProviderFactory<ISer
     /// <returns>A new provider owning services created under the configured Microsoft DI lifetimes.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="containerBuilder"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="containerBuilder"/> contains a null service descriptor.</exception>
-    /// <exception cref="AgentCompositionException">The declared closed component graph or its exact DI correspondence is invalid.</exception>
+    /// <exception cref="AgentCompositionException">The declared closed component graph or its exact DI correspondence is invalid, or a registered facade has missing or ambiguous core services.</exception>
     /// <exception cref="AggregateException">Microsoft DI build validation finds one or more invalid constructor or lifetime graphs.</exception>
     /// <remarks>
     /// Descriptor validation precedes diagnostics and provider effects. The
