@@ -99,10 +99,17 @@ Snapshots contain only immutable evidence. Their companion provider and catalog
 captures own live acquisitions; a serialized snapshot cannot recover an invoker
 by looking up current registrations. Invoker leases retain the exact descriptor
 and source version. Closing a capture prevents new acquisitions while existing
-leases retain their bindings until released. Failed or cancelled capture
-releases its partial acquisitions and advertises nothing. Borrowed host-DI
-instances keep their original disposal owner; release never proves an external
-effect stopped.
+leases retain their bindings until released. Closure waits for all leases and
+owned cleanup. A caller holding a lease must release it before awaiting closure
+on that same control path. Released leases reject invoker access but keep their
+immutable metadata readable. Concurrent and repeated disposal share the same
+completion and cleanup failure; cleanup is never retried implicitly. Closed
+source acquisition returns an unavailable result for the exact requested
+identity. Cancellation before transfer acquires no resource.
+
+Failed or cancelled capture releases its partial acquisitions and advertises
+nothing. Borrowed host-DI instances keep their original disposal owner; release
+never proves an external effect stopped.
 
 ## Schema rules
 
@@ -212,6 +219,9 @@ declared and authorized effect.
   the same run ID.
 - A failed or cancelled capture releases owned acquisitions once; closing it
   blocks new acquisitions without invalidating an outstanding invoker lease.
+- Closing a capture drains outstanding leases before releasing an owned DI
+  scope. Borrowed scopes remain host-owned, and cleanup failure is shared by all
+  waiters without a repeated cleanup attempt.
 - A faster later result cannot activate a tool before its source-order result is
   materialized, and proposed unknown tools remain inactive.
 - Canonical validation remains strict after provider schema downgrade.

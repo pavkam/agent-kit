@@ -6,6 +6,31 @@ namespace AgentKit.Tools;
 /// <summary>Defines allocation-efficient structured tool-lifecycle log events.</summary>
 internal static partial class ToolLog
 {
+    /// <summary>Records a retained source-capture operation before observable work.</summary>
+    /// <param name="logger">The capture's type-specific logger.</param><param name="operation">The bounded operation name.</param><param name="sourceId">The captured source identity.</param><param name="sourceVersion">The exact source publication.</param>
+    [LoggerMessage(4030, LogLevel.Debug, "Starting {Operation} for tool source {SourceId} at version {SourceVersion}.")]
+    internal static partial void CaptureOperationStarted(ILogger logger, string operation, ToolSourceId sourceId, ToolSourceVersion sourceVersion);
+
+    /// <summary>Records successful completion without descriptor or result content.</summary>
+    /// <param name="logger">The capture's type-specific logger.</param><param name="operation">The bounded operation name.</param><param name="outcome">The bounded successful outcome.</param><param name="sourceId">The captured source identity.</param><param name="sourceVersion">The exact source publication.</param>
+    [LoggerMessage(4031, LogLevel.Debug, "Completed {Operation} with {Outcome} for tool source {SourceId} at version {SourceVersion}.")]
+    internal static partial void CaptureOperationCompleted(ILogger logger, string operation, string outcome, ToolSourceId sourceId, ToolSourceVersion sourceVersion);
+
+    /// <summary>Records acquisition cancellation without claiming an unavailable publication.</summary>
+    /// <param name="logger">The capture's type-specific logger.</param><param name="sourceId">The captured source identity.</param><param name="sourceVersion">The exact source publication.</param>
+    [LoggerMessage(4032, LogLevel.Information, "Cancelled invoker acquisition for tool source {SourceId} at version {SourceVersion}.")]
+    internal static partial void CaptureAcquisitionCancelled(ILogger logger, ToolSourceId sourceId, ToolSourceVersion sourceVersion);
+
+    /// <summary>Records owned cleanup failure without copying its exception message or other protected content.</summary>
+    /// <param name="logger">The capture's type-specific logger.</param><param name="operation">The bounded operation name.</param><param name="sourceId">The captured source identity.</param><param name="sourceVersion">The exact source publication.</param><param name="errorType">The exception type name, without message or stack trace.</param>
+    [LoggerMessage(4033, LogLevel.Error, "Failed {Operation} for tool source {SourceId} at version {SourceVersion} with error type {ErrorType}.")]
+    internal static partial void CaptureOperationFailed(ILogger logger, string operation, ToolSourceId sourceId, ToolSourceVersion sourceVersion, string errorType);
+
+    /// <summary>Records unavailable exact acquisition without exposing alternative bindings or arbitrary reason content.</summary>
+    /// <param name="logger">The capture's type-specific logger.</param><param name="sourceId">The captured source identity.</param><param name="sourceVersion">The exact source publication.</param><param name="toolId">The requested canonical identity.</param><param name="toolVersion">The requested exact tool version.</param>
+    [LoggerMessage(4034, LogLevel.Warning, "Invoker {ToolId} at version {ToolVersion} is unavailable from tool source {SourceId} at version {SourceVersion}.")]
+    internal static partial void CaptureInvokerUnavailable(ILogger logger, ToolSourceId sourceId, ToolSourceVersion sourceVersion, ToolId toolId, ToolVersion toolVersion);
+
     /// <summary>Records lookup start using only the captured policy reference.</summary>
     /// <param name="logger">The catalog's type-specific logger.</param><param name="policyKey">The requested policy key.</param><param name="policyVersion">The exact requested revision.</param>
     [LoggerMessage(4020, LogLevel.Debug, "Resolving tool-result projection policy {PolicyKey} at version {PolicyVersion}.")]

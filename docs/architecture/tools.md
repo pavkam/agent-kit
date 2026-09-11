@@ -820,10 +820,30 @@ exact binding to the scheduler alongside the prepared call. Immutable call and
 terminal evidence never contains a live lease.
 
 Closing a capture rejects new acquisitions; outstanding invoker leases retain
-their exact bindings until released. A failed or cancelled catalog capture
-releases every acquisition it owns and publishes no partial catalog. Ownership
-transfer and release must be race-safe and dispose each owned acquisition once.
-Disposal never proves that an external effect stopped or was undone.
+their exact bindings until released. `DisposeAsync` waits for those leases and
+the single owned cleanup; callers must release their leases before awaiting
+closure on the same control path. A released lease rejects further invoker
+access while retaining readable descriptor/version evidence. Repeated or
+concurrent disposal shares completion, including cleanup failure, and never
+retries the resource effect. Acquisition from a closed source returns
+`ToolInvokerUnavailable` for the exact requested identity; cancellation before
+ownership transfer still propagates as cancellation.
+
+A failed or cancelled catalog capture releases every acquisition it owns and
+publishes no partial catalog. Ownership transfer and release must be race-safe
+and dispose each owned acquisition once. Disposal never proves that an external
+effect stopped or was undone.
+
+The first-party `ToolProviderCapture` captures a complete exact
+identity-to-invoker map beside one `ToolProviderSnapshot`. It validates missing,
+extra, default, null, and duplicate normalized bindings before taking ownership
+of an optional `IAsyncDisposable` source lifetime. That lifetime may own a
+source DI scope, but must not own or await the capture or its leases. Without
+it, invokers remain externally owned. The capture never disposes individual
+invokers, discovers a new binding, or invokes a tool. Providers construct it per
+acquisition rather than registering it as an engine-wide singleton. Its
+synchronized transitions run cleanup and diagnostic callbacks outside the state
+gate.
 
 ### Execution, durable state, and observation
 
@@ -1266,6 +1286,14 @@ The toolset and capture contract has these acceptance scenarios:
 - Closing a capture blocks new acquisitions while an outstanding invoker lease
   retains its binding. Cancellation during capture releases partial acquisitions
   without advertising a partial graph.
+- Capture closure waits for every outstanding lease before disposing an owned
+  source scope. A borrowed host scope retains its invokers until the host closes
+  it. Concurrent release and closure perform owned cleanup once.
+- A failing owned cleanup reaches every waiting close/final-release caller;
+  repeated disposal observes the same failure and never repeats cleanup.
+- Exact acquisition, release, closure, and owned cleanup expose correlated safe
+  diagnostics with bounded operation/outcome metrics. Throwing listeners,
+  loggers, and diagnostic clocks cannot alter ownership or the semantic result.
 
 ## Call pipeline
 

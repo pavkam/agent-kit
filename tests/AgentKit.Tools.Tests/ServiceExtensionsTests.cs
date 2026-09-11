@@ -66,7 +66,7 @@ public sealed class ServiceExtensionsTests
     {
         // Arrange
         var services = new ServiceCollection();
-        var clock = new ProjectionPolicyTestTimeProvider(() => 0);
+        var clock = new CallbackTimestampTimeProvider(() => 0);
         _ = services.AddSingleton<TimeProvider>(clock);
 
         // Act

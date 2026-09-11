@@ -7,6 +7,15 @@ namespace AgentKit.Observability;
 /// <remarks>Metric names use lowercase dotted namespaces and never embed identities.</remarks>
 public static class AgentKitMetricNames
 {
+    /// <summary>Counts completed invoker acquisition, release, capture closure, and owned cleanup operations.</summary>
+    /// <remarks>Dimensions are restricted to the bounded operation and outcome vocabularies.</remarks>
+    public const string ToolProviderCaptureOperationCount = "agentkit.tool.provider.capture.operation.count";
+
+    /// <summary>Measures elapsed seconds for retained source-capture operations.</summary>
+    /// <remarks>Unavailable or negative clock measurements are omitted; identities and content are never dimensions.</remarks>
+    public const string ToolProviderCaptureOperationDuration = "agentkit.tool.provider.capture.operation.duration";
+
+
     /// <summary>Gets the histogram for session-entry codec operation duration in seconds.</summary>
     public const string SessionEntryCodecDuration = "agentkit.session.entry.codec.duration";
     /// <summary>Gets the counter for terminal session-entry codec outcomes.</summary>

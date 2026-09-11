@@ -63,8 +63,14 @@ ordered evidence structurally.
 `ToolCatalogSnapshot` now requires an explicit `SourceVersions` map, including
 selected empty sources. Every descriptor source must be present. This is an
 intentional constructor change: callers must supply real publication versions.
-These immutable values own no live invokers. The canonical capture, acquisition,
-and resolver runtime remains under construction.
+These immutable values own no live invokers. `IToolProviderCapture` and
+`IToolInvokerLease` define the separate retained lifetime. Exact acquisition
+returns the closed `ToolInvokerAcquired` or `ToolInvokerUnavailable` outcome;
+copies of an acquired result share one lease rather than creating another
+acquisition. Closure drains outstanding leases before owned cleanup, and
+repeated disposal shares its completion and failure. The first-party source
+capture lives in `AgentKit.Tools`; aggregate catalog capture and canonical
+resolver/invocation integration remain under construction.
 
 ## Tool outcome evidence
 

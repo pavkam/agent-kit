@@ -18,6 +18,33 @@ example, follow [Getting started](../../docs/getting-started.md). Complete
 engine composition is described in the
 [composition guide](../../docs/guides/composition.md).
 
+## Retained source captures
+
+Providers create a [ToolProviderCapture](ToolProviderCapture.cs) from one
+`ToolProviderSnapshot`, its complete exact identity-to-invoker map, and an
+optional owned source lifetime such as an `AsyncServiceScope`. Construction
+rejects missing, extra, null, default, or duplicate normalized bindings before
+taking ownership. Captures belong to source acquisitions and are not singleton
+DI registrations.
+
+`AcquireInvokerAsync` returns an independent lease to the retained instance or
+`ToolInvokerUnavailable` for that exact identity. It performs no lookup against
+current registrations and never invokes the tool. Closing blocks new
+acquisitions and waits for existing leases before owned cleanup. Release your
+leases before awaiting closure on the same control path. Repeated disposal
+shares completion and failure; it never retries cleanup. A released lease keeps
+its immutable metadata readable but rejects further invoker access.
+
+The capture never disposes individual invokers. A supplied lifetime owns their
+source resources; a null lifetime leaves them under external host ownership.
+Acquisition, release, closure, and cleanup emit isolated structured logs,
+activities, and bounded operation/outcome metrics without descriptor content.
+
+The existing `AddAgentTools` path still uses the legacy catalog and combined
+invoker. Aggregate catalog capture, canonical resolution/invocation, and loop
+integration remain under construction; this source-capture component supplies
+their retained binding and lifetime boundary.
+
 ## Retained projection policies
 
 Register immutable policy snapshots with

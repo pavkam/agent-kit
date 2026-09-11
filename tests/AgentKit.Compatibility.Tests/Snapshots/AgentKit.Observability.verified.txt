@@ -77,6 +77,10 @@ namespace AgentKit.Observability
         public const string SessionStoreOperation = "session.store.operation";
         public const string TaskDelegationDispatch = "task.delegation.dispatch";
         public const string ToolBatch = "tool.batch";
+        public const string ToolInvokerAcquire = "tool.invoker.acquire";
+        public const string ToolInvokerRelease = "tool.invoker.release";
+        public const string ToolProviderCaptureClose = "tool.provider.capture.close";
+        public const string ToolProviderCaptureDisposeResources = "tool.provider.capture.dispose_resources";
         public const string ToolResultProjectionPolicyResolve = "tool.result.projection_policy.resolve";
     }
     public sealed class AgentKitActivityScope : System.IDisposable
@@ -151,6 +155,8 @@ namespace AgentKit.Observability
         public const string TaskDelegationPublicationDuration = "agentkit.task_delegation.publication.duration";
         public const string ToolCallCount = "agentkit.tool.call.count";
         public const string ToolCallDuration = "agentkit.tool.call.duration";
+        public const string ToolProviderCaptureOperationCount = "agentkit.tool.provider.capture.operation.count";
+        public const string ToolProviderCaptureOperationDuration = "agentkit.tool.provider.capture.operation.duration";
         public const string ToolResultProjectionPolicyResolutionCount = "agentkit.tool.result.projection_policy.resolution.count";
         public const string ToolResultProjectionPolicyResolutionDuration = "agentkit.tool.result.projection_policy.resolution.duration";
     }
@@ -217,9 +223,13 @@ namespace AgentKit.Observability
         public const string SessionOperation = "agentkit.session.operation";
         public const string TenantId = "agentkit.tenant.id";
         public const string ToolCallId = "agentkit.tool_call.id";
+        public const string ToolId = "agentkit.tool.id";
         public const string ToolName = "gen_ai.tool.name";
         public const string ToolResultProjectionPolicyKey = "agentkit.tool.result.projection_policy.key";
         public const string ToolResultProjectionPolicyVersion = "agentkit.tool.result.projection_policy.version";
+        public const string ToolSourceId = "agentkit.tool.source.id";
+        public const string ToolSourceVersion = "agentkit.tool.source.version";
+        public const string ToolVersion = "agentkit.tool.version";
         public const string TurnId = "agentkit.turn.id";
         public const string TurnNumber = "agentkit.turn.number";
     }

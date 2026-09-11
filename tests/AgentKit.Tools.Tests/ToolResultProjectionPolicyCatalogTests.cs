@@ -105,7 +105,7 @@ public sealed class ToolResultProjectionPolicyCatalogTests: ToolResultProjection
             ImmutableDictionary<string, ExtensionValue>.Empty.Add("private", new ExtensionValue([.. System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(protectedContent))]))));
         var logger = new RecordingLogger<ToolResultProjectionPolicyCatalog>();
         long timestamp = 0;
-        var clock = new ProjectionPolicyTestTimeProvider(() => Interlocked.Add(ref timestamp, 125));
+        var clock = new CallbackTimestampTimeProvider(() => Interlocked.Add(ref timestamp, 125));
         var catalog = new ToolResultProjectionPolicyCatalog(outcome == "unavailable" ? [] : [policy], clock, logger);
         using var parent = new Activity("projection-policy-observation").Start();
         Activity? observed = null;
@@ -169,7 +169,7 @@ public sealed class ToolResultProjectionPolicyCatalogTests: ToolResultProjection
         // Arrange
         var logger = new RecordingLogger<ToolResultProjectionPolicyCatalog>();
         var clockCalls = 0;
-        var catalog = new ToolResultProjectionPolicyCatalog([], new ProjectionPolicyTestTimeProvider(() => ++clockCalls), logger);
+        var catalog = new ToolResultProjectionPolicyCatalog([], new CallbackTimestampTimeProvider(() => ++clockCalls), logger);
         using var parent = new Activity("invalid-projection-policy").Start();
         var activities = 0;
         using var listener = Listen(parent, _ => activities++);
@@ -288,7 +288,7 @@ public sealed class ToolResultProjectionPolicyCatalogTests: ToolResultProjection
         // Arrange
         var policy = ToolProjectionPolicyTestData.Snapshot();
         var reads = 0;
-        var clock = new ProjectionPolicyTestTimeProvider(() =>
+        var clock = new CallbackTimestampTimeProvider(() =>
         {
             reads++;
             return reads == failure ? throw new InvalidOperationException("clock failure") : failure == 3 ? -reads : reads;

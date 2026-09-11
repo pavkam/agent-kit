@@ -10,6 +10,11 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
+- [ToolProviderCaptureTests](ToolProviderCaptureTests.cs) — reusable
+  source-capture conformance, DI scope ownership, concurrency, cleanup failure,
+  and diagnostics.
+- [ToolInvokerLeaseTests](ToolInvokerLeaseTests.cs) — exact binding lifetime and
+  concurrent idempotent release.
 - [AllowListToolAuthorizerTests](AllowListToolAuthorizerTests.cs)
 - [DefaultToolInvokerTests](DefaultToolInvokerTests.cs)
 - [ToolCatalogTests](ToolCatalogTests.cs)

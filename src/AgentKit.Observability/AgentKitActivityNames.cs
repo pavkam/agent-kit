@@ -7,6 +7,23 @@ namespace AgentKit.Observability;
 /// <remarks>Names describe operations, never high-cardinality identities or content.</remarks>
 public static class AgentKitActivityNames
 {
+    /// <summary>Identifies exact invoker acquisition from a retained source capture.</summary>
+    /// <remarks>Successful acquisition retains a lifetime only; it never describes a tool invocation.</remarks>
+    public const string ToolInvokerAcquire = "tool.invoker.acquire";
+
+    /// <summary>Identifies capture closure, including the wait for outstanding invoker leases.</summary>
+    /// <remarks>Completion means owned resources have settled, not that external tool effects were undone.</remarks>
+    public const string ToolProviderCaptureClose = "tool.provider.capture.close";
+
+    /// <summary>Identifies release of one invoker acquisition.</summary>
+    /// <remarks>The final release may await cleanup of its closed source capture.</remarks>
+    public const string ToolInvokerRelease = "tool.invoker.release";
+
+    /// <summary>Identifies the single cleanup of a source capture's owned resource lifetime.</summary>
+    /// <remarks>Borrowed invokers are never disposed directly by this operation.</remarks>
+    public const string ToolProviderCaptureDisposeResources = "tool.provider.capture.dispose_resources";
+
+
     /// <summary>Gets the name for one bounded session-entry codec operation.</summary>
     public const string SessionEntryCodec = "session.entry.codec";
     /// <summary>Gets the name for validating and building one AgentKit service provider.</summary>

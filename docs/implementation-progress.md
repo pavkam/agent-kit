@@ -70,6 +70,42 @@ owning spec.
 
 ## Latest integration evidence
 
+The retained source-capture runtime adds `ToolProviderCapture`,
+`IToolProviderCapture`, and `IToolInvokerLease`. It pins a complete exact
+identity-to-invoker graph to one immutable source publication and never resolves
+against live registrations. Acquisition returns a closed acquired/unavailable
+result. Acquired-result equality uses lease reference identity so distinct
+acquisitions cannot collapse through a third-party equality implementation.
+
+Closure rejects new acquisitions, drains outstanding leases, and releases an
+optional owned source lifetime once. Existing leases retain their invokers until
+release; borrowed invokers keep their host owner. Concurrent and repeated
+release share completion and failure. A failed cleanup is observable but never
+repeated implicitly. Constructor rejection occurs before ownership transfer, and
+cancellation before acquisition transfers no lease.
+
+Reusable provider-capture and invoker-lease suites cover exact versions, ordinal
+identity, independent leases, concurrent acquisition/closure, cancellation,
+metadata after closure, asynchronous cleanup, and shared failure. Implementation
+tests additionally cover hostile dictionary comparers, real owned/borrowed DI
+scopes, safe structured logs, parented terminal activities, bounded metrics, and
+throwing observers or clocks. Tests remain in their production-class fixtures;
+common probes and the timestamp callback clock live in `AgentKit.Test.Shared`.
+
+This implements source binding lifetime, not the complete canonical execution
+pipeline. Aggregate catalog capture/merge, provider registration/discovery,
+canonical alias resolution, the legacy invoker/request migration, terminal
+recording/projection, message codecs, and durable output publication remain
+open. `AddAgentTools` and the loop still use the legacy catalog and combined
+invoker until that migration is complete.
+
+Verification: all 6,960 Release tests pass without skips, with zero build
+warnings or errors. The Tools suite has 118 cases and Abstractions has 3,565; 53
+additional cases cover source capture, invoker leases, closed acquisition
+results, and their lifecycle/diagnostic contracts. All 68 compatibility checks
+pass; the three reviewed API snapshots are additive. Repository C# formatting,
+Prettier, and Markdown lint pass with the pinned tooling.
+
 The discovery-evidence checkpoint adds immutable `ToolDiscoveryRequest` and
 `ToolProviderSnapshot` values. Requests reject mismatched
 agent/session/active-run, identity, definition, and configuration evidence

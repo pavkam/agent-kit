@@ -10,6 +10,23 @@ namespace AgentKit.Observability;
 /// </remarks>
 public static class AgentKitTagNames
 {
+    /// <summary>Identifies a resolved canonical tool on logs and traces.</summary>
+    /// <remarks>This high-cardinality identity is distinct from a provider alias and is never a metric dimension.</remarks>
+    public const string ToolId = "agentkit.tool.id";
+
+    /// <summary>Identifies the exact captured tool revision on logs and traces.</summary>
+    /// <remarks>The value is publication evidence, never a metric dimension or a request to select the latest tool.</remarks>
+    public const string ToolVersion = "agentkit.tool.version";
+
+    /// <summary>Identifies the source of a retained tool publication on logs and traces.</summary>
+    /// <remarks>The stable source identity is never a metric dimension; descriptor content is excluded.</remarks>
+    public const string ToolSourceId = "agentkit.tool.source.id";
+
+    /// <summary>Identifies the exact retained source publication on logs and traces.</summary>
+    /// <remarks>The source-defined version is never a metric dimension or authority to perform an effect.</remarks>
+    public const string ToolSourceVersion = "agentkit.tool.source.version";
+
+
     /// <summary>Gets the bounded session-entry codec operation attribute.</summary>
     public const string SessionEntryCodecOperation = "agentkit.session.entry.codec.operation";
 

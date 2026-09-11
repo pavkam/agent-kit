@@ -40,6 +40,13 @@ namespace AgentKit.Tools
         public bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool) { }
         public bool TryResolve(AgentKit.ToolId id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ITool? tool, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.ToolDescriptor? descriptor) { }
     }
+    public sealed class ToolProviderCapture : AgentKit.IToolProviderCapture, System.IAsyncDisposable
+    {
+        public ToolProviderCapture(AgentKit.ToolProviderSnapshot snapshot, System.Collections.Immutable.ImmutableDictionary<AgentKit.ToolIdentity, AgentKit.IToolInvoker> invokers, System.IAsyncDisposable? lifetime, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.ToolProviderCapture> logger) { }
+        public AgentKit.ToolProviderSnapshot Snapshot { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolInvokerLeaseResult> AcquireInvokerAsync(AgentKit.ToolIdentity identity, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+    }
     public sealed class ToolResultProjectionPolicyCatalog : AgentKit.IToolResultProjectionPolicyCatalog
     {
         public ToolResultProjectionPolicyCatalog(System.Collections.Generic.IEnumerable<AgentKit.ToolResultProjectionPolicySnapshot> policies, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.ToolResultProjectionPolicyCatalog> logger) { }

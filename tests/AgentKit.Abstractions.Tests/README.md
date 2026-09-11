@@ -11,6 +11,9 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
+- [ToolInvokerAcquiredTests](Tools/ToolInvokerAcquiredTests.cs)
+- [ToolInvokerUnavailableTests](Tools/ToolInvokerUnavailableTests.cs)
+- [ToolInvokerLeaseResultTests](Tools/ToolInvokerLeaseResultTests.cs)
 - [ToolDiscoveryRequestTests](Tools/ToolDiscoveryRequestTests.cs)
 - [ToolProviderSnapshotTests](Tools/ToolProviderSnapshotTests.cs)
 - [ToolCatalogSnapshotTests](Tools/ToolCatalogSnapshotTests.cs)

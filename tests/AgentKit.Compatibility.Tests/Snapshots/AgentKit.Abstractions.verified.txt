@@ -3844,6 +3844,17 @@ namespace AgentKit
     {
         System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolCallRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IToolInvokerLease : System.IAsyncDisposable
+    {
+        AgentKit.IToolInvoker Invoker { get; }
+        AgentKit.ToolSourceVersion SourceVersion { get; }
+        AgentKit.ToolDescriptor Tool { get; }
+    }
+    public interface IToolProviderCapture : System.IAsyncDisposable
+    {
+        AgentKit.ToolProviderSnapshot Snapshot { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.ToolInvokerLeaseResult> AcquireInvokerAsync(AgentKit.ToolIdentity identity, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IToolResultProjectionPolicyCatalog
     {
         System.Threading.Tasks.ValueTask<AgentKit.ToolResultProjectionPolicyResolution> ResolveAsync(AgentKit.ToolResultProjectionPolicyReference reference, System.Threading.CancellationToken cancellationToken);
@@ -7839,6 +7850,23 @@ namespace AgentKit
         public AgentKit.ToolCallOutcome Outcome { get; init; }
         public bool Equals(AgentKit.ToolInvocationResult? other) { }
         public override int GetHashCode() { }
+    }
+    public sealed class ToolInvokerAcquired : AgentKit.ToolInvokerLeaseResult, System.IEquatable<AgentKit.ToolInvokerAcquired>
+    {
+        public ToolInvokerAcquired(AgentKit.IToolInvokerLease lease) { }
+        public AgentKit.IToolInvokerLease Lease { get; }
+        public bool Equals(AgentKit.ToolInvokerAcquired? other) { }
+        public override int GetHashCode() { }
+    }
+    public abstract class ToolInvokerLeaseResult : System.IEquatable<AgentKit.ToolInvokerLeaseResult>
+    {
+        protected ToolInvokerLeaseResult(AgentKit.ToolInvokerLeaseResult original) { }
+    }
+    public sealed class ToolInvokerUnavailable : AgentKit.ToolInvokerLeaseResult, System.IEquatable<AgentKit.ToolInvokerUnavailable>
+    {
+        public ToolInvokerUnavailable(AgentKit.ToolIdentity identity, string safeReason) { }
+        public AgentKit.ToolIdentity Identity { get; }
+        public string SafeReason { get; }
     }
     public sealed class ToolMessage : AgentKit.AgentMessage, System.IEquatable<AgentKit.ToolMessage>
     {

@@ -21,6 +21,8 @@ concrete adapter fixtures; building this project alone is not a conformance run.
 - [SessionRunCoordinatorConformanceTests](SessionRunCoordinatorConformanceTests.cs)
 - [SessionStoreConformanceTests](SessionStoreConformanceTests.cs)
 - [ToolResultProjectionPolicyCatalogConformanceTests](ToolResultProjectionPolicyCatalogConformanceTests.cs)
+- [ToolProviderCaptureConformanceTests](ToolProviderCaptureConformanceTests.cs)
+- [ToolInvokerLeaseConformanceTests](ToolInvokerLeaseConformanceTests.cs)
 
 Fixture interfaces define how each adapter supplies the services and scenarios
 needed by its suite. Keep reusable behavior here and implementation-specific

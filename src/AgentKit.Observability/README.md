@@ -18,6 +18,15 @@ example, follow [Getting started](../../docs/getting-started.md). Complete
 engine composition is described in the
 [composition guide](../../docs/guides/composition.md).
 
+## Tool-source capture diagnostics
+
+Retained source capture uses `ToolInvokerAcquire`, `ToolInvokerRelease`,
+`ToolProviderCaptureClose`, and `ToolProviderCaptureDisposeResources` from
+`AgentKitActivityNames`. The shared capture counter and duration histogram use
+only bounded operation/outcome dimensions. Source and tool identities and exact
+versions belong on traces and structured logs, never metrics; descriptor,
+argument, result, and exception-message content is excluded.
+
 ## Related projects
 
 - [AgentKit](../AgentKit/README.md) — compose a process-level engine that hosts

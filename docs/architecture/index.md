@@ -254,6 +254,12 @@ expand AgentKit's mandatory runtime spine.
 | Identity and artifacts               | Immutable execution identity plus keyed artifact coordinator/store contracts                                      | `AddAgentIdentity` at trusted ingress and `AddAgentArtifacts` with explicit backend leaves                                                                                                                                                  |
 | Evaluation                           | Singular `IEvaluationRunner`, keyed additive evaluators/stores/exporters                                          | `AddAgentEvaluation`; optional and uses only public engine surfaces                                                                                                                                                                         |
 
+Retained tool-source captures close acquisition and drain invoker leases before
+owned cleanup. Their
+[lifetime contract](tools.md#discovery-resolution-validation-and-selection)
+preserves borrowed host ownership and shares cleanup failure without retrying
+it.
+
 Singular defaults use `TryAdd` and an explicit replacement path. Additive
 registrations retain deterministic order. Keyed registrations use stable unique
 keys and an injected catalog/selector, never `IServiceProvider` as a locator.
