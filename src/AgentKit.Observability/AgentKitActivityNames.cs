@@ -7,6 +7,10 @@ namespace AgentKit.Observability;
 /// <remarks>Names describe operations, never high-cardinality identities or content.</remarks>
 public static class AgentKitActivityNames
 {
+    /// <summary>Identifies complete bounded canonical tool-schema compilation before model exposure.</summary>
+    public const string ToolSchemaCompile = "tool.schema.compile";
+    /// <summary>Identifies bounded instance validation against a retained canonical tool schema.</summary>
+    public const string ToolSchemaValidate = "tool.schema.validate";
     /// <summary>Complete selected-source discovery and partial-owner cleanup.</summary>
     public const string ToolCatalogDiscover = "tool.catalog.discover";
     /// <summary>One exact provider discovery and publication validation.</summary>

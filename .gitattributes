@@ -19,3 +19,6 @@
 *.verified.xml text eol=lf working-tree-encoding=UTF-8
 *.verified.bin binary
 *.bin binary
+
+# Keep pinned upstream fixture bytes, including their original whitespace.
+tests/AgentKit.Tools.Tests/TestData/JsonSchema202012/*.json -whitespace

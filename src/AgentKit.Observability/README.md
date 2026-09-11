@@ -41,6 +41,13 @@ Count/duration metrics use only closed operation/outcome dimensions; aliases,
 publications, and exception messages never enter diagnostics. Cleanup failure
 remains failure even when the original discovery was cancelled.
 
+Canonical tool-schema compilation and validation use `tool.schema.compile` and
+`tool.schema.validate`, events 4090/4091, and
+`agentkit.tool.schema.operation.count` / `.duration`. Metrics contain only
+closed operation/outcome values. Logs and spans omit schema, instance, profile,
+property names, and exception content. Parent activity context preserves
+causality, and observer/clock failures remain isolated from validation.
+
 ## Use this project
 
 Start with `AddAgentKitObservability` in

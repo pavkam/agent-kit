@@ -188,6 +188,32 @@ Input schemas MUST use a declared JSON Schema dialect and provider translation
 profile. The runtime MUST retain a canonical full schema for validation even
 when an adapter must downgrade the model-visible schema.
 
+`IToolSchemaEngine` MUST preflight every schema branch before returning an
+`ICompiledToolSchema`. Its immutable profile records exact typed identity,
+version, dialect, and supported assertion/annotation sets. An engine supporting
+only part of a dialect MUST reject undeclared keywords rather than accepting a
+weaker canonical schema. Compilation rejection is configuration failure, never
+an invalid model argument or a repair attempt.
+
+A compiled handle MUST retain the exact canonical schema, profile, and
+compilation limits. Consumers verify that evidence before model exposure and
+retain the handle instead of looking up a later engine registration. Handles are
+concurrently callable without shared mutable budgets or disposal obligations.
+Validation performs no implicit I/O, uses no mutable global registry, and never
+applies defaults or coerces data. It distinguishes invalid data from exhausted
+resources and propagates cancellation.
+
+Local limits cover raw JSON bytes before decoded allocation, root-inclusive
+depth, all JSON values including annotation data, and total evaluation work.
+Repeated comparison or keyword expansion cannot evade a work bound merely
+because each individual node is small. Duplicate object members reject, exact
+numeric comparisons avoid binary rounding, and string length counts Unicode
+scalar values. Format annotations do not imply format assertions; the selected
+profile states which behavior it implements, and typed validators remain
+responsible for additional semantic requirements. These rules follow the
+[draft 2020-12 validation semantics](https://json-schema.org/draft/2020-12/json-schema-validation)
+for accepted keywords without claiming support for the entire dialect.
+
 Arguments are bounded before JSON parsing, then validated against the canonical
 schema and any typed validator. Schema defaults SHOULD NOT be applied unless the
 tool contract declares that behavior. Additional properties and numeric, string,

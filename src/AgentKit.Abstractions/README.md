@@ -23,6 +23,15 @@ example, follow [Getting started](../../docs/getting-started.md). Complete
 engine composition is described in the
 [composition guide](../../docs/guides/composition.md).
 
+## Canonical tool schemas
+
+`IToolSchemaEngine` compiles complete canonical schemas under an explicit
+versioned `ToolSchemaProfile` and `ToolSchemaLimits`. A successful
+`ICompiledToolSchema` retains exact schema/profile/limit evidence and validates
+instances with fresh work bounds. Unsupported vocabulary rejects before a handle
+is created; invalid data, resource exhaustion, and cancellation remain distinct.
+These local contracts perform no provider translation or tool effects.
+
 ## Run usage values
 
 `RunUsage` captures current, revisioned usage for one run. Each charged attempt

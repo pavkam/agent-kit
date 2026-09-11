@@ -96,6 +96,8 @@ namespace AgentKit.Observability
         public const string ToolProviderDiscover = "tool.provider.discover";
         public const string ToolRegistrationSelect = "tool.registration.select";
         public const string ToolResultProjectionPolicyResolve = "tool.result.projection_policy.resolve";
+        public const string ToolSchemaCompile = "tool.schema.compile";
+        public const string ToolSchemaValidate = "tool.schema.validate";
     }
     public sealed class AgentKitActivityScope : System.IDisposable
     {
@@ -183,6 +185,8 @@ namespace AgentKit.Observability
         public const string ToolRegistrationSelectionDuration = "agentkit.tool.registration.selection.duration";
         public const string ToolResultProjectionPolicyResolutionCount = "agentkit.tool.result.projection_policy.resolution.count";
         public const string ToolResultProjectionPolicyResolutionDuration = "agentkit.tool.result.projection_policy.resolution.duration";
+        public const string ToolSchemaOperationCount = "agentkit.tool.schema.operation.count";
+        public const string ToolSchemaOperationDuration = "agentkit.tool.schema.operation.duration";
     }
     public static class AgentKitTagNames
     {

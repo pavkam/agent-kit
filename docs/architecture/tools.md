@@ -822,6 +822,28 @@ public interface IToolResolver
         CancellationToken cancellationToken);
 }
 
+public interface IToolSchemaEngine
+{
+    ToolSchemaProfile Profile { get; }
+
+    ToolSchemaCompilationResult Compile(
+        JsonSchema schema,
+        ToolSchemaLimits limits,
+        CancellationToken cancellationToken);
+}
+
+public interface ICompiledToolSchema
+{
+    JsonSchema Schema { get; }
+    ToolSchemaProfile Profile { get; }
+    ToolSchemaLimits CompilationLimits { get; }
+
+    ToolSchemaValidationResult Validate(
+        JsonElement instance,
+        ToolSchemaLimits limits,
+        CancellationToken cancellationToken);
+}
+
 public interface IToolArgumentValidator
 {
     ValueTask<ToolArgumentValidationResult> ValidateAsync(
@@ -926,9 +948,61 @@ correlation. Metrics use only bounded operation/outcome dimensions. Observer
 failures are isolated and missing or reversed duration is omitted.
 
 This source-acquisition boundary is implemented. The combined canonical catalog
-still needs schema/model-capability preflight and migration from the legacy
+still needs integration of canonical schema compilation,
+provider/model-capability preflight, and migration from the legacy
 `IToolCatalog`/loop path. Neither source discovery nor handoff skips those
 requirements or claims model-ready schema support.
+
+The local schema boundary is separately implemented by `IToolSchemaEngine` and
+`ICompiledToolSchema` in `AgentKit.Abstractions`, with the first-party bounded
+engine in `AgentKit.Tools`. Another engine can implement those contracts without
+referencing this runtime. No source, provider, or output-runtime dependency is
+introduced. Complete compilation returns `ToolSchemaCompiled`; a classified
+`ToolSchemaCompilationRejected` contains no partial executable handle.
+
+A `ToolSchemaProfile` pins a typed identity, positive version, exact dialect,
+and disjoint assertion/annotation keyword sets. Unknown keywords reject. A
+compiled handle retains the exact owned canonical `JsonSchema`, profile, and
+compilation limits; consumers revalidate this evidence before exposure.
+Validation never rereads current registrations, changes input, applies defaults,
+coerces values, or performs I/O. Handles are immutable, resource-free, and safe
+for concurrent callers with independent operation budgets.
+
+`AddToolSchemaEngine` idempotently registers the unkeyed default and observation
+collaborators; `ReplaceToolSchemaEngine<TEngine>` replaces all unkeyed engine
+registrations without activating them. Explicit keyed registrations and old
+hosts/compiled handles are preserved. The default profile
+`agentkit-bounded-tool-schema`, revision 1, accepts draft 2020-12 with explicit
+support for type, properties, required, additionalProperties, items, enum,
+const, minimum/maximum and their exclusive forms, string/array/property count
+limits, and uniqueItems. Supported annotations are `$comment`, title,
+description, default, examples, deprecated, readOnly, writeOnly, and format.
+Format remains annotation-only. References, regex assertions, applicator unions,
+nested dialect declarations, vocabulary changes, and all undeclared keywords
+reject; this is a bounded subset, not complete draft conformance.
+
+`ToolSchemaLimits` bounds raw UTF-8 bytes, root-inclusive depth, JSON-value
+count, and deterministic total work. The default engine additionally caps actual
+JSON depth at 128. Raw UTF-8 length is read before decoded allocations;
+annotation data and duplicate members are included in inspection. Work charges
+cover traversal, property lookup, comparisons, and numeric parsing, including
+quadratic uniqueness checks. Exact decimal comparison never expands exponents or
+rounds through binary floating point. String length counts Unicode scalar
+values. Validation distinguishes invalid data from exhausted resources;
+cancellation propagates unchanged. Raw tool arguments still require their own
+bound before parsing at the argument-validator boundary.
+
+Compilation and validation emit `tool.schema.compile` / `tool.schema.validate`,
+events 4090/4091, and bounded operation/outcome metrics. No schema, instance,
+profile, property name, or exception content enters diagnostics. Parent activity
+context supplies causality without inventing run identity. Observer failures and
+missing/reversed diagnostic time cannot alter validation.
+
+Canonical compilation does not select a provider translation profile or expose
+tools to a model. Catalog integration must compile every retained input/output
+schema, validate returned exact evidence, preflight model-visible translation,
+and retain canonical handles through execution. Those integration and legacy
+catalog/loop migration steps remain open.
 
 The first-party `StaticToolProvider` implements `IToolProvider` over a
 host-supplied `ToolProviderSnapshot` and complete exact invoker map. It

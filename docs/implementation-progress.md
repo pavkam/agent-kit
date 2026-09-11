@@ -7,11 +7,15 @@ conformance to requirements it does not exercise.
 
 ## Objective and operating rules
 
-The active goal resumed broad architecture implementation on 2026-09-11,
-starting with the high-level runnable composition and following its unfinished
-lower-level dependencies. Implementations, tests and docs move together; each
-verified checkpoint is committed and pushed. The September 9 closeout remains
-historical evidence, not a completion claim for the architecture.
+The broad goal resumed architecture implementation on 2026-09-11, starting with
+the high-level runnable composition and following its unfinished lower-level
+dependencies. Implementations, tests and docs move together; each verified
+checkpoint is committed and pushed. The September 9 closeout remains historical
+evidence, not a completion claim for the architecture.
+
+Alex requested wrapping up the canonical tool-schema checkpoint and stopping the
+broad goal on 2026-09-11. Remaining gaps below are a work ledger, not
+authorization to start another component or resume the stopped effort.
 
 The objective is to implement all missing parts of the documented architecture
 and correct divergent implementations. Preserve concurrent work and record
@@ -69,6 +73,24 @@ owning spec.
 | Exact authority selection                              | Isolated Release solution: 4,214 passed; Permissions: 52 passed; full format/lint passed; three additive API snapshots reviewed                                   | Explicit bindings, typed missing-key results and isolated diagnostics verified; policy capture, audit and session integration remain open             |
 
 ## Latest integration evidence
+
+The canonical tool-schema checkpoint adds explicit local `IToolSchemaEngine`
+compilation and immutable `ICompiledToolSchema` validation handles. The
+first-party bounded draft 2020-12 profile preserves exact canonical
+schema/profile/limit evidence and rejects unsupported vocabulary before creating
+a handle. Fresh validation budgets bound raw UTF-8 bytes, depth, nodes, and
+complete comparison work. Exact decimal and Unicode semantics, duplicate-member
+rejection, annotation-only format, typed resource exhaustion, and unchanged
+cancellation are covered by owner fixtures and reusable conformance. Provider
+translation, catalog integration, and legacy loop migration remain pending.
+
+Registration is replaceable without activating old factories or redirecting
+compiled handles. Diagnostics use two shared activities, events 4090/4091, and
+bounded operation/outcome metrics with observer failure isolation. Fourteen
+unchanged MIT-licensed upstream fixtures contribute 278 local recorded cases;
+this is verified keyword coverage rather than complete dialect conformance.
+Final test and compatibility evidence will be recorded after the integrated
+gate.
 
 The source-discovery checkpoint adds internal `ToolCatalogDiscovery` and
 `ToolDiscoveryCapture` ownership from materialized selection through merge and

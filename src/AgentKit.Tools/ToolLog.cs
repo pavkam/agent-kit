@@ -6,6 +6,15 @@ namespace AgentKit.Tools;
 /// <summary>Defines allocation-efficient structured tool-lifecycle log events.</summary>
 internal static partial class ToolLog
 {
+    /// <summary>Records entry to canonical schema compilation or validation without content.</summary>
+    /// <param name="logger">The emitting-type logger.</param><param name="operation">The bounded schema stage.</param>
+    [LoggerMessage(4090, LogLevel.Debug, "Starting tool schema operation {Operation}.")]
+    internal static partial void SchemaStarted(ILogger logger, string operation);
+
+    /// <summary>Records a terminal schema outcome without metadata, instance, or exception content.</summary>
+    /// <param name="logger">The emitting-type logger.</param><param name="level">The semantic outcome severity.</param><param name="operation">The bounded schema stage.</param><param name="outcome">The bounded terminal outcome.</param>
+    [LoggerMessage(EventId = 4091, Message = "Completed tool schema operation {Operation} with outcome {Outcome}.")]
+    internal static partial void SchemaCompleted(ILogger logger, LogLevel level, string operation, string outcome);
     /// <summary>Records a discovery or ownership boundary using safe correlation only.</summary>
     /// <param name="logger">The owner logger.</param><param name="operation">The closed discovery operation.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param><param name="sourceId">The exact source for a source stage, otherwise null.</param>
     [LoggerMessage(4080, LogLevel.Debug, "Starting tool discovery operation {Operation} for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}, source {SourceId}.")]

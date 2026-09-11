@@ -45,6 +45,17 @@ Direct catalog construction rejects reused owners before metadata reads. The
 legacy invoker diagnostic test filters by its own trace and operation so other
 concurrent fixtures cannot replace the observed activity.
 
+Canonical schema tests use typed engine construction and compiled handles.
+`BoundedToolSchemaEngineTests` inherits the reusable engine contract suite and
+owns malformed/unsupported schema, complete preflight, bounds, cancellation,
+DI-backed construction, and compiler diagnostics checks.
+`CompiledToolSchemaTests` owns exact evaluation, resource exhaustion, immutable
+evidence, and 278 recorded upstream cases across fourteen supported draft
+2020-12 keyword fixtures. Those MIT-licensed fixtures are pinned and run locally
+without network access; they do not claim complete dialect conformance.
+`ToolSchemaNumberTests` and `ToolSchemaObservationTests` cover their
+corresponding implementation types.
+
 ## Start with these tests
 
 - [ToolProviderCaptureTests](ToolProviderCaptureTests.cs) — reusable

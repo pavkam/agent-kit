@@ -7,6 +7,10 @@ namespace AgentKit.Observability;
 /// <remarks>Metric names use lowercase dotted namespaces and never embed identities.</remarks>
 public static class AgentKitMetricNames
 {
+    /// <summary>Counts complete tool-schema operations using bounded operation and outcome dimensions.</summary>
+    public const string ToolSchemaOperationCount = "agentkit.tool.schema.operation.count";
+    /// <summary>Measures valid elapsed tool-schema operation seconds without content dimensions.</summary>
+    public const string ToolSchemaOperationDuration = "agentkit.tool.schema.operation.duration";
     /// <summary>Completed discovery and ownership operations with bounded operation/outcome dimensions.</summary>
     public const string ToolCatalogDiscoveryOperationCount = "agentkit.tool.catalog.discovery.operation.count";
     /// <summary>Elapsed discovery and ownership seconds with bounded operation/outcome dimensions.</summary>

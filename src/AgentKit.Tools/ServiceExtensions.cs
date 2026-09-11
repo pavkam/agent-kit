@@ -13,6 +13,34 @@ public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
+        /// <summary>Registers the replaceable bounded canonical tool-schema compiler and its content-free diagnostics.</summary>
+        /// <returns>The same service collection for continued composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>Idempotently preserves an existing unkeyed engine and host clock/logger choices. No provider translation, tool exposure, storage, or authority is registered. The engine and its immutable compiled handles are concurrently callable; limits are supplied explicitly per operation.</remarks>
+        public IServiceCollection AddToolSchemaEngine()
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<IToolSchemaEngine>(provider => new BoundedToolSchemaEngine(provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<ILogger<BoundedToolSchemaEngine>>(), provider.GetRequiredService<ILogger<CompiledToolSchema>>()));
+            return services;
+        }
+
+        /// <summary>Explicitly replaces every unkeyed canonical tool-schema compiler registration.</summary>
+        /// <typeparam name="TEngine">A concurrently callable engine with an immutable declared profile and complete bounded preflight.</typeparam>
+        /// <returns>The same service collection for continued composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>Activates no service and preserves keyed engines and existing hosts or compiled handles. Replacement selects future compositions without redirecting retained canonical schemas.</remarks>
+        public IServiceCollection ReplaceToolSchemaEngine<TEngine>() where TEngine : class, IToolSchemaEngine
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddToolSchemaEngine();
+            foreach (var descriptor in services.Where(static descriptor => !descriptor.IsKeyedService && descriptor.ServiceType == typeof(IToolSchemaEngine)).ToArray()) { _ = services.Remove(descriptor); }
+            _ = services.AddSingleton<IToolSchemaEngine, TEngine>();
+            return services;
+        }
+
         /// <summary>Registers the replaceable materialized catalog of explicitly published toolsets and source providers.</summary>
         /// <returns>The same collection for further composition.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>

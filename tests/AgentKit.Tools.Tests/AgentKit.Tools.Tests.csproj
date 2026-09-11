@@ -18,6 +18,9 @@
     <ProjectReference Include="../../src/AgentKit.Tools/AgentKit.Tools.csproj"/>
   </ItemGroup>
   <ItemGroup>
+    <None Update="TestData/JsonSchema202012/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj" />
     <ProjectReference Include="../AgentKit.Conformance/AgentKit.Conformance.csproj" />
   </ItemGroup>

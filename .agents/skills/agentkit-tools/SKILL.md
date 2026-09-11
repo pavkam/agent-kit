@@ -37,6 +37,14 @@ network, or process enforcement.
   AgentKit.Tools.ToolName and depend only on abstractions for host effects.
 - Resolve calls against the immutable catalog snapshot sent to the model. Bound
   and validate canonical arguments before authorization or invocation.
+- Compile complete canonical schemas through `IToolSchemaEngine` before exposure
+  and retain exact `ICompiledToolSchema` evidence. An explicit profile declares
+  dialect and keyword support; unknown keywords reject instead of silently
+  weakening validation. Bound raw bytes before decoded allocation, depth, nodes,
+  and total comparison work. Keep numeric comparisons exact, Unicode length
+  semantics explicit, cancellation distinct from invalidity, and format
+  annotations separate from typed semantic validation. Provider translation and
+  raw argument parsing remain independent boundaries.
 - Keep provider discovery independent from catalog selection. Every successful
   discovery transfers a fresh owned capture. Static providers share only
   explicit immutable publication/binding evidence and retain external invoker

@@ -94,9 +94,32 @@ captured publications without rereading live snapshot getters. Disposing the old
 discovery owner cannot close the transferred catalog or its leases. Repeated
 disposal shares completion and failure without retrying cleanup.
 
-This completes source acquisition and cleanup ownership. Canonical schema and
-model-capability preflight and replacement of the legacy `IToolCatalog` path
-remain open; discovery alone does not make a catalog ready for model exposure.
+This completes source acquisition and cleanup ownership. Canonical schema
+integration and model-capability preflight and replacement of the legacy
+`IToolCatalog` path remain open; discovery alone does not make a catalog ready
+for model exposure.
+
+## Canonical schema validation
+
+`services.AddToolSchemaEngine()` registers the replaceable local compiler.
+Resolve `IToolSchemaEngine`, compile an owned canonical `JsonSchema` with
+explicit `ToolSchemaLimits`, then retain the returned `ICompiledToolSchema`.
+Validate parsed instances with fresh limits. Compilation rejects unsupported or
+malformed schemas before producing a handle; validation returns valid, invalid,
+or resource-limited, while cancellation propagates.
+
+The default `agentkit-bounded-tool-schema` revision 1 supports the structural,
+exact numeric, length/count, enum/const, and uniqueness subset documented in the
+[tool architecture](../../docs/architecture/tools.md). It preserves canonical
+schemas, treats format as annotation, and rejects references, regex assertions,
+unions, nested dialect changes, and unknown keywords. It performs no I/O or
+provider downgrade. Bounds include raw UTF-8 bytes, depth, nodes, and total
+comparison work; each concurrent validation gets a separate budget.
+
+`ReplaceToolSchemaEngine<TEngine>()` explicitly replaces unkeyed registrations
+while preserving keyed engines, old hosts, and compiled handles. Catalog
+integration, provider/model translation preflight, and bounded argument parsing
+remain separate pending stages.
 
 ## Catalog collision policy
 

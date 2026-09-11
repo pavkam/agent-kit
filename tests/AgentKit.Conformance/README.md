@@ -26,6 +26,12 @@ factory. It checks exact authored order and policy versions, shared sources,
 complete rejection, empty selections, cancellation, concurrent request
 isolation, and absence of discovery or live provider metadata reads.
 
+`ToolSchemaEngineConformanceTests` covers complete canonical compilation,
+retained evidence, rejection, and cancellation through a typed engine factory.
+`CompiledToolSchemaConformanceTests` covers unchanged instance validation,
+argument guards, cancellation, and concurrent independent evaluations. Each
+concrete fixture inherits the suite for its own production class.
+
 ## Available suites
 
 - [AgentRunStreamConformance](AgentRunStreamConformance.cs) — subscription

@@ -3,3 +3,5 @@ artifacts/
 bin/
 node_modules/
 obj/
+# Preserve the exact recorded upstream JSON, including large numeric spellings.
+tests/AgentKit.Tools.Tests/TestData/JsonSchema202012/*.json

@@ -28,6 +28,9 @@ namespace AgentKit.Tools
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolSchemaEngine() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolSchemaEngine<TEngine>()
+                where TEngine :  class, AgentKit.IToolSchemaEngine { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolRegistrationCatalog() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolRegistrationCatalog<TCatalog>()
                 where TCatalog :  class, AgentKit.IToolRegistrationCatalog { }

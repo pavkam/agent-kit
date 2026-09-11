@@ -3444,6 +3444,13 @@ namespace AgentKit
     {
         System.Threading.Tasks.Task<AgentKit.CompactionResult> CompactAsync(AgentKit.CompactionRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface ICompiledToolSchema
+    {
+        AgentKit.ToolSchemaLimits CompilationLimits { get; }
+        AgentKit.ToolSchemaProfile Profile { get; }
+        AgentKit.JsonSchema Schema { get; }
+        AgentKit.ToolSchemaValidationResult Validate(System.Text.Json.JsonElement instance, AgentKit.ToolSchemaLimits limits, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IContextAssembler
     {
         System.Threading.Tasks.Task<AgentKit.ContextAssemblyResult> AssembleAsync(AgentKit.ContextAssemblyRequest request, System.Threading.CancellationToken cancellationToken = default);
@@ -3876,6 +3883,11 @@ namespace AgentKit
     public interface IToolResultProjectionPolicyCatalog
     {
         System.Threading.Tasks.ValueTask<AgentKit.ToolResultProjectionPolicyResolution> ResolveAsync(AgentKit.ToolResultProjectionPolicyReference reference, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IToolSchemaEngine
+    {
+        AgentKit.ToolSchemaProfile Profile { get; }
+        AgentKit.ToolSchemaCompilationResult Compile(AgentKit.JsonSchema schema, AgentKit.ToolSchemaLimits limits, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IWebSearchProvider
     {
@@ -8170,6 +8182,61 @@ namespace AgentKit
         ConcurrencyKey = 3,
         GlobalExclusive = 4,
         HostScheduled = 5,
+    }
+    public sealed class ToolSchemaCompilationRejected : AgentKit.ToolSchemaCompilationResult, System.IEquatable<AgentKit.ToolSchemaCompilationRejected>
+    {
+        public ToolSchemaCompilationRejected(AgentKit.ToolSchemaRejectionReason reason) { }
+        public AgentKit.ToolSchemaRejectionReason Reason { get; }
+    }
+    public abstract class ToolSchemaCompilationResult : System.IEquatable<AgentKit.ToolSchemaCompilationResult> { }
+    public sealed class ToolSchemaCompiled : AgentKit.ToolSchemaCompilationResult, System.IEquatable<AgentKit.ToolSchemaCompiled>
+    {
+        public ToolSchemaCompiled(AgentKit.ICompiledToolSchema schema) { }
+        public AgentKit.ICompiledToolSchema Schema { get; }
+    }
+    public sealed class ToolSchemaLimits : System.IEquatable<AgentKit.ToolSchemaLimits>
+    {
+        public ToolSchemaLimits(int maximumUtf8Bytes, int maximumDepth, int maximumNodes, int maximumWork) { }
+        public int MaximumDepth { get; }
+        public int MaximumNodes { get; }
+        public int MaximumUtf8Bytes { get; }
+        public int MaximumWork { get; }
+    }
+    public sealed class ToolSchemaProfile : System.IEquatable<AgentKit.ToolSchemaProfile>
+    {
+        public ToolSchemaProfile(AgentKit.ToolSchemaProfileId id, AgentKit.ToolSchemaProfileVersion version, AgentKit.JsonSchemaDialectId dialect, System.Collections.Immutable.ImmutableArray<string> assertionKeywords, System.Collections.Immutable.ImmutableArray<string> annotationKeywords) { }
+        public System.Collections.Immutable.ImmutableArray<string> AnnotationKeywords { get; }
+        public System.Collections.Immutable.ImmutableArray<string> AssertionKeywords { get; }
+        public AgentKit.JsonSchemaDialectId Dialect { get; }
+        public AgentKit.ToolSchemaProfileId Id { get; }
+        public AgentKit.ToolSchemaProfileVersion Version { get; }
+        public bool Equals(AgentKit.ToolSchemaProfile? other) { }
+        public override int GetHashCode() { }
+    }
+    public readonly struct ToolSchemaProfileId : System.IEquatable<AgentKit.ToolSchemaProfileId>
+    {
+        public ToolSchemaProfileId(string value) { }
+        public string Value { get; }
+        public override string ToString() { }
+    }
+    public readonly struct ToolSchemaProfileVersion : System.IEquatable<AgentKit.ToolSchemaProfileVersion>
+    {
+        public ToolSchemaProfileVersion(long value) { }
+        public long Value { get; }
+        public override string ToString() { }
+    }
+    public enum ToolSchemaRejectionReason
+    {
+        UnsupportedDialect = 0,
+        UnsupportedKeyword = 1,
+        InvalidSchema = 2,
+        ResourceLimitExceeded = 3,
+    }
+    public enum ToolSchemaValidationResult
+    {
+        Valid = 1,
+        Invalid = 0,
+        ResourceLimitExceeded = 2,
     }
     public readonly struct ToolSourceId : System.IEquatable<AgentKit.ToolSourceId>
     {

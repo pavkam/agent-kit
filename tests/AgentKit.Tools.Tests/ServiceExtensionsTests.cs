@@ -10,6 +10,41 @@ using Microsoft.Extensions.Logging;
 
 public sealed class ServiceExtensionsTests
 {
+    [Fact]
+    public void AddToolSchemaEngine_WhenRepeated_PreservesExplicitHostChoices()
+    {
+        var services = new ServiceCollection();
+        var selected = new CallbackToolSchemaEngine();
+        var clock = new CallbackTimestampTimeProvider(() => 0);
+        _ = services.AddSingleton<IToolSchemaEngine>(selected);
+        _ = services.AddSingleton<TimeProvider>(clock);
+        services.AddToolSchemaEngine().ShouldBeSameAs(services);
+        services.AddToolSchemaEngine().ShouldBeSameAs(services);
+        using var host = services.BuildServiceProvider();
+        host.GetServices<IToolSchemaEngine>().ShouldBe([selected]);
+        host.GetRequiredService<TimeProvider>().ShouldBeSameAs(clock);
+        Should.Throw<ArgumentNullException>(() => ((IServiceCollection) null!).AddToolSchemaEngine()).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => ((IServiceCollection) null!).ReplaceToolSchemaEngine<CallbackToolSchemaEngine>()).ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void ReplaceToolSchemaEngine_WhenSelected_RetainsOldHostsHandlesAndKeys()
+    {
+        var services = new ServiceCollection().AddToolSchemaEngine();
+        using var oldHost = services.BuildServiceProvider();
+        var oldEngine = oldHost.GetRequiredService<IToolSchemaEngine>();
+        var handle = oldEngine.Compile(ToolSchemaTestData.Schema("true"), ToolSchemaTestData.Limits, TestContext.Current.CancellationToken).ShouldBeOfType<ToolSchemaCompiled>().Schema;
+        var keyed = new CallbackToolSchemaEngine();
+        _ = services.AddKeyedSingleton<IToolSchemaEngine>("host-key", keyed);
+        _ = services.AddSingleton<IToolSchemaEngine>(_ => throw new InvalidOperationException("must-not-activate"));
+        services.ReplaceToolSchemaEngine<CallbackToolSchemaEngine>().ShouldBeSameAs(services);
+        using var newHost = services.BuildServiceProvider();
+        _ = newHost.GetServices<IToolSchemaEngine>().ShouldHaveSingleItem().ShouldBeOfType<CallbackToolSchemaEngine>();
+        newHost.GetRequiredKeyedService<IToolSchemaEngine>("host-key").ShouldBeSameAs(keyed);
+        oldHost.GetRequiredService<IToolSchemaEngine>().ShouldBeSameAs(oldEngine);
+        handle.Validate(ToolSchemaTestData.Instance("null"), ToolSchemaTestData.Limits, TestContext.Current.CancellationToken).ShouldBe(ToolSchemaValidationResult.Valid);
+    }
+
     [Theory]
     [InlineData("missing")]
     [InlineData("duplicate")]

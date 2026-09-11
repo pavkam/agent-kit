@@ -295,6 +295,13 @@ Calling the same package registration twice is idempotent when configuration is
 identical; a conflicting duplicate fails validation unless that API documents a
 deliberate merge.
 
+Canonical tool schemas now have a separate local `IToolSchemaEngine` compilation
+boundary and immutable `ICompiledToolSchema` validation handles. Contracts live
+in abstractions; the bounded first-party draft 2020-12 subset lives in Tools and
+uses explicit profiles, resource/work bounds, typed outcomes, and replaceable
+registration. Full canonical evidence is retained; unsupported keywords reject.
+Provider/model translation preflight and catalog/loop integration remain open.
+
 ## Runtime flow
 
 A normal run for one of the engine's agent definitions moves through the

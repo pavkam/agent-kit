@@ -319,6 +319,13 @@ The architecture index defines document authority and change rules.
 
 - Separate tool description, discovery, resolution, authorization, execution,
   and result recording.
+- Compile complete canonical tool schemas under an explicit immutable profile
+  before model exposure. Retain exact schema/profile/limit evidence and reject
+  unsupported keywords; provider schema downgrade never weakens canonical
+  validation. Bound raw bytes, depth, nodes, and total processing work, preserve
+  exact numeric/Unicode semantics, and distinguish resource exhaustion from
+  invalid arguments. Compiled handles are concurrent and resource-free; raw
+  argument parsing and provider translation remain separate boundaries.
 - Tool-provider discovery transfers an independent capture per request. Static
   providers retain explicit versions and borrowed invokers without selecting
   toolsets, inferring aliases, or granting authority. Source registration is
