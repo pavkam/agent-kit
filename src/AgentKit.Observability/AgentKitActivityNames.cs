@@ -194,4 +194,8 @@ public static class AgentKitActivityNames
 
     /// <summary>Gets the name for one bounded network request dispatch.</summary>
     public const string NetworkSend = "network.send";
+
+    /// <summary>Gets the stable name for one run-local event publication, subscription, or delivery operation.</summary>
+    /// <remarks>The operation tag distinguishes bounded fan-out stages; this activity does not attest durable publication or run settlement.</remarks>
+    public const string RunEventHub = "run.event.hub";
 }

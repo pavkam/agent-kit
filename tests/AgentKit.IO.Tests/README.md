@@ -3,13 +3,16 @@
 Focused tests for [AgentKit.IO](../../src/AgentKit.IO/README.md).
 
 **Component purpose:** provide input-promotion policy and a broker for bounded
-human questions.
+human questions, plus bounded run-event fan-out.
 
 Use this suite when changing that component or investigating a regression. It is
 a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
+- [RunEventHubTests](RunEventHubTests.cs)
+- [RunEventHubObservationTests](RunEventHubObservationTests.cs)
+- [RunEventHubDiagnosticsArgumentTests](RunEventHubDiagnosticsArgumentTests.cs)
 - [DefaultHumanQuestionBrokerTests](DefaultHumanQuestionBrokerTests.cs)
 - [DefaultInputPromotionPolicyConformanceTests](DefaultInputPromotionPolicyConformanceTests.cs)
 - [DefaultInputPromotionPolicyTests](DefaultInputPromotionPolicyTests.cs)

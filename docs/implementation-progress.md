@@ -70,6 +70,31 @@ owning spec.
 
 ## Latest integration evidence
 
+The I/O event-hub checkpoint implements the internal bounded fan-out mechanism
+required beneath the output publisher. Recipient capture and strict sequence
+validation are atomic. Subscriptions buffer before reading begins, support one
+enumerator, and release capacity on cancellation or abandonment. A saturated
+subscriber receives explicit delivery failure with the first unavailable
+sequence; healthy subscribers continue. Normal completion retains the bounded
+prefix for consumer-owned draining, while premature disposal fails delivery.
+
+The focused I/O suite passes 117 tests, including 66 new cases for bounds,
+correlation, sequence races, lifecycle ownership, cancellation, safe
+diagnostics, and observer failure isolation. Shared activity/metric/tag names
+are additive; no competing public event hub or partial publisher registration is
+introduced. The hub limits event counts; payload-byte bounds remain an upstream
+publisher responsibility.
+
+The Release solution build passes with zero warnings or errors, and all 6,310
+tests pass without skips. The reviewed API snapshot adds only the four shared
+observability constants; all 68 compatibility checks pass.
+
+Complete output publication remains open. Its missing prerequisites include the
+final result's usage, deferral and settlement contracts, durable sequence-range
+reservation and publication intents, required sink delivery, replay/resnapshot,
+and canonical keyed activation. The internal hub does not claim those
+guarantees.
+
 The resumed facade checkpoint validates core service cardinality from captured
 DI descriptors before application activation. Missing or duplicate catalogs,
 run-profile readers, security-profile selectors, grant stores, clocks, run and

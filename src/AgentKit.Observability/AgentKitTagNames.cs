@@ -197,4 +197,8 @@ public static class AgentKitTagNames
 
     /// <summary>Gets the execution-lane identity correlation attribute for traces and logs.</summary>
     public const string ExecutionLaneId = "agentkit.execution.lane.id";
+
+    /// <summary>Gets the stable name for the bounded local run-event hub operation dimension.</summary>
+    /// <remarks>Values identify package-defined lifecycle stages, never user labels, run identities, sequence numbers, or event content.</remarks>
+    public const string RunEventHubOperation = "agentkit.run.event.hub.operation";
 }

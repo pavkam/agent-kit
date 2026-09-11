@@ -51,6 +51,7 @@ namespace AgentKit.Observability
         public const string ProcessRun = "process.run";
         public const string ProcessSandboxPrepare = "process.sandbox.prepare";
         public const string RunContinuationEvaluate = "run.continuation.evaluate";
+        public const string RunEventHub = "run.event.hub";
         public const string RunSettle = "run.settle";
         public const string SecurityAuditDispatch = "security.audit.dispatch";
         public const string SecurityAuthoritySelect = "security.authority.select";
@@ -127,6 +128,8 @@ namespace AgentKit.Observability
         public const string ProcessOperationCount = "agentkit.process.operation.count";
         public const string RunContinuationEvaluationCount = "agentkit.run.continuation.evaluation.count";
         public const string RunContinuationEvaluationDuration = "agentkit.run.continuation.evaluation.duration";
+        public const string RunEventHubOperationCount = "agentkit.run.event.hub.operation.count";
+        public const string RunEventHubOperationDuration = "agentkit.run.event.hub.operation.duration";
         public const string SecurityAuditDispatchCount = "agentkit.security.audit.dispatch.count";
         public const string SecurityAuditDispatchDuration = "agentkit.security.audit.dispatch.duration";
         public const string SecurityAuthoritySelectionCount = "agentkit.security.authority.selection.count";
@@ -192,6 +195,7 @@ namespace AgentKit.Observability
         public const string ProviderName = "gen_ai.provider.name";
         public const string QuestionId = "agentkit.question.id";
         public const string RequestModel = "gen_ai.request.model";
+        public const string RunEventHubOperation = "agentkit.run.event.hub.operation";
         public const string RunId = "agentkit.run.id";
         public const string SecurityAuditEventKind = "agentkit.security_audit.event.kind";
         public const string SecurityAuditOutcome = "agentkit.security_audit.outcome";

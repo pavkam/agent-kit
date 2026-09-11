@@ -169,4 +169,12 @@ public static class AgentKitMetricNames
 
     /// <summary>Gets the counter for terminal network boundary outcomes.</summary>
     public const string NetworkOperationCount = "agentkit.network.operation.count";
+
+    /// <summary>Gets the stable name for the count of local run-event hub operations by bounded operation and outcome.</summary>
+    /// <remarks>The counter records terminal local operations in operations, without run identities or event content as dimensions.</remarks>
+    public const string RunEventHubOperationCount = "agentkit.run.event.hub.operation.count";
+
+    /// <summary>Gets the stable name for the duration in seconds of local run-event hub operations.</summary>
+    /// <remarks>The histogram uses bounded operation and outcome dimensions; an unavailable or invalid clock measurement is omitted.</remarks>
+    public const string RunEventHubOperationDuration = "agentkit.run.event.hub.operation.duration";
 }

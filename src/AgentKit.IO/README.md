@@ -1,10 +1,12 @@
 # AgentKit.IO
 
-Provide input-promotion policy and a broker for bounded human questions.
+Provide input-promotion policy, a broker for bounded human questions, and the
+internal bounded run-event hub.
 
 Use these services when coordinating queued input or asking a human for
-information. Complete admission, channel fan-out, and final publication are part
-of the wider IO architecture still under implementation.
+information. Complete admission, publisher integration, channel adapters, and
+final publication are part of the wider IO architecture still under
+implementation.
 
 ## Use this project
 
@@ -17,6 +19,28 @@ Target: **.NET 10**. For a source-checkout setup and a runnable component
 example, follow [Getting started](../../docs/getting-started.md). Complete
 engine composition is described in the
 [composition guide](../../docs/guides/composition.md).
+
+## Run-event fan-out
+
+`RunEventHub` is an internal mechanism for one accepted run. It captures
+recipients and checks strictly increasing event sequences under the same lock.
+Registration starts buffering immediately; enumeration starts delivery later.
+The validated default limits are 32 registered subscriptions and 256 queued
+events per subscription. The publisher must separately enforce payload-byte
+bounds before handing events to the hub.
+
+A full queue disconnects that subscriber with a typed failure identifying the
+first unavailable sequence. Healthy subscribers continue, and the producer does
+not wait for a slow UI. Cancellation, abandoned enumeration and disposal release
+the subscriber's buffer and registration without cancelling the run. Normal
+completion allows consumers to drain queued events; premature hub disposal
+produces an explicit delivery failure.
+
+The hub accepts immutable, already sequenced events. It does not allocate
+durable sequence ranges, persist events, capture a replay snapshot, authorize
+subscribers, deliver required sinks, or settle runs. Those publisher and session
+dependencies remain open. The implementation is not registered as a public
+publisher until that complete contract can be composed.
 
 ## Related projects
 
