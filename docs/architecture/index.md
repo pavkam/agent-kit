@@ -260,6 +260,14 @@ replacement under the exact typed source key affects later composition without
 redirecting retained providers or leases. Catalog selection and merge policy
 stay separate from discovery registration.
 
+Materialized `IToolRegistrationCatalog` selection now captures explicit toolset
+publications and exact provider bindings once at composition. Public typed
+registration supports static and dynamic providers with explicit replacement.
+Selection preserves authored order, includes shared sources once, and rejects
+missing toolsets or policy families before discovery. Empty selection exposes no
+fallback; retained views keep their original bindings without runtime container
+lookup or transferred disposal ownership.
+
 Catalog merge policy now receives complete ordered candidate and collision
 evidence. The first-party default rejects collisions; configured policies can
 select existing contributions subject to complete source, descriptor, policy,

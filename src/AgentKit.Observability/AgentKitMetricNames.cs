@@ -7,6 +7,10 @@ namespace AgentKit.Observability;
 /// <remarks>Metric names use lowercase dotted namespaces and never embed identities.</remarks>
 public static class AgentKitMetricNames
 {
+    /// <summary>Counts complete local tool-registration selections by bounded outcome.</summary>
+    public const string ToolRegistrationSelectionCount = "agentkit.tool.registration.selection.count";
+    /// <summary>Measures valid elapsed seconds for complete local tool-registration selections.</summary>
+    public const string ToolRegistrationSelectionDuration = "agentkit.tool.registration.selection.duration";
     /// <summary>Counts completed catalog merge and merge-policy operations using bounded operation and outcome dimensions.</summary>
     public const string ToolCatalogMergeCount = "agentkit.tool.catalog.merge.count";
     /// <summary>Measures elapsed seconds for catalog merge and merge-policy operations with a valid diagnostic clock.</summary>

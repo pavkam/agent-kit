@@ -88,6 +88,7 @@ namespace AgentKit.Observability
         public const string ToolProviderCaptureClose = "tool.provider.capture.close";
         public const string ToolProviderCaptureDisposeResources = "tool.provider.capture.dispose_resources";
         public const string ToolProviderDiscover = "tool.provider.discover";
+        public const string ToolRegistrationSelect = "tool.registration.select";
         public const string ToolResultProjectionPolicyResolve = "tool.result.projection_policy.resolve";
     }
     public sealed class AgentKitActivityScope : System.IDisposable
@@ -170,6 +171,8 @@ namespace AgentKit.Observability
         public const string ToolProviderCaptureOperationDuration = "agentkit.tool.provider.capture.operation.duration";
         public const string ToolProviderDiscoveryCount = "agentkit.tool.provider.discovery.count";
         public const string ToolProviderDiscoveryDuration = "agentkit.tool.provider.discovery.duration";
+        public const string ToolRegistrationSelectionCount = "agentkit.tool.registration.selection.count";
+        public const string ToolRegistrationSelectionDuration = "agentkit.tool.registration.selection.duration";
         public const string ToolResultProjectionPolicyResolutionCount = "agentkit.tool.result.projection_policy.resolution.count";
         public const string ToolResultProjectionPolicyResolutionDuration = "agentkit.tool.result.projection_policy.resolution.duration";
     }

@@ -7,6 +7,8 @@ namespace AgentKit.Observability;
 /// <remarks>Names describe operations, never high-cardinality identities or content.</remarks>
 public static class AgentKitActivityNames
 {
+    /// <summary>Identifies complete local toolset and source-provider selection before discovery.</summary>
+    public const string ToolRegistrationSelect = "tool.registration.select";
     /// <summary>Identifies validation and policy coordination for one captured tool catalog.</summary>
     public const string ToolCatalogMerge = "tool.catalog.merge";
     /// <summary>Identifies one complete catalog collision-policy decision.</summary>

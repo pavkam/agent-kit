@@ -784,6 +784,13 @@ public interface IToolProviderCapture : IAsyncDisposable
         CancellationToken cancellationToken);
 }
 
+public interface IToolRegistrationCatalog
+{
+    ToolDiscoverySelection ResolveSelection(
+        ToolDiscoveryRequest request,
+        CancellationToken cancellationToken);
+}
+
 public interface IToolCatalog
 {
     ValueTask<IToolCatalogCapture> CaptureAsync(
@@ -1286,6 +1293,46 @@ services. Replacement must not rewrite retained content required by recorded
 results. `ReplaceToolResultProjectionPolicyCatalog<TCatalog>` replaces the
 singular catalog registration while preserving configured snapshots and clocks.
 
+`AddToolset(ToolsetPublication)` publishes complete immutable membership,
+versions, execution-policy evidence, and explicit aliases under an exact typed
+`ToolsetKey`. `ReplaceToolset` replaces every descriptor for that exact key
+without activation. The explicit publication overload is implemented; the
+options-based convenience shape above remains planned.
+
+`AddToolProvider<TProvider>(sourceId)` registers a concurrently callable,
+host-owned singleton under its exact `ToolSourceId`. Standard `[ServiceKey]`
+constructor injection supplies the typed key when needed. The instance overload
+validates source identity before mutation and keeps the provider's original
+external disposal owner. `ReplaceToolProvider` changes only the exact source;
+old hosts and retained selections keep their original bindings. Add rejects
+duplicates, including identical instances, before mutation. No overload
+activates provider services while registering them.
+
+These registrations install the replaceable `IToolRegistrationCatalog` through
+`AddToolRegistrationCatalog`. Its composition factory resolves explicit source
+and toolset keys once, requires exactly one registration for each key, validates
+provider source identity and complete publication membership, then releases the
+container reference. String-keyed, foreign-keyed, and unkeyed services never
+supply fallback registrations. Sources and toolsets can be registered in either
+order. `ReplaceToolRegistrationCatalog<TCatalog>` preserves publications,
+providers, host clocks, keyed catalogs, and already constructed hosts.
+
+The first-party `ToolRegistrationCatalog.ResolveSelection` validates every
+authored toolset key and execution-policy family before source discovery. It
+returns a `ToolDiscoverySelection` retaining the original request, exact
+publications in request order, and borrowed `ToolProviderBinding` instances in
+first-use source order. A shared source appears once. Unknown keys or policy
+families reject the whole selection with `InvalidOperationException`; empty
+selection exposes no source or toolset. It queries neither live provider
+metadata nor the container and owns no provider, capture, or invoker lifetime.
+
+Selection uses `tool.registration.select`, start/completion events 4070/4071,
+and bounded outcome-only count/duration metrics. Traces and logs retain safe run
+identity without alias, policy, descriptor, or exception content. Cancellation
+prevents transfer; observer failures cannot change selection, and unknown or
+reversed timing omits duration. This materialized view is implemented separately
+from the remaining catalog discovery/cleanup and schema/capability coordinator.
+
 `AddStaticToolProvider(snapshot, invokers)` registers one keyed singleton
 `IToolProvider`, using the exact `ToolSourceId` value as its DI key. It
 validates the full binding graph before changing registrations, rejects
@@ -1362,6 +1409,19 @@ redirect execution.
 
 The toolset and capture contract has these acceptance scenarios:
 
+- A request selecting several toolsets resolves all keys and policy families
+  before discovery. An unknown later key rejects the whole selection, and an
+  empty request never falls back to registered sources.
+- Toolset order follows the request, independently of registration order. Shared
+  sources appear once in first-use order, preserving exact publication and
+  policy versions without live provider metadata reads.
+- Duplicate or missing explicit keys, mismatched provider identity, and a
+  publication referencing a missing source reject materialization. Typed-key
+  replacements preserve foreign registrations without activation.
+- A retained selection discovers the original source and acquires its original
+  invoker after a later host replaces both source and toolset publication.
+  Generic providers keep host disposal ownership; supplied instances retain
+  external ownership.
 - An authored toolset selects a source ID without naming a future dynamic source
   version; capture records the exact returned source version and retains it
   after the provider publishes a newer snapshot.

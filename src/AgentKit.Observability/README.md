@@ -25,6 +25,13 @@ failed; logs and traces retain run identity without aliases, descriptors,
 schemas, or exception-message content. Missing or reversed clock measurements
 omit duration, and observer failures cannot change the merge result.
 
+Registration selection uses `tool.registration.select`, with safe run identity
+on logs and traces. Events 4070/4071 report start and completion; count/duration
+metrics carry only the bounded outcome. Selected, unavailable, and cancelled
+results retain truthful terminal status. Publication, alias, policy, and
+exception content is omitted. Observer and clock failures do not change the
+selection; unavailable duration is omitted.
+
 ## Use this project
 
 Start with `AddAgentKitObservability` in

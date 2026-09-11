@@ -43,6 +43,13 @@ network, or process enforcement.
   ownership; they do not infer aliases, filter principal-specific data, or grant
   authority. Register sources under exact typed source IDs, and preserve old
   captures when replacing registrations.
+- Resolve authored toolsets through a materialized `IToolRegistrationCatalog`
+  before discovery. Capture exact publications and provider bindings once at
+  composition, reject missing/duplicate keys and source identity mismatches, and
+  retain no runtime container. Selection preserves authored order and includes
+  shared sources once; empty selection never falls back to registered tools.
+  Replacement affects later compositions, while existing selections and provider
+  disposal ownership remain intact.
 - Retain provider and catalog captures explicitly. Acquire invoker leases only
   from the exact captured source versions; never recover a live binding from
   current DI registrations or descriptor names. Preserve requested aliases and

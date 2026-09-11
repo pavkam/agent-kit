@@ -13,6 +13,123 @@ public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
+        /// <summary>Registers the replaceable materialized catalog of explicitly published toolsets and source providers.</summary>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>Idempotent default registration preserves host catalog, clock, and logging choices. It activates no service, creates no default toolset, and registers no persistence adapter. Source and publication cardinality is validated when the catalog is materialized.</remarks>
+        public IServiceCollection AddToolRegistrationCatalog()
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddAgentKitObservability();
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton(ToolServiceRegistration.CreateRegistrationCatalog);
+            return services;
+        }
+
+        /// <summary>Explicitly replaces the process-level materialized tool registration catalog.</summary>
+        /// <typeparam name="TCatalog">The concurrently callable catalog preserving complete authored selection and borrowed provider ownership.</typeparam>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>Replaces all unkeyed catalog descriptors without activation. Keyed host catalogs, publications, source providers, clocks, and previously constructed hosts remain unchanged.</remarks>
+        public IServiceCollection ReplaceToolRegistrationCatalog<TCatalog>() where TCatalog : class, IToolRegistrationCatalog
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            _ = services.AddToolRegistrationCatalog();
+            foreach (var descriptor in services.Where(static descriptor => !descriptor.IsKeyedService && descriptor.ServiceType == typeof(IToolRegistrationCatalog)).ToArray()) { _ = services.Remove(descriptor); }
+            _ = services.AddSingleton<IToolRegistrationCatalog, TCatalog>();
+            return services;
+        }
+
+        /// <summary>Publishes an explicit immutable toolset under its exact typed family key.</summary>
+        /// <param name="publication">The nonnull publication, including real versions, source membership, policy family, and explicit aliases.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="publication"/> is null.</exception>
+        /// <exception cref="ArgumentException">The exact key already exists, or internal registration metadata cannot be inspected without activation.</exception>
+        /// <remarks>Duplicate keys reject even for equal publications. No provider is activated and no alias or version is inferred. Sources may be registered before or after this publication; complete membership is validated at catalog construction.</remarks>
+        public IServiceCollection AddToolset(ToolsetPublication publication)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(publication);
+            return ToolServiceRegistration.RegisterToolset(services, publication, false);
+        }
+
+        /// <summary>Explicitly replaces the publication for one exact toolset key before a host is composed.</summary>
+        /// <param name="publication">The nonnull complete replacement publication.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="publication"/> is null.</exception>
+        /// <exception cref="ArgumentException">Internal registration metadata cannot be inspected without activation.</exception>
+        /// <remarks>Removes every matching typed-key publication descriptor, including opaque factories, without activation. Other keys, foreign-key registrations, old hosts, and existing discovery selections remain intact. An absent key is added.</remarks>
+        public IServiceCollection ReplaceToolset(ToolsetPublication publication)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(publication);
+            return ToolServiceRegistration.RegisterToolset(services, publication, true);
+        }
+
+        /// <summary>Registers an explicitly keyed, concurrently callable discovery provider.</summary>
+        /// <typeparam name="TProvider">The singleton provider whose stable source identity must match the key.</typeparam>
+        /// <param name="sourceId">The nondefault exact source key, available through the standard DI service-key parameter attribute.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="sourceId"/> is default.</exception>
+        /// <exception cref="ArgumentException">The exact source key exists or internal metadata cannot be inspected without activation.</exception>
+        /// <remarks>Registers no unkeyed fallback and activates no provider. The host owns the singleton; independent source captures own per-discovery resources. Catalog materialization validates the actual provider identity before any discovery.</remarks>
+        public IServiceCollection AddToolProvider<TProvider>(ToolSourceId sourceId) where TProvider : class, IToolProvider
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentOutOfRangeException.ThrowIfEqual(sourceId, default);
+            return ToolServiceRegistration.RegisterProvider(services, sourceId, ServiceDescriptor.KeyedSingleton<IToolProvider, TProvider>(sourceId), false);
+        }
+
+        /// <summary>Registers an existing borrowed discovery provider under its exact typed source key.</summary>
+        /// <param name="sourceId">The nondefault exact key matching the provider's stable identity.</param>
+        /// <param name="provider">The nonnull existing provider, kept alive by its original owner through all captures and leases.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="provider"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="sourceId"/> is default.</exception>
+        /// <exception cref="ArgumentException">Provider identity differs, the key exists, or registration metadata is malformed.</exception>
+        /// <remarks>Validates source metadata before mutation without discovery. The supplied instance keeps its external disposal owner; the container does not assume ownership.</remarks>
+        public IServiceCollection AddToolProvider(ToolSourceId sourceId, IToolProvider provider)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentOutOfRangeException.ThrowIfEqual(sourceId, default);
+            ArgumentNullException.ThrowIfNull(provider);
+            ArgumentException.ThrowIfNotEqual(provider.SourceId, sourceId, nameof(provider));
+            return ToolServiceRegistration.RegisterProvider(services, sourceId, ServiceDescriptor.KeyedSingleton(sourceId, provider), false);
+        }
+
+        /// <summary>Explicitly replaces all provider registrations for one exact typed source key.</summary>
+        /// <typeparam name="TProvider">The replacement singleton discovery provider with matching stable source identity.</typeparam>
+        /// <param name="sourceId">The nondefault exact source key.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="sourceId"/> is default.</exception>
+        /// <exception cref="ArgumentException">Internal metadata cannot be inspected without activation.</exception>
+        /// <remarks>Replacement never activates or disposes a provider. Other source keys, foreign-key registrations, old hosts, and retained bindings/captures remain unchanged. Missing sources are added.</remarks>
+        public IServiceCollection ReplaceToolProvider<TProvider>(ToolSourceId sourceId) where TProvider : class, IToolProvider
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentOutOfRangeException.ThrowIfEqual(sourceId, default);
+            return ToolServiceRegistration.RegisterProvider(services, sourceId, ServiceDescriptor.KeyedSingleton<IToolProvider, TProvider>(sourceId), true);
+        }
+
+        /// <summary>Explicitly replaces one typed source with an existing borrowed provider instance.</summary>
+        /// <param name="sourceId">The nondefault exact key matching the replacement provider's stable identity.</param>
+        /// <param name="provider">The nonnull externally owned replacement provider.</param>
+        /// <returns>The same collection for further composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="provider"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="sourceId"/> is default.</exception>
+        /// <exception cref="ArgumentException">Provider identity differs or registration metadata is malformed.</exception>
+        /// <remarks>Validates before mutation, removes matching typed descriptors without activation or disposal, and preserves old hosts and captures. Both old and replacement supplied instances retain their external owners.</remarks>
+        public IServiceCollection ReplaceToolProvider(ToolSourceId sourceId, IToolProvider provider)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentOutOfRangeException.ThrowIfEqual(sourceId, default);
+            ArgumentNullException.ThrowIfNull(provider);
+            ArgumentException.ThrowIfNotEqual(provider.SourceId, sourceId, nameof(provider));
+            return ToolServiceRegistration.RegisterProvider(services, sourceId, ServiceDescriptor.KeyedSingleton(sourceId, provider), true);
+        }
+
         /// <summary>Registers the replaceable default catalog collision policy and its immutable merge coordinator.</summary>
         /// <returns>The same collection for further composition.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>

@@ -70,6 +70,50 @@ owning spec.
 
 ## Latest integration evidence
 
+The registration-selection checkpoint adds `IToolRegistrationCatalog`,
+`ToolProviderBinding`, and complete `ToolDiscoverySelection` evidence. The
+first-party immutable catalog resolves every authored toolset and policy family
+before discovery, preserves request order and exact publication versions, and
+includes each shared source once. It retains no container or mutable run state;
+selection reads no live provider metadata and empty requests expose no fallback.
+
+`AddToolset` publishes explicit membership and aliases. Generic and instance
+`AddToolProvider` overloads register exact typed sources; generic providers keep
+host ownership and supplied instances keep their external owner. Static
+providers join the same registration view. Materialization validates exact key
+cardinality, source identity, and complete source membership. Explicit
+replacement preserves foreign keys, existing hosts, selections, and invoker
+bindings without activation. Registration order selects neither source nor
+policy version.
+
+Owning-class tests and reusable typed conformance cover guards, membership,
+ordering, cancellation, concurrent identity isolation, replacement, and disposal
+ownership. A composed test follows old and new selections through static
+discovery, merge, catalog capture, and exact invoker acquisition. Diagnostic
+tests check 4070/4071 log events, safe identity fields, activity
+parentage/status, bounded metrics, and observer/clock failure isolation without
+reflection-based construction or behavioral member discovery.
+
+A typed DI-factory regression returned a null toolset publication and exposed a
+`NullReferenceException` during materialization. The factory now rejects the
+malformed publication with the documented `InvalidOperationException` before
+provider binding or discovery. The regression was observed failing before the
+explicit null check and is retained in `ServiceExtensionsTests`.
+
+Full catalog discovery/cleanup coordination and schema/capability preflight,
+options-based toolset authoring convenience, canonical resolution/invocation,
+terminal recording/projection, codecs, and durable output remain open. The
+legacy `AddAgentTools` and loop path have not migrated. Registration selection
+is a completed dependency of that coordinator, not a claim that catalog capture
+is fully integrated.
+
+Verification: all 7,179 Release tests pass with zero warnings, errors, failures,
+or skips, including 319 tool tests and 3,583 abstraction tests. This checkpoint
+adds 57 cases in owning-class fixtures and reusable typed conformance. All 68
+compatibility checks pass with three reviewed additive API snapshots. The null
+publication regression was observed failing before its fix and passes in the
+complete suite. Repository C# formatting, Prettier, and Markdown lint pass.
+
 The catalog-merge checkpoint adds `IToolCatalogMergePolicy`, complete immutable
 candidate/collision evidence, and closed selection/rejection decisions.
 `RejectingToolCatalogMergePolicy` accepts collision-free graphs and rejects
@@ -95,9 +139,10 @@ registration before the explicit cardinality check. A second regression proved
 that duplicate aliases with missing targets lost their alias-collision evidence;
 the complete graph now retains both the collision and every missing assignment.
 
-Full catalog discovery/cleanup coordination and schema/capability preflight,
-generic dynamic-provider registration, canonical resolution/invocation, terminal
-records and projections, message codecs, and durable output remain open.
+At that checkpoint, full catalog discovery/cleanup coordination and
+schema/capability preflight, generic dynamic-provider registration, canonical
+resolution/invocation, terminal records and projections, message codecs, and
+durable output remained open. Registration is now implemented above.
 `AddAgentTools` and the loop still use the legacy catalog and combined invoker.
 
 Verification: all 7,122 Release tests pass, with zero build warnings, errors,

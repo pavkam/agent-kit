@@ -21,6 +21,11 @@ unambiguous graphs and reject unconfigured collisions. It checks exact
 contributions, explicit aliases, empty catalogs, all closed collision cases,
 cancellation, and concurrent independent requests through a typed factory.
 
+`ToolRegistrationCatalogConformanceTests` resolves subjects through a typed
+factory. It checks exact authored order and policy versions, shared sources,
+complete rejection, empty selections, cancellation, concurrent request
+isolation, and absence of discovery or live provider metadata reads.
+
 ## Available suites
 
 - [AgentRunStreamConformance](AgentRunStreamConformance.cs) — subscription

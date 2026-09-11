@@ -39,6 +39,36 @@ protected remote discovery.
 Static discovery publishes configured metadata. The catalog still decides source
 selection, collisions, aliases, and model/schema support before exposure.
 
+## Materialized registrations
+
+`AddToolset(publication)` registers a complete immutable `ToolsetPublication`,
+including its real version, source membership, execution-policy reference, and
+explicit aliases. `AddToolProvider<TProvider>(sourceId)` registers a host-owned
+singleton discovery strategy under its exact typed source key. The provider can
+receive that key through the standard `[ServiceKey]` constructor parameter. The
+instance overload borrows a provider whose original owner retains disposal.
+Static providers use the same registration catalog.
+
+`AddToolRegistrationCatalog()` installs the replaceable
+`IToolRegistrationCatalog`. When materialized, it captures each explicit
+publication and provider once, validates exact key cardinality and source
+identity, and rejects missing published sources. It retains no container.
+`ResolveSelection(request)` returns a complete `ToolDiscoverySelection`:
+toolsets follow authored request order, and shared sources appear once in first
+use order. Unknown toolsets or mismatched policy families reject before any
+provider discovery. Empty selection exposes no fallback tools or sources.
+
+`ReplaceToolset`, `ReplaceToolProvider`, and
+`ReplaceToolRegistrationCatalog<TCatalog>` affect later compositions. Existing
+hosts and selections retain their original publications and provider instances.
+Additions reject duplicate exact keys before mutation; replacements preserve
+unrelated typed, string, keyed, and unkeyed registrations without activation.
+Registration order does not select a source or an execution-policy version.
+
+This view supplies selection evidence for catalog discovery. Discovery and
+capture cleanup coordination, schema/capability preflight, and migration of the
+legacy `IToolCatalog` path remain open.
+
 ## Catalog collision policy
 
 `AddToolCatalogMerging()` registers `RejectingToolCatalogMergePolicy` and the
@@ -71,8 +101,8 @@ suppressing another cleanup or retrying a previous one. Callers release their
 leases before awaiting catalog closure. Borrowed invokers keep their original
 disposal owner.
 
-This object supplies retained catalog lifetime. Dynamic provider registration
-and replacement of the legacy `IToolCatalog` coordinator remain separate work;
+This object supplies retained catalog lifetime. Discovery coordination and
+replacement of the legacy `IToolCatalog` coordinator remain separate work;
 `AddAgentTools` still selects the legacy runtime.
 
 ## Retained source captures

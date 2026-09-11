@@ -27,6 +27,13 @@ invoker acquisition, including cancellation and failed policy decisions.
 `ToolCatalogMergeObservationTests` covers diagnostic lifecycle and observer
 failures. Policy cardinality and replacement remain in `ServiceExtensionsTests`.
 
+`ToolRegistrationCatalogTests` runs reusable registration conformance through
+public DI, adds composition guards and safe diagnostic coverage, and follows
+old/new selections through discovery, merge, catalog capture, and exact invoker
+acquisition after replacement. Provider ownership, typed keys, cardinality, and
+registration replacement remain in `ServiceExtensionsTests`; internal marker and
+registration-helper guards stay in their respective owning-class fixtures.
+
 ## Start with these tests
 
 - [ToolProviderCaptureTests](ToolProviderCaptureTests.cs) — reusable

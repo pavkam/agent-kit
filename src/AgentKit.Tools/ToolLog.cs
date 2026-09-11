@@ -6,6 +6,15 @@ namespace AgentKit.Tools;
 /// <summary>Defines allocation-efficient structured tool-lifecycle log events.</summary>
 internal static partial class ToolLog
 {
+    /// <summary>Records entry to complete registration selection without publication or alias content.</summary>
+    /// <param name="logger">The registration catalog's logger.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param>
+    [LoggerMessage(4070, LogLevel.Debug, "Selecting tool registrations for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId}.")]
+    internal static partial void RegistrationSelectionStarted(ILogger logger, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId);
+
+    /// <summary>Records a bounded terminal registration outcome without untrusted metadata or exception text.</summary>
+    /// <param name="logger">The registration catalog's logger.</param><param name="level">Severity matching the outcome.</param><param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param><param name="outcome">The closed terminal selection result.</param>
+    [LoggerMessage(EventId = 4071, Message = "Selected tool registrations for tenant {TenantId}, principal {PrincipalId}, agent {AgentId}, session {SessionId}, run {RunId} with outcome {Outcome}.")]
+    internal static partial void RegistrationSelectionCompleted(ILogger logger, LogLevel level, TenantId tenantId, PrincipalId principalId, AgentId agentId, SessionId sessionId, RunId runId, string outcome);
     /// <summary>Records entry to a catalog merge boundary using identity evidence only.</summary>
     /// <param name="logger">The emitting runtime type's logger.</param><param name="operation">One of the two stable merge operation names.</param>
     /// <param name="tenantId">The captured tenant.</param><param name="principalId">The captured principal.</param><param name="agentId">The selected agent.</param><param name="sessionId">The selected session.</param><param name="runId">The active run.</param>

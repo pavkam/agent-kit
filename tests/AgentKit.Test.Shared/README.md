@@ -29,6 +29,11 @@ no standalone test run or production registration API.
 - [CallbackToolCatalogMergePolicy](CallbackToolCatalogMergePolicy.cs) — a typed
   policy callback for explicit selection, rejection, cancellation, and hostile
   decision tests.
+- [CallbackToolProvider](CallbackToolProvider.cs) — typed provider with
+  metadata, discovery, and disposal counters for binding and lifetime
+  assertions.
+- [CallbackToolRegistrationCatalog](CallbackToolRegistrationCatalog.cs) — typed
+  registration selection callback for DI replacement tests.
 
 Add a helper when multiple test projects need it. Reusable contract assertions
 belong in AgentKit.Conformance; production packages must not depend on either

@@ -62,6 +62,14 @@ from `DiscoverAsync`. Discovery retains explicit source versions and exact
 bindings; it never invokes a tool or grants authority. The first-party static
 implementation and typed-key registration live in `AgentKit.Tools`.
 
+`IToolRegistrationCatalog` resolves a complete authored selection before source
+I/O. `ToolDiscoverySelection` preserves exact request and publication evidence,
+plus borrowed `ToolProviderBinding` instances in first-use source order. A
+binding validates its provider's source identity once; selection neither
+contacts nor owns a provider. Empty selection exposes no registered fallback.
+First-party materialization and explicit publication/provider replacement live
+in `AgentKit.Tools`.
+
 `IToolCatalogMergePolicy` receives a complete immutable
 `ToolCatalogMergeContext`. Candidates retain exact toolset/source publications
 and descriptors. Closed collision cases represent repeated identities, repeated

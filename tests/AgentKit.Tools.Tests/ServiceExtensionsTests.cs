@@ -11,6 +11,247 @@ using Microsoft.Extensions.Logging;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
+    public async Task AddToolProvider_WhenGeneric_UsesTypedServiceKeyAndHostOwnedSingleton()
+    {
+        var source = new ToolSourceId("dynamic");
+        var publication = ToolCatalogMergeTestData.Toolset("dynamic-tools", [ToolCatalogMergeTestData.Source("dynamic", [])], []);
+        var services = new ServiceCollection();
+        _ = services.AddToolset(publication);
+        services.AddToolProvider<CallbackToolProvider>(source).ShouldBeSameAs(services);
+        var host = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        var provider = host.GetRequiredKeyedService<IToolProvider>(source).ShouldBeOfType<CallbackToolProvider>();
+        var catalog = host.GetRequiredService<IToolRegistrationCatalog>();
+        var selection = catalog.ResolveSelection(ToolCatalogMergeTestData.Request([publication]), TestContext.Current.CancellationToken);
+        selection.Providers.Single().Provider.ShouldBeSameAs(provider);
+        host.GetRequiredKeyedService<IToolProvider>(source).ShouldBeSameAs(provider);
+        host.GetService<IToolProvider>().ShouldBeNull();
+        host.GetKeyedService<IToolProvider>(source.Value).ShouldBeNull();
+        provider.Discoveries.ShouldBe(0);
+        provider.Disposals.ShouldBe(0);
+        await host.DisposeAsync();
+        provider.Disposals.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AddToolProvider_WhenExistingInstance_RemainsBorrowedAfterHostDisposal()
+    {
+        var source = new ToolSourceId("borrowed");
+        var provider = new CallbackToolProvider(source);
+        var services = new ServiceCollection();
+        services.AddToolProvider(source, provider).ShouldBeSameAs(services);
+        var host = services.BuildServiceProvider();
+        _ = host.GetRequiredService<IToolRegistrationCatalog>();
+        host.GetRequiredKeyedService<IToolProvider>(source).ShouldBeSameAs(provider);
+        await host.DisposeAsync();
+        provider.Disposals.ShouldBe(0);
+        await provider.DisposeAsync();
+        provider.Disposals.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ReplaceToolProvider_WhenExistingHostHasSelection_PreservesOldBindingAndPublishesNewProvider()
+    {
+        var original = ToolCatalogMergeTestData.Candidate();
+        var source = original.Source.SourceId;
+        var services = new ServiceCollection();
+        _ = services.AddToolProvider<CallbackToolProvider>(source);
+        _ = services.AddToolset(original.Toolset);
+        await using var oldHost = services.BuildServiceProvider();
+        var oldCatalog = oldHost.GetRequiredService<IToolRegistrationCatalog>();
+        var oldSelection = oldCatalog.ResolveSelection(ToolCatalogMergeTestData.Request([original.Toolset]), TestContext.Current.CancellationToken);
+        var oldProvider = oldSelection.Providers.Single().Provider.ShouldBeOfType<CallbackToolProvider>();
+        services.ReplaceToolProvider<CallbackToolProvider>(source).ShouldBeSameAs(services);
+        var replacement = ToolCatalogMergeTestData.Toolset("tools", [original.Source], original.Toolset.Aliases, version: 2);
+        services.ReplaceToolset(replacement).ShouldBeSameAs(services);
+        await using var newHost = services.BuildServiceProvider();
+        var newSelection = newHost.GetRequiredService<IToolRegistrationCatalog>().ResolveSelection(ToolCatalogMergeTestData.Request([replacement]), TestContext.Current.CancellationToken);
+        newSelection.Providers.Single().Provider.ShouldNotBeSameAs(oldProvider);
+        newSelection.Toolsets.Single().Version.ShouldBe(new ToolsetVersion(2));
+        oldSelection.Toolsets.Single().Version.ShouldBe(new ToolsetVersion(1));
+        oldCatalog.ResolveSelection(ToolCatalogMergeTestData.Request([original.Toolset]), TestContext.Current.CancellationToken).Providers.Single().Provider.ShouldBeSameAs(oldProvider);
+        oldProvider.Disposals.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AddToolProvider_WhenTypedSourceAlreadyRegistered_RejectsWithoutActivationOrMutation(bool existingInstance)
+    {
+        var source = new ToolSourceId("source");
+        var services = new ServiceCollection();
+        var activations = 0;
+        _ = services.AddKeyedSingleton<IToolProvider>(source, (_, _) => { activations++; throw new InvalidOperationException("must not activate"); });
+        ServiceDescriptor[] before = [.. services];
+        var error = existingInstance
+            ? Should.Throw<ArgumentException>(() => services.AddToolProvider(source, new CallbackToolProvider(source)))
+            : Should.Throw<ArgumentException>(() => services.AddToolProvider<CallbackToolProvider>(source));
+        error.ParamName.ShouldBe("services");
+        services.ShouldBe(before);
+        activations.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AddToolProvider_WhenArgumentsInvalid_RejectsBeforeMutation(bool replace)
+    {
+        var source = new ToolSourceId("source");
+        var provider = new CallbackToolProvider(source);
+        var services = new ServiceCollection();
+        IServiceCollection absent = null!;
+        void Register(IServiceCollection collection, ToolSourceId key) => _ = replace ? collection.ReplaceToolProvider<CallbackToolProvider>(key) : collection.AddToolProvider<CallbackToolProvider>(key);
+        void RegisterInstance(IServiceCollection collection, ToolSourceId key, IToolProvider instance) => _ = replace ? collection.ReplaceToolProvider(key, instance) : collection.AddToolProvider(key, instance);
+        Should.Throw<ArgumentNullException>(() => Register(absent, source)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentOutOfRangeException>(() => Register(services, default)).ParamName.ShouldBe("sourceId");
+        Should.Throw<ArgumentNullException>(() => RegisterInstance(absent, source, provider)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentOutOfRangeException>(() => RegisterInstance(services, default, provider)).ParamName.ShouldBe("sourceId");
+        Should.Throw<ArgumentNullException>(() => RegisterInstance(services, source, null!)).ParamName.ShouldBe("provider");
+        provider.IdentityReads.ShouldBe(0);
+        Should.Throw<ArgumentException>(() => RegisterInstance(services, new ToolSourceId("SOURCE"), provider)).ParamName.ShouldBe("provider");
+        services.ShouldBeEmpty();
+        provider.Discoveries.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReplaceToolProvider_WhenOpaqueTypedEntriesExist_ReplacesOnlyExactSourceWithoutActivation(bool existingInstance)
+    {
+        var source = new ToolSourceId("source");
+        var alternate = new ToolSourceId("SOURCE");
+        var services = new ServiceCollection();
+        _ = services.AddToolProvider<CallbackToolProvider>(alternate);
+        _ = services.AddKeyedSingleton<IToolProvider>(source, (_, _) => throw new InvalidOperationException("opaque"));
+        _ = services.AddKeyedSingleton<IToolProvider>(source, (_, _) => throw new InvalidOperationException("duplicate"));
+        var foreignKey = new EqualToAnyServiceKey();
+        var foreign = ServiceDescriptor.KeyedSingleton<IToolProvider>(foreignKey, (_, _) => throw new InvalidOperationException("foreign"));
+        var unkeyed = ServiceDescriptor.Singleton<IToolProvider>(_ => throw new InvalidOperationException("unkeyed"));
+        var stringKeyed = ServiceDescriptor.KeyedSingleton<IToolProvider>(source.Value, (_, _) => throw new InvalidOperationException("string-keyed"));
+        _ = services.Add(foreign); _ = services.Add(unkeyed); _ = services.Add(stringKeyed);
+        _ = existingInstance ? services.ReplaceToolProvider(source, new CallbackToolProvider(source)) : services.ReplaceToolProvider<CallbackToolProvider>(source);
+        services.ShouldContain(foreign); services.ShouldContain(unkeyed); services.ShouldContain(stringKeyed);
+        foreignKey.Comparisons.ShouldBe(0);
+        services.Count(descriptor => descriptor.IsKeyedService && descriptor.ServiceType == typeof(IToolProvider) && descriptor.ServiceKey is ToolSourceId key && key == source).ShouldBe(1);
+        services.Count(descriptor => descriptor.IsKeyedService && descriptor.ServiceType == typeof(IToolProvider) && descriptor.ServiceKey is ToolSourceId key && key == alternate).ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public async Task AddToolRegistrationCatalog_WhenSourceCardinalityChanges_RejectsComposition(int count)
+    {
+        var source = new ToolSourceId("source");
+        var services = new ServiceCollection();
+        _ = services.AddToolProvider<CallbackToolProvider>(source);
+        foreach (var descriptor in services.Where(static descriptor => descriptor.ServiceType == typeof(IToolProvider)).ToArray()) { _ = services.Remove(descriptor); }
+        for (var index = 0; index < count; index++) { _ = services.AddKeyedSingleton<IToolProvider, CallbackToolProvider>(source); }
+        await using var host = services.BuildServiceProvider();
+        _ = Should.Throw<InvalidOperationException>(host.GetRequiredService<IToolRegistrationCatalog>);
+    }
+
+    [Fact]
+    public async Task AddToolRegistrationCatalog_WhenProviderDeclaresWrongIdentity_RejectsBeforeDiscovery()
+    {
+        var source = new ToolSourceId("source");
+        var services = new ServiceCollection();
+        _ = services.AddToolProvider<CallbackToolProvider>(source);
+        await using var host = services.BuildServiceProvider();
+        var provider = host.GetRequiredKeyedService<IToolProvider>(source).ShouldBeOfType<CallbackToolProvider>();
+        provider.ReadSourceId = static () => new ToolSourceId("wrong");
+        Should.Throw<ArgumentException>(host.GetRequiredService<IToolRegistrationCatalog>).ParamName.ShouldBe("provider");
+        provider.Discoveries.ShouldBe(0);
+    }
+
+    [Fact]
+    public void AddToolset_WhenDuplicateOrNull_RejectsWithoutMutation()
+    {
+        var publication = ToolCatalogMergeTestData.Toolset("empty", [], []);
+        var services = new ServiceCollection();
+        services.AddToolset(publication).ShouldBeSameAs(services);
+        ServiceDescriptor[] before = [.. services];
+        Should.Throw<ArgumentException>(() => services.AddToolset(publication)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => services.AddToolset(null!)).ParamName.ShouldBe("publication");
+        Should.Throw<ArgumentNullException>(() => services.ReplaceToolset(null!)).ParamName.ShouldBe("publication");
+        IServiceCollection absent = null!;
+        Should.Throw<ArgumentNullException>(() => absent.AddToolset(publication)).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(() => absent.ReplaceToolset(publication)).ParamName.ShouldBe("services");
+        services.ShouldBe(before);
+    }
+
+    [Fact]
+    public void ReplaceToolset_WhenTypedFactoriesAndForeignKeysExist_PreservesUnrelatedRegistrations()
+    {
+        var publication = ToolCatalogMergeTestData.Toolset("tools", [], []);
+        var services = new ServiceCollection();
+        _ = services.AddKeyedSingleton<ToolsetPublication>(publication.Key, (_, _) => throw new InvalidOperationException("opaque"));
+        _ = services.AddKeyedSingleton<ToolsetPublication>(publication.Key, (_, _) => throw new InvalidOperationException("duplicate"));
+        var foreignKey = new EqualToAnyServiceKey();
+        var foreign = ServiceDescriptor.KeyedSingleton<ToolsetPublication>(foreignKey, (_, _) => throw new InvalidOperationException("foreign"));
+        var stringKeyed = ServiceDescriptor.KeyedSingleton<ToolsetPublication>(publication.Key.Value, (_, _) => throw new InvalidOperationException("string-keyed"));
+        var unkeyed = ServiceDescriptor.Singleton<ToolsetPublication>(_ => throw new InvalidOperationException("unkeyed"));
+        _ = services.Add(foreign); _ = services.Add(stringKeyed); _ = services.Add(unkeyed);
+        services.ReplaceToolset(publication).ShouldBeSameAs(services);
+        services.ShouldContain(foreign); services.ShouldContain(stringKeyed); services.ShouldContain(unkeyed);
+        foreignKey.Comparisons.ShouldBe(0);
+        services.Count(descriptor => descriptor.IsKeyedService && descriptor.ServiceType == typeof(ToolsetPublication) && descriptor.ServiceKey is ToolsetKey key && key == publication.Key).ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("duplicate")]
+    [InlineData("wrong-key")]
+    [InlineData("null")]
+    [InlineData("missing-source")]
+    public void AddToolRegistrationCatalog_WhenToolsetPublicationInvalid_RejectsComposition(string problem)
+    {
+        var publication = ToolCatalogMergeTestData.Toolset("tools", [], []);
+        var services = new ServiceCollection();
+        _ = services.AddToolset(publication);
+        if (problem == "missing")
+        {
+            foreach (var descriptor in services.Where(static descriptor => descriptor.ServiceType == typeof(ToolsetPublication)).ToArray()) { _ = services.Remove(descriptor); }
+        }
+        else if (problem == "duplicate") { _ = services.AddKeyedSingleton(publication.Key, publication); }
+        else if (problem is "wrong-key" or "null")
+        {
+            foreach (var descriptor in services.Where(static descriptor => descriptor.ServiceType == typeof(ToolsetPublication)).ToArray()) { _ = services.Remove(descriptor); }
+            _ = problem == "null"
+                ? services.AddKeyedSingleton<ToolsetPublication>(publication.Key, static (_, _) => null!)
+                : services.AddKeyedSingleton(publication.Key, ToolCatalogMergeTestData.Toolset("other", [], []));
+        }
+        else { _ = services.ReplaceToolset(ToolCatalogMergeTestData.Candidate().Toolset); }
+        using var host = services.BuildServiceProvider();
+        if (problem == "missing-source") { Should.Throw<ArgumentException>(host.GetRequiredService<IToolRegistrationCatalog>).ParamName.ShouldBe("toolsets"); }
+        else { _ = Should.Throw<InvalidOperationException>(host.GetRequiredService<IToolRegistrationCatalog>); }
+    }
+
+    [Fact]
+    public void AddToolRegistrationCatalog_WhenRepeatedOrReplaced_PreservesHostChoicesAndOldViews()
+    {
+        var services = new ServiceCollection();
+        var clock = new CallbackTimestampTimeProvider(static () => 0);
+        _ = services.AddSingleton<TimeProvider>(clock);
+        services.AddToolRegistrationCatalog().ShouldBeSameAs(services);
+        services.AddToolRegistrationCatalog().ShouldBeSameAs(services);
+        using var oldHost = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        var original = oldHost.GetRequiredService<IToolRegistrationCatalog>();
+        var keyed = new CallbackToolRegistrationCatalog();
+        _ = services.AddKeyedSingleton<IToolRegistrationCatalog>("host-key", keyed);
+        _ = services.AddSingleton<IToolRegistrationCatalog>(_ => throw new InvalidOperationException("must-not-activate"));
+        services.ReplaceToolRegistrationCatalog<CallbackToolRegistrationCatalog>().ShouldBeSameAs(services);
+        _ = services.AddToolRegistrationCatalog();
+        using var newHost = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        _ = newHost.GetRequiredService<IToolRegistrationCatalog>().ShouldBeOfType<CallbackToolRegistrationCatalog>();
+        newHost.GetRequiredKeyedService<IToolRegistrationCatalog>("host-key").ShouldBeSameAs(keyed);
+        newHost.GetServices<IToolRegistrationCatalog>().Count().ShouldBe(1);
+        newHost.GetRequiredService<TimeProvider>().ShouldBeSameAs(clock);
+        oldHost.GetRequiredService<IToolRegistrationCatalog>().ShouldBeSameAs(original);
+        IServiceCollection absent = null!;
+        Should.Throw<ArgumentNullException>(absent.AddToolRegistrationCatalog).ParamName.ShouldBe("services");
+        Should.Throw<ArgumentNullException>(absent.ReplaceToolRegistrationCatalog<CallbackToolRegistrationCatalog>).ParamName.ShouldBe("services");
+    }
+
+    [Fact]
     public void AddToolCatalogMerging_WhenPolicyRegistrationsAmbiguous_RejectsInsteadOfSelectingLast()
     {
         var services = new ServiceCollection();

@@ -28,6 +28,17 @@ namespace AgentKit.Tools
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolRegistrationCatalog() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolRegistrationCatalog<TCatalog>()
+                where TCatalog :  class, AgentKit.IToolRegistrationCatalog { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolset(AgentKit.ToolsetPublication publication) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolset(AgentKit.ToolsetPublication publication) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolProvider<TProvider>(AgentKit.ToolSourceId sourceId)
+                where TProvider :  class, AgentKit.IToolProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolProvider(AgentKit.ToolSourceId sourceId, AgentKit.IToolProvider provider) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolProvider<TProvider>(AgentKit.ToolSourceId sourceId)
+                where TProvider :  class, AgentKit.IToolProvider { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolProvider(AgentKit.ToolSourceId sourceId, AgentKit.IToolProvider provider) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddToolCatalogMerging() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceToolCatalogMergePolicy<TPolicy>()
                 where TPolicy :  class, AgentKit.IToolCatalogMergePolicy { }
@@ -69,6 +80,11 @@ namespace AgentKit.Tools
         public AgentKit.ToolProviderSnapshot Snapshot { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.ToolInvokerLeaseResult> AcquireInvokerAsync(AgentKit.ToolIdentity identity, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask DisposeAsync() { }
+    }
+    public sealed class ToolRegistrationCatalog : AgentKit.IToolRegistrationCatalog
+    {
+        public ToolRegistrationCatalog(System.Collections.Generic.IEnumerable<AgentKit.ToolsetPublication> toolsets, System.Collections.Generic.IEnumerable<AgentKit.ToolProviderBinding> providers, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Tools.ToolRegistrationCatalog> logger) { }
+        public AgentKit.ToolDiscoverySelection ResolveSelection(AgentKit.ToolDiscoveryRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class ToolResultProjectionPolicyCatalog : AgentKit.IToolResultProjectionPolicyCatalog
     {

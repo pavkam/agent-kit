@@ -331,6 +331,13 @@ The architecture index defines document authority and change rules.
   coherent. It cannot omit missing targets, borrow unrelated toolset membership,
   infer aliases, or reorder the catalog. Require one unkeyed merge policy and
   preserve captured-source ownership on rejection, failure, or cancellation.
+- Resolve complete authored toolset selections through a materialized
+  `IToolRegistrationCatalog` before source discovery. Capture exact publications
+  and borrowed provider bindings once at composition, validate source identity
+  and membership, and retain no container. Preserve authored order and each
+  source's first use; empty selection exposes no fallback. Replacement affects
+  later compositions without redirecting retained selections or taking provider
+  disposal ownership.
 - Provider and catalog captures retain exact source publications and own their
   acquisitions. Resolution uses those captures to acquire invoker leases;
   immutable snapshots never imply a lookup against current DI registrations.

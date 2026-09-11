@@ -88,6 +88,17 @@ keys are unique and compared exactly; an empty selection and definition revision
 zero are valid. Constructing the request validates local coherence, while the
 catalog still resolves publications and preflights capability/schema support.
 
+Before source discovery, `IToolRegistrationCatalog` resolves every authored
+reference against one materialized registration view. The view MUST validate
+exact key cardinality, provider identity, and complete publication membership
+when composed. Selection MUST preserve authored toolset order and include each
+shared source once in first-use order. Unknown toolsets or mismatched policy
+families reject the complete selection; an empty request exposes no fallback.
+`ToolDiscoverySelection` retains the original request and exact publications and
+borrowed provider bindings. Selection performs no container lookup, provider
+metadata read, discovery, or disposal. Replacing registrations creates a later
+composition without redirecting an existing view or changing provider ownership.
+
 A provider's source identity is stable composition metadata and requires no I/O.
 Every successful discovery transfers an independently owned capture, even when
 successive captures share the same immutable publication. Closing an earlier
