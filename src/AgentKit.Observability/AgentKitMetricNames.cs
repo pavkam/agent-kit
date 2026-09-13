@@ -247,4 +247,16 @@ public static class AgentKitMetricNames
 
     /// <summary>Gets the counter for durable-lease releases.</summary>
     public const string DurableLeaseReleaseCount = "agentkit.durable.lease.release.count";
+
+    /// <summary>Gets the counter for terminal durable-journal write outcomes.</summary>
+    public const string DurableJournalWriteCount = "agentkit.durable.journal.write.count";
+
+    /// <summary>Gets the histogram for durable-journal write duration in seconds.</summary>
+    public const string DurableJournalWriteDuration = "agentkit.durable.journal.write.duration";
+
+    /// <summary>Gets the counter for terminal durable-journal evidence-load outcomes.</summary>
+    public const string DurableJournalLoadEvidenceCount = "agentkit.durable.journal.load_evidence.count";
+
+    /// <summary>Gets the histogram for durable-journal evidence-load duration in seconds.</summary>
+    public const string DurableJournalLoadEvidenceDuration = "agentkit.durable.journal.load_evidence.duration";
 }

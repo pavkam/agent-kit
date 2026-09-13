@@ -140,6 +140,24 @@ Both outcomes preserve the requested reference; cancellation propagates.
 [AgentKit.Tools](../AgentKit.Tools/README.md#retained-projection-policies)
 provides the immutable configuration catalog and replaceable registration.
 
+## Generic durable-operation codec
+
+`JsonDurableOperationCodec<TState>` is a first-party
+`IDurableOperationCodec<TState>` default that serializes plain data state as
+JSON. Each instance is bound to one exact
+`DurableOperationName`/`DurableOperationVersion` pair and stamps that version's
+text as the recorded `OperationPayload.SchemaVersion`; a payload recorded under
+a different schema version returns `DurableDecodeIncompatible` rather than being
+reinterpreted. Encoding and decoding both reject payloads exceeding a configured
+byte bound (1 MiB by default) before doing any work.
+
+This codec preserves whatever `TState` itself captures through ordinary
+`JsonSerializer` semantics, including a declared `[JsonExtensionData]` property.
+It does not add unknown-field preservation beyond that: operations needing
+guaranteed forward-compatible field retention need a hand-authored codec instead
+of this generic default — matching every other codec in this codebase, which is
+hand-authored per value family rather than generic.
+
 ## Related projects
 
 - [AgentKit](../AgentKit/README.md) — compose a process-level engine that hosts

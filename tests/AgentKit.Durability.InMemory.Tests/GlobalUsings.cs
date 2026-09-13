@@ -6,6 +6,7 @@ global using System.Diagnostics.Metrics;
 
 global using AgentKit.Durability.InMemory;
 global using AgentKit.Observability;
+global using AgentKit.TestSupport;
 
 global using Microsoft.Extensions.DependencyInjection;
 global using Microsoft.Extensions.Logging;

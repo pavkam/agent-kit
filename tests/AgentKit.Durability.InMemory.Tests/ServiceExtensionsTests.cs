@@ -71,4 +71,62 @@ public sealed class ServiceExtensionsTests
 
         provider.GetRequiredService<TimeProvider>().ShouldBeSameAs(clock);
     }
+
+    [Fact]
+    public void AddInMemoryDurableOperationJournal_WhenServicesAreNull_ThrowsArgumentNullExceptionWithParamName()
+    {
+        IServiceCollection services = null!;
+        var exception = Should.Throw<ArgumentNullException>(services.AddInMemoryDurableOperationJournal);
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddInMemoryDurableOperationJournal_WhenCalledTwice_RegistersOneReplaceableDefault()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInMemoryDurableOperationJournal().AddInMemoryDurableOperationJournal();
+
+        services.Count(descriptor =>
+                descriptor.ServiceType == typeof(IDurableOperationJournal)
+                && descriptor.ImplementationType == typeof(InMemoryDurableOperationJournal))
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AddInMemoryDurableOperationJournal_WhenResolved_RecordsAcceptance()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInMemoryDurableOperationJournal();
+        using var provider = services.BuildServiceProvider();
+        var journal = provider.GetRequiredService<IDurableOperationJournal>();
+
+        var result = await journal.RecordStartAsync(
+            DurableJournalTestData.Start(new FencingToken(1)), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<DurableRecorded>();
+    }
+
+    [Fact]
+    public void AddInMemoryDurableOperationJournal_WhenACustomJournalIsAlreadyRegistered_PreservesItAlongsideTheDefault()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<IDurableOperationJournal>(new InMemoryDurableOperationJournal(TimeProvider.System));
+
+        _ = services.AddInMemoryDurableOperationJournal();
+
+        services.Count(descriptor => descriptor.ServiceType == typeof(IDurableOperationJournal)).ShouldBe(2);
+    }
+
+    [Fact]
+    public void AddInMemoryDurableOperationJournal_WhenClockIsAlreadyRegistered_PreservesIt()
+    {
+        var services = new ServiceCollection();
+        var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        _ = services.AddSingleton<TimeProvider>(clock);
+
+        _ = services.AddInMemoryDurableOperationJournal();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<TimeProvider>().ShouldBeSameAs(clock);
+    }
 }

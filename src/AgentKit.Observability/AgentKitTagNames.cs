@@ -232,4 +232,8 @@ public static class AgentKitTagNames
 
     /// <summary>Gets the worker identity correlation attribute for durable-lease traces and logs.</summary>
     public const string WorkerId = "agentkit.worker.id";
+
+    /// <summary>Gets the stable name for the bounded durable-journal write operation dimension.</summary>
+    /// <remarks>Values identify package-defined write stages (start, checkpoint, terminal), never operation content.</remarks>
+    public const string DurableJournalOperation = "agentkit.durable.journal.operation";
 }

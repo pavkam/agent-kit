@@ -4222,6 +4222,14 @@ namespace AgentKit
         public InvalidModelPolicy(string reason) { }
         public string Reason { get; init; }
     }
+    public sealed class JsonDurableOperationCodec<TState> : AgentKit.IDurableOperationCodec<TState>
+    {
+        public JsonDurableOperationCodec(AgentKit.DurableOperationName operationName, AgentKit.DurableOperationVersion version, System.Text.Json.JsonSerializerOptions? serializerOptions = null, int maximumPayloadBytes = 1048576) { }
+        public AgentKit.DurableOperationName OperationName { get; }
+        public AgentKit.DurableOperationVersion Version { get; }
+        public AgentKit.DurableDecodeResult<TState> Decode(AgentKit.OperationPayload payload) { }
+        public AgentKit.OperationPayload Encode(TState value) { }
+    }
     public sealed class JsonSchema : System.IEquatable<AgentKit.JsonSchema>
     {
         public JsonSchema(AgentKit.JsonSchemaDialectId dialect, System.Text.Json.JsonElement document) { }

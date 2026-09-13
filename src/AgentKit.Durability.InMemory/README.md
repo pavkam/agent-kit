@@ -1,12 +1,14 @@
 # AgentKit.Durability.InMemory
 
 Provide `InMemoryDurableLeaseManager`, the first-party `IDurableLeaseManager`
-for one process. Select it explicitly with `AddInMemoryDurableLeaseManager()`.
-Repeating this leaf is idempotent; a different lease-manager registration
-remains visible so composition can reject ambiguity.
+for one process, and `InMemoryDurableOperationJournal`, the first-party
+`IDurableOperationJournal` for one process. Select them explicitly with
+`AddInMemoryDurableLeaseManager()` and `AddInMemoryDurableOperationJournal()`.
+Repeating either leaf is idempotent; a different registration remains visible so
+composition can reject ambiguity.
 
-This leaf implements execution leases only. The durable journal, checkpoint
-store, recovery policy, and provider-neutral coordinator described in
+This package implements execution leases and journal recording only. The
+checkpoint store, recovery policy, and provider-neutral coordinator described in
 [durable execution](../../docs/architecture/durable-execution.md) remain
 unimplemented and are not part of this package.
 
@@ -42,11 +44,36 @@ lease throws `ObjectDisposedException` or is a harmless no-op, respectively.
 Expiry and elapsed-time measurement use the injected `TimeProvider` exclusively,
 so takeover behavior is deterministic in tests.
 
+## Durable journal recording
+
+`InMemoryDurableOperationJournal` records acceptance, checkpoints, and terminal
+results per `DurableOperationAddress`, and rejects a write whose fencing token
+is older than the current authoritative one with `DurableRecordFenced`. It
+computes `DurableOperationState` from which method committed most recently —
+`Accepted` after acceptance, `EffectPending` after a checkpoint, and the
+caller-supplied terminal state after a terminal record — and derives
+`RecoveryEvidence.StartDefinitelyAbsent` and `SideEffectCertainty` from that
+same computed state. A checkpoint or terminal write against an address with no
+accepted record, or a terminal write after a terminal record already exists
+under a different result, returns `DurableRecordFailed`; a checkpoint after any
+terminal record does too. Repeating an equivalent terminal write is idempotent.
+
+**This journal does not perform grant consumption or audit dispatch.** None of
+`IDurableOperationJournal`'s four methods receives a live `SecurityGrant` or
+`SecurityEnforcementIntent` the way `ISessionStore`'s protected methods do
+through `AuthorizedSessionStoreRequest<TRequest>`; `LoadEvidenceAsync` receives
+only a bare `DurableOperationAddress`, with no authorization evidence at all.
+Implementing the "protected operation" behavior the interface's own remarks
+describe is not possible against its current shape — this is a specification
+gap, not an omission in this adapter. It also cannot record `Waiting` state or
+an `ExternalOperationReference`: no method on the interface accepts either as an
+argument.
+
 ## Related projects
 
 - [AgentKit.Abstractions](../AgentKit.Abstractions/README.md) — defines
-  `IDurableLeaseManager`, `IExecutionLease`, and the durable-execution value
-  types this leaf implements.
+  `IDurableLeaseManager`, `IExecutionLease`, `IDurableOperationJournal`, and the
+  durable-execution value types this leaf implements.
 
 ## Tests and reference
 

@@ -268,4 +268,10 @@ public static class AgentKitActivityNames
 
     /// <summary>Gets the name for one durable-operation execution-lease release.</summary>
     public const string DurableLeaseRelease = "durable.lease.release";
+
+    /// <summary>Gets the name for one durable-journal write, distinguished by its bounded operation tag.</summary>
+    public const string DurableJournalWrite = "durable.journal.write";
+
+    /// <summary>Gets the name for one durable-journal evidence load.</summary>
+    public const string DurableJournalLoadEvidence = "durable.journal.load_evidence";
 }

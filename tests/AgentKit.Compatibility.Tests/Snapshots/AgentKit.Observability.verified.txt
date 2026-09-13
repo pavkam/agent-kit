@@ -27,6 +27,8 @@ namespace AgentKit.Observability
         public const string Chat = "chat";
         public const string ContextCompact = "context.compact";
         public const string ContextPrepare = "context.prepare";
+        public const string DurableJournalLoadEvidence = "durable.journal.load_evidence";
+        public const string DurableJournalWrite = "durable.journal.write";
         public const string DurableLeaseAcquire = "durable.lease.acquire";
         public const string DurableLeaseRelease = "durable.lease.release";
         public const string DurableLeaseRenew = "durable.lease.renew";
@@ -136,6 +138,10 @@ namespace AgentKit.Observability
         public const string ContextCompactionCount = "agentkit.context.compaction.count";
         public const string ContextPreparationCount = "agentkit.context.prepare.count";
         public const string ContextPreparationDuration = "agentkit.context.prepare.duration";
+        public const string DurableJournalLoadEvidenceCount = "agentkit.durable.journal.load_evidence.count";
+        public const string DurableJournalLoadEvidenceDuration = "agentkit.durable.journal.load_evidence.duration";
+        public const string DurableJournalWriteCount = "agentkit.durable.journal.write.count";
+        public const string DurableJournalWriteDuration = "agentkit.durable.journal.write.duration";
         public const string DurableLeaseAcquisitionCount = "agentkit.durable.lease.acquisition.count";
         public const string DurableLeaseAcquisitionDuration = "agentkit.durable.lease.acquisition.duration";
         public const string DurableLeaseReleaseCount = "agentkit.durable.lease.release.count";
@@ -216,6 +222,7 @@ namespace AgentKit.Observability
         public const string ContinuationReason = "agentkit.continuation.reason";
         public const string ConversationId = "gen_ai.conversation.id";
         public const string DelegationId = "agentkit.delegation.id";
+        public const string DurableJournalOperation = "agentkit.durable.journal.operation";
         public const string ErrorType = "error.type";
         public const string ExecutionLaneId = "agentkit.execution.lane.id";
         public const string FileSystemOperation = "agentkit.filesystem.operation";

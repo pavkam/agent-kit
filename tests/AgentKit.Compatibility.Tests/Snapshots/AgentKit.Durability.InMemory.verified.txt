@@ -8,11 +8,20 @@ namespace AgentKit.Durability.InMemory
         public InMemoryDurableLeaseManager(AgentKit.IIdentifierGenerator<AgentKit.ExecutionLeaseId> leaseIds, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Durability.InMemory.InMemoryDurableLeaseManager>? logger = null) { }
         public System.Threading.Tasks.ValueTask<AgentKit.ExecutionLeaseResult> AcquireAsync(AgentKit.ExecutionLeaseRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class InMemoryDurableOperationJournal : AgentKit.IDurableOperationJournal
+    {
+        public InMemoryDurableOperationJournal(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Durability.InMemory.InMemoryDurableOperationJournal>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.RecoveryEvidenceResult> LoadEvidenceAsync(AgentKit.DurableOperationAddress address, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordCheckpointAsync(AgentKit.DurableCheckpoint checkpoint, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordStartAsync(AgentKit.DurableOperationStart start, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DurableRecordResult> RecordTerminalAsync(AgentKit.DurableOperationResult result, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryDurableLeaseManager() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryDurableOperationJournal() { }
         }
     }
 }
