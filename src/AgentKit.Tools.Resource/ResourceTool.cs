@@ -277,7 +277,8 @@ public sealed class ResourceTool: ITool
         FileSnapshotStatus.LimitExceeded => "The resource exceeded its configured byte boundary.",
         FileSnapshotStatus.Changed => "The resource changed while it was being read.",
         FileSnapshotStatus.Failed => "The resource could not be read.",
-        _ => throw new NotImplementedException(),
+        // FileSnapshotResult rejects an undefined status at construction, so no reader can supply one here.
+        _ => throw new UnreachableException(),
     };
 
     private static ToolInvocationResult Success(string json, string status) => new(

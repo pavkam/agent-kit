@@ -17,4 +17,14 @@ public sealed class FileSnapshotResultTests
         left.ShouldBe(right);
         left.GetHashCode().ShouldBe(right.GetHashCode());
     }
+
+    [Fact]
+    public void FileSnapshotResult_WhenStatusIsUndefined_RejectsExactArgument()
+    {
+        var undefined = Enum.Parse<FileSnapshotStatus>("999");
+
+        Should.Throw<ArgumentOutOfRangeException>(() =>
+            new FileSnapshotResult(undefined, [1, 2, 3], new ContentHash("sha256:test"), null))
+            .ParamName.ShouldBe("status");
+    }
 }

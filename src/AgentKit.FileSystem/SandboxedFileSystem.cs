@@ -895,7 +895,8 @@ public sealed partial class SandboxedFileSystem:
     {
         FileWriteMode.CreateOrOverwrite => _openWriteOnly | TruncateFlag | NoFollowFlag | CloseOnExecFlag,
         FileWriteMode.Append => _openWriteOnly | _openAppend | NoFollowFlag | CloseOnExecFlag,
-        FileWriteMode.CreateNew => throw new NotImplementedException(),
+        // TryOpenWriteTarget returns the already-exists failure for CreateNew before reopening an existing file.
+        FileWriteMode.CreateNew => throw new UnreachableException(),
         _ => throw new UnreachableException()
     };
 
