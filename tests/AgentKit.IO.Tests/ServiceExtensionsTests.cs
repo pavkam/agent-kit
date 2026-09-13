@@ -59,4 +59,55 @@ public sealed class ServiceExtensionsTests
         exception.ParamName.ShouldBe("services");
     }
 
+    [Fact]
+    public void AddInputCoordinator_WhenServicesAreNull_ThrowsArgumentNullExceptionWithParamName()
+    {
+        IServiceCollection services = null!;
+        var exception = Should.Throw<ArgumentNullException>(() => services.AddInputCoordinator());
+        exception.GetType().ShouldBe(typeof(ArgumentNullException));
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public async Task AddInputCoordinator_WhenAQueueIsSelected_ResolvesOneReplaceableCoordinator()
+    {
+        var services = new ServiceCollection();
+        var queue = new RecordingInputQueue();
+        _ = services.AddSingleton<IInputQueue>(queue);
+        _ = services.AddInputCoordinator().AddInputCoordinator();
+        using var provider = services.BuildServiceProvider();
+
+        var coordinator = provider.GetRequiredService<IInputCoordinator>();
+        _ = await coordinator.AdmitAsync(InputCoordinationTestData.AdmissionRequest(), TestContext.Current.CancellationToken);
+
+        services.Count(descriptor => descriptor.ServiceType == typeof(IInputCoordinator)).ShouldBe(1);
+        queue.AppendCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddInputCoordinator_WhenNoQueueIsSelected_FailsAtResolutionRatherThanRegistration()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInputCoordinator();
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<InvalidOperationException>(provider.GetRequiredService<IInputCoordinator>);
+    }
+
+    [Fact]
+    public async Task AddInputCoordinator_WhenCollaboratorsAreReplaced_UsesTheReplacements()
+    {
+        var services = new ServiceCollection();
+        var queue = new RecordingInputQueue();
+        var options = new InputCoordinatorOptions(new ConfigurationVersion(11));
+        _ = services.AddSingleton<IInputQueue>(queue);
+        _ = services.AddSingleton(options);
+        _ = services.AddInputCoordinator(new InputCoordinatorOptions(new ConfigurationVersion(2)));
+        using var provider = services.BuildServiceProvider();
+
+        var coordinator = provider.GetRequiredService<IInputCoordinator>();
+        _ = await coordinator.AdmitAsync(InputCoordinationTestData.AdmissionRequest(), TestContext.Current.CancellationToken);
+
+        queue.AppendedPreprocessing!.ConfigurationVersion.ShouldBe(new ConfigurationVersion(11));
+    }
 }

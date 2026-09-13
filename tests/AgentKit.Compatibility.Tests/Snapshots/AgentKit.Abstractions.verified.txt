@@ -4077,6 +4077,10 @@ namespace AgentKit
         public System.Guid Value { get; }
         public override string ToString() { }
     }
+    public static class InputPayloadFingerprint
+    {
+        public static AgentKit.InputFingerprint Create(AgentKit.AgentInput input) { }
+    }
     public sealed class InputPreprocessingManifest : System.IEquatable<AgentKit.InputPreprocessingManifest>
     {
         public InputPreprocessingManifest(AgentKit.ConfigurationVersion configurationVersion, AgentKit.InputFingerprint originalFingerprint, AgentKit.InputFingerprint effectiveFingerprint) { }

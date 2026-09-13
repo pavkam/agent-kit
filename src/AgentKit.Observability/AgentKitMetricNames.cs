@@ -180,6 +180,18 @@ public static class AgentKitMetricNames
     /// <summary>Gets the histogram for input-promotion planning duration in seconds.</summary>
     public const string InputPromotionPlanDuration = "agentkit.input.promotion.plan.duration";
 
+    /// <summary>Gets the counter for terminal input-admission outcomes.</summary>
+    public const string InputAdmissionCount = "agentkit.input.admission.count";
+
+    /// <summary>Gets the histogram for input-admission duration in seconds.</summary>
+    public const string InputAdmissionDuration = "agentkit.input.admission.duration";
+
+    /// <summary>Gets the counter for terminal input-promotion outcomes.</summary>
+    public const string InputPromotionCount = "agentkit.input.promotion.count";
+
+    /// <summary>Gets the histogram for input-promotion duration in seconds.</summary>
+    public const string InputPromotionDuration = "agentkit.input.promotion.duration";
+
     /// <summary>Gets the counter for terminal human-question publication outcomes.</summary>
     public const string HumanQuestionPublicationCount = "agentkit.human_question.publication.count";
 

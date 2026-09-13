@@ -77,6 +77,43 @@ owning spec.
 
 ## Latest integration evidence
 
+The input-admission checkpoint adds the first-party `IInputCoordinator`.
+`DefaultInputCoordinator` bounds the payload's part count, allocates the
+admission identity, captures the canonical preprocessing manifest and the
+injected-clock timestamp, and then reports exactly what the selected
+`IInputQueue` committed. `AddInputCoordinator` registers it with replaceable
+identity, clock, and `InputCoordinatorOptions` collaborators and selects no
+queue or storage adapter.
+
+The shared `InputPayloadFingerprint` exposes the existing canonical encoder for
+payload replay comparison, so equal payloads produce one digest and any change
+to content, part order, delivery, identity, or extension evidence produces
+another. The coordinator applies no preprocessors, so the effective payload is
+the original payload and both manifest fingerprints are that digest.
+Cancellation, an oversized payload, and a default generated identity each stop
+before the queue is touched; a queue failure propagates instead of becoming a
+substituted outcome. Failing clocks and throwing loggers do not change a
+committed outcome.
+
+Authorization enforcement stays with the queue's store, which already receives
+the request's captured evidence. Part count is the only bound this coordinator
+applies. Payload byte bounds, configured preprocessors, and the session-backed
+`IInputQueue` remain open; its `PromoteAsync` additionally needs a durable
+atomic in-run promotion primitive that `ISessionStore` does not yet expose,
+which is the next dependency in this area.
+
+Verification: the Release solution builds with zero warnings or errors and all
+7,759 tests pass with no failures or skips, up from 7,719. This checkpoint adds
+40 cases across `DefaultInputCoordinatorTests`, `InputCoordinatorOptionsTests`,
+`InputPayloadFingerprintTests`, and the IO registration fixture. Three mutations
+— widening the part bound, diverging the effective fingerprint from the
+original, and disabling the default-identity guard — were each observed failing
+exactly one owning-class test before the implementation was restored. A fourth
+mutation attempt was discarded because it did not compile and would have tested
+a stale binary. Writing the options fixture also exposed that a supplied default
+preprocessing revision was retained instead of rejected; the constructor now
+rejects it. The three reviewed API snapshot changes are additive.
+
 The run-output-publication checkpoint adds the first-party `IOutputPublisher`.
 `AgentRunOutputPublisher` owns one accepted run's live fan-out and single-winner
 final envelope over the existing internal event hub, with public
@@ -1834,11 +1871,12 @@ and explicit coordination.
   policies are verified in `bd1101c`. Provider-bound registration capture and DI
   correspondence are now verified. First-party descriptor co-registration,
   complete component/profile selections, run-plan compilation and activation
-  remain open. `IInputCoordinator` and `IInputQueue` still need their runtime
-  implementations, including authorized replay before preprocessing. The
-  in-memory session store now implements lane provisioning, idempotent
-  admission, and atomic promotion into accepted-run state; connecting this state
-  to actual execution remains open.
+  remain open. `IInputCoordinator` now has its first-party runtime;
+  `IInputQueue` still needs one, together with the durable atomic in-run
+  promotion primitive that `ISessionStore` does not yet expose and authorized
+  replay before preprocessing. The in-memory session store now implements lane
+  provisioning, idempotent admission, and atomic promotion into accepted-run
+  state; connecting this state to actual execution remains open.
 - Continuation distinguishes the previous committed turn from the next target
   turn, retains every pending cause, and requires authoritative terminal tool
   references and consistent active compaction evidence. The session owner must

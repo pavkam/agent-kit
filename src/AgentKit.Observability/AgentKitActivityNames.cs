@@ -84,6 +84,12 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for deterministic planning of already admitted input promotion.</summary>
     public const string InputPromotionPlan = "input.promotion.plan";
 
+    /// <summary>Gets the name for coordinating one durable input admission.</summary>
+    public const string InputAdmission = "input.admission";
+
+    /// <summary>Gets the name for coordinating one atomic input promotion.</summary>
+    public const string InputPromotion = "input.promotion";
+
     /// <summary>Gets the name for preparing provider-ready working context.</summary>
     public const string ContextPrepare = "context.prepare";
 

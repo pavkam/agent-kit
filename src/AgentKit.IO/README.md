@@ -10,10 +10,33 @@ of the wider IO architecture still under implementation.
 
 ## Use this project
 
-Start with `AddInputPromotionPolicy`, `AddHumanQuestionBroker` in
-[ServiceExtensions.cs](ServiceExtensions.cs). Read the overloads and XML
-documentation for required collaborators, lifetimes, and duplicate-registration
-behavior.
+Start with `AddInputCoordinator`, `AddInputPromotionPolicy`, and
+`AddHumanQuestionBroker` in [ServiceExtensions.cs](ServiceExtensions.cs). Read
+the overloads and XML documentation for required collaborators, lifetimes, and
+duplicate-registration behavior.
+
+## Input admission
+
+`DefaultInputCoordinator` is the first-party `IInputCoordinator`. It bounds the
+payload's part count, allocates the admission identity, captures the canonical
+preprocessing manifest and the injected-clock timestamp, and then reports
+exactly what the selected `IInputQueue` committed. `AddInputCoordinator`
+registers it together with this package's replaceable admission-identity
+generator, clock, and `InputCoordinatorOptions`; the application must select the
+queue, because AgentKit.IO is not a durable store.
+
+The coordinator applies no preprocessors, so the effective payload is the
+original payload and both manifest fingerprints are the same canonical
+`InputPayloadFingerprint`. Equal payloads therefore replay against the same
+durable admission. It decides no authorization: the request's captured
+authorization evidence is carried to the queue's store, which enforces it.
+Cancellation, an oversized payload, and a default generated identity all stop
+before the queue is touched, and a queue failure propagates rather than becoming
+a substituted outcome.
+
+The coordinator bounds part count only. Payload byte bounds, configured
+preprocessors, and the session-backed `IInputQueue` itself — in particular the
+durable atomic promotion primitive its `PromoteAsync` needs — remain open.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable component
 example, follow [Getting started](../../docs/getting-started.md). Complete

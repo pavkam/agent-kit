@@ -33,6 +33,8 @@ namespace AgentKit.Observability
         public const string HumanQuestionPublish = "human.question.publish";
         public const string IdentityDerive = "identity.derive";
         public const string IdentityResolve = "identity.resolve";
+        public const string InputAdmission = "input.admission";
+        public const string InputPromotion = "input.promotion";
         public const string InputPromotionPlan = "input.promotion.plan";
         public const string InvokeAgent = "invoke_agent";
         public const string LanguageQuery = "language.query";
@@ -137,6 +139,10 @@ namespace AgentKit.Observability
         public const string HumanQuestionPublicationDuration = "agentkit.human_question.publication.duration";
         public const string IdentityDerivationCount = "agentkit.identity.derivation.count";
         public const string IdentityResolutionCount = "agentkit.identity.resolution.count";
+        public const string InputAdmissionCount = "agentkit.input.admission.count";
+        public const string InputAdmissionDuration = "agentkit.input.admission.duration";
+        public const string InputPromotionCount = "agentkit.input.promotion.count";
+        public const string InputPromotionDuration = "agentkit.input.promotion.duration";
         public const string InputPromotionPlanCount = "agentkit.input.promotion.plan.count";
         public const string InputPromotionPlanDuration = "agentkit.input.promotion.plan.duration";
         public const string LanguageQueryCount = "agentkit.language.query.count";
