@@ -39,6 +39,16 @@ infrastructure is listed at the end.
 | [AgentKit.Artifacts](../../src/AgentKit.Artifacts/README.md)                   | Coordinate bounded preparation, finalization, and reading of generated or binary content. | [Tests](../../tests/AgentKit.Artifacts.Tests/README.md)          |
 | [AgentKit.Artifacts.InMemory](../../src/AgentKit.Artifacts.InMemory/README.md) | Store artifact content in memory with deterministic lifecycle behavior.                   | [Tests](../../tests/AgentKit.Artifacts.InMemory.Tests/README.md) |
 
+## Durable execution
+
+| Project                                                                          | Use it for                                                          | Tests                                                             |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [AgentKit.Durability.InMemory](../../src/AgentKit.Durability.InMemory/README.md) | Coordinate exclusive process-local ownership of durable operations. | [Tests](../../tests/AgentKit.Durability.InMemory.Tests/README.md) |
+
+This is currently the only durable-execution package. The provider-neutral
+coordinator, durable journal, checkpoint store, and recovery policy described in
+[durable execution](../architecture/durable-execution.md) remain unimplemented.
+
 ## Host access and scripted backends
 
 | Project                                                                                      | Use it for                                                                                | Tests                                                                   |

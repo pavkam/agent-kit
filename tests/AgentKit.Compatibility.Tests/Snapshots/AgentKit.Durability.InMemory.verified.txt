@@ -1,0 +1,18 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Durability.InMemory.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Durability.InMemory
+{
+    public sealed class InMemoryDurableLeaseManager : AgentKit.IDurableLeaseManager
+    {
+        public InMemoryDurableLeaseManager(AgentKit.IIdentifierGenerator<AgentKit.ExecutionLeaseId> leaseIds, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Durability.InMemory.InMemoryDurableLeaseManager>? logger = null) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ExecutionLeaseResult> AcquireAsync(AgentKit.ExecutionLeaseRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryDurableLeaseManager() { }
+        }
+    }
+}

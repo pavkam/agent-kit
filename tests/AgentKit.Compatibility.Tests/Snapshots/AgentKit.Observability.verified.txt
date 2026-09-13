@@ -27,6 +27,9 @@ namespace AgentKit.Observability
         public const string Chat = "chat";
         public const string ContextCompact = "context.compact";
         public const string ContextPrepare = "context.prepare";
+        public const string DurableLeaseAcquire = "durable.lease.acquire";
+        public const string DurableLeaseRelease = "durable.lease.release";
+        public const string DurableLeaseRenew = "durable.lease.renew";
         public const string ExecuteTool = "execute_tool";
         public const string FileSystemOperation = "filesystem.operation";
         public const string HookDispatch = "hook.dispatch";
@@ -133,6 +136,11 @@ namespace AgentKit.Observability
         public const string ContextCompactionCount = "agentkit.context.compaction.count";
         public const string ContextPreparationCount = "agentkit.context.prepare.count";
         public const string ContextPreparationDuration = "agentkit.context.prepare.duration";
+        public const string DurableLeaseAcquisitionCount = "agentkit.durable.lease.acquisition.count";
+        public const string DurableLeaseAcquisitionDuration = "agentkit.durable.lease.acquisition.duration";
+        public const string DurableLeaseReleaseCount = "agentkit.durable.lease.release.count";
+        public const string DurableLeaseRenewalCount = "agentkit.durable.lease.renewal.count";
+        public const string DurableLeaseRenewalDuration = "agentkit.durable.lease.renewal.duration";
         public const string FileSystemOperationCount = "agentkit.filesystem.operation.count";
         public const string HookDispatchCount = "agentkit.hook.dispatch.count";
         public const string HumanQuestionPublicationCount = "agentkit.human_question.publication.count";
@@ -267,6 +275,7 @@ namespace AgentKit.Observability
         public const string ToolVersion = "agentkit.tool.version";
         public const string TurnId = "agentkit.turn.id";
         public const string TurnNumber = "agentkit.turn.number";
+        public const string WorkerId = "agentkit.worker.id";
     }
     public static class ServiceExtensions
     {

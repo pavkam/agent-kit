@@ -74,8 +74,45 @@ owning spec.
 | Diagnostic failure isolation                           | `bd1101c`; Observability: 17 passed; policy suites cover throwing listeners/loggers/meters, cancellation and failed clock measurements                            | Policy outcomes survive observer failures; unavailable timing emits no fabricated zero duration                                                       |
 | GUID execution-lane identity                           | Isolated Release solution: 4,193 passed; full lint passed; GUID identity conformance and exact empty-value rejection                                              | Intentional constructor/property API correction to the normative session identity; lane runtime integration remains open                              |
 | Exact authority selection                              | Isolated Release solution: 4,214 passed; Permissions: 52 passed; full format/lint passed; three additive API snapshots reviewed                                   | Explicit bindings, typed missing-key results and isolated diagnostics verified; policy capture, audit and session integration remain open             |
+| Process-local execution-lease coordination             | New `AgentKit.Durability.InMemory`; 32 focused cases; full solution: 7,792 passed                                                                                 | Verified checkpoint; coordinator, journal, checkpoint store and recovery policy remain open                                                           |
 
 ## Latest integration evidence
+
+The durable-execution-lease checkpoint adds the new
+`AgentKit.Durability.InMemory` package with the first-party
+`IDurableLeaseManager`. `InMemoryDurableLeaseManager` is itself the single
+authoritative in-process lease store: every fencing token is allocated under its
+own serialization gate, so ordering among every caller in one process is exact.
+It cannot coordinate across process boundaries, because its state exists only in
+that process's memory; that scope is documented on the type rather than assumed.
+
+`AcquireAsync` grants a new ownership generation when no unexpired lease exists
+for the address, whether none was ever granted or the previous generation
+expired, and otherwise returns `ExecutionLeaseHeldByAnotherWorker` with the
+current owner, token, and expiry without waiting — including when the caller
+already holds the unexpired lease itself, which is expected to renew instead.
+`RenewAsync` extends expiry by the lease's originally requested duration from
+the injected clock without allocating a new token, succeeding only while the
+presented token remains current; otherwise it returns `LeaseLost`. Disposing a
+lease releases its generation immediately if still current, so another worker
+can take over without waiting for expiry, and is harmless when repeated or when
+ownership already passed to a later generation.
+
+This delivers execution leases only. The provider-neutral `AgentKit.Durability`
+coordinator, durable journal, checkpoint store, and recovery policy described in
+[durable execution](architecture/durable-execution.md) remain unimplemented,
+together with `AgentKit.Session`'s missing durable in-run promotion primitive
+recorded above, which any future durable journal will also depend on.
+
+Verification: the Release solution builds with zero warnings or errors and all
+7,792 tests pass with no failures or skips, up from 7,759. The new package adds
+32 cases across `InMemoryDurableLeaseManagerTests`, `ServiceExtensionsTests`,
+and `DurableLeaseDiagnosticsTests`. Four mutations — disabling busy-lease
+refusal, fixing the fencing token instead of allocating monotonically, disabling
+release, and accepting renewal regardless of token match — were each observed
+failing at least one owning-class test before the implementation was restored.
+The reviewed API snapshot changes are additive: the new package's baseline and
+three new shared observability names in `AgentKit.Observability`.
 
 The input-admission checkpoint adds the first-party `IInputCoordinator`.
 `DefaultInputCoordinator` bounds the payload's part count, allocates the
@@ -1957,7 +1994,7 @@ not make that component a mandatory dependency of every engine.
 | Tools                         | Authoritative terminal records, rejection projections, scheduling, retries and focused feature contracts                                                               |
 | Permissions and human control | Policy algebra, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap; SQLite grant-store checkpoint verified                    |
 | Sessions                      | Lifecycle after accepted state, complete lane coordination, branch fencing, retention/export/import; missing SQLite backend                                            |
-| Durable execution             | Missing runtime and explicit backend; journals, codecs, leases, checkpoints, evidence and recovery                                                                     |
+| Durable execution             | Process-local `IDurableLeaseManager` verified; missing coordinator and explicit backend; journals, codecs, checkpoints, evidence and recovery                          |
 | Memory and retrieval          | Missing runtime/storage ownership; documents/vectors, retrieval provenance, tombstones and purge                                                                       |
 | Goals and delegation          | Durable goals/attempts/intents, joins, communication, parent occupancy and missing hosting worker                                                                      |
 | Hooks and extensions          | Typed point coverage, ordering, mutation validation, failure precedence and timeout quiescence                                                                         |

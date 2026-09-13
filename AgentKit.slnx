@@ -31,6 +31,7 @@
     <Project Path="src/AgentKit.Budgets/AgentKit.Budgets.csproj"/>
     <Project Path="src/AgentKit.Budgets.InMemory/AgentKit.Budgets.InMemory.csproj"/>
     <Project Path="src/AgentKit.Budgets.Sqlite/AgentKit.Budgets.Sqlite.csproj"/>
+    <Project Path="src/AgentKit.Durability.InMemory/AgentKit.Durability.InMemory.csproj"/>
     <Project Path="src/AgentKit.Identity/AgentKit.Identity.csproj"/>
     <Project Path="src/AgentKit.Permissions/AgentKit.Permissions.csproj"/>
     <Project Path="src/AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj"/>
@@ -101,6 +102,7 @@
     <Project Path="tests/AgentKit.Budgets.Tests/AgentKit.Budgets.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.InMemory.Tests/AgentKit.Budgets.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Sqlite.Tests/AgentKit.Budgets.Sqlite.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Durability.InMemory.Tests/AgentKit.Durability.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Sqlite.ProcessHost/AgentKit.Budgets.Sqlite.ProcessHost.csproj"/>
     <Project Path="tests/AgentKit.Identity.Tests/AgentKit.Identity.Tests.csproj"/>
     <Project Path="tests/AgentKit.Permissions.Tests/AgentKit.Permissions.Tests.csproj"/>

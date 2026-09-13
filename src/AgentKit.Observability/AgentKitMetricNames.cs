@@ -232,4 +232,19 @@ public static class AgentKitMetricNames
     /// <summary>Gets the stable name for the duration in seconds of local run-event hub operations.</summary>
     /// <remarks>The histogram uses bounded operation and outcome dimensions; an unavailable or invalid clock measurement is omitted.</remarks>
     public const string RunEventHubOperationDuration = "agentkit.run.event.hub.operation.duration";
+
+    /// <summary>Gets the counter for terminal durable-lease acquisition outcomes.</summary>
+    public const string DurableLeaseAcquisitionCount = "agentkit.durable.lease.acquisition.count";
+
+    /// <summary>Gets the histogram for durable-lease acquisition duration in seconds.</summary>
+    public const string DurableLeaseAcquisitionDuration = "agentkit.durable.lease.acquisition.duration";
+
+    /// <summary>Gets the counter for terminal durable-lease renewal outcomes.</summary>
+    public const string DurableLeaseRenewalCount = "agentkit.durable.lease.renewal.count";
+
+    /// <summary>Gets the histogram for durable-lease renewal duration in seconds.</summary>
+    public const string DurableLeaseRenewalDuration = "agentkit.durable.lease.renewal.duration";
+
+    /// <summary>Gets the counter for durable-lease releases.</summary>
+    public const string DurableLeaseReleaseCount = "agentkit.durable.lease.release.count";
 }

@@ -229,4 +229,7 @@ public static class AgentKitTagNames
     /// <summary>Gets the stable name for the bounded local run-event hub operation dimension.</summary>
     /// <remarks>Values identify package-defined lifecycle stages, never user labels, run identities, sequence numbers, or event content.</remarks>
     public const string RunEventHubOperation = "agentkit.run.event.hub.operation";
+
+    /// <summary>Gets the worker identity correlation attribute for durable-lease traces and logs.</summary>
+    public const string WorkerId = "agentkit.worker.id";
 }

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>AgentKit.Durability.InMemory</PackageId>
+    <Description>Process-local execution-lease coordination for AgentKit durable execution.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"/>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"/>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+    <ProjectReference Include="../AgentKit.Observability/AgentKit.Observability.csproj"/>
+  </ItemGroup>
+</Project>

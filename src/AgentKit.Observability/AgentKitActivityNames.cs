@@ -259,4 +259,13 @@ public static class AgentKitActivityNames
     /// <summary>Gets the stable name for one run-local event publication, subscription, or delivery operation.</summary>
     /// <remarks>The operation tag distinguishes bounded fan-out stages; this activity does not attest durable publication or run settlement.</remarks>
     public const string RunEventHub = "run.event.hub";
+
+    /// <summary>Gets the name for one durable-operation execution-lease acquisition attempt.</summary>
+    public const string DurableLeaseAcquire = "durable.lease.acquire";
+
+    /// <summary>Gets the name for one durable-operation execution-lease renewal attempt.</summary>
+    public const string DurableLeaseRenew = "durable.lease.renew";
+
+    /// <summary>Gets the name for one durable-operation execution-lease release.</summary>
+    public const string DurableLeaseRelease = "durable.lease.release";
 }
