@@ -1872,11 +1872,27 @@ and explicit coordination.
   correspondence are now verified. First-party descriptor co-registration,
   complete component/profile selections, run-plan compilation and activation
   remain open. `IInputCoordinator` now has its first-party runtime;
-  `IInputQueue` still needs one, together with the durable atomic in-run
-  promotion primitive that `ISessionStore` does not yet expose and authorized
-  replay before preprocessing. The in-memory session store now implements lane
-  provisioning, idempotent admission, and atomic promotion into accepted-run
-  state; connecting this state to actual execution remains open.
+  `IInputQueue` still needs one, together with authorized replay before
+  preprocessing. The in-memory session store now implements lane provisioning,
+  idempotent admission, and atomic promotion into accepted-run state; connecting
+  this state to actual execution remains open.
+- A session-backed `IInputQueue` is blocked on an unresolved specification gap
+  rather than on implementation effort. `IInputQueue.PromoteAsync` needs a
+  durable atomic in-run promotion, but the only durable representation of an
+  open operation is `SessionAcceptedRunState`, whose invariants bind it to its
+  own acceptance transaction: its correlation turn must equal the initial turn,
+  and its promoted-admission, entry, and message sets describe that single
+  transaction. The in-memory lane writes that state exactly once, at acceptance.
+  There is therefore no value for "this operation has advanced to a later turn
+  at a later operation-state revision", so a store-level promotion primitive
+  cannot commit its result without inventing session
+  lifecycle-after-accepted-state semantics. That model is an architecture
+  decision owned by [sessions](architecture/sessions.md) and the
+  [agent loop state machine](concepts/agent-loop-state-machine.md); it must be
+  specified there before the durable primitive, the queue, and the loop's safe
+  boundaries can be implemented. An exploratory `SessionInputPromotionRequest`
+  and `ISessionStore.PromoteInputAsync` were written and then reverted for this
+  reason; no speculative semantics were committed.
 - Continuation distinguishes the previous committed turn from the next target
   turn, retains every pending cause, and requires authoritative terminal tool
   references and consistent active compaction evidence. The session owner must
