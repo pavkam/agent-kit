@@ -14,4 +14,10 @@ internal static partial class IOLog
 
     [LoggerMessage(EventId = 1002, Level = LogLevel.Error, Message = "Input promotion planning failed at {Boundary} with {ErrorType}.")]
     internal static partial void PromotionPlanFailed(ILogger logger, PromotionBoundary boundary, string errorType);
+
+    [LoggerMessage(EventId = 1003, Level = LogLevel.Information, Message = "Run final result was exposed with {Outcome}.")]
+    internal static partial void FinalResultPublished(ILogger logger, string outcome);
+
+    [LoggerMessage(EventId = 1004, Level = LogLevel.Warning, Message = "A conflicting run final result was rejected; the original envelope is retained.")]
+    internal static partial void FinalResultConflicted(ILogger logger);
 }

@@ -1,12 +1,12 @@
 # AgentKit.IO
 
-Provide input-promotion policy, a broker for bounded human questions, and the
-internal bounded run-event hub.
+Provide input-promotion policy, a broker for bounded human questions, the
+internal bounded run-event hub, and the run-scoped output publisher over it.
 
-Use these services when coordinating queued input or asking a human for
-information. Complete admission, publisher integration, channel adapters, and
-final publication are part of the wider IO architecture still under
-implementation.
+Use these services when coordinating queued input, asking a human for
+information, or exposing one run's live events and final envelope. Complete
+admission, durable publication, channel adapters, and loop integration are part
+of the wider IO architecture still under implementation.
 
 ## Use this project
 
@@ -39,15 +39,36 @@ produces an explicit delivery failure.
 The hub accepts immutable, already sequenced events. It does not allocate
 durable sequence ranges, persist events, capture a replay snapshot, authorize
 subscribers, deliver required sinks, or settle runs. Those publisher and session
-dependencies remain open. The implementation is not registered as a public
-publisher until that complete contract can be composed.
+dependencies remain open.
 
 The hub's typed subscription adapter implements `IAgentRunStream<TOutput>`.
 Event cancellation, overflow, abandonment, and disposal leave its producer-owned
 final-result task independent. The adapter validates the result's exact run
-correlation and exposes the same envelope on repeated awaits. This implements
-local stream ownership; a complete registered `IOutputPublisher` still requires
-durable sequence allocation, sink and settlement integration.
+correlation and exposes the same envelope on repeated awaits.
+
+## Run output publication
+
+`AgentRunOutputPublisher` is the first-party `IOutputPublisher` for one accepted
+run. It is constructed by the run's owner with that run's immutable correlation,
+an injected clock, and `RunOutputPublisherOptions` live bounds. It is not
+registered in DI, because a run-scoped publisher requires the keyed run
+activation that remains open.
+
+`PublishAsync` rejects a foreign correlation and a sequence that does not
+advance strictly beyond the last accepted event, and refuses events once
+publication has ended. `CompleteAsync` validates the envelope's run and output
+type, exposes exactly one final envelope, treats an equivalent repeat as
+idempotent, and rejects a conflicting envelope while retaining the original.
+Exposure seals the event stream first, so a consumer that observed the result
+can still drain its accepted prefix. `Subscribe<TOutput>` binds the run's single
+validated output type and returns a stream whose final-result wait is
+independent of event delivery. Disposal before exposure cancels pending waits
+instead of fabricating an outcome.
+
+This publisher owns live process-local publication only. It reserves no durable
+sequence range, records no publication intent, delivers to no required external
+sink, bounds no event payload bytes, and decides no semantic outcome. Those
+durable publication responsibilities remain open.
 
 ## Related projects
 

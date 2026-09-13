@@ -3,6 +3,14 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.IO
 {
+    public sealed class AgentRunOutputPublisher : AgentKit.IOutputPublisher, System.IAsyncDisposable
+    {
+        public AgentRunOutputPublisher(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.RunId runId, System.TimeProvider timeProvider, AgentKit.IO.RunOutputPublisherOptions? options = null, Microsoft.Extensions.Logging.ILogger<AgentKit.IO.AgentRunOutputPublisher>? logger = null) { }
+        public System.Threading.Tasks.ValueTask CompleteAsync<TOutput>(AgentKit.AgentRunFinished<TOutput> result, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.ValueTask PublishAsync(AgentKit.RunEvent runEvent, System.Threading.CancellationToken cancellationToken = default) { }
+        public AgentKit.IAgentRunStream<TOutput> Subscribe<TOutput>() { }
+    }
     public sealed class DefaultHumanQuestionBroker : AgentKit.IHumanQuestionBroker
     {
         public DefaultHumanQuestionBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.IHumanQuestionChannel channel) { }
@@ -10,6 +18,12 @@ namespace AgentKit.IO
         public DefaultHumanQuestionBroker(AgentKit.ISecurityGrantStore grantStore, AgentKit.IHumanQuestionChannel channel, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.IO.DefaultHumanQuestionBroker> logger) { }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.HumanQuestionResult> AskAsync(AgentKit.HumanQuestionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class RunOutputPublisherOptions : System.IEquatable<AgentKit.IO.RunOutputPublisherOptions>
+    {
+        public RunOutputPublisherOptions(int maximumSubscriptions = 32, int capacityPerSubscription = 256) { }
+        public int CapacityPerSubscription { get; }
+        public int MaximumSubscriptions { get; }
     }
     public static class ServiceExtensions
     {

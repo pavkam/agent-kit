@@ -14,8 +14,11 @@ checkpoint is committed and pushed. The September 9 closeout remains historical
 evidence, not a completion claim for the architecture.
 
 Alex requested wrapping up the canonical tool-schema checkpoint and stopping the
-broad goal on 2026-09-11. Remaining gaps below are a work ledger, not
-authorization to start another component or resume the stopped effort.
+broad goal on 2026-09-11. He resumed it on 2026-09-12 with an explicit
+instruction to inspect the library for unimplemented parts, deliver the
+higher-level ones first and their lower-level dependencies as they surface, and
+validate every change with tests. Remaining gaps below are the work ledger for
+that effort.
 
 The objective is to implement all missing parts of the documented architecture
 and correct divergent implementations. Preserve concurrent work and record
@@ -73,6 +76,36 @@ owning spec.
 | Exact authority selection                              | Isolated Release solution: 4,214 passed; Permissions: 52 passed; full format/lint passed; three additive API snapshots reviewed                                   | Explicit bindings, typed missing-key results and isolated diagnostics verified; policy capture, audit and session integration remain open             |
 
 ## Latest integration evidence
+
+The run-output-publication checkpoint adds the first-party `IOutputPublisher`.
+`AgentRunOutputPublisher` owns one accepted run's live fan-out and single-winner
+final envelope over the existing internal event hub, with public
+`RunOutputPublisherOptions` bounds. Publication rejects foreign correlation, a
+sequence that does not advance strictly, and any event after publication ends.
+Completion validates run and output type, exposes exactly one envelope, treats
+an equivalent repeat as idempotent, and rejects a conflicting envelope while
+retaining the original. Exposure seals the event stream before the envelope
+becomes observable, so a consumer can still drain its accepted prefix. Disposal
+before exposure cancels pending final-result waits rather than fabricating an
+outcome.
+
+`Subscribe<TOutput>` binds the run's single validated output type; a second
+subscription or completion for another type is refused. The publisher is
+deliberately not registered in DI: a run-scoped publisher requires the keyed run
+activation that remains open. It owns no durable behavior — no durable sequence
+range, publication intent, required sink delivery, payload-byte bound, or
+semantic outcome — and those responsibilities remain open, together with the
+loop and facade migration that would consume it.
+
+Verification: the Release solution builds with zero warnings or errors and all
+7,718 tests pass with no failures or skips, up from the 7,687-test baseline
+measured before this checkpoint. The 31 added cases live in
+`AgentRunOutputPublisherTests` and `RunOutputPublisherOptionsTests`. Three
+mutations — removing the idempotent-equivalence branch, removing the conflict
+rejection, and accepting a non-advancing sequence — were each observed failing
+exactly one owning-class test before the implementation was restored. The single
+reviewed API snapshot change is additive: two new public types with no change to
+any existing entry. Repository C# formatting, Prettier, and Markdown lint pass.
 
 The canonical tool-schema checkpoint adds explicit local `IToolSchemaEngine`
 compilation and immutable `ICompiledToolSchema` validation handles. The
