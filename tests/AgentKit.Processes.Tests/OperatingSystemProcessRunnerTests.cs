@@ -27,7 +27,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     [Fact]
     public async Task RunAsync_WhenGrantDenied_StartsNothingAndUsesExactEnforcement()
     {
-        if (!IsSupported())
+        if (!IsSupported() || !SandboxAvailable())
         {
             return;
         }
@@ -53,7 +53,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     [Fact]
     public async Task RunAsync_WhenStoreReconcilesAnEarlierIntent_DoesNotCreateTheProcess()
     {
-        if (!IsSupported())
+        if (!IsSupported() || !SandboxAvailable())
         {
             return;
         }
@@ -77,7 +77,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     [Fact]
     public async Task RunAsync_WhenConsumedResultLacksExactReceipt_DoesNotCreateTheProcess()
     {
-        if (!IsSupported())
+        if (!IsSupported() || !SandboxAvailable())
         {
             return;
         }
@@ -117,7 +117,7 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     [Fact]
     public async Task RunAsync_WhenCallerCancelsDuringNonCooperativeConsumption_DoesNotCreateTheProcess()
     {
-        if (!IsSupported())
+        if (!IsSupported() || !SandboxAvailable())
         {
             return;
         }
