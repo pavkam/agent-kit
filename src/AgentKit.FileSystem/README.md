@@ -20,6 +20,9 @@ engine composition is described in the
 
 ## Related projects
 
+- [AgentKit.FileSystem.InMemory](../AgentKit.FileSystem.InMemory/README.md) — a
+  deterministic, disk-free implementation of the same contract for tests and
+  ephemeral hosts.
 - [AgentKit.Tools.Read](../AgentKit.Tools.Read/README.md) — read bounded file
   content through the filesystem abstraction.
 - [AgentKit.Tools.Write](../AgentKit.Tools.Write/README.md) — write file content

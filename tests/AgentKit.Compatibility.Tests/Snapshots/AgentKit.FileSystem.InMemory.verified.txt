@@ -1,0 +1,46 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.FileSystem.InMemory.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.FileSystem.InMemory
+{
+    public sealed class InMemoryFileSystem : AgentKit.IAtomicFileReplacer, AgentKit.IDirectoryReader, AgentKit.IFileContentSearcher, AgentKit.IFileGlobber, AgentKit.IFileSnapshotReader, AgentKit.IFileSystem, AgentKit.IWorkspacePatchApplier
+    {
+        public InMemoryFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.InMemory.InMemoryFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.InMemory.InMemoryFileSystem>? logger = null) { }
+        public InMemoryFileSystem(Microsoft.Extensions.Options.IOptions<AgentKit.FileSystem.InMemory.InMemoryFileSystemOptions> options, AgentKit.ISecurityGrantStore grantStore, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.FileSystem.InMemory.InMemoryFileSystem>? logger, AgentKit.IIdentifierGenerator<AgentKit.SecurityEnforcementIntentId> intentIds) { }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.WorkspacePatchResult> ApplyPatchAsync(AgentKit.WorkspacePatchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void CreateDirectory(AgentKit.FileSystemPath path) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.DirectoryEnumerationResult> EnumerateAsync(AgentKit.DirectoryEnumerationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.GlobResult> GlobAsync(AgentKit.GlobRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.FileReadResult> ReadAsync(AgentKit.FileReadRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.FileSnapshotResult> ReadSnapshotAsync(AgentKit.FileSnapshotRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.AtomicFileReplaceResult> ReplaceAsync(AgentKit.AtomicFileReplaceRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.FileSearchResult> SearchAsync(AgentKit.FileSearchRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Seed(AgentKit.FileSystemPath path, System.ReadOnlySpan<byte> content) { }
+        public void Seed(AgentKit.FileSystemPath path, string content) { }
+        public bool TryReadAllBytes(AgentKit.FileSystemPath path, out System.Collections.Immutable.ImmutableArray<byte> content) { }
+        public System.Threading.Tasks.Task<AgentKit.FileWriteResult> WriteAsync(AgentKit.FileWriteRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class InMemoryFileSystemOptions
+    {
+        public InMemoryFileSystemOptions() { }
+        public int MaximumDirectorySnapshotEntries { get; set; }
+        public long MaximumPatchBytes { get; set; }
+        public int MaximumPatchEntries { get; set; }
+        public long MaximumReadBytes { get; set; }
+        public long MaximumSearchBytes { get; set; }
+        public int MaximumSearchDepth { get; set; }
+        public System.TimeSpan MaximumSearchDuration { get; set; }
+        public int MaximumSearchFiles { get; set; }
+        public int MaximumSearchLineBytes { get; set; }
+        public int MaximumSearchMatches { get; set; }
+        public long MaximumWriteBytes { get; set; }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryFileSystem(System.Action<AgentKit.FileSystem.InMemory.InMemoryFileSystemOptions>? configure = null) { }
+        }
+    }
+}

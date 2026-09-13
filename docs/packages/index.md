@@ -51,14 +51,15 @@ coordinator, checkpoint store, and recovery policy described in
 
 ## Host access and scripted backends
 
-| Project                                                                                      | Use it for                                                                                | Tests                                                                   |
-| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [AgentKit.FileSystem](../../src/AgentKit.FileSystem/README.md)                               | Access files through a root-bounded implementation of the filesystem contract.            | [Tests](../../tests/AgentKit.FileSystem.Tests/README.md)                |
-| [AgentKit.Network](../../src/AgentKit.Network/README.md)                                     | Resolve network destinations and send bounded HTTP requests through security enforcement. | [Tests](../../tests/AgentKit.Network.Tests/README.md)                   |
-| [AgentKit.Network.InMemory](../../src/AgentKit.Network.InMemory/README.md)                   | Run deterministic network-resolution and response scenarios with security checks.         | [Tests](../../tests/AgentKit.Network.InMemory.Tests/README.md)          |
-| [AgentKit.Processes](../../src/AgentKit.Processes/README.md)                                 | Resolve and run operating-system processes through a bounded security boundary.           | [Tests](../../tests/AgentKit.Processes.Tests/README.md)                 |
-| [AgentKit.Processes.Scripted](../../src/AgentKit.Processes.Scripted/README.md)               | Simulate process resolution and execution with deterministic scenarios.                   | [Tests](../../tests/AgentKit.Processes.Scripted.Tests/README.md)        |
-| [AgentKit.LanguageServices.Scripted](../../src/AgentKit.LanguageServices.Scripted/README.md) | Supply deterministic language-intelligence responses for tests and replay.                | [Tests](../../tests/AgentKit.LanguageServices.Scripted.Tests/README.md) |
+| Project                                                                                      | Use it for                                                                                    | Tests                                                                   |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [AgentKit.FileSystem](../../src/AgentKit.FileSystem/README.md)                               | Access files through a root-bounded implementation of the filesystem contract.                | [Tests](../../tests/AgentKit.FileSystem.Tests/README.md)                |
+| [AgentKit.FileSystem.InMemory](../../src/AgentKit.FileSystem.InMemory/README.md)             | Access files through a deterministic, disk-free implementation for tests and ephemeral hosts. | [Tests](../../tests/AgentKit.FileSystem.InMemory.Tests/README.md)       |
+| [AgentKit.Network](../../src/AgentKit.Network/README.md)                                     | Resolve network destinations and send bounded HTTP requests through security enforcement.     | [Tests](../../tests/AgentKit.Network.Tests/README.md)                   |
+| [AgentKit.Network.InMemory](../../src/AgentKit.Network.InMemory/README.md)                   | Run deterministic network-resolution and response scenarios with security checks.             | [Tests](../../tests/AgentKit.Network.InMemory.Tests/README.md)          |
+| [AgentKit.Processes](../../src/AgentKit.Processes/README.md)                                 | Resolve and run operating-system processes through a bounded security boundary.               | [Tests](../../tests/AgentKit.Processes.Tests/README.md)                 |
+| [AgentKit.Processes.Scripted](../../src/AgentKit.Processes.Scripted/README.md)               | Simulate process resolution and execution with deterministic scenarios.                       | [Tests](../../tests/AgentKit.Processes.Scripted.Tests/README.md)        |
+| [AgentKit.LanguageServices.Scripted](../../src/AgentKit.LanguageServices.Scripted/README.md) | Supply deterministic language-intelligence responses for tests and replay.                    | [Tests](../../tests/AgentKit.LanguageServices.Scripted.Tests/README.md) |
 
 ## Model providers
 

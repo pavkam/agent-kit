@@ -77,8 +77,50 @@ owning spec.
 | Process-local execution-lease coordination             | New `AgentKit.Durability.InMemory`; 32 focused cases; full solution: 7,792 passed                                                                                 | Verified checkpoint; coordinator, journal, checkpoint store and recovery policy remain open                                                              |
 | Generic durable-operation codec and journal recording  | `JsonDurableOperationCodec<TState>`, `InMemoryDurableOperationJournal`; 68 focused cases; full solution: 7,841 passed                                             | Verified checkpoint; grant-consumption/audit gap in `IDurableOperationJournal` documented; coordinator, checkpoint store and recovery policy remain open |
 | Example workspace-scoped file-access security policy   | `WorkspaceScopedFileAccessPolicy` in `AgentKit.Permissions`; 27 focused cases; full solution: 7,868 passed                                                        | Verified checkpoint; illustrative, not exhaustive; applications author their own business-rule policies                                                  |
+| Deterministic in-memory filesystem                     | New `AgentKit.FileSystem.InMemory`; 86 focused cases; full solution: 7,955 passed                                                                                 | Verified checkpoint; proves the same seven contracts as `SandboxedFileSystem`; keyed profile composition remains open                                    |
 
 ## Latest integration evidence
+
+The in-memory filesystem checkpoint adds `AgentKit.FileSystem.InMemory`, a
+deterministic, disk-free `InMemoryFileSystem` proving the same seven contracts
+`SandboxedFileSystem` proves — `IFileSystem`, `IDirectoryReader`,
+`IFileGlobber`, `IFileContentSearcher`, `IFileSnapshotReader`,
+`IAtomicFileReplacer`, and `IWorkspacePatchApplier` — against a process-local
+virtual tree instead of real disk. Filesystem was the only host-access package
+family without an in-memory sibling (Budgets, Permissions, Durability, Session,
+Network, and Artifacts all have one); this closes that gap without inventing new
+architecture, since every implemented contract, request/result shape, and
+security-binding helper already existed in `AgentKit.Abstractions`.
+
+Every effect still validates and consumes a `SecurityGrant` exactly as the
+disk-backed implementation does, reusing the same `FileSystemEnforcementReceipt`
+pattern (duplicated per project, as the equivalent grant-store receipt helpers
+already are across other in-memory siblings, since behavioral-runtime packages
+cannot reference one another). Because the backing store is an in-memory
+dictionary rather than a real filesystem, none of the OS-level symlink
+boundary-crossing defenses apply, and multi-step mutations (`ReplaceAsync`,
+`ApplyPatchAsync`) commit under one held lock instead of a staged
+temp-file-then-rename sequence — the observable contract (status codes,
+precondition-before-effect ordering, per-entry settlement, and race outcomes) is
+identical, but the mechanism achieving it is simpler because there is no real
+I/O gap between a precondition check and its mutation. There is no
+directory-creation member on any of the seven contracts, so `Seed` and
+`CreateDirectory` exist as grant-free instance methods that play the same role
+directly writing to the sandbox's configured root directory (outside any
+`SandboxedFileSystem` instance method) plays in that implementation's own tests;
+every subsequent effect against the resulting tree is fully protected.
+
+Verification: the Release solution builds with zero warnings or errors and all
+7,955 tests pass with no failures or skips, up from 7,868. The checkpoint adds
+86 cases across `InMemoryFileSystemTests` and the registration fixture,
+mirroring the disk suite's scenarios (symlink-boundary cases excluded as
+inapplicable). Four mutations — disabling the atomic-replace conflict check, the
+patch-entry fingerprint precondition, the write `CreateNew` already-exists
+check, and the write parent-must-exist check — were each observed failing at
+least one owning-class test before the implementation was restored. The reviewed
+API snapshot addition is the new package's complete public surface:
+`InMemoryFileSystem`, `InMemoryFileSystemOptions`, and
+`ServiceExtensions.AddInMemoryFileSystem`.
 
 The example-policy checkpoint adds `WorkspaceScopedFileAccessPolicy` in
 `AgentKit.Permissions`, the first concrete `ISecurityPolicy` implementation in
@@ -2110,7 +2152,7 @@ not make that component a mandatory dependency of every engine.
 | Hooks and extensions          | Typed point coverage, ordering, mutation validation, failure precedence and timeout quiescence                                                                                                                                                                                   |
 | Observability                 | Complete safe signals, reusable assertions, required-sink separation and exporter implementation                                                                                                                                                                                 |
 | MCP                           | Supported protocol eras, reflection, transports/lifecycle, capabilities and protected primitive adapters                                                                                                                                                                         |
-| File system                   | Full dispositions/bounds/isolation semantics and missing deterministic in-memory backend                                                                                                                                                                                         |
+| File system                   | Full dispositions/bounds/isolation semantics; deterministic in-memory backend (`AgentKit.FileSystem.InMemory`) verified                                                                                                                                                          |
 | Network                       | DNS/send authority, connection reuse, redirects/retries, bounded streaming and egress evidence                                                                                                                                                                                   |
 | Processes                     | Executable identity, sandbox enforcement, termination certainty, child effects and deterministic backend conformance                                                                                                                                                             |
 | Artifacts                     | External ownership/reference shape, shared classification, event contracts, reference-commit evidence, integrity/retention, finalize/abort races and fenced collection                                                                                                           |
