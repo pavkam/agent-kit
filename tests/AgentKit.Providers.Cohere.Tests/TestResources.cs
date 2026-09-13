@@ -3,8 +3,6 @@
 
 namespace AgentKit.Providers.Cohere.Tests;
 
-using System.Runtime.CompilerServices;
-
 /// <summary>
 /// Loads fixture files from this test project's <c>Resources</c> directory,
 /// so simulated HTTP payloads live as real JSON/SSE files on disk rather
@@ -29,6 +27,6 @@ internal static class TestResources
     /// <returns>The fixture file's raw bytes.</returns>
     public static byte[] ReadAllBytes(string relativePath) => File.ReadAllBytes(GetPath(relativePath));
 
-    private static string ComputeResourcesDirectory([CallerFilePath] string thisFilePath = "") =>
-        Path.Combine(Path.GetDirectoryName(thisFilePath)!, "Resources");
+    private static string ComputeResourcesDirectory() =>
+        Path.Combine(AppContext.BaseDirectory, "Resources");
 }

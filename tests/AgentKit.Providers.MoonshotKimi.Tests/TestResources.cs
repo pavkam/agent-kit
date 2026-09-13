@@ -3,8 +3,6 @@
 
 namespace AgentKit.Providers.MoonshotKimi.Tests;
 
-using System.Runtime.CompilerServices;
-
 /// <summary>
 /// Loads fixture files from this test project's <c>Resources</c> directory,
 /// so simulated HTTP payloads live as real JSON files on disk rather than
@@ -19,6 +17,6 @@ internal static class TestResources
     /// <returns>The absolute path to the fixture file.</returns>
     public static string GetPath(string relativePath) => Path.Combine(ResourcesDirectory, relativePath);
 
-    private static string ComputeResourcesDirectory([CallerFilePath] string thisFilePath = "") =>
-        Path.Combine(Path.GetDirectoryName(thisFilePath)!, "Resources");
+    private static string ComputeResourcesDirectory() =>
+        Path.Combine(AppContext.BaseDirectory, "Resources");
 }

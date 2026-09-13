@@ -3,8 +3,6 @@
 
 namespace AgentKit.Providers.AzureOpenAI.Tests;
 
-using System.Runtime.CompilerServices;
-
 /// <summary>
 /// Loads fixture files from this test project's <c>Resources</c> directory,
 /// so simulated HTTP payloads live as real JSON files on disk rather than
@@ -24,6 +22,6 @@ internal static class TestResources
     /// <returns>The fixture file's text content.</returns>
     public static string ReadAllText(string relativePath) => File.ReadAllText(GetPath(relativePath));
 
-    private static string ComputeResourcesDirectory([CallerFilePath] string thisFilePath = "") =>
-        Path.Combine(Path.GetDirectoryName(thisFilePath)!, "Resources");
+    private static string ComputeResourcesDirectory() =>
+        Path.Combine(AppContext.BaseDirectory, "Resources");
 }

@@ -6,7 +6,6 @@ namespace AgentKit.Architecture.Tests;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 
 using Microsoft.Build.Evaluation;
 
@@ -30,20 +29,42 @@ internal sealed class ProjectReferenceGraph
     internal ImmutableDictionary<string, ImmutableArray<string>> Edges { get; }
 
     /// <summary>Loads the current repository using the test assembly's captured build configuration.</summary>
-    /// <param name="sourceFile">The compiler-supplied path of this source file, used to locate the repository without depending on output layout.</param>
     /// <returns>An immutable graph evaluated under the configuration that built this test assembly.</returns>
-    /// <exception cref="ArgumentException"><paramref name="sourceFile"/> or the captured configuration is blank.</exception>
-    /// <exception cref="InvalidOperationException">The assembly lacks exactly one build-configuration metadata value.</exception>
-    internal static ProjectReferenceGraph LoadRepository([CallerFilePath] string sourceFile = "")
+    /// <exception cref="ArgumentException">The captured configuration is blank.</exception>
+    /// <exception cref="InvalidOperationException">The assembly lacks exactly one build-configuration metadata value, or the repository root cannot be located.</exception>
+    internal static ProjectReferenceGraph LoadRepository()
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourceFile);
-        var repositoryRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourceFile)!, "..", ".."));
+        var repositoryRoot = FindRepositoryRoot();
         var configuration = typeof(ProjectReferenceGraph).Assembly
             .GetCustomAttributes<AssemblyMetadataAttribute>()
             .Single(attribute => attribute.Key == "BuildConfiguration")
             .Value;
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
         return Load(repositoryRoot, configuration);
+    }
+
+    /// <summary>Locates the repository root by walking up from the running test assembly's own output directory.</summary>
+    /// <returns>The absolute repository root directory.</returns>
+    /// <remarks>
+    /// This deliberately does not use <c>[CallerFilePath]</c>: Shouldly's <c>CapturePathMapsForShouldly</c> build
+    /// target sets the C# compiler's <c>PathMap</c> under <c>ContinuousIntegrationBuild</c> (set automatically by
+    /// most CI providers), which rewrites both PDB sequence points and <c>[CallerFilePath]</c>-substituted string
+    /// constants to a synthetic path that does not exist on disk at runtime. <see cref="AppContext.BaseDirectory"/>
+    /// is a runtime value, never subject to compile-time path mapping, so walking up from it is reliable in CI.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">No ancestor directory of the test output contains <c>AgentKit.slnx</c>.</exception>
+    private static string FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "AgentKit.slnx")))
+            {
+                return directory.FullName;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Could not locate the repository root (AgentKit.slnx) above '{AppContext.BaseDirectory}'.");
     }
 
     /// <summary>Creates an immutable graph from explicit project-reference entries.</summary>
