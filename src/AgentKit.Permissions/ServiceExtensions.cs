@@ -108,5 +108,25 @@ public static class ServiceExtensions
             _ = services.AddSingleton(new SecurityAuthorityBinding(authorityKey, authority));
             return services;
         }
+
+        /// <summary>Adds the illustrative <see cref="WorkspaceScopedFileAccessPolicy"/> as an additive security policy.</summary>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// <see cref="ISecurityPolicy"/> registrations are additive by design, so repeating this exact registration is
+        /// idempotent rather than replaceable: calling it twice still registers exactly one instance. This policy is
+        /// an example, not a complete file-access policy; see its own remarks for what it does and does not decide.
+        /// </remarks>
+        public IServiceCollection AddWorkspaceScopedFileAccessPolicy()
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            if (!services.Any(static descriptor =>
+                    descriptor.ServiceType == typeof(ISecurityPolicy)
+                    && descriptor.ImplementationType == typeof(WorkspaceScopedFileAccessPolicy)))
+            {
+                services.Add(ServiceDescriptor.Singleton<ISecurityPolicy, WorkspaceScopedFileAccessPolicy>());
+            }
+            return services;
+        }
     }
 }

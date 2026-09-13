@@ -19,6 +19,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 - [DefaultSecurityAuthoritySelectorTests](DefaultSecurityAuthoritySelectorTests.cs)
 - [DefaultSecurityProfilePublicationReaderTests](DefaultSecurityProfilePublicationReaderTests.cs)
 - [DefaultSecurityProfileSelectorTests](DefaultSecurityProfileSelectorTests.cs)
+- [WorkspaceScopedFileAccessPolicyTests](WorkspaceScopedFileAccessPolicyTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

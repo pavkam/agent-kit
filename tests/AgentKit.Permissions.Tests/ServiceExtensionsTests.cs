@@ -268,6 +268,37 @@ public sealed class ServiceExtensionsTests
         services.Count(static descriptor => descriptor.ServiceType == typeof(ISecurityAuthority)).ShouldBe(1);
     }
 
+    [Fact]
+    public void AddWorkspaceScopedFileAccessPolicy_WhenServicesAreNull_ThrowsArgumentNullExceptionWithParamName()
+    {
+        IServiceCollection services = null!;
+        var exception = Should.Throw<ArgumentNullException>(services.AddWorkspaceScopedFileAccessPolicy);
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddWorkspaceScopedFileAccessPolicy_WhenCalledTwice_RegistersOneInstance()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddWorkspaceScopedFileAccessPolicy().AddWorkspaceScopedFileAccessPolicy();
+
+        services.Count(descriptor =>
+                descriptor.ServiceType == typeof(ISecurityPolicy)
+                && descriptor.ImplementationType == typeof(WorkspaceScopedFileAccessPolicy))
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddWorkspaceScopedFileAccessPolicy_WhenAppliedAlongsideAgentPermissions_IsResolvedAsAnAdditivePolicy()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentPermissions();
+        _ = services.AddWorkspaceScopedFileAccessPolicy();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetServices<ISecurityPolicy>().ShouldContain(policy => policy is WorkspaceScopedFileAccessPolicy);
+    }
+
     private static SecurityAuthorizationContext Context(ComponentKey<ISecurityAuthority> authorityKey, string fingerprint = "policy-fingerprint") => new(new SecurityProfileKey("security.profile"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("d1111111-1111-1111-1111-111111111111")), new SecurityPolicyVersion(1), new ContentHash(fingerprint)), authorityKey, new AgentDefinitionRevision(1), new ConfigurationVersion(1), new SecurityAuthorizationScope(new AgentId(Guid.Parse("d2222222-2222-2222-2222-222222222222")), new SessionId(Guid.Parse("d3333333-3333-3333-3333-333333333333")), new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("d4444444-4444-4444-4444-444444444444")), new AdmissionId(Guid.Parse("d5555555-5555-5555-5555-555555555555")))), TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human));
     private static void AssertExactDefaultSecurityAuthoritySelector<TException>(Action action, string parameterName)
         where TException : ArgumentException

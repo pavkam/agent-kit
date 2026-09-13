@@ -22,6 +22,25 @@ example, follow [Getting started](../../docs/getting-started.md). Complete
 engine composition is described in the
 [composition guide](../../docs/guides/composition.md).
 
+## Example security policy
+
+`AddWorkspaceScopedFileAccessPolicy` registers
+`WorkspaceScopedFileAccessPolicy`, an illustrative `ISecurityPolicy`.
+`SecurityAuthority` denies by default when no policy allows a request, so
+registering only this one turns that fail-closed default into "workspace-scoped
+file and directory access is allowed" for `FileRead`, `DirectoryRead`,
+`FileSearch`, `FileWrite`, and `DirectoryCreate` requests, while granting
+nothing for any other operation kind.
+
+It allows a request only when every resource has kind `File` or `Directory` and
+an identifier that is a non-rooted, traversal-free relative path — the same
+structural invariant `FileSystemPath` enforces at construction, re-checked here
+as defense in depth. It abstains, rather than denies, on anything it cannot
+vouch for, so a more specific policy can still decide; absent one, the
+authority's fail-closed default still applies. It does not know a configured
+filesystem root and cannot prove a resource resolves inside one — applications
+with sharper requirements should replace or compose it with their own policy.
+
 ## Related projects
 
 - [AgentKit.Permissions.InMemory](../AgentKit.Permissions.InMemory/README.md) —

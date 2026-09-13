@@ -33,6 +33,12 @@ namespace AgentKit.Permissions
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityProfilePublication(AgentKit.SecurityProfilePublication publication) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuditSink(AgentKit.SecurityAuditSinkRegistration registration, AgentKit.ISecurityAuditSink sink) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuthority(AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey, AgentKit.ISecurityAuthority authority) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddWorkspaceScopedFileAccessPolicy() { }
         }
+    }
+    public sealed class WorkspaceScopedFileAccessPolicy : AgentKit.ISecurityPolicy
+    {
+        public WorkspaceScopedFileAccessPolicy() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicyResult> EvaluateAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
 }

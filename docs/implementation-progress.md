@@ -76,8 +76,44 @@ owning spec.
 | Exact authority selection                              | Isolated Release solution: 4,214 passed; Permissions: 52 passed; full format/lint passed; three additive API snapshots reviewed                                   | Explicit bindings, typed missing-key results and isolated diagnostics verified; policy capture, audit and session integration remain open                |
 | Process-local execution-lease coordination             | New `AgentKit.Durability.InMemory`; 32 focused cases; full solution: 7,792 passed                                                                                 | Verified checkpoint; coordinator, journal, checkpoint store and recovery policy remain open                                                              |
 | Generic durable-operation codec and journal recording  | `JsonDurableOperationCodec<TState>`, `InMemoryDurableOperationJournal`; 68 focused cases; full solution: 7,841 passed                                             | Verified checkpoint; grant-consumption/audit gap in `IDurableOperationJournal` documented; coordinator, checkpoint store and recovery policy remain open |
+| Example workspace-scoped file-access security policy   | `WorkspaceScopedFileAccessPolicy` in `AgentKit.Permissions`; 27 focused cases; full solution: 7,868 passed                                                        | Verified checkpoint; illustrative, not exhaustive; applications author their own business-rule policies                                                  |
 
 ## Latest integration evidence
+
+The example-policy checkpoint adds `WorkspaceScopedFileAccessPolicy` in
+`AgentKit.Permissions`, the first concrete `ISecurityPolicy` implementation in
+the repository. `SecurityAuthority` denies by default when zero policies allow a
+request, so registering only this one turns that fail-closed default into
+"workspace-scoped file and directory access is allowed" for `FileRead`,
+`DirectoryRead`, `FileSearch`, `FileWrite`, and `DirectoryCreate` requests,
+while granting nothing for any other operation kind.
+
+It allows a request only when every resource has kind `File` or `Directory` and
+an identifier that is a non-rooted, traversal-free relative path — the same
+structural invariant `FileSystemPath` enforces at construction, independently
+re-checked here (including a Windows drive/UNC-prefix check that holds
+regardless of host OS) as defense in depth, since a policy is evaluated before
+any effecting boundary and cannot assume every resource it sees was built
+through that exact validated type. It abstains, rather than denies, on anything
+it cannot vouch for, so a more specific policy can still decide; absent one, the
+authority's fail-closed default still applies. It does not know a configured
+filesystem root and cannot prove a resource resolves inside one.
+
+This is explicitly an illustrative example, not a complete file-access policy:
+applications with sharper requirements (path prefixes, extensions, size, tenant
+scoping) author their own `ISecurityPolicy` instead. `AddAgentPermissions` does
+not register it; `AddWorkspaceScopedFileAccessPolicy` is a separate opt-in call,
+consistent with `ISecurityPolicy` registration being additive rather than
+replaceable.
+
+Verification: the Release solution builds with zero warnings or errors and all
+7,868 tests pass with no failures or skips, up from 7,841. The checkpoint adds
+27 cases across `WorkspaceScopedFileAccessPolicyTests` and the registration
+fixture. Four mutations — disabling the governed-operation-kind gate, the
+resource-kind/path-safety check, the traversal-segment check, and the
+rooted-path checks — were each observed failing at least one owning-class test
+before the implementation was restored. The reviewed API snapshot change is
+additive: the new policy type and its registration method.
 
 The durable-operation codec and journal checkpoint adds two first-party
 defaults. `JsonDurableOperationCodec<TState>` implements
@@ -2066,7 +2102,7 @@ not make that component a mandatory dependency of every engine.
 | Identity                      | Verified normalization/derivation baseline; downstream revalidation, ingress integration and reusable conformance                                                                                                                                                                |
 | Model and embedding providers | All advertised operation/capability mappings, endpoint/account bindings, terminal/error/usage semantics                                                                                                                                                                          |
 | Tools                         | Authoritative terminal records, rejection projections, scheduling, retries and focused feature contracts                                                                                                                                                                         |
-| Permissions and human control | Policy algebra, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap; SQLite grant-store checkpoint verified                                                                                                                              |
+| Permissions and human control | Policy algebra, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap; SQLite grant-store checkpoint verified; example `ISecurityPolicy` (`WorkspaceScopedFileAccessPolicy`) verified                                                      |
 | Sessions                      | Lifecycle after accepted state, complete lane coordination, branch fencing, retention/export/import; missing SQLite backend                                                                                                                                                      |
 | Durable execution             | Process-local `IDurableLeaseManager`, `IDurableOperationJournal`, generic `IDurableOperationCodec<TState>` verified; missing coordinator and checkpoint store; journal grant/audit gap and `RecoveryEvidence`/`RecoveryDecision` gap block full protection and `IRecoveryPolicy` |
 | Memory and retrieval          | Missing runtime/storage ownership; documents/vectors, retrieval provenance, tombstones and purge                                                                                                                                                                                 |
