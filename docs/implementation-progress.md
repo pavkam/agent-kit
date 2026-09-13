@@ -1930,6 +1930,38 @@ and explicit coordination.
   boundaries can be implemented. An exploratory `SessionInputPromotionRequest`
   and `ISessionStore.PromoteInputAsync` were written and then reverted for this
   reason; no speculative semantics were committed.
+- A first-party `IRecoveryPolicy` is blocked by a second unresolved
+  specification gap between `RecoveryEvidence` and the closed `RecoveryDecision`
+  family it must classify into. Two of the seven
+  [recovery classification](concepts/durable-execution-and-recovery.md#recovery-classification)
+  rows cannot be produced from the evidence the policy actually receives:
+  "terminal result exists, commit missing" requires
+  `RecoveryCommitRecordedResult`, whose constructor demands an actual
+  `DurableOperationResult`, but `RecoveryEvidence` exposes only a
+  `TerminalResultRecorded` boolean and a `LatestCheckpoint`, which is a distinct
+  progress marker with no result payload. "Durable retry or deferred not-before
+  state" implies a resume instant, but no field on `RecoveryEvidence` carries
+  one; `RecoveryRetryOperation.NotBefore` would have to be fabricated as `null`,
+  silently turning a deferred wait into an immediate retry. Implementing the
+  other five rows correctly while guessing at these two would ship a policy that
+  appears complete but is wrong exactly where the concept document warns most
+  explicitly against guessing: "Silently choosing one of the two unsafe
+  options... would be the actual failure." No `IRecoveryPolicy` implementation
+  was written for this reason. Closing it requires either `RecoveryEvidence`
+  carrying the actual recorded result and a pending retry instant when they
+  exist, or the `RecoveryDecision` family accepting a reference the policy can
+  resolve itself; that is an architecture decision for
+  [durable execution](architecture/durable-execution.md), not an implementation
+  choice.
+- `IDurableOperationCodec<TState>` and `IDurableOperationJournal` remain
+  unimplemented. The codec is generic per concrete operation type and has no
+  natural first-party default, matching every other codec in this codebase being
+  hand-authored per value family rather than generic reflection-based
+  serialization; none of the concrete durable operations it would encode exist
+  yet. The journal is a protected operation requiring the same
+  authority/grant/audit integration `InMemorySessionStore` already performs,
+  which is substantially more work than the lease manager delivered in
+  `AgentKit.Durability.InMemory` and was not attempted in this pass.
 - Continuation distinguishes the previous committed turn from the next target
   turn, retains every pending cause, and requires authoritative terminal tool
   references and consistent active compaction evidence. The session owner must
@@ -1994,7 +2026,7 @@ not make that component a mandatory dependency of every engine.
 | Tools                         | Authoritative terminal records, rejection projections, scheduling, retries and focused feature contracts                                                               |
 | Permissions and human control | Policy algebra, approval persistence/replay, selectors, required audit and bounded infrastructure bootstrap; SQLite grant-store checkpoint verified                    |
 | Sessions                      | Lifecycle after accepted state, complete lane coordination, branch fencing, retention/export/import; missing SQLite backend                                            |
-| Durable execution             | Process-local `IDurableLeaseManager` verified; missing coordinator and explicit backend; journals, codecs, checkpoints, evidence and recovery                          |
+| Durable execution             | Process-local `IDurableLeaseManager` verified; missing coordinator, journal, and codecs; `RecoveryEvidence`/`RecoveryDecision` gap blocks `IRecoveryPolicy`            |
 | Memory and retrieval          | Missing runtime/storage ownership; documents/vectors, retrieval provenance, tombstones and purge                                                                       |
 | Goals and delegation          | Durable goals/attempts/intents, joins, communication, parent occupancy and missing hosting worker                                                                      |
 | Hooks and extensions          | Typed point coverage, ordering, mutation validation, failure precedence and timeout quiescence                                                                         |
