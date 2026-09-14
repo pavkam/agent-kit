@@ -109,6 +109,112 @@ public static class ServiceExtensions
             return services;
         }
 
+        /// <summary>
+        /// Registers one authority binding under the exact key that an authorization context must capture to
+        /// select it, resolving this collection's own unkeyed <see cref="ISecurityAuthority"/> singleton the
+        /// first time the binding is activated.
+        /// </summary>
+        /// <param name="authorityKey">The non-default key that identifies the authority binding.</param>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="authorityKey"/> is blank.</exception>
+        /// <remarks>
+        /// Unlike the sibling overload that binds a key to an already-built <see cref="ISecurityAuthority"/>
+        /// instance, this overload needs no separately built provider: it registers a factory that calls
+        /// <c>IServiceProvider.GetRequiredService&lt;ISecurityAuthority&gt;()</c> the first time this binding
+        /// is resolved, which is exactly the singleton <see cref="AddAgentPermissions"/> registers. Use the
+        /// instance overload instead when the host owns an authority built outside this collection.
+        /// </remarks>
+        public IServiceCollection AddSecurityAuthority(ComponentKey<ISecurityAuthority> authorityKey)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentException.ThrowIfNullOrWhiteSpace(authorityKey.Value, nameof(authorityKey));
+            _ = services.AddSingleton(provider =>
+                new SecurityAuthorityBinding(authorityKey, provider.GetRequiredService<ISecurityAuthority>()));
+            return services;
+        }
+
+        /// <summary>
+        /// Registers a matching security-policy snapshot, profile publication, and keyed authority binding for
+        /// one standalone agent composition in a single call.
+        /// </summary>
+        /// <param name="agentId">The agent this profile is published for.</param>
+        /// <param name="agentDefinitionRevision">The definition revision this profile is published for.</param>
+        /// <param name="configurationVersion">The effective-configuration revision this profile is published for.</param>
+        /// <param name="profileKey">The named profile an agent definition selects.</param>
+        /// <param name="authorityKey">The exact key an authorization context must capture to select the authority.</param>
+        /// <param name="profileVersion">The published profile revision, or <see langword="null"/> to use revision one.</param>
+        /// <param name="policyVersion">The positive published policy version this composition's snapshot belongs to; defaults to one.</param>
+        /// <param name="configurePermissions">
+        /// An optional delegate for permission settings other than <see cref="AgentPermissionOptions.PolicyVersion"/>
+        /// and <see cref="AgentPermissionOptions.PolicySnapshot"/>, which this method always overwrites afterward.
+        /// </param>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="agentId"/> is default, or <paramref name="policyVersion"/> is not positive.
+        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="profileKey"/> or <paramref name="authorityKey"/> is blank.</exception>
+        /// <remarks>
+        /// <para>
+        /// Composing <see cref="SecurityAuthority"/> so that captured authorization contexts are actually
+        /// accepted otherwise requires generating a <see cref="SecurityPolicySnapshotReference"/>, configuring
+        /// <see cref="AgentPermissionOptions.PolicySnapshot"/> with it, building a provider once to resolve the
+        /// authority it produced, and only then registering the keyed authority binding and profile publication
+        /// that reference that exact snapshot — see <see cref="AgentPermissionOptions.PolicySnapshot"/>'s remarks
+        /// for what happens when a step is skipped. This method performs all of it consistently: it derives one
+        /// snapshot, calls <see cref="AddAgentPermissions"/> with it, binds <paramref name="authorityKey"/>
+        /// through the lazy no-instance <c>AddSecurityAuthority(ComponentKey&lt;ISecurityAuthority&gt;)</c>
+        /// overload so no intermediate provider is ever built, and publishes one
+        /// <see cref="SecurityProfilePublication"/>
+        /// referencing the same snapshot and authority key. It still registers no
+        /// <see cref="ISecurityGrantStore"/> or <see cref="ISecurityPolicy"/>; the host selects those separately.
+        /// </para>
+        /// <para>
+        /// This method is for one standalone composition publishing one profile. A host publishing several
+        /// distinct profiles or authorities must compose them individually through the lower-level methods.
+        /// </para>
+        /// </remarks>
+        public IServiceCollection AddStandaloneSecurityProfile(
+            AgentId agentId,
+            AgentDefinitionRevision agentDefinitionRevision,
+            ConfigurationVersion configurationVersion,
+            SecurityProfileKey profileKey,
+            ComponentKey<ISecurityAuthority> authorityKey,
+            SecurityProfileVersion? profileVersion = null,
+            long policyVersion = 1,
+            Action<AgentPermissionOptions>? configurePermissions = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentOutOfRangeException.ThrowIfEqual(agentId, default);
+            ArgumentException.ThrowIfNullOrWhiteSpace(profileKey.Value, nameof(profileKey));
+            ArgumentException.ThrowIfNullOrWhiteSpace(authorityKey.Value, nameof(authorityKey));
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(policyVersion);
+
+            var resolvedProfileVersion = profileVersion ?? new SecurityProfileVersion(1);
+            var snapshot = new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(Guid.NewGuid()),
+                new SecurityPolicyVersion(policyVersion),
+                new ContentHash($"sha256:standalone-security-profile:{profileKey.Value}:{resolvedProfileVersion.Value}"));
+
+            _ = services.AddAgentPermissions(options =>
+            {
+                configurePermissions?.Invoke(options);
+                options.PolicyVersion = policyVersion;
+                options.PolicySnapshot = snapshot;
+            });
+            _ = services.AddSecurityAuthority(authorityKey);
+            _ = services.AddSecurityProfilePublication(new SecurityProfilePublication(
+                agentId,
+                agentDefinitionRevision,
+                configurationVersion,
+                profileKey,
+                resolvedProfileVersion,
+                snapshot,
+                authorityKey));
+            return services;
+        }
+
         /// <summary>Adds the illustrative <see cref="WorkspaceScopedFileAccessPolicy"/> as an additive security policy.</summary>
         /// <returns>The same service collection for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
@@ -125,6 +231,27 @@ public static class ServiceExtensions
                     && descriptor.ImplementationType == typeof(WorkspaceScopedFileAccessPolicy)))
             {
                 services.Add(ServiceDescriptor.Singleton<ISecurityPolicy, WorkspaceScopedFileAccessPolicy>());
+            }
+            return services;
+        }
+
+        /// <summary>Adds <see cref="AllowAllSecurityPolicy"/> as an additive security policy.</summary>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// <see cref="ISecurityPolicy"/> registrations are additive by design, so repeating this exact registration
+        /// is idempotent rather than replaceable: calling it twice still registers exactly one instance. See
+        /// <see cref="AllowAllSecurityPolicy"/>'s own remarks for why this is appropriate only for a local,
+        /// single-tenant composition.
+        /// </remarks>
+        public IServiceCollection AddAllowAllSecurityPolicy()
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            if (!services.Any(static descriptor =>
+                    descriptor.ServiceType == typeof(ISecurityPolicy)
+                    && descriptor.ImplementationType == typeof(AllowAllSecurityPolicy)))
+            {
+                services.Add(ServiceDescriptor.Singleton<ISecurityPolicy, AllowAllSecurityPolicy>());
             }
             return services;
         }

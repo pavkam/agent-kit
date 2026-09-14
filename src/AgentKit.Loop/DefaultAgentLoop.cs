@@ -52,6 +52,19 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private readonly ILogger<DefaultAgentLoop> _logger;
     private readonly int _historyReadPageSize;
 
+    /// <summary>The most a single append retries after a concurrent writer advanced the branch, before giving up.</summary>
+    /// <remarks>
+    /// A tool invoked mid-turn (the plan/todo tool, for one) may commit its own session entries directly through
+    /// <see cref="ISessionCoordinator"/>, independently of this loop's own turn-scoped <c>currentVersion</c>
+    /// tracking. <see cref="SessionAppendConflict"/> documents that the store deliberately never rebases or
+    /// retries on the caller's behalf; a bounded retry in <see cref="AppendWithDiagnosticsAsync"/>, rebasing onto
+    /// the conflict's own reported <see cref="SessionAppendConflict.ActualVersion"/>, is exactly the
+    /// reload-and-reattempt the type's own remarks describe. The bound exists only to turn a pathological runaway
+    /// writer into a clear failure instead of an unbounded loop; an ordinary interleaved tool append settles on
+    /// the first retry.
+    /// </remarks>
+    private const int _maxAppendConflictRetries = 5;
+
     /// <summary>Initializes a new instance of the <see cref="DefaultAgentLoop"/> class.</summary>
     /// <param name="sessionCoordinator">Loads eligible history and commits every produced message.</param>
     /// <param name="securityProfileSelector">Captures fresh authorization for each newly identified run operation.</param>
@@ -583,8 +596,19 @@ public sealed class DefaultAgentLoop: IAgentLoop
             });
         LoopLog.ToolBatchStarted(_logger, request.RunId, turnId, toolCalls.Length);
         var resultParts = ImmutableArray.CreateBuilder<ContentPart>(toolCalls.Length);
+        var interrupted = false;
         foreach (var toolCall in toolCalls)
         {
+            // A prior call may have absorbed cancellation into an ordinary settled outcome instead of throwing
+            // (see the remark on the commit below), so cancellation is also checked explicitly here: once
+            // requested, no further not-yet-attempted call in this batch is started.
+            if (interrupted || cancellationToken.IsCancellationRequested)
+            {
+                interrupted = true;
+                resultParts.Add(InterruptedResultPart(toolCall));
+                continue;
+            }
+
             var toolContext = new ToolExecutionContext(
                 request.AgentId,
                 request.SessionId,
@@ -594,12 +618,26 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 turnSessionContext.Authorization,
                 request.SessionProfile);
 
-            var invocationResult = await _toolInvoker.InvokeAsync(
-                new ToolCallRequest(toolCall.Tool.Id, toolContext, toolCall.Arguments, _timeProvider.GetUtcNow()),
-                cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var invocationResult = await _toolInvoker.InvokeAsync(
+                    new ToolCallRequest(toolCall.Tool.Id, toolContext, toolCall.Arguments, _timeProvider.GetUtcNow()),
+                    cancellationToken).ConfigureAwait(false);
 
-            resultParts.Add(new ToolResultPart(
-                toolCall.CallId, toolCall.Tool, invocationResult.Outcome, invocationResult.Content, ExtensionData.Empty));
+                resultParts.Add(new ToolResultPart(
+                    toolCall.CallId, toolCall.Tool, invocationResult.Outcome, invocationResult.Content, ExtensionData.Empty));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // A cancelled tool call must still receive a matching terminal result: the assistant message
+                // that requested these calls is already committed, and leaving any of them without a result
+                // would permanently break causality for every later turn in this session (context assembly
+                // requires exactly one terminal result per requested call). Every remaining, not-yet-attempted
+                // call in this batch is settled the same way below, and the whole batch is committed with
+                // CancellationToken.None before this cancellation is allowed to propagate.
+                interrupted = true;
+                resultParts.Add(InterruptedResultPart(toolCall));
+            }
         }
 
         var now = _timeProvider.GetUtcNow();
@@ -627,6 +665,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
             new SchemaVersion("1.0"),
             toolMessage);
 
+        // This commit always uses CancellationToken.None, deliberately ignoring the caller's cancellation: the
+        // assistant message that requested these tool calls is already durably committed (in
+        // SettleCompletedAsync), so every one of its tool calls MUST receive a matching terminal result no
+        // matter how the run itself settles. A tool invoker may also absorb cancellation into an ordinary
+        // ToolCallOutcomeKind.Cancelled result instead of throwing (for example, a process runner that kills
+        // its child process and returns a settled "cancelled" outcome) — cancellationToken.IsCancellationRequested
+        // is checked explicitly below, after this commit, so that case still propagates cancellation to the
+        // caller instead of silently continuing to the next turn.
         var appendResult = await AppendWithDiagnosticsAsync(
             new SessionAppendRequest(
                 turnSessionContext,
@@ -635,7 +681,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:tools"),
                 [toolEntry]),
             request.SessionProfile,
-            cancellationToken).ConfigureAwait(false);
+            CancellationToken.None).ConfigureAwait(false);
 
         if (appendResult is not SessionAppended appended)
         {
@@ -646,10 +692,34 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         committedMessages.Add(toolMessage);
+
+        if (interrupted || cancellationToken.IsCancellationRequested)
+        {
+            activity.SetFailed("cancelled", "cancellation");
+            LoopLog.ToolBatchInterrupted(_logger, request.RunId, turnId);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
         activity.SetSuccessful("completed");
         LoopLog.ToolBatchCompleted(_logger, request.RunId, turnId, toolCalls.Length);
         return TurnOutcome.Continue(appended.NewVersion, [assistantMessage, toolMessage]);
     }
+
+    /// <summary>Builds a settled, cancelled terminal result for a tool call that was interrupted or never attempted.</summary>
+    /// <param name="toolCall">The requested call to settle.</param>
+    /// <returns>A result part recording <see cref="ToolTerminalStatus.Interrupted"/> with no returned content.</returns>
+    private static ToolResultPart InterruptedResultPart(ToolCallPart toolCall) => new(
+        toolCall.CallId,
+        toolCall.Tool,
+        new ToolCallOutcome(
+            ToolCallOutcomeKind.Cancelled,
+            ToolTerminalStatus.Interrupted,
+            SideEffectCertainty.Unknown,
+            retryable: true,
+            "The run was cancelled before this tool call completed.",
+            ExtensionData.Empty),
+        [],
+        ExtensionData.Empty);
 
     private async ValueTask<SessionAppendResult> AppendWithDiagnosticsAsync(
         SessionAppendRequest request,
@@ -669,8 +739,35 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 { AgentKitTagNames.OperationId, request.Context.Correlation.OperationId.ToString() },
             });
 
-        var result = await _sessionCoordinator.AppendAsync(
-            request, sessionProfile, cancellationToken).ConfigureAwait(false);
+        var attemptRequest = request;
+        SessionAppendResult result;
+        for (var attempt = 1; ; attempt++)
+        {
+            result = await _sessionCoordinator.AppendAsync(
+                attemptRequest, sessionProfile, cancellationToken).ConfigureAwait(false);
+            if (result is not SessionAppendConflict conflict || attempt >= _maxAppendConflictRetries)
+            {
+                break;
+            }
+
+            LoopLog.SessionAppendConflictRetried(
+                _logger, request.Context.SessionId, conflict.ExpectedVersion, conflict.ActualVersion, attempt);
+
+            // Each entry's own Sequence was assigned from the stale expected version at build time; rebasing only
+            // ExpectedVersion is not enough; every entry must be renumbered to start immediately after the
+            // conflict's reported ActualVersion, in the same relative order, or the store rejects the retry with
+            // its own sequence-continuity error instead of a version conflict.
+            var rebasedEntries = attemptRequest.Entries
+                .Select((entry, index) => entry with { Sequence = new SessionSequence(conflict.ActualVersion.Value + index + 1) })
+                .ToImmutableArray();
+            attemptRequest = new SessionAppendRequest(
+                attemptRequest.Context,
+                attemptRequest.BranchId,
+                conflict.ActualVersion,
+                attemptRequest.IdempotencyKey,
+                rebasedEntries);
+        }
+
         if (result is SessionAppended)
         {
             activity.SetSuccessful("committed");

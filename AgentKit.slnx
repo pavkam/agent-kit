@@ -36,6 +36,7 @@
     <Project Path="src/AgentKit.Permissions/AgentKit.Permissions.csproj"/>
     <Project Path="src/AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj"/>
     <Project Path="src/AgentKit.Permissions.Sqlite/AgentKit.Permissions.Sqlite.csproj"/>
+    <Project Path="src/AgentKit.Conversations/AgentKit.Conversations.csproj"/>
     <Project Path="src/AgentKit.Output/AgentKit.Output.csproj"/>
     <Project Path="src/AgentKit.Hooks/AgentKit.Hooks.csproj"/>
     <Project Path="src/AgentKit.FileSystem/AgentKit.FileSystem.csproj"/>
@@ -106,6 +107,7 @@
     <Project Path="tests/AgentKit.Durability.InMemory.Tests/AgentKit.Durability.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Budgets.Sqlite.ProcessHost/AgentKit.Budgets.Sqlite.ProcessHost.csproj"/>
     <Project Path="tests/AgentKit.Identity.Tests/AgentKit.Identity.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Conversations.Tests/AgentKit.Conversations.Tests.csproj"/>
     <Project Path="tests/AgentKit.Permissions.Tests/AgentKit.Permissions.Tests.csproj"/>
     <Project Path="tests/AgentKit.Permissions.InMemory.Tests/AgentKit.Permissions.InMemory.Tests.csproj"/>
     <Project Path="tests/AgentKit.Permissions.Sqlite.Tests/AgentKit.Permissions.Sqlite.Tests.csproj"/>
@@ -139,5 +141,8 @@
     <Project Path="tests/AgentKit.Goals.Tests/AgentKit.Goals.Tests.csproj"/>
     <Project Path="tests/AgentKit.Artifacts.Tests/AgentKit.Artifacts.Tests.csproj"/>
     <Project Path="tests/AgentKit.Artifacts.InMemory.Tests/AgentKit.Artifacts.InMemory.Tests.csproj"/>
+  </Folder>
+  <Folder Name="/examples/">
+    <Project Path="examples/CodingAgent/CodingAgent.csproj"/>
   </Folder>
 </Solution>

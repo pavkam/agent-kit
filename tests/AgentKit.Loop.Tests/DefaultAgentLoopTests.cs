@@ -372,6 +372,37 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenAssistantAppendConflictsOnce_RetriesAtTheReportedVersionAndSucceeds()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var conflicted = false;
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            if (conflicted)
+            {
+                return null;
+            }
+
+            conflicted = true;
+
+            // Simulate a tool invoked mid-turn (the plan/todo tool, for one) committing its own session entry
+            // directly through the coordinator, independently of this run's own version tracking.
+            coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, request.ExpectedVersion.Value + 1)]);
+            return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
+        };
+
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        coordinator.ReceivedAppends.Count.ShouldBe(2);
+        coordinator.ReceivedAppends[1].ExpectedVersion.Value.ShouldBe(2);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenToolResultAppendConflicts_ReturnsAgentRunSessionOperationFailed()
     {
         var callId = new ToolCallId(Guid.NewGuid());
@@ -393,6 +424,41 @@ public sealed class DefaultAgentLoopTests
 
         _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
         coordinator.Entries.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenToolResultAppendConflictsOnce_RetriesAtTheReportedVersionAndSucceeds()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var calls = 0;
+        var loop = CreateLoop(out var coordinator, out _, _ =>
+            ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var appendCount = 0;
+        var conflicted = false;
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            appendCount++;
+            if (appendCount != 2 || conflicted)
+            {
+                return null;
+            }
+
+            conflicted = true;
+
+            // Simulate a tool invoked mid-turn (the plan/todo tool, for one) committing its own session entry
+            // directly through the coordinator, independently of this run's own version tracking.
+            coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, request.ExpectedVersion.Value + 1)]);
+            return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
+        };
+
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        coordinator.ReceivedAppends.Count.ShouldBe(4);
     }
 
     [Theory]
@@ -428,16 +494,102 @@ public sealed class DefaultAgentLoopTests
         invoker.ReceivedRequests.Count.ShouldBe(1);
     }
 
+    [Fact]
+    public async Task RunAsync_WhenAToolCallIsCancelledMidBatch_SettlesEveryRequestedCallBeforePropagatingCancellation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId1 = new ToolCallId(Guid.NewGuid());
+        var callId2 = new ToolCallId(Guid.NewGuid());
+        var callId3 = new ToolCallId(Guid.NewGuid());
+        using var cts = new CancellationTokenSource();
+        var handlerCalls = 0;
+
+        var response = new ModelAttemptCompleted(TestFactory.Response(
+            requestId,
+            [
+                new ToolCallPart(callId1, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                new ToolCallPart(callId2, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                new ToolCallPart(callId3, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+            ],
+            NormalizedStopReason.ToolUse));
+        var loop = CreateLoop(out var coordinator, out var invoker, _ => response, toolHandler: _ =>
+        {
+            handlerCalls++;
+            if (handlerCalls == 2)
+            {
+                cts.Cancel();
+                throw new OperationCanceledException(cts.Token);
+            }
+
+            return TestFactory.SuccessResult();
+        });
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token));
+
+        invoker.ReceivedRequests.Count.ShouldBe(2);
+        var committedParts = coordinator.Entries.OfType<MessageSessionEntry>()
+            .Select(static entry => entry.Message).OfType<ToolMessage>()
+            .Single().Parts.OfType<ToolResultPart>().ToArray();
+        committedParts.Length.ShouldBe(3);
+        committedParts[0].Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        committedParts[1].Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Cancelled);
+        committedParts[1].Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Interrupted);
+        committedParts[2].Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Cancelled);
+        committedParts[2].Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Interrupted);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAToolAbsorbsCancellationIntoASettledResult_StopsRemainingCallsAndStillPropagatesCancellation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId1 = new ToolCallId(Guid.NewGuid());
+        var callId2 = new ToolCallId(Guid.NewGuid());
+        using var cts = new CancellationTokenSource();
+
+        var response = new ModelAttemptCompleted(TestFactory.Response(
+            requestId,
+            [
+                new ToolCallPart(callId1, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                new ToolCallPart(callId2, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+            ],
+            NormalizedStopReason.ToolUse));
+        var cancelledOutcome = new ToolCallOutcome(
+            ToolCallOutcomeKind.Cancelled, ToolTerminalStatus.Cancelled, SideEffectCertainty.Unknown, true, "cancelled", ExtensionData.Empty);
+        var loop = CreateLoop(out var coordinator, out var invoker, _ => response, toolHandler: _ =>
+        {
+            // Simulates a tool (e.g. a process runner) that kills its own work and returns a settled
+            // "cancelled" outcome instead of letting OperationCanceledException propagate.
+            cts.Cancel();
+            return new ToolInvocationResult(cancelledOutcome, []);
+        });
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token));
+
+        invoker.ReceivedRequests.Count.ShouldBe(1);
+        var committedParts = coordinator.Entries.OfType<MessageSessionEntry>()
+            .Select(static entry => entry.Message).OfType<ToolMessage>()
+            .Single().Parts.OfType<ToolResultPart>().ToArray();
+        committedParts.Length.ShouldBe(2);
+        committedParts[0].Outcome.ShouldBe(cancelledOutcome);
+        committedParts[1].Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Cancelled);
+        committedParts[1].Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Interrupted);
+    }
+
     private DefaultAgentLoop CreateLoop(
         out FakeSessionCoordinator coordinator,
         out FakeToolInvoker toolInvoker,
         Func<LlmModelRequest, ModelAttemptResult> respond,
         int maxTurns = 8,
-        ToolInvocationResult? toolResult = null)
+        ToolInvocationResult? toolResult = null,
+        Func<ToolCallRequest, ToolInvocationResult>? toolHandler = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
-        toolInvoker = new FakeToolInvoker(_ => toolResult ?? TestFactory.SuccessResult());
+        toolInvoker = new FakeToolInvoker(toolHandler ?? (_ => toolResult ?? TestFactory.SuccessResult()));
         var adapter = new RespondingLlmModel(new ModelAlias("chat"), respond);
         var descriptor = TestFactory.Model();
 

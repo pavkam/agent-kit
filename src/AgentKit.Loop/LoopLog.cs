@@ -59,9 +59,29 @@ internal static partial class LoopLog
     [LoggerMessage(1032, LogLevel.Warning, "Tool batch for turn {TurnId} in run {RunId} failed with outcome {Outcome}.")]
     internal static partial void ToolBatchFailed(ILogger logger, RunId runId, TurnId turnId, string outcome);
 
+    /// <summary>Logs that caller cancellation interrupted a tool batch after at least one call had already started.</summary>
+    /// <remarks>Every call in the batch still commits with a matching terminal result before this cancellation propagates.</remarks>
+    [LoggerMessage(1033, LogLevel.Information, "Tool batch for turn {TurnId} in run {RunId} was interrupted by cancellation; every call still committed a matching terminal result.")]
+    internal static partial void ToolBatchInterrupted(ILogger logger, RunId runId, TurnId turnId);
+
     /// <summary>Logs a session commit failure without session content.</summary>
     [LoggerMessage(1040, LogLevel.Warning, "Session commit for session {SessionId} failed with outcome {Outcome}.")]
     internal static partial void SessionCommitFailed(ILogger logger, SessionId sessionId, string outcome);
+
+    /// <summary>Logs an append rebasing onto a newer version after a concurrent writer advanced the branch.</summary>
+    /// <remarks>A tool that commits its own session entries mid-turn (the plan/todo tool, for one) is the
+    /// expected source of this contention; see the remarks on <c>DefaultAgentLoop._maxAppendConflictRetries</c>.</remarks>
+    [LoggerMessage(
+        1041,
+        LogLevel.Information,
+        "Session {SessionId} append expected version {ExpectedVersion} but the branch had already advanced to " +
+            "{ActualVersion}; retrying at the new version (attempt {Attempt}).")]
+    internal static partial void SessionAppendConflictRetried(
+        ILogger logger,
+        SessionId sessionId,
+        SessionVersion expectedVersion,
+        SessionVersion actualVersion,
+        int attempt);
 
     /// <summary>Logs a run that ended because no usable model could be chosen.</summary>
     [LoggerMessage(1050, LogLevel.Warning, "Model selection for run {RunId} failed: {Reason}.")]

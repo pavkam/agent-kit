@@ -23,4 +23,18 @@ public sealed class AgentToolsOptions
     /// a default value while capturing its immutable snapshot.
     /// </value>
     public HashSet<ToolId> AllowedToolIds { get; } = [];
+
+    /// <summary>
+    /// Gets or sets whether <see cref="AllowListToolAuthorizer"/> grants every
+    /// tool call regardless of <see cref="AllowedToolIds"/>.
+    /// </summary>
+    /// <value>
+    /// <see langword="false"/> by default, preserving the fail-closed
+    /// allow-list behavior. Setting this to <see langword="true"/> is a
+    /// deliberate, explicit opt-out of per-tool authorization intended for a
+    /// single-tenant application that already trusts every tool it registers;
+    /// it does not affect authorization performed by <see cref="ISecurityPolicy"/>
+    /// evaluations that a tool's own effecting boundary still enforces.
+    /// </value>
+    public bool AllowAllRegisteredTools { get; set; }
 }

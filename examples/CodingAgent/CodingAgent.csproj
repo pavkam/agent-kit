@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpVision"/>
+    <PackageReference Include="SharpVision.Document"/>
+    <PackageReference Include="SharpVision.SyntaxHighlighting"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/AgentKit/AgentKit.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Conversations/AgentKit.Conversations.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Loop/AgentKit.Loop.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Context/AgentKit.Context.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Output/AgentKit.Output.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Session/AgentKit.Session.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Permissions/AgentKit.Permissions.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Budgets/AgentKit.Budgets.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Budgets.InMemory/AgentKit.Budgets.InMemory.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Hooks/AgentKit.Hooks.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.IO/AgentKit.IO.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Providers/AgentKit.Providers.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Tools/AgentKit.Tools.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Tools.Read/AgentKit.Tools.Read.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Tools.Write/AgentKit.Tools.Write.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Tools.Edit/AgentKit.Tools.Edit.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Tools.Glob/AgentKit.Tools.Glob.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Tools.Search/AgentKit.Tools.Search.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Tools.Command/AgentKit.Tools.Command.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Tools.Plan/AgentKit.Tools.Plan.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.FileSystem/AgentKit.FileSystem.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Processes/AgentKit.Processes.csproj"/>
+  </ItemGroup>
+
+</Project>

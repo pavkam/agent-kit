@@ -171,6 +171,9 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
         result.Status.ShouldBe(ProcessRunStatus.SandboxUnavailable);
         result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
         store.Enforcements.ShouldBeEmpty();
+        _ = result.SafeMessage.ShouldNotBeNull();
+        result.SafeMessage.ShouldContain("missing");
+        result.SafeMessage.ShouldContain(PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile.ToString());
     }
 
     [Fact]

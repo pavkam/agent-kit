@@ -269,6 +269,140 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddSecurityAuthority_WhenGivenOnlyAKeyAndArgumentsAreInvalid_ThrowsWithExactParameterNames()
+    {
+        var services = new ServiceCollection();
+        AssertExactDefaultSecurityAuthoritySelector<ArgumentNullException>(
+            () => ServiceExtensions.AddSecurityAuthority(null!, new ComponentKey<ISecurityAuthority>("security.primary")), "services");
+        AssertExactDefaultSecurityAuthoritySelector<ArgumentNullException>(
+            () => services.AddSecurityAuthority(default), "authorityKey");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AddSecurityAuthority_WhenGivenOnlyAKey_ResolvesTheCollectionsOwnAuthoritySingleton()
+    {
+        var key = new ComponentKey<ISecurityAuthority>("security.lazy-bound");
+        var services = new ServiceCollection();
+        _ = services.AddAgentPermissions();
+        _ = services.AddInMemorySecurityGrantStore();
+        _ = services.AddSecurityAuthority(key);
+        using var provider = services.BuildServiceProvider();
+        var expectedAuthority = provider.GetRequiredService<ISecurityAuthority>();
+
+        var selector = provider.GetRequiredService<ISecurityAuthoritySelector>();
+        var result = await selector.SelectAsync(Context(key), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SecurityAuthoritySelected>().Authority.ShouldBeSameAs(expectedAuthority);
+    }
+
+    [Fact]
+    public void AddAllowAllSecurityPolicy_WhenServicesAreNull_ThrowsArgumentNullExceptionWithParamName()
+    {
+        IServiceCollection services = null!;
+        var exception = Should.Throw<ArgumentNullException>(services.AddAllowAllSecurityPolicy);
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddAllowAllSecurityPolicy_WhenCalledTwice_RegistersOneInstance()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAllowAllSecurityPolicy().AddAllowAllSecurityPolicy();
+
+        services.Count(descriptor =>
+                descriptor.ServiceType == typeof(ISecurityPolicy)
+                && descriptor.ImplementationType == typeof(AllowAllSecurityPolicy))
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddAllowAllSecurityPolicy_WhenAppliedAlongsideAgentPermissions_IsResolvedAsAnAdditivePolicy()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentPermissions();
+        _ = services.AddAllowAllSecurityPolicy();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetServices<ISecurityPolicy>().ShouldContain(policy => policy is AllowAllSecurityPolicy);
+    }
+
+    [Fact]
+    public void AddStandaloneSecurityProfile_WhenArgumentsAreInvalid_ThrowsWithExactParameterNames()
+    {
+        var services = new ServiceCollection();
+        var profileKey = new SecurityProfileKey("security.standalone");
+        var authorityKey = new ComponentKey<ISecurityAuthority>("authority.standalone");
+        AssertExactDefaultSecurityAuthoritySelector<ArgumentNullException>(
+            () => ServiceExtensions.AddStandaloneSecurityProfile(
+                null!, AgentId(), DefinitionRevision(), ConfigurationVersion(), profileKey, authorityKey),
+            "services");
+        AssertExactDefaultSecurityAuthoritySelector<ArgumentOutOfRangeException>(
+            () => services.AddStandaloneSecurityProfile(
+                default, DefinitionRevision(), ConfigurationVersion(), profileKey, authorityKey),
+            "agentId");
+        AssertExactDefaultSecurityAuthoritySelector<ArgumentNullException>(
+            () => services.AddStandaloneSecurityProfile(
+                AgentId(), DefinitionRevision(), ConfigurationVersion(), default, authorityKey),
+            "profileKey");
+        AssertExactDefaultSecurityAuthoritySelector<ArgumentNullException>(
+            () => services.AddStandaloneSecurityProfile(
+                AgentId(), DefinitionRevision(), ConfigurationVersion(), profileKey, default),
+            "authorityKey");
+        AssertExactDefaultSecurityAuthoritySelector<ArgumentOutOfRangeException>(
+            () => services.AddStandaloneSecurityProfile(
+                AgentId(), DefinitionRevision(), ConfigurationVersion(), profileKey, authorityKey, policyVersion: 0),
+            "policyVersion");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AddStandaloneSecurityProfile_WhenComposed_CapturesAuthorizationThatItsOwnAuthorityAccepts()
+    {
+        var agentId = AgentId();
+        var revision = DefinitionRevision();
+        var configVersion = ConfigurationVersion();
+        var profileKey = new SecurityProfileKey("security.standalone");
+        var authorityKey = new ComponentKey<ISecurityAuthority>("authority.standalone");
+        var identity = TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+        var scope = new SecurityAuthorizationScope(
+            agentId, null, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null));
+
+        var services = new ServiceCollection();
+        _ = services.AddInMemorySecurityGrantStore();
+        _ = services.AddStandaloneSecurityProfile(agentId, revision, configVersion, profileKey, authorityKey);
+        _ = services.AddAllowAllSecurityPolicy();
+        using var provider = services.BuildServiceProvider();
+
+        var profileSelector = provider.GetRequiredService<ISecurityProfileSelector>();
+        var captureResult = await profileSelector.SelectAsync(
+            new SecurityAuthorizationCaptureRequest(scope, profileKey, revision, configVersion, identity),
+            TestContext.Current.CancellationToken);
+        var captured = captureResult.ShouldBeOfType<SecurityAuthorizationCaptured>().Authorization;
+
+        var authorityResult = await provider.GetRequiredService<ISecurityAuthoritySelector>()
+            .SelectAsync(captured, TestContext.Current.CancellationToken);
+        var authority = authorityResult.ShouldBeOfType<SecurityAuthoritySelected>().Authority;
+
+        var request = new SecurityRequest(
+            new SecurityRequestId(Guid.NewGuid()),
+            scope,
+            null,
+            identity,
+            captured,
+            new ComponentId("test.audience"),
+            SecurityOperationKind.Process,
+            SecurityEffect.Execute,
+            [new ProtectedResource(ProtectedResourceKind.Process, "test")],
+            new InputFingerprint("sha256:test"),
+            DateTimeOffset.UtcNow.AddMinutes(10));
+
+        var decision = await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken);
+
+        _ = decision.ShouldBeOfType<SecurityAllowed>();
+    }
+
+    [Fact]
     public void AddWorkspaceScopedFileAccessPolicy_WhenServicesAreNull_ThrowsArgumentNullExceptionWithParamName()
     {
         IServiceCollection services = null!;

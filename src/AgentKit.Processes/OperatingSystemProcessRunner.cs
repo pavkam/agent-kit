@@ -136,7 +136,9 @@ public sealed partial class OperatingSystemProcessRunner: IProcessRunner, IDispo
 
             if (!_sandboxes.TryGetValue(currentIntent.Request.SandboxProfile, out var sandbox))
             {
-                return NotStarted(ProcessRunStatus.SandboxUnavailable, "The required sandbox profile is not registered.");
+                return NotStarted(ProcessRunStatus.SandboxUnavailable, _sandboxes.IsEmpty
+                    ? $"Sandbox profile '{currentIntent.Request.SandboxProfile}' is not registered and no sandbox profiles are available; register an IProcessSandboxProvider such as PlatformProcessSandboxProvider."
+                    : $"Sandbox profile '{currentIntent.Request.SandboxProfile}' is not registered. Registered profiles: {string.Join(", ", _sandboxes.Keys)}.");
             }
 
             var sandboxResult = await sandbox.PrepareAsync(currentIntent, cancellationToken).ConfigureAwait(false);

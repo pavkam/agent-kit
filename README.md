@@ -78,6 +78,7 @@ descriptor and explains the difference between describing and executing a model.
 | Compose and host agents                   | [AgentKit](src/AgentKit/README.md)                                                                                                            |
 | Implement an extension                    | [AgentKit.Abstractions](src/AgentKit.Abstractions/README.md)                                                                                  |
 | Coordinate turns and continuation         | [Loop](src/AgentKit.Loop/README.md), [Context](src/AgentKit.Context/README.md), and [Output](src/AgentKit.Output/README.md)                   |
+| Drive one conversational turn in one call | [Conversations](src/AgentKit.Conversations/README.md)                                                                                         |
 | Select a model or provider                | [Provider catalog](src/AgentKit.Providers/README.md) and [provider packages](docs/packages/index.md#model-providers)                          |
 | Add application tools                     | [Tool runtime](src/AgentKit.Tools/README.md) and [tool packages](docs/packages/index.md#tools)                                                |
 | Control access and spending               | [Permissions](src/AgentKit.Permissions/README.md), [Identity](src/AgentKit.Identity/README.md), and [Budgets](src/AgentKit.Budgets/README.md) |

@@ -83,6 +83,28 @@ public sealed class AllowListToolAuthorizerTests
         _ = decision.ShouldBeOfType<ToolAuthorizationDenied>();
     }
 
+    [Fact]
+    public async Task AuthorizeAsync_WhenAllowAllRegisteredToolsTrue_GrantsCallNotInAllowList()
+    {
+        var authorizer = CreateAuthorizer(o => o.AllowAllRegisteredTools = true);
+        var request = new ToolAuthorizationRequest(TestFactory.ExecutionContext(), TestFactory.Descriptor("not-allow-listed"));
+
+        var decision = await authorizer.AuthorizeAsync(request, TestContext.Current.CancellationToken);
+
+        _ = decision.ShouldBeOfType<ToolAuthorizationGranted>();
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenAllowAllRegisteredToolsFalse_DeniesCallNotInAllowList()
+    {
+        var authorizer = CreateAuthorizer(o => o.AllowAllRegisteredTools = false);
+        var request = new ToolAuthorizationRequest(TestFactory.ExecutionContext(), TestFactory.Descriptor("not-allow-listed"));
+
+        var decision = await authorizer.AuthorizeAsync(request, TestContext.Current.CancellationToken);
+
+        _ = decision.ShouldBeOfType<ToolAuthorizationDenied>();
+    }
+
     private static AllowListToolAuthorizer CreateAuthorizer(Action<AgentToolsOptions>? configure = null)
     {
         var options = new AgentToolsOptions();

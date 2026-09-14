@@ -14,10 +14,10 @@ public sealed class SearchTool: ITool
         {
           "type": "object",
           "properties": {
-            "pattern": { "type": "string" },
-            "regex": { "type": "boolean", "default": true },
-            "path_pattern": { "type": "string", "default": "**/*" },
-            "base_path": { "type": ["string", "null"] },
+            "pattern": { "type": "string", "description": "Text to find inside file contents: a literal substring, or a .NET regular expression when 'regex' is true. Not a path glob." },
+            "regex": { "type": "boolean", "default": true, "description": "Whether 'pattern' is a .NET non-backtracking regular expression (true) or a literal substring (false)." },
+            "path_pattern": { "type": "string", "default": "**/*", "description": "Relative simple glob restricting which file paths are searched, using *, ?, and ** path segments." },
+            "base_path": { "type": ["string", "null"], "description": "Optional directory relative to the workspace root." },
             "case_sensitive": { "type": "boolean", "default": true },
             "include_hidden": { "type": "boolean", "default": false },
             "maximum_depth": { "type": "integer", "minimum": 1 },
@@ -154,7 +154,7 @@ public sealed class SearchTool: ITool
             || !TryBoolean(arguments, "case_sensitive", true, out var caseSensitive)
             || !TryBoolean(arguments, "include_hidden", false, out var includeHidden))
         {
-            error = "A string 'pattern' and boolean options are required.";
+            error = "A string 'pattern' is required, and 'regex'/'case_sensitive'/'include_hidden', if given, must be booleans.";
             return false;
         }
 

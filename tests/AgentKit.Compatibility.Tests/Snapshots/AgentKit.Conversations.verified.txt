@@ -1,0 +1,71 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Conversations.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Conversations
+{
+    public sealed class ConversationAssistantTextEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationAssistantTextEvent>
+    {
+        public ConversationAssistantTextEvent(string text) { }
+        public string Text { get; init; }
+    }
+    public abstract class ConversationEvent : System.IEquatable<AgentKit.Conversations.ConversationEvent> { }
+    public sealed class ConversationSessionOptions
+    {
+        public ConversationSessionOptions() { }
+        public AgentKit.AgentDefinitionRevision AgentDefinitionRevision { get; set; }
+        public AgentKit.AgentId AgentId { get; set; }
+        public System.TimeSpan AttemptTimeout { get; set; }
+        public AgentKit.ConfigurationVersion ConfigurationVersion { get; set; }
+        public AgentKit.ExecutionIdentity? Identity { get; set; }
+        public System.Collections.Generic.IList<AgentKit.AgentMessage> Instructions { get; }
+        public int MaxTurns { get; set; }
+        public AgentKit.ModelRequirements ModelRequirements { get; set; }
+        public AgentKit.ModelSelectionPolicy? ModelSelectionPolicy { get; set; }
+        public AgentKit.LlmRequestSettings RequestSettings { get; set; }
+        public AgentKit.SecurityProfileKey SecurityProfileKey { get; set; }
+        public AgentKit.SessionProfileSnapshot? SessionProfile { get; set; }
+        public AgentKit.LlmToolChoice ToolChoice { get; set; }
+        public System.Collections.Generic.IList<AgentKit.LlmToolDefinition> Tools { get; }
+    }
+    public sealed class ConversationToolCallEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationToolCallEvent>
+    {
+        public ConversationToolCallEvent(string toolName, string argumentsJson) { }
+        public string ArgumentsJson { get; init; }
+        public string ToolName { get; init; }
+    }
+    public sealed class ConversationToolResultEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationToolResultEvent>
+    {
+        public ConversationToolResultEvent(string toolName, bool succeeded, string summary) { }
+        public bool Succeeded { get; init; }
+        public string Summary { get; init; }
+        public string ToolName { get; init; }
+    }
+    public sealed class ConversationTurnResult : System.IEquatable<AgentKit.Conversations.ConversationTurnResult>
+    {
+        public ConversationTurnResult(bool succeeded, System.Collections.Immutable.ImmutableArray<AgentKit.Conversations.ConversationEvent> events) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Conversations.ConversationEvent> Events { get; init; }
+        public bool Succeeded { get; init; }
+    }
+    public sealed class ConversationUsageEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationUsageEvent>
+    {
+        public ConversationUsageEvent(AgentKit.ModelUsage usage) { }
+        public AgentKit.ModelUsage Usage { get; init; }
+    }
+    public sealed class DefaultConversationSession : AgentKit.Conversations.IConversationSession, System.IDisposable
+    {
+        public DefaultConversationSession(AgentKit.ISessionCoordinator sessionCoordinator, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IAgentLoop agentLoop, AgentKit.IIdentifierGenerator<AgentKit.RunId> runIds, AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds, AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> sessionEntryIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger = null) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public interface IConversationSession
+    {
+        System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddConversationSession(System.Action<AgentKit.Conversations.ConversationSessionOptions> configure) { }
+        }
+    }
+}

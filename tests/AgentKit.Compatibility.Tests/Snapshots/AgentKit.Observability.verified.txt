@@ -27,6 +27,7 @@ namespace AgentKit.Observability
         public const string Chat = "chat";
         public const string ContextCompact = "context.compact";
         public const string ContextPrepare = "context.prepare";
+        public const string ConversationTurn = "conversation.turn";
         public const string DurableJournalLoadEvidence = "durable.journal.load_evidence";
         public const string DurableJournalWrite = "durable.journal.write";
         public const string DurableLeaseAcquire = "durable.lease.acquire";
@@ -138,6 +139,8 @@ namespace AgentKit.Observability
         public const string ContextCompactionCount = "agentkit.context.compaction.count";
         public const string ContextPreparationCount = "agentkit.context.prepare.count";
         public const string ContextPreparationDuration = "agentkit.context.prepare.duration";
+        public const string ConversationTurnCount = "agentkit.conversation.turn.count";
+        public const string ConversationTurnDuration = "agentkit.conversation.turn.duration";
         public const string DurableJournalLoadEvidenceCount = "agentkit.durable.journal.load_evidence.count";
         public const string DurableJournalLoadEvidenceDuration = "agentkit.durable.journal.load_evidence.duration";
         public const string DurableJournalWriteCount = "agentkit.durable.journal.write.count";

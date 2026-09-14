@@ -17,12 +17,22 @@ call `AddInMemorySecurityGrantStore()`. Read the [runtime](ServiceExtensions.cs)
 and adapter registration XML for required collaborators, lifetimes, and
 duplicate-registration behavior.
 
+For one standalone agent composition, `AddStandaloneSecurityProfile` derives a
+matching `SecurityPolicySnapshotReference`, calls `AddAgentPermissions` with it,
+and registers the profile publication and keyed authority binding that reference
+it — all without building an intermediate provider. Composing this by hand is a
+documented trap: `AgentPermissionOptions.PolicySnapshot` defaults to `null`,
+which silently denies every request carrying captured authorization (the
+standard session/run flow) with `"security.captured_context_mismatch"` until the
+snapshot is wired through consistently; see its own remarks for the exact
+mechanism.
+
 Target: **.NET 10**. For a source-checkout setup and a runnable component
 example, follow [Getting started](../../docs/getting-started.md). Complete
 engine composition is described in the
 [composition guide](../../docs/guides/composition.md).
 
-## Example security policy
+## Example security policies
 
 `AddWorkspaceScopedFileAccessPolicy` registers
 `WorkspaceScopedFileAccessPolicy`, an illustrative `ISecurityPolicy`.
@@ -40,6 +50,12 @@ vouch for, so a more specific policy can still decide; absent one, the
 authority's fail-closed default still applies. It does not know a configured
 filesystem root and cannot prove a resource resolves inside one — applications
 with sharper requirements should replace or compose it with their own policy.
+
+`AddAllowAllSecurityPolicy` registers `AllowAllSecurityPolicy`, which allows
+every operation kind unconditionally. Use it only for a local, single-tenant
+composition (a demo, an example, or a developer's own machine) that already
+trusts every operation its own agent can request — see its own remarks before
+reaching for it in anything else.
 
 ## Related projects
 

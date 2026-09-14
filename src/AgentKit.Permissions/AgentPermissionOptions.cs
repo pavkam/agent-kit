@@ -10,6 +10,18 @@ public sealed class AgentPermissionOptions
     public long PolicyVersion { get; set; } = 1;
     /// <summary>Gets or sets the exact immutable policy snapshot evaluated by this authority.</summary>
     /// <value>The captured snapshot binding accepted for snapshot-bound protected work, or null when this authority supports only legacy uncaptured requests.</value>
+    /// <remarks>
+    /// Leaving this <see langword="null"/> is not a neutral "unconfigured" default: any request that carries a
+    /// captured <c>SecurityAuthorizationContext</c> — which is every request produced by the standard
+    /// <c>ISessionCoordinator</c>/<c>IAgentLoop</c> flow through <c>ISecurityProfileSelector</c> — is
+    /// unconditionally denied with code <c>"security.captured_context_mismatch"</c> when this is
+    /// <see langword="null"/>, regardless of any registered <see cref="ISecurityPolicy"/>. A composition that
+    /// captures authorization contexts (essentially every composition using session/run coordination) must set
+    /// this to the same <see cref="SecurityPolicySnapshotReference"/> published in the corresponding
+    /// <c>SecurityProfilePublication</c>. Prefer
+    /// <c>AgentKit.Permissions.ServiceExtensions.AddStandaloneSecurityProfile</c>, which derives and wires a
+    /// matching snapshot and publication together so this trap cannot occur.
+    /// </remarks>
     public SecurityPolicySnapshotReference? PolicySnapshot { get; set; }
     /// <summary>Gets or sets the current revocation epoch.</summary>
     public long RevocationVersion { get; set; } = 1;

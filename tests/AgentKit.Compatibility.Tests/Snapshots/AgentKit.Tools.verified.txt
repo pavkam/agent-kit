@@ -6,6 +6,7 @@ namespace AgentKit.Tools
     public sealed class AgentToolsOptions
     {
         public AgentToolsOptions() { }
+        public bool AllowAllRegisteredTools { get; set; }
         public System.Collections.Generic.HashSet<AgentKit.ToolId> AllowedToolIds { get; }
     }
     public sealed class AllowListToolAuthorizer : AgentKit.IToolAuthorizer
@@ -76,6 +77,20 @@ namespace AgentKit.Tools
         public AgentKit.ToolCatalogSnapshot Snapshot { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.ToolInvokerLeaseResult> AcquireInvokerAsync(AgentKit.ToolIdentity identity, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask DisposeAsync() { }
+    }
+    public static class ToolDescriptorCollectionExtensions
+    {
+        extension(System.Collections.Generic.IEnumerable<AgentKit.ToolDescriptor> descriptors)
+        {
+            public System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> ToLlmToolDefinitions() { }
+        }
+    }
+    public static class ToolDescriptorExtensions
+    {
+        extension(AgentKit.ToolDescriptor descriptor)
+        {
+            public AgentKit.LlmToolDefinition ToLlmToolDefinition() { }
+        }
     }
     public sealed class ToolProviderCapture : AgentKit.IToolProviderCapture, System.IAsyncDisposable
     {

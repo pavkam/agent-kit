@@ -259,4 +259,10 @@ public static class AgentKitMetricNames
 
     /// <summary>Gets the histogram for durable-journal evidence-load duration in seconds.</summary>
     public const string DurableJournalLoadEvidenceDuration = "agentkit.durable.journal.load_evidence.duration";
+
+    /// <summary>Gets the counter for terminal conversational-turn outcomes.</summary>
+    public const string ConversationTurnCount = "agentkit.conversation.turn.count";
+
+    /// <summary>Gets the histogram for conversational-turn duration in seconds.</summary>
+    public const string ConversationTurnDuration = "agentkit.conversation.turn.duration";
 }

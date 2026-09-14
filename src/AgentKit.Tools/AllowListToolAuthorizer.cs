@@ -14,8 +14,10 @@ using Microsoft.Extensions.Options;
 /// This is a fail-closed default: with no configuration, the allow-list is
 /// empty and every tool call is denied. Composing an application that
 /// actually wants a tool invocable requires explicitly adding its
-/// <see cref="ToolId"/> to the allow-list; there is no ambient "development
-/// mode" that grants everything by default.
+/// <see cref="ToolId"/> to the allow-list, or setting
+/// <see cref="AgentToolsOptions.AllowAllRegisteredTools"/> to grant every
+/// call; there is no other ambient "development mode" that grants everything
+/// by default.
 /// The constructor validates and copies the configured identities into an
 /// immutable snapshot. Mutating the options object afterward therefore cannot
 /// change authority already composed into this instance, and concurrent
@@ -24,6 +26,7 @@ using Microsoft.Extensions.Options;
 public sealed class AllowListToolAuthorizer: IToolAuthorizer
 {
     private readonly ImmutableHashSet<ToolId> _allowedToolIds;
+    private readonly bool _allowAllRegisteredTools;
 
     /// <summary>Initializes a new instance of the <see cref="AllowListToolAuthorizer"/> class.</summary>
     /// <param name="options">The validated tools options carrying the allow-list.</param>
@@ -41,6 +44,7 @@ public sealed class AllowListToolAuthorizer: IToolAuthorizer
         }
 
         _allowedToolIds = [.. options.Value.AllowedToolIds];
+        _allowAllRegisteredTools = options.Value.AllowAllRegisteredTools;
     }
 
     /// <inheritdoc/>
@@ -49,7 +53,7 @@ public sealed class AllowListToolAuthorizer: IToolAuthorizer
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        ToolAuthorizationDecision decision = _allowedToolIds.Contains(request.Descriptor.Id)
+        ToolAuthorizationDecision decision = _allowAllRegisteredTools || _allowedToolIds.Contains(request.Descriptor.Id)
             ? new ToolAuthorizationGranted()
             : new ToolAuthorizationDenied($"Tool '{request.Descriptor.Id}' is not in the configured allow-list.");
 

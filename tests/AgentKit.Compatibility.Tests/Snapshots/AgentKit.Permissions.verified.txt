@@ -14,6 +14,11 @@ namespace AgentKit.Permissions
         public long PolicyVersion { get; set; }
         public long RevocationVersion { get; set; }
     }
+    public sealed class AllowAllSecurityPolicy : AgentKit.ISecurityPolicy
+    {
+        public AllowAllSecurityPolicy() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicyResult> EvaluateAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class DenyAllSecurityAuthority : AgentKit.ISecurityAuthority
     {
         public DenyAllSecurityAuthority() { }
@@ -33,7 +38,10 @@ namespace AgentKit.Permissions
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityProfilePublication(AgentKit.SecurityProfilePublication publication) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuditSink(AgentKit.SecurityAuditSinkRegistration registration, AgentKit.ISecurityAuditSink sink) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuthority(AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey, AgentKit.ISecurityAuthority authority) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSecurityAuthority(AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddStandaloneSecurityProfile(AgentKit.AgentId agentId, AgentKit.AgentDefinitionRevision agentDefinitionRevision, AgentKit.ConfigurationVersion configurationVersion, AgentKit.SecurityProfileKey profileKey, AgentKit.ComponentKey<AgentKit.ISecurityAuthority> authorityKey, AgentKit.SecurityProfileVersion? profileVersion = default, long policyVersion = 1, System.Action<AgentKit.Permissions.AgentPermissionOptions>? configurePermissions = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddWorkspaceScopedFileAccessPolicy() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllowAllSecurityPolicy() { }
         }
     }
     public sealed class WorkspaceScopedFileAccessPolicy : AgentKit.ISecurityPolicy

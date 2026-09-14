@@ -274,4 +274,8 @@ public static class AgentKitActivityNames
 
     /// <summary>Gets the name for one durable-journal evidence load.</summary>
     public const string DurableJournalLoadEvidence = "durable.journal.load_evidence";
+
+    /// <summary>Gets the name for submitting one conversational turn through a conversation session.</summary>
+    /// <remarks>The activity covers session creation, message admission, and the driven agent-loop run as one causal unit.</remarks>
+    public const string ConversationTurn = "conversation.turn";
 }
