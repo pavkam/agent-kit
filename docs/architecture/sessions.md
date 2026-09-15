@@ -834,6 +834,16 @@ compatibility profile, not a session invariant. A local lock provides
 process-local coordination only. Cross-process ownership requires the durable
 execution component's leases and fencing.
 
+Lane bookkeeping in the first-party stores follows the branch tip. Provisioning
+binds a lane cursor to one branch, admission and acceptance move it as they
+append, and an ordinary append whose context names that lane and targets the
+lane's branch advances the cursor to the last appended entry without changing
+the lane revision. Session-wide appends without a lane do not move any lane
+cursor. Acceptance is currently single-shot per lane: the store contract exposes
+no settle or release operation for the installed accepted state, so an occupied
+lane answers every later start with `SessionRunStartBusy` naming the installed
+operation and run until a future contract addition releases it explicitly.
+
 Conversation history belongs here. Durable memory across sessions belongs to the
 memory component. The working provider context belongs to the context component.
 Combining them into one cheerful bucket called memory would destroy their policy

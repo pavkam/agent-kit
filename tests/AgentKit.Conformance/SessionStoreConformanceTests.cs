@@ -292,6 +292,79 @@ public abstract class SessionStoreConformanceTests<TFixture>
             .ShouldBeEquivalentTo(accepted.State);
     }
 
+    /// <summary>Verifies a lane-owned append advances the lane cursor so a later run acceptance can name the real branch tip.</summary>
+    [Fact]
+    public async Task AcceptRunAsync_AfterAppendOnLaneBranch_UsesAdvancedCursor()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 220, "lane-append");
+        var versionAfterAdmission = new SessionVersion(prepared.Provisioned.SessionVersion.Value + 1);
+        var appendedEntry = MessageEntry(prepared.Descriptor, 230, 3, "lane-note");
+        var append = new SessionAppendRequest(
+            prepared.Context, prepared.Descriptor.ActiveBranchId, versionAfterAdmission,
+            new IdempotencyKey("lane-note"), [appendedEntry]);
+        var appended = (SessionAppended) await store.AppendAsync(
+            await AuthorizeAsync(fixture, append, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var advancedCursor = new SessionBranchCursor(prepared.Descriptor.ActiveBranchId, appendedEntry.Id);
+        var start = StartRequest(prepared, 240, appended.NewVersion, advancedCursor);
+
+        var result = await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var page = (SessionPage) await ReadAllAsync(fixture, store, prepared.Descriptor, prepared.Context);
+
+        var accepted = result.ShouldBeOfType<SessionRunAccepted>();
+        accepted.State.PreviousCursor.ShouldBe(advancedCursor);
+        accepted.State.CommittedCursor.ShouldBe(new SessionBranchCursor(prepared.Descriptor.ActiveBranchId, start.AcceptedEntryId));
+        page.Entries.Select(static entry => entry.GetType()).ShouldBe([
+            typeof(ExecutionLaneProvisionedSessionEntry), typeof(InputAdmittedSessionEntry), typeof(MessageSessionEntry),
+            typeof(InputPromotedSessionEntry), typeof(MessageSessionEntry), typeof(OperationAcceptedSessionEntry),
+        ]);
+        page.Entries.OfType<InputPromotedSessionEntry>().Single().CausalParentId.ShouldBe(appendedEntry.Id);
+    }
+
+    /// <summary>Verifies acceptance is single-shot per lane: an occupied lane reports the installed owner to any later start.</summary>
+    [Fact]
+    public async Task AcceptRunAsync_WhenLaneAlreadyHoldsAcceptedRun_ReturnsBusyForLaterStart()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 250, "single-shot");
+        var first = StartRequest(prepared, 260);
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, first, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var secondContext = LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            new BeforeRunOperationCorrelation(Identifier<OperationId>(270), null));
+        var secondAdmission = AdmissionRequest(
+            secondContext, Identifier<AdmissionId>(271), Identifier<InputId>(272), Identifier<SessionEntryId>(273),
+            accepted.SessionVersion, accepted.State.LaneRevision, accepted.State.CommittedCursor, "second");
+        var secondAccepted = (AcceptedInput) await store.AdmitInputAsync(
+            await AuthorizeAsync(fixture, secondAdmission, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var second = new SessionRunStartRequest(
+            secondContext, secondAdmission.AdmissionId, [secondAdmission.AdmissionId],
+            secondAccepted.Receipt.AdmittedSequence, new SessionLaneRevision(accepted.State.LaneRevision.Value + 1),
+            new SessionVersion(accepted.SessionVersion.Value + 1),
+            new SessionBranchCursor(prepared.Descriptor.ActiveBranchId, secondAdmission.EntryId),
+            null, Identifier<RunId>(280), Identifier<TurnId>(281), Identifier<SessionEntryId>(282),
+            [Identifier<SessionEntryId>(283)], [Identifier<MessageId>(284)], Identifier<SessionEntryId>(285),
+            new OperationStateRevision(1), Profile(), Configuration(),
+            Authorization(prepared.Descriptor.Address.AgentId, prepared.Descriptor.Address.SessionId,
+                new InRunOperationCorrelation(secondContext.Correlation.OperationId, Identifier<RunId>(280), Identifier<TurnId>(281)),
+                prepared.Context.Identity),
+            Timestamp(280), new IdempotencyKey("second-accept"));
+
+        var result = await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, second, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionRunStartBusy(accepted.State.Correlation.OperationId, accepted.State.Correlation.RunId));
+    }
+
     /// <summary>Verifies an admission identity collision leaves version, lane cursor, and sequence available to the next valid commit.</summary>
     [Fact]
     public async Task AdmitInputAsync_WhenAdmissionIdentityCollides_DoesNotAdvanceState()
@@ -826,7 +899,9 @@ public abstract class SessionStoreConformanceTests<TFixture>
         (SessionDescriptor Descriptor, SessionOperationContext Context,
             SessionExecutionLaneProvisioned Provisioned, SessionInputAdmissionRequest Admission,
             AcceptedInput Accepted) prepared,
-        int offset)
+        int offset,
+        SessionVersion? expectedVersion = null,
+        SessionBranchCursor? branchCursor = null)
     {
         var runId = Identifier<RunId>(offset);
         var turnId = Identifier<TurnId>(offset + 1);
@@ -839,8 +914,8 @@ public abstract class SessionStoreConformanceTests<TFixture>
             prepared.Context, prepared.Admission.AdmissionId, [prepared.Admission.AdmissionId],
             prepared.Accepted.Receipt.AdmittedSequence,
             new SessionLaneRevision(prepared.Provisioned.LaneRevision.Value + 1),
-            new SessionVersion(prepared.Provisioned.SessionVersion.Value + 1),
-            new SessionBranchCursor(prepared.Descriptor.ActiveBranchId, prepared.Admission.EntryId),
+            expectedVersion ?? new SessionVersion(prepared.Provisioned.SessionVersion.Value + 1),
+            branchCursor ?? new SessionBranchCursor(prepared.Descriptor.ActiveBranchId, prepared.Admission.EntryId),
             null, runId, turnId, Identifier<SessionEntryId>(offset + 2),
             [Identifier<SessionEntryId>(offset + 3)], [Identifier<MessageId>(offset + 4)],
             Identifier<SessionEntryId>(offset + 5), new OperationStateRevision(1),

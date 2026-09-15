@@ -313,6 +313,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
             record.NextSequence += request.Entries.Length;
             record.Version++;
             record.UpdatedAt = _timeProvider.GetUtcNow();
+            AdvanceOwningLaneCursor(record, request);
 
             var newVersion = new SessionVersion(record.Version);
             var appended = new SessionAppended(newVersion, request.Entries);
@@ -829,6 +830,28 @@ public sealed partial class InMemorySessionStore: ISessionStore
         Debug.Assert(receipt is not null, "A retained admission receipt is required.");
         return new AdmissionReceipt(receipt.AdmissionId, receipt.InputId, receipt.AgentId, receipt.SessionId,
             receipt.ExecutionLaneId, receipt.AdmittedSequence, existing: true);
+    }
+
+    /// <summary>Moves the appending lane's cursor to the new branch tip when the lane owns the appended branch.</summary>
+    /// <param name="record">The session record whose branch was just extended.</param>
+    /// <param name="request">The committed append whose context names the appending lane.</param>
+    /// <remarks>
+    /// Only the lane named by <see cref="SessionOperationContext.ExecutionLaneId"/> advances, and only when its cursor
+    /// is bound to <see cref="SessionAppendRequest.BranchId"/>. Session-wide appends without a lane and appends to a
+    /// branch owned by a different lane leave every lane cursor untouched. The lane revision is not changed; later
+    /// admission or acceptance still validates the cursor against the real branch tip.
+    /// </remarks>
+    private static void AdvanceOwningLaneCursor(SessionRecord record, SessionAppendRequest request)
+    {
+        Debug.Assert(record is not null, "A loaded session is required.");
+        Debug.Assert(request is not null, "A committed append request is required.");
+        Debug.Assert(!request.Entries.IsEmpty, "Append validation rejects empty batches before commit.");
+        if (request.Context.ExecutionLaneId is { } laneId
+            && record.Lanes.TryGetValue(laneId, out var lane)
+            && lane.BranchCursor.BranchId == request.BranchId)
+        {
+            lane.BranchCursor = new SessionBranchCursor(request.BranchId, request.Entries[^1].Id);
+        }
     }
 
     /// <summary>Determines whether a fork point names the empty prefix or an entry actually committed on the parent branch.</summary>
