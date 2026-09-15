@@ -6,6 +6,7 @@ namespace CodingAgent;
 using System.Security.Cryptography;
 using System.Text;
 
+using AgentKit;
 using AgentKit.Context;
 using AgentKit.FileSystem;
 using AgentKit.IO;
@@ -108,7 +109,7 @@ internal static class AgentRuntime
 
         _ = services.AddAgentContext();
         _ = services.AddAgentOutput();
-        _ = services.AddAgentLoop();
+        _ = services.AddAgentLoop(AgentLoopComponentDefaults.LoopKey);
 
         _ = services.AddReadTool();
         _ = services.AddWriteTool();

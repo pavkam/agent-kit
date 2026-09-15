@@ -3,6 +3,9 @@
 
 namespace AgentKit.Conversations.Tests;
 
+using AgentKit.TestSupport;
+
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 /// <summary>Verifies ServiceExtensions behavior and contracts.</summary>
@@ -107,6 +110,37 @@ public sealed class ServiceExtensionsTests
         _ = services.AddSingleton<ISessionCoordinator>(new FakeSessionCoordinator());
         _ = services.AddSingleton<ISecurityProfileSelector>(new FakeSecurityProfileSelector());
         _ = services.AddSingleton<IAgentLoop>(new FakeAgentLoop());
+        _ = services.AddSingleton<IContextAssembler>(new UnsupportedContextAssembler());
+        _ = services.AddSingleton<IToolInvoker>(new CaptureTestToolInvoker());
+        _ = services.AddSingleton<IModelCatalog>(new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])));
+        _ = services.AddSingleton<IModelSelector>(ScriptedModelSelector.Selecting(FakeModelDescriptor()));
+        _ = services.AddSingleton<ILlmModelResolver>(new AliasLlmModelResolver());
+        services.TryAddKeyedSingleton<IRunContinuationPolicy>(
+            AgentLoopComponentDefaults.ContinuationPolicyKeyValue, (_, _) => new UnsupportedRunContinuationPolicy());
+    }
+
+    private static ModelDescriptor FakeModelDescriptor()
+    {
+        var capabilities = new ModelCapabilities(
+            supportsSystemInstructions: true,
+            supportsStreaming: true,
+            supportsToolCalls: true,
+            supportsParallelToolCalls: true,
+            supportsStructuredOutput: true,
+            supportsReasoning: true,
+            supportsVisionInput: true,
+            ExtensionData.Empty);
+
+        return new ModelDescriptor(
+            new ModelAlias("test-model"),
+            new ProviderId("test-provider"),
+            new ApiFamilyId("test-api"),
+            new ModelId("test-model"),
+            deploymentId: null,
+            capabilities,
+            new ModelLimits(maxContextTokens: 4096, maxOutputTokens: 1024),
+            pricing: null,
+            ExtensionData.Empty);
     }
 
     private static void Configure(ConversationSessionOptions options)
