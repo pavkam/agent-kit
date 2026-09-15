@@ -4,8 +4,10 @@
 namespace AgentKit.Providers.AzureOpenAI.Tests;
 
 using System.Net;
+using System.Net.Http;
 
 using AgentKit.Providers.AzureOpenAI.Tests.Fakes;
+using AgentKit.TestSupport;
 
 /// <summary>Verifies AzureOpenAIEmbeddingModel behavior and contracts.</summary>
 public sealed class AzureOpenAIEmbeddingModelTests
@@ -43,5 +45,55 @@ public sealed class AzureOpenAIEmbeddingModelTests
         var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+    }
+
+    /// <summary>Verifies the transport's own timeout is a typed timeout failure, never an escaping exception or a caller cancellation.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenHttpClientTimeoutFiresWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException(
+            "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
+            new TimeoutException("The operation was canceled.")));
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+
+        var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
+    }
+
+    /// <summary>Verifies a refused connection is a typed unavailable failure.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenConnectionIsRefused_ReturnsTypedUnavailableFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Connection refused", new System.Net.Sockets.SocketException(61)));
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+
+        var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
+    }
+
+    /// <summary>Verifies a connection reset while the body is being read is a typed unavailable failure.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenBodyStreamFailsMidRead_ReturnsTypedUnavailableFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"object\":\"list\",\"data\":["u8.ToArray())),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+
+        var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<IOException>();
     }
 }

@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 
 using AgentKit.Providers.OpenAICompatible.Tests.Fakes;
+using AgentKit.TestSupport;
 
 /// <summary>
 /// End-to-end tests for <see cref="OpenAICompatibleLlmModelBase"/>,
@@ -516,5 +517,27 @@ public sealed class OpenAICompatibleLlmModelBaseTests
         cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
         innerObserver.Events.ShouldNotContain(e => e is ModelResponseCompleted);
         _ = innerObserver.Events[^1].ShouldBeOfType<ModelResponseCancelled>();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenBodyStreamFailsMidRead_ReturnsTypedUnavailableFailure()
+    {
+        // A connection reset while the body is streaming is a transport fault; it must surface as a typed
+        // Unavailable failure with exactly one terminal observer event, never as an escaping IOException.
+        var prefix = "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[]}\n\n"u8.ToArray();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(FaultingReadStream.ConnectionReset(prefix)),
+        });
+        var model = CreateModel(handler, StreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<IOException>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
     }
 }

@@ -34,6 +34,9 @@ no standalone test run or production registration API.
   assertions.
 - [CallbackToolRegistrationCatalog](CallbackToolRegistrationCatalog.cs) — typed
   registration selection callback for DI replacement tests.
+- [FaultingReadStream](FaultingReadStream.cs) — a response-body stream that
+  serves an optional prefix and then fails mid-read, for provider transport
+  fault mapping tests.
 
 Add a helper when multiple test projects need it. Reusable contract assertions
 belong in AgentKit.Conformance; production packages must not depend on either

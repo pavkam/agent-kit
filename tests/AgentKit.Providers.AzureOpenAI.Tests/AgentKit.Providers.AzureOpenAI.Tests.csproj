@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+    <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Providers.OpenAICompatible/AgentKit.Providers.OpenAICompatible.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Providers.AzureOpenAI/AgentKit.Providers.AzureOpenAI.csproj"/>
   </ItemGroup>

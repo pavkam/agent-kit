@@ -205,6 +205,15 @@ public sealed class AnthropicLlmModel: ILlmModel
                 "The request did not complete before its deadline.",
                 exception).ConfigureAwait(false);
         }
+        catch (OperationCanceledException exception)
+        {
+            // Neither the caller nor the request deadline cancelled: this is the transport's own timeout
+            // (HttpClient.Timeout surfaces as TaskCanceledException). It is a typed timeout, never a caller cancellation.
+            return await FailWithKindAsync(
+                ProviderFailureKind.Timeout,
+                "The transport timed out before the provider responded.",
+                exception).ConfigureAwait(false);
+        }
         catch (HttpRequestException exception)
         {
             return await FailWithKindAsync(
@@ -265,6 +274,21 @@ public sealed class AnthropicLlmModel: ILlmModel
                 return await FailWithKindAsync(
                     ProviderFailureKind.Timeout,
                     "The response was not fully received before the request's deadline.",
+                    exception).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException exception)
+            {
+                return await FailWithKindAsync(
+                    ProviderFailureKind.Timeout,
+                    "The transport timed out while the response body was being received.",
+                    exception).ConfigureAwait(false);
+            }
+            catch (IOException exception)
+            {
+                // A connection reset or truncated body mid-stream is a transport failure, not a caller fault.
+                return await FailWithKindAsync(
+                    ProviderFailureKind.Unavailable,
+                    "The connection failed while the response body was being received.",
                     exception).ConfigureAwait(false);
             }
         }

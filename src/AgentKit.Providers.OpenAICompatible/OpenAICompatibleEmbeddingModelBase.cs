@@ -194,6 +194,15 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
                 "The request did not complete before its deadline.",
                 exception);
         }
+        catch (OperationCanceledException exception)
+        {
+            // Neither the caller nor the request deadline cancelled: this is the transport's own timeout
+            // (HttpClient.Timeout surfaces as TaskCanceledException). It is a typed timeout, never a caller cancellation.
+            return FailWithKind(
+                ProviderFailureKind.Timeout,
+                "The transport timed out before the provider responded.",
+                exception);
+        }
         catch (HttpRequestException exception)
         {
             return FailWithKind(
@@ -236,6 +245,21 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
                 return FailWithKind(
                     ProviderFailureKind.Timeout,
                     "The response was not fully received before the request's deadline.",
+                    exception);
+            }
+            catch (OperationCanceledException exception)
+            {
+                return FailWithKind(
+                    ProviderFailureKind.Timeout,
+                    "The transport timed out while the response body was being received.",
+                    exception);
+            }
+            catch (IOException exception)
+            {
+                // A connection reset or truncated body mid-stream is a transport failure, not a caller fault.
+                return FailWithKind(
+                    ProviderFailureKind.Unavailable,
+                    "The connection failed while the response body was being received.",
                     exception);
             }
         }

@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 
 using AgentKit.Providers.MistralAI.Tests.Fakes;
+using AgentKit.TestSupport;
 
 /// <summary>Verifies MistralAIEmbeddingModel behavior and contracts.</summary>
 public sealed class MistralAIEmbeddingModelTests
@@ -40,5 +41,52 @@ public sealed class MistralAIEmbeddingModelTests
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
         handler.Requests.ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies the transport's own timeout is a typed timeout failure, never an escaping exception or a caller cancellation.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenHttpClientTimeoutFiresWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException(
+            "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
+            new TimeoutException("The operation was canceled.")));
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")));
+
+        var result = await model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
+    }
+
+    /// <summary>Verifies a refused connection is a typed unavailable failure.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenConnectionIsRefused_ReturnsTypedUnavailableFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Connection refused", new System.Net.Sockets.SocketException(61)));
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")));
+
+        var result = await model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
+    }
+
+    /// <summary>Verifies a connection reset while the body is being read is a typed unavailable failure.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenBodyStreamFailsMidRead_ReturnsTypedUnavailableFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"data\":["u8.ToArray())),
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")));
+
+        var result = await model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<IOException>();
     }
 }

@@ -9,6 +9,7 @@ using System.Net.Http.Headers;
 using System.Text;
 
 using AgentKit.Providers.AzureOpenAI.Tests.Fakes;
+using AgentKit.TestSupport;
 
 /// <summary>Verifies AzureOpenAILlmModel behavior and contracts.</summary>
 public sealed class AzureOpenAILlmModelTests
@@ -172,5 +173,64 @@ public sealed class AzureOpenAILlmModelTests
         var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>();
         cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
         handler.Requests.ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies the transport's own timeout is a typed timeout failure, never an escaping exception or a caller cancellation.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenHttpClientTimeoutFiresWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
+    {
+        // HttpClient.Timeout surfaces as TaskCanceledException while neither the caller token nor the deadline is cancelled.
+        var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException(
+            "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
+            new TimeoutException("The operation was canceled.")));
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    /// <summary>Verifies a refused connection is a typed unavailable failure with one terminal event.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenConnectionIsRefused_ReturnsTypedUnavailableFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Connection refused", new System.Net.Sockets.SocketException(61)));
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    /// <summary>Verifies a connection reset while the body is being read is a typed unavailable failure with exactly one terminal event.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenBodyStreamFailsMidRead_ReturnsTypedUnavailableFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"id\":\"chatcmpl-1\","u8.ToArray())),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<IOException>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
     }
 }
