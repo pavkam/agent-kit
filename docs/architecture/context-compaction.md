@@ -231,6 +231,15 @@ suffix begins after the covered range and remains byte-for-byte represented by
 the original entries. Oversized-turn repair is disabled by default; when
 enabled, explicit repair markers and complete tool causality are mandatory.
 
+The first-party compactor pins every continuation page to the first page's
+`SessionReadSnapshot` and compares that snapshot's observed version with the
+request's `SourceVersion` before any selector, strategy, or validator runs. A
+mismatch is a `CompactionConflict` whose `Manifest` is null because no candidate
+exists yet; a page without snapshot evidence fails closed as a non-retryable
+`SourceUnavailable`; a continuation page whose snapshot differs from the pinned
+one fails as a retryable `SourceUnavailable`. The pinned snapshot's upper
+sequence is the branch tip used below.
+
 `SourceThrough` is an eligibility bound, not the branch tip. The first-party
 compactor reads the branch to its tip, hands collaborators only entries whose
 sequence does not exceed `SourceThrough`, and keeps the tip for sequence

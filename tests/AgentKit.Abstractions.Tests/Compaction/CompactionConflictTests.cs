@@ -10,6 +10,30 @@ public sealed class CompactionConflictTests
 {
     [Fact]
     public void CompactionConflict_Equality_WhenSameValues_InstancesAreEqual() => new CompactionConflict(Context(), new SessionVersion(1), new SessionVersion(2), Manifest()).ShouldBe(new CompactionConflict(Context(), new SessionVersion(1), new SessionVersion(2), Manifest()));
+
+    [Fact]
+    public void Constructor_WhenManifestNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new CompactionConflict(Context(), new SessionVersion(1), new SessionVersion(2), null!));
+        exception.ParamName.ShouldBe("manifest");
+    }
+
+    [Fact]
+    public void Constructor_WhenDetectedBeforeCandidate_LeavesManifestNull()
+    {
+        var conflict = new CompactionConflict(Context(), new SessionVersion(1), new SessionVersion(2));
+
+        conflict.ExpectedVersion.ShouldBe(new SessionVersion(1));
+        conflict.ActualVersion.ShouldBe(new SessionVersion(2));
+        conflict.Manifest.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Constructor_WhenContextNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new CompactionConflict(null!, new SessionVersion(1), new SessionVersion(2)));
+        exception.ParamName.ShouldBe("context");
+    }
     private static readonly Guid _fixedOperationGuid = Guid.Parse("88888888-8888-8888-8888-888888888888");
     private static readonly Guid _fixedRunGuid = Guid.Parse("99999999-9999-9999-9999-999999999999");
     private static InRunOperationCorrelation Correlation() => new(new OperationId(_fixedOperationGuid), new RunId(_fixedRunGuid), null);

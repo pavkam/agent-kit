@@ -158,19 +158,132 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
-    public async Task CompactAsync_WhenBranchVersionAdvancedSinceComputed_ReturnsCompactionConflict()
+    public async Task CompactAsync_WhenSourceVersionDoesNotMatchBranch_ReturnsConflictBeforeStrategy()
     {
-        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
         var address = Address();
-        var entries = Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('h', 200))).ToArray();
-        coordinator.Seed(entries);
+        var strategyInvocations = 0;
+        var strategy = new FakeCompactionStrategy
+        {
+            OnProduce = _ => throw new InvalidOperationException($"strategy must not run; invocation {++strategyInvocations}")
+        };
+        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy);
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('h', 200))));
         var context = TestFactory.CompactionContext(_agentId, _sessionId);
         // Compute the request against a stale version — one behind the branch's actual, seeded version.
         var staleRequest = TestFactory.Request(context, _branchId, new SessionVersion(coordinator.Version.Value - 1), new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
         var result = await compactor.CompactAsync(staleRequest, TestContext.Current.CancellationToken);
+
         var conflict = result.ShouldBeOfType<CompactionConflict>();
         conflict.ExpectedVersion.ShouldBe(staleRequest.SourceVersion);
         conflict.ActualVersion.ShouldBe(coordinator.Version);
+        conflict.Manifest.ShouldBeNull();
+        strategyInvocations.ShouldBe(0);
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenBranchAdvancesBetweenReadAndAppend_ReturnsConflictWithManifest()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('h', 200))));
+        var context = TestFactory.CompactionContext(_agentId, _sessionId);
+        var request = TestFactory.Request(context, _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+        var newerVersion = new SessionVersion(coordinator.Version.Value + 1);
+        coordinator.AppendOverride = append => new SessionAppendConflict(append.ExpectedVersion, newerVersion);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<CompactionConflict>();
+        conflict.ExpectedVersion.ShouldBe(request.SourceVersion);
+        conflict.ActualVersion.ShouldBe(newerVersion);
+        _ = conflict.Manifest.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenReadingMultiplePages_PinsContinuationReadsToTheFirstPageSnapshot()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30, sourceReadPageSize: 3);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('p', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(10), minimumRetainedEntries: 2, minimumReductionRatio: 0.1);
+
+        _ = (await compactor.CompactAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<CompactionSucceeded>();
+
+        coordinator.ReceivedReads.Count.ShouldBe(4);
+        coordinator.ReceivedReads[0].Snapshot.ShouldBeNull();
+        var issued = new SessionReadSnapshot(address, _branchId, request.SourceVersion, new SessionSequence(10));
+        foreach (var continuation in coordinator.ReceivedReads.Skip(1))
+        {
+            continuation.Snapshot.ShouldBe(issued);
+        }
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenAppendOccursBetweenPages_ReadsThePinnedPrefixAndReturnsConflict()
+    {
+        // A pinned continuation excludes the concurrent entry, so the snapshot stays consistent; activation then fails
+        // the version check rather than overwriting or silently including the newer entry.
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30, sourceReadPageSize: 4);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('p', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(10), minimumRetainedEntries: 2, minimumReductionRatio: 0.1);
+        var interleaved = false;
+        coordinator.OnRead = read =>
+        {
+            if (read.Snapshot is not null && !interleaved)
+            {
+                interleaved = true;
+                coordinator.Seed([TestFactory.MessageEntry(address, _branchId, 11, "concurrent")]);
+            }
+        };
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<CompactionConflict>();
+        conflict.ExpectedVersion.ShouldBe(request.SourceVersion);
+        conflict.ActualVersion.ShouldBe(coordinator.Version);
+        conflict.Manifest.ShouldNotBeNull().CoveredRange.EndInclusive.Value.ShouldBeLessThanOrEqualTo(8);
+        coordinator.Entries.Count.ShouldBe(11);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenBranchChangesBetweenPages_ReturnsTypedFailure()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30, sourceReadPageSize: 2);
+        var address = Address();
+        var entries = Enumerable.Range(1, 4).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('p', 200))).ToArray();
+        var firstSnapshot = new SessionReadSnapshot(address, _branchId, new SessionVersion(4), new SessionSequence(4));
+        var driftedSnapshot = new SessionReadSnapshot(address, _branchId, new SessionVersion(5), new SessionSequence(5));
+        coordinator.ReadOverride = read => read.Snapshot is null
+            ? new SessionPage([entries[0], entries[1]], entries[1].Sequence, hasMore: true, firstSnapshot)
+            : new SessionPage([entries[2], entries[3]], entries[3].Sequence, hasMore: false, driftedSnapshot);
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, new SessionVersion(4), new SessionSequence(4), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.Kind.ShouldBe(CompactionFailureKind.SourceUnavailable);
+        failed.Failure.Retryable.ShouldBeTrue();
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenPageCarriesNoSnapshotEvidence_ReturnsNonRetryableFailure()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        var entries = Enumerable.Range(1, 4).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('p', 200))).ToArray();
+        coordinator.ReadOverride = _ => new SessionPage([.. entries], entries[^1].Sequence, hasMore: false);
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, new SessionVersion(4), new SessionSequence(4), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.Kind.ShouldBe(CompactionFailureKind.SourceUnavailable);
+        failed.Failure.Retryable.ShouldBeFalse();
+        coordinator.ReceivedAppends.ShouldBeEmpty();
     }
 
     [Fact]

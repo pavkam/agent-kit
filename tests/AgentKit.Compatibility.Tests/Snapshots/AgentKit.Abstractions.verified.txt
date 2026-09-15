@@ -1857,10 +1857,11 @@ namespace AgentKit
     }
     public sealed class CompactionConflict : AgentKit.CompactionResult, System.IEquatable<AgentKit.CompactionConflict>
     {
+        public CompactionConflict(AgentKit.CompactionOperationContext context, AgentKit.SessionVersion expectedVersion, AgentKit.SessionVersion actualVersion) { }
         public CompactionConflict(AgentKit.CompactionOperationContext context, AgentKit.SessionVersion expectedVersion, AgentKit.SessionVersion actualVersion, AgentKit.CompactionManifest manifest) { }
         public AgentKit.SessionVersion ActualVersion { get; init; }
         public AgentKit.SessionVersion ExpectedVersion { get; init; }
-        public AgentKit.CompactionManifest Manifest { get; init; }
+        public AgentKit.CompactionManifest? Manifest { get; init; }
     }
     public sealed class CompactionCut : System.IEquatable<AgentKit.CompactionCut>
     {

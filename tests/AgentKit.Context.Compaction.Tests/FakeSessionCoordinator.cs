@@ -21,6 +21,8 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
 {
     private readonly List<SessionEntry> _entries = [];
     private readonly List<SessionAppendRequest> _receivedAppends = [];
+    private readonly List<SessionReadRequest> _receivedReads = [];
+    private readonly HashSet<SessionReadSnapshot> _issuedSnapshots = [];
 
     /// <summary>Initializes a new instance of the <see cref="FakeSessionCoordinator"/> class.</summary>
     /// <param name="branchId">The single branch this fake serves.</param>
@@ -40,6 +42,15 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
 
     /// <summary>Gets every append request this fake has received, in call order.</summary>
     public IReadOnlyList<SessionAppendRequest> ReceivedAppends => _receivedAppends;
+
+    /// <summary>Gets every read request this fake has received, in call order.</summary>
+    public IReadOnlyList<SessionReadRequest> ReceivedReads => _receivedReads;
+
+    /// <summary>
+    /// Gets or sets a callback invoked before each read is served, letting tests
+    /// mutate the branch between pages of one paged read.
+    /// </summary>
+    public Action<SessionReadRequest>? OnRead { get; set; }
 
     /// <summary>
     /// Gets or sets an override invoked instead of the normal append
@@ -118,6 +129,8 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         SessionReadRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        _receivedReads.Add(request);
+        OnRead?.Invoke(request);
 
         if (ReadOverride is not null)
         {
@@ -129,12 +142,29 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
             return ValueTask.FromResult<SessionPageResult>(new SessionReadNotFound(request.Context.ToAddress()));
         }
 
-        var start = (int) request.FromSequenceExclusive.Value;
-        var page = _entries.Skip(start).Take(request.PageSize).ToImmutableArray();
-        var throughSequence = page.IsEmpty ? request.FromSequenceExclusive : new SessionSequence(start + page.Length);
-        var hasMore = start + page.Length < _entries.Count;
+        // Mirror InMemorySessionStore: a continuation must present a snapshot this fake issued, and every page is
+        // pinned to that snapshot's upper sequence so appends after the first page never leak into later pages.
+        if (request.Snapshot is { } supplied && !_issuedSnapshots.Contains(supplied))
+        {
+            return ValueTask.FromResult<SessionPageResult>(
+                new SessionReadFailed("The supplied session read snapshot is not available for this branch."));
+        }
 
-        return ValueTask.FromResult<SessionPageResult>(new SessionPage(page, throughSequence, hasMore));
+        var snapshot = request.Snapshot
+            ?? new SessionReadSnapshot(request.Context.ToAddress(), BranchId, Version, TipSequence);
+        if (request.Snapshot is null)
+        {
+            _ = _issuedSnapshots.Add(snapshot);
+        }
+
+        var page = _entries
+            .Where(e => e.Sequence.Value > request.FromSequenceExclusive.Value && e.Sequence.Value <= snapshot.UpperSequence.Value)
+            .Take(request.PageSize)
+            .ToImmutableArray();
+        var throughSequence = page.IsEmpty ? request.FromSequenceExclusive : page[^1].Sequence;
+        var hasMore = _entries.Any(e => e.Sequence.Value > throughSequence.Value && e.Sequence.Value <= snapshot.UpperSequence.Value);
+
+        return ValueTask.FromResult<SessionPageResult>(new SessionPage(page, throughSequence, hasMore, snapshot));
     }
 
     /// <inheritdoc/>

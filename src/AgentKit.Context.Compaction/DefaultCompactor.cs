@@ -19,9 +19,13 @@ using Microsoft.Extensions.Options;
 /// responsibilities inline.
 /// </para>
 /// <para>
-/// Source loading reads the whole branch and then restricts the snapshot
-/// handed to collaborators to entries whose sequence does not exceed
-/// <see cref="CompactionRequest.SourceThrough"/>. The branch tip is kept
+/// Source loading pins every page to the first page's
+/// <see cref="SessionReadSnapshot"/> and compares that snapshot's observed
+/// version with <see cref="CompactionRequest.SourceVersion"/> before any
+/// collaborator runs; a stale request is a <see cref="CompactionConflict"/>
+/// without a manifest. It reads the whole pinned branch and then restricts
+/// the snapshot handed to collaborators to entries whose sequence does not
+/// exceed <see cref="CompactionRequest.SourceThrough"/>. The branch tip is kept
 /// separately because it, not the eligible bound, decides the sequence of
 /// the appended <see cref="CompactionSessionEntry"/>. A request whose
 /// eligible bound lies beyond the tip fails with a non-retryable
@@ -279,10 +283,20 @@ public sealed class DefaultCompactor: ICompactor
     /// eligible snapshot with the observed branch tip or the typed result that ends the attempt.
     /// </summary>
     /// <remarks>
-    /// The read always continues to the branch tip rather than stopping at the eligible bound: the tip decides the
+    /// <para>
+    /// Every page after the first is pinned to the first page's <see cref="SessionReadSnapshot"/>, so a concurrent
+    /// append cannot leak into a later page. The first page's observed version is compared with
+    /// <see cref="CompactionRequest.SourceVersion"/> before any collaborator runs; a mismatch is a
+    /// <see cref="CompactionConflict"/> without a manifest. A page without snapshot evidence fails closed as a
+    /// non-retryable <see cref="CompactionFailureKind.SourceUnavailable"/>, and a continuation page carrying a
+    /// different snapshot fails as a retryable one.
+    /// </para>
+    /// <para>
+    /// The read always continues to the pinned tip rather than stopping at the eligible bound: the tip decides the
     /// sequence a newly appended entry must carry, and the ineligible tail decides whether a cut inside the eligible
     /// range would orphan a later causal dependent. A request whose eligible bound lies beyond the tip names a range
     /// this branch does not have and fails as a non-retryable <see cref="CompactionFailureKind.SourceUnavailable"/>.
+    /// </para>
     /// </remarks>
     private async Task<(LoadedCompactionSource? Source, CompactionResult? Failure)> LoadSourceAsync(
         SessionOperationContext sessionContext, CompactionRequest request, CancellationToken cancellationToken)
@@ -292,11 +306,14 @@ public sealed class DefaultCompactor: ICompactor
 
         var entries = ImmutableArray.CreateBuilder<SessionEntry>();
         var cursor = new SessionSequence(0);
+        SessionReadSnapshot? pinned = null;
 
         while (true)
         {
             var pageResult = await _coordinator.ReadAsync(
-                new SessionReadRequest(sessionContext, request.BranchId, cursor, _sourceReadPageSize),
+                pinned is null
+                    ? new SessionReadRequest(sessionContext, request.BranchId, cursor, _sourceReadPageSize)
+                    : new SessionReadRequest(sessionContext, request.BranchId, cursor, _sourceReadPageSize, pinned),
                 request.Context.SessionProfile,
                 cancellationToken).ConfigureAwait(false);
 
@@ -311,6 +328,38 @@ public sealed class DefaultCompactor: ICompactor
                         ExtensionData.Empty)));
             }
 
+            if (page.Snapshot is not { } pageSnapshot)
+            {
+                // Without exact snapshot evidence the observed version and tip cannot be established; fail closed.
+                return (null, new CompactionFailed(
+                    request.Context,
+                    new CompactionFailure(
+                        CompactionFailureKind.SourceUnavailable,
+                        "The session store did not supply exact read snapshot evidence.",
+                        retryable: false,
+                        ExtensionData.Empty)));
+            }
+
+            if (pinned is null)
+            {
+                if (pageSnapshot.Version != request.SourceVersion)
+                {
+                    return (null, new CompactionConflict(request.Context, request.SourceVersion, pageSnapshot.Version));
+                }
+
+                pinned = pageSnapshot;
+            }
+            else if (pageSnapshot != pinned)
+            {
+                return (null, new CompactionFailed(
+                    request.Context,
+                    new CompactionFailure(
+                        CompactionFailureKind.SourceUnavailable,
+                        "The branch changed while the source was being read.",
+                        retryable: true,
+                        ExtensionData.Empty)));
+            }
+
             entries.AddRange(page.Entries);
             cursor = page.ThroughSequence;
 
@@ -320,7 +369,7 @@ public sealed class DefaultCompactor: ICompactor
             }
         }
 
-        var branchTip = cursor;
+        var branchTip = pinned.UpperSequence;
         if (request.SourceThrough.Value > branchTip.Value)
         {
             return (null, new CompactionFailed(
