@@ -396,6 +396,131 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
+    public async Task CompactAsync_WhenCancelledBeforeActivation_ReturnsCancelledNotAttempted()
+    {
+        var address = Address();
+        using var cts = new CancellationTokenSource();
+        var strategy = new FakeCompactionStrategy
+        {
+            OnProduce = _ =>
+            {
+                cts.Cancel();
+                cts.Token.ThrowIfCancellationRequested();
+                return null!;
+            }
+        };
+        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy);
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('c', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, cts.Token);
+
+        var cancelled = result.ShouldBeOfType<CompactionCancelled>();
+        cancelled.CommitState.ShouldBe(CompactionCommitState.NotAttempted);
+        cancelled.CommittedRecord.ShouldBeNull();
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenCancelledAfterAppendCommitted_ReturnsCancelledWithCommittedState()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('c', 200))));
+        using var cts = new CancellationTokenSource();
+        coordinator.AppendOverride = append =>
+        {
+            // The store commits, then the caller's token fires before the response is observed.
+            coordinator.Seed(append.Entries);
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        };
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, cts.Token);
+
+        var cancelled = result.ShouldBeOfType<CompactionCancelled>();
+        cancelled.CommitState.ShouldBe(CompactionCommitState.Committed);
+        var committed = coordinator.Entries[^1].ShouldBeOfType<CompactionSessionEntry>();
+        cancelled.CommittedRecord.ShouldBe(committed.Record);
+        // Reconciliation must not itself be cancelled by the caller's token.
+        coordinator.ReceivedReads[^1].Snapshot.ShouldBeNull();
+        coordinator.ReceivedReads.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenCancelledDuringAppendThatDidNotCommit_ReturnsCancelledNotCommitted()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('c', 200))));
+        using var cts = new CancellationTokenSource();
+        coordinator.AppendOverride = _ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        };
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, cts.Token);
+
+        var cancelled = result.ShouldBeOfType<CompactionCancelled>();
+        cancelled.CommitState.ShouldBe(CompactionCommitState.NotCommitted);
+        cancelled.CommittedRecord.ShouldBeNull();
+        coordinator.Entries.Count.ShouldBe(5);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenCancelledDuringAppendAndReconciliationUnavailable_ReturnsCancelledUnknown()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('c', 200))));
+        using var cts = new CancellationTokenSource();
+        var appended = false;
+        coordinator.AppendOverride = _ =>
+        {
+            appended = true;
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        };
+        coordinator.OnRead = _ => coordinator.ReadOverride = appended ? static _ => new SessionReadFailed("store unavailable") : null;
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, cts.Token);
+
+        var cancelled = result.ShouldBeOfType<CompactionCancelled>();
+        cancelled.CommitState.ShouldBe(CompactionCommitState.Unknown);
+        cancelled.CommittedRecord.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenCancelled_EmitsCancelledOutcomeOnActivity()
+    {
+        var address = Address();
+        using var cts = new CancellationTokenSource();
+        var strategy = new FakeCompactionStrategy
+        {
+            OnProduce = _ =>
+            {
+                cts.Cancel();
+                cts.Token.ThrowIfCancellationRequested();
+                return null!;
+            }
+        };
+        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy);
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('c', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+        using var activities = new ActivityCollector(static source => source.Name == AgentKitDiagnostics.ActivitySourceName, activity => activity.OperationName == AgentKitActivityNames.ContextCompact && Equals(activity.GetTagItem(AgentKitTagNames.CompactionId), request.Context.CompactionId.ToString()));
+
+        _ = (await compactor.CompactAsync(request, cts.Token)).ShouldBeOfType<CompactionCancelled>();
+
+        var activity = activities.Snapshot().ShouldHaveSingleItem();
+        activity.Status.ShouldBe(ActivityStatusCode.Error);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("cancelled");
+    }
+
+    [Fact]
     public async Task CompactAsync_WhenAppendFailsAndReconciliationReadFails_ReturnsNonRetryableCompactionFailed()
     {
         var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);

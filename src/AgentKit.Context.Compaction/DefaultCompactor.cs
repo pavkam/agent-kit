@@ -119,7 +119,21 @@ public sealed class DefaultCompactor: ICompactor
         try
         {
             CompactionLog.Started(_logger, context.CompactionId, context.SessionId);
-            var result = await CompactCoreAsync(request, cancellationToken).ConfigureAwait(false);
+            CompactionResult result;
+            try
+            {
+                result = await CompactCoreAsync(request, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Activation converts its own cancellation into a reconciled outcome, so an exception reaching this
+                // point means no activation append was ever issued.
+                result = new CompactionCancelled(
+                    context,
+                    CompactionCommitState.NotAttempted,
+                    "The compaction attempt was cancelled before activation was attempted.");
+            }
+
             var outcome = result switch
             {
                 CompactionSucceeded => "succeeded",
@@ -139,16 +153,17 @@ public sealed class DefaultCompactor: ICompactor
                 activity.SetFailed(outcome, result.GetType().Name);
             }
 
-            CompactionLog.Completed(_logger, context.CompactionId, context.SessionId, outcome);
+            if (result is CompactionCancelled cancelled)
+            {
+                CompactionLog.Cancelled(_logger, context.CompactionId, context.SessionId, cancelled.CommitState);
+            }
+            else
+            {
+                CompactionLog.Completed(_logger, context.CompactionId, context.SessionId, outcome);
+            }
+
             CompactionMetrics.Record(outcome);
             return result;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            activity.SetFailed("cancelled", nameof(OperationCanceledException));
-            CompactionLog.Cancelled(_logger, context.CompactionId, context.SessionId);
-            CompactionMetrics.Record("cancelled");
-            throw;
         }
         catch (Exception exception)
         {
@@ -350,7 +365,7 @@ public sealed class DefaultCompactor: ICompactor
                     if (pageSnapshot.Version.Value > request.SourceVersion.Value)
                     {
                         var (existing, _) = await FindCommittedRecordAsync(
-                            sessionContext, request, request.SourceThrough, pageSnapshot, cancellationToken)
+                            sessionContext, request, request.SourceThrough, pageSnapshot, maximumPages: int.MaxValue, cancellationToken)
                             .ConfigureAwait(false);
                         if (existing is not null)
                         {
@@ -454,35 +469,73 @@ public sealed class DefaultCompactor: ICompactor
             new SchemaVersion("1"),
             record);
 
-        var appendResult = await _coordinator.AppendAsync(
-            new SessionAppendRequest(
-                sessionContext,
-                request.BranchId,
-                request.SourceVersion,
-                new IdempotencyKey($"compaction:{context.CompactionId}"),
-                [entry]),
-            request.Context.SessionProfile,
-            cancellationToken).ConfigureAwait(false);
+        var appendRequest = new SessionAppendRequest(
+            sessionContext,
+            request.BranchId,
+            request.SourceVersion,
+            new IdempotencyKey($"compaction:{context.CompactionId}"),
+            [entry]);
 
-        return appendResult switch
+        try
         {
-            SessionAppended => new CompactionSucceeded(context, record),
-            SessionAppendConflict conflict => await ReconcileConflictAsync(
-                sessionContext, request, branchTip, manifest, conflict, cancellationToken).ConfigureAwait(false),
-            SessionAppendNotFound => new CompactionFailed(
-                context,
-                new CompactionFailure(
-                    CompactionFailureKind.ActivationFailure,
-                    "The session or branch no longer exists.",
-                    retryable: false,
-                    ExtensionData.Empty)),
-            SessionAppendFailed failed => await ReconcileFailedAppendAsync(
-                sessionContext, request, branchTip, failed, cancellationToken).ConfigureAwait(false),
-            _ => new CompactionFailed(
-                context,
-                new CompactionFailure(
-                    CompactionFailureKind.Unknown, "Unrecognized append outcome.", retryable: false, ExtensionData.Empty))
-        };
+            var appendResult = await _coordinator.AppendAsync(appendRequest, request.Context.SessionProfile, cancellationToken)
+                .ConfigureAwait(false);
+
+            return appendResult switch
+            {
+                SessionAppended => new CompactionSucceeded(context, record),
+                SessionAppendConflict conflict => await ReconcileConflictAsync(
+                    sessionContext, request, branchTip, manifest, conflict, cancellationToken).ConfigureAwait(false),
+                SessionAppendNotFound => new CompactionFailed(
+                    context,
+                    new CompactionFailure(
+                        CompactionFailureKind.ActivationFailure,
+                        "The session or branch no longer exists.",
+                        retryable: false,
+                        ExtensionData.Empty)),
+                SessionAppendFailed failed => await ReconcileFailedAppendAsync(
+                    sessionContext, request, branchTip, failed, cancellationToken).ConfigureAwait(false),
+                _ => new CompactionFailed(
+                    context,
+                    new CompactionFailure(
+                        CompactionFailureKind.Unknown, "Unrecognized append outcome.", retryable: false, ExtensionData.Empty))
+            };
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The append was issued; the caller's token no longer governs whether it committed. Reconcile without it.
+            return await ReconcileCancelledActivationAsync(sessionContext, request, branchTip).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Establishes the truthful commit state after cancellation was observed during or after the activation append,
+    /// using a bounded reconciliation read that is deliberately not governed by the caller's cancellation token.
+    /// </summary>
+    private async Task<CompactionResult> ReconcileCancelledActivationAsync(
+        SessionOperationContext sessionContext, CompactionRequest request, SessionSequence branchTip)
+    {
+        Debug.Assert(sessionContext is not null, "The caller builds the session context before activating.");
+        Debug.Assert(request is not null, "The caller validates the request before activating.");
+
+        var (existing, reconciled) = await FindCommittedRecordAsync(
+            sessionContext, request, branchTip, pinned: null, maximumPages: 1, CancellationToken.None).ConfigureAwait(false);
+
+        return existing is not null
+            ? new CompactionCancelled(
+                request.Context,
+                CompactionCommitState.Committed,
+                "The compaction attempt was cancelled after its record was committed.",
+                existing)
+            : reconciled
+            ? new CompactionCancelled(
+                request.Context,
+                CompactionCommitState.NotCommitted,
+                "The compaction attempt was cancelled during activation; no record was committed.")
+            : new CompactionCancelled(
+                request.Context,
+                CompactionCommitState.Unknown,
+                "The compaction attempt was cancelled during activation and its commit state could not be reconciled.");
     }
 
     /// <summary>
@@ -500,8 +553,8 @@ public sealed class DefaultCompactor: ICompactor
         Debug.Assert(conflict is not null, "The caller matched an append conflict.");
         Debug.Assert(manifest is not null, "A candidate exists once activation is attempted.");
 
-        var (existing, _) = await FindCommittedRecordAsync(sessionContext, request, branchTip, pinned: null, cancellationToken)
-            .ConfigureAwait(false);
+        var (existing, _) = await FindCommittedRecordAsync(
+            sessionContext, request, branchTip, pinned: null, maximumPages: 1, cancellationToken).ConfigureAwait(false);
         return existing is not null
             ? new CompactionSucceeded(request.Context, existing)
             : new CompactionConflict(request.Context, conflict.ExpectedVersion, conflict.ActualVersion, manifest);
@@ -522,8 +575,8 @@ public sealed class DefaultCompactor: ICompactor
     {
         Debug.Assert(failed is not null, "The caller matched a failed append.");
 
-        var (existing, reconciled) = await FindCommittedRecordAsync(sessionContext, request, branchTip, pinned: null, cancellationToken)
-            .ConfigureAwait(false);
+        var (existing, reconciled) = await FindCommittedRecordAsync(
+            sessionContext, request, branchTip, pinned: null, maximumPages: 1, cancellationToken).ConfigureAwait(false);
         return existing is not null
             ? new CompactionSucceeded(request.Context, existing)
             : new CompactionFailed(
@@ -546,7 +599,10 @@ public sealed class DefaultCompactor: ICompactor
     /// of the same logical checkpoint discovers the committed record instead of failing on reused idempotency
     /// evidence. Reads continue from <paramref name="pinned"/> when supplied and otherwise pin to the first page
     /// returned; a read failure or a drifted continuation snapshot reports <c>Reconciled = false</c> so the caller
-    /// can distinguish "no record exists" from "commit state unknown".
+    /// can distinguish "no record exists" from "commit state unknown". Because an activation append is
+    /// version-checked, a record committed by this attempt is necessarily the first branch entry after the tip it
+    /// observed, so callers scanning from that tip bound the read to one page; the load-time scan after
+    /// <see cref="CompactionRequest.SourceThrough"/> must cross the ineligible tail and is bounded by the branch.
     /// </remarks>
     /// <returns>
     /// The committed record and <see langword="true"/> when found; <see langword="null"/> and
@@ -558,13 +614,15 @@ public sealed class DefaultCompactor: ICompactor
         CompactionRequest request,
         SessionSequence fromSequenceExclusive,
         SessionReadSnapshot? pinned,
+        int maximumPages,
         CancellationToken cancellationToken)
     {
         Debug.Assert(sessionContext is not null, "The caller builds the session context before reconciling.");
         Debug.Assert(request is not null, "The caller validates the request before reconciling.");
+        Debug.Assert(maximumPages > 0, "Reconciliation reads at least one page.");
 
         var cursor = fromSequenceExclusive;
-        while (true)
+        for (var pagesRead = 0; pagesRead < maximumPages; pagesRead++)
         {
             var pageResult = await _coordinator.ReadAsync(
                 pinned is null
@@ -602,5 +660,8 @@ public sealed class DefaultCompactor: ICompactor
                 return (null, true);
             }
         }
+
+        // The page bound was reached; a record committed by this attempt would have been on the first page.
+        return (null, true);
     }
 }

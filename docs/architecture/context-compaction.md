@@ -762,6 +762,15 @@ replay the identical request (same `SourceVersion` and `SourceThrough`); reusing
 a `CompactionId` for a different logical checkpoint is caller misuse and is not
 mapped to the existing record.
 
+Cancellation is a typed outcome, never a bare exception, once a request has been
+accepted. `CompactionCancelled.CommitState` reports what the compactor
+established: `NotAttempted` when the token fired before any activation append
+was issued; otherwise the compactor reconciles the tip with a bounded read that
+is deliberately not governed by the caller's token and reports `Committed`
+together with the durable record, `NotCommitted` when the read proves no record
+exists, or `Unknown` when the read itself was unavailable. A committed record is
+never rolled back by cancellation.
+
 `CompactionFailure.Retryable` is `true` only when the compactor has positive
 evidence that the failure was transient (an unavailable source read, a drifted
 continuation snapshot). An append failure that leaves no committed record is

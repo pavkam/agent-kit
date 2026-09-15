@@ -1831,7 +1831,9 @@ namespace AgentKit
     }
     public sealed class CompactionCancelled : AgentKit.CompactionResult, System.IEquatable<AgentKit.CompactionCancelled>
     {
-        public CompactionCancelled(AgentKit.CompactionOperationContext context, string safeMessage) { }
+        public CompactionCancelled(AgentKit.CompactionOperationContext context, AgentKit.CompactionCommitState commitState, string safeMessage, AgentKit.CompactionRecord? committedRecord = null) { }
+        public AgentKit.CompactionCommitState CommitState { get; }
+        public AgentKit.CompactionRecord? CommittedRecord { get; }
         public string SafeMessage { get; init; }
     }
     public sealed class CompactionCandidate : System.IEquatable<AgentKit.CompactionCandidate>
@@ -1854,6 +1856,13 @@ namespace AgentKit
         public AgentKit.CompactionSizeEstimate After { get; init; }
         public AgentKit.CompactionCheckpoint Checkpoint { get; init; }
         public AgentKit.CompactionProducer Producer { get; init; }
+    }
+    public enum CompactionCommitState
+    {
+        NotAttempted = 0,
+        NotCommitted = 1,
+        Committed = 2,
+        Unknown = 3,
     }
     public sealed class CompactionConflict : AgentKit.CompactionResult, System.IEquatable<AgentKit.CompactionConflict>
     {

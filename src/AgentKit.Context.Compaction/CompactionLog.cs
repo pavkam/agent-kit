@@ -21,12 +21,13 @@ internal static partial class CompactionLog
     [LoggerMessage(9001, LogLevel.Information, "Compaction {CompactionId} for session {SessionId} completed with outcome {Outcome}.")]
     internal static partial void Completed(ILogger logger, CompactionId compactionId, SessionId sessionId, string outcome);
 
-    /// <summary>Records caller cancellation of a compaction attempt.</summary>
+    /// <summary>Records caller cancellation of a compaction attempt together with the reconciled commit state.</summary>
     /// <param name="logger">The logger receiving the structured event.</param>
     /// <param name="compactionId">The logical checkpoint identity.</param>
     /// <param name="sessionId">The session whose bounded source was being processed.</param>
-    [LoggerMessage(9002, LogLevel.Debug, "Compaction {CompactionId} for session {SessionId} was cancelled.")]
-    internal static partial void Cancelled(ILogger logger, CompactionId compactionId, SessionId sessionId);
+    /// <param name="commitState">What reconciliation established about the activation append.</param>
+    [LoggerMessage(9002, LogLevel.Debug, "Compaction {CompactionId} for session {SessionId} was cancelled with commit state {CommitState}.")]
+    internal static partial void Cancelled(ILogger logger, CompactionId compactionId, SessionId sessionId, CompactionCommitState commitState);
 
     /// <summary>Records an unexpected compaction exception without source or candidate content.</summary>
     /// <param name="logger">The logger receiving the structured event.</param>
