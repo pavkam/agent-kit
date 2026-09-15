@@ -340,6 +340,18 @@ closed on invalid state, and perform no transparent provider or tool retry. An
 agent definition may select a policy key and narrow defaults; run options may
 narrow them again. Managed ceilings cannot be widened by either layer.
 
+The first-party `AgentLoopOptions` currently exposes the history read page size,
+the append-conflict retry limit (rebases after a concurrent writer advanced the
+branch; zero disables rebasing), the settlement timeout that bounds each
+required terminal commit made independently of the caller's cancellation (the
+tool message settling a committed assistant request and the interrupted message
+preserving partial output), and the observer-delivery timeout that bounds each
+event delivered outside the caller's token. All are validated at composition and
+measured with the injected `TimeProvider`. When the settlement bound elapses the
+run settles as a session-operation failure that states the commit outcome is
+unknown; the loop never hangs on settlement and never claims a lost append
+committed.
+
 Authorization is captured fresh for the run and for every turn. When the
 security authority cannot capture it, the run settles with the typed
 `AgentRunAuthorizationUnavailable` outcome and attempts no protected work under

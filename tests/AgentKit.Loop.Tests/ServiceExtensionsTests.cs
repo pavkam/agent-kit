@@ -116,6 +116,65 @@ public sealed class ServiceExtensionsTests
         _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IAgentLoop>);
     }
 
+    [Fact]
+    public void AddAgentLoop_WhenAppendConflictRetryLimitIsNegative_FailsValidationOnAccess()
+    {
+        var services = BuildComposableServices();
+
+        _ = services.AddAgentLoop(static options => options.AppendConflictRetryLimit = -1);
+
+        using var provider = services.BuildServiceProvider();
+        _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IAgentLoop>);
+    }
+
+    [Fact]
+    public void AddAgentLoop_WhenAppendConflictRetryLimitIsZero_PassesValidation()
+    {
+        var services = BuildComposableServices();
+
+        _ = services.AddAgentLoop(static options => options.AppendConflictRetryLimit = 0);
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IAgentLoop>().ShouldBeOfType<DefaultAgentLoop>();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void AddAgentLoop_WhenSettlementTimeoutIsNotPositive_FailsValidationOnAccess(int seconds)
+    {
+        var services = BuildComposableServices();
+
+        _ = services.AddAgentLoop(options => options.SettlementTimeout = TimeSpan.FromSeconds(seconds));
+
+        using var provider = services.BuildServiceProvider();
+        _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IAgentLoop>);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void AddAgentLoop_WhenObserverDeliveryTimeoutIsNotPositive_FailsValidationOnAccess(int seconds)
+    {
+        var services = BuildComposableServices();
+
+        _ = services.AddAgentLoop(options => options.ObserverDeliveryTimeout = TimeSpan.FromSeconds(seconds));
+
+        using var provider = services.BuildServiceProvider();
+        _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IAgentLoop>);
+    }
+
+    [Fact]
+    public void AddAgentLoop_WhenOptionsAreDefault_UsesDocumentedDefaults()
+    {
+        var options = new AgentLoopOptions();
+
+        options.HistoryReadPageSize.ShouldBe(200);
+        options.AppendConflictRetryLimit.ShouldBe(5);
+        options.SettlementTimeout.ShouldBe(TimeSpan.FromSeconds(30));
+        options.ObserverDeliveryTimeout.ShouldBe(TimeSpan.FromSeconds(5));
+    }
+
     private static ServiceCollection BuildComposableServices()
     {
         var services = new ServiceCollection();

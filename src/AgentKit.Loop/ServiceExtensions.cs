@@ -38,7 +38,10 @@ public static class ServiceExtensions
         {
             _ = services.AddAgentKitObservability();
             var optionsBuilder = services.AddOptions<AgentLoopOptions>()
-                .Validate(o => o.HistoryReadPageSize > 0, "HistoryReadPageSize must be positive.");
+                .Validate(o => o.HistoryReadPageSize > 0, "HistoryReadPageSize must be positive.")
+                .Validate(o => o.AppendConflictRetryLimit >= 0, "AppendConflictRetryLimit must not be negative.")
+                .Validate(o => o.SettlementTimeout > TimeSpan.Zero, "SettlementTimeout must be positive.")
+                .Validate(o => o.ObserverDeliveryTimeout > TimeSpan.Zero, "ObserverDeliveryTimeout must be positive.");
 
             if (configure is not null)
             {

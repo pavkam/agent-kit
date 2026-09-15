@@ -68,18 +68,22 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private readonly ILogger<DefaultAgentLoop> _logger;
     private readonly int _historyReadPageSize;
 
-    /// <summary>The most a single append retries after a concurrent writer advanced the branch, before giving up.</summary>
+    /// <summary>The most a single append is retried after a concurrent writer advanced the branch, before giving up.</summary>
     /// <remarks>
     /// A tool invoked mid-turn (the plan/todo tool, for one) may commit its own session entries directly through
     /// <see cref="ISessionCoordinator"/>, independently of this loop's own turn-scoped <c>currentVersion</c>
     /// tracking. <see cref="SessionAppendConflict"/> documents that the store deliberately never rebases or
     /// retries on the caller's behalf; a bounded retry in <see cref="AppendWithDiagnosticsAsync"/>, rebasing onto
-    /// the conflict's own reported <see cref="SessionAppendConflict.ActualVersion"/>, is exactly the
-    /// reload-and-reattempt the type's own remarks describe. The bound exists only to turn a pathological runaway
-    /// writer into a clear failure instead of an unbounded loop; an ordinary interleaved tool append settles on
-    /// the first retry.
+    /// the re-read branch tip, is exactly the reload-and-reattempt the type's own remarks describe. Configured
+    /// through <see cref="AgentLoopOptions.AppendConflictRetryLimit"/>.
     /// </remarks>
-    private const int _maxAppendConflictRetries = 5;
+    private readonly int _appendConflictRetryLimit;
+
+    /// <summary>The bound on each required terminal commit; see <see cref="AgentLoopOptions.SettlementTimeout"/>.</summary>
+    private readonly TimeSpan _settlementTimeout;
+
+    /// <summary>The bound on each detached observer delivery; see <see cref="AgentLoopOptions.ObserverDeliveryTimeout"/>.</summary>
+    private readonly TimeSpan _observerDeliveryTimeout;
 
     /// <summary>
     /// The single immutable run-policy version of this reduced loop. Its continuation-relevant behaviour is fixed
@@ -111,6 +115,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// Microsoft null logger is used when omitted.
     /// </param>
     /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="options"/> carries a non-positive <see cref="AgentLoopOptions.HistoryReadPageSize"/>,
+    /// a negative <see cref="AgentLoopOptions.AppendConflictRetryLimit"/>, or a non-positive
+    /// <see cref="AgentLoopOptions.SettlementTimeout"/> or <see cref="AgentLoopOptions.ObserverDeliveryTimeout"/>.
+    /// </exception>
     public DefaultAgentLoop(
         ISessionCoordinator sessionCoordinator,
         ISecurityProfileSelector securityProfileSelector,
@@ -144,6 +153,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ArgumentNullException.ThrowIfNull(entryIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        var loopOptions = options.Value;
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(loopOptions.HistoryReadPageSize, 0, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfNegative(loopOptions.AppendConflictRetryLimit, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(loopOptions.SettlementTimeout, TimeSpan.Zero, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(loopOptions.ObserverDeliveryTimeout, TimeSpan.Zero, nameof(options));
 
         _sessionCoordinator = sessionCoordinator;
         _securityProfileSelector = securityProfileSelector;
@@ -160,7 +174,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _entryIds = entryIds;
         _timeProvider = timeProvider;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultAgentLoop>.Instance;
-        _historyReadPageSize = options.Value.HistoryReadPageSize;
+        _historyReadPageSize = loopOptions.HistoryReadPageSize;
+        _appendConflictRetryLimit = loopOptions.AppendConflictRetryLimit;
+        _settlementTimeout = loopOptions.SettlementTimeout;
+        _observerDeliveryTimeout = loopOptions.ObserverDeliveryTimeout;
     }
 
     /// <inheritdoc/>
@@ -731,8 +748,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 [],
                 ExtensionData.Empty);
             resultParts.Add(rejected);
-            await ObserveAsync(request, new AgentRunToolCallCompleted(turnId, rejected), CancellationToken.None)
-                .ConfigureAwait(false);
+            await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, rejected)).ConfigureAwait(false);
         }
 
         var appendAttempt = await CommitToolMessageAsync(
@@ -746,10 +762,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     /// <summary>
     /// Builds and durably commits the tool message carrying one terminal result per requested call. The commit
-    /// always uses <see cref="CancellationToken.None"/>: the assistant message that requested these calls is already
-    /// committed, so its results must land no matter how the run itself settles. For the same reason a concurrent
-    /// message landing ahead of the tool message never refuses the commit; the interleaved entries are returned so
-    /// the next turn's history reflects them.
+    /// runs under the loop's own bounded settlement token rather than the caller's: the assistant message that
+    /// requested these calls is already committed, so its results must land no matter how the run itself settles.
+    /// For the same reason a concurrent message landing ahead of the tool message never refuses the commit; the
+    /// interleaved entries are returned so the next turn's history reflects them.
     /// </summary>
     private async ValueTask<AppendAttempt> CommitToolMessageAsync(
         AgentRunRequest request,
@@ -788,7 +804,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
             new SchemaVersion("1"),
             toolMessage);
 
-        var appendAttempt = await AppendWithDiagnosticsAsync(
+        var appendAttempt = await AppendWithSettlementBoundAsync(
+            request.RunId,
             new SessionAppendRequest(
                 turnSessionContext,
                 request.BranchId,
@@ -796,8 +813,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:tools"),
                 [toolEntry]),
             request.SessionProfile,
-            allowInterleavedMessages: true,
-            CancellationToken.None).ConfigureAwait(false);
+            allowInterleavedMessages: true).ConfigureAwait(false);
 
         if (appendAttempt.Result is SessionAppended)
         {
@@ -848,10 +864,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 interrupted = true;
                 var skippedResult = InterruptedResultPart(toolCall);
                 resultParts.Add(skippedResult);
-                await ObserveAsync(
-                    request,
-                    new AgentRunToolCallCompleted(turnId, skippedResult),
-                    CancellationToken.None).ConfigureAwait(false);
+                await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, skippedResult)).ConfigureAwait(false);
                 continue;
             }
 
@@ -910,10 +923,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             }
 
             resultParts.Add(resultPart);
-            await ObserveAsync(
-                request,
-                new AgentRunToolCallCompleted(turnId, resultPart),
-                CancellationToken.None).ConfigureAwait(false);
+            await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, resultPart)).ConfigureAwait(false);
         }
 
         // The commit deliberately ignores the caller's cancellation (see CommitToolMessageAsync). A tool invoker
@@ -1177,6 +1187,62 @@ public sealed class DefaultAgentLoop: IAgentLoop
     }
 
     /// <summary>
+    /// Performs a required terminal commit under the loop's own bounded settlement token, independent of the
+    /// caller's cancellation, so evidence of how the run stopped can land without the loop ever hanging on it.
+    /// </summary>
+    /// <param name="runId">The run whose settlement is bounded, for diagnostics.</param>
+    /// <param name="request">The append to commit.</param>
+    /// <param name="sessionProfile">The run's immutable session profile.</param>
+    /// <param name="allowInterleavedMessages">Whether the append may still commit after a concurrent message landed ahead of it.</param>
+    /// <returns>
+    /// The append attempt; when <see cref="AgentLoopOptions.SettlementTimeout"/> elapses first, a
+    /// <see cref="SessionAppendFailed"/> whose message states that the commit outcome is unknown.
+    /// </returns>
+    private async ValueTask<AppendAttempt> AppendWithSettlementBoundAsync(
+        RunId runId,
+        SessionAppendRequest request,
+        SessionProfileSnapshot sessionProfile,
+        bool allowInterleavedMessages)
+    {
+        Debug.Assert(request is not null, "A validated append request is required for a bounded settlement commit.");
+        using var settlement = new CancellationTokenSource(_settlementTimeout, _timeProvider);
+        try
+        {
+            return await AppendWithDiagnosticsAsync(request, sessionProfile, allowInterleavedMessages, settlement.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (settlement.IsCancellationRequested)
+        {
+            LoopLog.SettlementTimedOut(_logger, runId, request.Context.SessionId, _settlementTimeout);
+            return new AppendAttempt(
+                new SessionAppendFailed(
+                    "The required terminal commit did not complete within the configured settlement timeout; " +
+                    "whether it landed is unknown."),
+                [],
+                staleAfterInterleavedMessage: false);
+        }
+    }
+
+    /// <summary>
+    /// Delivers a run event that must not use the caller's (possibly cancelled) token, bounded by
+    /// <see cref="AgentLoopOptions.ObserverDeliveryTimeout"/> so a stalled observer cannot hold up settlement.
+    /// </summary>
+    /// <param name="request">The run whose observer receives the event.</param>
+    /// <param name="runEvent">The immutable event to deliver.</param>
+    /// <returns>An operation completing after delivery succeeds, times out, or is safely dropped.</returns>
+    private async ValueTask ObserveDetachedAsync(AgentRunRequest request, AgentRunEvent runEvent)
+    {
+        Debug.Assert(request is not null, "A validated run request is required for observer delivery.");
+        if (request.Observer is null)
+        {
+            return;
+        }
+
+        using var delivery = new CancellationTokenSource(_observerDeliveryTimeout, _timeProvider);
+        await ObserveAsync(request, runEvent, delivery.Token).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Appends with commit diagnostics, rebasing onto the actual branch tip after a concurrent writer advanced it.
     /// </summary>
     /// <param name="request">The append built against the loop's last-observed tip.</param>
@@ -1226,7 +1292,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             result = await _sessionCoordinator.AppendAsync(
                 attemptRequest, sessionProfile, cancellationToken).ConfigureAwait(false);
-            if (result is not SessionAppendConflict conflict || attempt >= _maxAppendConflictRetries)
+            if (result is not SessionAppendConflict conflict || attempt > _appendConflictRetryLimit)
             {
                 break;
             }
@@ -1384,11 +1450,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
             new SchemaVersion("1"),
             interruptedMessage);
 
-        // Partial output is committed with CancellationToken.None: the caller's token is usually the very reason
-        // the attempt was interrupted, and a cancelled token would otherwise discard output the class promises to keep.
-        // Interrupted output is audit evidence rather than a live reply, so a concurrently interleaved message
-        // never refuses it (allowInterleavedMessages: true).
-        var appendAttempt = await AppendWithDiagnosticsAsync(
+        // Partial output is committed under the loop's bounded settlement token rather than the caller's: the
+        // caller's token is usually the very reason the attempt was interrupted, and a cancelled token would
+        // otherwise discard output the class promises to keep. Interrupted output is audit evidence rather than a
+        // live reply, so a concurrently interleaved message never refuses it (allowInterleavedMessages: true).
+        var appendAttempt = await AppendWithSettlementBoundAsync(
+            request.RunId,
             new SessionAppendRequest(
                 turnSessionContext,
                 request.BranchId,
@@ -1396,8 +1463,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:interrupted"),
                 [entry]),
             request.SessionProfile,
-            allowInterleavedMessages: true,
-            CancellationToken.None).ConfigureAwait(false);
+            allowInterleavedMessages: true).ConfigureAwait(false);
 
         if (appendAttempt.Result is not SessionAppended appended)
         {

@@ -4,6 +4,11 @@
 namespace AgentKit.Loop;
 
 /// <summary>Options controlling <see cref="DefaultAgentLoop"/> behavior.</summary>
+/// <remarks>
+/// Every value is validated when the options are first resolved (see <c>AddAgentLoop</c>), so an impossible
+/// limit fails at composition rather than in the middle of a run. All timeouts are measured with the injected
+/// <see cref="TimeProvider"/>.
+/// </remarks>
 public sealed class AgentLoopOptions
 {
     /// <summary>
@@ -11,5 +16,36 @@ public sealed class AgentLoopOptions
     /// <see cref="ISessionCoordinator.ReadAsync"/> page while loading a
     /// run's eligible history. Defaults to 200.
     /// </summary>
+    /// <value>A positive page size.</value>
     public int HistoryReadPageSize { get; set; } = 200;
+
+    /// <summary>
+    /// Gets or sets how many times one append is retried, rebased onto the actual branch tip, after a concurrent
+    /// writer advanced the branch. Defaults to 5.
+    /// </summary>
+    /// <value>
+    /// A non-negative retry count. Zero disables rebasing: the first conflict settles the run as a session
+    /// operation failure. The bound turns a pathological runaway writer into a clear failure instead of an
+    /// unbounded loop; an ordinary interleaved tool append settles on the first retry.
+    /// </value>
+    public int AppendConflictRetryLimit { get; set; } = 5;
+
+    /// <summary>
+    /// Gets or sets the bound on each required terminal commit that must land regardless of the caller's
+    /// cancellation: the tool message settling an already-committed assistant request, and the interrupted
+    /// message preserving partial model output. Defaults to 30 seconds.
+    /// </summary>
+    /// <value>
+    /// A positive duration. When the bound elapses the run settles as a session operation failure whose message
+    /// states that the commit outcome is unknown; the loop never hangs on settlement.
+    /// </value>
+    public TimeSpan SettlementTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Gets or sets the bound on delivering one run event to the request's <see cref="IAgentRunObserver"/> when
+    /// the delivery must not use the caller's (possibly already cancelled) token, such as terminal tool results
+    /// of an interrupted batch. Defaults to 5 seconds.
+    /// </summary>
+    /// <value>A positive duration. Delivery that exceeds it is dropped and logged like any other observer failure.</value>
+    public TimeSpan ObserverDeliveryTimeout { get; set; } = TimeSpan.FromSeconds(5);
 }

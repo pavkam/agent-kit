@@ -67,6 +67,18 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     /// </summary>
     public Func<SessionReadRequest, SessionPageResult?>? ConditionalReadOverride { get; set; }
 
+    /// <summary>
+    /// Gets or sets a predicate selecting appends that never complete on their
+    /// own: the fake awaits the supplied cancellation token instead, then
+    /// throws <see cref="OperationCanceledException"/>, mirroring a store call
+    /// that only ends when its token fires. <see cref="AppendStalled"/> is
+    /// signalled once such an append is actually waiting.
+    /// </summary>
+    public Func<SessionAppendRequest, bool>? StallAppend { get; set; }
+
+    /// <summary>Gets a completion signalled when a stalled append is waiting on its token.</summary>
+    public TaskCompletionSource AppendStalled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     /// <summary>Gets or sets the conversation identity returned by session descriptor loads.</summary>
     public ConversationId? ConversationId { get; set; }
 
@@ -119,7 +131,7 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     }
 
     /// <inheritdoc/>
-    public ValueTask<SessionAppendResult> AppendAsync(
+    public async ValueTask<SessionAppendResult> AppendAsync(
         SessionAppendRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -130,25 +142,35 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
 
         _receivedAppends.Add(request);
 
+        if (StallAppend?.Invoke(request) == true)
+        {
+            _ = AppendStalled.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+
+        return AppendCore(request);
+    }
+
+    private SessionAppendResult AppendCore(SessionAppendRequest request)
+    {
         if (AppendOverride is not null)
         {
-            return ValueTask.FromResult(AppendOverride(request));
+            return AppendOverride(request);
         }
 
         if (ConditionalAppendOverride?.Invoke(request) is { } conditionalResult)
         {
-            return ValueTask.FromResult(conditionalResult);
+            return conditionalResult;
         }
 
         if (request.BranchId != BranchId)
         {
-            return ValueTask.FromResult<SessionAppendResult>(new SessionAppendNotFound(request.Context.ToAddress()));
+            return new SessionAppendNotFound(request.Context.ToAddress());
         }
 
         if (request.ExpectedVersion.Value != Version.Value)
         {
-            return ValueTask.FromResult<SessionAppendResult>(
-                new SessionAppendConflict(request.ExpectedVersion, Version));
+            return new SessionAppendConflict(request.ExpectedVersion, Version);
         }
 
         if (EnforceSequenceContinuity)
@@ -158,8 +180,8 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
                 var expected = NextSequence + i + 1;
                 if (request.Entries[i].Sequence.Value != expected)
                 {
-                    return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(
-                        $"Entry at position {i} has sequence {request.Entries[i].Sequence.Value}; expected {expected}."));
+                    return new SessionAppendFailed(
+                        $"Entry at position {i} has sequence {request.Entries[i].Sequence.Value}; expected {expected}.");
                 }
             }
         }
@@ -168,7 +190,7 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         NextSequence += request.Entries.Length;
         Version = new SessionVersion(Version.Value + 1);
 
-        return ValueTask.FromResult<SessionAppendResult>(new SessionAppended(Version, request.Entries));
+        return new SessionAppended(Version, request.Entries);
     }
 
     /// <inheritdoc/>

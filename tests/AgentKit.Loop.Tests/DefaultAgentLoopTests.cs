@@ -244,6 +244,164 @@ public sealed class DefaultAgentLoopTests
         result.FinalVersion.ShouldBe(coordinator.Version);
     }
 
+    [Theory]
+    [InlineData(0, 5, 30, 5)]
+    [InlineData(200, -1, 30, 5)]
+    [InlineData(200, 5, 0, 5)]
+    [InlineData(200, 5, 30, 0)]
+    public void Constructor_WhenOptionsCarryAnImpossibleLimit_ThrowsArgumentOutOfRangeException(
+        int pageSize, int retryLimit, int settlementSeconds, int observerSeconds)
+    {
+        var options = new AgentLoopOptions
+        {
+            HistoryReadPageSize = pageSize,
+            AppendConflictRetryLimit = retryLimit,
+            SettlementTimeout = TimeSpan.FromSeconds(settlementSeconds),
+            ObserverDeliveryTimeout = TimeSpan.FromSeconds(observerSeconds),
+        };
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new DefaultAgentLoop(
+            new FakeSessionCoordinator(_branchId),
+            new FakeSecurityProfileSelector(),
+            new DefaultContextAssembler(),
+            new FakeToolInvoker(_ => TestFactory.SuccessResult()),
+            new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
+            FakeModelSelector.Selecting(TestFactory.Model()),
+            new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))),
+            new DefaultRunContinuationPolicy(TimeProvider.System),
+            IdGenerator(static v => new OperationId(v)),
+            IdGenerator(static v => new TurnId(v)),
+            IdGenerator(static v => new ModelRequestId(v)),
+            IdGenerator(static v => new MessageId(v)),
+            IdGenerator(static v => new SessionEntryId(v)),
+            TimeProvider.System,
+            Options.Create(options)));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAppendConflictRetryLimitIsZero_FailsOnTheFirstConflictWithoutRetrying()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId),
+            options: new AgentLoopOptions { AppendConflictRetryLimit = 0 });
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            coordinator.SimulateConcurrentAppend([TestFactory.SeedToolFactEntry(_agentId, _sessionId, _branchId, 2)]);
+            return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
+        };
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        _ = coordinator.ReceivedAppends.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAppendConflictsMoreThanTheRetryLimit_GivesUpAfterTheConfiguredRetries()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId),
+            options: new AgentLoopOptions { AppendConflictRetryLimit = 2 });
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            coordinator.SimulateConcurrentAppend([TestFactory.SeedToolFactEntry(_agentId, _sessionId, _branchId, coordinator.NextSequence + 1)]);
+            return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
+        };
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        coordinator.ReceivedAppends.Count.ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheToolMessageCommitNeverCompletes_SettlesAsSessionOperationFailedAtTheSettlementTimeout()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var clock = new FakeTimeProvider();
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithToolCall(requestId, callId),
+            options: new AgentLoopOptions { SettlementTimeout = TimeSpan.FromSeconds(30) },
+            timeProvider: clock);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        coordinator.StallAppend = static request => request.IdempotencyKey.Value.EndsWith(":tools", StringComparison.Ordinal);
+
+        var run = loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        await coordinator.AppendStalled.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        run.IsCompleted.ShouldBeFalse();
+        clock.Advance(TimeSpan.FromSeconds(29));
+        run.IsCompleted.ShouldBeFalse();
+        clock.Advance(TimeSpan.FromSeconds(1));
+
+        var result = await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        var failed = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        failed.SafeMessage.ShouldContain("unknown");
+        _ = result.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
+        result.FinalVersion.ShouldBe(new SessionVersion(2));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheInterruptedCommitNeverCompletes_SettlesAsSessionOperationFailedAtTheSettlementTimeout()
+    {
+        var clock = new FakeTimeProvider();
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => new ModelAttemptFailed(
+                TestFactory.Failure(), [new TextPart("partial", TextSemantics.Plain, ExtensionData.Empty)], null),
+            options: new AgentLoopOptions { SettlementTimeout = TimeSpan.FromSeconds(5) },
+            timeProvider: clock);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        coordinator.StallAppend = static _ => true;
+
+        var run = loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        await coordinator.AppendStalled.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        clock.Advance(TimeSpan.FromSeconds(5));
+
+        var result = await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        result.NewMessages.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenADetachedObserverDeliveryStalls_ContinuesAfterTheObserverDeliveryTimeout()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var clock = new FakeTimeProvider();
+        var observer = new RecordingAgentRunObserver
+        {
+            StallDelivery = static runEvent => runEvent is AgentRunToolCallCompleted,
+        };
+        var calls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            options: new AgentLoopOptions { ObserverDeliveryTimeout = TimeSpan.FromSeconds(5) },
+            timeProvider: clock);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var run = loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer },
+            TestContext.Current.CancellationToken);
+        await observer.DeliveryStalled.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        run.IsCompleted.ShouldBeFalse();
+        clock.Advance(TimeSpan.FromSeconds(5));
+
+        var result = await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        result.NewMessages.Length.ShouldBe(3);
+        _ = observer.Events.OfType<AgentRunToolCallCompleted>().ShouldHaveSingleItem();
+    }
+
     [Fact]
     public async Task RunAsync_WhenRequestIsNull_ThrowsArgumentNullException()
     {
@@ -1380,7 +1538,9 @@ public sealed class DefaultAgentLoopTests
         ModelResponseEvent? modelEvent = null,
         IContextAssembler? contextAssembler = null,
         IRunContinuationPolicy? continuationPolicy = null,
-        FakeSecurityProfileSelector? securityProfileSelector = null)
+        FakeSecurityProfileSelector? securityProfileSelector = null,
+        AgentLoopOptions? options = null,
+        TimeProvider? timeProvider = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -1402,8 +1562,8 @@ public sealed class DefaultAgentLoopTests
             IdGenerator(static v => new ModelRequestId(v)),
             IdGenerator(static v => new MessageId(v)),
             IdGenerator(static v => new SessionEntryId(v)),
-            TimeProvider.System,
-            Options.Create(new AgentLoopOptions()));
+            timeProvider ?? TimeProvider.System,
+            Options.Create(options ?? new AgentLoopOptions()));
     }
 
     private static DefaultAgentLoop CreateLoopWith(

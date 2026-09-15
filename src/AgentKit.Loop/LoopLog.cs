@@ -70,7 +70,7 @@ internal static partial class LoopLog
 
     /// <summary>Logs an append rebasing onto a newer version after a concurrent writer advanced the branch.</summary>
     /// <remarks>A tool that commits its own session entries mid-turn (the plan/todo tool, for one) is the
-    /// expected source of this contention; see the remarks on <c>DefaultAgentLoop._maxAppendConflictRetries</c>.</remarks>
+    /// expected source of this contention; the bound is <see cref="AgentLoopOptions.AppendConflictRetryLimit"/>.</remarks>
     [LoggerMessage(
         1041,
         LogLevel.Information,
@@ -129,6 +129,11 @@ internal static partial class LoopLog
     /// <remarks>The reduced loop commits one tool message per batch; the continuation contract requires a distinct terminal-record identity per call, which only a single-call batch can supply.</remarks>
     [LoggerMessage(1064, LogLevel.Information, "Run {RunId} turn {TurnId} committed {ToolCount} tool results in one projection entry; the continuation policy was not consulted and the turn continues for interpretation.")]
     internal static partial void ContinuationPolicyBypassedForBatchProjection(ILogger logger, RunId runId, TurnId turnId, int toolCount);
+
+    /// <summary>Logs a required terminal commit that did not complete within the configured settlement bound.</summary>
+    /// <remarks>Whether the commit landed is unknown; the run settles as a session operation failure saying so rather than hanging.</remarks>
+    [LoggerMessage(1043, LogLevel.Error, "Settlement commit for run {RunId} in session {SessionId} did not complete within {SettlementTimeout}; the commit outcome is unknown.")]
+    internal static partial void SettlementTimedOut(ILogger logger, RunId runId, SessionId sessionId, TimeSpan settlementTimeout);
 
     /// <summary>Logs an isolated run-observer failure without recording event content.</summary>
     [LoggerMessage(1070, LogLevel.Warning, "Run observer for run {RunId} failed while receiving {EventType}; the run continues.")]

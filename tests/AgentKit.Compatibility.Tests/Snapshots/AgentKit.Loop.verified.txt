@@ -11,7 +11,10 @@ namespace AgentKit.Loop
     public sealed class AgentLoopOptions
     {
         public AgentLoopOptions() { }
+        public int AppendConflictRetryLimit { get; set; }
         public int HistoryReadPageSize { get; set; }
+        public System.TimeSpan ObserverDeliveryTimeout { get; set; }
+        public System.TimeSpan SettlementTimeout { get; set; }
     }
     public sealed class DefaultAgentLoop : AgentKit.IAgentLoop
     {

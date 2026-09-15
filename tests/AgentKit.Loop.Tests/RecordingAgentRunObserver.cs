@@ -15,14 +15,31 @@ internal sealed class RecordingAgentRunObserver: IAgentRunObserver
     /// <summary>Gets or sets an optional action invoked after each event is recorded.</summary>
     internal Action<AgentRunEvent>? EventRecorded { get; set; }
 
+    /// <summary>
+    /// Gets or sets a predicate selecting events whose delivery never completes on its own: the observer awaits
+    /// the supplied token instead, mirroring a stalled sink. <see cref="DeliveryStalled"/> is signalled once such a
+    /// delivery is actually waiting.
+    /// </summary>
+    internal Func<AgentRunEvent, bool>? StallDelivery { get; set; }
+
+    /// <summary>Gets a completion signalled when a stalled delivery is waiting on its token.</summary>
+    internal TaskCompletionSource DeliveryStalled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     /// <inheritdoc/>
-    public ValueTask OnEventAsync(AgentRunEvent runEvent, CancellationToken cancellationToken = default)
+    public async ValueTask OnEventAsync(AgentRunEvent runEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(runEvent);
         Events.Add(runEvent);
         EventRecorded?.Invoke(runEvent);
-        return ThrowAfterRecording
-            ? ValueTask.FromException(new InvalidOperationException("observer failure"))
-            : ValueTask.CompletedTask;
+        if (StallDelivery?.Invoke(runEvent) == true)
+        {
+            _ = DeliveryStalled.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+
+        if (ThrowAfterRecording)
+        {
+            throw new InvalidOperationException("observer failure");
+        }
     }
 }
