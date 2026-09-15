@@ -6,6 +6,7 @@ namespace AgentKit.Providers.OpenAICompatible.Tests;
 using System.Net;
 using System.Net.Http;
 
+using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Tests.Fakes;
 using AgentKit.TestSupport;
 
@@ -72,6 +73,23 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
             new HttpClient(handler),
             timeProvider ?? new FakeTimeProvider(Now));
 
+    private static CustomizingEmbeddingModel CreateCustomizingModel(
+        HttpMessageHandler handler,
+        IProviderCredentialSource credentials,
+        ProviderAuthorizationScheme scheme,
+        Action<JsonObject, EmbeddingModelRequest, EmbeddingModelDescriptor> adjust,
+        EmbeddingModelDescriptor? descriptor = null) =>
+        new(
+            descriptor ?? TestModels.TextEmbedding3Small,
+            Profile,
+            new OpenAIEmbeddingRequestTranslator(),
+            new OpenAIEmbeddingResponseParser(),
+            credentials,
+            new HttpClient(handler),
+            new FakeTimeProvider(Now),
+            scheme,
+            adjust);
+
     [Fact]
     public async Task GenerateAsync_WhenSuccess_ReturnsCompletedResponseWithAuthorizationHeader()
     {
@@ -135,6 +153,91 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
         failed.Failure.StatusCode.ShouldBe(401);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
+        ProviderErrorMessageEvidence.TryRead(failed.Failure.Extensions).ShouldBe("Incorrect API key provided.");
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenErrorBodyIsNotJson_LeavesNoProviderMessageEvidence()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent("<html>Bad Gateway</html>", Encoding.UTF8, "text/html"),
+        });
+        var model = CreateModel(handler, Profile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+
+        var result = await model.GenerateAsync(CreateRequest(TestModels.TextEmbedding3Small, Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<EmbeddingAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 502.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<JsonException>();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenAuthorizationSchemeIsOverridden_SendsCredentialThroughOverriddenHeader()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var model = CreateCustomizingModel(
+            handler,
+            new StaticProviderCredentialSource(new ApiKeyProviderCredential("resource-key")),
+            ProviderAuthorizationScheme.ForApiKeyHeader("api-key"),
+            static (_, _, _) => { });
+
+        var result = await model.GenerateAsync(CreateRequest(TestModels.TextEmbedding3Small, Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        var sentRequest = handler.Requests.ShouldHaveSingleItem();
+        sentRequest.Headers.GetValues("api-key").ShouldBe(["resource-key"]);
+        sentRequest.Headers.Authorization.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenAdjustRequestPayloadIsOverridden_SendsAdjustedBodyAfterTranslation()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var descriptor = TestModels.TextEmbedding3Small with { DeploymentId = new DeploymentId("prod-embed") };
+        var request = CreateRequest(descriptor, Now.AddMinutes(1));
+        EmbeddingModelRequest? observedRequest = null;
+        var model = CreateCustomizingModel(
+            handler,
+            new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")),
+            ProviderAuthorizationScheme.BearerToken,
+            (payload, adjustedRequest, exposedDescriptor) =>
+            {
+                observedRequest = adjustedRequest;
+                payload["model"] = exposedDescriptor.DeploymentId!.Value.Value;
+                payload["custom_marker"] = true;
+            },
+            descriptor);
+
+        var result = await model.GenerateAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        observedRequest.ShouldBeSameAs(request);
+        var sentBody = JsonNode.Parse(handler.RequestBodies[0]!)!;
+        sentBody["model"]!.GetValue<string>().ShouldBe("prod-embed");
+        sentBody["custom_marker"]!.GetValue<bool>().ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenPreflightFails_DoesNotInvokeAdjustRequestPayload()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var invoked = false;
+        var model = CreateCustomizingModel(
+            handler,
+            new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")),
+            ProviderAuthorizationScheme.BearerToken,
+            (_, _, _) => invoked = true);
+        var mismatched = CreateRequest(TestModels.TextEmbedding3Small with { ModelId = new ModelId("other") }, Now.AddMinutes(1));
+
+        var result = await model.GenerateAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<EmbeddingAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        invoked.ShouldBeFalse();
+        handler.Requests.ShouldBeEmpty();
     }
 
     [Fact]

@@ -6,6 +6,7 @@ namespace AgentKit.Providers.OpenAICompatible.Tests;
 using System.Net;
 using System.Net.Http;
 
+using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Tests.Fakes;
 using AgentKit.TestSupport;
 
@@ -70,6 +71,23 @@ public sealed class OpenAICompatibleLlmModelBaseTests
             credentials,
             new HttpClient(handler),
             timeProvider ?? new FakeTimeProvider(Now));
+
+    private static CustomizingLlmModel CreateCustomizingModel(
+        HttpMessageHandler handler,
+        IProviderCredentialSource credentials,
+        ProviderAuthorizationScheme scheme,
+        Action<JsonObject, LlmModelRequest, ModelDescriptor> adjust,
+        ModelDescriptor? descriptor = null) =>
+        new(
+            descriptor ?? TestModels.Gpt4O,
+            NonStreamingProfile,
+            new OpenAIRequestTranslator(),
+            new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()),
+            credentials,
+            new HttpClient(handler),
+            new FakeTimeProvider(Now),
+            scheme,
+            adjust);
 
     [Fact]
     public async Task ExecuteAsync_WhenNonStreamingSuccess_ReturnsCompletedResponseWithAuthorizationHeader()
@@ -151,6 +169,91 @@ public sealed class OpenAICompatibleLlmModelBaseTests
         failure.SafeMessage.ShouldNotContain("alice@example.test");
         failure.ProviderCode.ShouldBe("invalid_api_key");
         failure.DiagnosticCause.ShouldBeNull();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBe("Authorization failed for sk-live-super-secret; internal tenant alice@example.test.");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAuthorizationSchemeIsOverridden_SendsCredentialThroughOverriddenHeader()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var model = CreateCustomizingModel(
+            handler,
+            new StaticProviderCredentialSource(new ApiKeyProviderCredential("resource-key")),
+            ProviderAuthorizationScheme.ForApiKeyHeader("api-key"),
+            static (_, _, _) => { });
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var sentRequest = handler.Requests.ShouldHaveSingleItem();
+        sentRequest.Headers.GetValues("api-key").ShouldBe(["resource-key"]);
+        sentRequest.Headers.Authorization.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAuthorizationSchemeIsNotOverridden_SendsBearerToken()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("token", Now.AddHours(1))));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var sentRequest = handler.Requests.ShouldHaveSingleItem();
+        sentRequest.Headers.Authorization.ShouldNotBeNull().Scheme.ShouldBe("Bearer");
+        sentRequest.Headers.Authorization!.Parameter.ShouldBe("token");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenAdjustRequestPayloadIsOverridden_SendsAdjustedBodyAfterTranslation()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var descriptor = TestModels.Gpt4O with { DeploymentId = new DeploymentId("prod-gpt4o") };
+        var request = CreateRequest(descriptor, Now.AddMinutes(1));
+        LlmModelRequest? observedRequest = null;
+        var model = CreateCustomizingModel(
+            handler,
+            new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")),
+            ProviderAuthorizationScheme.BearerToken,
+            (payload, adjustedRequest, exposedDescriptor) =>
+            {
+                observedRequest = adjustedRequest;
+                payload["model"] = exposedDescriptor.DeploymentId!.Value.Value;
+                payload["custom_marker"] = true;
+            },
+            descriptor);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ModelAttemptCompleted>();
+        observedRequest.ShouldBeSameAs(request);
+        var sentBody = JsonNode.Parse(handler.RequestBodies[0]!)!;
+        sentBody["model"]!.GetValue<string>().ShouldBe("prod-gpt4o");
+        sentBody["custom_marker"]!.GetValue<bool>().ShouldBeTrue();
+        sentBody["stream"]!.GetValue<bool>().ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenPreflightFails_DoesNotInvokeAdjustRequestPayload()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_success.json");
+        var invoked = false;
+        var model = CreateCustomizingModel(
+            handler,
+            new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")),
+            ProviderAuthorizationScheme.BearerToken,
+            (_, _, _) => invoked = true);
+        var mismatched = CreateRequest(TestModels.Gpt4O with { ModelId = new ModelId("other") }, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(mismatched, observer, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        invoked.ShouldBeFalse();
+        handler.Requests.ShouldBeEmpty();
     }
 
     [Fact]
@@ -453,6 +556,7 @@ public sealed class OpenAICompatibleLlmModelBaseTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
         failed.Failure.SafeMessage.ShouldBe("The provider returned HTTP status 502.");
+        ProviderErrorMessageEvidence.TryRead(failed.Failure.Extensions).ShouldBeNull();
     }
 
     [Fact]

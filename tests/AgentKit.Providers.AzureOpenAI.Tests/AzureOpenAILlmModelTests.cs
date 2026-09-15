@@ -25,7 +25,7 @@ public sealed class AzureOpenAILlmModelTests
     }
 
     private static ModelDescriptor CreateDescriptor() => new(new ModelAlias("chat"), AzureOpenAIProviderDefaults.ProviderId, AzureOpenAIProviderDefaults.ApiFamily, new ModelId("gpt-4o"), new DeploymentId("prod-gpt4o"), AzureOpenAIProviderDefaults.DefaultCapabilities, AzureOpenAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
-    private static AzureOpenAILlmModel CreateModel(StubHttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor descriptor, bool preferStreaming = false) => new(descriptor, AzureOpenAIProviderDefaults.CreateProfile(new AzureOpenAIProviderOptions { ResourceEndpoint = new Uri("https://my-resource.openai.azure.test/"), PreferStreaming = preferStreaming, }), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), credentials, new HttpClient(handler), new FakeTimeProvider(Now));
+    private static AzureOpenAILlmModel CreateModel(StubHttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor descriptor, bool preferStreaming = false, FakeTimeProvider? timeProvider = null) => new(descriptor, AzureOpenAIProviderDefaults.CreateProfile(new AzureOpenAIProviderOptions { ResourceEndpoint = new Uri("https://my-resource.openai.azure.test/"), PreferStreaming = preferStreaming, }), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), credentials, new HttpClient(handler), timeProvider ?? new FakeTimeProvider(Now));
     [Fact]
     public async Task ExecuteAsync_WhenUsingApiKeyCredential_SendsApiKeyHeaderAndOverridesModelFieldWithDeploymentName()
     {
@@ -150,7 +150,7 @@ public sealed class AzureOpenAILlmModelTests
     [Fact]
     public async Task ExecuteAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
     {
-        const string hostileBody = """{ "error": { "code": "401", "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test.", "type": "invalid_request_error" } }""";
+        const string hostileBody = /*lang=json,strict*/ """{ "error": { "code": "401", "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test.", "type": "invalid_request_error" } }""";
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
         {
             Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
@@ -398,6 +398,41 @@ public sealed class AzureOpenAILlmModelTests
         _ = failed.Failure.DiagnosticCause.ShouldBeOfType<IOException>();
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
         _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    /// <summary>Verifies an adapter-level failure raised after a streamed part completed settles with that part instead of an empty partial-output list.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineExpiresAfterCompletedStreamedPart_ReportsPartialPartsOnFailure()
+    {
+        const string body = """
+            data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1700000010,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1700000010,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+            data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1700000010,"model":"gpt-4o-2024-08-06","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11}}
+
+            data: [DONE]
+
+            """;
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "text/event-stream") });
+        var descriptor = CreateDescriptor();
+        var timeProvider = new FakeTimeProvider(Now);
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor, preferStreaming: true, timeProvider);
+        // The request deadline is one minute out; the observer expires it the moment the text part completes, so the
+        // adapter (not the wire parser) owns the terminal failure and must carry the already-completed part.
+        var observer = new DeadlineExpiringModelResponseObserver(timeProvider, TimeSpan.FromMinutes(2));
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.SafeMessage.ShouldBe("The response was not fully received before the request's deadline.");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
     }
 
     /// <summary>Verifies a stream that ends after streamed text settles with that text and the reported usage rather than an empty terminal.</summary>

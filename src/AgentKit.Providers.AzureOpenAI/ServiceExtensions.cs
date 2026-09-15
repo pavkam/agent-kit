@@ -44,8 +44,11 @@ public static class ServiceExtensions
         /// This method must be called exactly once; calling it more than
         /// once applies <paramref name="configureOptions"/> more than once
         /// through the ordinary <c>Microsoft.Extensions.Options</c>
-        /// configuration pipeline. Authentication and model registrations
-        /// are independent calls documented on
+        /// configuration pipeline. The options are validated during host
+        /// startup (through <c>ValidateOnStart</c>), so a missing resource
+        /// endpoint or an invalid operation path fails composition rather
+        /// than the first model resolution. Authentication and model
+        /// registrations are independent calls documented on
         /// <c>AddAzureOpenAIApiKeyCredential</c>,
         /// <c>AddAzureOpenAIOAuthCredential</c>, and
         /// <c>AddAzureOpenAILlmModel</c>.
@@ -56,16 +59,12 @@ public static class ServiceExtensions
             ArgumentNullException.ThrowIfNull(services);
             ArgumentNullException.ThrowIfNull(configureOptions);
 
-            _ = services.AddOptions<AzureOpenAIProviderOptions>();
+            _ = services.AddOpenAICompatibleProvider();
+            _ = services.AddOptions<AzureOpenAIProviderOptions>().ValidateOnStart();
             services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IValidateOptions<AzureOpenAIProviderOptions>, AzureOpenAIProviderOptionsValidator>());
             _ = services.Configure(configureOptions);
 
-            services.TryAddSingleton<IOpenAIRequestTranslator, OpenAIRequestTranslator>();
-            services.TryAddSingleton<IIdentifierGenerator<ToolCallId>, DefaultToolCallIdGenerator>();
-            services.TryAddSingleton<IOpenAIStreamParser, OpenAIChatCompletionResponseParser>();
-            services.TryAddSingleton<IOpenAIEmbeddingRequestTranslator, OpenAIEmbeddingRequestTranslator>();
-            services.TryAddSingleton<IOpenAIEmbeddingResponseParser, OpenAIEmbeddingResponseParser>();
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton(_ => new HttpClient());
 

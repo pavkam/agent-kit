@@ -25,6 +25,14 @@ using AgentKit.Providers.OpenAICompatible.Wire;
 /// normalized failure mapping.
 /// </para>
 /// <para>
+/// Two narrow extension points let a branded dialect diverge without
+/// re-implementing the pipeline: <see cref="AuthorizationScheme"/> selects
+/// the header shape a credential is sent in (defaulting to
+/// <c>Authorization: Bearer</c>), and <see cref="AdjustRequestPayload"/>
+/// lets a derived class amend the translated JSON body immediately before
+/// it is serialized (for example, to address a model by deployment name).
+/// </para>
+/// <para>
 /// This implementation performs its own HTTP transport through an injected
 /// <see cref="HttpClient"/> rather than the broader AgentKit network and
 /// security-authority abstractions described by the wider provider
@@ -38,7 +46,6 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
     /// <summary>The response header OpenAI-compatible endpoints use to return their request identifier.</summary>
     private const string _requestIdHeaderName = "x-request-id";
 
-    private readonly ModelDescriptor _descriptor;
     private readonly OpenAICompatibilityProfile _profile;
     private readonly IOpenAIRequestTranslator _translator;
     private readonly IOpenAIStreamParser _streamParser;
@@ -76,7 +83,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         ArgumentNullException.ThrowIfNull(timeProvider);
 
         Alias = descriptor.Alias;
-        _descriptor = descriptor;
+        Descriptor = descriptor;
         _profile = profile;
         _translator = translator;
         _streamParser = streamParser;
@@ -87,6 +94,60 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
 
     /// <inheritdoc/>
     public ModelAlias Alias { get; }
+
+    /// <summary>
+    /// Gets the immutable descriptor of the model this adapter serves, as
+    /// supplied to the constructor. It is the same instance every request is
+    /// preflight-checked against, so a derived class may read its identity
+    /// (for example, <see cref="ModelDescriptor.DeploymentId"/>) when
+    /// adjusting a payload without consulting the request again.
+    /// </summary>
+    /// <value>The non-null descriptor whose <see cref="ModelDescriptor.Alias"/> equals <see cref="Alias"/>.</value>
+    protected ModelDescriptor Descriptor { get; }
+
+    /// <summary>
+    /// Gets the header authentication scheme a resolved
+    /// <see cref="ProviderCredential"/> is applied with. The default sends an
+    /// API key or OAuth token as <c>Authorization: Bearer &lt;secret&gt;</c>.
+    /// </summary>
+    /// <value>
+    /// A non-null scheme. A derived class overrides this to select a
+    /// different verified header shape, such as
+    /// <see cref="ProviderAuthorizationScheme.ForApiKeyHeader"/> for
+    /// dialects that carry API keys in a dedicated header while still
+    /// sending OAuth tokens as bearer tokens.
+    /// </value>
+    /// <remarks>
+    /// The value is read once per attempt, after the credential has been
+    /// resolved and before any HTTP request is created. Overrides must be
+    /// pure and thread-safe: this adapter is shared across concurrent
+    /// attempts.
+    /// </remarks>
+    protected virtual ProviderAuthorizationScheme AuthorizationScheme => ProviderAuthorizationScheme.BearerToken;
+
+    /// <summary>
+    /// Amends the translated request body immediately before it is
+    /// serialized and sent. The default implementation makes no change.
+    /// </summary>
+    /// <param name="payload">
+    /// The mutable JSON object produced by the injected
+    /// <see cref="IOpenAIRequestTranslator"/> for this attempt. It is owned by
+    /// the current attempt only; the override may add, replace, or remove
+    /// members but must not retain a reference beyond the call.
+    /// </param>
+    /// <param name="request">The request being sent, already preflight-validated against <see cref="Descriptor"/>.</param>
+    /// <remarks>
+    /// This hook runs after successful translation and credential
+    /// resolution and before the HTTP request is created, so an override
+    /// cannot influence capability preflight, authorization, or deadline
+    /// evaluation. It is invoked on the request path of every attempt and
+    /// must be thread-safe. An exception thrown by an override escapes
+    /// <see cref="ExecuteAsync"/> unwrapped; overrides should therefore
+    /// perform only deterministic, non-throwing payload edits.
+    /// </remarks>
+    protected virtual void AdjustRequestPayload(JsonObject payload, LlmModelRequest request)
+    {
+    }
 
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ExecuteAsync(
@@ -123,7 +184,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         Task<ModelAttemptResult> FailWithKindAsync(ProviderFailureKind kind, string safeMessage, Exception? cause = null) =>
             FailAsync(new ProviderFailure(
                 kind,
-                _descriptor.ProviderId,
+                Descriptor.ProviderId,
                 requestId: null,
                 statusCode: null,
                 providerCode: null,
@@ -136,7 +197,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         {
             var cancellation = knownFailure ?? new ProviderFailure(
                 ProviderFailureKind.Cancellation,
-                _descriptor.ProviderId,
+                Descriptor.ProviderId,
                 requestId: null,
                 statusCode: null,
                 providerCode: null,
@@ -163,7 +224,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                 ? ValueTask.CompletedTask
                 : sequencing.OnEventAsync(new ModelResponseStarted(requestId, sequencing.NextSequence), deliveryToken);
 
-        if (ModelRequestPreflight.Validate(request, _descriptor) is { } preflightFailure)
+        if (ModelRequestPreflight.Validate(request, Descriptor) is { } preflightFailure)
         {
             return await FailAsync(preflightFailure).ConfigureAwait(false);
         }
@@ -179,7 +240,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         ProviderCredential credential;
         try
         {
-            credential = await _credentials.GetCredentialAsync(_descriptor.ProviderId, cancellationToken).ConfigureAwait(false);
+            credential = await _credentials.GetCredentialAsync(Descriptor.ProviderId, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -188,9 +249,9 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
 
         var authorization = ProviderAuthorizationHeaderFactory.Create(
             credential,
-            _descriptor.ProviderId,
+            Descriptor.ProviderId,
             _timeProvider,
-            ProviderAuthorizationScheme.BearerToken);
+            AuthorizationScheme);
         if (authorization is ProviderAuthorizationDenied denied)
         {
             return await FailAsync(denied.Failure).ConfigureAwait(false);
@@ -198,7 +259,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
 
         var granted = (ProviderAuthorizationGranted) authorization;
 
-        var useStreaming = _profile.PreferStreaming && _descriptor.Capabilities.SupportsStreaming;
+        var useStreaming = _profile.PreferStreaming && Descriptor.Capabilities.SupportsStreaming;
 
         JsonObject payload;
         try
@@ -212,6 +273,8 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                 "The request could not be translated for the OpenAI-compatible wire format.",
                 exception).ConfigureAwait(false);
         }
+
+        AdjustRequestPayload(payload, request);
 
         using var httpRequest = CreateHttpRequest(payload, granted);
         using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
@@ -279,10 +342,10 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
 
             var parseContext = new OpenAIResponseParseContext(
                 requestId,
-                _descriptor.ProviderId,
-                _descriptor.ApiFamily,
-                _descriptor.ModelId,
-                _descriptor.DeploymentId,
+                Descriptor.ProviderId,
+                Descriptor.ApiFamily,
+                Descriptor.ModelId,
+                Descriptor.DeploymentId,
                 ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName));
 
             try
@@ -347,6 +410,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
 
     private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
+        string? providerMessage = null;
         string? providerCode = null;
         Exception? diagnosticCause = null;
 
@@ -358,6 +422,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                 var error = await JsonSerializer
                     .DeserializeAsync<OpenAIErrorResponse>(body, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
+                providerMessage = error?.Error?.Message;
                 providerCode = error?.Error?.Code ?? error?.Error?.Type;
             }
         }
@@ -368,16 +433,18 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
             diagnosticCause = exception;
         }
 
+        // The provider's message is untrusted content: it is retained only as bounded diagnostic evidence under a
+        // dedicated extension key and never promoted into the safe message.
         return new ProviderFailure(
             HttpStatusFailureKindMapper.Map(response.StatusCode),
-            _descriptor.ProviderId,
+            Descriptor.ProviderId,
             ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName),
             (int) response.StatusCode,
             providerCode,
             RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause,
-            ExtensionData.Empty);
+            ProviderErrorMessageEvidence.Create(providerMessage));
     }
 
     /// <summary>Builds an interrupted error-body failure while preserving response evidence already received.</summary>
@@ -394,7 +461,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
 
         return new ProviderFailure(
             kind,
-            _descriptor.ProviderId,
+            Descriptor.ProviderId,
             ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName),
             (int) response.StatusCode,
             providerCode: null,

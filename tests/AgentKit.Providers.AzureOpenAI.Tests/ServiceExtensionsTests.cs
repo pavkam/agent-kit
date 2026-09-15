@@ -30,25 +30,72 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public void AddAzureOpenAI_WhenResourceEndpointNotConfigured_FailsValidationOnAccess()
+    public void AddAzureOpenAI_WhenResourceEndpointNotConfigured_FailsStartupValidation()
     {
         var services = new ServiceCollection();
         _ = services.AddAzureOpenAI(_ => { });
 
         using var provider = services.BuildServiceProvider();
 
-        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<AzureOpenAIProviderOptions>>().Value);
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
     }
 
     [Fact]
-    public void AddAzureOpenAI_WhenResourceEndpointIsNotAbsolute_FailsValidationOnAccess()
+    public void AddAzureOpenAI_WhenResourceEndpointIsNotAbsolute_FailsStartupValidation()
     {
         var services = new ServiceCollection();
         _ = services.AddAzureOpenAI(options => options.ResourceEndpoint = new Uri("not-absolute", UriKind.Relative));
 
         using var provider = services.BuildServiceProvider();
 
-        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<AzureOpenAIProviderOptions>>().Value);
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
+    [Theory]
+    [InlineData("https://evil.example.test/chat")]
+    [InlineData("//evil.example.test/chat")]
+    [InlineData("/openai/v1/chat/completions")]
+    public void AddAzureOpenAI_WhenChatPathCanReplaceConfiguredEndpoint_FailsStartupValidation(string path)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAzureOpenAI(options =>
+        {
+            options.ResourceEndpoint = ResourceEndpoint;
+            options.ChatCompletionsPath = path;
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
+    [Fact]
+    public void AddAzureOpenAI_WhenEmbeddingsPathCanReplaceConfiguredEndpoint_FailsStartupValidation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAzureOpenAI(options =>
+        {
+            options.ResourceEndpoint = ResourceEndpoint;
+            options.EmbeddingsPath = "https://evil.example.test/embeddings";
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
+    [Fact]
+    public void AddAzureOpenAI_WhenCalled_RegistersSharedOpenAICompatibleCollaborators()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAzureOpenAI(options => options.ResourceEndpoint = ResourceEndpoint);
+
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredService<IOpenAIRequestTranslator>().ShouldBeOfType<OpenAIRequestTranslator>();
+        _ = provider.GetRequiredService<IOpenAIStreamParser>().ShouldBeOfType<OpenAIChatCompletionResponseParser>();
+        _ = provider.GetRequiredService<IOpenAIEmbeddingRequestTranslator>().ShouldBeOfType<OpenAIEmbeddingRequestTranslator>();
+        _ = provider.GetRequiredService<IOpenAIEmbeddingResponseParser>().ShouldBeOfType<OpenAIEmbeddingResponseParser>();
     }
 
     [Fact]
