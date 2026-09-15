@@ -22,3 +22,5 @@
 
 # Keep pinned upstream fixture bytes, including their original whitespace.
 tests/AgentKit.Tools.Tests/TestData/JsonSchema202012/*.json -whitespace
+# Recorded provider wire fixtures must keep their exact bytes (some deliberately use CRLF).
+*.sse -text
