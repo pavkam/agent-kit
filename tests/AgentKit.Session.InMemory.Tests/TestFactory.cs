@@ -3,13 +3,16 @@
 
 namespace AgentKit.Session.InMemory.Tests;
 
+using Microsoft.Extensions.Options;
+
 /// <summary>Shared construction helpers for session store tests.</summary>
 internal static class TestFactory
 {
-    public static InMemorySessionStore CreateStore(TimeProvider? timeProvider = null)
+    public static InMemorySessionStore CreateStore(TimeProvider? timeProvider = null, InMemorySessionStoreOptions? options = null)
     {
         var security = new TestSecurityHarness();
         var store = new InMemorySessionStore(
+            Options.Create(options ?? new InMemorySessionStoreOptions()),
             new GuidIdentifierGenerator<BranchId>(static v => new BranchId(v)),
             new GuidIdentifierGenerator<SecurityAuditRecordId>(static v => new SecurityAuditRecordId(v)),
             security,

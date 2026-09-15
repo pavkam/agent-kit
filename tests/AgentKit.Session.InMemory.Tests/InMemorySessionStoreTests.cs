@@ -8,6 +8,7 @@ using System.Text.Json;
 using AgentKit.Conformance;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 /// <summary>Verifies InMemorySessionStore behavior and contracts.</summary>
@@ -43,6 +44,84 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
         var security = new TestSecurityHarness();
         var exception = Should.Throw<ArgumentNullException>(() => new InMemorySessionStore(new GuidIdentifierGenerator<BranchId>(static v => new BranchId(v)), new GuidIdentifierGenerator<SecurityAuditRecordId>(static v => new SecurityAuditRecordId(v)), security, security, null!));
         exception.ParamName.ShouldBe("timeProvider");
+    }
+
+    [Fact]
+    public void Constructor_WhenOptionsIsNull_ThrowsArgumentNullException()
+    {
+        var security = new TestSecurityHarness();
+        var exception = Should.Throw<ArgumentNullException>(() => new InMemorySessionStore(null!, new GuidIdentifierGenerator<BranchId>(static v => new BranchId(v)), new GuidIdentifierGenerator<SecurityAuditRecordId>(static v => new SecurityAuditRecordId(v)), security, security, TimeProvider.System));
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenOptionsValueIsNull_ThrowsArgumentNullException()
+    {
+        var security = new TestSecurityHarness();
+        var exception = Should.Throw<ArgumentNullException>(() => new InMemorySessionStore(new NullValueOptions(), new GuidIdentifierGenerator<BranchId>(static v => new BranchId(v)), new GuidIdentifierGenerator<SecurityAuditRecordId>(static v => new SecurityAuditRecordId(v)), security, security, TimeProvider.System));
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public void Constructor_WhenMaximumIssuedReadSnapshotsIsNotPositive_ThrowsArgumentOutOfRangeException(int bound)
+    {
+        var security = new TestSecurityHarness();
+        var options = Options.Create(new InMemorySessionStoreOptions { MaximumIssuedReadSnapshots = bound });
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new InMemorySessionStore(options, new GuidIdentifierGenerator<BranchId>(static v => new BranchId(v)), new GuidIdentifierGenerator<SecurityAuditRecordId>(static v => new SecurityAuditRecordId(v)), security, security, TimeProvider.System));
+        exception.ParamName.ShouldBe("options");
+        exception.ActualValue.ShouldBe(bound);
+    }
+
+    [Fact]
+    public void Constructor_WhenMaximumIssuedReadSnapshotsIsOne_Constructs()
+    {
+        var store = TestFactory.CreateStore(options: new InMemorySessionStoreOptions { MaximumIssuedReadSnapshots = 1 });
+        store.Descriptor.Key.Value.ShouldBe("agentkit.in-memory");
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenIssuedSnapshotsExceedBoundOfOne_EvictsOldestSnapshotAndReportsItUnavailable()
+    {
+        var (store, descriptor, context) = await SeedAsync(3, new InMemorySessionStoreOptions { MaximumIssuedReadSnapshots = 1 });
+        var firstPage = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 2), TestContext.Current.CancellationToken);
+        var appendedEntry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 4, "later");
+        _ = await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(3), new IdempotencyKey("later"), [appendedEntry]), TestContext.Current.CancellationToken);
+        var secondPage = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 2), TestContext.Current.CancellationToken);
+
+        var continued = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, firstPage.ThroughSequence, 10, firstPage.Snapshot!), TestContext.Current.CancellationToken);
+        var latest = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, secondPage.ThroughSequence, 10, secondPage.Snapshot!), TestContext.Current.CancellationToken);
+
+        secondPage.Snapshot.ShouldNotBe(firstPage.Snapshot);
+        continued.ShouldBeOfType<SessionReadFailed>().SafeMessage.ShouldBe("The supplied session read snapshot is not available for this branch.");
+        latest.ShouldBeOfType<SessionPage>().Snapshot.ShouldBe(secondPage.Snapshot);
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenIssuedSnapshotsFitBoundOfTwo_RetainsBothSnapshots()
+    {
+        var (store, descriptor, context) = await SeedAsync(3, new InMemorySessionStoreOptions { MaximumIssuedReadSnapshots = 2 });
+        var firstPage = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 2), TestContext.Current.CancellationToken);
+        var appendedEntry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 4, "later");
+        _ = await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(3), new IdempotencyKey("later"), [appendedEntry]), TestContext.Current.CancellationToken);
+        var secondPage = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 2), TestContext.Current.CancellationToken);
+
+        var continued = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, firstPage.ThroughSequence, 10, firstPage.Snapshot!), TestContext.Current.CancellationToken);
+        var latest = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, secondPage.ThroughSequence, 10, secondPage.Snapshot!), TestContext.Current.CancellationToken);
+
+        secondPage.Snapshot.ShouldNotBe(firstPage.Snapshot);
+        var continuedPage = continued.ShouldBeOfType<SessionPage>();
+        continuedPage.Snapshot.ShouldBe(firstPage.Snapshot);
+        continuedPage.Entries.ShouldHaveSingleItem().Sequence.ShouldBe(new SessionSequence(3));
+        latest.ShouldBeOfType<SessionPage>().Snapshot.ShouldBe(secondPage.Snapshot);
+    }
+
+    /// <summary>An options wrapper whose <see cref="IOptions{TOptions}.Value"/> is null, which the store must reject.</summary>
+    private sealed class NullValueOptions: IOptions<InMemorySessionStoreOptions>
+    {
+        public InMemorySessionStoreOptions Value => null!;
     }
 
     [Fact]
@@ -188,9 +267,9 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
         return (store, descriptor, request);
     }
 
-    private static async Task<(InMemorySessionStore Store, SessionDescriptor Descriptor, SessionOperationContext Context)> SeedAsync(int entryCount)
+    private static async Task<(InMemorySessionStore Store, SessionDescriptor Descriptor, SessionOperationContext Context)> SeedAsync(int entryCount, InMemorySessionStoreOptions? options = null)
     {
-        var store = TestFactory.CreateStore();
+        var store = TestFactory.CreateStore(options: options);
         var descriptor = await TestFactory.CreateSessionAsync(store);
         var context = TestFactory.OperationContext(descriptor.Address);
         for (var i = 0; i < entryCount; i++)

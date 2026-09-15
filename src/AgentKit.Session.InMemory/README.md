@@ -12,6 +12,15 @@ Start with `AddInMemorySessionStore`, `AddInMemorySessionDirectory` in
 documentation for required collaborators, lifetimes, and duplicate-registration
 behavior.
 
+`AddInMemorySessionStore` accepts an optional configure delegate for
+[InMemorySessionStoreOptions](InMemorySessionStoreOptions.cs), which bounds how
+many store-issued read snapshots are retained as exact paged-read continuation
+evidence (default 4,096, first-in, first-out eviction):
+
+```csharp
+services.AddInMemorySessionStore(options => options.MaximumIssuedReadSnapshots = 256);
+```
+
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
 described in the [composition guide](../../docs/guides/composition.md).

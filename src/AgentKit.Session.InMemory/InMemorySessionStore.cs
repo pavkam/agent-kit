@@ -26,14 +26,17 @@ namespace AgentKit.Session.InMemory;
 /// </para>
 /// <para>
 /// Exact paged-read continuations require a snapshot previously issued by this
-/// store instance. The adapter retains at most 4,096 distinct issued snapshots;
-/// an evicted value fails as unavailable instead of being trusted as caller-authored evidence.
+/// store instance. The adapter retains a bounded number of distinct issued
+/// snapshots in first-in, first-out order, configured through
+/// <see cref="InMemorySessionStoreOptions.MaximumIssuedReadSnapshots"/> and
+/// defaulting to 4,096; an evicted value fails as unavailable instead of being
+/// trusted as caller-authored evidence.
 /// </para>
 /// </remarks>
 public sealed partial class InMemorySessionStore: ISessionStore
 {
     /// <summary>Bounds process-local continuation evidence retained by this ephemeral adapter.</summary>
-    private const int _maximumIssuedReadSnapshots = 4096;
+    private readonly int _maximumIssuedReadSnapshots;
     private readonly Lock _gate = new();
     private readonly HashSet<SessionReadSnapshot> _issuedReadSnapshots = [];
     private readonly Queue<SessionReadSnapshot> _issuedReadSnapshotOrder = [];
@@ -48,14 +51,22 @@ public sealed partial class InMemorySessionStore: ISessionStore
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<InMemorySessionStore> _logger;
 
-    /// <summary>Initializes a new instance of the <see cref="InMemorySessionStore"/> class.</summary>
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InMemorySessionStore"/> class
+    /// with the default <see cref="InMemorySessionStoreOptions"/> bounds.
+    /// </summary>
     /// <param name="branchIds">Generates the identity of each newly created branch.</param>
     /// <param name="auditRecordIds">Generates stable identities for required audit intents.</param>
     /// <param name="auditDispatcher">The required audit dispatcher that must accept each consumed access intent.</param>
     /// <param name="grants">The authoritative store that validates and consumes exact session-access grants.</param>
     /// <param name="timeProvider">The clock used to timestamp created and updated sessions.</param>
     /// <param name="logger">The optional content-free diagnostic logger.</param>
-    /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
+    /// <remarks>
+    /// Equivalent to the options-accepting constructor supplied with a fresh
+    /// <see cref="InMemorySessionStoreOptions"/>, so the store retains up to
+    /// 4,096 issued read snapshots.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">Any required parameter is null.</exception>
     public InMemorySessionStore(
         IIdentifierGenerator<BranchId> branchIds,
         IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
@@ -63,13 +74,52 @@ public sealed partial class InMemorySessionStore: ISessionStore
         ISecurityGrantStore grants,
         TimeProvider timeProvider,
         ILogger<InMemorySessionStore>? logger = null)
+        : this(Options.Create(new InMemorySessionStoreOptions()), branchIds, auditRecordIds, auditDispatcher, grants, timeProvider, logger)
     {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InMemorySessionStore"/> class
+    /// with explicit process-local bounds.
+    /// </summary>
+    /// <param name="options">The bound configuration; its value is read once during construction and never observed again.</param>
+    /// <param name="branchIds">Generates the identity of each newly created branch.</param>
+    /// <param name="auditRecordIds">Generates stable identities for required audit intents.</param>
+    /// <param name="auditDispatcher">The required audit dispatcher that must accept each consumed access intent.</param>
+    /// <param name="grants">The authoritative store that validates and consumes exact session-access grants.</param>
+    /// <param name="timeProvider">The clock used to timestamp created and updated sessions.</param>
+    /// <param name="logger">The optional content-free diagnostic logger.</param>
+    /// <remarks>
+    /// The bounds are validated here in addition to any options-pipeline
+    /// validation so that a directly constructed store cannot start with an
+    /// unenforceable limit.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="options"/>, its <see cref="IOptions{TOptions}.Value"/>, or any
+    /// other required parameter is null.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <see cref="InMemorySessionStoreOptions.MaximumIssuedReadSnapshots"/> is zero or negative.
+    /// </exception>
+    public InMemorySessionStore(
+        IOptions<InMemorySessionStoreOptions> options,
+        IIdentifierGenerator<BranchId> branchIds,
+        IIdentifierGenerator<SecurityAuditRecordId> auditRecordIds,
+        ISecurityAuditDispatcher auditDispatcher,
+        ISecurityGrantStore grants,
+        TimeProvider timeProvider,
+        ILogger<InMemorySessionStore>? logger = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(options.Value, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Value.MaximumIssuedReadSnapshots, nameof(options));
         ArgumentNullException.ThrowIfNull(branchIds);
         ArgumentNullException.ThrowIfNull(auditRecordIds);
         ArgumentNullException.ThrowIfNull(auditDispatcher);
         ArgumentNullException.ThrowIfNull(grants);
         ArgumentNullException.ThrowIfNull(timeProvider);
 
+        _maximumIssuedReadSnapshots = options.Value.MaximumIssuedReadSnapshots;
         _branchIds = branchIds;
         _auditRecordIds = auditRecordIds;
         _auditDispatcher = auditDispatcher;

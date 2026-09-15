@@ -17,6 +17,7 @@ namespace AgentKit.Session.InMemory
     public sealed class InMemorySessionStore : AgentKit.ISessionStore
     {
         public InMemorySessionStore(AgentKit.IIdentifierGenerator<AgentKit.BranchId> branchIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grants, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.InMemory.InMemorySessionStore>? logger = null) { }
+        public InMemorySessionStore(Microsoft.Extensions.Options.IOptions<AgentKit.Session.InMemory.InMemorySessionStoreOptions> options, AgentKit.IIdentifierGenerator<AgentKit.BranchId> branchIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grants, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.InMemory.InMemorySessionStore>? logger = null) { }
         public AgentKit.SessionStoreDescriptor Descriptor { get; }
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionRunStartResult> AcceptRunAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunStartRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
@@ -31,11 +32,16 @@ namespace AgentKit.Session.InMemory
         public System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionExecutionLaneProvisionRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionPageResult> ReadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionReadRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class InMemorySessionStoreOptions
+    {
+        public InMemorySessionStoreOptions() { }
+        public int MaximumIssuedReadSnapshots { get; set; }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemorySessionStore() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemorySessionStore(System.Action<AgentKit.Session.InMemory.InMemorySessionStoreOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemorySessionDirectory(AgentKit.ComponentId securityAudience) { }
         }
     }
