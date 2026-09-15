@@ -23,6 +23,7 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     private readonly List<SessionAppendRequest> _receivedAppends = [];
     private readonly List<SessionReadRequest> _receivedReads = [];
     private readonly HashSet<SessionReadSnapshot> _issuedSnapshots = [];
+    private readonly Dictionary<IdempotencyKey, (SessionAppendRequest Request, SessionAppendResult Result)> _appendReceipts = [];
 
     /// <summary>Initializes a new instance of the <see cref="FakeSessionCoordinator"/> class.</summary>
     /// <param name="branchId">The single branch this fake serves.</param>
@@ -100,6 +101,16 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
             return ValueTask.FromResult<SessionAppendResult>(new SessionAppendNotFound(request.Context.ToAddress()));
         }
 
+        // Mirror InMemorySessionStore: a reused idempotency key replays the original receipt only for identical
+        // request evidence; different evidence under the same key is a deterministic failure.
+        if (_appendReceipts.TryGetValue(request.IdempotencyKey, out var receipt))
+        {
+            return ValueTask.FromResult(
+                receipt.Request.Equals(request)
+                    ? receipt.Result
+                    : new SessionAppendFailed("The idempotency key was previously used with different request evidence."));
+        }
+
         if (request.ExpectedVersion.Value != Version.Value)
         {
             return ValueTask.FromResult<SessionAppendResult>(
@@ -121,7 +132,9 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         _entries.AddRange(request.Entries);
         Version = new SessionVersion(Version.Value + 1);
 
-        return ValueTask.FromResult<SessionAppendResult>(new SessionAppended(Version, request.Entries));
+        var appended = new SessionAppended(Version, request.Entries);
+        _appendReceipts[request.IdempotencyKey] = (request, appended);
+        return ValueTask.FromResult<SessionAppendResult>(appended);
     }
 
     /// <inheritdoc/>

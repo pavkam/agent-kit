@@ -745,6 +745,30 @@ reconciled by the idempotency key. If commit state cannot be established, the
 result reports `Unknown` and recovery resolves the durable record before any
 second activation attempt.
 
+`CompactionId` guarantees at-most-once activation of one logical checkpoint and
+a stable answer for a replayed request. The first-party compactor appends under
+the idempotency key `compaction:{CompactionId}`, but the appended entry carries
+fresh manifest, entry, and timestamp evidence, so a store never replays the
+original receipt for a retry; the store rejects the reused key with different
+evidence. The compactor therefore reconciles by identity rather than by
+receipt: when the source read observes a version newer than the request, when
+the append conflicts, or when the append fails, it scans the branch after the
+relevant tip for an active `CompactionSessionEntry` whose record carries the
+same `CompactionId` and returns `CompactionSucceeded` with that committed record.
+Only when reconciliation proves no record exists does an append failure surface
+as a non-retryable `ActivationFailure`; a reconciliation read that itself fails
+reports the commit state as unreconciled in the failure message. A retry must
+replay the identical request (same `SourceVersion` and `SourceThrough`); reusing
+a `CompactionId` for a different logical checkpoint is caller misuse and is not
+mapped to the existing record.
+
+`CompactionFailure.Retryable` is `true` only when the compactor has positive
+evidence that the failure was transient (an unavailable source read, a drifted
+continuation snapshot). An append failure that leaves no committed record is
+non-retryable because the store does not distinguish deterministic rejection
+from transport failure and the compactor must not drive an unbounded
+compact-and-retry loop.
+
 ## Terminal outcomes and compactor contract
 
 Every accepted attempt terminates in one typed result. Null checkpoint content,

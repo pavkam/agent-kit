@@ -176,11 +176,11 @@ public sealed class DefaultCompactor: ICompactor
             context.Identity,
             context.Authorization);
 
-        var (loaded, loadFailure) = await LoadSourceAsync(sessionContext, request, cancellationToken).ConfigureAwait(false);
+        var (loaded, loadTerminal) = await LoadSourceAsync(sessionContext, request, cancellationToken).ConfigureAwait(false);
         if (loaded is null)
         {
-            Debug.Assert(loadFailure is not null, "A load that yields no source must yield a typed failure.");
-            return loadFailure;
+            Debug.Assert(loadTerminal is not null, "A load that yields no source must yield a typed terminal result.");
+            return loadTerminal;
         }
 
         var source = loaded.Snapshot;
@@ -280,7 +280,8 @@ public sealed class DefaultCompactor: ICompactor
 
     /// <summary>
     /// Reads the whole branch, splits it at <see cref="CompactionRequest.SourceThrough"/>, and returns either the
-    /// eligible snapshot with the observed branch tip or the typed result that ends the attempt.
+    /// eligible snapshot with the observed branch tip or the typed result that ends the attempt (a failure, a
+    /// conflict, or the already-active record of an earlier attempt with the same <see cref="CompactionId"/>).
     /// </summary>
     /// <remarks>
     /// <para>
@@ -298,7 +299,7 @@ public sealed class DefaultCompactor: ICompactor
     /// this branch does not have and fails as a non-retryable <see cref="CompactionFailureKind.SourceUnavailable"/>.
     /// </para>
     /// </remarks>
-    private async Task<(LoadedCompactionSource? Source, CompactionResult? Failure)> LoadSourceAsync(
+    private async Task<(LoadedCompactionSource? Source, CompactionResult? Terminal)> LoadSourceAsync(
         SessionOperationContext sessionContext, CompactionRequest request, CancellationToken cancellationToken)
     {
         Debug.Assert(sessionContext is not null, "The caller builds the session context before loading.");
@@ -344,6 +345,19 @@ public sealed class DefaultCompactor: ICompactor
             {
                 if (pageSnapshot.Version != request.SourceVersion)
                 {
+                    // A branch that advanced past the request may have done so through an earlier attempt of this
+                    // very checkpoint whose response was lost; an identical CompactionId then means "already active".
+                    if (pageSnapshot.Version.Value > request.SourceVersion.Value)
+                    {
+                        var (existing, _) = await FindCommittedRecordAsync(
+                            sessionContext, request, request.SourceThrough, pageSnapshot, cancellationToken)
+                            .ConfigureAwait(false);
+                        if (existing is not null)
+                        {
+                            return (null, new CompactionSucceeded(request.Context, existing));
+                        }
+                    }
+
                     return (null, new CompactionConflict(request.Context, request.SourceVersion, pageSnapshot.Version));
                 }
 
@@ -453,8 +467,8 @@ public sealed class DefaultCompactor: ICompactor
         return appendResult switch
         {
             SessionAppended => new CompactionSucceeded(context, record),
-            SessionAppendConflict conflict => new CompactionConflict(
-                context, conflict.ExpectedVersion, conflict.ActualVersion, manifest),
+            SessionAppendConflict conflict => await ReconcileConflictAsync(
+                sessionContext, request, branchTip, manifest, conflict, cancellationToken).ConfigureAwait(false),
             SessionAppendNotFound => new CompactionFailed(
                 context,
                 new CompactionFailure(
@@ -462,14 +476,131 @@ public sealed class DefaultCompactor: ICompactor
                     "The session or branch no longer exists.",
                     retryable: false,
                     ExtensionData.Empty)),
-            SessionAppendFailed failed => new CompactionFailed(
-                context,
-                new CompactionFailure(
-                    CompactionFailureKind.ActivationFailure, failed.SafeMessage, retryable: true, ExtensionData.Empty)),
+            SessionAppendFailed failed => await ReconcileFailedAppendAsync(
+                sessionContext, request, branchTip, failed, cancellationToken).ConfigureAwait(false),
             _ => new CompactionFailed(
                 context,
                 new CompactionFailure(
                     CompactionFailureKind.Unknown, "Unrecognized append outcome.", retryable: false, ExtensionData.Empty))
         };
+    }
+
+    /// <summary>
+    /// Resolves an append conflict: a duplicate attempt of the same checkpoint may have won the version check, in
+    /// which case the checkpoint is already active and the conflict is not reported.
+    /// </summary>
+    private async Task<CompactionResult> ReconcileConflictAsync(
+        SessionOperationContext sessionContext,
+        CompactionRequest request,
+        SessionSequence branchTip,
+        CompactionManifest manifest,
+        SessionAppendConflict conflict,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(conflict is not null, "The caller matched an append conflict.");
+        Debug.Assert(manifest is not null, "A candidate exists once activation is attempted.");
+
+        var (existing, _) = await FindCommittedRecordAsync(sessionContext, request, branchTip, pinned: null, cancellationToken)
+            .ConfigureAwait(false);
+        return existing is not null
+            ? new CompactionSucceeded(request.Context, existing)
+            : new CompactionConflict(request.Context, conflict.ExpectedVersion, conflict.ActualVersion, manifest);
+    }
+
+    /// <summary>
+    /// Resolves a failed append. The store does not distinguish a deterministic rejection (a reused idempotency key
+    /// with different evidence, a sequence mismatch) from a lost response after commit, so the branch is reconciled by
+    /// <see cref="CompactionId"/> first; when no record exists the failure is reported as non-retryable because a
+    /// blind repeat cannot present identical idempotency evidence and must not drive an unbounded retry loop.
+    /// </summary>
+    private async Task<CompactionResult> ReconcileFailedAppendAsync(
+        SessionOperationContext sessionContext,
+        CompactionRequest request,
+        SessionSequence branchTip,
+        SessionAppendFailed failed,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(failed is not null, "The caller matched a failed append.");
+
+        var (existing, reconciled) = await FindCommittedRecordAsync(sessionContext, request, branchTip, pinned: null, cancellationToken)
+            .ConfigureAwait(false);
+        return existing is not null
+            ? new CompactionSucceeded(request.Context, existing)
+            : new CompactionFailed(
+            request.Context,
+            new CompactionFailure(
+                CompactionFailureKind.ActivationFailure,
+                reconciled
+                    ? $"{failed.SafeMessage} No record for this compaction was committed."
+                    : $"{failed.SafeMessage} The commit state could not be reconciled.",
+                retryable: false,
+                ExtensionData.Empty));
+    }
+
+    /// <summary>
+    /// Scans the branch after <paramref name="fromSequenceExclusive"/> for an active
+    /// <see cref="CompactionSessionEntry"/> whose record carries the request's <see cref="CompactionId"/>.
+    /// </summary>
+    /// <remarks>
+    /// This is the reconciliation path that makes <see cref="CompactionId"/> idempotent: a retried or racing attempt
+    /// of the same logical checkpoint discovers the committed record instead of failing on reused idempotency
+    /// evidence. Reads continue from <paramref name="pinned"/> when supplied and otherwise pin to the first page
+    /// returned; a read failure or a drifted continuation snapshot reports <c>Reconciled = false</c> so the caller
+    /// can distinguish "no record exists" from "commit state unknown".
+    /// </remarks>
+    /// <returns>
+    /// The committed record and <see langword="true"/> when found; <see langword="null"/> and
+    /// <see langword="true"/> when the scan completed without a match; <see langword="null"/> and
+    /// <see langword="false"/> when the scan could not be completed.
+    /// </returns>
+    private async Task<(CompactionRecord? Record, bool Reconciled)> FindCommittedRecordAsync(
+        SessionOperationContext sessionContext,
+        CompactionRequest request,
+        SessionSequence fromSequenceExclusive,
+        SessionReadSnapshot? pinned,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(sessionContext is not null, "The caller builds the session context before reconciling.");
+        Debug.Assert(request is not null, "The caller validates the request before reconciling.");
+
+        var cursor = fromSequenceExclusive;
+        while (true)
+        {
+            var pageResult = await _coordinator.ReadAsync(
+                pinned is null
+                    ? new SessionReadRequest(sessionContext, request.BranchId, cursor, _sourceReadPageSize)
+                    : new SessionReadRequest(sessionContext, request.BranchId, cursor, _sourceReadPageSize, pinned),
+                request.Context.SessionProfile,
+                cancellationToken).ConfigureAwait(false);
+
+            if (pageResult is not SessionPage page)
+            {
+                return (null, false);
+            }
+
+            if (pinned is null)
+            {
+                pinned = page.Snapshot;
+            }
+            else if (page.Snapshot != pinned)
+            {
+                return (null, false);
+            }
+
+            foreach (var entry in page.Entries)
+            {
+                if (entry is CompactionSessionEntry { Record: { Status: CompactionRecordStatus.Active } committed }
+                    && committed.Context.CompactionId == request.Context.CompactionId)
+                {
+                    return (committed, true);
+                }
+            }
+
+            cursor = page.ThroughSequence;
+            if (!page.HasMore || page.Entries.IsEmpty)
+            {
+                return (null, true);
+            }
+        }
     }
 }

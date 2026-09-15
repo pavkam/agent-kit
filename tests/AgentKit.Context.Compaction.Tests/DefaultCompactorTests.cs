@@ -316,7 +316,7 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
-    public async Task CompactAsync_WhenAppendFails_ReturnsCompactionFailed()
+    public async Task CompactAsync_WhenAppendFailsAndNoRecordWasCommitted_ReturnsNonRetryableCompactionFailed()
     {
         var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
         var address = Address();
@@ -328,7 +328,95 @@ public sealed class DefaultCompactorTests
         var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<CompactionFailed>();
         failed.Failure.Kind.ShouldBe(CompactionFailureKind.ActivationFailure);
-        failed.Failure.Retryable.ShouldBeTrue();
+        failed.Failure.Retryable.ShouldBeFalse();
+        failed.Failure.SafeMessage.ShouldContain("store unavailable");
+        coordinator.ReceivedReads.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenRetriedWithSameCompactionId_ReportsExistingActiveRecord()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('r', 200))));
+        var context = TestFactory.CompactionContext(_agentId, _sessionId, new CompactionId(Guid.NewGuid()));
+        var request = TestFactory.Request(context, _branchId, coordinator.Version, new SessionSequence(10), minimumRetainedEntries: 2, minimumReductionRatio: 0.1);
+        var first = (await compactor.CompactAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<CompactionSucceeded>();
+
+        // The caller lost the first response and replays the identical request under the same CompactionId.
+        var retry = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var succeeded = retry.ShouldBeOfType<CompactionSucceeded>();
+        succeeded.Record.ShouldBe(first.Record);
+        _ = coordinator.ReceivedAppends.ShouldHaveSingleItem();
+        coordinator.Entries.Count.ShouldBe(11);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenAppendCommittedButResponseWasLost_ReconcilesToTheCommittedRecord()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('z', 200))));
+        coordinator.AppendOverride = append =>
+        {
+            coordinator.Seed(append.Entries);
+            return new SessionAppendFailed("response lost");
+        };
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var succeeded = result.ShouldBeOfType<CompactionSucceeded>();
+        var committed = coordinator.Entries[^1].ShouldBeOfType<CompactionSessionEntry>();
+        succeeded.Record.ShouldBe(committed.Record);
+        succeeded.Record.Context.CompactionId.ShouldBe(request.Context.CompactionId);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenAppendConflictsWithADuplicateAttemptOfTheSameCompactionId_ReportsExistingActiveRecord()
+    {
+        // Two workers race the same logical checkpoint: the other worker's identical CompactionId wins the version
+        // check, so this attempt's conflict is really "already active".
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('z', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+        coordinator.AppendOverride = append =>
+        {
+            var expected = append.ExpectedVersion;
+            coordinator.Seed(append.Entries);
+            return new SessionAppendConflict(expected, coordinator.Version);
+        };
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var succeeded = result.ShouldBeOfType<CompactionSucceeded>();
+        succeeded.Record.ShouldBe(coordinator.Entries[^1].ShouldBeOfType<CompactionSessionEntry>().Record);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenAppendFailsAndReconciliationReadFails_ReturnsNonRetryableCompactionFailed()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('z', 200))));
+        var appended = false;
+        coordinator.AppendOverride = _ =>
+        {
+            appended = true;
+            return new SessionAppendFailed("store unavailable");
+        };
+        // Source reads succeed; only the reconciliation read after the failed append is unavailable.
+        coordinator.OnRead = _ => coordinator.ReadOverride = appended ? static _ => new SessionReadFailed("store unavailable") : null;
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.Kind.ShouldBe(CompactionFailureKind.ActivationFailure);
+        failed.Failure.Retryable.ShouldBeFalse();
+        failed.Failure.SafeMessage.ShouldContain("could not be reconciled");
     }
 
     [Fact]
