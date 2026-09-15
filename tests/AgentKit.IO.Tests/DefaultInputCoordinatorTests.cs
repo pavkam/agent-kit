@@ -16,9 +16,75 @@ public sealed class DefaultInputCoordinatorTests
             parameter == "queue" ? null! : new RecordingInputQueue(),
             parameter == "admissionIds" ? null! : new GuidAdmissionIdGenerator(),
             parameter == "timeProvider" ? null! : TimeProvider.System,
-            parameter == "options" ? null! : new InputCoordinatorOptions()));
+            parameter == "options" ? null! : Options.Create(new InputCoordinatorOptions())));
 
         exception.ParamName.ShouldBe(parameter);
+    }
+
+    [Fact]
+    public void Constructor_WhenOptionsValueIsNull_RejectsTheOptionsArgument()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new DefaultInputCoordinator(
+            new RecordingInputQueue(),
+            new GuidAdmissionIdGenerator(),
+            TimeProvider.System,
+            new NullValueOptions()));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Constructor_WhenBoundPartBoundIsNotPositive_RejectsTheOptionsArgument(int parts)
+    {
+        var options = Options.Create(new InputCoordinatorOptions { MaximumInputParts = parts });
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new DefaultInputCoordinator(
+            new RecordingInputQueue(),
+            new GuidAdmissionIdGenerator(),
+            TimeProvider.System,
+            options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenBoundPreprocessingRevisionIsDefault_RejectsTheOptionsArgument()
+    {
+        var options = Options.Create(new InputCoordinatorOptions { PreprocessingConfigurationVersion = default });
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new DefaultInputCoordinator(
+            new RecordingInputQueue(),
+            new GuidAdmissionIdGenerator(),
+            TimeProvider.System,
+            options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenBoundPartBoundIsExactlyOne_AcceptsTheBoundary()
+    {
+        var options = Options.Create(new InputCoordinatorOptions { MaximumInputParts = 1 });
+
+        var coordinator = new DefaultInputCoordinator(new RecordingInputQueue(), new GuidAdmissionIdGenerator(), TimeProvider.System, options);
+
+        _ = coordinator.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task AdmitAsync_WhenOptionsChangeAfterConstruction_KeepsTheValuesCapturedAtConstruction()
+    {
+        var queue = new RecordingInputQueue();
+        var options = new InputCoordinatorOptions(maximumInputParts: 2);
+        var coordinator = Coordinator(queue, options: options);
+        options.MaximumInputParts = 1;
+
+        var result = await coordinator.AdmitAsync(InputCoordinationTestData.AdmissionRequest(InputCoordinationTestData.Payload(parts: 2)), TestContext.Current.CancellationToken);
+
+        result.ShouldNotBeOfType<RejectedInput>();
+        queue.AppendCalls.ShouldBe(1);
     }
 
     [Fact]
@@ -286,8 +352,13 @@ public sealed class DefaultInputCoordinatorTests
         new(queue,
             admissionIds ?? new GuidAdmissionIdGenerator(),
             clock ?? TimeProvider.System,
-            options ?? new InputCoordinatorOptions(),
+            Options.Create(options ?? new InputCoordinatorOptions()),
             logger);
+
+    private sealed class NullValueOptions: IOptions<InputCoordinatorOptions>
+    {
+        public InputCoordinatorOptions Value => null!;
+    }
 
     private sealed class FixedAdmissionIdGenerator: IIdentifierGenerator<AdmissionId>
     {

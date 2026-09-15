@@ -95,14 +95,132 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
-    public async Task AddInputCoordinator_WhenCollaboratorsAreReplaced_UsesTheReplacements()
+    public void AddInputCoordinator_WhenCalledTwice_RegistersOneCoordinatorAndComposesConfiguration()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInputCoordinator(static value => value.MaximumInputParts = 9)
+            .AddInputCoordinator(static value => value.PreprocessingConfigurationVersion = new ConfigurationVersion(4));
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<InputCoordinatorOptions>>().Value;
+
+        services.Count(descriptor => descriptor.ServiceType == typeof(IInputCoordinator)).ShouldBe(1);
+        services.Count(descriptor => descriptor.ServiceType == typeof(IIdentifierGenerator<AdmissionId>)).ShouldBe(1);
+        options.MaximumInputParts.ShouldBe(9);
+        options.PreprocessingConfigurationVersion.ShouldBe(new ConfigurationVersion(4));
+    }
+
+    [Fact]
+    public void AddInputCoordinator_WhenConfigureIsSupplied_AppliesItToTheBoundOptions()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInputCoordinator(static value => value.MaximumInputParts = 3);
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<InputCoordinatorOptions>>().Value;
+
+        options.MaximumInputParts.ShouldBe(3);
+        options.PreprocessingConfigurationVersion.ShouldBe(new ConfigurationVersion(1));
+    }
+
+    [Fact]
+    public void AddInputCoordinator_WhenConfigureIsOmitted_BindsTheDocumentedDefaults()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInputCoordinator();
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<InputCoordinatorOptions>>().Value;
+
+        options.MaximumInputParts.ShouldBe(256);
+        options.PreprocessingConfigurationVersion.ShouldBe(new ConfigurationVersion(1));
+    }
+
+    [Fact]
+    public void AddInputCoordinator_WhenConfiguredPartBoundIsNotPositive_FailsOptionsValidation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<IInputQueue>(new RecordingInputQueue());
+        _ = services.AddInputCoordinator(static value => value.MaximumInputParts = 0);
+        using var provider = services.BuildServiceProvider();
+
+        var optionsFailure = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<InputCoordinatorOptions>>().Value);
+        var coordinatorFailure = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IInputCoordinator>);
+
+        optionsFailure.Failures.ShouldContain("MaximumInputParts must be at least 1.");
+        coordinatorFailure.OptionsType.ShouldBe(typeof(InputCoordinatorOptions));
+    }
+
+    [Fact]
+    public void AddInputCoordinator_WhenConfiguredPreprocessingRevisionIsDefault_FailsOptionsValidation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInputCoordinator(static value => value.PreprocessingConfigurationVersion = default);
+        using var provider = services.BuildServiceProvider();
+
+        var failure = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<InputCoordinatorOptions>>().Value);
+
+        failure.Failures.ShouldContain("PreprocessingConfigurationVersion must be set.");
+    }
+
+    [Fact]
+    public void AddInputCoordinator_WhenOptionsInstanceOverloadIsUsed_AppliesTheInstanceValues()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddInputCoordinator(new InputCoordinatorOptions(new ConfigurationVersion(6), 5));
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<InputCoordinatorOptions>>().Value;
+
+        options.MaximumInputParts.ShouldBe(5);
+        options.PreprocessingConfigurationVersion.ShouldBe(new ConfigurationVersion(6));
+    }
+
+    [Fact]
+    public void AddInputCoordinator_WhenOptionsInstanceIsNull_ThrowsArgumentNullExceptionWithParamName()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Should.Throw<ArgumentNullException>(() => services.AddInputCoordinator((InputCoordinatorOptions) null!));
+
+        exception.ParamName.ShouldBe("options");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddInputCoordinator_WhenOptionsInstanceOverloadReceivesNullServices_ThrowsArgumentNullExceptionWithParamName()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(() => services.AddInputCoordinator(new InputCoordinatorOptions()));
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public async Task AddInputCoordinator_WhenHostConfiguresOptionsBeforeRegistration_HonorsTheHostConfiguration()
     {
         var services = new ServiceCollection();
         var queue = new RecordingInputQueue();
-        var options = new InputCoordinatorOptions(new ConfigurationVersion(11));
         _ = services.AddSingleton<IInputQueue>(queue);
-        _ = services.AddSingleton(options);
-        _ = services.AddInputCoordinator(new InputCoordinatorOptions(new ConfigurationVersion(2)));
+        _ = services.Configure<InputCoordinatorOptions>(static value => value.PreprocessingConfigurationVersion = new ConfigurationVersion(11));
+        _ = services.AddInputCoordinator();
+        using var provider = services.BuildServiceProvider();
+
+        var coordinator = provider.GetRequiredService<IInputCoordinator>();
+        _ = await coordinator.AdmitAsync(InputCoordinationTestData.AdmissionRequest(), TestContext.Current.CancellationToken);
+
+        queue.AppendedPreprocessing!.ConfigurationVersion.ShouldBe(new ConfigurationVersion(11));
+    }
+
+    [Fact]
+    public async Task AddInputCoordinator_WhenHostConfiguresOptionsAfterRegistration_AppliesTheLaterConfiguration()
+    {
+        var services = new ServiceCollection();
+        var queue = new RecordingInputQueue();
+        _ = services.AddSingleton<IInputQueue>(queue);
+        _ = services.AddInputCoordinator(static value => value.PreprocessingConfigurationVersion = new ConfigurationVersion(2));
+        _ = services.Configure<InputCoordinatorOptions>(static value => value.PreprocessingConfigurationVersion = new ConfigurationVersion(11));
         using var provider = services.BuildServiceProvider();
 
         var coordinator = provider.GetRequiredService<IInputCoordinator>();

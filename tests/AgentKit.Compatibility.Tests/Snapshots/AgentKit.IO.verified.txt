@@ -19,11 +19,12 @@ namespace AgentKit.IO
         public AgentKit.ComponentId SecurityAudience { get; }
         public System.Threading.Tasks.ValueTask<AgentKit.HumanQuestionResult> AskAsync(AgentKit.HumanQuestionRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
-    public sealed class InputCoordinatorOptions : System.IEquatable<AgentKit.IO.InputCoordinatorOptions>
+    public sealed class InputCoordinatorOptions
     {
+        public InputCoordinatorOptions() { }
         public InputCoordinatorOptions(AgentKit.ConfigurationVersion? preprocessingConfigurationVersion = default, int maximumInputParts = 256) { }
-        public int MaximumInputParts { get; }
-        public AgentKit.ConfigurationVersion PreprocessingConfigurationVersion { get; }
+        public int MaximumInputParts { get; set; }
+        public AgentKit.ConfigurationVersion PreprocessingConfigurationVersion { get; set; }
     }
     public sealed class RunOutputPublisherOptions : System.IEquatable<AgentKit.IO.RunOutputPublisherOptions>
     {
@@ -36,7 +37,8 @@ namespace AgentKit.IO
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInputPromotionPolicy() { }
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInputCoordinator(AgentKit.IO.InputCoordinatorOptions? options = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInputCoordinator(System.Action<AgentKit.IO.InputCoordinatorOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInputCoordinator(AgentKit.IO.InputCoordinatorOptions options) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddHumanQuestionBroker() { }
         }
     }

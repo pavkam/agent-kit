@@ -22,8 +22,18 @@ payload's part count, allocates the admission identity, captures the canonical
 preprocessing manifest and the injected-clock timestamp, and then reports
 exactly what the selected `IInputQueue` committed. `AddInputCoordinator`
 registers it together with this package's replaceable admission-identity
-generator, clock, and `InputCoordinatorOptions`; the application must select the
-queue, because AgentKit.IO is not a durable store.
+generator and clock, and binds `InputCoordinatorOptions` through the standard
+options pattern with an optional configure delegate; the application must select
+the queue, because AgentKit.IO is not a durable store.
+
+```csharp
+services.AddInputCoordinator(o => o.MaximumInputParts = 128);
+```
+
+The bound options are validated at host start and when first materialized, and
+the coordinator captures them once at construction. A host may also call
+`services.Configure<InputCoordinatorOptions>(...)` before or after
+`AddInputCoordinator`; configure callbacks compose in registration order.
 
 The coordinator applies no preprocessors, so the effective payload is the
 original payload and both manifest fingerprints are the same canonical

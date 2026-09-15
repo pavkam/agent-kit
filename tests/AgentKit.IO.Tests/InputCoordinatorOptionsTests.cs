@@ -36,11 +36,37 @@ public sealed class InputCoordinatorOptionsTests
             .ParamName.ShouldBe("preprocessingConfigurationVersion");
 
     [Fact]
-    public void Equals_WhenValuesMatch_ComparesStructurally()
+    public void Properties_WhenAssignedAfterConstruction_RetainTheAssignedValues()
     {
-        new InputCoordinatorOptions(new ConfigurationVersion(3), 8)
-            .ShouldBe(new InputCoordinatorOptions(new ConfigurationVersion(3), 8));
-        new InputCoordinatorOptions(new ConfigurationVersion(3), 8)
-            .ShouldNotBe(new InputCoordinatorOptions(new ConfigurationVersion(3), 9));
+        var options = new InputCoordinatorOptions
+        {
+            PreprocessingConfigurationVersion = new ConfigurationVersion(5),
+            MaximumInputParts = 12,
+        };
+
+        options.PreprocessingConfigurationVersion.ShouldBe(new ConfigurationVersion(5));
+        options.MaximumInputParts.ShouldBe(12);
+    }
+
+    [Fact]
+    public void Properties_WhenAssignedAfterValidatingConstruction_OverwriteTheConstructedValues()
+    {
+        var options = new InputCoordinatorOptions(new ConfigurationVersion(9), 4)
+        {
+            MaximumInputParts = 7,
+        };
+
+        options.PreprocessingConfigurationVersion.ShouldBe(new ConfigurationVersion(9));
+        options.MaximumInputParts.ShouldBe(7);
+    }
+
+    [Fact]
+    public void Equals_WhenValuesMatch_UsesReferenceIdentityBecauseTheTypeIsMutable()
+    {
+        var left = new InputCoordinatorOptions(new ConfigurationVersion(3), 8);
+        var right = new InputCoordinatorOptions(new ConfigurationVersion(3), 8);
+
+        left.ShouldNotBe(right);
+        left.ShouldBe(left);
     }
 }

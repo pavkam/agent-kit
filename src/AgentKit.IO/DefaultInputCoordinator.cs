@@ -15,31 +15,39 @@ internal sealed class DefaultInputCoordinator: IInputCoordinator
     private readonly IInputQueue _queue;
     private readonly IIdentifierGenerator<AdmissionId> _admissionIds;
     private readonly TimeProvider _timeProvider;
-    private readonly InputCoordinatorOptions _options;
+    private readonly int _maximumInputParts;
+    private readonly ConfigurationVersion _preprocessingConfigurationVersion;
     private readonly ILogger<DefaultInputCoordinator> _logger;
 
     /// <summary>Initializes coordination over an explicitly selected queue and identity source.</summary>
     /// <param name="queue">The non-null selected durable input queue.</param>
     /// <param name="admissionIds">The non-null allocator for new admission identities.</param>
     /// <param name="timeProvider">The non-null injected clock used for admission timestamps and elapsed measurement.</param>
-    /// <param name="options">The non-null validated coordinator bounds and preprocessing evidence.</param>
+    /// <param name="options">The non-null bound coordinator bounds and preprocessing evidence. The value is unwrapped once here and its validated bounds are copied, so later changes to the options object do not affect this instance.</param>
     /// <param name="logger">The optional content-free structured logger.</param>
     /// <exception cref="ArgumentNullException">A required dependency is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The bound <see cref="InputCoordinatorOptions.MaximumInputParts"/> is less than one, or <see cref="InputCoordinatorOptions.PreprocessingConfigurationVersion"/> is default. The registration validates the same constraints; this guard is defense in depth for direct construction.</exception>
+    /// <exception cref="OptionsValidationException">Unwrapping <paramref name="options"/> fails registration validation.</exception>
     public DefaultInputCoordinator(
         IInputQueue queue,
         IIdentifierGenerator<AdmissionId> admissionIds,
         TimeProvider timeProvider,
-        InputCoordinatorOptions options,
+        IOptions<InputCoordinatorOptions> options,
         ILogger<DefaultInputCoordinator>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(admissionIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        var value = options.Value;
+        ArgumentNullException.ThrowIfNull(value, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfLessThan(value.MaximumInputParts, 1, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfEqual(value.PreprocessingConfigurationVersion, default, nameof(options));
         _queue = queue;
         _admissionIds = admissionIds;
         _timeProvider = timeProvider;
-        _options = options;
+        _maximumInputParts = value.MaximumInputParts;
+        _preprocessingConfigurationVersion = value.PreprocessingConfigurationVersion;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultInputCoordinator>.Instance;
     }
 
@@ -65,7 +73,7 @@ internal sealed class DefaultInputCoordinator: IInputCoordinator
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (request.Input.Parts.Length > _options.MaximumInputParts)
+            if (request.Input.Parts.Length > _maximumInputParts)
             {
                 var rejected = new RejectedInput(new InputRejection(
                     InputRejectionKind.InvalidInput,
@@ -85,7 +93,7 @@ internal sealed class DefaultInputCoordinator: IInputCoordinator
             // original payload and both manifest fingerprints are the same canonical digest.
             var fingerprint = InputPayloadFingerprint.Create(request.Input);
             var preprocessing = new InputPreprocessingManifest(
-                _options.PreprocessingConfigurationVersion,
+                _preprocessingConfigurationVersion,
                 fingerprint,
                 fingerprint);
 
