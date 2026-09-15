@@ -8,10 +8,9 @@ application selects the loop, providers, stores, tools, and policies separately.
 
 ## Use this project
 
-For one conversation with one agent, you do not need this facade: compose the
-loop, session, security, and provider packages and add
-[`AgentKit.Conversations`](../AgentKit.Conversations/README.md), as
-[`examples/QuickStart`](../../examples/QuickStart/README.md) does. Reach for
+For one conversation with one agent, you do not need this facade:
+[`AgentKit.Simple`](../AgentKit.Simple/README.md) builds one in a few lines over
+[`AgentKit.Conversations`](../AgentKit.Conversations/README.md). Reach for
 `AgentEngine` when a process hosts a catalog of several agent definitions:
 
 ```csharp

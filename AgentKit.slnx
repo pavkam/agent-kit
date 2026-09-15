@@ -25,6 +25,8 @@
     <Project Path="src/AgentKit.Mcp.Server/AgentKit.Mcp.Server.csproj"/>
     <Project Path="src/AgentKit.Session/AgentKit.Session.csproj"/>
     <Project Path="src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
+    <Project Path="src/AgentKit.Session.Sqlite/AgentKit.Session.Sqlite.csproj"/>
+    <Project Path="src/AgentKit.Simple/AgentKit.Simple.csproj"/>
     <Project Path="src/AgentKit.Context/AgentKit.Context.csproj"/>
     <Project Path="src/AgentKit.Context.Compaction/AgentKit.Context.Compaction.csproj"/>
     <Project Path="src/AgentKit.Loop/AgentKit.Loop.csproj"/>
@@ -98,6 +100,8 @@
     <Project Path="tests/AgentKit.Mcp.Server.Tests/AgentKit.Mcp.Server.Tests.csproj"/>
     <Project Path="tests/AgentKit.Session.Tests/AgentKit.Session.Tests.csproj"/>
     <Project Path="tests/AgentKit.Session.InMemory.Tests/AgentKit.Session.InMemory.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Session.Sqlite.Tests/AgentKit.Session.Sqlite.Tests.csproj"/>
+    <Project Path="tests/AgentKit.Simple.Tests/AgentKit.Simple.Tests.csproj"/>
     <Project Path="tests/AgentKit.Context.Tests/AgentKit.Context.Tests.csproj"/>
     <Project Path="tests/AgentKit.Context.Compaction.Tests/AgentKit.Context.Compaction.Tests.csproj"/>
     <Project Path="tests/AgentKit.Loop.Tests/AgentKit.Loop.Tests.csproj"/>

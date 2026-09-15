@@ -1,0 +1,34 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Simple.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Simple
+{
+    public sealed class SimpleAgent : System.IDisposable
+    {
+        public AgentKit.Conversations.IConversationSession Conversation { get; }
+        public System.Threading.Tasks.Task<string> AskAsync(string text, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string text, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string text, AgentKit.Conversations.IConversationEventObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SimpleAgentBuilder
+    {
+        public Microsoft.Extensions.DependencyInjection.IServiceCollection Services { get; }
+        public AgentKit.Simple.SimpleAgent Build() { }
+        public AgentKit.Simple.SimpleAgentBuilder UseLocalDevelopmentDefaults() { }
+        public AgentKit.Simple.SimpleAgentBuilder UseModel(AgentKit.ModelAlias alias) { }
+        public AgentKit.Simple.SimpleAgentBuilder UseOpenAI(string apiKey, string modelId, System.Action<AgentKit.Providers.OpenAI.OpenAIProviderOptions>? configure = null) { }
+        public AgentKit.Simple.SimpleAgentBuilder WithAgentId(AgentKit.AgentId agentId) { }
+        public AgentKit.Simple.SimpleAgentBuilder WithAttemptTimeout(System.TimeSpan timeout) { }
+        public AgentKit.Simple.SimpleAgentBuilder WithIdentity(AgentKit.ExecutionIdentity identity) { }
+        public AgentKit.Simple.SimpleAgentBuilder WithInstructions(string text) { }
+        public AgentKit.Simple.SimpleAgentBuilder WithMaxTurns(int maxTurns) { }
+        public AgentKit.Simple.SimpleAgentBuilder WithRequestSettings(AgentKit.LlmRequestSettings settings) { }
+        public static AgentKit.Simple.SimpleAgentBuilder Create() { }
+    }
+    public sealed class SimpleAgentException : System.Exception
+    {
+        public SimpleAgentException(string message, AgentKit.Conversations.ConversationTurnResult result) { }
+        public AgentKit.Conversations.ConversationTurnResult Result { get; }
+    }
+}

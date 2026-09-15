@@ -1,6 +1,6 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-global using AgentKit.Simple;
+using System.Runtime.CompilerServices;
 
-global using QuickStart;
+[assembly: InternalsVisibleTo("AgentKit.Simple.Tests")]

@@ -20,35 +20,35 @@ public sealed class QuickStartAgentTests
     [Fact]
     public void Create_WhenApiKeyIsSupplied_BuildsAValidatedCompositionWithoutTouchingTheNetwork()
     {
-        using var conversation = QuickStartAgent.Create("sk-test", services => services.Replace(
+        using var agent = QuickStartAgent.Create("sk-test", services => services.Replace(
             ServiceDescriptor.Singleton(new HttpClient(new ThrowingHandler()))));
 
-        _ = conversation.ShouldBeAssignableTo<IConversationSession>();
+        _ = agent.Conversation.ShouldBeAssignableTo<IConversationSession>();
     }
 
     [Fact]
-    public async Task SendAsync_WhenTheModelAnswers_ReturnsTheAssistantTextAndUsage()
+    public async Task AskAsync_WhenTheModelAnswers_ReturnsTheAssistantTextAndSendAsyncTheUsage()
     {
         var handler = new StubOpenAIHandler("AgentKit composes agents from replaceable parts.");
-        using var conversation = QuickStartAgent.Create("sk-test", services => services.Replace(
+        using var agent = QuickStartAgent.Create("sk-test", services => services.Replace(
             ServiceDescriptor.Singleton(new HttpClient(handler))));
 
-        var result = await conversation.SendAsync("What is AgentKit?", TestContext.Current.CancellationToken);
+        var reply = await agent.AskAsync("What is AgentKit?", TestContext.Current.CancellationToken);
+        var result = await agent.SendAsync("And again?", TestContext.Current.CancellationToken);
 
+        reply.ShouldBe("AgentKit composes agents from replaceable parts.");
         result.Succeeded.ShouldBeTrue();
-        result.Events.OfType<ConversationAssistantTextEvent>().Select(static e => e.Text)
-            .ShouldContain("AgentKit composes agents from replaceable parts.");
         result.Events.OfType<ConversationUsageEvent>().ShouldHaveSingleItem().Usage.InputTokens.ShouldBe(10);
     }
 
     [Fact]
-    public async Task SendAsync_WhenCalled_SendsTheBearerKeyTheSystemInstructionAndTheKnownModelId()
+    public async Task AskAsync_WhenCalled_SendsTheBearerKeyTheSystemInstructionAndTheKnownModelId()
     {
         var handler = new StubOpenAIHandler("ok");
-        using var conversation = QuickStartAgent.Create("sk-test", services => services.Replace(
+        using var agent = QuickStartAgent.Create("sk-test", services => services.Replace(
             ServiceDescriptor.Singleton(new HttpClient(handler))));
 
-        _ = await conversation.SendAsync("hello", TestContext.Current.CancellationToken);
+        _ = await agent.AskAsync("hello", TestContext.Current.CancellationToken);
 
         var request = handler.Requests.ShouldHaveSingleItem();
         request.RequestUri.ShouldNotBeNull().AbsoluteUri.ShouldStartWith("https://api.openai.com/");
@@ -60,14 +60,14 @@ public sealed class QuickStartAgentTests
     }
 
     [Fact]
-    public async Task SendAsync_WhenCalledTwice_ContinuesTheSameConversation()
+    public async Task AskAsync_WhenCalledTwice_ContinuesTheSameConversation()
     {
         var handler = new StubOpenAIHandler("ok");
-        using var conversation = QuickStartAgent.Create("sk-test", services => services.Replace(
+        using var agent = QuickStartAgent.Create("sk-test", services => services.Replace(
             ServiceDescriptor.Singleton(new HttpClient(handler))));
 
-        _ = await conversation.SendAsync("first", TestContext.Current.CancellationToken);
-        _ = await conversation.SendAsync("second", TestContext.Current.CancellationToken);
+        _ = await agent.AskAsync("first", TestContext.Current.CancellationToken);
+        _ = await agent.AskAsync("second", TestContext.Current.CancellationToken);
 
         handler.Bodies.Count.ShouldBe(2);
         handler.Bodies[1].ShouldContain("first");
@@ -75,18 +75,17 @@ public sealed class QuickStartAgentTests
     }
 
     [Fact]
-    public async Task SendAsync_WhenTheProviderIsUnreachable_ReturnsAnUnsuccessfulResultWithoutSecrets()
+    public async Task AskAsync_WhenTheProviderIsUnreachable_ThrowsSimpleAgentExceptionWithoutSecrets()
     {
-        using var conversation = QuickStartAgent.Create("sk-test-secret", services => services.Replace(
+        using var agent = QuickStartAgent.Create("sk-test-secret", services => services.Replace(
             ServiceDescriptor.Singleton(new HttpClient(new ThrowingHandler()))));
 
-        var result = await conversation.SendAsync("hello", TestContext.Current.CancellationToken);
+        var exception = await Should.ThrowAsync<SimpleAgentException>(() => agent.AskAsync("hello", TestContext.Current.CancellationToken));
 
-        result.Succeeded.ShouldBeFalse();
-        var text = string.Join('\n', result.Events.OfType<ConversationAssistantTextEvent>().Select(static e => e.Text));
-        text.ShouldNotBeNullOrWhiteSpace();
-        text.ShouldNotContain("sk-test-secret");
-        text.ShouldNotContain("HttpRequestException");
+        exception.Message.ShouldNotBeNullOrWhiteSpace();
+        exception.Message.ShouldNotContain("sk-test-secret");
+        exception.Message.ShouldNotContain("HttpRequestException");
+        exception.Result.Succeeded.ShouldBeFalse();
     }
 
     private sealed class ThrowingHandler: HttpMessageHandler

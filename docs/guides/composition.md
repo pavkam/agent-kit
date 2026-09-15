@@ -12,9 +12,21 @@ composition you can run today.
 
 ## Start from the working shape
 
-The direct, in-process path is one conversation with one agent through
-`AgentKit.Conversations`. Every concern is a separate registration, and each one
-is replaceable:
+The direct, in-process path is one conversation with one agent. With
+[`AgentKit.Simple`](../../src/AgentKit.Simple/README.md) it is a builder:
+
+```csharp
+using var agent = SimpleAgentBuilder.Create()
+    .UseLocalDevelopmentDefaults()
+    .UseOpenAI(apiKey, "gpt-4o-mini")
+    .Build();
+var reply = await agent.AskAsync("Hello");
+```
+
+That builder is sugar over ordinary registrations. Written out, the same
+composition is the following, and this is the shape a host that owns its own
+`IServiceCollection` writes directly. Every concern is a separate registration,
+and each one is replaceable:
 
 ```csharp
 var services = new ServiceCollection();
@@ -47,11 +59,11 @@ var conversation = provider.GetRequiredService<IConversationSession>();
 var result = await conversation.SendAsync("Hello", cancellationToken);
 ```
 
-[`examples/QuickStart`](../../examples/QuickStart/QuickStartAgent.cs) is this
-program in full; [`examples/CodingAgent`](../../examples/CodingAgent/README.md)
-grows it with SQLite sessions, an approval broker, and eight tools. The rest of
-this guide explains what each block owns and how the multi-agent `AgentEngine`
-facade generalizes it.
+[`examples/QuickStart`](../../examples/QuickStart/README.md) is the builder
+form; [`examples/CodingAgent`](../../examples/CodingAgent/README.md) is the
+written-out form grown with SQLite sessions, an approval broker, and eight
+tools. The rest of this guide explains what each block owns and how the
+multi-agent `AgentEngine` facade generalizes it.
 
 ## Understand the four lifetimes
 

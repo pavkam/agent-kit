@@ -15,10 +15,10 @@ case of one long-lived, single-branch conversation against one composed agent.
 
 ## Use this project
 
-Register security, session, loop, and provider services exactly as any other
-AgentKit composition, then add one conversation. This is the complete working
-shape from
-[`examples/QuickStart`](../../examples/QuickStart/QuickStartAgent.cs):
+For the shortest path, [`AgentKit.Simple`](../AgentKit.Simple/README.md) wraps
+this package in a builder. When you own the `IServiceCollection`, register
+security, session, loop, and provider services exactly as any other AgentKit
+composition, then add one conversation:
 
 ```csharp
 var services = new ServiceCollection();

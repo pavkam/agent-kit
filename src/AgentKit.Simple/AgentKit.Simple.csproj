@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <DebugType>portable</DebugType>
+    <PackageId>AgentKit.Simple</PackageId>
+    <Title>AgentKit.Simple</Title>
+    <Description>The shortest path to a working AgentKit agent: a fluent builder that composes the real loop, session, security, and provider packages with explicit, named local-development defaults.</Description>
+    <PackageTags>agents;ai;llm;quickstart;dependency-injection</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
+    <PackageReference Include="Microsoft.Extensions.Options"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+    <ProjectReference Include="../AgentKit.Context/AgentKit.Context.csproj"/>
+    <ProjectReference Include="../AgentKit.Conversations/AgentKit.Conversations.csproj"/>
+    <ProjectReference Include="../AgentKit.Loop/AgentKit.Loop.csproj"/>
+    <ProjectReference Include="../AgentKit.Output/AgentKit.Output.csproj"/>
+    <ProjectReference Include="../AgentKit.Permissions/AgentKit.Permissions.csproj"/>
+    <ProjectReference Include="../AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj"/>
+    <ProjectReference Include="../AgentKit.Providers/AgentKit.Providers.csproj"/>
+    <ProjectReference Include="../AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
+    <ProjectReference Include="../AgentKit.Session/AgentKit.Session.csproj"/>
+    <ProjectReference Include="../AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
+    <ProjectReference Include="../AgentKit.Tools/AgentKit.Tools.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/"/>
+  </ItemGroup>
+</Project>

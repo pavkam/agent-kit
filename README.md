@@ -53,75 +53,33 @@ export OPENAI_API_KEY=sk-...
 dotnet run --project examples/QuickStart -- "In one sentence, what is AgentKit?"
 ```
 
-Every part of that agent is an ordinary DI registration. This is the whole
-composition, minus the small identity and session-profile helpers you can read
-in [`examples/QuickStart`](examples/QuickStart/QuickStartAgent.cs):
+The whole agent is a handful of lines:
 
 ```csharp
-var services = new ServiceCollection();
+using var agent = SimpleAgentBuilder.Create()
+    .UseLocalDevelopmentDefaults()          // in-memory state, allow-all policy, local identity: named, never implicit
+    .UseOpenAI(apiKey, "gpt-4o-mini")       // adapter, credential, and catalog descriptor in one call
+    .WithInstructions("You are a concise assistant.")
+    .Build();
 
-// Security: grant store, a profile bound to this agent, and a policy.
-services.AddInMemorySecurityGrantStore();
-services.AddStandaloneSecurityProfile(
-    agentId, definitionRevision, configurationVersion, securityProfileKey, authorityKey,
-    configurePermissions: o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
-services.AddAllowAllSecurityPolicy(); // local, single-tenant only
-
-// Session state: coordinator plus an explicitly selected store and directory.
-services.AddAgentSession();
-services.AddInMemorySessionStore();
-services.AddInMemorySessionDirectory(new ComponentId("quickstart.session"));
-
-// The turn loop and its collaborators.
-services.AddAgentContext();
-services.AddAgentOutput();
-services.AddAgentLoop();
-services.AddAgentTools();
-
-// The model, exposed to the agent under one alias. Limits, capabilities, and
-// list prices come from the bundled known-model catalog.
-services.AddAgentProviders();
-services.AddOpenAI();
-services.AddOpenAIApiKeyCredential(apiKey);
-services.AddOpenAIKnownLlmModel(alias, new ModelId("gpt-4o-mini"));
-
-// One conversation with one agent.
-services.AddConversationSession(options =>
-{
-    options.AgentId = agentId;
-    options.Identity = identity;
-    options.SecurityProfileKey = securityProfileKey;
-    options.AgentDefinitionRevision = definitionRevision;
-    options.ConfigurationVersion = configurationVersion;
-    options.SessionProfile = sessionProfile;
-    options.ModelSelectionPolicy = new ModelSelectionPolicy([alias]);
-    options.Instructions.Add(systemMessage);
-    options.MaxTurns = 4;
-});
-
-await using var provider = services.BuildServiceProvider(
-    new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
-var conversation = provider.GetRequiredService<IConversationSession>();
-
-var result = await conversation.SendAsync("In one sentence, what is AgentKit?", ct);
-foreach (var text in result.Events.OfType<ConversationAssistantTextEvent>())
-{
-    Console.WriteLine(text.Text);
-}
+Console.WriteLine(await agent.AskAsync("In one sentence, what is AgentKit?"));
 ```
 
-One `SendAsync` creates the session, admits the message, runs the loop, and
-returns the committed events. The
-[getting-started guide](docs/getting-started.md) explains each block and how to
-add tools, durable sessions, and other providers. The
-[CodingAgent](examples/CodingAgent/README.md) example grows the same shape into
-a full terminal coding assistant with sandboxed file and process tools.
+There is no second runtime behind that builder. Each call is sugar over the
+public DI registrations of the loop, session, security, and provider packages,
+and `builder.Services` is the same `IServiceCollection` they land on, so tools,
+other providers, durable storage, and your own security policies are ordinary
+registrations away. The [getting-started guide](docs/getting-started.md)
+explains each line and the escape hatches; the
+[CodingAgent](examples/CodingAgent/README.md) example is the long form of the
+same composition with SQLite sessions, an approval broker, and eight tools.
 
 ## Choose your components
 
 | You need to…                              | Start with                                                                                                                                    |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Compose and host agents                   | [AgentKit](src/AgentKit/README.md)                                                                                                            |
+| Build your first agent                    | [AgentKit.Simple](src/AgentKit.Simple/README.md)                                                                                              |
+| Compose and host several agents           | [AgentKit](src/AgentKit/README.md)                                                                                                            |
 | Implement an extension                    | [AgentKit.Abstractions](src/AgentKit.Abstractions/README.md)                                                                                  |
 | Coordinate turns and continuation         | [Loop](src/AgentKit.Loop/README.md), [Context](src/AgentKit.Context/README.md), and [Output](src/AgentKit.Output/README.md)                   |
 | Drive one conversational turn in one call | [Conversations](src/AgentKit.Conversations/README.md)                                                                                         |

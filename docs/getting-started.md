@@ -1,13 +1,13 @@
 # Getting started
 
-This walkthrough builds and runs the smallest complete AgentKit agent: one
-OpenAI model, in-memory session and security state, and no tools. You will see
-every registration the agent needs, send it a message, and learn where tools,
-durable storage, and other providers plug in.
+This walkthrough runs the smallest complete AgentKit agent, explains what each
+line composes, and shows where tools, other providers, durable storage, and your
+own security policies plug in.
 
 The finished program lives in the repository as
-[`examples/QuickStart`](../examples/QuickStart/README.md), so it always compiles
-against the current libraries.
+[`examples/QuickStart`](../examples/QuickStart/README.md) and is exercised by
+its own tests, so it always compiles and completes a turn against the current
+libraries.
 
 ## Current status
 
@@ -16,13 +16,11 @@ AgentKit targets .NET 10 and is currently versioned `0.1.0-alpha.1` in
 when evaluating these instructions. The repository's version number does not
 establish availability on a public package feed.
 
-The composition below is the direct, in-process path: one conversation with one
-agent, driven through `AgentKit.Conversations`. The `AgentEngine` facade that
-hosts a catalog of several agents and queue-backed input admission exists but
-its complete runnable graph is still tracked in the
-[implementation ledger](implementation-progress.md#component-coverage). Durable
-execution, cross-session memory/retrieval, and evaluation remain architectural
-requirements without their full runtime packages.
+The path below is the direct, in-process one: one conversation with one agent,
+composed by `AgentKit.Simple` over `AgentKit.Conversations`. The `AgentEngine`
+facade that hosts a catalog of several agents with queue-backed input admission
+exists but its complete runnable graph is still tracked in the
+[implementation ledger](implementation-progress.md#component-coverage).
 
 ## Set up the repository
 
@@ -44,164 +42,91 @@ export OPENAI_API_KEY=sk-...
 dotnet run --project examples/QuickStart -- "In one sentence, what is AgentKit?"
 ```
 
-The program prints the assistant's reply. Credentials are never fabricated as
-defaults: without the variable the program stops before composing anything.
+Credentials are never fabricated as defaults: without the variable the program
+stops before composing anything.
 
-## Read the composition
-
-Everything below is in
-[`QuickStartAgent.cs`](../examples/QuickStart/QuickStartAgent.cs). Each block is
-one concern, and every call is a public `IServiceCollection` extension you can
-replace.
-
-Start with the identities that pin the agent's configuration. Keep them stable
-across restarts so persisted sessions and security evidence keep matching the
-agent that created them:
+## The whole agent
 
 ```csharp
-var agentId = new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
-var definitionRevision = new AgentDefinitionRevision(1);
-var configurationVersion = new ConfigurationVersion(1);
-var securityProfileKey = new SecurityProfileKey("quickstart-security");
-var authorityKey = new ComponentKey<ISecurityAuthority>("quickstart-authority");
-var alias = new ModelAlias("assistant");
-var modelId = new ModelId("gpt-4o-mini");
+using var agent = SimpleAgentBuilder.Create()
+    .UseLocalDevelopmentDefaults()
+    .UseOpenAI(apiKey, "gpt-4o-mini")
+    .WithInstructions("You are a concise assistant.")
+    .Build();
 
-var services = new ServiceCollection();
+Console.WriteLine(await agent.AskAsync("In one sentence, what is AgentKit?"));
 ```
 
-Security comes first. A grant store records single-use authorizations, the
-standalone profile binds a security authority to this agent, and at least one
-`ISecurityPolicy` decides what is allowed. `AddAllowAllSecurityPolicy` is only
-appropriate for a local, single-tenant tool; production hosts register their own
-policies and an audit sink so delivery can stay `Required`:
+`AskAsync` sends one user message, runs the agent loop until it produces a final
+answer or hits a limit, and returns the assistant's text. Call it again on the
+same agent to continue the conversation. When a turn ends without a final answer
+it throws `SimpleAgentException` carrying the safe reason and the committed
+events; it never carries provider diagnostics or your key.
 
-```csharp
-services.AddInMemorySecurityGrantStore();
-services.AddStandaloneSecurityProfile(
-    agentId, definitionRevision, configurationVersion, securityProfileKey, authorityKey,
-    configurePermissions: o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
-services.AddAllowAllSecurityPolicy();
-```
+## What each line composes
 
-Session state needs the coordinator plus an explicitly selected store and
-directory. `AddAgentSession` never installs a store on its own; the in-memory
-pair below forgets everything when the process exits:
+There is no second runtime behind the builder. Each call is sugar over the
+public registrations you could write by hand on `builder.Services`:
 
-```csharp
-services.AddAgentSession();
-services.AddInMemorySessionStore();
-services.AddInMemorySessionDirectory(new ComponentId("quickstart.session"));
-```
+| Call                            | Registers                                                                                                                                                                                                                                                         |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UseLocalDevelopmentDefaults()` | In-memory session store and directory, in-memory grant store, a standalone security profile with best-effort audit, an allow-all policy, every registered tool allowed, and a basic-assurance identity for the process user                                       |
+| `UseOpenAI(apiKey, modelId)`    | The provider catalog, the OpenAI adapter, the API-key credential, and a catalog descriptor whose context window, output limit, capabilities, and list prices come from the bundled [known-model catalog](../src/AgentKit.Providers/README.md#known-model-catalog) |
+| `WithInstructions(text)`        | One system message, in call order                                                                                                                                                                                                                                 |
+| `Build()`                       | Session coordination, context assembly, output processing, the turn loop, the tool runtime, and the conversation; then a service provider built with `ValidateOnBuild` and `ValidateScopes`                                                                       |
 
-The turn loop and its collaborators assemble context, run the model, validate
-output, and invoke tools. No tool packages are registered yet, so the catalog is
-empty:
-
-```csharp
-services.AddAgentContext();
-services.AddAgentOutput();
-services.AddAgentLoop();
-services.AddAgentTools();
-```
-
-The model is registered under one alias. The agent selects the alias, never the
-vendor. `AddOpenAIKnownLlmModel` registers both the concrete OpenAI adapter and
-the provider-neutral catalog descriptor for it, taking the model's context
-window, output limit, capabilities, and list prices from the
-[known-model catalog](../src/AgentKit.Providers/README.md#known-model-catalog)
-bundled in `AgentKit.Providers`:
-
-```csharp
-services.AddAgentProviders();
-services.AddOpenAI();
-services.AddOpenAIApiKeyCredential(apiKey);
-services.AddOpenAIKnownLlmModel(alias, modelId);
-```
-
-A model the catalog does not know is registered explicitly instead: call
-`AddOpenAILlmModel(alias, modelId, capabilities, limits)` and publish a matching
-`ModelDescriptor` through `AddModelDescriptors`. For any other provider, look
-the model up with `KnownModelCatalog.Default.TryFind`, build the descriptor with
-`KnownModel.ToDescriptor(alias, apiFamily, baselineCapabilities)` using that
-provider package's defaults, and register it the same way.
-
-Finally, one conversation with one agent. The options carry the identities from
-above, the session profile that selects the in-memory store, the model alias,
-the system instruction, and the run limits:
-
-```csharp
-services.AddConversationSession(options =>
-{
-    options.AgentId = agentId;
-    options.Identity = identity;
-    options.SecurityProfileKey = securityProfileKey;
-    options.AgentDefinitionRevision = definitionRevision;
-    options.ConfigurationVersion = configurationVersion;
-    options.SessionProfile = InMemorySessionProfile();
-    options.ModelSelectionPolicy = new ModelSelectionPolicy([alias]);
-    options.Instructions.Add(SystemMessage(agentId, "You are a concise assistant."));
-    options.MaxTurns = 4;
-    options.AttemptTimeout = TimeSpan.FromMinutes(1);
-});
-```
-
-`identity` is the authenticated `ExecutionIdentity` of the person or workload
-running the agent, and `InMemorySessionProfile()` builds a
-`SessionProfileSnapshot` whose store key is `agentkit.in-memory`. Both helpers
-are a few lines in the example file.
-
-## Use the agent
-
-Build the provider with validation on so a missing or ambiguous registration
-fails here rather than in the middle of a run, then resolve the conversation:
-
-```csharp
-await using var provider = services.BuildServiceProvider(
-    new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
-var conversation = provider.GetRequiredService<IConversationSession>();
-
-var result = await conversation.SendAsync("In one sentence, what is AgentKit?", cancellationToken);
-
-foreach (var text in result.Events.OfType<ConversationAssistantTextEvent>())
-{
-    Console.WriteLine(text.Text);
-}
-```
-
-One `SendAsync` call creates the session on first use, admits the user message,
-runs the agent loop until it completes or hits a limit, and returns the
-committed events. Call it again on the same instance to continue the
-conversation. `result.Succeeded` is `false` when the run stopped for any reason
-other than a final assistant message; the reason is described in the assistant
-text using only safe fields.
-
-For live output while the turn runs, pass an `IConversationEventObserver` to the
-observing `SendAsync` overload. It receives text and reasoning deltas,
-correlated tool starts and results, and usage updates before the call returns.
+`UseLocalDevelopmentDefaults` is named for what it is. Nothing survives the
+process, every request is permitted, and the identity is the process user. It is
+the right choice for a local tool and the wrong one for a service; `Build()`
+fails with a diagnostic naming the missing registration if you skip it without
+supplying your own.
 
 ## Grow the agent
 
-- **Give it tools.** Register a tool package and the host boundary it needs, for
-  example `AddReadTool()` with `AddSandboxedFileSystem(workspaceRoot)`, then add
-  the tool definitions to `ConversationSessionOptions.Tools`. Registering a tool
-  does not grant access to its resources; your `ISecurityPolicy` still decides.
-  The [CodingAgent](../examples/CodingAgent/README.md) example composes eight
-  tools this way.
-- **Keep conversations across restarts.** Swap the two in-memory session
-  registrations for `AddSqliteSessionStore` and `AddSqliteSessionDirectory`, set
-  the profile's store key to `agentkit.sqlite`, and mark it
-  `requiresDurableStore: true`. `OpenAsync(sessionId)` then resumes a persisted
+`builder.Services` is the same `IServiceCollection` every registration lands on,
+so everything beyond the sugar is ordinary AgentKit composition.
+
+- **Give it tools.** Register a tool package and the host boundary it needs; the
+  builder advertises every registered tool to the model:
+
+  ```csharp
+  builder.Services.AddSandboxedFileSystem(workspaceRoot);
+  builder.Services.AddReadTool();
+  ```
+
+  Registering a tool does not grant access to its resources; the security policy
+  still decides. The [CodingAgent](../examples/CodingAgent/README.md) example
+  composes eight tools this way with a real approval flow.
+
+- **Stream the answer.** Pass an `IConversationEventObserver` to
+  `agent.SendAsync(text, observer)` to receive text and reasoning deltas, tool
+  starts and results, and usage before the call returns.
+
+- **Use another provider or an unknown model.** Register that provider's
+  services on `builder.Services` and select the alias with `UseModel`:
+
+  ```csharp
+  builder.Services.AddAnthropic().AddAnthropicApiKeyCredential(key)
+      .AddAnthropicLlmModel(new ModelAlias("claude"), new ModelId("claude-sonnet-4-5"));
+  builder.UseModel(new ModelAlias("claude"));
+  ```
+
+  `KnownModelCatalog.Default.TryFind(providerId, modelId)` supplies the limits
+  and prices for that descriptor.
+
+- **Keep conversations across restarts.** Skip `UseLocalDevelopmentDefaults`,
+  register `AddSqliteSessionStore` and `AddSqliteSessionDirectory` together with
+  your security services, and call `WithIdentity`.
+  `agent.Conversation.OpenAsync(sessionId)` then resumes a persisted
   conversation.
-- **Change providers.** Replace the `AgentKit.Providers.OpenAI` registrations
-  with another [provider package](packages/index.md#model-providers). The alias,
-  descriptor shape, and everything downstream stay the same.
+
 - **Host several agents.** The [composition guide](guides/composition.md)
   explains the `AgentEngine` facade, its lifetimes, and the collaborators a
-  complete engine composition requires.
+  complete engine composition requires; it also shows the long-form composition
+  the builder performs for you.
 
 To see the behavior this walkthrough relies on under test, run:
 
 ```sh
-dotnet test --project tests/AgentKit.Conversations.Tests/AgentKit.Conversations.Tests.csproj --configuration Release --timeout 300s
+dotnet test --project tests/AgentKit.Simple.Tests --configuration Release --timeout 300s
 ```

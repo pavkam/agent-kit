@@ -9,6 +9,7 @@ architecture and concept specifications define the complete intended design.
 | You want to…                                   | Start here                                          |
 | ---------------------------------------------- | --------------------------------------------------- |
 | Set up a checkout and run your first agent     | [Getting started](getting-started.md)               |
+| Build an agent in a few lines                  | [AgentKit.Simple](../src/AgentKit.Simple/README.md) |
 | Understand engines, agents, sessions, and runs | [Composing an application](guides/composition.md)   |
 | Find a package and its related projects        | [Project catalog](packages/index.md)                |
 | Select a provider and check its wire behavior  | [Provider reference](providers/index.md)            |

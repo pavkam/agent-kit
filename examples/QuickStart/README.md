@@ -1,9 +1,10 @@
 # QuickStart
 
-The smallest complete AgentKit agent: one OpenAI model, in-memory session and
-security state, and no tools. It is the program the
+The smallest complete AgentKit agent: one OpenAI model, local development
+defaults, one instruction. It is the program the
 [getting-started guide](../../docs/getting-started.md) walks through, kept in
-the repository so it always compiles against the current libraries.
+the repository and covered by [QuickStart.Tests](../../tests/QuickStart.Tests)
+so it always compiles and completes a turn against the current libraries.
 
 ## Run it
 
@@ -12,40 +13,22 @@ export OPENAI_API_KEY=sk-...
 dotnet run --project examples/QuickStart -- "In one sentence, what is AgentKit?"
 ```
 
-The program prints the assistant's reply and exits with `0` when the turn
-completed, or `1` when the run stopped for any other reason (the reason is
-printed as the assistant text).
+## The whole agent
 
-## What it composes
+```csharp
+using var agent = SimpleAgentBuilder.Create()
+    .UseLocalDevelopmentDefaults()
+    .UseOpenAI(apiKey, "gpt-4o-mini")
+    .WithInstructions("You are a concise assistant.")
+    .Build();
 
-[`QuickStartAgent.cs`](QuickStartAgent.cs) registers, in order:
+Console.WriteLine(await agent.AskAsync(prompt));
+```
 
-| Concern      | Registrations                                                                                |
-| ------------ | -------------------------------------------------------------------------------------------- |
-| Security     | `AddInMemorySecurityGrantStore`, `AddStandaloneSecurityProfile`, `AddAllowAllSecurityPolicy` |
-| Session      | `AddAgentSession`, `AddInMemorySessionStore`, `AddInMemorySessionDirectory`                  |
-| Turn loop    | `AddAgentContext`, `AddAgentOutput`, `AddAgentLoop`, `AddAgentTools`                         |
-| Model        | `AddAgentProviders`, `AddOpenAI`, `AddOpenAIApiKeyCredential`, `AddOpenAIKnownLlmModel`      |
-| Conversation | `AddConversationSession`                                                                     |
-
-`IConversationSession.SendAsync` then creates the session on first use, admits
-the user message, runs the agent loop, and returns the committed events.
-
-## Grow it
-
-- Give the agent tools: add a tool package such as `AgentKit.Tools.Read`
-  together with its host boundary (`AddSandboxedFileSystem`), then pass the tool
-  definitions to `ConversationSessionOptions.Tools`. The
-  [CodingAgent](../CodingAgent/README.md) example shows eight tools composed
-  this way.
-- Keep conversations across restarts: replace the two in-memory session
-  registrations with `AddSqliteSessionStore` and `AddSqliteSessionDirectory` and
-  mark the session profile `requiresDurableStore: true`.
-- Replace `AddAllowAllSecurityPolicy` with your own `ISecurityPolicy`
-  implementations and register an audit sink so audit delivery can stay
-  `Required`.
-- Switch providers by swapping the `AgentKit.Providers.OpenAI` registrations for
-  another [provider package](../../docs/packages/index.md#model-providers); the
-  alias the agent selects stays the same.
+[`AgentKit.Simple`](../../src/AgentKit.Simple/README.md) explains what each call
+registers and how to add tools, other providers, durable sessions, and real
+security policies through `builder.Services`. The
+[CodingAgent](../CodingAgent/README.md) example is the long form of the same
+composition with SQLite sessions, an approval broker, and eight tools.
 
 Target: **.NET 10**.

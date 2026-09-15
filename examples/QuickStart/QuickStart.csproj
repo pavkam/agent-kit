@@ -10,17 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/AgentKit.Conversations/AgentKit.Conversations.csproj"/>
-    <ProjectReference Include="../../src/AgentKit.Context/AgentKit.Context.csproj"/>
-    <ProjectReference Include="../../src/AgentKit.Loop/AgentKit.Loop.csproj"/>
-    <ProjectReference Include="../../src/AgentKit.Output/AgentKit.Output.csproj"/>
-    <ProjectReference Include="../../src/AgentKit.Permissions/AgentKit.Permissions.csproj"/>
-    <ProjectReference Include="../../src/AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj"/>
-    <ProjectReference Include="../../src/AgentKit.Providers/AgentKit.Providers.csproj"/>
-    <ProjectReference Include="../../src/AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
-    <ProjectReference Include="../../src/AgentKit.Session/AgentKit.Session.csproj"/>
-    <ProjectReference Include="../../src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
-    <ProjectReference Include="../../src/AgentKit.Tools/AgentKit.Tools.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Simple/AgentKit.Simple.csproj"/>
   </ItemGroup>
 
 </Project>
