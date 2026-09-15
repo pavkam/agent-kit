@@ -35,7 +35,11 @@ public sealed class CompactionOptions
     /// checkpoint summary may contain before <see cref="DefaultCompactionValidator"/>
     /// rejects it with <see cref="CompactionValidationIssueKind.UnboundedContent"/>.
     /// </summary>
-    /// <value>Defaults to 16,000 characters.</value>
+    /// <value>
+    /// Defaults to 16,000 characters. Must exceed the length of
+    /// <see cref="ExtractiveCompactionStrategy.TruncationMarker"/>; registration
+    /// validation rejects smaller values.
+    /// </value>
     public int MaximumCheckpointCharacters { get; set; } = 16_000;
 
     /// <summary>

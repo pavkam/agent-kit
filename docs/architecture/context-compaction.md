@@ -808,11 +808,20 @@ exists, or `Unknown` when the read itself was unavailable. A committed record is
 never rolled back by cancellation.
 
 `CompactionFailure.Retryable` is `true` only when the compactor has positive
-evidence that the failure was transient (an unavailable source read, a drifted
-continuation snapshot). An append failure that leaves no committed record is
-non-retryable because the store does not distinguish deterministic rejection
-from transport failure and the compactor must not drive an unbounded
-compact-and-retry loop.
+evidence that the failure was transient (a `SessionReadFailed` source read, a
+drifted continuation snapshot). A `SessionReadNotFound` is deterministic for the
+requesting identity and address and is non-retryable. An append failure that
+leaves no committed record is non-retryable because the store does not
+distinguish deterministic rejection from transport failure and the compactor
+must not drive an unbounded compact-and-retry loop.
+
+A strategy's self-reported `After` estimate is advisory. The first-party
+compactor computes the manifest's `Before` and `After` with its own
+`ICompactionSizeEstimator`, the same estimator the validator uses for the
+reduction check, so a strategy cannot certify its own size. The extractive
+strategy's truncation never splits a UTF-16 surrogate pair, and registration
+rejects a `MaximumCheckpointCharacters` that does not exceed the truncation
+marker's length because such a ceiling would fail every attempt.
 
 ## Terminal outcomes and compactor contract
 

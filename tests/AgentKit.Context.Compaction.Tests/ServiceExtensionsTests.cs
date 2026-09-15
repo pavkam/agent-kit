@@ -69,6 +69,33 @@ public sealed class ServiceExtensionsTests
             () => provider.GetRequiredService<IOptions<CompactionOptions>>().Value);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(19)]
+    public void AddContextCompaction_WhenMaximumCheckpointCharactersDoesNotExceedTruncationMarker_FailsValidationOnAccess(int maximum)
+    {
+        // A ceiling at or below the marker length would make the extractive strategy return untruncated text and the
+        // validator reject it on every attempt: a deterministically failing pipeline that must fail at composition.
+        ExtractiveCompactionStrategy.TruncationMarker.Length.ShouldBe(19);
+        var services = new ServiceCollection();
+        _ = services.AddContextCompaction(o => o.MaximumCheckpointCharacters = maximum);
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<CompactionOptions>>().Value);
+    }
+
+    [Fact]
+    public void AddContextCompaction_WhenMaximumCheckpointCharactersJustExceedsTruncationMarker_PassesValidation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddContextCompaction(o => o.MaximumCheckpointCharacters = ExtractiveCompactionStrategy.TruncationMarker.Length + 1);
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IOptions<CompactionOptions>>().Value.MaximumCheckpointCharacters.ShouldBe(20);
+    }
+
     private static void WithFakeCoordinator(IServiceCollection services) =>
         services.AddSingleton<ISessionCoordinator>(new FakeSessionCoordinator(new BranchId(Guid.NewGuid())));
 }

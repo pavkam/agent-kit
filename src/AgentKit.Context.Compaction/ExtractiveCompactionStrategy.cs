@@ -33,7 +33,15 @@ public sealed class ExtractiveCompactionStrategy: ICompactionStrategy
     /// <summary>The strategy key this implementation records as provenance.</summary>
     public static readonly CompactionStrategyKey StrategyKey = new("agentkit.extractive.v1");
 
-    private const string _truncationMarker = "\n...[truncated]...\n";
+    /// <summary>
+    /// The marker inserted between the retained head and tail when an extract exceeds
+    /// <see cref="CompactionOptions.MaximumCheckpointCharacters"/>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ServiceExtensions.AddContextCompaction"/> requires the configured ceiling to exceed this marker's
+    /// length; otherwise no room would remain for any extracted text and every attempt would fail validation.
+    /// </remarks>
+    public const string TruncationMarker = "\n...[truncated]...\n";
 
     private readonly ICompactionSizeEstimator _estimator;
     private readonly int _maximumCheckpointCharacters;
@@ -89,17 +97,34 @@ public sealed class ExtractiveCompactionStrategy: ICompactionStrategy
         return Task.FromResult<CompactionStrategyResult>(new CompactionCheckpointProduced(checkpoint, producer, after));
     }
 
+    /// <summary>
+    /// Keeps a leading and trailing portion of <paramref name="text"/> around <see cref="TruncationMarker"/>, backing
+    /// each cut off by one UTF-16 unit when it would otherwise split a surrogate pair so the result is well-formed.
+    /// </summary>
     private static string Truncate(string text, int maximumCharacters)
     {
-        if (text.Length <= maximumCharacters || maximumCharacters <= _truncationMarker.Length)
+        Debug.Assert(text is not null, "The caller joins extracted text before truncating.");
+
+        if (text.Length <= maximumCharacters || maximumCharacters <= TruncationMarker.Length)
         {
             return text;
         }
 
-        var remaining = maximumCharacters - _truncationMarker.Length;
+        var remaining = maximumCharacters - TruncationMarker.Length;
         var headLength = remaining / 2;
         var tailLength = remaining - headLength;
 
-        return string.Concat(text.AsSpan(0, headLength), _truncationMarker, text.AsSpan(text.Length - tailLength));
+        // A head ending on a high surrogate or a tail starting on a low surrogate would emit a lone surrogate.
+        if (headLength > 0 && char.IsHighSurrogate(text[headLength - 1]))
+        {
+            headLength--;
+        }
+
+        if (tailLength > 0 && char.IsLowSurrogate(text[^tailLength]))
+        {
+            tailLength--;
+        }
+
+        return string.Concat(text.AsSpan(0, headLength), TruncationMarker, text.AsSpan(text.Length - tailLength));
     }
 }

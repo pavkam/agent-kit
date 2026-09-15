@@ -319,6 +319,96 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
+    public async Task CompactAsync_WhenSourceReadNotFound_ReturnsNonRetryableCompactionFailed()
+    {
+        var (compactor, coordinator) = CreateCompactor();
+        coordinator.ReadOverride = static request => new SessionReadNotFound(request.Context.ToAddress());
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, new SessionVersion(0), new SessionSequence(1));
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.Kind.ShouldBe(CompactionFailureKind.SourceUnavailable);
+        failed.Failure.Retryable.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenSourceReadFails_ReturnsRetryableCompactionFailed()
+    {
+        var (compactor, coordinator) = CreateCompactor();
+        coordinator.ReadOverride = static request => new SessionReadFailed("transient");
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, new SessionVersion(0), new SessionSequence(1));
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<CompactionFailed>().Failure.Retryable.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenStrategyMisreportsItsOwnSize_ManifestCarriesTheCompactorsIndependentEstimate()
+    {
+        var address = Address();
+        var checkpoint = new CompactionCheckpoint([new TextPart(new string('s', 400), TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var strategy = new FakeCompactionStrategy
+        {
+            OnProduce = _ => new CompactionCheckpointProduced(
+                checkpoint,
+                new CompactionProducer(new CompactionStrategyKey("test.misreporting"), deterministic: true, ExtensionData.Empty),
+                new CompactionSizeEstimate(1, 1, 1))
+        };
+        var validator = new FakeCompactionValidator { OnValidate = request => new CompactionValidated(request.Candidate) };
+        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy, validator: validator);
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('m', 2000))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+        var expectedAfter = CreateEstimator().EstimateCheckpoint(checkpoint);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var succeeded = result.ShouldBeOfType<CompactionSucceeded>();
+        succeeded.Record.Manifest.After.ShouldBe(expectedAfter);
+        succeeded.Record.Manifest.After.Tokens.ShouldNotBe(1);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenNotReducing_ReportsTheCompactorsIndependentEstimates()
+    {
+        var address = Address();
+        var checkpoint = new CompactionCheckpoint([new TextPart(new string('s', 400), TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var strategy = new FakeCompactionStrategy
+        {
+            OnProduce = _ => new CompactionCheckpointProduced(
+                checkpoint,
+                new CompactionProducer(new CompactionStrategyKey("test.misreporting"), deterministic: true, ExtensionData.Empty),
+                new CompactionSizeEstimate(1, 1, 1))
+        };
+        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy);
+        coordinator.Seed(Enumerable.Range(1, 2).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('m', 100))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(2), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var notReducing = result.ShouldBeOfType<CompactionNotReducing>();
+        notReducing.After.ShouldBe(CreateEstimator().EstimateCheckpoint(checkpoint));
+        notReducing.Before.EntryCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenCutCoversASubset_ManifestBeforeEstimateCountsOnlyCoveredEntries()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('b', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(10), minimumRetainedEntries: 3, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var succeeded = result.ShouldBeOfType<CompactionSucceeded>();
+        var coveredCount = succeeded.Record.Manifest.CoveredRange.EndInclusive.Value - succeeded.Record.Manifest.CoveredRange.StartInclusive.Value + 1;
+        succeeded.Record.Manifest.Before.EntryCount.ShouldBe((int) coveredCount);
+        succeeded.Record.Manifest.Before.Bytes.ShouldBe(coveredCount * 200);
+    }
+
+    [Fact]
     public async Task CompactAsync_WhenAppendFailsAndNoRecordWasCommitted_ReturnsNonRetryableCompactionFailed()
     {
         var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);

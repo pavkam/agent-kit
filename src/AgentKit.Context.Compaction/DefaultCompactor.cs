@@ -260,8 +260,13 @@ public sealed class DefaultCompactor: ICompactor
         }
 
         var produced = (CompactionCheckpointProduced) strategyResult;
-        var coveredEntries = source.Entries.Where(e => cut.CoveredEntryIds.Contains(e.Id)).ToImmutableArray();
+        var coveredIds = cut.CoveredEntryIds.ToImmutableHashSet();
+        var coveredEntries = source.Entries.Where(e => coveredIds.Contains(e.Id)).ToImmutableArray();
         var before = _estimator.EstimateEntries(coveredEntries);
+
+        // The strategy's self-reported size is advisory; the durable manifest and the not-reducing outcome carry the
+        // compactor's own estimate, computed with the same estimator the validator uses.
+        var after = _estimator.EstimateCheckpoint(produced.Checkpoint);
 
         var manifest = new CompactionManifest(
             _manifestIds.Create(),
@@ -273,7 +278,7 @@ public sealed class DefaultCompactor: ICompactor
             produced.Producer,
             request.ContextEpoch,
             before,
-            produced.After,
+            after,
             _timeProvider.GetUtcNow(),
             ExtensionData.Empty);
 
@@ -292,7 +297,7 @@ public sealed class DefaultCompactor: ICompactor
                 if (rejected.Issues.Length == 1
                     && rejected.Issues[0].Kind == CompactionValidationIssueKind.NonReducing)
                 {
-                    return new CompactionNotReducing(context, before, produced.After, request.MinimumReductionRatio);
+                    return new CompactionNotReducing(context, before, after, request.MinimumReductionRatio);
                 }
 
                 return new CompactionRejected(
@@ -353,12 +358,15 @@ public sealed class DefaultCompactor: ICompactor
 
             if (pageResult is not SessionPage page)
             {
+                // Not-found is deterministic for this identity and address; only a store/transport failure is transient.
                 return (null, new CompactionFailed(
                     request.Context,
                     new CompactionFailure(
                         CompactionFailureKind.SourceUnavailable,
-                        "The eligible source range could not be loaded.",
-                        retryable: true,
+                        pageResult is SessionReadNotFound
+                            ? "The session or branch does not exist or is not visible to this identity."
+                            : "The eligible source range could not be loaded.",
+                        retryable: pageResult is not SessionReadNotFound,
                         ExtensionData.Empty)));
             }
 

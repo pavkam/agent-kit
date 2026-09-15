@@ -23,6 +23,7 @@ namespace AgentKit.Context.Compaction
     }
     public sealed class ExtractiveCompactionStrategy : AgentKit.ICompactionStrategy
     {
+        public const string TruncationMarker = "\n...[truncated]...\n";
         public static readonly AgentKit.CompactionStrategyKey StrategyKey;
         public ExtractiveCompactionStrategy(AgentKit.Context.Compaction.ICompactionSizeEstimator estimator, Microsoft.Extensions.Options.IOptions<AgentKit.Context.Compaction.CompactionOptions> options) { }
         public System.Threading.Tasks.Task<AgentKit.CompactionStrategyResult> ProduceAsync(AgentKit.CompactionStrategyRequest request, System.Threading.CancellationToken cancellationToken = default) { }

@@ -105,6 +105,61 @@ public sealed class ExtractiveCompactionStrategyTests
         text.ShouldContain("truncated");
     }
 
+    [Theory]
+    [InlineData(38)]
+    [InlineData(39)]
+    [InlineData(40)]
+    public async Task ProduceAsync_WhenTruncationBoundaryFallsInsideASurrogatePair_BacksOffWithoutSplittingIt(int maximumCharacters)
+    {
+        // The marker is 19 chars. The text is 222 UTF-16 units with an emoji at [9,10] and another at [211,212].
+        // 38 → head 9 / tail 10: the tail cut splits the second emoji. 39 → head 10 / tail 10: both cuts split.
+        // 40 → head 10 / tail 11: the head cut splits the first emoji.
+        var strategy = CreateStrategy(maximumCheckpointCharacters: maximumCharacters);
+        var address = Address();
+        var emoji = "\U0001F600";
+        var text = new string('a', 9) + emoji + new string('b', 200) + emoji + new string('c', 9);
+        var entry = TestFactory.MessageEntry(address, _branchId, 1, text);
+        var source = Source([entry]);
+        var cut = new CompactionCut(
+            new CompactionSourceRange(entry.Sequence, entry.Sequence), new SessionSequence(2), [entry.Id]);
+
+        var result = await strategy.ProduceAsync(
+            new CompactionStrategyRequest(TestFactory.Request(source.Context, _branchId, new SessionVersion(1), entry.Sequence), source, cut),
+            TestContext.Current.CancellationToken);
+
+        var produced = result.ShouldBeOfType<CompactionCheckpointProduced>();
+        var summary = ((TextPart) produced.Checkpoint.Summary[0]).Text;
+        summary.Length.ShouldBeLessThanOrEqualTo(maximumCharacters);
+        summary.ShouldContain(ExtractiveCompactionStrategy.TruncationMarker);
+        IsWellFormedUtf16(summary).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void TruncationMarker_WhenRead_IsTheMarkerEmbeddedInTruncatedSummaries() =>
+        ExtractiveCompactionStrategy.TruncationMarker.ShouldBe("\n...[truncated]...\n");
+
+    private static bool IsWellFormedUtf16(string text)
+    {
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (char.IsHighSurrogate(text[i]))
+            {
+                if (i + 1 >= text.Length || !char.IsLowSurrogate(text[i + 1]))
+                {
+                    return false;
+                }
+
+                i++;
+            }
+            else if (char.IsLowSurrogate(text[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     [Fact]
     public async Task ProduceAsync_WhenCancelled_ThrowsOperationCanceledException()
     {
