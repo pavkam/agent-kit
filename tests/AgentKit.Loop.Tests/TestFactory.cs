@@ -147,6 +147,16 @@ internal static class TestFactory
                 ExtensionData.Empty));
     }
 
+    /// <summary>Builds a non-message fact entry as a tool committing its own session state mid-turn would.</summary>
+    public static FakeToolFactSessionEntry SeedToolFactEntry(
+        AgentId agentId, SessionId sessionId, BranchId branchId, long sequence) =>
+        new(
+            new SessionEntryId(Guid.NewGuid()),
+            new SessionAddress(agentId, sessionId),
+            Correlation(),
+            branchId,
+            new SessionSequence(sequence));
+
     public static MessageSessionEntry SeedIncompleteMessageEntry(
         AgentId agentId, SessionId sessionId, BranchId branchId, long sequence)
     {

@@ -617,7 +617,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
             new SchemaVersion("1"),
             assistantMessage);
 
-        var appendResult = await AppendWithDiagnosticsAsync(
+        // The response was generated against the history this turn saw. A concurrent message landing ahead of it
+        // makes it stale, so the append fails closed rather than rebasing (allowInterleavedMessages: false).
+        var appendAttempt = await AppendWithDiagnosticsAsync(
             new SessionAppendRequest(
                 turnSessionContext,
                 request.BranchId,
@@ -625,12 +627,23 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:assistant"),
                 [assistantEntry]),
             request.SessionProfile,
+            allowInterleavedMessages: false,
             cancellationToken).ConfigureAwait(false);
 
-        if (appendResult is not SessionAppended appended)
+        if (appendAttempt.StaleAfterInterleavedMessage)
+        {
+            LoopLog.ModelResponseNotAccepted(_logger, request.RunId, turnId, "a concurrent message was committed before the response");
+            return TurnOutcome.Settled(
+                new AgentRunSessionOperationFailed(
+                    "A concurrent writer committed a message to the branch while the model response was pending; " +
+                    "the response is stale and was not committed."),
+                currentVersion);
+        }
+
+        if (appendAttempt.Result is not SessionAppended appended)
         {
             return TurnOutcome.Settled(
-                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendResult)), currentVersion);
+                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
         }
 
         currentVersion = appended.NewVersion;
@@ -689,21 +702,23 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 .ConfigureAwait(false);
         }
 
-        var appendResult = await CommitToolMessageAsync(
+        var appendAttempt = await CommitToolMessageAsync(
             request, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId,
             resultParts.ToImmutable(), currentVersion, currentSequence, committedMessages).ConfigureAwait(false);
 
-        return appendResult is SessionAppended appended
+        return appendAttempt.Result is SessionAppended appended
             ? TurnOutcome.Settled(new AgentRunTurnLimitReached(request.MaxTurns), appended.NewVersion)
-            : TurnOutcome.Settled(new AgentRunSessionOperationFailed(DescribeAppendFailure(appendResult)), currentVersion);
+            : TurnOutcome.Settled(new AgentRunSessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
     }
 
     /// <summary>
     /// Builds and durably commits the tool message carrying one terminal result per requested call. The commit
     /// always uses <see cref="CancellationToken.None"/>: the assistant message that requested these calls is already
-    /// committed, so its results must land no matter how the run itself settles.
+    /// committed, so its results must land no matter how the run itself settles. For the same reason a concurrent
+    /// message landing ahead of the tool message never refuses the commit; the interleaved entries are returned so
+    /// the next turn's history reflects them.
     /// </summary>
-    private async ValueTask<SessionAppendResult> CommitToolMessageAsync(
+    private async ValueTask<AppendAttempt> CommitToolMessageAsync(
         AgentRunRequest request,
         MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
@@ -740,7 +755,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             new SchemaVersion("1"),
             toolMessage);
 
-        var appendResult = await AppendWithDiagnosticsAsync(
+        var appendAttempt = await AppendWithDiagnosticsAsync(
             new SessionAppendRequest(
                 turnSessionContext,
                 request.BranchId,
@@ -748,14 +763,15 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:tools"),
                 [toolEntry]),
             request.SessionProfile,
+            allowInterleavedMessages: true,
             CancellationToken.None).ConfigureAwait(false);
 
-        if (appendResult is SessionAppended)
+        if (appendAttempt.Result is SessionAppended)
         {
             committedMessages.Add(toolMessage);
         }
 
-        return appendResult;
+        return appendAttempt;
     }
 
     private async Task<TurnOutcome> InvokeToolsAsync(
@@ -871,16 +887,16 @@ public sealed class DefaultAgentLoop: IAgentLoop
         // (for example, a process runner that kills its child process and returns a settled "cancelled" outcome) —
         // cancellationToken.IsCancellationRequested is checked explicitly below, after this commit, so that case
         // still propagates cancellation to the caller instead of silently continuing to the next turn.
-        var appendResult = await CommitToolMessageAsync(
+        var appendAttempt = await CommitToolMessageAsync(
             request, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId,
             resultParts.ToImmutable(), currentVersion, currentSequence, committedMessages).ConfigureAwait(false);
 
-        if (appendResult is not SessionAppended appended)
+        if (appendAttempt.Result is not SessionAppended appended)
         {
-            activity.SetFailed("session_append_failed", appendResult.GetType().Name);
-            LoopLog.ToolBatchFailed(_logger, request.RunId, turnId, appendResult.GetType().Name);
+            activity.SetFailed("session_append_failed", appendAttempt.Result.GetType().Name);
+            LoopLog.ToolBatchFailed(_logger, request.RunId, turnId, appendAttempt.Result.GetType().Name);
             return TurnOutcome.Settled(
-                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendResult)), currentVersion);
+                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
         }
 
         var toolMessage = committedMessages[^1];
@@ -899,6 +915,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         activity.SetSuccessful("completed");
         LoopLog.ToolBatchCompleted(_logger, request.RunId, turnId, toolCalls.Length);
+        // The next cursor covers everything through the committed tool message, so any message a concurrent
+        // writer interleaved between the assistant request and its results must become visible to the next turn
+        // in sequence order; otherwise the cursor would claim history the next request never saw.
         var committedSequence = appended.CommittedEntries[^1].Sequence;
         var nextCursor = new MessageCursor(
             sourceCursor.AgentId,
@@ -907,7 +926,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             sourceCursor.BranchId,
             appended.NewVersion,
             committedSequence);
-        return TurnOutcome.Continue(nextCursor, [assistantMessage, toolMessage]);
+        return TurnOutcome.Continue(nextCursor, [assistantMessage, .. appendAttempt.InterleavedMessages, toolMessage]);
     }
 
     /// <summary>Builds a settled, cancelled terminal result for a tool call that was interrupted or never attempted.</summary>
@@ -953,12 +972,36 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
     }
 
-    private async ValueTask<SessionAppendResult> AppendWithDiagnosticsAsync(
+    /// <summary>
+    /// Appends with commit diagnostics, rebasing onto the actual branch tip after a concurrent writer advanced it.
+    /// </summary>
+    /// <param name="request">The append built against the loop's last-observed tip.</param>
+    /// <param name="sessionProfile">The run's immutable session profile.</param>
+    /// <param name="allowInterleavedMessages">
+    /// Whether the append may still commit after a concurrent <see cref="MessageSessionEntry"/> landed ahead of it.
+    /// An assistant response is generated against the history it saw, so an interleaved message makes it stale and
+    /// the append fails closed. Tool results and interrupted partial output settle calls or evidence already
+    /// committed, so they land regardless and the interleaved messages are returned for the next turn's history.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the append and any rebase read.</param>
+    /// <returns>
+    /// The terminal append result together with every concurrently committed entry that now precedes the
+    /// appended entries, in sequence order, and whether the append was refused because of an interleaved message.
+    /// </returns>
+    /// <remarks>
+    /// Every rebase re-reads the interleaved range under one pinned <see cref="SessionReadSnapshot"/> rather than
+    /// deriving the tip from the conflict's version: version and sequence advance independently (one version per
+    /// append, one sequence per entry), and each entry's own <see cref="SessionEntry.Sequence"/> was assigned from
+    /// the stale tip when it was built.
+    /// </remarks>
+    private async ValueTask<AppendAttempt> AppendWithDiagnosticsAsync(
         SessionAppendRequest request,
         SessionProfileSnapshot sessionProfile,
+        bool allowInterleavedMessages,
         CancellationToken cancellationToken)
     {
         Debug.Assert(request is not null, "A validated append request is required for session diagnostics.");
+        Debug.Assert(!request.Entries.IsEmpty, "The loop never appends an empty entry batch.");
         using var activity = AgentKitDiagnostics.Activities.StartActivity(
             AgentKitActivityNames.SessionCommit,
             ActivityKind.Internal,
@@ -972,6 +1015,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
             });
 
         var attemptRequest = request;
+        var interleaved = ImmutableArray.CreateBuilder<SessionEntry>();
+        var staleResponse = false;
         SessionAppendResult result;
         for (var attempt = 1; ; attempt++)
         {
@@ -985,15 +1030,19 @@ public sealed class DefaultAgentLoop: IAgentLoop
             LoopLog.SessionAppendConflictRetried(
                 _logger, request.Context.SessionId, conflict.ExpectedVersion, conflict.ActualVersion, attempt);
 
-            // Each entry's own Sequence was assigned from the stale tip at build time; rebasing only ExpectedVersion
-            // is not enough. Version and sequence advance independently (one version per append, one sequence per
-            // entry), so the actual tip sequence must be re-read rather than derived from the conflict's version.
-            var tipResult = await _sessionCoordinator.ReadAsync(
-                new SessionReadRequest(attemptRequest.Context, attemptRequest.BranchId, attemptRequest.Entries[0].Sequence, 1),
-                sessionProfile,
-                cancellationToken).ConfigureAwait(false);
-            if (tipResult is not SessionPage { Snapshot: { } tip })
+            var interleavedRead = await ReadInterleavedEntriesAsync(
+                attemptRequest, sessionProfile, cancellationToken).ConfigureAwait(false);
+            if (interleavedRead is not var (interleavedEntries, tip))
             {
+                break;
+            }
+
+            interleaved.AddRange(interleavedEntries);
+            if (!allowInterleavedMessages && interleavedEntries.Any(static entry => entry is MessageSessionEntry))
+            {
+                LoopLog.SessionAppendStaleAfterInterleavedMessage(
+                    _logger, request.Context.SessionId, conflict.ExpectedVersion, tip.Version);
+                staleResponse = true;
                 break;
             }
 
@@ -1014,11 +1063,63 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
         else
         {
-            activity.SetFailed("failed", result.GetType().Name);
+            activity.SetFailed(staleResponse ? "stale_after_interleaved_message" : "failed", result.GetType().Name);
             LoopLog.SessionCommitFailed(_logger, request.Context.SessionId, result.GetType().Name);
         }
 
-        return result;
+        return new AppendAttempt(result, interleaved.ToImmutable(), staleResponse);
+    }
+
+    /// <summary>
+    /// Reads, under one pinned snapshot, every entry a concurrent writer committed at or after the sequence the
+    /// conflicting append had claimed, through the actual branch tip.
+    /// </summary>
+    /// <param name="attemptRequest">The conflicting append whose first entry names the sequence the loop believed was free.</param>
+    /// <param name="sessionProfile">The run's immutable session profile.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <returns>The interleaved entries in sequence order with the pinned tip snapshot, or null when the range could not be read consistently.</returns>
+    private async ValueTask<(ImmutableArray<SessionEntry> Entries, SessionReadSnapshot Tip)?> ReadInterleavedEntriesAsync(
+        SessionAppendRequest attemptRequest,
+        SessionProfileSnapshot sessionProfile,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(attemptRequest is not null, "A conflicting append request is required to read the interleaved range.");
+        Debug.Assert(!attemptRequest.Entries.IsEmpty, "The loop never appends an empty entry batch.");
+
+        // FromSequenceExclusive is exclusive, so reading from (claimed - 1) returns the entry now occupying the
+        // claimed sequence and everything after it up to the pinned tip.
+        var cursor = new SessionSequence(attemptRequest.Entries[0].Sequence.Value - 1);
+        var entries = ImmutableArray.CreateBuilder<SessionEntry>();
+        SessionReadSnapshot? snapshot = null;
+        while (true)
+        {
+            var pageResult = await _sessionCoordinator.ReadAsync(
+                snapshot is null
+                    ? new SessionReadRequest(attemptRequest.Context, attemptRequest.BranchId, cursor, _historyReadPageSize)
+                    : new SessionReadRequest(attemptRequest.Context, attemptRequest.BranchId, cursor, _historyReadPageSize, snapshot),
+                sessionProfile,
+                cancellationToken).ConfigureAwait(false);
+            if (pageResult is not SessionPage { Snapshot: { } pageSnapshot } page)
+            {
+                return null;
+            }
+
+            snapshot ??= pageSnapshot;
+            if (pageSnapshot != snapshot)
+            {
+                return null;
+            }
+
+            entries.AddRange(page.Entries);
+            cursor = page.ThroughSequence;
+            if (!page.HasMore || page.Entries.IsEmpty)
+            {
+                break;
+            }
+        }
+
+        Debug.Assert(snapshot is not null, "A successful first page supplies exact snapshot evidence.");
+        return (entries.ToImmutable(), snapshot);
     }
 
     private async Task<TurnOutcome> SettleInterruptedAsync(
@@ -1081,7 +1182,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         // Partial output is committed with CancellationToken.None: the caller's token is usually the very reason
         // the attempt was interrupted, and a cancelled token would otherwise discard output the class promises to keep.
-        var appendResult = await AppendWithDiagnosticsAsync(
+        // Interrupted output is audit evidence rather than a live reply, so a concurrently interleaved message
+        // never refuses it (allowInterleavedMessages: true).
+        var appendAttempt = await AppendWithDiagnosticsAsync(
             new SessionAppendRequest(
                 turnSessionContext,
                 request.BranchId,
@@ -1089,12 +1192,13 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:interrupted"),
                 [entry]),
             request.SessionProfile,
+            allowInterleavedMessages: true,
             CancellationToken.None).ConfigureAwait(false);
 
-        if (appendResult is not SessionAppended appended)
+        if (appendAttempt.Result is not SessionAppended appended)
         {
             return TurnOutcome.Settled(
-                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendResult)), currentVersion);
+                new AgentRunSessionOperationFailed(DescribeAppendFailure(appendAttempt.Result)), currentVersion);
         }
 
         committedMessages.Add(interruptedMessage);
@@ -1277,6 +1381,38 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         /// <summary>Creates a resolution that settles the run before it starts.</summary>
         public static ModelResolution Failed(AgentRunOutcome outcome) => new(outcome, null, null);
+    }
+
+    /// <summary>
+    /// The result of one guarded append: the coordinator's terminal result, every entry a concurrent writer
+    /// committed ahead of the appended entries during rebase, and whether the append was refused as stale.
+    /// </summary>
+    private readonly struct AppendAttempt
+    {
+        /// <summary>Initializes one append attempt result.</summary>
+        /// <param name="result">The coordinator's terminal append result.</param>
+        /// <param name="interleaved">Every concurrently committed entry that now precedes the appended entries, in sequence order.</param>
+        /// <param name="staleAfterInterleavedMessage">Whether the append was refused because a concurrent message made its content stale.</param>
+        public AppendAttempt(SessionAppendResult result, ImmutableArray<SessionEntry> interleaved, bool staleAfterInterleavedMessage)
+        {
+            Debug.Assert(result is not null, "An append attempt always records a terminal coordinator result.");
+            Debug.Assert(!interleaved.IsDefault, "Interleaved entries are an initialized, possibly empty, array.");
+            Result = result;
+            Interleaved = interleaved;
+            StaleAfterInterleavedMessage = staleAfterInterleavedMessage;
+        }
+
+        /// <summary>Gets the coordinator's terminal append result.</summary>
+        public SessionAppendResult Result { get; }
+
+        /// <summary>Gets every concurrently committed entry that now precedes the appended entries, in sequence order.</summary>
+        public ImmutableArray<SessionEntry> Interleaved { get; }
+
+        /// <summary>Gets whether the append was refused because a concurrent message made the pending content stale.</summary>
+        public bool StaleAfterInterleavedMessage { get; }
+
+        /// <summary>Gets the messages among <see cref="Interleaved"/>, in sequence order.</summary>
+        public ImmutableArray<AgentMessage> InterleavedMessages => ToMessages(Interleaved);
     }
 
     /// <summary>The result of running one turn: either it settled the run, or it should continue to another turn.</summary>

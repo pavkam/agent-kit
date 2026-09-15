@@ -51,6 +51,18 @@ The runtime does not admit input, publish output, select history items, select a
 model, translate provider wire formats, authorize tools, or implement storage.
 It sequences the components that do.
 
+Every commit is guarded by the branch version the loop last observed. When a
+concurrent writer advanced the branch, the loop re-reads the interleaved range
+under one pinned snapshot before retrying. An assistant response was generated
+against the history the turn saw, so a concurrently committed message makes it
+stale: that append fails closed with a typed session-operation outcome and
+nothing is committed for the turn. Tool results and interrupted partial output
+settle calls or evidence that are already committed, so they rebase and land
+regardless; any interleaved message is then folded, in sequence order, into the
+history the next turn assembles, so the cursor never claims history a request
+did not see. Non-message facts committed by a tool mid-turn rebase without
+affecting message history.
+
 ## Limits and resilience
 
 The [run budget](budgets.md) covers turns, provider requests, tokens, cost, tool

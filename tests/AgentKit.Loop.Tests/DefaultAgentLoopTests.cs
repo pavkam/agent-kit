@@ -431,9 +431,9 @@ public sealed class DefaultAgentLoopTests
 
             conflicted = true;
 
-            // Simulate a tool invoked mid-turn (the plan/todo tool, for one) committing its own session entry
-            // directly through the coordinator, independently of this run's own version tracking.
-            coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, request.ExpectedVersion.Value + 1)]);
+            // Simulate a tool invoked mid-turn (the plan/todo tool, for one) committing its own non-message
+            // session fact directly through the coordinator, independently of this run's own version tracking.
+            coordinator.Seed([TestFactory.SeedToolFactEntry(_agentId, _sessionId, _branchId, request.ExpectedVersion.Value + 1)]);
             return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
         };
 
@@ -443,6 +443,106 @@ public sealed class DefaultAgentLoopTests
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         coordinator.ReceivedAppends.Count.ShouldBe(2);
         coordinator.ReceivedAppends[1].ExpectedVersion.Value.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAssistantAppendConflictsWithAnInterleavedMessage_FailsClosedWithoutCommittingTheStaleResponse()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler);
+        coordinator.EnforceSequenceContinuity = true;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var conflicted = false;
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            if (conflicted)
+            {
+                return null;
+            }
+
+            conflicted = true;
+            // A concurrent writer commits a user message the pending response never saw.
+            coordinator.SimulateConcurrentAppend([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2, "steer")]);
+            return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
+        };
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        result.NewMessages.ShouldBeEmpty();
+        result.FinalVersion.ShouldBe(new SessionVersion(1));
+        coordinator.ReceivedAppends.Count.ShouldBe(1);
+        coordinator.Entries.OfType<MessageSessionEntry>().Select(static entry => entry.Message).OfType<AssistantMessage>().ShouldBeEmpty();
+        _ = assembler.Requests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenToolResultAppendConflictsWithAnInterleavedMessage_NextTurnHistoryContainsThatMessage()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var calls = 0;
+        var loop = CreateLoop(
+            out var coordinator,
+            out _,
+            _ => ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            contextAssembler: assembler);
+        coordinator.EnforceSequenceContinuity = true;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var interleaved = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 3, "interleaved");
+        var appendCount = 0;
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            if (++appendCount != 2)
+            {
+                return null;
+            }
+
+            // A concurrent writer commits a user message between the assistant tool request and its results.
+            coordinator.SimulateConcurrentAppend([interleaved]);
+            return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
+        };
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        // The run's own committed messages exclude the concurrent writer's message.
+        result.NewMessages.Length.ShouldBe(3);
+        assembler.Requests.Count.ShouldBe(2);
+        var secondTurnHistory = assembler.Requests[1].History;
+        secondTurnHistory.Length.ShouldBe(4);
+        _ = secondTurnHistory[1].ShouldBeOfType<AssistantMessage>();
+        secondTurnHistory[2].ShouldBeSameAs(interleaved.Message);
+        _ = secondTurnHistory[3].ShouldBeOfType<ToolMessage>();
+        coordinator.Entries[^1].Sequence.ShouldBe(new SessionSequence(5));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAssistantAppendConflictsAndTheInterleavedRangeCannotBeRead_ReturnsAgentRunSessionOperationFailed()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            coordinator.SimulateConcurrentAppend([TestFactory.SeedToolFactEntry(_agentId, _sessionId, _branchId, 2)]);
+            return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
+        };
+        // History loading (from sequence 0) works; only the rebase read of the interleaved range fails.
+        coordinator.ConditionalReadOverride = static request =>
+            request.FromSequenceExclusive.Value == 0 ? null : new SessionReadFailed("store unavailable");
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        coordinator.ReceivedAppends.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -762,11 +862,11 @@ public sealed class DefaultAgentLoopTests
             }
 
             conflicted = true;
-            // A concurrent writer commits two entries in one version bump: Version 1 -> 2, NextSequence 1 -> 3.
+            // A concurrent writer commits two non-message facts in one version bump: Version 1 -> 2, NextSequence 1 -> 3.
             coordinator.SimulateConcurrentAppend(
             [
-                TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2, "concurrent-a"),
-                TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 3, "concurrent-b"),
+                TestFactory.SeedToolFactEntry(_agentId, _sessionId, _branchId, 2),
+                TestFactory.SeedToolFactEntry(_agentId, _sessionId, _branchId, 3),
             ]);
             return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
         };
@@ -926,7 +1026,8 @@ public sealed class DefaultAgentLoopTests
         int maxTurns = 8,
         ToolInvocationResult? toolResult = null,
         Func<ToolCallRequest, ToolInvocationResult>? toolHandler = null,
-        ModelResponseEvent? modelEvent = null)
+        ModelResponseEvent? modelEvent = null,
+        IContextAssembler? contextAssembler = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -937,7 +1038,7 @@ public sealed class DefaultAgentLoopTests
         return new DefaultAgentLoop(
             coordinator,
             new FakeSecurityProfileSelector(),
-            new DefaultContextAssembler(),
+            contextAssembler ?? new DefaultContextAssembler(),
             toolInvoker,
             new FakeModelCatalog(TestFactory.Catalog(descriptor)),
             FakeModelSelector.Selecting(descriptor),

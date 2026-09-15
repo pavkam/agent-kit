@@ -59,6 +59,14 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     /// </summary>
     public Func<SessionReadRequest, SessionPageResult>? ReadOverride { get; set; }
 
+    /// <summary>
+    /// Gets or sets an override consulted before the normal read behavior.
+    /// Returning <see langword="null"/> falls through to normal read logic,
+    /// letting a test fail only a specific read (for example, a rebase
+    /// read after an append conflict) while history loading works normally.
+    /// </summary>
+    public Func<SessionReadRequest, SessionPageResult?>? ConditionalReadOverride { get; set; }
+
     /// <summary>Gets or sets the conversation identity returned by session descriptor loads.</summary>
     public ConversationId? ConversationId { get; set; }
 
@@ -176,6 +184,11 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         if (ReadOverride is not null)
         {
             return ValueTask.FromResult(ReadOverride(request));
+        }
+
+        if (ConditionalReadOverride?.Invoke(request) is { } conditionalResult)
+        {
+            return ValueTask.FromResult(conditionalResult);
         }
 
         if (request.BranchId != BranchId)

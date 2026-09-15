@@ -83,6 +83,19 @@ internal static partial class LoopLog
         SessionVersion actualVersion,
         int attempt);
 
+    /// <summary>Logs an assistant append refused because a concurrent writer committed a message the pending response never saw.</summary>
+    /// <remarks>The response was generated against stale history, so committing it would misattribute it as a reply to the interleaved message. The run fails closed instead of rebasing.</remarks>
+    [LoggerMessage(
+        1042,
+        LogLevel.Warning,
+        "Session {SessionId} append expected version {ExpectedVersion} but a concurrent message advanced the branch to " +
+            "{ActualVersion}; the pending model response is stale and was not committed.")]
+    internal static partial void SessionAppendStaleAfterInterleavedMessage(
+        ILogger logger,
+        SessionId sessionId,
+        SessionVersion expectedVersion,
+        SessionVersion actualVersion);
+
     /// <summary>Logs a run that ended because no usable model could be chosen.</summary>
     [LoggerMessage(1050, LogLevel.Warning, "Model selection for run {RunId} failed: {Reason}.")]
     internal static partial void ModelSelectionFailed(ILogger logger, RunId runId, string reason);
