@@ -4,6 +4,7 @@
 namespace AgentKit.Providers.OpenAICompatible;
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 using AgentKit.Providers.OpenAICompatible.Wire;
 
@@ -231,7 +232,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
         var textPartOpen = false;
         var reasoningBuilder = new StringBuilder();
         var reasoningPartOpen = false;
-        var toolCallSlots = new SortedDictionary<int, ToolCallAccumulator>();
+        var toolCallSlots = new List<ToolCallAccumulator>();
         string? finishReason = null;
         string? resolvedModel = null;
         string? responseId = null;
@@ -365,19 +366,23 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
             foreach (var toolCallDelta in toolCallDeltas)
             {
-                if (!toolCallSlots.TryGetValue(toolCallDelta.Index, out var slot))
+                if (!TryResolveToolCallSlot(toolCallSlots, toolCallDelta, out var slot, out var created, out var violation))
                 {
-                    slot = new ToolCallAccumulator(_toolCallIdGenerator.Create());
-                    toolCallSlots[toolCallDelta.Index] = slot;
-                    await observer.OnEventAsync(
-                            new ModelPartStarted(requestId, sequence++, ToolCallPartIndex(toolCallDelta.Index)),
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                    return await FailAsync(
+                        observer,
+                        context,
+                        sequence,
+                        violation,
+                        diagnosticCause: null,
+                        cancellationToken,
+                        BuildOpenPartialParts(reasoningPartOpen, reasoningBuilder, textPartOpen, textBuilder, toolCallSlots),
+                        reportedUsage).ConfigureAwait(false);
                 }
 
-                if (toolCallDelta.Id is { Length: > 0 } id)
+                if (created)
                 {
-                    slot.ProviderCallId = id;
+                    await observer.OnEventAsync(new ModelPartStarted(requestId, sequence++, slot.PartIndex), cancellationToken)
+                        .ConfigureAwait(false);
                 }
 
                 if (toolCallDelta.Function?.Name is { Length: > 0 } name)
@@ -391,7 +396,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                             new ModelPartDelta(
                                 requestId,
                                 sequence++,
-                                ToolCallPartIndex(toolCallDelta.Index),
+                                slot.PartIndex,
                                 new ToolArgumentsContentDelta(slot.CallId, argumentsFragment)),
                             cancellationToken)
                         .ConfigureAwait(false);
@@ -433,9 +438,23 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             parts.Add(textPart);
         }
 
-        foreach (var (wireIndex, slot) in toolCallSlots)
+        foreach (var slot in toolCallSlots.OrderBy(static slot => slot.PartIndex))
         {
-            var toolName = slot.ToolName ?? slot.ProviderCallId ?? "unknown";
+            // A tool name is the only identity the model actually requested. A provider call id or a placeholder is
+            // not a tool, so a nameless slot fails closed instead of being fabricated into a canonical ToolId.
+            if (slot.ToolName is not { } toolName)
+            {
+                return await FailAsync(
+                    observer,
+                    context,
+                    sequence,
+                    "The provider streamed a tool call without a function name.",
+                    diagnosticCause: null,
+                    cancellationToken,
+                    parts.ToImmutable(),
+                    reportedUsage).ConfigureAwait(false);
+            }
+
             var argumentsJson = slot.Arguments.Length > 0 ? slot.Arguments.ToString() : "{}";
 
             JsonElement arguments;
@@ -464,7 +483,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                 ExtensionData.Empty);
 
             await observer.OnEventAsync(
-                    new ModelPartCompleted(requestId, sequence++, ToolCallPartIndex(wireIndex), toolCallPart),
+                    new ModelPartCompleted(requestId, sequence++, slot.PartIndex, toolCallPart),
                     cancellationToken)
                 .ConfigureAwait(false);
             parts.Add(toolCallPart);
@@ -542,18 +561,19 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
     /// <param name="reasoningBuilder">The accumulated reasoning text.</param>
     /// <param name="textPartOpen">Whether a text part has been started.</param>
     /// <param name="textBuilder">The accumulated visible text.</param>
-    /// <param name="toolCallSlots">The in-progress tool-call slots keyed by wire index.</param>
+    /// <param name="toolCallSlots">The in-progress tool-call slots in arrival order.</param>
     /// <returns>
-    /// Reasoning, then text, then tool calls in wire order, matching the order the completed response would
-    /// have used. A tool-call slot whose accumulated arguments are not yet complete JSON cannot be represented
-    /// truthfully as a <see cref="ToolCallPart"/> and is omitted rather than fabricated.
+    /// Reasoning, then text, then tool calls in part-index order, matching the order the completed response
+    /// would have used. A tool-call slot that has not yet received a function name, or whose accumulated
+    /// arguments are not yet complete JSON, cannot be represented truthfully as a <see cref="ToolCallPart"/>
+    /// and is omitted rather than fabricated.
     /// </returns>
     private static ImmutableArray<ContentPart> BuildOpenPartialParts(
         bool reasoningPartOpen,
         StringBuilder reasoningBuilder,
         bool textPartOpen,
         StringBuilder textBuilder,
-        SortedDictionary<int, ToolCallAccumulator> toolCallSlots)
+        List<ToolCallAccumulator> toolCallSlots)
     {
         Debug.Assert(reasoningBuilder is not null, "The streaming state machine always owns a reasoning builder.");
         Debug.Assert(textBuilder is not null, "The streaming state machine always owns a text builder.");
@@ -572,8 +592,13 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             partial.Add(new TextPart(textBuilder.ToString(), TextSemantics.Plain, ExtensionData.Empty));
         }
 
-        foreach (var slot in toolCallSlots.Values)
+        foreach (var slot in toolCallSlots.OrderBy(static slot => slot.PartIndex))
         {
+            if (slot.ToolName is not { } toolName)
+            {
+                continue;
+            }
+
             JsonElement arguments;
             try
             {
@@ -584,7 +609,6 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                 continue;
             }
 
-            var toolName = slot.ToolName ?? slot.ProviderCallId ?? "unknown";
             partial.Add(new ToolCallPart(
                 slot.CallId,
                 new ToolReference(new ToolId(toolName), null, toolName),
@@ -675,8 +699,99 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
     private static int ToolCallPartIndex(int wireIndex) => wireIndex + 1;
 
     /// <summary>
+    /// Locates or opens the accumulation slot one streamed <c>tool_calls[]</c> fragment belongs to, keying by the
+    /// wire <c>index</c> when present and by the provider call <c>id</c> otherwise.
+    /// </summary>
+    /// <param name="slots">The slots opened so far, in arrival order; a newly opened slot is appended.</param>
+    /// <param name="delta">The fragment to place.</param>
+    /// <param name="slot">The resolved slot when the method returns <see langword="true"/>.</param>
+    /// <param name="created">Whether <paramref name="slot"/> was opened by this call and still needs its start event.</param>
+    /// <param name="violation">The safe failure message when the method returns <see langword="false"/>.</param>
+    /// <returns>
+    /// <see langword="true"/> when the fragment was placed unambiguously. The rule is: a fragment with an
+    /// <c>index</c> continues the slot opened under that index or opens it; an unindexed fragment with an
+    /// <c>id</c> continues the slot already carrying that id or, when no slot does, opens a new one; an
+    /// unindexed fragment without an <c>id</c> continues the most recently opened slot. A slot's provider call
+    /// id is set once and never overwritten. The method returns <see langword="false"/> when a fragment has
+    /// neither an index nor an id and no slot is open, or when an indexed fragment carries an id that differs
+    /// from the id already bound to that index, because either fragment cannot be attributed truthfully.
+    /// </returns>
+    private bool TryResolveToolCallSlot(
+        List<ToolCallAccumulator> slots,
+        OpenAIToolCallDelta delta,
+        [NotNullWhen(true)] out ToolCallAccumulator? slot,
+        out bool created,
+        [NotNullWhen(false)] out string? violation)
+    {
+        Debug.Assert(slots is not null, "The streaming state machine always owns the slot list.");
+        Debug.Assert(delta is not null, "Deserialized tool-call fragments are never null elements.");
+        created = false;
+        violation = null;
+        var id = delta.Id is { Length: > 0 } candidate ? candidate : null;
+
+        if (delta.Index is { } wireIndex)
+        {
+            slot = slots.Find(existing => existing.WireIndex == wireIndex);
+            if (slot is null)
+            {
+                slot = new ToolCallAccumulator(_toolCallIdGenerator.Create(), wireIndex, ToolCallPartIndex(wireIndex));
+                created = true;
+            }
+            else if (id is not null && slot.ProviderCallId is { } bound && !string.Equals(bound, id, StringComparison.Ordinal))
+            {
+                slot = null;
+                violation = "The provider streamed conflicting tool-call identifiers for one tool-call index.";
+                return false;
+            }
+        }
+        else if (id is not null)
+        {
+            slot = slots.Find(existing => string.Equals(existing.ProviderCallId, id, StringComparison.Ordinal));
+            if (slot is null)
+            {
+                slot = new ToolCallAccumulator(_toolCallIdGenerator.Create(), wireIndex: null, NextUnindexedPartIndex(slots));
+                created = true;
+            }
+        }
+        else if (slots.Count > 0)
+        {
+            slot = slots[^1];
+        }
+        else
+        {
+            slot = null;
+            violation = "The provider streamed a tool-call fragment that cannot be attributed to any tool call.";
+            return false;
+        }
+
+        if (created)
+        {
+            slots.Add(slot);
+        }
+
+        slot.ProviderCallId ??= id;
+        return true;
+    }
+
+    /// <summary>Chooses the next part index for a slot the provider did not index, after every index already in use.</summary>
+    /// <param name="slots">The slots opened so far.</param>
+    /// <returns>One more than the highest part index in <paramref name="slots"/>, or the first tool-call part index when none is open.</returns>
+    private static int NextUnindexedPartIndex(List<ToolCallAccumulator> slots)
+    {
+        Debug.Assert(slots is not null, "The streaming state machine always owns the slot list.");
+        var next = ToolCallPartIndex(0);
+        foreach (var existing in slots)
+        {
+            next = Math.Max(next, existing.PartIndex + 1);
+        }
+
+        return next;
+    }
+
+    /// <summary>
     /// Mutable, private streaming-accumulation state for one in-progress
-    /// tool call slot, keyed by its wire-level index. This is
+    /// tool call slot, keyed by its wire-level index when the provider sends
+    /// one and by its provider call id otherwise. This is
     /// implementation-internal parsing state, never exposed outside this
     /// class.
     /// </summary>
@@ -684,12 +799,25 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
     {
         /// <summary>Initializes a new instance of the <see cref="ToolCallAccumulator"/> class.</summary>
         /// <param name="callId">The internal call identity minted for this slot.</param>
-        public ToolCallAccumulator(ToolCallId callId) => CallId = callId;
+        /// <param name="wireIndex">The provider's <c>index</c> for this slot, or <see langword="null"/> when it was keyed by id.</param>
+        /// <param name="partIndex">The stable part index used for every response event this slot emits.</param>
+        public ToolCallAccumulator(ToolCallId callId, int? wireIndex, int partIndex)
+        {
+            CallId = callId;
+            WireIndex = wireIndex;
+            PartIndex = partIndex;
+        }
 
         /// <summary>Gets the internal call identity minted for this slot.</summary>
         public ToolCallId CallId { get; }
 
-        /// <summary>Gets or sets the provider-supplied call identifier, once seen.</summary>
+        /// <summary>Gets the provider's <c>index</c> for this slot, or <see langword="null"/> when the slot is keyed by id.</summary>
+        public int? WireIndex { get; }
+
+        /// <summary>Gets the part index used for this slot's start, delta, and completion events.</summary>
+        public int PartIndex { get; }
+
+        /// <summary>Gets or sets the provider-supplied call identifier, bound once on first sight and never overwritten.</summary>
         public string? ProviderCallId { get; set; }
 
         /// <summary>Gets or sets the tool/function name, once seen.</summary>

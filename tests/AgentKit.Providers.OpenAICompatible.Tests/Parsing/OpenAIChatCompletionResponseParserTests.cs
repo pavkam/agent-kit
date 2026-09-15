@@ -208,26 +208,113 @@ public sealed class OpenAIChatCompletionResponseParserTests
         result.ShouldBeOfType<ModelAttemptCompleted>().Response.Parts.Single().ShouldBeOfType<TextPart>().Text.ShouldBe("Hi!");
     }
 
-    [Fact]
-    public async Task ParseStreamingAsync_WhenToolCallDeltasLackIndex_DoesNotMergeDistinctCalls()
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenToolCallDeltasLackIndex_KeysSlotsByIdAndKeepsBothCallsIntact(int chunkSize)
     {
         // Several OpenAI-compatible servers omit `index`; two calls with distinct ids must never merge into one.
         var requestId = new ModelRequestId(Guid.NewGuid());
         var observer = new RecordingModelResponseObserver();
         var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
-        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_tool_calls_without_index.sse"), 4096);
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_tool_calls_without_index.sse"), chunkSize);
         var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
+        var toolCalls = completed.Response.Parts.OfType<ToolCallPart>().ToArray();
+        toolCalls.Length.ShouldBe(2);
+        toolCalls.Select(static part => part.ProviderCallId?.Value).ShouldBe(["call_a", "call_b"]);
+        toolCalls[0].Tool.Name.ShouldBe("get_weather");
+        toolCalls[0].Arguments.GetProperty("location").GetString().ShouldBe("Paris");
+        toolCalls[1].Tool.Name.ShouldBe("get_time");
+        toolCalls[1].Arguments.GetProperty("timezone").GetString().ShouldBe("UTC");
+        toolCalls[0].CallId.ShouldNotBe(toolCalls[1].CallId);
+        // Each id-keyed slot owns a distinct part index and its own start/delta/complete events.
+        observer.Events.OfType<ModelPartStarted>().Select(static e => e.PartIndex).ShouldBe([1, 2]);
+        observer.Events.OfType<ModelPartCompleted>().Select(static e => e.PartIndex).ShouldBe([1, 2]);
+        observer.Events.OfType<ModelPartDelta>().Select(static e => e.Delta).OfType<ToolArgumentsContentDelta>().Select(static d => d.ToolCallId).Distinct().Count().ShouldBe(2);
+    }
 
-        if (result is ModelAttemptCompleted completed)
-        {
-            // Either both calls survive intact, or the parser rejects the ambiguity; a merged/corrupted single call is a silent effect change.
-            completed.Response.Parts.OfType<ToolCallPart>().Count().ShouldBe(2);
-            completed.Response.Parts.OfType<ToolCallPart>().Select(static part => part.ProviderCallId?.Value).ShouldBe(["call_a", "call_b"]);
-        }
-        else
-        {
-            _ = result.ShouldBeOfType<ModelAttemptFailed>();
-        }
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenUnindexedDeltasResendTheSameId_ContinuesTheSameSlot(int chunkSize)
+    {
+        // A repeated id on later fragments is a continuation, not a new call; the bound id is never overwritten.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_tool_call_id_resent_without_index.sse"), chunkSize);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.Tool.Name.ShouldBe("get_weather");
+        toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_a"));
+        toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
+        _ = observer.Events.OfType<ModelPartStarted>().ShouldHaveSingleItem();
+        observer.Events.OfType<ModelPartDelta>().Select(static e => e.Delta).OfType<ToolArgumentsContentDelta>().Select(static d => d.ToolCallId).Distinct().ShouldHaveSingleItem().ShouldBe(toolCall.CallId);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolCallSlotFinishesWithoutName_FailsWithProtocolViolation()
+    {
+        // A provider call id is not a tool name; the parser must not fabricate a ToolId from it or from "unknown".
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_tool_call_without_name.sse"), 4096);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider streamed a tool call without a function name.");
+        failed.PartialParts.ShouldBeEmpty();
+        observer.Events.OfType<ModelPartCompleted>().ShouldBeEmpty();
+        observer.Events.OfType<ModelResponseCompleted>().ShouldBeEmpty();
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenFirstToolCallDeltaHasNeitherIndexNorId_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = """
+            data: {"id":"chatcmpl-13","object":"chat.completion.chunk","created":1700000130,"model":"local-model","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel","tool_calls":[{"type":"function","function":{"name":"get_weather","arguments":"{}"}}]},"finish_reason":null}]}
+
+            data: [DONE]
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider streamed a tool-call fragment that cannot be attributed to any tool call.");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hel");
+        observer.Events.OfType<ModelPartStarted>().Select(static e => e.PartIndex).ShouldBe([0]);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenIndexedDeltaCarriesConflictingId_FailsWithProtocolViolationWithoutOverwritingBoundId()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = """
+            data: {"id":"chatcmpl-14","object":"chat.completion.chunk","created":1700000140,"model":"local-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"get_weather","arguments":"{}"}}]},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl-14","object":"chat.completion.chunk","created":1700000140,"model":"local-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_b","type":"function","function":{"arguments":""}}]},"finish_reason":null}]}
+
+            data: [DONE]
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider streamed conflicting tool-call identifiers for one tool-call index.");
+        // The slot keeps the id it was first bound to; the conflicting fragment never rebinds it.
+        var partial = failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        partial.ProviderCallId.ShouldBe(new ProviderToolCallId("call_a"));
+        partial.Tool.Name.ShouldBe("get_weather");
     }
 
     [Fact]

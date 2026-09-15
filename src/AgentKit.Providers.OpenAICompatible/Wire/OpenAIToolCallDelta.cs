@@ -14,8 +14,13 @@ internal sealed class OpenAIToolCallDelta
     /// fragment belongs to, stable across every chunk that contributes to
     /// the same call, which distinguishes parallel tool-call streams.
     /// </summary>
+    /// <value>
+    /// <see langword="null"/> when the provider omitted the member. Several
+    /// OpenAI-compatible servers never send it; the parser must then key the
+    /// slot by <see cref="Id"/> rather than treating every fragment as slot 0.
+    /// </value>
     [JsonPropertyName("index")]
-    public int Index { get; set; }
+    public int? Index { get; set; }
 
     /// <summary>
     /// Gets or sets the provider-supplied call identifier, present only on

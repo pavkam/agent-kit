@@ -1,0 +1,5 @@
+data: {"id":"chatcmpl-12","object":"chat.completion.chunk","created":1700000120,"model":"local-model","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_nameless","type":"function","function":{"arguments":"{\"location\":\"Paris\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-12","object":"chat.completion.chunk","created":1700000120,"model":"local-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
