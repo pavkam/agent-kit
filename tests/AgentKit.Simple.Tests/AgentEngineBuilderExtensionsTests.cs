@@ -189,6 +189,171 @@ public sealed class AgentEngineBuilderExtensionsTests
         (await engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken)).ShouldNotBeNull().Definition.Id.ShouldBe(agentId);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(" ")]
+    [InlineData("relative/sessions.db")]
+    public void UseSqliteSessions_WhenPathIsBlankOrRelative_ThrowsArgumentException(string? path) =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().UseSqliteSessions(path!)).ParamName.ShouldBe("databasePath");
+
+    [Fact]
+    public async Task UseSqliteSessions_WhenTheProcessRestarts_ResumesTheConversationFromDisk()
+    {
+        using var directory = new TempDirectory();
+        var databasePath = Path.Combine(directory.Path, "sessions.db");
+        SessionId sessionId;
+
+        await using (var first = SqliteEngine(databasePath, new StubOpenAIHandler("remembered answer")))
+        {
+            _ = await first.AskAsync("remember this", TestContext.Current.CancellationToken);
+            var listed = (await first.Conversation.ListAsync(null, 10, TestContext.Current.CancellationToken)).ShouldBeOfType<ConversationSessionPage>();
+            sessionId = listed.Sessions.ShouldHaveSingleItem().SessionId;
+        }
+
+        await using var second = SqliteEngine(databasePath, new StubOpenAIHandler("unused"));
+        var opened = await second.Conversation.OpenAsync(sessionId, TestContext.Current.CancellationToken);
+        var history = await second.Conversation.ReadHistoryAsync(new SessionSequence(0), 50, TestContext.Current.CancellationToken);
+
+        _ = opened.ShouldBeOfType<ConversationSessionOpened>();
+        var messages = history.ShouldBeOfType<ConversationHistoryPage>().Messages;
+        messages.OfType<UserMessage>().ShouldHaveSingleItem().Parts.OfType<TextPart>().Single().Text.ShouldBe("remember this");
+        messages.OfType<AssistantMessage>().ShouldHaveSingleItem().Parts.OfType<TextPart>().Single().Text.ShouldBe("remembered answer");
+    }
+
+    [Fact]
+    public async Task UseSqliteSessions_WhenCalledBeforeLocalDefaults_StillSelectsSqlite()
+    {
+        using var directory = new TempDirectory();
+        var handler = new StubOpenAIHandler("ok");
+        var builder = AgentEngine.CreateBuilder()
+            .UseSqliteSessions(Path.Combine(directory.Path, "s.db"))
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        _ = await engine.AskAsync("hi", TestContext.Current.CancellationToken);
+
+        File.Exists(Path.Combine(directory.Path, "s.db")).ShouldBeTrue();
+        builder.Services.Count(static d => d.ServiceType == typeof(ISessionDirectory)).ShouldBe(1);
+        (await engine.Conversation.ListAsync(null, 10, TestContext.Current.CancellationToken))
+            .ShouldBeOfType<ConversationSessionPage>().Sessions.ShouldHaveSingleItem().StoreKey.Value.ShouldBe("agentkit.sqlite");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("relative/dir")]
+    public void UseWorkspace_WhenRootIsBlankOrRelative_ThrowsArgumentException(string? root) =>
+        Should.Throw<ArgumentException>(() => AgentEngine.CreateBuilder().UseWorkspace(root!)).ParamName.ShouldBe("rootDirectory");
+
+    [Fact]
+    public async Task UseWorkspace_WhenTheModelReadsAFile_ReturnsItsContentThroughTheSandboxedTool()
+    {
+        using var directory = new TempDirectory();
+        await File.WriteAllTextAsync(Path.Combine(directory.Path, "notes.txt"), "the answer is 42", TestContext.Current.CancellationToken);
+        var handler = new StubOpenAIHandler("tool:read_file:{\"path\":\"notes.txt\"}", "It says 42.");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .UseWorkspace(directory.Path);
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var result = await engine.SendAsync("what do my notes say?", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        result.Events.OfType<ConversationToolResultEvent>().ShouldHaveSingleItem().Succeeded.ShouldBeTrue();
+        handler.Bodies[1].ShouldContain("the answer is 42");
+        foreach (var tool in new[] { "read_file", "write_file", "edit", "glob", "search", "list_directory" })
+        {
+            handler.Bodies[0].ShouldContain($"\"name\":\"{tool}\"", customMessage: $"tool {tool} was not advertised");
+        }
+    }
+
+    [Fact]
+    public async Task UseWorkspace_WhenTheModelReadsOutsideTheRoot_TheSandboxRefuses()
+    {
+        using var directory = new TempDirectory();
+        var handler = new StubOpenAIHandler("tool:read_file:{\"path\":\"../../etc/passwd\"}", "could not");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .UseWorkspace(directory.Path);
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var result = await engine.SendAsync("read the password file", TestContext.Current.CancellationToken);
+
+        result.Events.OfType<ConversationToolResultEvent>().ShouldHaveSingleItem().Succeeded.ShouldBeFalse();
+        handler.Bodies[1].ShouldNotContain("root:");
+    }
+
+    [Fact]
+    public async Task Build_WhenAnAdditionalPolicyDeniesWrites_DenyWinsOverTheLocalAllowAllPolicy()
+    {
+        // The permissions guide's read-only policy: deny overrides allow, so the write is refused before any effect.
+        using var directory = new TempDirectory();
+        var handler = new StubOpenAIHandler("tool:write_file:{\"path\":\"out.txt\",\"content\":\"x\",\"mode\":\"create_only\"}", "denied, ok");
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseOpenAI("sk-test", "gpt-4o-mini")
+            .UseWorkspace(directory.Path);
+        _ = builder.Services.AddSingleton<ISecurityPolicy, ReadOnlyWorkspacePolicy>();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        await using var engine = builder.Build();
+
+        var result = await engine.SendAsync("write a file", TestContext.Current.CancellationToken);
+
+        result.Events.OfType<ConversationToolResultEvent>().ShouldHaveSingleItem().Succeeded.ShouldBeFalse();
+        File.Exists(Path.Combine(directory.Path, "out.txt")).ShouldBeFalse();
+    }
+
+    /// <summary>The policy shown in docs/guides/permissions.md.</summary>
+    private sealed class ReadOnlyWorkspacePolicy: ISecurityPolicy
+    {
+        public ValueTask<SecurityPolicyResult> EvaluateAsync(SecurityRequest request, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            var mutates = request.Kind is SecurityOperationKind.FileWrite or SecurityOperationKind.DirectoryCreate or SecurityOperationKind.Process;
+            return ValueTask.FromResult(mutates
+                ? new SecurityPolicyResult(SecurityPolicyResultKind.Deny, "read-only", "This agent may only read the workspace.")
+                : new SecurityPolicyResult(SecurityPolicyResultKind.Abstain, null, null));
+        }
+    }
+
+    private static AgentEngine SqliteEngine(string databasePath, HttpMessageHandler handler)
+    {
+        var builder = AgentEngine.CreateBuilder()
+            .UseLocalDevelopmentDefaults()
+            .UseSqliteSessions(databasePath)
+            .UseOpenAI("sk-test", "gpt-4o-mini");
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        return builder.Build();
+    }
+
+    private sealed class TempDirectory: IDisposable
+    {
+        public TempDirectory()
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"agentkit-simple-{Guid.NewGuid():N}");
+            _ = Directory.CreateDirectory(Path);
+        }
+
+        public string Path { get; }
+
+        public void Dispose()
+        {
+            try
+            {
+                Directory.Delete(Path, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
     private static string Flatten(Exception exception) =>
         string.Join(" | ", Enumerate(exception).Select(static e => e.Message));
 

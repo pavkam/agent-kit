@@ -40,6 +40,12 @@ internal sealed class SimpleAgentPlan
     /// <summary>Gets or sets a value indicating whether the named local-development defaults were opted into.</summary>
     public bool LocalDevelopmentDefaults { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether sessions were pointed at the durable SQLite store.</summary>
+    public bool DurableSessions { get; set; }
+
+    /// <summary>Gets a value indicating whether the session profile selects the in-memory store.</summary>
+    public bool InMemorySessions => LocalDevelopmentDefaults && !DurableSessions;
+
     /// <summary>Gets the agent definition revision every publication pins.</summary>
     public AgentDefinitionRevision DefinitionRevision { get; } = new(1);
 
@@ -106,9 +112,9 @@ internal sealed class SimpleAgentPlan
         new SessionProfileReference(SessionProfileKey, new SessionProfileVersion(1)),
         new ComponentKey<ISessionCoordinator>("coordinator"),
         new ComponentKey<ISessionRunCoordinator>("run-coordinator"),
-        new SessionStoreKey(LocalDevelopmentDefaults ? "agentkit.in-memory" : "agentkit.sqlite"),
+        new SessionStoreKey(InMemorySessions ? "agentkit.in-memory" : "agentkit.sqlite"),
         SessionStoreCapabilities.Branching,
-        requiresDurableStore: !LocalDevelopmentDefaults,
+        requiresDurableStore: !InMemorySessions,
         requiresDistributedFencing: false,
         new SessionRetentionProfileKey("retention"),
         SessionBusyBehavior.Reject,
@@ -116,7 +122,7 @@ internal sealed class SimpleAgentPlan
         maximumPageSize: 256,
         verifySnapshotHashes: true,
         deleteOnDispose: false,
-        new ContentHash(LocalDevelopmentDefaults ? "sha256:agentkit-simple-session-in-memory" : "sha256:agentkit-simple-session-durable"));
+        new ContentHash(InMemorySessions ? "sha256:agentkit-simple-session-in-memory" : "sha256:agentkit-simple-session-durable"));
 
     /// <summary>Builds the exact run-profile publication the engine pins for the definition.</summary>
     /// <returns>The publication pairing the security and session profiles with the configuration snapshot.</returns>

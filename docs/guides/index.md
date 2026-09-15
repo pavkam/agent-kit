@@ -1,8 +1,17 @@
 # Developer guides
 
-Start with [Getting started](../getting-started.md) to run and read the smallest
-complete agent, then read [Composing an application](composition.md) to
-understand the engine and the services your application must supply.
+Each guide takes one thing you will want an agent to do and shows the one or two
+lines that do it, what those lines guarantee, and what to change when you
+outgrow them.
+
+| Guide                                       | You will learn                                                                                            |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [Getting started](../getting-started.md)    | Run the smallest complete agent and what each line of it composes.                                        |
+| [Storing conversations](storage.md)         | In-memory versus SQLite sessions, and how to list and resume a conversation after a restart.              |
+| [Working with files](file-system.md)        | Give the agent a sandboxed directory and the read, search, and edit tools; what the sandbox enforces.     |
+| [Permissions and approvals](permissions.md) | How a decision is made, read-only and scoped policies, asking a human before acting, identity, and audit. |
+| [Composing an application](composition.md)  | The engine's lifetimes and required collaborators, and the written-out composition behind the sugar.      |
 
 Use the [project catalog](../packages/index.md) to choose a package, or return
-to the [documentation home](../index.md) for reference and contributor material.
+to the [documentation home](../index.md) for architecture, concepts, and the
+provider reference.

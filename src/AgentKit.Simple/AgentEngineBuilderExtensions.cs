@@ -29,6 +29,9 @@ public static class AgentEngineBuilderExtensions
     /// <summary>The alias <see cref="UseOpenAI"/> registers its model under.</summary>
     internal static ModelAlias DefaultAlias { get; } = new("assistant");
 
+    /// <summary>The store identity <see cref="UseSqliteSessions"/> stamps into database files when the caller supplies none.</summary>
+    internal static SqliteSessionStoreInstanceId DefaultSqliteInstanceId { get; } = new(Guid.Parse("5e1f0a9c-3b2d-4c7e-8f10-a1b2c3d4e5f6"));
+
     extension(AgentEngineBuilder builder)
     {
         /// <summary>
@@ -84,6 +87,86 @@ public static class AgentEngineBuilderExtensions
             _ = builder.Services.AddOpenAIApiKeyCredential(apiKey);
             _ = builder.Services.AddOpenAIKnownLlmModel(DefaultAlias, new ModelId(modelId));
             plan.ModelAlias = DefaultAlias;
+            return builder;
+        }
+
+        /// <summary>
+        /// Keeps conversations across restarts in one SQLite database file: registers the SQLite session store and
+        /// directory and points the session profile at them. Everything else, including
+        /// <see cref="UseLocalDevelopmentDefaults"/>, stays as it is.
+        /// </summary>
+        /// <param name="databasePath">The absolute path of the database file; its directory is created when missing.</param>
+        /// <param name="instanceId">
+        /// The identity stamped into the file so a different application cannot open it by accident, or
+        /// <see langword="null"/> for the shared identity every engine built with this method uses.
+        /// </param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="databasePath"/> is blank or not an absolute path.</exception>
+        /// <remarks>
+        /// Sessions, and only sessions, become durable. Security grants stay in memory unless you register
+        /// <c>AddSqliteSecurityGrantStore</c> yourself. Pin the agent with <see cref="WithAgentId"/> so resumed
+        /// sessions keep matching the agent that created them; the default agent identity is already stable.
+        /// Resume with <c>engine.Conversation.OpenAsync(sessionId)</c> and discover with <c>engine.Conversation.ListAsync</c>.
+        /// </remarks>
+        public AgentEngineBuilder UseSqliteSessions(string databasePath, SqliteSessionStoreInstanceId? instanceId = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
+            if (!Path.IsPathFullyQualified(databasePath))
+            {
+                throw new ArgumentException("The database path must be absolute.", nameof(databasePath));
+            }
+
+            var plan = Plan(builder);
+            var fullPath = Path.GetFullPath(databasePath);
+            _ = Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            var target = new SqliteSessionStoreTarget(
+                fullPath,
+                instanceId ?? DefaultSqliteInstanceId,
+                SqliteDatabaseOpenMode.CreateIfMissing,
+                SqliteSchemaMode.ApplyKnownMigrations);
+            // Stores are additive and selected by the session profile's store key, which the plan now points at
+            // SQLite; the directory is singular, so any in-memory directory registered earlier is replaced.
+            _ = builder.Services.AddSqliteSessionStore(target);
+            _ = builder.Services.RemoveAll<ISessionDirectory>();
+            _ = builder.Services.AddSqliteSessionDirectory(new ComponentId("agentkit.simple.session"), target);
+            plan.DurableSessions = true;
+            return builder;
+        }
+
+        /// <summary>
+        /// Gives the agent a directory to work in: a sandboxed file system rooted at <paramref name="rootDirectory"/>
+        /// and the read, write, edit, glob, search, and list tools over it.
+        /// </summary>
+        /// <param name="rootDirectory">The absolute directory the agent may see; nothing outside it is reachable.</param>
+        /// <param name="configure">Optional file-system bounds such as maximum read and write sizes.</param>
+        /// <returns>The same builder.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="rootDirectory"/> is blank or not an absolute path.</exception>
+        /// <remarks>
+        /// The sandbox enforces the boundary (no traversal, no symlink escape, bounded sizes) on every call, and each
+        /// tool call is still authorized by the security policy first. With <see cref="UseLocalDevelopmentDefaults"/>
+        /// that policy allows everything, so the agent can write anywhere under the root; register your own
+        /// <see cref="ISecurityPolicy"/> to narrow that, and an approval handler to put a human in the loop.
+        /// </remarks>
+        public AgentEngineBuilder UseWorkspace(string rootDirectory, Action<SandboxedFileSystemOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
+            if (!Path.IsPathFullyQualified(rootDirectory))
+            {
+                throw new ArgumentException("The workspace root must be absolute.", nameof(rootDirectory));
+            }
+
+            _ = Plan(builder);
+            _ = builder.Services.AddSandboxedFileSystem(Path.GetFullPath(rootDirectory), configure);
+            _ = builder.Services.AddReadTool();
+            _ = builder.Services.AddWriteTool();
+            _ = builder.Services.AddEditTool();
+            _ = builder.Services.AddGlobTool();
+            _ = builder.Services.AddSearchTool();
+            _ = builder.Services.AddListTool();
             return builder;
         }
 

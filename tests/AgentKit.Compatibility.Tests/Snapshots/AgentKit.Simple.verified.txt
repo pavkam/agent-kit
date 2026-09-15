@@ -9,6 +9,8 @@ namespace AgentKit.Simple
         {
             public AgentKit.AgentEngineBuilder UseLocalDevelopmentDefaults() { }
             public AgentKit.AgentEngineBuilder UseOpenAI(string apiKey, string modelId, System.Action<AgentKit.Providers.OpenAI.OpenAIProviderOptions>? configure = null) { }
+            public AgentKit.AgentEngineBuilder UseSqliteSessions(string databasePath, AgentKit.Session.Sqlite.SqliteSessionStoreInstanceId? instanceId = default) { }
+            public AgentKit.AgentEngineBuilder UseWorkspace(string rootDirectory, System.Action<AgentKit.FileSystem.SandboxedFileSystemOptions>? configure = null) { }
             public AgentKit.AgentEngineBuilder UseModel(AgentKit.ModelAlias alias) { }
             public AgentKit.AgentEngineBuilder WithInstructions(string text) { }
             public AgentKit.AgentEngineBuilder WithIdentity(AgentKit.ExecutionIdentity identity) { }

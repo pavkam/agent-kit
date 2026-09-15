@@ -85,47 +85,28 @@ supplying your own.
 
 ## Grow the agent
 
-`builder.Services` is the same `IServiceCollection` every registration lands on,
-so everything beyond the sugar is ordinary AgentKit composition.
+Each of these is one more line on the same builder; each has its own guide.
 
-- **Give it tools.** Register a tool package and the host boundary it needs; the
-  builder advertises every registered tool to the model:
-
-  ```csharp
-  builder.Services.AddSandboxedFileSystem(workspaceRoot);
-  builder.Services.AddReadTool();
-  ```
-
-  Registering a tool does not grant access to its resources; the security policy
-  still decides. The [CodingAgent](../examples/CodingAgent/README.md) example
-  composes eight tools this way with a real approval flow.
-
+- **Let it work on files.** `.UseWorkspace("/path/to/project")` adds a sandboxed
+  file system and the read, list, glob, search, write, and edit tools over it.
+  See [Working with files](guides/file-system.md).
+- **Keep conversations across restarts.**
+  `.UseSqliteSessions("/var/lib/myapp/sessions.db")` moves sessions to SQLite;
+  `engine.Conversation.ListAsync` and `OpenAsync` find and resume them. See
+  [Storing conversations](guides/storage.md).
+- **Decide what it may do.** Add your own `ISecurityPolicy` on
+  `builder.Services`; deny wins over the local allow-all default, and
+  `RequireApproval` puts a human in the loop. See
+  [Permissions and approvals](guides/permissions.md).
 - **Stream the answer.** Pass an `IConversationEventObserver` to
   `engine.SendAsync(text, observer)` to receive text and reasoning deltas, tool
   starts and results, and usage before the call returns.
-
 - **Use another provider or an unknown model.** Register that provider's
-  services on `builder.Services` and select the alias with `UseModel`:
-
-  ```csharp
-  builder.Services.AddAnthropic().AddAnthropicApiKeyCredential(key)
-      .AddAnthropicLlmModel(new ModelAlias("claude"), new ModelId("claude-sonnet-4-5"));
-  builder.UseModel(new ModelAlias("claude"));
-  ```
-
-  `KnownModelCatalog.Default.TryFind(providerId, modelId)` supplies the limits
-  and prices for that descriptor.
-
-- **Keep conversations across restarts.** Skip `UseLocalDevelopmentDefaults`,
-  register `AddSqliteSessionStore` and `AddSqliteSessionDirectory` together with
-  your security services, and call `WithIdentity`.
-  `engine.Conversation.OpenAsync(sessionId)` then resumes a persisted
-  conversation.
-
-- **Host several agents.** The [composition guide](guides/composition.md)
-  explains the `AgentEngine` facade, its lifetimes, and the collaborators a
-  complete engine composition requires; it also shows the long-form composition
-  the builder performs for you.
+  services on `builder.Services` and select the alias with `UseModel`;
+  `KnownModelCatalog.Default.TryFind(providerId, modelId)` supplies limits and
+  prices. See [Composing an application](guides/composition.md).
+- **Host several agents.** You already have an `AgentEngine`; `AddAgent` on
+  `builder.Services` publishes further definitions.
 
 To see the behavior this walkthrough relies on under test, run:
 

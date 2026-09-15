@@ -27,6 +27,14 @@
     <ProjectReference Include="../AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
     <ProjectReference Include="../AgentKit.Session/AgentKit.Session.csproj"/>
     <ProjectReference Include="../AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
+    <ProjectReference Include="../AgentKit.Session.Sqlite/AgentKit.Session.Sqlite.csproj"/>
+    <ProjectReference Include="../AgentKit.FileSystem/AgentKit.FileSystem.csproj"/>
+    <ProjectReference Include="../AgentKit.Tools.Read/AgentKit.Tools.Read.csproj"/>
+    <ProjectReference Include="../AgentKit.Tools.Write/AgentKit.Tools.Write.csproj"/>
+    <ProjectReference Include="../AgentKit.Tools.Edit/AgentKit.Tools.Edit.csproj"/>
+    <ProjectReference Include="../AgentKit.Tools.Glob/AgentKit.Tools.Glob.csproj"/>
+    <ProjectReference Include="../AgentKit.Tools.Search/AgentKit.Tools.Search.csproj"/>
+    <ProjectReference Include="../AgentKit.Tools.List/AgentKit.Tools.List.csproj"/>
     <ProjectReference Include="../AgentKit.Tools/AgentKit.Tools.csproj"/>
   </ItemGroup>
 
