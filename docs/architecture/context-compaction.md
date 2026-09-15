@@ -777,6 +777,14 @@ replay the identical request (same `SourceVersion` and `SourceThrough`); reusing
 a `CompactionId` for a different logical checkpoint is caller misuse and is not
 mapped to the existing record.
 
+The first-party compactor builds the durable record before the append, so
+`ActivatedSessionVersion` is precomputed as `SourceVersion + 1` under the
+one-version-per-append rule and the entry sequence as the observed branch tip
+plus one. After `SessionAppended` it compares the store's `NewVersion` with the
+precomputed value; a mismatch means the committed record's version claim is
+false, which is logged as a warning and surfaced as a non-retryable
+`ActivationFailure` rather than a clean success.
+
 Cancellation is a typed outcome, never a bare exception, once a request has been
 accepted. `CompactionCancelled.CommitState` reports what the compactor
 established: `NotAttempted` when the token fired before any activation append

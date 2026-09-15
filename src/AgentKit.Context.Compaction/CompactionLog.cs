@@ -36,4 +36,17 @@ internal static partial class CompactionLog
     /// <param name="errorType">The exception type raised by the compaction coordinator.</param>
     [LoggerMessage(9003, LogLevel.Error, "Compaction {CompactionId} for session {SessionId} failed with error type {ErrorType}.")]
     internal static partial void Failed(ILogger logger, CompactionId compactionId, SessionId sessionId, string errorType);
+
+    /// <summary>
+    /// Records that the session store committed the activation append but reported a new version other than the
+    /// one the persisted record claims, so the record's <c>ActivatedSessionVersion</c> is false.
+    /// </summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="compactionId">The logical checkpoint identity.</param>
+    /// <param name="sessionId">The session whose branch received the record.</param>
+    /// <param name="expectedVersion">The version the record claims it was activated at.</param>
+    /// <param name="reportedVersion">The version the store reported after the append.</param>
+    [LoggerMessage(9004, LogLevel.Warning, "Compaction {CompactionId} for session {SessionId} committed a record claiming activated version {ExpectedVersion} but the store reported version {ReportedVersion}.")]
+    internal static partial void ActivatedVersionMismatch(
+        ILogger logger, CompactionId compactionId, SessionId sessionId, SessionVersion expectedVersion, SessionVersion reportedVersion);
 }

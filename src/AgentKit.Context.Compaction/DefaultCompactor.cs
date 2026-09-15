@@ -35,13 +35,16 @@ using Microsoft.Extensions.Options;
 /// selector cannot see that dependency.
 /// </para>
 /// <para>
-/// Activation reuses the documented invariant that
-/// a branch's <see cref="SessionVersion"/> equals its committed entry
-/// count: appending exactly one <see cref="CompactionSessionEntry"/> against
-/// an expected version of <c>V</c> deterministically advances the branch to
-/// <c>V + 1</c>, so this compactor computes the activated version before
-/// calling <see cref="ISessionCoordinator.AppendAsync"/> rather than relying
-/// on a value it does not yet have.
+/// Activation assumes that one committed append advances the session
+/// version by exactly one regardless of how many entries it carries, and
+/// that sequences advance by one per entry. Because the durable record must
+/// carry its <see cref="CompactionRecord.ActivatedSessionVersion"/> before
+/// the append is issued, the compactor precomputes it as
+/// <c>SourceVersion + 1</c>, allocates the entry sequence as the observed
+/// branch tip plus one, and then compares the store's reported
+/// <see cref="SessionAppended.NewVersion"/> with the precomputed value. A
+/// mismatch means the persisted record's version claim is false; it is
+/// logged and surfaced as a non-retryable activation failure.
 /// </para>
 /// </remarks>
 public sealed class DefaultCompactor: ICompactor
@@ -442,6 +445,8 @@ public sealed class DefaultCompactor: ICompactor
     {
         // Version and sequence advance independently (one version per append, one sequence per entry), so the
         // new entry's sequence follows the branch tip actually read, never "version + 1" or "SourceThrough + 1".
+        // The activated version is precomputed as SourceVersion + 1 (one version per append) because the record must
+        // carry it before the append; the store's reported NewVersion is reconciled against it afterwards.
         var activatedVersion = new SessionVersion(request.SourceVersion.Value + 1);
         var nextSequence = new SessionSequence(branchTip.Value + 1);
         var lastCoveredId = cut.CoveredEntryIds[^1];
@@ -483,7 +488,7 @@ public sealed class DefaultCompactor: ICompactor
 
             return appendResult switch
             {
-                SessionAppended => new CompactionSucceeded(context, record),
+                SessionAppended appended => ReconcileActivatedVersion(context, record, activatedVersion, appended),
                 SessionAppendConflict conflict => await ReconcileConflictAsync(
                     sessionContext, request, branchTip, manifest, conflict, cancellationToken).ConfigureAwait(false),
                 SessionAppendNotFound => new CompactionFailed(
@@ -536,6 +541,35 @@ public sealed class DefaultCompactor: ICompactor
                 request.Context,
                 CompactionCommitState.Unknown,
                 "The compaction attempt was cancelled during activation and its commit state could not be reconciled.");
+    }
+
+    /// <summary>
+    /// Confirms that the store's reported version equals the version the persisted record claims. The record is
+    /// built before the append under the one-version-per-append assumption; a store that reports anything else has
+    /// committed a record whose <see cref="CompactionRecord.ActivatedSessionVersion"/> is false, which is logged and
+    /// surfaced as a non-retryable <see cref="CompactionFailureKind.ActivationFailure"/> rather than a clean success.
+    /// </summary>
+    private CompactionResult ReconcileActivatedVersion(
+        CompactionOperationContext context,
+        CompactionRecord record,
+        SessionVersion activatedVersion,
+        SessionAppended appended)
+    {
+        Debug.Assert(context is not null && record is not null && appended is not null, "The caller supplies the append outcome.");
+
+        if (appended.NewVersion == activatedVersion)
+        {
+            return new CompactionSucceeded(context, record);
+        }
+
+        CompactionLog.ActivatedVersionMismatch(_logger, context.CompactionId, context.SessionId, activatedVersion, appended.NewVersion);
+        return new CompactionFailed(
+            context,
+            new CompactionFailure(
+                CompactionFailureKind.ActivationFailure,
+                $"The record was committed claiming activated version {activatedVersion.Value} but the store reported version {appended.NewVersion.Value}; the persisted version claim is false.",
+                retryable: false,
+                ExtensionData.Empty));
     }
 
     /// <summary>

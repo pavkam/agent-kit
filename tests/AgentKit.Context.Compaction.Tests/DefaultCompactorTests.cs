@@ -5,6 +5,7 @@ namespace AgentKit.Context.Compaction.Tests;
 
 using AgentKit.TestSupport;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 /// <summary>Verifies DefaultCompactor behavior and contracts.</summary>
@@ -397,6 +398,44 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
+    public async Task CompactAsync_WhenStoreReportsUnexpectedNewVersion_ReturnsActivationFailureAndLogsWarning()
+    {
+        // The record is built before the append with ActivatedSessionVersion = SourceVersion + 1. If the store reports
+        // anything else, the persisted record's version claim is false and must not be reported as a clean success.
+        var logger = new RecordingLogger<DefaultCompactor>();
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30, logger: logger);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('v', 200))));
+        coordinator.AppendOverride = append => new SessionAppended(new SessionVersion(append.ExpectedVersion.Value + 2), append.Entries);
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.Kind.ShouldBe(CompactionFailureKind.ActivationFailure);
+        failed.Failure.Retryable.ShouldBeFalse();
+        var warning = logger.Snapshot().Where(static entry => entry.Level == LogLevel.Warning).ShouldHaveSingleItem();
+        warning.EventId.Id.ShouldBe(9004);
+        warning.State["ExpectedVersion"].ShouldBe(new SessionVersion(request.SourceVersion.Value + 1));
+        warning.State["ReportedVersion"].ShouldBe(new SessionVersion(request.SourceVersion.Value + 2));
+        warning.Message.ShouldNotContain("vvvv");
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenStoreReportsExpectedNewVersion_ReturnsSucceededWithMatchingActivatedVersion()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('v', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var succeeded = result.ShouldBeOfType<CompactionSucceeded>();
+        succeeded.Record.ActivatedSessionVersion.ShouldBe(coordinator.Version);
+    }
+
+    [Fact]
     public async Task CompactAsync_WhenCancelledBeforeActivation_ReturnsCancelledNotAttempted()
     {
         var address = Address();
@@ -689,12 +728,12 @@ public sealed class DefaultCompactorTests
     }
 
     private SessionAddress Address() => new(_agentId, _sessionId);
-    private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactor(int maximumCheckpointCharacters = 16_000, int maximumSourceEntries = 5_000, int sourceReadPageSize = 256)
+    private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactor(int maximumCheckpointCharacters = 16_000, int maximumSourceEntries = 5_000, int sourceReadPageSize = 256, ILogger<DefaultCompactor>? logger = null)
     {
         var coordinator = new FakeSessionCoordinator(_branchId);
         var options = Options.Create(new CompactionOptions { MaximumCheckpointCharacters = maximumCheckpointCharacters, MaximumSourceEntries = maximumSourceEntries, SourceReadPageSize = sourceReadPageSize });
         var estimator = new CharacterCompactionSizeEstimator(options);
-        var compactor = new DefaultCompactor(coordinator, new StructuralCompactionCutSelector(options), new ExtractiveCompactionStrategy(estimator, options), new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), TimeProvider.System, options);
+        var compactor = new DefaultCompactor(coordinator, new StructuralCompactionCutSelector(options), new ExtractiveCompactionStrategy(estimator, options), new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), TimeProvider.System, options, logger);
         return (compactor, coordinator);
     }
 
