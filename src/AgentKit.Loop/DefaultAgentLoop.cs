@@ -573,9 +573,26 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 committedMessages, currentVersion).ConfigureAwait(false);
         }
 
+        // A ToolUse stop that requests no tool call is a protocol violation: the provider claims the model stopped
+        // to call tools, yet there is nothing to invoke. Settling it as a completed turn would present an
+        // unfinished response as the agent's chosen final answer.
+        var requestedCalls = response.Parts.OfType<ToolCallPart>().ToImmutableArray();
+        if (response.StopReason is NormalizedStopReason.ToolUse && requestedCalls.IsEmpty)
+        {
+            LoopLog.ModelResponseNotAccepted(_logger, request.RunId, turnId, "tool-use stop without any tool call");
+            return await SettleInterruptedAsync(
+                request, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
+                response.Parts, response.Usage, NormalizedStopReason.Error, response.Identity.RequestId,
+                new AgentRunFailed(new ProviderFailure(
+                    ProviderFailureKind.ProtocolViolation, response.Identity.ProviderId, response.Identity.RequestId,
+                    statusCode: null, providerCode: null, retryAfter: null,
+                    "The model response reported a tool-use stop but requested no tool call.",
+                    diagnosticCause: null, ExtensionData.Empty)),
+                committedMessages, currentVersion).ConfigureAwait(false);
+        }
+
         // Duplicate call identities cannot be honoured: one identity must never produce two effects, and the
         // history contract requires exactly one terminal result per call. The response is a protocol violation.
-        var requestedCalls = response.Parts.OfType<ToolCallPart>().ToImmutableArray();
         if (requestedCalls.Select(static call => call.CallId).Distinct().Count() != requestedCalls.Length)
         {
             LoopLog.ModelResponseNotAccepted(_logger, request.RunId, turnId, "duplicate tool call identities");

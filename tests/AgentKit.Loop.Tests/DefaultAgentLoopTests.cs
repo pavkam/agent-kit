@@ -976,6 +976,27 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenModelReportsToolUseWithoutAnyToolCall_FailsAsProtocolViolationWithoutCompleting()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var textPart = new TextPart("I will call a tool", TextSemantics.Plain, ExtensionData.Empty);
+        var loop = CreateLoop(out var coordinator, out var invoker, _ => new ModelAttemptCompleted(
+            TestFactory.Response(requestId, [textPart], NormalizedStopReason.ToolUse)));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        var failed = result.Outcome.ShouldBeOfType<AgentRunFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        var interrupted = result.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
+        interrupted.State.ShouldBe(MessageState.Interrupted);
+        interrupted.Parts.ShouldHaveSingleItem().ShouldBe(textPart);
+        invoker.ReceivedRequests.ShouldBeEmpty();
+        coordinator.Entries.OfType<MessageSessionEntry>().Select(static entry => entry.Message)
+            .OfType<AssistantMessage>().ShouldHaveSingleItem().State.ShouldBe(MessageState.Interrupted);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenModelStopsBecauseOfOutputLength_DoesNotSettleAsCompleted()
     {
         // agent-loop-state-machine.md: the loop "MUST not silently pretend the agent chose to finish".

@@ -183,7 +183,9 @@ cause: `Cancelled` settles as cancelled, `Length` as a typed output-length
 limit, `Deferred` as invalid state when the loop has no deferred-operation
 handoff, and `Pending` or `Error` on a completed attempt as a provider protocol
 violation. The loop MUST NOT collapse distinct stop causes into one unknown
-failure.
+failure. A `ToolUse` stop that carries no tool-call part is likewise a protocol
+violation: the loop preserves the parts as an interrupted message and never
+settles it as a completed turn.
 
 A turn limit SHOULD allow the final model request to receive a concise “final
 response now” instruction with tools disabled when configured. It MUST not
