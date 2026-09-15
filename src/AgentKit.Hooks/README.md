@@ -20,14 +20,14 @@ ceilings for the first-party dispatcher:
 services.AddAgentHooks(o => o.MaximumInvocationDepth = 4);
 ```
 
-The options are validated at startup. Each value composes monotonically with
-the per-call arguments of `IHookDispatcher.DispatchAsync`: a caller may tighten
-a dispatch but never relax past the host ceiling.
+The options are validated at startup. Each value composes monotonically with the
+per-call arguments of `IHookDispatcher.DispatchAsync`: a caller may tighten a
+dispatch but never relax past the host ceiling.
 
-| Member                  | Default   | Effect                                                                                                                                   |
-| ----------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Member                   | Default   | Effect                                                                                                                                      |
+| ------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MaximumInvocationDepth` | `8`       | Hard ceiling on reentrant dispatches of one point per call path. Effective limit is `min(callerMaxReentrantDepth, MaximumInvocationDepth)`. |
-| `MinimumFailureMode`    | `Isolate` | Least strict `HookFailureMode` permitted (`Isolate < FailOperation`). Effective mode is the stricter of the caller's mode and this value. |
+| `MinimumFailureMode`     | `Isolate` | Least strict `HookFailureMode` permitted (`Isolate < FailOperation`). Effective mode is the stricter of the caller's mode and this value.   |
 
 Only these two members are implemented today; the timeout, mutation-dispatch,
 and reload settings described in the

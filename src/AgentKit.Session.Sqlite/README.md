@@ -43,17 +43,17 @@ services.AddSqliteSessionDirectory(
 `MaximumEntryPayloadBytes` bounds the encoded payload of every entry the store
 commits, caller-appended or store-authored; the store encodes each entry once
 during its codec preflight and an oversized entry is rejected with that
-operation's typed failure (for example `SessionAppendFailed`) before any
-process or database state changes. `MaximumIssuedReadSnapshots` bounds how many
+operation's typed failure (for example `SessionAppendFailed`) before any process
+or database state changes. `MaximumIssuedReadSnapshots` bounds how many
 adapter-issued paged-read snapshots one store instance keeps in process; once
 exceeded, the oldest is evicted and continuing from it fails with
 `SessionReadFailed`.
 
-Store and directory registrations capture their target and settings in their
-own factories and publish no ambient `SqliteSessionStoreSettings` singleton.
-Store registration is additive, and a repeated `AddSqliteSessionStore` call
-keeps the first captured bounds; directory registration is singular with
-`TryAdd` semantics, so the first call's bounds win.
+Store and directory registrations capture their target and settings in their own
+factories and publish no ambient `SqliteSessionStoreSettings` singleton. Store
+registration is additive, and a repeated `AddSqliteSessionStore` call keeps the
+first captured bounds; directory registration is singular with `TryAdd`
+semantics, so the first call's bounds win.
 
 The target path must be absolute and its parent directory must already exist.
 Registration and construction never create parent directories. Use
@@ -65,8 +65,8 @@ persisted in an existing database. The store and the directory apply the same
 rules: each validates its own table and the persisted instance identity, and
 neither installs or migrates schema unless `ApplyKnownMigrations` is selected.
 
-Polymorphic message, content-part, and correlation values inside persisted
-state use the shared `$kind` discriminators from
+Polymorphic message, content-part, and correlation values inside persisted state
+use the shared `$kind` discriminators from
 `AgentKit.Session.PortableSessionJsonPolymorphism`; this package does not
 declare its own map. Earlier builds wrote `StructuredDataPart` state with a
 `json` discriminator that the portable entry codecs never recognized; that value

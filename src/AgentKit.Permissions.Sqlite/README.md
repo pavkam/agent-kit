@@ -11,8 +11,8 @@ selected interface, verifies `SqliteSecurityGrantStore`, and calls
 `InitializeAsync`. Repeating the same leaf is idempotent; another leaf or custom
 store remains visible so composition can reject ambiguity. Hosts deliberately
 replace a selection by removing all `ISecurityGrantStore` registrations first.
-Pass explicit `SqliteSecurityGrantStoreSettings`, or adjust the defaults with
-an optional configure delegate, for example
+Pass explicit `SqliteSecurityGrantStoreSettings`, or adjust the defaults with an
+optional configure delegate, for example
 `services.AddSqliteSecurityGrantStore(target, o => o.MaximumClaims = 64);`.
 Invalid bounds throw `ArgumentOutOfRangeException` at registration.
 
