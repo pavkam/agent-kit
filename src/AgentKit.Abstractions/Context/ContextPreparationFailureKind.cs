@@ -11,10 +11,21 @@ public enum ContextPreparationFailureKind
 
     /// <summary>
     /// A tool call in the eligible history has no matching terminal result,
-    /// or a tool result references a call that is not present.
+    /// a tool result references a call that is not present or precedes it, one
+    /// call identity is requested more than once, or one call has more than
+    /// one terminal result.
     /// </summary>
     BrokenToolCallCausality,
 
     /// <summary>An unclassified failure occurred during assembly.</summary>
-    Unknown
+    Unknown,
+
+    /// <summary>
+    /// A message carries a content part its role may not carry: a
+    /// <see cref="ToolCallPart"/> outside an <see cref="AssistantMessage"/>, or
+    /// a <see cref="ToolResultPart"/> outside a <see cref="ToolMessage"/>.
+    /// Because each half of a call is confined to its own role, this also
+    /// rejects a call and its result sharing one message.
+    /// </summary>
+    InvalidRolePartCombination
 }

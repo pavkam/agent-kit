@@ -8,5 +8,5 @@ public sealed class HistoryRepairKindTests
 {
     [Fact]
     public void HistoryRepairKind_WhenEnumerated_ContainsNormativeValues() =>
-        Enum.GetValues<HistoryRepairKind>().ShouldBe([HistoryRepairKind.NormalizedContent, HistoryRepairKind.SettledInterruptedToolCall, HistoryRepairKind.ExcludedIncompleteAssistantContent, HistoryRepairKind.DegradedReasoning, HistoryRepairKind.OmittedReasoning, HistoryRepairKind.RelocatedMedia, HistoryRepairKind.RemovedProviderMetadata, HistoryRepairKind.MergedAdjacentUserContent, HistoryRepairKind.NormalizedToolCallIdentity, HistoryRepairKind.ProjectedImportedOrphanToolCall]);
+        Enum.GetValues<HistoryRepairKind>().ShouldBe([HistoryRepairKind.NormalizedContent, HistoryRepairKind.SettledInterruptedToolCall, HistoryRepairKind.ExcludedIncompleteAssistantContent, HistoryRepairKind.DegradedReasoning, HistoryRepairKind.OmittedReasoning, HistoryRepairKind.RelocatedMedia, HistoryRepairKind.RemovedProviderMetadata, HistoryRepairKind.MergedAdjacentUserContent, HistoryRepairKind.NormalizedToolCallIdentity, HistoryRepairKind.ProjectedImportedOrphanToolCall, HistoryRepairKind.ExcludedIncompleteMessage, HistoryRepairKind.ExcludedInstructionMessage]);
 }

@@ -27,4 +27,8 @@ public enum HistoryRepairKind
     NormalizedToolCallIdentity,
     /// <summary>Projected an imported orphan tool call without fabricating an authoritative execution record.</summary>
     ProjectedImportedOrphanToolCall,
+    /// <summary>Excluded a non-assistant message whose <see cref="MessageState"/> is not <see cref="MessageState.Complete"/>.</summary>
+    ExcludedIncompleteMessage,
+    /// <summary>Excluded a system or developer message found inside conversation history, because history never carries instruction authority.</summary>
+    ExcludedInstructionMessage,
 }

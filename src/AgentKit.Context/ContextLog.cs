@@ -24,4 +24,13 @@ internal static partial class ContextLog
     /// <summary>Logs that instruction-role messages found inside conversation history were excluded from the provider request.</summary>
     [LoggerMessage(2003, LogLevel.Warning, "Excluded {ExcludedCount} system/developer messages found in history for model request {ModelRequestId}; history never carries instruction authority.")]
     internal static partial void ExcludedInstructionMessagesFromHistory(ILogger logger, ModelRequestId modelRequestId, int excludedCount);
+
+    /// <summary>Logs the count of history repairs applied to one request view, split by exclusion cause; no message content is logged.</summary>
+    [LoggerMessage(2004, LogLevel.Information, "Applied {RepairCount} history repairs for model request {ModelRequestId}: {ExcludedIncompleteCount} incomplete messages and {ExcludedInstructionCount} instruction messages excluded.")]
+    internal static partial void AppliedHistoryRepairs(
+        ILogger logger,
+        ModelRequestId modelRequestId,
+        int repairCount,
+        int excludedIncompleteCount,
+        int excludedInstructionCount);
 }

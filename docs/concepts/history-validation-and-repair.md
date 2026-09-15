@@ -62,6 +62,16 @@ The same selected capability is used by context compaction for that request.
 Invalid locally committed state is a storage or invariant failure. It MUST NOT
 be silently repaired away.
 
+The first-party `DefaultContextAssembler` enforces the role/part and causality
+rules above with typed outcomes: a `ToolCallPart` outside an `AssistantMessage`
+or a `ToolResultPart` outside a `ToolMessage` fails with
+`ContextPreparationFailureKind.InvalidRolePartCombination`, which also rejects a
+call and its result sharing one message; a repeated call identity, a result
+before or without its call, a call without a result, or a call with two results
+fails with `BrokenToolCallCausality`. Role/part validation runs before
+causality validation, so a result can only ever be accepted from a tool message
+strictly after the assistant message that requested it.
+
 ## Request-view repair
 
 The [provider-facing request view](context-assembly-and-instructions.md) MAY be
@@ -105,6 +115,15 @@ their parts and tool correlation are complete.
 Every repair MUST be deterministic, observable, and attributable to source
 message IDs. It MUST NOT alter the persisted source entries. A repaired view MAY
 be cached by history version and provider profile.
+
+The default assembler reports each exclusion it performs as one `HistoryRepair`
+on `ContextReady.Repairs`, in source order, keyed by the excluded message's
+`MessageId`: an incomplete, suspended, or interrupted assistant message is
+`ExcludedIncompleteAssistantContent`; any other non-complete message is
+`ExcludedIncompleteMessage`; and a system or developer message found inside
+conversation history is `ExcludedInstructionMessage`. The repair reason and the
+accompanying structured log event carry counts and states only, never message
+content.
 
 Synthetic repair notices and runtime records remain operational evidence. A
 provider compatibility projection MUST represent them as tagged

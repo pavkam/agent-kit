@@ -2432,11 +2432,16 @@ namespace AgentKit
         EmptyHistory = 0,
         BrokenToolCallCausality = 1,
         Unknown = 2,
+        InvalidRolePartCombination = 3,
     }
     public sealed class ContextReady : AgentKit.ContextAssemblyResult, System.IEquatable<AgentKit.ContextReady>
     {
         public ContextReady(AgentKit.LlmRequestContext context) { }
+        public ContextReady(AgentKit.LlmRequestContext context, System.Collections.Immutable.ImmutableArray<AgentKit.HistoryRepair> repairs) { }
         public AgentKit.LlmRequestContext Context { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.HistoryRepair> Repairs { get; init; }
+        public bool Equals(AgentKit.ContextReady? other) { }
+        public override int GetHashCode() { }
     }
     public enum ContextScope
     {
@@ -3439,6 +3444,8 @@ namespace AgentKit
         MergedAdjacentUserContent = 7,
         NormalizedToolCallIdentity = 8,
         ProjectedImportedOrphanToolCall = 9,
+        ExcludedIncompleteMessage = 10,
+        ExcludedInstructionMessage = 11,
     }
     public sealed class HistoryView : System.IEquatable<AgentKit.HistoryView>
     {

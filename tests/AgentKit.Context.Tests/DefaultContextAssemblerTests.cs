@@ -127,6 +127,174 @@ public sealed class DefaultContextAssemblerTests
     }
 
     [Fact]
+    public async Task AssembleAsync_WhenToolCallAppearsInUserMessage_ReturnsInvalidRolePartCombination()
+    {
+        // history-validation-and-repair.md: role and content-part combinations are validated before provider I/O.
+        var callId = new ToolCallId(Guid.NewGuid());
+        var history = ImmutableArray.Create<AgentMessage>(
+            TestFactory.UserMessageWithParts([TestFactory.ToolCall(callId)]),
+            TestFactory.ToolMessageWithParts([TestFactory.ToolResult(callId)]));
+
+        var result = await _assembler.AssembleAsync(TestFactory.AssemblyRequest(history), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ContextPreparationFailed>().Failure.Kind.ShouldBe(ContextPreparationFailureKind.InvalidRolePartCombination);
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenToolCallAppearsInToolMessage_ReturnsInvalidRolePartCombination()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var history = ImmutableArray.Create<AgentMessage>(
+            TestFactory.UserMessage(),
+            TestFactory.ToolMessageWithParts([TestFactory.ToolCall(callId)]),
+            TestFactory.ToolMessageWithParts([TestFactory.ToolResult(callId)]));
+
+        var result = await _assembler.AssembleAsync(TestFactory.AssemblyRequest(history), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ContextPreparationFailed>().Failure.Kind.ShouldBe(ContextPreparationFailureKind.InvalidRolePartCombination);
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenToolResultAppearsInAssistantMessage_ReturnsInvalidRolePartCombination()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var history = ImmutableArray.Create<AgentMessage>(
+            TestFactory.UserMessage(),
+            TestFactory.AssistantMessageWithParts([TestFactory.ToolCall(callId)]),
+            TestFactory.AssistantMessageWithParts([TestFactory.ToolResult(callId)]));
+
+        var result = await _assembler.AssembleAsync(TestFactory.AssemblyRequest(history), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ContextPreparationFailed>().Failure.Kind.ShouldBe(ContextPreparationFailureKind.InvalidRolePartCombination);
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenToolResultAppearsInUserMessage_ReturnsInvalidRolePartCombination()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var history = ImmutableArray.Create<AgentMessage>(
+            TestFactory.UserMessage(),
+            TestFactory.AssistantMessageWithParts([TestFactory.ToolCall(callId)]),
+            TestFactory.UserMessageWithParts([TestFactory.ToolResult(callId)]));
+
+        var result = await _assembler.AssembleAsync(TestFactory.AssemblyRequest(history), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ContextPreparationFailed>().Failure.Kind.ShouldBe(ContextPreparationFailureKind.InvalidRolePartCombination);
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenCallAndResultShareOneMessage_ReturnsInvalidRolePartCombination()
+    {
+        // A result must follow its call in a strictly later tool message; no single role may carry both halves.
+        var callId = new ToolCallId(Guid.NewGuid());
+        var history = ImmutableArray.Create<AgentMessage>(
+            TestFactory.UserMessage(),
+            TestFactory.AssistantMessageWithParts([TestFactory.ToolCall(callId), TestFactory.ToolResult(callId)]));
+
+        var result = await _assembler.AssembleAsync(TestFactory.AssemblyRequest(history), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ContextPreparationFailed>().Failure.Kind.ShouldBe(ContextPreparationFailureKind.InvalidRolePartCombination);
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenRolePartViolationIsRejected_RecordsRejectedMetricAndLog()
+    {
+        var logger = new TestSupport.RecordingLogger<DefaultContextAssembler>();
+        var assembler = new DefaultContextAssembler(logger);
+        var callId = new ToolCallId(Guid.NewGuid());
+        var history = ImmutableArray.Create<AgentMessage>(
+            TestFactory.UserMessageWithParts([TestFactory.ToolCall(callId)]),
+            TestFactory.ToolMessageWithParts([TestFactory.ToolResult(callId)]));
+
+        _ = await assembler.AssembleAsync(TestFactory.AssemblyRequest(history), TestContext.Current.CancellationToken);
+
+        logger.Snapshot().ShouldContain(entry => entry.EventId.Id == 2002 && entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenHistoryContainsIncompleteMessage_ReportsExcludedRepairWithSourceId()
+    {
+        var complete = TestFactory.UserMessage("keep");
+        var incomplete = TestFactory.AssistantMessageWithParts([new TextPart("partial", TextSemantics.Plain, ExtensionData.Empty)], MessageState.Interrupted);
+        var request = TestFactory.AssemblyRequest([complete, incomplete]);
+
+        var result = await _assembler.AssembleAsync(request, TestContext.Current.CancellationToken);
+
+        var ready = result.ShouldBeOfType<ContextReady>();
+        var repair = ready.Repairs.ShouldHaveSingleItem();
+        repair.Kind.ShouldBe(HistoryRepairKind.ExcludedIncompleteAssistantContent);
+        repair.SourceMessageIds.ShouldBe([incomplete.Id]);
+        repair.Reason.ShouldNotContain("partial");
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenHistoryContainsIncompleteUserMessage_ReportsExcludedIncompleteMessageRepair()
+    {
+        var complete = TestFactory.UserMessage("keep");
+        var incomplete = TestFactory.UserMessage("drop", MessageState.Incomplete);
+
+        var result = await _assembler.AssembleAsync(TestFactory.AssemblyRequest([complete, incomplete]), TestContext.Current.CancellationToken);
+
+        var repair = result.ShouldBeOfType<ContextReady>().Repairs.ShouldHaveSingleItem();
+        repair.Kind.ShouldBe(HistoryRepairKind.ExcludedIncompleteMessage);
+        repair.SourceMessageIds.ShouldBe([incomplete.Id]);
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenHistoryContainsInstructionMessage_ReportsExcludedInstructionRepairWithSourceId()
+    {
+        var smuggled = new DeveloperMessage(
+            new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), null, new BranchId(Guid.NewGuid()),
+            null, null, DateTimeOffset.UnixEpoch, MessageState.Complete,
+            [new TextPart("secret-instruction", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var history = ImmutableArray.Create<AgentMessage>(TestFactory.UserMessage(), smuggled);
+
+        var result = await _assembler.AssembleAsync(TestFactory.AssemblyRequest(history), TestContext.Current.CancellationToken);
+
+        var repair = result.ShouldBeOfType<ContextReady>().Repairs.ShouldHaveSingleItem();
+        repair.Kind.ShouldBe(HistoryRepairKind.ExcludedInstructionMessage);
+        repair.SourceMessageIds.ShouldBe([smuggled.Id]);
+        repair.Reason.ShouldNotContain("secret-instruction");
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenSeveralMessagesAreExcluded_ReportsRepairsInSourceOrder()
+    {
+        var first = TestFactory.UserMessage("first", MessageState.Incomplete);
+        var keep = TestFactory.UserMessage("keep");
+        var second = TestFactory.AssistantMessageWithParts([], MessageState.Suspended);
+
+        var result = await _assembler.AssembleAsync(TestFactory.AssemblyRequest([first, keep, second]), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ContextReady>().Repairs.SelectMany(static repair => repair.SourceMessageIds).ShouldBe([first.Id, second.Id]);
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenNothingIsExcluded_ReportsNoRepairs()
+    {
+        var result = await _assembler.AssembleAsync(TestFactory.AssemblyRequest([TestFactory.UserMessage()]), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ContextReady>().Repairs.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AssembleAsync_WhenRepairsApplied_LogsCountsWithoutContent()
+    {
+        const string protectedContent = "do-not-log-this";
+        var logger = new TestSupport.RecordingLogger<DefaultContextAssembler>();
+        var assembler = new DefaultContextAssembler(logger);
+        var history = ImmutableArray.Create<AgentMessage>(
+            TestFactory.UserMessage("keep"),
+            TestFactory.UserMessage(protectedContent, MessageState.Incomplete));
+
+        _ = await assembler.AssembleAsync(TestFactory.AssemblyRequest(history), TestContext.Current.CancellationToken);
+
+        var entries = logger.Snapshot();
+        entries.ShouldContain(entry => entry.EventId.Id == 2004);
+        entries.ShouldAllBe(entry => !entry.Message.Contains(protectedContent, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task AssembleAsync_WhenHistoryContainsSystemMessage_DoesNotForwardItWithSystemAuthority()
     {
         // context-assembly-and-instructions.md / AGENTS.md: history content never gains system/developer precedence.

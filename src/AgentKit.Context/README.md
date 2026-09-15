@@ -7,6 +7,15 @@ Use the context assembler to prepare bounded request history and instructions.
 Session storage owns durable conversation records; this package prepares the
 view used for a request.
 
+`DefaultContextAssembler` validates role/part combinations (`ToolCallPart` only
+in assistant messages, `ToolResultPart` only in tool messages) before tool
+causality (unique call identities, one result per call, no result before its
+call), returning `ContextPreparationFailureKind.InvalidRolePartCombination` or
+`BrokenToolCallCausality`. Every message it excludes from the request view
+(non-complete messages and system/developer messages found in history) is
+reported as a `HistoryRepair` on `ContextReady.Repairs` with the excluded
+`MessageId`; log event 2004 carries counts only.
+
 ## Use this project
 
 Start with `AddAgentContext` in [ServiceExtensions.cs](ServiceExtensions.cs).

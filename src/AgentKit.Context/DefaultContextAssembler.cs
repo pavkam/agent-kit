@@ -6,8 +6,8 @@ namespace AgentKit.Context;
 /// <summary>
 /// The default <see cref="IContextAssembler"/>: repairs already-loaded
 /// history to complete messages only, validates that every tool call and
-/// tool result in the repaired history causally match, and combines
-/// instructions, history, tools, and settings into one
+/// tool result in the repaired history sit in the right role and causally
+/// match, and combines instructions, history, tools, and settings into one
 /// <see cref="LlmRequestContext"/>.
 /// </summary>
 /// <remarks>
@@ -20,13 +20,24 @@ namespace AgentKit.Context;
 /// </para>
 /// <para>
 /// History repair keeps only messages whose <see cref="AgentMessage.State"/>
-/// is <see cref="MessageState.Complete"/>: an incomplete, suspended, or
-/// interrupted message is never sent to a provider as conversational
-/// input. Tool-causality validation then requires the surviving history to
+/// is <see cref="MessageState.Complete"/> and excludes any
+/// <see cref="SystemMessage"/> or <see cref="DeveloperMessage"/> found in
+/// history: an incomplete, suspended, or interrupted message is never sent to
+/// a provider as conversational input, and stored history never carries
+/// instruction authority. Every exclusion is reported as a
+/// <see cref="HistoryRepair"/> on <see cref="ContextReady.Repairs"/>, keyed by
+/// the excluded message's identity, so a repair is attributable rather than
+/// silent; the durable source history is never modified.
+/// </para>
+/// <para>
+/// Structural validation then requires a <see cref="ToolCallPart"/> to appear
+/// only in an <see cref="AssistantMessage"/> and a <see cref="ToolResultPart"/>
+/// only in a <see cref="ToolMessage"/>, failing with
+/// <see cref="ContextPreparationFailureKind.InvalidRolePartCombination"/>
+/// otherwise. Tool-causality validation requires the surviving history to
 /// carry exactly one <see cref="ToolResultPart"/> for every
-/// <see cref="ToolCallPart"/> it contains, and no
-/// <see cref="ToolResultPart"/> that references a call absent from that
-/// same history; either violation fails assembly with
+/// <see cref="ToolCallPart"/>, no result before or without its call, and no
+/// repeated call identity; either violation fails assembly with
 /// <see cref="ContextPreparationFailureKind.BrokenToolCallCausality"/>
 /// rather than sending a provider a request it cannot interpret.
 /// </para>
@@ -88,10 +99,16 @@ public sealed class DefaultContextAssembler: IContextAssembler
             });
         ContextLog.Preparing(_logger, request.ModelRequestId, history.Length);
 
-        var repairedHistory = RepairHistory(history, out var excludedInstructionMessages);
+        var repairedHistory = RepairHistory(history, out var repairs, out var excludedIncompleteMessages, out var excludedInstructionMessages);
         if (excludedInstructionMessages > 0)
         {
             ContextLog.ExcludedInstructionMessagesFromHistory(_logger, request.ModelRequestId, excludedInstructionMessages);
+        }
+
+        if (!repairs.IsEmpty)
+        {
+            ContextLog.AppliedHistoryRepairs(
+                _logger, request.ModelRequestId, repairs.Length, excludedIncompleteMessages, excludedInstructionMessages);
         }
 
         if (repairedHistory.IsEmpty)
@@ -108,14 +125,16 @@ public sealed class DefaultContextAssembler: IContextAssembler
                         ExtensionData.Empty)));
         }
 
-        var causalityFailure = ValidateToolCallCausality(repairedHistory);
-        if (causalityFailure is not null)
+        var structuralFailure = ValidateRolePartCombinations(repairedHistory) ?? ValidateToolCallCausality(repairedHistory);
+        if (structuralFailure is not null)
         {
-            const string outcome = "broken_tool_call_causality";
-            activity.SetFailed(outcome, nameof(ContextPreparationFailureKind.BrokenToolCallCausality));
+            var outcome = structuralFailure.Kind == ContextPreparationFailureKind.InvalidRolePartCombination
+                ? "invalid_role_part_combination"
+                : "broken_tool_call_causality";
+            activity.SetFailed(outcome, structuralFailure.Kind.ToString());
             ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
-            ContextLog.Rejected(_logger, request.ModelRequestId, causalityFailure.Kind);
-            return Task.FromResult<ContextAssemblyResult>(new ContextPreparationFailed(causalityFailure));
+            ContextLog.Rejected(_logger, request.ModelRequestId, structuralFailure.Kind);
+            return Task.FromResult<ContextAssemblyResult>(new ContextPreparationFailed(structuralFailure));
         }
 
         var messages = instructions.AddRange(repairedHistory);
@@ -132,43 +151,97 @@ public sealed class DefaultContextAssembler: IContextAssembler
         activity.SetSuccessful("ready");
         ContextMetrics.Preparations.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "ready"));
         ContextLog.Prepared(_logger, request.ModelRequestId, messages.Length);
-        return Task.FromResult<ContextAssemblyResult>(new ContextReady(context));
+        return Task.FromResult<ContextAssemblyResult>(new ContextReady(context, repairs));
     }
 
     /// <summary>
     /// Retains only complete messages and excludes any system or developer message found in history:
     /// instruction authority enters a request exclusively through the explicit instruction set, so a
-    /// stored or imported history can never promote content to system precedence.
+    /// stored or imported history can never promote content to system precedence. Every exclusion
+    /// produces one <see cref="HistoryRepair"/> attributed to the excluded message, in source order.
     /// </summary>
-    private static ImmutableArray<AgentMessage> RepairHistory(ImmutableArray<AgentMessage> history, out int excludedInstructionMessages)
+    private static ImmutableArray<AgentMessage> RepairHistory(
+        ImmutableArray<AgentMessage> history,
+        out ImmutableArray<HistoryRepair> repairs,
+        out int excludedIncompleteMessages,
+        out int excludedInstructionMessages)
     {
+        Debug.Assert(!history.IsDefault, "The request and evidence contracts guarantee an initialized history.");
+        excludedIncompleteMessages = 0;
         excludedInstructionMessages = 0;
         var builder = ImmutableArray.CreateBuilder<AgentMessage>(history.Length);
+        var repairBuilder = ImmutableArray.CreateBuilder<HistoryRepair>();
         foreach (var message in history)
         {
             if (message.State != MessageState.Complete)
             {
+                excludedIncompleteMessages++;
+                repairBuilder.Add(new HistoryRepair(
+                    [message.Id],
+                    message is AssistantMessage
+                        ? HistoryRepairKind.ExcludedIncompleteAssistantContent
+                        : HistoryRepairKind.ExcludedIncompleteMessage,
+                    $"Excluded a message whose state is {message.State} because only complete messages are sent to a provider.",
+                    ExtensionData.Empty));
                 continue;
             }
 
             if (message is SystemMessage or DeveloperMessage)
             {
                 excludedInstructionMessages++;
+                repairBuilder.Add(new HistoryRepair(
+                    [message.Id],
+                    HistoryRepairKind.ExcludedInstructionMessage,
+                    "Excluded a system or developer message found in history because history never carries instruction authority.",
+                    ExtensionData.Empty));
                 continue;
             }
 
             builder.Add(message);
         }
 
+        repairs = repairBuilder.ToImmutable();
         return builder.ToImmutable();
     }
 
     /// <summary>
+    /// Validates that each tool part sits in the only role allowed to carry it: a <see cref="ToolCallPart"/>
+    /// in an <see cref="AssistantMessage"/> and a <see cref="ToolResultPart"/> in a <see cref="ToolMessage"/>.
+    /// Because each half is confined to its own role, a call and its result can never share one message.
+    /// </summary>
+    private static ContextPreparationFailure? ValidateRolePartCombinations(ImmutableArray<AgentMessage> repairedHistory)
+    {
+        Debug.Assert(!repairedHistory.IsDefault, "RepairHistory always returns an initialized array.");
+        foreach (var message in repairedHistory)
+        {
+            foreach (var part in message.Parts)
+            {
+                var violation = part switch
+                {
+                    ToolCallPart when message is not AssistantMessage =>
+                        "History carries a tool call in a message whose role cannot request tools; only assistant messages may.",
+                    ToolResultPart when message is not ToolMessage =>
+                        "History carries a tool result in a message whose role cannot report results; only tool messages may.",
+                    _ => null,
+                };
+                if (violation is not null)
+                {
+                    return new ContextPreparationFailure(
+                        ContextPreparationFailureKind.InvalidRolePartCombination, violation, ExtensionData.Empty);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Validates tool-call causality in order: every call identity is unique, every result references a
-    /// call that precedes it, and every call receives exactly one terminal result.
+    /// call in an earlier message, and every call receives exactly one terminal result.
     /// </summary>
     private static ContextPreparationFailure? ValidateToolCallCausality(ImmutableArray<AgentMessage> repairedHistory)
     {
+        Debug.Assert(!repairedHistory.IsDefault, "RepairHistory always returns an initialized array.");
         var pendingCalls = new HashSet<ToolCallId>();
         var seenCalls = new HashSet<ToolCallId>();
         string? violation = null;

@@ -42,6 +42,20 @@ internal static class TestFactory
         [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
         ExtensionData.Empty);
 
+    public static UserMessage UserMessageWithParts(
+        ImmutableArray<ContentPart> parts, MessageState state = MessageState.Complete) => new(
+        new MessageId(Guid.NewGuid()),
+        new AgentId(Guid.NewGuid()),
+        new SessionId(Guid.NewGuid()),
+        null,
+        new BranchId(Guid.NewGuid()),
+        null,
+        null,
+        DateTimeOffset.UnixEpoch,
+        state,
+        parts,
+        ExtensionData.Empty);
+
     public static AssistantMessage AssistantMessageWithParts(
         ImmutableArray<ContentPart> parts, MessageState state = MessageState.Complete) => new(
         new MessageId(Guid.NewGuid()),
