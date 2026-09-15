@@ -114,6 +114,13 @@ coordinator, checkpoint store, and recovery policy described in
 | [AgentKit.Mcp.Client](../../src/AgentKit.Mcp.Client/README.md) | Expose remote MCP tools through reflected, typed client surfaces.                             | [Tests](../../tests/AgentKit.Mcp.Client.Tests/README.md) |
 | [AgentKit.Mcp.Server](../../src/AgentKit.Mcp.Server/README.md) | Expose reflected tool classes through an MCP server.                                          | [Tests](../../tests/AgentKit.Mcp.Server.Tests/README.md) |
 
+## Examples
+
+| Project                                             | Purpose                                                                                                 |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [QuickStart](../../examples/QuickStart/README.md)   | The smallest complete agent: one OpenAI model, in-memory session and security state, no tools.          |
+| [CodingAgent](../../examples/CodingAgent/README.md) | A terminal coding assistant with SQLite sessions, an approval broker, and sandboxed file/process tools. |
+
 ## Shared tests and repository checks
 
 | Project                                                                            | Purpose                                                         |

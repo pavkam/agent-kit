@@ -18,10 +18,9 @@ Start with the contracts for the component you are implementing. The
 the shared values and extension boundaries. Component implementations provide
 their own DI registration methods.
 
-Target: **.NET 10**. For a source-checkout setup and a runnable component
-example, follow [Getting started](../../docs/getting-started.md). Complete
-engine composition is described in the
-[composition guide](../../docs/guides/composition.md).
+Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
+[Getting started](../../docs/getting-started.md). Complete engine composition is
+described in the [composition guide](../../docs/guides/composition.md).
 
 ## Canonical tool schemas
 

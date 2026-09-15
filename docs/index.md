@@ -1,6 +1,6 @@
 # AgentKit documentation
 
-Start with a working component, then follow the parts your application needs.
+Start with a working agent, then follow the parts your application needs.
 AgentKit is in alpha; the guides describe current entry points, while the
 architecture and concept specifications define the complete intended design.
 
@@ -8,7 +8,7 @@ architecture and concept specifications define the complete intended design.
 
 | You want to…                                   | Start here                                          |
 | ---------------------------------------------- | --------------------------------------------------- |
-| Set up a checkout and run your first component | [Getting started](getting-started.md)               |
+| Set up a checkout and run your first agent     | [Getting started](getting-started.md)               |
 | Understand engines, agents, sessions, and runs | [Composing an application](guides/composition.md)   |
 | Find a package and its related projects        | [Project catalog](packages/index.md)                |
 | Select a provider and check its wire behavior  | [Provider reference](providers/index.md)            |

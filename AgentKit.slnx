@@ -145,5 +145,6 @@
   </Folder>
   <Folder Name="/examples/">
     <Project Path="examples/CodingAgent/CodingAgent.csproj"/>
+    <Project Path="examples/QuickStart/QuickStart.csproj"/>
   </Folder>
 </Solution>

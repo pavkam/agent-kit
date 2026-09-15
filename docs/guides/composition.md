@@ -5,9 +5,54 @@ configuration. An engine captures that composition and exposes immutable agent
 handles.
 
 This guide explains the design and current entry points. Full runnable-graph
-integration is still tracked in the
-[implementation ledger](../implementation-progress.md#component-coverage). Use
-[Getting started](../getting-started.md) for an executable component example.
+integration for the multi-agent engine is still tracked in the
+[implementation ledger](../implementation-progress.md#component-coverage).
+[Getting started](../getting-started.md) walks through a complete single-agent
+composition you can run today.
+
+## Start from the working shape
+
+The direct, in-process path is one conversation with one agent through
+`AgentKit.Conversations`. Every concern is a separate registration, and each one
+is replaceable:
+
+```csharp
+var services = new ServiceCollection();
+
+services.AddInMemorySecurityGrantStore();                       // security
+services.AddStandaloneSecurityProfile(
+    agentId, definitionRevision, configurationVersion, securityProfileKey, authorityKey,
+    configurePermissions: o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
+services.AddAllowAllSecurityPolicy();
+
+services.AddAgentSession();                                     // session state
+services.AddInMemorySessionStore();
+services.AddInMemorySessionDirectory(new ComponentId("app.session"));
+
+services.AddAgentContext();                                     // turn loop
+services.AddAgentOutput();
+services.AddAgentLoop();
+services.AddAgentTools();
+
+services.AddAgentProviders();                                   // model
+services.AddOpenAI();
+services.AddOpenAIApiKeyCredential(apiKey);
+services.AddOpenAILlmModel(alias, modelId, OpenAIProviderDefaults.DefaultCapabilities);
+services.AddModelDescriptors(new ModelDescriptorSourceId("app"), [descriptor]);
+
+services.AddConversationSession(options => { /* identities, profile, alias, instructions, limits */ });
+
+await using var provider = services.BuildServiceProvider(
+    new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+var conversation = provider.GetRequiredService<IConversationSession>();
+var result = await conversation.SendAsync("Hello", cancellationToken);
+```
+
+[`examples/QuickStart`](../../examples/QuickStart/QuickStartAgent.cs) is this
+program in full; [`examples/CodingAgent`](../../examples/CodingAgent/README.md)
+grows it with SQLite sessions, an approval broker, and eight tools. The rest of
+this guide explains what each block owns and how the multi-agent `AgentEngine`
+facade generalizes it.
 
 ## Understand the four lifetimes
 
@@ -84,9 +129,21 @@ collaborators selected by the host, not automatic registrations.
 
 ## Own startup and shutdown
 
-A standalone engine owns the service provider it builds and is asynchronously
-disposed. A host-managed engine leaves provider disposal to the host. Current
-host-managed composition uses
+Build the provider with `ValidateOnBuild` and `ValidateScopes` enabled so a
+missing or ambiguous registration fails at startup, not in the middle of a run.
+When your application owns the provider, wrap the conversation and the provider
+together so one `Dispose` releases both:
+
+```csharp
+var provider = services.BuildServiceProvider(
+    new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+using var conversation = new OwnedConversationSession(
+    provider.GetRequiredService<IConversationSession>(), provider);
+```
+
+A standalone `AgentEngine` owns the service provider it builds and is
+asynchronously disposed. A host-managed engine leaves provider disposal to the
+host. Current host-managed composition uses
 [`AgentKitServiceProviderFactory`](../../src/AgentKit/AgentKitServiceProviderFactory.cs)
 to capture the service descriptors required by composition validation.
 

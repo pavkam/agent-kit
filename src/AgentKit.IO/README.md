@@ -38,10 +38,9 @@ The coordinator bounds part count only. Payload byte bounds, configured
 preprocessors, and the session-backed `IInputQueue` itself — in particular the
 durable atomic promotion primitive its `PromoteAsync` needs — remain open.
 
-Target: **.NET 10**. For a source-checkout setup and a runnable component
-example, follow [Getting started](../../docs/getting-started.md). Complete
-engine composition is described in the
-[composition guide](../../docs/guides/composition.md).
+Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
+[Getting started](../../docs/getting-started.md). Complete engine composition is
+described in the [composition guide](../../docs/guides/composition.md).
 
 ## Run-event fan-out
 

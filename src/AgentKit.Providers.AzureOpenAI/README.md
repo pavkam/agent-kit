@@ -14,10 +14,9 @@ Start with `AddAzureOpenAI`, `AddAzureOpenAILlmModel`,
 Read the overloads and XML documentation for required collaborators, lifetimes,
 and duplicate-registration behavior.
 
-Target: **.NET 10**. For a source-checkout setup and a runnable component
-example, follow [Getting started](../../docs/getting-started.md). Complete
-engine composition is described in the
-[composition guide](../../docs/guides/composition.md).
+Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
+[Getting started](../../docs/getting-started.md). Complete engine composition is
+described in the [composition guide](../../docs/guides/composition.md).
 
 Capabilities belong to the configured operation and model. A provider name or
 compatible wire format does not imply support for every feature.

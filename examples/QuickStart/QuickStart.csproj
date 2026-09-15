@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/AgentKit.Conversations/AgentKit.Conversations.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Context/AgentKit.Context.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Loop/AgentKit.Loop.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Output/AgentKit.Output.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Permissions/AgentKit.Permissions.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Providers/AgentKit.Providers.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Session/AgentKit.Session.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Tools/AgentKit.Tools.csproj"/>
+  </ItemGroup>
+
+</Project>

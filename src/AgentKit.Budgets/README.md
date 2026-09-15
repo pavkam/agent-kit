@@ -27,10 +27,9 @@ Run-profile integration is also pending: ordinary created scopes implement
 `IBudgetScope` and are never promoted to `IRunBudget` by guessing from nullable
 address fields.
 
-Target: **.NET 10**. For a source-checkout setup and a runnable component
-example, follow [Getting started](../../docs/getting-started.md). Complete
-engine composition is described in the
-[composition guide](../../docs/guides/composition.md).
+Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
+[Getting started](../../docs/getting-started.md). Complete engine composition is
+described in the [composition guide](../../docs/guides/composition.md).
 
 ## Related projects
 

@@ -135,26 +135,38 @@ policy, execution, state, and observation remain separate.
 
 ## Registration surface
 
+The registrations a complete single-agent composition uses today, as run by
+[`examples/QuickStart`](../../examples/QuickStart/QuickStartAgent.cs):
+
 ```csharp
-builder.Services.AddAgentLoop();
-builder.Services.AddAgentBudgets();
-builder.Services.AddAgentOutput();
-builder.Services.AddAgentContext();
-builder.Services.AddAgentHooks();
-builder.Services.AddAgentIO();
-builder.Services.AddAgentSession();
-builder.Services.AddInMemorySessionStore();
-builder.Services.AddAgentPermissions();
-builder.Services.AddInMemorySecurityGrantStore();
-builder.Services.AddAgentProviders();
-builder.Services.AddOpenAI();
-builder.Services.AddReadTool();
-builder.Services.AddAgentDefinition(agentDefinition);
+services.AddInMemorySecurityGrantStore();
+services.AddStandaloneSecurityProfile(
+    agentId, definitionRevision, configurationVersion, securityProfileKey, authorityKey);
+services.AddAllowAllSecurityPolicy();
+
+services.AddAgentSession();
+services.AddInMemorySessionStore();
+services.AddInMemorySessionDirectory(new ComponentId("app.session"));
+
+services.AddAgentContext();
+services.AddAgentOutput();
+services.AddAgentLoop();
+services.AddAgentTools();
+
+services.AddAgentProviders();
+services.AddOpenAI();
+services.AddOpenAIApiKeyCredential(apiKey);
+services.AddOpenAILlmModel(alias, modelId, OpenAIProviderDefaults.DefaultCapabilities);
+services.AddModelDescriptors(new ModelDescriptorSourceId("app"), [descriptor]);
+
+services.AddConversationSession(options => { /* identities, profile, alias, instructions */ });
 ```
 
-Exact names are provisional. Registration methods MUST return
-`IServiceCollection`, never build/resolve a provider, validate options, and
-document:
+Optional packages follow the same pattern (`AddAgentBudgets`, `AddAgentHooks`,
+`AddInputCoordinator`, `AddReadTool`, `AddSandboxedFileSystem`, and so on), and
+the multi-agent facade adds `AddAgentKit` with `AddAgent(definition)`.
+Registration methods MUST return `IServiceCollection`, never build/resolve a
+provider, validate options, and document:
 
 - singular versus additive registration;
 - key/name collision behavior;

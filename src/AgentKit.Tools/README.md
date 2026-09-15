@@ -21,10 +21,9 @@ tool at once. Build the model-facing `LlmToolDefinition` for a resolved
 [ToolDescriptorExtensions.cs](ToolDescriptorExtensions.cs) and
 [ToolDescriptorCollectionExtensions.cs](ToolDescriptorCollectionExtensions.cs).
 
-Target: **.NET 10**. For a source-checkout setup and a runnable component
-example, follow [Getting started](../../docs/getting-started.md). Complete
-engine composition is described in the
-[composition guide](../../docs/guides/composition.md).
+Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
+[Getting started](../../docs/getting-started.md). Complete engine composition is
+described in the [composition guide](../../docs/guides/composition.md).
 
 ## Static application discovery
 

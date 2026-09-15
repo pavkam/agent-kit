@@ -55,10 +55,9 @@ Start with `AddAgentKitObservability` in
 documentation for required collaborators, lifetimes, and duplicate-registration
 behavior.
 
-Target: **.NET 10**. For a source-checkout setup and a runnable component
-example, follow [Getting started](../../docs/getting-started.md). Complete
-engine composition is described in the
-[composition guide](../../docs/guides/composition.md).
+Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
+[Getting started](../../docs/getting-started.md). Complete engine composition is
+described in the [composition guide](../../docs/guides/composition.md).
 
 ## Tool-source capture diagnostics
 

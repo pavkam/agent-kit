@@ -15,10 +15,35 @@ case of one long-lived, single-branch conversation against one composed agent.
 
 ## Use this project
 
-Register the tools, provider, session store, and security policies your agent
-needs exactly as any other AgentKit composition, then add:
+Register security, session, loop, and provider services exactly as any other
+AgentKit composition, then add one conversation. This is the complete working
+shape from
+[`examples/QuickStart`](../../examples/QuickStart/QuickStartAgent.cs):
 
 ```csharp
+var services = new ServiceCollection();
+
+services.AddInMemorySecurityGrantStore();
+services.AddStandaloneSecurityProfile(
+    agentId, definitionRevision, configurationVersion, securityProfileKey, authorityKey,
+    configurePermissions: o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
+services.AddAllowAllSecurityPolicy();
+
+services.AddAgentSession();
+services.AddInMemorySessionStore();
+services.AddInMemorySessionDirectory(new ComponentId("app.session"));
+
+services.AddAgentContext();
+services.AddAgentOutput();
+services.AddAgentLoop();
+services.AddAgentTools();
+
+services.AddAgentProviders();
+services.AddOpenAI();
+services.AddOpenAIApiKeyCredential(apiKey);
+services.AddOpenAILlmModel(alias, modelId, OpenAIProviderDefaults.DefaultCapabilities);
+services.AddModelDescriptors(new ModelDescriptorSourceId("app"), [descriptor]);
+
 services.AddConversationSession(options =>
 {
     options.AgentId = agentId;
@@ -27,33 +52,38 @@ services.AddConversationSession(options =>
     options.AgentDefinitionRevision = definitionRevision;
     options.ConfigurationVersion = configurationVersion;
     options.SessionProfile = sessionProfile;
-    options.ModelSelectionPolicy = new ModelSelectionPolicy([modelAlias]);
+    options.ModelSelectionPolicy = new ModelSelectionPolicy([alias]);
     options.Instructions.Add(systemMessage);
-    options.Tools.AddRange(toolCatalog.Descriptors.ToLlmToolDefinitions());
-    options.ToolPresentationBindings.AddRange(capturedBindings);
+    options.MaxTurns = 4;
 });
 ```
 
-Each optional `ConversationToolPresentationBinding` pairs the exact captured
-`ToolDescriptor` with the equal `LlmToolDefinition` placed in `Tools`, retaining
-the advertised alias. When an `IToolPresenter` is composed, live tool events
-carry its bounded `ToolPresentation`. Calls and terminal results remain the
-original `ToolCallPart` and loss-aware `ToolResultPart` presentation sources;
-the conversation never reconstructs an authoritative execution record from a
-display summary. Missing or mismatched evidence uses the presenter's generic
-fallback path.
+When the agent has tools, add each tool's `LlmToolDefinition` to `options.Tools`
+and, optionally, a `ConversationToolPresentationBinding` pairing the exact
+captured `ToolDescriptor` with that definition so live tool events carry a
+bounded presentation.
 
 Resolve `IConversationSession` and call `SendAsync` for each user message:
 
 ```csharp
+await using var provider = services.BuildServiceProvider(
+    new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
 var conversation = provider.GetRequiredService<IConversationSession>();
-var result = await conversation.SendAsync("List the files here.");
+
+var result = await conversation.SendAsync("List the files here.", cancellationToken);
 foreach (var conversationEvent in result.Events)
 {
     // ConversationAssistantTextEvent, ConversationToolCallEvent, ConversationToolResultEvent,
-    // or ConversationUsageEvent
+    // ConversationReasoningEvent, or ConversationUsageEvent
 }
 ```
+
+When an `IToolPresenter` is composed, live tool events carry its bounded
+`ToolPresentation`. Calls and terminal results remain the original
+`ToolCallPart` and loss-aware `ToolResultPart` presentation sources; the
+conversation never reconstructs an authoritative execution record from a display
+summary. Missing or mismatched evidence uses the presenter's generic fallback
+path.
 
 For live output, pass an `IConversationEventObserver` to the observing overload.
 It receives assistant text and reasoning deltas, correlated tool starts and
@@ -104,8 +134,8 @@ the direct, in-process composition an application reaches for when it owns its
 own `IServiceProvider` and wants one conversation with one agent — a terminal,
 desktop, or single-tenant service host.
 
-Target: **.NET 10**. For a source-checkout setup and a runnable component
-overview, see the [repository root README](../../README.md) and the
+Target: **.NET 10**. For a source-checkout setup and a runnable agent, see the
+[repository root README](../../README.md) and the
 [getting-started guide](../../docs/getting-started.md).
 
 [Project catalog](../../docs/packages/index.md)

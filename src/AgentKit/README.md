@@ -8,14 +8,32 @@ application selects the loop, providers, stores, tools, and policies separately.
 
 ## Use this project
 
-Start with `AddAgentKit`, `AddAgent`, `AddAgentRunProfilePublication` in
-[ServiceExtensions.cs](ServiceExtensions.cs). Read the overloads and XML
-documentation for required collaborators, lifetimes, and duplicate-registration
-behavior.
+For one conversation with one agent, you do not need this facade: compose the
+loop, session, security, and provider packages and add
+[`AgentKit.Conversations`](../AgentKit.Conversations/README.md), as
+[`examples/QuickStart`](../../examples/QuickStart/README.md) does. Reach for
+`AgentEngine` when a process hosts a catalog of several agent definitions:
 
-Target: **.NET 10**. For a source-checkout setup and a runnable component
-example, follow [Getting started](../../docs/getting-started.md). Complete
-engine composition is described in the
+```csharp
+var builder = AgentEngine.CreateBuilder();
+// register loop, context, output, session, security, provider, and tool packages on builder.Services
+builder.Services.AddAgent(definition);
+
+await using var engine = builder.Build();
+var agent = await engine.GetAgentAsync(definition.Id, cancellationToken);
+```
+
+In a .NET host, `AddAgentKit()` registers the same engine and validation into
+the host's `IServiceCollection` and leaves provider disposal to the host. Start
+with `AddAgentKit`, `AddAgent`, and `AddAgentRunProfilePublication` in
+[ServiceExtensions.cs](ServiceExtensions.cs); the XML documentation lists
+required collaborators, lifetimes, and duplicate-registration behavior. Complete
+keyed run-plan compilation for the engine is tracked in the
+[implementation ledger](../../docs/implementation-progress.md#component-coverage).
+
+Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
+[Getting started](../../docs/getting-started.md). Engine lifetimes and required
+collaborators are described in the
 [composition guide](../../docs/guides/composition.md).
 
 ## Build validation

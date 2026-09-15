@@ -27,10 +27,9 @@ standard session/run flow) with `"security.captured_context_mismatch"` until the
 snapshot is wired through consistently; see its own remarks for the exact
 mechanism.
 
-Target: **.NET 10**. For a source-checkout setup and a runnable component
-example, follow [Getting started](../../docs/getting-started.md). Complete
-engine composition is described in the
-[composition guide](../../docs/guides/composition.md).
+Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
+[Getting started](../../docs/getting-started.md). Complete engine composition is
+described in the [composition guide](../../docs/guides/composition.md).
 
 ## Example security policies
 

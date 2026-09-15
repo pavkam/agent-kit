@@ -46,30 +46,76 @@ make restore
 make build
 ```
 
-Follow the [getting-started guide](docs/getting-started.md) to run a model
-catalog example without credentials or a model service. It demonstrates the
-public component API and explains what you need to compose a complete agent.
+Then set an OpenAI key and run the smallest complete agent:
 
-For example, use the provider package independently through ordinary DI:
-
-```csharp
-using AgentKit;
-using AgentKit.Providers;
-using Microsoft.Extensions.DependencyInjection;
-
-var services = new ServiceCollection();
-services.AddAgentProviders();
-
-await using var provider = services.BuildServiceProvider();
-var catalog = provider.GetRequiredService<IModelCatalog>();
-var snapshot = await catalog.GetSnapshotAsync(CancellationToken.None);
-
-Console.WriteLine($"Configured models: {snapshot.ConversationModels.Length}");
+```sh
+export OPENAI_API_KEY=sk-...
+dotnet run --project examples/QuickStart -- "In one sentence, what is AgentKit?"
 ```
 
-This prints `Configured models: 0`: model registration is explicit. The
-[walkthrough](docs/getting-started.md#register-a-model-descriptor) adds a
-descriptor and explains the difference between describing and executing a model.
+Every part of that agent is an ordinary DI registration. This is the whole
+composition, minus the small identity and session-profile helpers you can read
+in [`examples/QuickStart`](examples/QuickStart/QuickStartAgent.cs):
+
+```csharp
+var services = new ServiceCollection();
+
+// Security: grant store, a profile bound to this agent, and a policy.
+services.AddInMemorySecurityGrantStore();
+services.AddStandaloneSecurityProfile(
+    agentId, definitionRevision, configurationVersion, securityProfileKey, authorityKey,
+    configurePermissions: o => o.AuditDelivery = SecurityAuditDelivery.BestEffort);
+services.AddAllowAllSecurityPolicy(); // local, single-tenant only
+
+// Session state: coordinator plus an explicitly selected store and directory.
+services.AddAgentSession();
+services.AddInMemorySessionStore();
+services.AddInMemorySessionDirectory(new ComponentId("quickstart.session"));
+
+// The turn loop and its collaborators.
+services.AddAgentContext();
+services.AddAgentOutput();
+services.AddAgentLoop();
+services.AddAgentTools();
+
+// The model, exposed to the agent under one alias.
+services.AddAgentProviders();
+services.AddOpenAI();
+services.AddOpenAIApiKeyCredential(apiKey);
+services.AddOpenAILlmModel(alias, modelId, OpenAIProviderDefaults.DefaultCapabilities);
+services.AddModelDescriptors(new ModelDescriptorSourceId("quickstart"), [descriptor]);
+
+// One conversation with one agent.
+services.AddConversationSession(options =>
+{
+    options.AgentId = agentId;
+    options.Identity = identity;
+    options.SecurityProfileKey = securityProfileKey;
+    options.AgentDefinitionRevision = definitionRevision;
+    options.ConfigurationVersion = configurationVersion;
+    options.SessionProfile = sessionProfile;
+    options.ModelSelectionPolicy = new ModelSelectionPolicy([alias]);
+    options.Instructions.Add(systemMessage);
+    options.MaxTurns = 4;
+});
+
+await using var provider = services.BuildServiceProvider(
+    new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+var conversation = provider.GetRequiredService<IConversationSession>();
+
+var result = await conversation.SendAsync("In one sentence, what is AgentKit?", ct);
+foreach (var text in result.Events.OfType<ConversationAssistantTextEvent>())
+{
+    Console.WriteLine(text.Text);
+}
+```
+
+One `SendAsync` creates the session, admits the message, runs the loop, and
+returns the committed events. The
+[getting-started guide](docs/getting-started.md) explains each block and how to
+add tools, durable sessions, and other providers. The
+[CodingAgent](examples/CodingAgent/README.md) example grows the same shape into
+a full terminal coding assistant with sandboxed file and process tools.
 
 ## Choose your components
 
@@ -93,7 +139,7 @@ provider, session store, or tool dependency; your application chooses them.
 
 | You want to…                              | Read                                                            |
 | ----------------------------------------- | --------------------------------------------------------------- |
-| Try the current APIs                      | [Getting started](docs/getting-started.md)                      |
+| Run your first agent                      | [Getting started](docs/getting-started.md)                      |
 | Understand how the pieces fit             | [Composing an application](docs/guides/composition.md)          |
 | Pick packages and follow related projects | [Project catalog](docs/packages/index.md)                       |
 | Navigate the documentation                | [Documentation home](docs/index.md)                             |
