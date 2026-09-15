@@ -144,6 +144,37 @@ internal static partial class LoopLog
     [LoggerMessage(1090, LogLevel.Warning, "Run {RunId} found {ToolCount} tool calls left without a terminal result by a previous run; settling them as interrupted before the first turn.")]
     internal static partial void DanglingToolCallsSettled(ILogger logger, RunId runId, int toolCount);
 
+    /// <summary>Logs that a run's model-facing history was reconstructed from the newest active compaction checkpoint rather than from the branch origin.</summary>
+    /// <remarks>Counts and identities only: the checkpoint summary never enters the log. The covered count is the number of loaded entries omitted because they precede the checkpoint's retained suffix; the retained count is the number of messages projected after the summary.</remarks>
+    [LoggerMessage(
+        1091,
+        LogLevel.Information,
+        "Run {RunId} reconstructed history from active compaction checkpoint {CompactionId} at sequence {CheckpointSequence}: " +
+            "{CoveredEntryCount} covered entries omitted, {RetainedMessageCount} retained messages follow the summary.")]
+    internal static partial void HistoryReconstructedFromCompactionCheckpoint(
+        ILogger logger,
+        RunId runId,
+        CompactionId compactionId,
+        SessionSequence checkpointSequence,
+        int coveredEntryCount,
+        int retainedMessageCount);
+
+    /// <summary>Logs a newer active compaction checkpoint whose covered range does not include an older active checkpoint on the same branch.</summary>
+    /// <remarks>The first-party compactor always covers a contiguous prefix, so this indicates a foreign or inconsistent record; the newest checkpoint is still the one used.</remarks>
+    [LoggerMessage(
+        1092,
+        LogLevel.Warning,
+        "Run {RunId} found active compaction checkpoint {CompactionId} at sequence {CheckpointSequence} whose covered range ends at " +
+            "{CoveredEndSequence}, before the older active checkpoint {OlderCompactionId} at sequence {OlderCheckpointSequence}; the newest checkpoint is used.")]
+    internal static partial void OlderCompactionCheckpointNotCovered(
+        ILogger logger,
+        RunId runId,
+        CompactionId compactionId,
+        SessionSequence checkpointSequence,
+        SessionSequence coveredEndSequence,
+        CompactionId olderCompactionId,
+        SessionSequence olderCheckpointSequence);
+
     /// <summary>Logs an isolated run-observer failure without recording event content.</summary>
     [LoggerMessage(1070, LogLevel.Warning, "Run observer for run {RunId} failed while receiving {EventType}; the run continues.")]
     internal static partial void RunObserverFailed(ILogger logger, RunId runId, string eventType);

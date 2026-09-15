@@ -40,6 +40,18 @@ using Microsoft.Extensions.Options;
 /// for a deferral this loop cannot resume.
 /// </para>
 /// <para>
+/// History is loaded under one pinned snapshot and reconstructed from the
+/// newest active <see cref="CompactionSessionEntry"/> on the branch when one
+/// exists: the model-facing view is that checkpoint's summary, projected as a
+/// <see cref="RuntimeMessage"/> in the shape documented by
+/// <see cref="CompactionCheckpointProjection"/>, followed by exactly the
+/// entries from the checkpoint's retained suffix onward. Covered entries are
+/// neither replayed nor scanned for dangling tool calls. The history cursor
+/// still names the real branch tip, so every append remains guarded by the
+/// actual branch version. The projection is in-memory only and is never
+/// appended to the session.
+/// </para>
+/// <para>
 /// Caller cancellation propagates as <see cref="OperationCanceledException"/>
 /// only while this run has committed nothing. After the first durable commit,
 /// cancellation observed anywhere (a cancelled model attempt, a cancelled or
@@ -286,8 +298,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
             runAuthorization);
 
         var historyLoad = await LoadHistoryAsync(
-            sessionContext, request.SessionProfile, request.BranchId, cancellationToken).ConfigureAwait(false);
-        if (historyLoad is not var (initialEntries, initialCursor))
+            request.RunId, sessionContext, request.SessionProfile, request.BranchId, cancellationToken).ConfigureAwait(false);
+        if (historyLoad is not { } loaded)
         {
             return BuildResult(
                 request,
@@ -296,11 +308,30 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 finalVersion: null);
         }
 
+        var initialCursor = loaded.Cursor;
         var currentVersion = initialCursor.Version;
         var committedMessages = ImmutableArray.CreateBuilder<AgentMessage>();
 
+        // The model-facing history starts at the newest active checkpoint when one exists: its summary, projected as
+        // synthetic runtime evidence, followed by exactly the retained suffix and everything after the checkpoint.
+        // The cursor still names the real branch tip, so every append below is guarded by the actual version.
+        var retainedMessages = ToMessages(loaded.Entries);
+        var initialMessages = retainedMessages;
+        if (loaded.Checkpoint is { } checkpoint)
+        {
+            initialMessages = retainedMessages.Insert(0, CompactionCheckpointProjector.Project(checkpoint, initialCursor));
+            _ = runActivity?.SetTag(AgentKitTagNames.CompactionId, checkpoint.Record.Context.CompactionId.ToString());
+            LoopLog.HistoryReconstructedFromCompactionCheckpoint(
+                _logger,
+                request.RunId,
+                checkpoint.Record.Context.CompactionId,
+                checkpoint.Sequence,
+                loaded.CoveredEntryCount,
+                retainedMessages.Length);
+        }
+
         var (history, recoveryFailure) = await SettleDanglingToolCallsAsync(
-            request, sessionContext, runCorrelation, initialEntries, initialCursor, committedMessages, cancellationToken)
+            request, sessionContext, runCorrelation, loaded.Entries, initialMessages, initialCursor, committedMessages, cancellationToken)
             .ConfigureAwait(false);
         if (recoveryFailure is not null)
         {
@@ -1549,7 +1580,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="request">The run performing the recovery.</param>
     /// <param name="sessionContext">The run-scoped session context that writes the settlement.</param>
     /// <param name="runCorrelation">The run's in-run correlation recorded as the entry's writer.</param>
-    /// <param name="entries">The loaded eligible history entries in sequence order.</param>
+    /// <param name="entries">
+    /// The loaded eligible history entries in sequence order. When the branch carries an active compaction
+    /// checkpoint these are only the entries from its retained suffix onward, so a call left dangling inside the
+    /// covered range is neither seen nor settled: the checkpoint already stands in for that history.
+    /// </param>
+    /// <param name="messages">The model-facing projection of <paramref name="entries"/>, led by the checkpoint summary when one applies.</param>
     /// <param name="cursor">The exact cursor of the loaded history.</param>
     /// <param name="committedMessages">Receives the synthesized tool message when one is committed.</param>
     /// <param name="cancellationToken">The caller's cancellation; the recovery is pre-turn work of this run.</param>
@@ -1571,13 +1607,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
         SessionOperationContext sessionContext,
         InRunOperationCorrelation runCorrelation,
         ImmutableArray<SessionEntry> entries,
+        ImmutableArray<AgentMessage> messages,
         MessageCursor cursor,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         CancellationToken cancellationToken)
     {
         Debug.Assert(request is not null, "A validated run request is required for run-start recovery.");
         Debug.Assert(!entries.IsDefault, "Loaded history is an initialized array.");
-        var messages = ToMessages(entries);
+        Debug.Assert(!messages.IsDefault, "The projected history is an initialized array.");
         var pendingCalls = new Dictionary<ToolCallId, ToolCallPart>();
         MessageSessionEntry? danglingEntry = null;
         foreach (var entry in entries)
@@ -1671,12 +1708,45 @@ public sealed class DefaultAgentLoop: IAgentLoop
         return (new HistoryView(nextCursor, [.. messages, .. appendAttempt.InterleavedMessages, toolMessage], []), null);
     }
 
-    private async Task<(ImmutableArray<SessionEntry> Entries, MessageCursor Cursor)?> LoadHistoryAsync(
+    /// <summary>
+    /// Loads the branch under one pinned snapshot and keeps only the entries a run's model-facing history needs:
+    /// everything when the branch carries no active compaction checkpoint, otherwise the newest active
+    /// checkpoint's retained suffix and every entry after the checkpoint.
+    /// </summary>
+    /// <param name="runId">The run loading its history, for diagnostics.</param>
+    /// <param name="sessionContext">The run-scoped session context authorizing the read.</param>
+    /// <param name="sessionProfile">The run's immutable session profile.</param>
+    /// <param name="branchId">The branch to load.</param>
+    /// <param name="cancellationToken">Cancels the load.</param>
+    /// <returns>
+    /// The retained entries in sequence order, the cursor naming the real branch tip, the selected checkpoint when
+    /// one applies, and the number of covered entries omitted; or null when the branch could not be read
+    /// consistently under one snapshot.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The branch is still read forward from its origin because the session read contract pages forward only.
+    /// Entries are buffered as they arrive; when an active <see cref="CompactionSessionEntry"/> is encountered, every
+    /// buffered entry whose sequence precedes its <see cref="CompactionManifest.RetainedSuffixStart"/> is discarded.
+    /// Peak retention is therefore bounded by the covered range plus the retained suffix, not by the number of
+    /// checkpoints in the branch, and a checkpoint appended after the loop's last observation is never applied
+    /// retroactively to a turn that already assembled its request.
+    /// </para>
+    /// <para>
+    /// When more than one active checkpoint exists the newest wins. The first-party compactor covers a contiguous
+    /// prefix of the branch, so a newer checkpoint's covered range normally includes every older checkpoint; a
+    /// newer record that does not cover an older one is logged as a warning and still used, because the loop does
+    /// not adjudicate between records the compactor committed.
+    /// </para>
+    /// </remarks>
+    private async Task<LoadedHistory?> LoadHistoryAsync(
+        RunId runId,
         SessionOperationContext sessionContext,
         SessionProfileSnapshot sessionProfile,
         BranchId branchId,
         CancellationToken cancellationToken)
     {
+        Debug.Assert(sessionContext is not null, "A run-scoped session context is required to load history.");
         var loadResult = await _sessionCoordinator.LoadAsync(sessionContext, sessionProfile, cancellationToken)
             .ConfigureAwait(false);
         if (loadResult is not SessionLoaded loaded)
@@ -1692,6 +1762,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var entries = ImmutableArray.CreateBuilder<SessionEntry>();
         var cursor = new SessionSequence(0);
         SessionReadSnapshot? snapshot = null;
+        CompactionSessionEntry? checkpoint = null;
+        var coveredEntryCount = 0;
+        var loadedEntryCount = 0;
 
         while (true)
         {
@@ -1714,7 +1787,31 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 return null;
             }
 
-            entries.AddRange(page.Entries);
+            foreach (var entry in page.Entries)
+            {
+                loadedEntryCount++;
+                if (entry is CompactionSessionEntry { Record: { Status: CompactionRecordStatus.Active, Checkpoint: not null } } activeCheckpoint)
+                {
+                    if (checkpoint is not null
+                        && checkpoint.Sequence.Value > activeCheckpoint.Record.Manifest.CoveredRange.EndInclusive.Value)
+                    {
+                        LoopLog.OlderCompactionCheckpointNotCovered(
+                            _logger,
+                            runId,
+                            activeCheckpoint.Record.Context.CompactionId,
+                            activeCheckpoint.Sequence,
+                            activeCheckpoint.Record.Manifest.CoveredRange.EndInclusive,
+                            checkpoint.Record.Context.CompactionId,
+                            checkpoint.Sequence);
+                    }
+
+                    checkpoint = activeCheckpoint;
+                    coveredEntryCount += DiscardCoveredEntries(entries, activeCheckpoint.Record.Manifest.RetainedSuffixStart);
+                }
+
+                entries.Add(entry);
+            }
+
             cursor = page.ThroughSequence;
 
             if (!page.HasMore || page.Entries.IsEmpty)
@@ -1725,9 +1822,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         Debug.Assert(snapshot is not null, "A successful first page supplies exact snapshot evidence.");
         var reachedBoundary = cursor == snapshot.UpperSequence
-            || (entries.Count == 0 && cursor.Value > snapshot.UpperSequence.Value);
+            || (loadedEntryCount == 0 && cursor.Value > snapshot.UpperSequence.Value);
         return reachedBoundary
-            ? (
+            ? new LoadedHistory(
                 entries.ToImmutable(),
                 new MessageCursor(
                     sessionContext.AgentId,
@@ -1735,8 +1832,30 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     loaded.Descriptor.ConversationId,
                     branchId,
                     snapshot.Version,
-                    snapshot.UpperSequence))
+                    snapshot.UpperSequence),
+                checkpoint,
+                coveredEntryCount)
             : null;
+    }
+
+    /// <summary>
+    /// Drops every buffered entry that precedes a checkpoint's retained suffix, keeping the buffer bounded to the
+    /// suffix the checkpoint stands before.
+    /// </summary>
+    /// <param name="entries">The buffered entries in sequence order; mutated in place.</param>
+    /// <param name="retainedSuffixStart">The first sequence the checkpoint retains verbatim.</param>
+    /// <returns>The number of entries discarded.</returns>
+    private static int DiscardCoveredEntries(ImmutableArray<SessionEntry>.Builder entries, SessionSequence retainedSuffixStart)
+    {
+        Debug.Assert(entries is not null, "The load owns an initialized entry buffer.");
+        var discard = 0;
+        while (discard < entries.Count && entries[discard].Sequence.Value < retainedSuffixStart.Value)
+        {
+            discard++;
+        }
+
+        entries.RemoveRange(0, discard);
+        return discard;
     }
 
     /// <summary>
@@ -1864,6 +1983,46 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         /// <summary>Creates a resolution that settles the run before it starts.</summary>
         public static ModelResolution Failed(AgentRunOutcome outcome) => new(outcome, null, null, null);
+    }
+
+    /// <summary>
+    /// The result of loading a run's history: the entries the model-facing view is built from, the cursor naming
+    /// the real branch tip, and the active compaction checkpoint those entries follow, when one applies.
+    /// </summary>
+    private readonly struct LoadedHistory
+    {
+        /// <summary>Initializes one loaded history.</summary>
+        /// <param name="entries">The retained entries in sequence order.</param>
+        /// <param name="cursor">The cursor naming the real branch tip under the pinned read snapshot.</param>
+        /// <param name="checkpoint">The newest active checkpoint the entries follow, or null when the branch has none.</param>
+        /// <param name="coveredEntryCount">The number of loaded entries omitted because the checkpoint covers them.</param>
+        public LoadedHistory(
+            ImmutableArray<SessionEntry> entries,
+            MessageCursor cursor,
+            CompactionSessionEntry? checkpoint,
+            int coveredEntryCount)
+        {
+            Debug.Assert(!entries.IsDefault, "Loaded entries are an initialized, possibly empty, array.");
+            Debug.Assert(cursor is not null, "A loaded history always names its exact cursor.");
+            Debug.Assert(coveredEntryCount >= 0, "A covered count is never negative.");
+            Debug.Assert(checkpoint is not null || coveredEntryCount == 0, "Entries are covered only by a checkpoint.");
+            Entries = entries;
+            Cursor = cursor;
+            Checkpoint = checkpoint;
+            CoveredEntryCount = coveredEntryCount;
+        }
+
+        /// <summary>Gets the retained entries in sequence order: the whole branch, or the checkpoint's retained suffix and everything after it.</summary>
+        public ImmutableArray<SessionEntry> Entries { get; }
+
+        /// <summary>Gets the cursor naming the real branch tip, regardless of how many entries the checkpoint covers.</summary>
+        public MessageCursor Cursor { get; }
+
+        /// <summary>Gets the newest active compaction checkpoint whose summary leads the projected history, or null.</summary>
+        public CompactionSessionEntry? Checkpoint { get; }
+
+        /// <summary>Gets the number of loaded entries omitted because <see cref="Checkpoint"/> covers them.</summary>
+        public int CoveredEntryCount { get; }
     }
 
     /// <summary>

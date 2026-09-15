@@ -553,6 +553,328 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenBranchHasAnActiveCompactionCheckpoint_ContextReceivesSummaryPlusExactSuffix()
+    {
+        const string summary = "the user asked about weather and was told it is sunny";
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler);
+        var covered1 = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, "covered one");
+        var covered2 = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2, "covered two");
+        var retained3 = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 3, "retained three");
+        var retained4 = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 4, "retained four");
+        var checkpoint = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 5, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 3, summary);
+        var later6 = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 6, "after checkpoint");
+        coordinator.Seed([covered1, covered2, retained3, retained4, checkpoint, later6]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var history = assembler.Requests.ShouldHaveSingleItem().History;
+        history.Length.ShouldBe(4);
+        var projected = history[0].ShouldBeOfType<RuntimeMessage>();
+        projected.ShouldNotBeAssignableTo<SystemMessage>();
+        projected.ShouldNotBeAssignableTo<DeveloperMessage>();
+        projected.State.ShouldBe(MessageState.Complete);
+        projected.AgentId.ShouldBe(_agentId);
+        projected.SessionId.ShouldBe(_sessionId);
+        projected.BranchId.ShouldBe(_branchId);
+        projected.ConversationId.ShouldBe(coordinator.ConversationId);
+        projected.CreatedAt.ShouldBe(checkpoint.RecordedAt);
+        projected.RunId.ShouldBe(checkpoint.Correlation.ShouldBeOfType<InRunOperationCorrelation>().RunId);
+        projected.Parts.Length.ShouldBe(2);
+        projected.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe(CompactionCheckpointProjection.HeaderText);
+        projected.Parts[1].ShouldBeSameAs(checkpoint.Record.Checkpoint!.Summary[0]);
+        projected.Extensions.Values[CompactionCheckpointProjection.FormatKey].ShouldBe(Json(CompactionCheckpointProjection.Format));
+        projected.Extensions.Values[CompactionCheckpointProjection.CompactionIdKey].ShouldBe(Json(checkpoint.Record.Context.CompactionId.ToString()));
+        projected.Extensions.Values[CompactionCheckpointProjection.ManifestIdKey].ShouldBe(Json(checkpoint.Record.Manifest.Id.ToString()));
+        projected.Extensions.Values[CompactionCheckpointProjection.SessionEntryIdKey].ShouldBe(Json(checkpoint.Id.ToString()));
+        projected.Extensions.Values[CompactionCheckpointProjection.SequenceKey].ShouldBe(Json(5L));
+        projected.Extensions.Values[CompactionCheckpointProjection.CoveredStartKey].ShouldBe(Json(1L));
+        projected.Extensions.Values[CompactionCheckpointProjection.CoveredEndKey].ShouldBe(Json(2L));
+        projected.Extensions.Values[CompactionCheckpointProjection.RetainedSuffixStartKey].ShouldBe(Json(3L));
+        history[1].ShouldBeSameAs(retained3.Message);
+        history[2].ShouldBeSameAs(retained4.Message);
+        history[3].ShouldBeSameAs(later6.Message);
+        history.ShouldNotContain(covered1.Message);
+        history.ShouldNotContain(covered2.Message);
+        assembler.Requests[0].History.SelectMany(static message => message.Parts).OfType<TextPart>().Select(static part => part.Text)
+            .ShouldNotContain("covered one");
+        coordinator.Entries.OfType<MessageSessionEntry>().Select(static entry => entry.Message).OfType<RuntimeMessage>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCheckpointRetainsNoSuffix_ContextReceivesSummaryThenLaterEntriesOnly()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler);
+        var later = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 4, "after checkpoint");
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2),
+            TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 3, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 3),
+            later,
+        ]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var history = assembler.Requests.ShouldHaveSingleItem().History;
+        history.Length.ShouldBe(2);
+        _ = history[0].ShouldBeOfType<RuntimeMessage>();
+        history[1].ShouldBeSameAs(later.Message);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTwoActiveCheckpointsExist_NewestWins()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler, logger: logger);
+        var older = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 3, coveredStart: 1, coveredEnd: 1, retainedSuffixStart: 2, "older summary");
+        var retained5 = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 5, "retained by newest");
+        var newest = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 6, coveredStart: 1, coveredEnd: 4, retainedSuffixStart: 5, "newest summary");
+        var later7 = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 7, "after newest");
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2),
+            older,
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 4),
+            retained5,
+            newest,
+            later7,
+        ]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var history = assembler.Requests.ShouldHaveSingleItem().History;
+        history.Length.ShouldBe(3);
+        var projected = history[0].ShouldBeOfType<RuntimeMessage>();
+        projected.Parts[1].ShouldBeOfType<TextPart>().Text.ShouldBe("newest summary");
+        projected.Extensions.Values[CompactionCheckpointProjection.CompactionIdKey].ShouldBe(Json(newest.Record.Context.CompactionId.ToString()));
+        history[1].ShouldBeSameAs(retained5.Message);
+        history[2].ShouldBeSameAs(later7.Message);
+        history.OfType<RuntimeMessage>().Count().ShouldBe(1);
+        logger.Snapshot().ShouldNotContain(static entry => entry.EventId.Id == 1092);
+        var reconstructed = logger.Snapshot().Single(static entry => entry.EventId.Id == 1091);
+        reconstructed.State["CoveredEntryCount"].ShouldBe(4);
+        reconstructed.State["RetainedMessageCount"].ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheNewestCheckpointDoesNotCoverTheOlderOne_LogsAWarningAndStillUsesTheNewest()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler, logger: logger);
+        var older = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 3, coveredStart: 1, coveredEnd: 1, retainedSuffixStart: 2, "older summary");
+        var retained4 = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 4, "retained by newest");
+        var newest = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 5, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 4, "newest summary");
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2),
+            older,
+            retained4,
+            newest,
+        ]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var history = assembler.Requests.ShouldHaveSingleItem().History;
+        history.Length.ShouldBe(2);
+        history[0].ShouldBeOfType<RuntimeMessage>().Parts[1].ShouldBeOfType<TextPart>().Text.ShouldBe("newest summary");
+        history[1].ShouldBeSameAs(retained4.Message);
+        var warning = logger.Snapshot().Single(static entry => entry.EventId.Id == 1092);
+        warning.Level.ShouldBe(Microsoft.Extensions.Logging.LogLevel.Warning);
+        warning.State["CompactionId"].ShouldBe(newest.Record.Context.CompactionId);
+        warning.State["OlderCompactionId"].ShouldBe(older.Record.Context.CompactionId);
+        warning.State["CheckpointSequence"].ShouldBe(new SessionSequence(5));
+        warning.State["OlderCheckpointSequence"].ShouldBe(new SessionSequence(3));
+        warning.Message.ShouldNotContain("summary");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCheckpointIsNotActive_IsIgnored()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler, logger: logger);
+        var first = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1);
+        var second = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2);
+        var fourth = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 4);
+        coordinator.Seed([
+            first,
+            second,
+            TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 3, coveredStart: 1, coveredEnd: 1, retainedSuffixStart: 2, status: CompactionRecordStatus.Rejected),
+            fourth,
+        ]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var history = assembler.Requests.ShouldHaveSingleItem().History;
+        history.ShouldBe([first.Message, second.Message, fourth.Message]);
+        history.OfType<RuntimeMessage>().ShouldBeEmpty();
+        logger.Snapshot().ShouldNotContain(static entry => entry.EventId.Id == 1091 || entry.EventId.Id == 1092);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCheckpointExists_AppendsStillUseTheRealBranchTip()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.EnforceSequenceContinuity = true;
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 3),
+            TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 4, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 3),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 5),
+        ]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        result.FinalVersion.ShouldBe(new SessionVersion(2));
+        var append = coordinator.ReceivedAppends.ShouldHaveSingleItem();
+        append.ExpectedVersion.ShouldBe(new SessionVersion(1));
+        append.Entries.ShouldHaveSingleItem().Sequence.ShouldBe(new SessionSequence(6));
+        coordinator.Entries.Count.ShouldBe(6);
+        _ = coordinator.Entries[5].ShouldBeOfType<MessageSessionEntry>().Message.ShouldBeOfType<AssistantMessage>();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenDanglingToolCallIsInsideCoveredRange_NoRecoveryIsAttempted()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var loop = CreateLoop(out var coordinator, out var invoker, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler);
+        var retained = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 3, "retained");
+        var later = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 5, "after checkpoint");
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1),
+            TestFactory.SeedAssistantToolCallEntry(_agentId, _sessionId, _branchId, 2, callId),
+            retained,
+            TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 4, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 3),
+            later,
+        ]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        invoker.ReceivedRequests.ShouldBeEmpty();
+        _ = result.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
+        coordinator.ReceivedAppends.ShouldNotContain(static append => append.IdempotencyKey.Value.StartsWith("recovery:", StringComparison.Ordinal));
+        var history = assembler.Requests.ShouldHaveSingleItem().History;
+        history.Length.ShouldBe(3);
+        _ = history[0].ShouldBeOfType<RuntimeMessage>();
+        history[1].ShouldBeSameAs(retained.Message);
+        history[2].ShouldBeSameAs(later.Message);
+        history.SelectMany(static message => message.Parts).OfType<ToolCallPart>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenDanglingToolCallIsInsideTheRetainedSuffix_StillSettlesItBeforeTheFirstTurn()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler);
+        var dangling = TestFactory.SeedAssistantToolCallEntry(_agentId, _sessionId, _branchId, 3, callId);
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2),
+            dangling,
+            TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 4, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 3),
+        ]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        result.NewMessages.Length.ShouldBe(2);
+        var settlement = result.NewMessages[0].ShouldBeOfType<ToolMessage>();
+        settlement.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolResultPart>().CallId.ShouldBe(callId);
+        var history = assembler.Requests.ShouldHaveSingleItem().History;
+        history.Length.ShouldBe(3);
+        _ = history[0].ShouldBeOfType<RuntimeMessage>();
+        history[1].ShouldBeSameAs(dangling.Message);
+        history[2].ShouldBeSameAs(settlement);
+        coordinator.ReceivedAppends[0].ExpectedVersion.ShouldBe(new SessionVersion(1));
+        coordinator.ReceivedAppends[0].Entries[0].Sequence.ShouldBe(new SessionSequence(5));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheSameCheckpointIsProjectedByTwoRuns_UsesTheSameMessageId()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler);
+        var checkpoint = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 2, coveredStart: 1, coveredEnd: 1, retainedSuffixStart: 2);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1), checkpoint]);
+
+        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        assembler.Requests.Count.ShouldBe(2);
+        var first = assembler.Requests[0].History[0].ShouldBeOfType<RuntimeMessage>();
+        var second = assembler.Requests[1].History[0].ShouldBeOfType<RuntimeMessage>();
+        second.Id.ShouldBe(first.Id);
+        first.Id.Value.ShouldNotBe(checkpoint.Id.Value);
+        first.Id.Value.ShouldNotBe(Guid.Empty);
+        first.Id.Value.ToString("D")[14].ShouldBe('8');
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenBranchHasAnActiveCompactionCheckpoint_LogsAndTagsWithoutSummaryContent()
+    {
+        const string protectedSummary = "do-not-log-this-summary-content";
+        var stopped = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleAllData,
+            ActivityStopped = stopped.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), logger: logger);
+        var checkpoint = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 4, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 3, protectedSummary);
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2),
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 3),
+            checkpoint,
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 5),
+        ]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        _ = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 1091);
+        entry.Level.ShouldBe(Microsoft.Extensions.Logging.LogLevel.Information);
+        entry.Category.ShouldBe(typeof(DefaultAgentLoop).FullName);
+        entry.State["RunId"].ShouldBe(request.RunId);
+        entry.State["CompactionId"].ShouldBe(checkpoint.Record.Context.CompactionId);
+        entry.State["CheckpointSequence"].ShouldBe(new SessionSequence(4));
+        entry.State["CoveredEntryCount"].ShouldBe(2);
+        entry.State["RetainedMessageCount"].ShouldBe(2);
+        entry.State.Keys.ShouldNotContain("Summary");
+        logger.Snapshot().SelectMany(static entry => entry.State.Values.Select(static value => value?.ToString()).Append(entry.Message))
+            .ShouldNotContain(protectedSummary);
+        var run = stopped.Single(static activity => activity.OperationName == AgentKitActivityNames.InvokeAgent);
+        run.GetTagItem(AgentKitTagNames.CompactionId).ShouldBe(checkpoint.Record.Context.CompactionId.ToString());
+        stopped.SelectMany(static activity => activity.TagObjects).Select(static tag => tag.Value?.ToString()).ShouldNotContain(protectedSummary);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenRequestIsNull_ThrowsArgumentNullException()
     {
         var loop = CreateLoop(out _, out _, static _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())));
@@ -1830,7 +2152,8 @@ public sealed class DefaultAgentLoopTests
         IRunContinuationPolicy? continuationPolicy = null,
         FakeSecurityProfileSelector? securityProfileSelector = null,
         AgentLoopOptions? options = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        Microsoft.Extensions.Logging.ILogger<DefaultAgentLoop>? logger = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -1853,7 +2176,8 @@ public sealed class DefaultAgentLoopTests
             IdGenerator(static v => new MessageId(v)),
             IdGenerator(static v => new SessionEntryId(v)),
             timeProvider ?? TimeProvider.System,
-            Options.Create(options ?? new AgentLoopOptions()));
+            Options.Create(options ?? new AgentLoopOptions()),
+            logger);
     }
 
     private static DefaultAgentLoop CreateLoopWith(
@@ -1882,6 +2206,9 @@ public sealed class DefaultAgentLoopTests
     private static GuidIdentifierGenerator<T> IdGenerator<T>(Func<Guid, T> factory)
         where T : struct =>
         new(factory);
+
+    /// <summary>Builds the canonical JSON extension value the projector records for <paramref name="value"/>.</summary>
+    private static ExtensionValue Json<T>(T value) => new([.. System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(value)]);
 
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
         ActivitySamplingResult.AllDataAndRecorded;

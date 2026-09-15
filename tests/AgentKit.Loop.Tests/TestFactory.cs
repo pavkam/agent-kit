@@ -186,6 +186,66 @@ internal static class TestFactory
                 ExtensionData.Empty));
     }
 
+    /// <summary>
+    /// Builds a compaction entry in the shape the first-party compactor commits: an <see cref="CompactionRecordStatus.Active"/>
+    /// record covering <paramref name="coveredStart"/>..<paramref name="coveredEnd"/> whose retained suffix starts at
+    /// <paramref name="retainedSuffixStart"/>, or a <see cref="CompactionRecordStatus.Rejected"/> record with the same manifest.
+    /// </summary>
+    public static CompactionSessionEntry SeedCompactionEntry(
+        AgentId agentId,
+        SessionId sessionId,
+        BranchId branchId,
+        long sequence,
+        long coveredStart,
+        long coveredEnd,
+        long retainedSuffixStart,
+        string summaryText = "summary of earlier history",
+        CompactionRecordStatus status = CompactionRecordStatus.Active,
+        CompactionId? compactionId = null,
+        RunId? runId = null)
+    {
+        var address = new SessionAddress(agentId, sessionId);
+        var correlation = Correlation(runId);
+        var identity = Identity();
+        var context = TestSupport.TestSecurityEvidence.CompactionContext(
+            compactionId ?? new CompactionId(Guid.NewGuid()), agentId, sessionId, correlation, identity);
+        var manifest = new CompactionManifest(
+            new CompactionManifestId(Guid.NewGuid()),
+            context,
+            branchId,
+            new SessionVersion(1),
+            new CompactionSourceRange(new SessionSequence(coveredStart), new SessionSequence(coveredEnd)),
+            new SessionSequence(retainedSuffixStart),
+            new CompactionProducer(new CompactionStrategyKey("test"), deterministic: true, ExtensionData.Empty),
+            new ContextEpoch(0),
+            new CompactionSizeEstimate(10, 100, (int) (coveredEnd - coveredStart + 1)),
+            new CompactionSizeEstimate(1, 10, 1),
+            DateTimeOffset.UnixEpoch,
+            ExtensionData.Empty);
+        var active = status == CompactionRecordStatus.Active;
+        var record = new CompactionRecord(
+            context,
+            new SessionVersion(1),
+            active ? new SessionVersion(2) : null,
+            status,
+            manifest,
+            active ? new CompactionCheckpoint([new TextPart(summaryText, TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty) : null,
+            supersedes: null,
+            active ? null : new CompactionRejection(CompactionRejectionKind.NoSafeCut, "rejected in test", ExtensionData.Empty),
+            DateTimeOffset.UnixEpoch,
+            ExtensionData.Empty);
+        return new CompactionSessionEntry(
+            new SessionEntryId(Guid.NewGuid()),
+            address,
+            correlation,
+            branchId,
+            new SessionSequence(sequence),
+            causalParentId: null,
+            DateTimeOffset.UnixEpoch.AddMinutes(sequence),
+            new SchemaVersion("1"),
+            record);
+    }
+
     /// <summary>Builds a non-message fact entry as a tool committing its own session state mid-turn would.</summary>
     public static FakeToolFactSessionEntry SeedToolFactEntry(
         AgentId agentId, SessionId sessionId, BranchId branchId, long sequence) =>

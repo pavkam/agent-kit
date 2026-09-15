@@ -75,6 +75,27 @@ call, a batch of more than one call currently continues under the canonical
 committed-tool-results rule without a policy call, and the loop logs that
 bypass.
 
+The reduced loop loads the branch under one pinned `SessionReadSnapshot` and
+consumes the newest active compaction checkpoint while doing so. When a
+`CompactionSessionEntry` whose record is `Active` exists, the history it hands
+to the context assembler is that checkpoint's summary, projected as a single
+`RuntimeMessage`, followed by exactly the entries from the record's
+`RetainedSuffixStart` onward: the retained suffix present at activation and
+everything appended after the checkpoint. Covered entries are neither replayed
+nor inspected for recovery. The projection is synthetic operational evidence
+that carries the summary parts unchanged, provenance in its extensions, and a
+deterministic identity derived from the checkpoint entry; it is never appended
+to the session and can never gain system or developer precedence. The history
+cursor still names the real branch tip, so appends stay guarded by the actual
+version. When several active checkpoints exist the newest wins, and a newer
+record that does not cover an older one is logged and still used. Because
+session reads page forward only, the loop still reads from the branch origin
+and discards buffered covered entries once the checkpoint is encountered; this
+bounds retention, not read cost. This satisfies the
+[context compaction](../concepts/context-compaction.md) requirement that
+reconstruction stops at the newest checkpoint and reproduces exactly its
+summary, retained tail, and later suffix.
+
 Before its first turn, after loading eligible history, the reduced loop is the
 recovery owner for tool calls a previous run left without a terminal result
 (for example, a tool-message commit that failed or a process that crashed after
@@ -82,7 +103,10 @@ the assistant commit). It durably appends one tool message carrying an
 interrupted terminal result with unknown side-effect certainty per dangling
 call, under an idempotency key derived from the dangling assistant message and
 causally parented to that message's entry, then continues with the settlement
-in the history it assembles. The settlement never invokes a tool, and a branch
+in the history it assembles. Recovery inspects only the history the loop
+retained, so a call left dangling inside a checkpoint's covered range is not
+settled; one inside the retained suffix still is. The settlement never invokes
+a tool, and a branch
 whose recovery settlement cannot be committed fails closed instead of starting
 a model request. Required terminal commits that a store reports as failed are
 retried under their unchanged idempotency key with bounded backoff until the
