@@ -36,4 +36,14 @@ internal sealed class TestHookEventArgs: AgentHookEventArgs, IShortCircuitingHoo
             throw new HookValidationException("Payload was rejected by test policy.");
         }
     }
+
+    public override object? CaptureMutableState() => (Payload, RejectPayload, IsShortCircuited);
+
+    public override void RestoreMutableState(object? snapshot)
+    {
+        var (payload, rejectPayload, shortCircuited) = ((string? Payload, bool RejectPayload, bool IsShortCircuited)) snapshot!;
+        Payload = payload;
+        RejectPayload = rejectPayload;
+        IsShortCircuited = shortCircuited;
+    }
 }

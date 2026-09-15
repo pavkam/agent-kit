@@ -30,8 +30,18 @@ services.AddConversationSession(options =>
     options.ModelSelectionPolicy = new ModelSelectionPolicy([modelAlias]);
     options.Instructions.Add(systemMessage);
     options.Tools.AddRange(toolCatalog.Descriptors.ToLlmToolDefinitions());
+    options.ToolPresentationBindings.AddRange(capturedBindings);
 });
 ```
+
+Each optional `ConversationToolPresentationBinding` pairs the exact captured
+`ToolDescriptor` with the equal `LlmToolDefinition` placed in `Tools`, retaining
+the advertised alias. When an `IToolPresenter` is composed, live tool events
+carry its bounded `ToolPresentation`. Calls and terminal results remain the
+original `ToolCallPart` and loss-aware `ToolResultPart` presentation sources;
+the conversation never reconstructs an authoritative execution record from a
+display summary. Missing or mismatched evidence uses the presenter's generic
+fallback path.
 
 Resolve `IConversationSession` and call `SendAsync` for each user message:
 
@@ -44,6 +54,48 @@ foreach (var conversationEvent in result.Events)
     // or ConversationUsageEvent
 }
 ```
+
+For live output, pass an `IConversationEventObserver` to the observing overload.
+It receives assistant text and reasoning deltas, correlated tool starts and
+results, usage updates, and exactly one `ConversationTurnCompletedEvent` before
+`SendAsync` completes. Observer failures are isolated from the run. The returned
+`Events` remain the committed projection, so a live UI should use the terminal
+result for completion and recovery rather than replaying those events.
+
+To continue a persisted conversation after restart, create a fresh configured
+`IConversationSession` and call `OpenAsync(sessionId)` before the first send.
+The operation loads through the selected session coordinator, directory, and
+store, validates the configured agent and complete tenant/owner identity, and
+pins the authoritative active branch. Once a session has been created or opened,
+the instance cannot be rebound. `ListAsync(afterSessionId, maximumResults)`
+returns stable, bounded directory pages for the same agent and owner. Discovery
+does not probe stores and is available only when the explicitly selected
+directory implements bounded enumeration.
+
+After a session is opened or created,
+`ReadHistoryAsync(afterSequence, maximumEntries)` returns immutable
+`AgentMessage` values from `MessageSessionEntry` records on that bound branch
+path. Start at `new SessionSequence(0)` and continue with each
+`ConversationHistoryPage`'s `NextCursor` until `Complete` is true. The bound
+counts scanned session entries, so a page containing operational records can
+advance its cursor while returning fewer messages, or none. This keeps reads
+finite without pretending non-message records are conversational content.
+Authorization is captured for every page, and unavailable or malformed reads
+return `ConversationHistoryUnavailable` without exposing stored content or
+routing details.
+
+Durability comes from the selected directory and session-store adapters. An
+in-memory composition supports the same open/list semantics only within its
+process lifetime; it does not become restart-safe merely by using this API.
+
+Standalone compositions can return `OwnedConversationSession` with an
+`IDisposable` composition owner, or `AsyncOwnedConversationSession` with an
+`IAsyncDisposable` owner. Both wrappers explicitly forward `OpenAsync`,
+`ListAsync`, `ReadHistoryAsync`, and both `SendAsync` overloads, including live
+observer delivery. They dispose the supplied owner exactly once and reject
+operations after disposal begins. The application must first complete or cancel
+active conversation operations; disposal does not coordinate with an in-flight
+turn.
 
 This is not a replacement for `AgentEngine`: it does not host a catalog of
 several agent definitions and does not implement the durable, queue-backed input

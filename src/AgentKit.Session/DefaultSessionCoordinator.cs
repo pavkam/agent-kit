@@ -101,6 +101,41 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
     }
 
     /// <inheritdoc/>
+    public ValueTask<SessionDirectoryListResult> ListAsync(
+        SessionDirectoryListRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ObserveAsync(
+            "session.directory.list",
+            request.AgentId,
+            null,
+            request.Authorization.Scope.Correlation.OperationId,
+            () => ListCoreAsync(request, cancellationToken),
+            cancellationToken);
+    }
+
+    /// <summary>Authorizes and executes one bounded directory scan without selecting or probing stores.</summary>
+    private async ValueTask<SessionDirectoryListResult> ListCoreAsync(
+        SessionDirectoryListRequest request,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "The public list boundary validates the request.");
+        var resource = SessionDirectorySecurityBinding.ListResource(request.Identity.TenantId, request.AgentId);
+        var grant = await AuthorizeAsync(
+            request.Authorization,
+            _directory.SecurityAudience,
+            SecurityOperationKind.StateRead,
+            SecurityEffect.Observe,
+            resource,
+            SessionDirectorySecurityBinding.ListFingerprint(request),
+            cancellationToken).ConfigureAwait(false);
+        return grant is null
+            ? new SessionDirectoryListUnavailable("Session discovery was not authorized.")
+            : await _directory.ListAsync(DirectoryRequest(request, grant), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
     public ValueTask<SessionAppendResult> AppendAsync(SessionAppendRequest request, SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default)
     {

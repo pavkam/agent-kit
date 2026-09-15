@@ -59,6 +59,27 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     /// </summary>
     public Func<SessionReadRequest, SessionPageResult>? ReadOverride { get; set; }
 
+    /// <summary>Gets or sets the conversation identity returned by session descriptor loads.</summary>
+    public ConversationId? ConversationId { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether appended entries must carry the
+    /// exact next whole-session sequence numbers, as both first-party stores
+    /// require (<c>NextSequence + i + 1</c>). Off by default so legacy tests
+    /// that only reason about versions keep working.
+    /// </summary>
+    public bool EnforceSequenceContinuity { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether append and read honour an
+    /// already-cancelled token by throwing, as the real
+    /// <c>DefaultSessionCoordinator</c> does. Off by default.
+    /// </summary>
+    public bool HonorCancellation { get; set; }
+
+    /// <summary>Gets the whole-session sequence of the last committed entry.</summary>
+    public long NextSequence { get; private set; }
+
     /// <summary>Seeds the branch with entries as if they had already been committed.</summary>
     /// <param name="entries">The entries to seed, in commit order.</param>
     public void Seed(IEnumerable<SessionEntry> entries)
@@ -66,9 +87,27 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         foreach (var entry in entries)
         {
             _entries.Add(entry);
+            NextSequence = entry.Sequence.Value;
         }
 
-        Version = new SessionVersion(_entries.Count);
+        Version = new SessionVersion(Version.Value + 1);
+    }
+
+    /// <summary>
+    /// Commits entries as a concurrent writer would, in one version bump:
+    /// the version advances by exactly one while the sequence advances by
+    /// the number of entries, mirroring the real store semantics.
+    /// </summary>
+    /// <param name="entries">The entries the concurrent writer committed.</param>
+    public void SimulateConcurrentAppend(IEnumerable<SessionEntry> entries)
+    {
+        foreach (var entry in entries)
+        {
+            _entries.Add(entry);
+            NextSequence = entry.Sequence.Value;
+        }
+
+        Version = new SessionVersion(Version.Value + 1);
     }
 
     /// <inheritdoc/>
@@ -76,6 +115,11 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         SessionAppendRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (HonorCancellation)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
         _receivedAppends.Add(request);
 
         if (AppendOverride is not null)
@@ -99,8 +143,22 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
                 new SessionAppendConflict(request.ExpectedVersion, Version));
         }
 
+        if (EnforceSequenceContinuity)
+        {
+            for (var i = 0; i < request.Entries.Length; i++)
+            {
+                var expected = NextSequence + i + 1;
+                if (request.Entries[i].Sequence.Value != expected)
+                {
+                    return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(
+                        $"Entry at position {i} has sequence {request.Entries[i].Sequence.Value}; expected {expected}."));
+                }
+            }
+        }
+
         _entries.AddRange(request.Entries);
-        Version = new SessionVersion(_entries.Count);
+        NextSequence += request.Entries.Length;
+        Version = new SessionVersion(Version.Value + 1);
 
         return ValueTask.FromResult<SessionAppendResult>(new SessionAppended(Version, request.Entries));
     }
@@ -110,6 +168,10 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         SessionReadRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (HonorCancellation)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
 
         if (ReadOverride is not null)
         {
@@ -122,11 +184,20 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         }
 
         var start = (int) request.FromSequenceExclusive.Value;
-        var page = _entries.Skip(start).Take(request.PageSize).ToImmutableArray();
+        var snapshot = request.Snapshot ?? new SessionReadSnapshot(
+            request.Context.ToAddress(),
+            request.BranchId,
+            Version,
+            new SessionSequence(_entries.Count));
+        var page = _entries
+            .Skip(start)
+            .TakeWhile(entry => entry.Sequence.Value <= snapshot.UpperSequence.Value)
+            .Take(request.PageSize)
+            .ToImmutableArray();
         var throughSequence = page.IsEmpty ? request.FromSequenceExclusive : new SessionSequence(start + page.Length);
-        var hasMore = start + page.Length < _entries.Count;
+        var hasMore = throughSequence.Value < snapshot.UpperSequence.Value;
 
-        return ValueTask.FromResult<SessionPageResult>(new SessionPage(page, throughSequence, hasMore));
+        return ValueTask.FromResult<SessionPageResult>(new SessionPage(page, throughSequence, hasMore, snapshot));
     }
 
     /// <inheritdoc/>
@@ -136,8 +207,25 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
 
     /// <inheritdoc/>
     public ValueTask<SessionLoadResult> LoadAsync(
-        SessionOperationContext context, SessionProfileSnapshot profile, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("This fake does not support session loading.");
+        SessionOperationContext context, SessionProfileSnapshot profile, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(profile);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionLoadResult>(new SessionLoaded(new SessionDescriptor(
+            context.ToAddress(),
+            ConversationId,
+            context.Identity.TenantId,
+            context.Identity.PrincipalId,
+            profile.DefaultStoreKey,
+            BranchId,
+            Version,
+            SessionLifecycleState.Active,
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch,
+            new SchemaVersion("1"),
+            ExtensionData.Empty)));
+    }
 
     /// <inheritdoc/>
     public ValueTask<SessionBranchResult> BranchAsync(

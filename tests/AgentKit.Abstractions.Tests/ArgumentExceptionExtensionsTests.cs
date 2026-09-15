@@ -1314,4 +1314,18 @@ public sealed class ArgumentExceptionExtensionsTests
         previousTurnException.ParamName.ShouldBe("previousTurnId");
         targetTurnException.ParamName.ShouldBe("targetTurnId");
     }
+
+    [Fact]
+    public void ThrowIfPathNotRooted_WhenPathIsRelative_ThrowsExactParameter()
+    {
+        const string path = "relative/toolchain";
+
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfPathNotRooted(path));
+
+        exception.ParamName.ShouldBe(nameof(path));
+    }
+
+    [Fact]
+    public void ThrowIfPathNotRooted_WhenPathIsAbsolute_DoesNotThrow() =>
+        ArgumentException.ThrowIfPathNotRooted(Path.GetFullPath("toolchain"));
 }

@@ -24,6 +24,87 @@ namespace AgentKit.Conversations;
 /// </remarks>
 public interface IConversationSession
 {
+    /// <summary>Presents one durable tool call or result using this conversation's captured tool bindings.</summary>
+    /// <param name="part">The original immutable tool call or result part.</param>
+    /// <param name="cancellationToken">Cancels bounded presentation work.</param>
+    /// <returns>The same provider-neutral presentation used for live events, or null when unavailable.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="part"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="part"/> is not a tool call or result.</exception>
+    public ValueTask<ToolPresentation?> PresentToolAsync(
+        ContentPart part,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(part);
+        ArgumentException.ThrowIfNotEqual(part is ToolCallPart or ToolResultPart, true, nameof(part));
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<ToolPresentation?>(null);
+    }
+
+    /// <summary>Reads one bounded forward page of durable messages from this conversation's bound branch.</summary>
+    /// <param name="afterSequence">
+    /// The stable whole-session sequence after which entries are scanned. Use <c>new SessionSequence(0)</c> for the
+    /// first page, then pass the prior page's <see cref="ConversationHistoryPage.NextCursor"/>.
+    /// </param>
+    /// <param name="maximumEntries">
+    /// The positive maximum number of session entries to scan. Operational entries count toward this bound even
+    /// though only <see cref="MessageSessionEntry"/> values appear in the returned message projection.
+    /// </param>
+    /// <param name="cancellationToken">Cancels authorization capture or the authoritative session read.</param>
+    /// <returns>
+    /// A stable ordered page with continuation evidence, or a content-safe unavailable outcome. The conversation
+    /// must already have been opened or created by a successful send.
+    /// </returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maximumEntries"/> is not positive.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled.</exception>
+    /// <remarks>
+    /// This additive default preserves existing implementations: sessions that do not implement durable history
+    /// return a typed unavailable result after validating arguments and cancellation.
+    /// </remarks>
+    public ValueTask<ConversationHistoryReadResult> ReadHistoryAsync(
+        SessionSequence afterSequence,
+        int maximumEntries,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumEntries);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<ConversationHistoryReadResult>(
+            new ConversationHistoryUnavailable("This conversation implementation does not support durable history reads."));
+    }
+
+    /// <summary>Reopens one existing session before this conversation has created or opened another.</summary>
+    /// <param name="sessionId">The non-default session identity.</param>
+    /// <param name="cancellationToken">Cancels the authoritative load.</param>
+    /// <returns>The opened branch or a content-safe rejection that leaves this instance unchanged.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="sessionId"/> is default.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled.</exception>
+    public ValueTask<ConversationSessionOpenResult> OpenAsync(
+        SessionId sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(sessionId, default);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<ConversationSessionOpenResult>(
+            new ConversationSessionOpenRejected("This conversation implementation does not support reopening sessions."));
+    }
+
+    /// <summary>Lists one bounded page of sessions visible to this conversation's configured identity and agent.</summary>
+    /// <param name="afterSessionId">The exclusive stable continuation cursor.</param>
+    /// <param name="maximumResults">The positive page-size bound.</param>
+    /// <param name="cancellationToken">Cancels discovery.</param>
+    /// <returns>The ordered visible page or a content-safe unavailable outcome.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maximumResults"/> is not positive.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is cancelled.</exception>
+    public ValueTask<ConversationSessionListResult> ListAsync(
+        SessionId? afterSessionId,
+        int maximumResults,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumResults);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<ConversationSessionListResult>(
+            new ConversationSessionListUnavailable("This conversation implementation does not support session discovery."));
+    }
+
     /// <summary>Submits one user message, driving session creation, admission, and a full agent-loop run.</summary>
     /// <param name="userText">The nonblank user-authored message text.</param>
     /// <param name="cancellationToken">Cancels the pending turn.</param>
@@ -37,4 +118,69 @@ public interface IConversationSession
     /// later call reuses it.
     /// </remarks>
     public Task<ConversationTurnResult> SendAsync(string userText, CancellationToken cancellationToken = default);
+
+    /// <summary>Submits one user message while forwarding incremental activity to an observer.</summary>
+    /// <param name="userText">The nonblank user-authored message text.</param>
+    /// <param name="observer">Receives provisional activity and exactly one terminal turn event.</param>
+    /// <param name="cancellationToken">Cancels the pending turn and observer delivery.</param>
+    /// <returns>The same committed terminal result returned by the non-observing overload.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="observer"/> is null.</exception>
+    /// <remarks>
+    /// Implementations that do not override this additive member retain source and binary compatibility. The
+    /// default implementation drives the existing overload, then delivers its committed events and one terminal
+    /// event. It therefore provides terminal-only fallback rather than claiming live progress. Observer failures
+    /// remain isolated from the already completed turn.
+    /// </remarks>
+    public async Task<ConversationTurnResult> SendAsync(
+        string userText,
+        IConversationEventObserver observer,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(observer);
+        try
+        {
+            var result = await SendAsync(userText, cancellationToken).ConfigureAwait(false);
+            foreach (var conversationEvent in result.Events)
+            {
+                await DeliverFallbackAsync(observer, conversationEvent, cancellationToken).ConfigureAwait(false);
+            }
+
+            await DeliverFallbackAsync(
+                observer,
+                new ConversationTurnCompletedEvent(result.Succeeded, result.Succeeded ? "settled" : "failed"),
+                cancellationToken).ConfigureAwait(false);
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await DeliverFallbackAsync(
+                observer,
+                new ConversationTurnCompletedEvent(false, "cancelled"),
+                CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
+        catch (Exception)
+        {
+            await DeliverFallbackAsync(
+                observer,
+                new ConversationTurnCompletedEvent(false, "faulted"),
+                CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private static async ValueTask DeliverFallbackAsync(
+        IConversationEventObserver observer,
+        ConversationEvent conversationEvent,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await observer.OnEventAsync(conversationEvent, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Optional presentation cannot change a completed conversation result.
+        }
+    }
 }

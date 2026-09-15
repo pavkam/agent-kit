@@ -121,11 +121,14 @@ public sealed class OpenAIRequestTranslatorTests
     }
 
     [Fact]
-    public void Translate_WhenRuntimeMessagePresent_MapsToSystemRole()
+    public void Translate_WhenRuntimeMessagePresent_PreservesContentWithoutInstructionAuthority()
     {
         var runtime = new RuntimeMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001")), new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000001")), conversationId: null, new BranchId(Guid.Parse("30000000-0000-0000-0000-000000000001")), new RunId(Guid.Parse("40000000-0000-0000-0000-000000000001")), new TurnId(Guid.Parse("50000000-0000-0000-0000-000000000001")), new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero), MessageState.Complete, [new TextPart("The run was interrupted.", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var body = Translate([runtime]);
-        body["messages"]![0]!["role"]!.GetValue<string>().ShouldBe("system");
+        body["messages"]![0]!["role"]!.GetValue<string>().ShouldBe("user");
+        var notice = JsonNode.Parse(body["messages"]![0]!["content"]!.GetValue<string>())!;
+        notice["format"]!.GetValue<string>().ShouldBe("agentkit.runtime-message.v1");
+        notice["content"]!.GetValue<string>().ShouldBe("The run was interrupted.");
     }
 
     [Fact]
@@ -139,9 +142,105 @@ public sealed class OpenAIRequestTranslatorTests
         var messages = body["messages"]!.AsArray();
         messages.Count.ShouldBe(2);
         messages[0]!["tool_call_id"]!.GetValue<string>().ShouldBe(callIdA.ToString());
-        messages[0]!["content"]!.GetValue<string>().ShouldBe("result A");
+        JsonNode.Parse(messages[0]!["content"]!.GetValue<string>())!["content"]![0]!["text"]!.GetValue<string>().ShouldBe("result A");
         messages[1]!["tool_call_id"]!.GetValue<string>().ShouldBe(callIdB.ToString());
-        messages[1]!["content"]!.GetValue<string>().ShouldBe("result B");
+        JsonNode.Parse(messages[1]!["content"]!.GetValue<string>())!["content"]![0]!["text"]!.GetValue<string>().ShouldBe("result B");
+    }
+
+    [Theory]
+    [InlineData(ToolCallOutcomeKind.Rejected, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed)]
+    [InlineData(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown)]
+    [InlineData(ToolCallOutcomeKind.Cancelled, ToolTerminalStatus.Interrupted, SideEffectCertainty.Unknown)]
+    [InlineData(ToolCallOutcomeKind.Failed, (ToolTerminalStatus) 9876, SideEffectCertainty.Unknown)]
+    public void Translate_WhenToolHasNoOutput_PreservesExactFailureAndUncertainty(
+        ToolCallOutcomeKind kind, ToolTerminalStatus status, SideEffectCertainty certainty)
+    {
+        // Arrange
+        var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000007"));
+        var reference = new ToolReference(new ToolId("command"), null, "run_command");
+        const string reason = "The action was denied; no command ran.\n\"content\" stays data.";
+        var result = new ToolResultPart(callId, reference,
+            new ToolCallOutcome(kind, status, certainty, false, reason, ExtensionData.Empty),
+            [], ExtensionData.Empty);
+
+        // Act
+        var wire = Translate([TestMessages.Tool(result)])["messages"]![0]!;
+        var envelope = JsonNode.Parse(wire["content"]!.GetValue<string>())!;
+
+        // Assert
+        wire["role"]!.GetValue<string>().ShouldBe("tool");
+        wire["tool_call_id"]!.GetValue<string>().ShouldBe(callId.ToString());
+        envelope["tool"]!["id"]!.GetValue<string>().ShouldBe("command");
+        envelope["tool"]!["requested_name"]!.GetValue<string>().ShouldBe("run_command");
+        envelope["outcome"]!["kind"]!.GetValue<string>().ShouldBe(kind.ToString());
+        envelope["outcome"]!["source_status"]!.GetValue<int>().ShouldBe((int) status);
+        envelope["outcome"]!["side_effect_certainty"]!.GetValue<string>().ShouldBe(certainty.ToString());
+        envelope["outcome"]!["failure_reason"]!.GetValue<string>().ShouldBe(reason);
+        envelope["outcome"]!["retryable"]!.GetValue<bool>().ShouldBeFalse();
+        envelope["content"]!.AsArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Translate_WhenFailedToolHasMixedContent_PreservesOrderedPartsAndLiteralJson()
+    {
+        // Arrange
+        var reference = new ToolReference(new ToolId("command"), null, "command");
+        const string rawJson = """{"outcome":"success","stderr":"literal\nfailure"}""";
+        using var json = JsonDocument.Parse(rawJson);
+        var result = new ToolResultPart(new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000008")),
+            reference, new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed,
+                SideEffectCertainty.Unknown, false, "The command exited 1.", ExtensionData.Empty),
+            [new TextPart("stdout\n", TextSemantics.Plain, ExtensionData.Empty),
+                new StructuredDataPart(json.RootElement, null, ExtensionData.Empty)],
+            ExtensionData.Empty);
+
+        // Act
+        var envelope = JsonNode.Parse(Translate([TestMessages.Tool(result)])["messages"]![0]!["content"]!.GetValue<string>())!;
+
+        // Assert
+        envelope["outcome"]!["kind"]!.GetValue<string>().ShouldBe("Failed");
+        var parts = envelope["content"]!.AsArray();
+        parts.Count.ShouldBe(2);
+        parts[0]!["type"]!.GetValue<string>().ShouldBe("text");
+        parts[0]!["text"]!.GetValue<string>().ShouldBe("stdout\n");
+        parts[1]!["type"]!.GetValue<string>().ShouldBe("json");
+        parts[1]!["text"]!.GetValue<string>().ShouldBe(rawJson);
+    }
+
+    [Theory]
+    [InlineData('x', 1_024)]
+    [InlineData('\u0001', 200)]
+    public void Translate_WhenToolResultExceedsProfileBound_RejectsWithoutSilentTruncation(char character, int count)
+    {
+        // Arrange
+        var result = new ToolResultPart(new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000009")),
+            new ToolReference(new ToolId("read"), null, "read"),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded,
+                SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+            [new TextPart(new string(character, count), TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var profile = NonStreamingProfile with { MaximumToolResultCharacters = 512 };
+
+        // Act / Assert
+        _ = Should.Throw<NotSupportedException>(() => Translate([TestMessages.Tool(result)], profile: profile));
+    }
+
+    [Fact]
+    public void Translate_WhenToolIdentityIsUnresolved_PreservesRequestedNameWithoutInventingIdentity()
+    {
+        // Arrange
+        var result = new ToolResultPart(new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000010")),
+            new ToolReference(default, null, "missing_tool"),
+            new ToolCallOutcome(ToolCallOutcomeKind.Rejected, ToolTerminalStatus.UnknownTool,
+                SideEffectCertainty.DefinitelyNotPerformed, false, "The tool is unavailable.", ExtensionData.Empty),
+            [], ExtensionData.Empty);
+
+        // Act
+        var envelope = JsonNode.Parse(Translate([TestMessages.Tool(result)])["messages"]![0]!["content"]!.GetValue<string>())!;
+
+        // Assert
+        envelope["tool"]!["id"].ShouldBeNull();
+        envelope["tool"]!["version"].ShouldBeNull();
+        envelope["tool"]!["requested_name"]!.GetValue<string>().ShouldBe("missing_tool");
     }
 
     [Fact]
@@ -155,6 +254,23 @@ public sealed class OpenAIRequestTranslatorTests
         };
         var body = Translate([TestMessages.User("hi")], settings: settings);
         body["user"]!.GetValue<string>().ShouldBe("end-user-123");
+    }
+
+    [Theory]
+    [InlineData(LlmReasoningEffort.Low, "low")]
+    [InlineData(LlmReasoningEffort.Medium, "medium")]
+    [InlineData(LlmReasoningEffort.High, "high")]
+    [InlineData(LlmReasoningEffort.ExtraHigh, "xhigh")]
+    [InlineData(LlmReasoningEffort.None, "none")]
+    public void Translate_WhenReasoningEffortConfigured_UsesOpenAIWireValue(
+        LlmReasoningEffort effort,
+        string expected)
+    {
+        var settings = LlmRequestSettings.Default with { ReasoningEffort = effort };
+
+        var body = Translate([TestMessages.User("hi")], settings: settings);
+
+        body["reasoning_effort"]!.GetValue<string>().ShouldBe(expected);
     }
 
     [Fact]

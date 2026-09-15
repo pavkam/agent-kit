@@ -1,0 +1,9 @@
+data: {"id":"chatcmpl-13","object":"chat.completion.chunk","created":1700000130,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}
+
+: keepalive
+
+data:{"id":"chatcmpl-13","object":"chat.completion.chunk","created":1700000130,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-13","object":"chat.completion.chunk","created":1700000130,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]

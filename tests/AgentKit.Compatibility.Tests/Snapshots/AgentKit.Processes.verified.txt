@@ -23,6 +23,7 @@ namespace AgentKit.Processes
         public long MaximumInputBytes { get; set; }
         public long MaximumOutputBytes { get; set; }
         public System.TimeSpan MaximumTimeout { get; set; }
+        public System.Collections.Generic.Dictionary<string, string> ReadOnlyToolchainRoots { get; }
         public string RootDirectory { get; set; }
     }
     public sealed class OperatingSystemProcessRunner : AgentKit.IProcessRunner, System.IDisposable

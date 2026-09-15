@@ -12,6 +12,13 @@ namespace AgentKit.Session
         public int MaximumPageSize { get; set; }
         public System.TimeSpan SecurityRequestLifetime { get; set; }
     }
+    public sealed class CompactionSessionEntryCodec : AgentKit.ISessionEntryCodec
+    {
+        public CompactionSessionEntryCodec() { }
+        public AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
+        public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
+    }
     public sealed class DefaultSessionStoreCatalog : AgentKit.ISessionStoreCatalog
     {
         public DefaultSessionStoreCatalog(System.Collections.Generic.IEnumerable<AgentKit.ISessionStore> stores) { }
@@ -31,10 +38,24 @@ namespace AgentKit.Session
         public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
         public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
     }
+    public sealed class InputAdmittedSessionEntryCodec : AgentKit.ISessionEntryCodec
+    {
+        public InputAdmittedSessionEntryCodec() { }
+        public AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
+        public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
+    }
     public sealed class InputPromotedSessionEntryCodec : AgentKit.ISessionEntryCodec
     {
         public InputPromotedSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.InputPromotedSessionEntryCodec> logger) { }
         public InputPromotedSessionEntryCodec(System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.InputPromotedSessionEntryCodec> logger, AgentKit.SessionEntryCodecLimits limits) { }
+        public AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
+        public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
+        public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
+    }
+    public sealed class MessageSessionEntryCodec : AgentKit.ISessionEntryCodec
+    {
+        public MessageSessionEntryCodec() { }
         public AgentKit.SessionEntryCodecDescriptor Descriptor { get; }
         public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
         public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }

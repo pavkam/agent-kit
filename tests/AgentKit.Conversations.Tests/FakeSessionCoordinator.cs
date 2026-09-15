@@ -22,6 +22,9 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     /// <summary>Gets the number of times <see cref="AppendAsync"/> was called.</summary>
     public int AppendCallCount { get; private set; }
 
+    /// <summary>Gets the number of times <see cref="ReadAsync"/> was called.</summary>
+    public int ReadCallCount { get; private set; }
+
     /// <summary>Gets or sets the result <see cref="CreateAsync"/> returns; a successful descriptor by default.</summary>
     public SessionCreateResult? CreateResult { get; set; }
 
@@ -31,8 +34,30 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     /// <summary>Gets or sets the result <see cref="AppendAsync"/> returns; a successful append by default.</summary>
     public SessionAppendResult? AppendResult { get; set; }
 
+    /// <summary>Gets or sets the bounded discovery result.</summary>
+    public SessionDirectoryListResult? ListResult { get; set; }
+
+    /// <summary>Gets or sets a request-aware history result factory.</summary>
+    public Func<SessionReadRequest, SessionPageResult>? ReadResultFactory { get; set; }
+
+    /// <inheritdoc/>
+    public ValueTask<SessionDirectoryListResult> ListAsync(
+        SessionDirectoryListRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(ListResult ??
+            new SessionDirectoryPage([], null));
+    }
+
     /// <summary>Gets the most recent append request observed, for asserting session/branch reuse.</summary>
     public SessionAppendRequest? LastAppendRequest { get; private set; }
+
+    /// <summary>Gets the most recent history read request.</summary>
+    public SessionReadRequest? LastReadRequest { get; private set; }
+
+    /// <summary>Gets the exact profile supplied with the most recent history read.</summary>
+    public SessionProfileSnapshot? LastReadProfile { get; private set; }
 
     public ValueTask<SessionCreateResult> CreateAsync(
         SessionCreateRequest request,
@@ -109,8 +134,24 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     public ValueTask<SessionPageResult> ReadAsync(
         SessionReadRequest request,
         SessionProfileSnapshot profile,
-        CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("DefaultConversationSession never calls ReadAsync.");
+        CancellationToken cancellationToken = default)
+    {
+        ReadCallCount++;
+        LastReadRequest = request;
+        LastReadProfile = profile;
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(
+            ReadResultFactory?.Invoke(request)
+            ?? new SessionPage(
+                [],
+                request.FromSequenceExclusive,
+                hasMore: false,
+                request.Snapshot ?? new SessionReadSnapshot(
+                    request.Context.ToAddress(),
+                    request.BranchId,
+                    new SessionVersion(0),
+                    new SessionSequence(0))));
+    }
 
     public ValueTask<SessionBranchResult> BranchAsync(
         SessionBranchRequest request,

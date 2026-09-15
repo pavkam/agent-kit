@@ -149,9 +149,99 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
         using var runner = CreateRunner(resolver, new TestGrantStore());
         var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(ProcessRunStatus.Exited);
-        result.ExitCode.ShouldBe(0);
+        result.ExitCode.ShouldBe(
+            0,
+            Encoding.UTF8.GetString(result.StandardErrorTail.AsSpan()));
         Encoding.UTF8.GetString(result.StandardOutputTail.AsSpan()).ShouldBe("$(touch hacked.txt)\n");
         File.Exists(Path.Combine(_root, "hacked.txt")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAmbientEnvironmentExists_DoesNotInheritIt()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/sh", ["-c", "printf '%s' \"${HOME-unset}\""]),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore());
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        Encoding.UTF8.GetString(result.StandardOutputTail.AsSpan()).ShouldBe("unset");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenChildAttemptsOutsideWriteAndNetwork_BothRemainDenied()
+    {
+        if (!IsSupported() || !SandboxAvailable() || !File.Exists("/usr/bin/curl"))
+        {
+            return;
+        }
+
+        var outside = Path.Combine(Path.GetTempPath(), $"agentkit-denied-{Guid.NewGuid():N}");
+        var command = $"printf nope > '{outside}'; write=$?; /usr/bin/curl --max-time 1 https://example.com >/dev/null 2>&1; network=$?; printf '%s %s' \"$write\" \"$network\"";
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/sh", ["-c", command]),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore());
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        File.Exists(outside).ShouldBeFalse();
+        var statuses = Encoding.UTF8.GetString(result.StandardOutputTail.AsSpan()).Split(' ');
+        statuses.ShouldAllBe(static status => status != "0");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenHomebrewPythonRootExplicitlyCaptured_StartsRuntimeReadOnly()
+    {
+        const string homebrewRoot = "/opt/homebrew";
+        const string python = "/opt/homebrew/opt/python@3.14/bin/python3.14";
+        if (!OperatingSystem.IsMacOS() || !SandboxAvailable() || !File.Exists(python))
+        {
+            return;
+        }
+
+        var options = OptionsFor("/bin/sh", 4096);
+        options.ReadOnlyToolchainRoots.Add("homebrew", homebrewRoot);
+        options.AllowedEnvironmentVariableNames.Add("PATH");
+        var resolver = new OperatingSystemProcessIntentResolver(Options.Create(options));
+        var request = Request(
+            "/bin/sh",
+            ["-c", "python3.14 --version"],
+            workspaceAccess: ProcessWorkspaceAccess.ReadOnly,
+            sideEffectClass: ProcessSideEffectClass.ReadOnly,
+            maximumOutputBytes: 4096,
+            environment:
+            [
+                new ProcessEnvironmentVariable(
+                    "PATH",
+                    "/opt/homebrew/opt/python@3.14/bin:/usr/bin:/bin"),
+            ]);
+        var intent = (await resolver.ResolveAsync(request, TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore(), maximumOutputBytes: 4096);
+
+        var result = await runner.RunAsync(
+            new ProcessRunRequest(intent, TestGrantStore.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        result.ExitCode.ShouldBe(
+            0,
+            Encoding.UTF8.GetString(result.StandardErrorTail.AsSpan()));
+        Encoding.UTF8.GetString(result.StandardOutputTail.AsSpan()).ShouldContain("Python 3.14");
     }
 
     [Fact]

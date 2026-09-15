@@ -526,6 +526,20 @@ public sealed record HistoryPreparationRequest(
     SecurityAuthorizationContext Authorization,
     EffectiveConfigurationSnapshot Configuration);
 
+public enum HistoryRepairKind
+{
+    NormalizedContent,
+    SettledInterruptedToolCall,
+    ExcludedIncompleteAssistantContent,
+    DegradedReasoning,
+    OmittedReasoning,
+    RelocatedMedia,
+    RemovedProviderMetadata,
+    MergedAdjacentUserContent,
+    NormalizedToolCallIdentity,
+    ProjectedImportedOrphanToolCall
+}
+
 public sealed record HistoryRepair(
     ImmutableArray<MessageId> SourceMessageIds,
     HistoryRepairKind Kind,
@@ -582,6 +596,14 @@ public interface IHistoryValidator
         CancellationToken cancellationToken = default);
 }
 ```
+
+`HistoryRepairKind` names the repair operation; numeric order is not policy.
+Repair source IDs are initialized, nonempty, nondefault, and unique. Every
+message in a `HistoryView` has the source cursor's exact agent, session, and
+conversation coordinates. A child-branch view may retain messages carrying their
+parent-branch provenance; the session snapshot establishes membership in the
+selected branch. Repairs and views compare immutable arrays deeply and in order,
+and reject default arrays.
 
 `IHistoryPipeline` returns `Task` because loading authorization data and
 validating media references may be inherently asynchronous. Individual

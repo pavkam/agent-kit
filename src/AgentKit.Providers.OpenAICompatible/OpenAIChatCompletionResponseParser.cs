@@ -14,6 +14,12 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 {
     private const int _textPartIndex = 0;
 
+    /// <summary>
+    /// The part index used for visible reasoning. Text occupies index 0 and tool calls occupy their wire index
+    /// plus one, so reasoning takes a fixed index that cannot collide with either.
+    /// </summary>
+    private const int _reasoningPartIndex = -1;
+
     private static readonly JsonSerializerOptions _serializerOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -98,6 +104,22 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
         var choice = dto.Choices[0];
         var parts = ImmutableArray.CreateBuilder<ContentPart>();
+
+        if ((choice.Message.ReasoningContent ?? choice.Message.Reasoning) is { Length: > 0 } reasoningText)
+        {
+            await observer.OnEventAsync(new ModelPartStarted(requestId, sequence++, _reasoningPartIndex), cancellationToken)
+                .ConfigureAwait(false);
+            await observer.OnEventAsync(
+                    new ModelPartDelta(requestId, sequence++, _reasoningPartIndex, new ReasoningContentDelta(reasoningText, ExtensionData.Empty)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var reasoningPart = new ReasoningPart(
+                new ReasoningContent(reasoningText, ReasoningVisibility.Visible, signatureToken: null, ExtensionData.Empty),
+                ExtensionData.Empty);
+            await observer.OnEventAsync(new ModelPartCompleted(requestId, sequence++, _reasoningPartIndex, reasoningPart), cancellationToken)
+                .ConfigureAwait(false);
+            parts.Add(reasoningPart);
+        }
 
         if (!string.IsNullOrEmpty(choice.Message.Content))
         {
@@ -205,6 +227,8 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
         var textBuilder = new StringBuilder();
         var textPartOpen = false;
+        var reasoningBuilder = new StringBuilder();
+        var reasoningPartOpen = false;
         var toolCallSlots = new SortedDictionary<int, ToolCallAccumulator>();
         string? finishReason = null;
         string? resolvedModel = null;
@@ -265,6 +289,28 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                 }
             }
 
+            if (chunk.Error is { } errorFrame)
+            {
+                // An in-stream error frame is the provider's own failure report; it must surface with its
+                // external code rather than being mistaken for a stream that merely ended early.
+                var partial = ImmutableArray.CreateBuilder<ContentPart>();
+                if (reasoningPartOpen)
+                {
+                    partial.Add(new ReasoningPart(
+                        new ReasoningContent(reasoningBuilder.ToString(), ReasoningVisibility.Visible, signatureToken: null, ExtensionData.Empty),
+                        ExtensionData.Empty));
+                }
+
+                if (textPartOpen)
+                {
+                    partial.Add(new TextPart(textBuilder.ToString(), TextSemantics.Plain, ExtensionData.Empty));
+                }
+
+                return await FailWithProviderErrorAsync(
+                    observer, context, sequence, errorFrame, partial.ToImmutable(), reportedUsage, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             if (chunk.Choices is not { Count: > 0 })
             {
                 continue;
@@ -280,6 +326,22 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             if (delta is null)
             {
                 continue;
+            }
+
+            if ((delta.ReasoningContent ?? delta.Reasoning) is { Length: > 0 } reasoningFragment)
+            {
+                if (!reasoningPartOpen)
+                {
+                    reasoningPartOpen = true;
+                    await observer.OnEventAsync(new ModelPartStarted(requestId, sequence++, _reasoningPartIndex), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                await observer.OnEventAsync(
+                        new ModelPartDelta(requestId, sequence++, _reasoningPartIndex, new ReasoningContentDelta(reasoningFragment, ExtensionData.Empty)),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                _ = reasoningBuilder.Append(reasoningFragment);
             }
 
             if (!string.IsNullOrEmpty(delta.Content))
@@ -353,6 +415,16 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
         var parts = ImmutableArray.CreateBuilder<ContentPart>();
 
+        if (reasoningPartOpen)
+        {
+            var reasoningPart = new ReasoningPart(
+                new ReasoningContent(reasoningBuilder.ToString(), ReasoningVisibility.Visible, signatureToken: null, ExtensionData.Empty),
+                ExtensionData.Empty);
+            await observer.OnEventAsync(new ModelPartCompleted(requestId, sequence++, _reasoningPartIndex, reasoningPart), cancellationToken)
+                .ConfigureAwait(false);
+            parts.Add(reasoningPart);
+        }
+
         if (textPartOpen)
         {
             var textPart = new TextPart(textBuilder.ToString(), TextSemantics.Plain, ExtensionData.Empty);
@@ -417,6 +489,47 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             .ConfigureAwait(false);
 
         return new ModelAttemptCompleted(response);
+    }
+
+    /// <summary>
+    /// Fails the attempt with the provider's own in-stream error report, retaining its code and type as
+    /// diagnostic evidence while exposing only a bounded, provider-neutral safe message.
+    /// </summary>
+    private static async Task<ModelAttemptResult> FailWithProviderErrorAsync(
+        IModelResponseObserver observer,
+        OpenAIResponseParseContext context,
+        long sequence,
+        OpenAIErrorDetail error,
+        ImmutableArray<ContentPart> partialParts,
+        ModelUsage? usage,
+        CancellationToken cancellationToken)
+    {
+        var kind = error.Type switch
+        {
+            "rate_limit_error" or "rate_limit_exceeded" or "insufficient_quota" => ProviderFailureKind.Throttling,
+            "authentication_error" => ProviderFailureKind.Authentication,
+            "permission_error" => ProviderFailureKind.Authorization,
+            "invalid_request_error" => ProviderFailureKind.InvalidRequest,
+            "server_error" or "overloaded_error" => ProviderFailureKind.Unavailable,
+            _ => ProviderFailureKind.Unknown,
+        };
+        var failure = new ProviderFailure(
+            kind,
+            context.ProviderId,
+            context.ProviderRequestId,
+            statusCode: null,
+            providerCode: error.Code ?? error.Type,
+            retryAfter: null,
+            "The provider reported an error while streaming the response.",
+            diagnosticCause: null,
+            ExtensionData.Empty);
+
+        await observer.OnEventAsync(
+                new ModelResponseFailed(context.ModelRequestId, sequence, failure, partialParts, usage),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return new ModelAttemptFailed(failure, partialParts, usage);
     }
 
     private static async Task<ModelAttemptResult> FailAsync(

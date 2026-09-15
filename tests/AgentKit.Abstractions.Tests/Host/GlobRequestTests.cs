@@ -17,4 +17,28 @@ public sealed class GlobRequestTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new GlobRequest(null, new GlobPattern("**/*.cs"), true, false, maximumDepth, maximumVisitedEntries, maximumResults, SecurityTestData.Grant()));
         exception.ParamName.ShouldBe(expectedParameter);
     }
+
+    [Fact]
+    public void GlobRequest_WhenExclusionsAreDefault_NormalizesToEmpty()
+    {
+        var request = new GlobRequest(
+            null, new GlobPattern("**/*.cs"), true, false, 5, 100, 10, SecurityTestData.Grant())
+        {
+            ExcludedPathPatterns = default,
+        };
+
+        request.ExcludedPathPatterns.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GlobRequest_WhenExclusionIsUninitialized_ThrowsBeforeAssignment()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new GlobRequest(
+            null, new GlobPattern("**/*.cs"), true, false, 5, 100, 10, SecurityTestData.Grant())
+        {
+            ExcludedPathPatterns = [default],
+        });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

@@ -44,4 +44,20 @@ public sealed record StructuredDataPart: ContentPart
     /// configured.
     /// </summary>
     public JsonSchemaReference? Schema { get; init; }
+
+    /// <summary>
+    /// Compares this part structurally: <see cref="Value"/> is compared by JSON value
+    /// (<see cref="JsonElement.DeepEquals"/>) rather than by backing-document identity.
+    /// </summary>
+    /// <param name="other">The part to compare with.</param>
+    /// <returns><see langword="true"/> when the JSON value, schema, and extensions are equal.</returns>
+    public bool Equals(StructuredDataPart? other) =>
+        other is not null
+        && JsonElementValueEquality.Equals(Value, other.Value)
+        && Equals(Schema, other.Schema)
+        && Extensions.Equals(other.Extensions);
+
+    /// <summary>Hashes the non-JSON members only, consistent with <see cref="Equals(StructuredDataPart?)"/>.</summary>
+    /// <returns>A hash consistent with structural equality.</returns>
+    public override int GetHashCode() => HashCode.Combine(Schema, Extensions);
 }

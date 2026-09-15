@@ -206,7 +206,8 @@ public sealed class LanguageTool: ITool
             return true;
         }
 
-        if (property.TryGetInt64(out var milliseconds)
+        if (property.ValueKind == JsonValueKind.Number
+            && property.TryGetInt64(out var milliseconds)
             && milliseconds > 0
             && milliseconds <= _maximumTimeout.TotalMilliseconds)
         {
@@ -282,6 +283,8 @@ public sealed class LanguageTool: ITool
         bool hasCharacter,
         string paramName) => hasLine
             && hasCharacter
+            && line.ValueKind == JsonValueKind.Number
+            && character.ValueKind == JsonValueKind.Number
             && line.TryGetInt32(out var oneBasedLine)
             && character.TryGetInt32(out var oneBasedCharacter)
             && oneBasedLine > 0
@@ -304,7 +307,8 @@ public sealed class LanguageTool: ITool
             return true;
         }
 
-        return property.TryGetInt32(out value) && value > 0 && value <= ceiling;
+        value = 0;
+        return property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out value) && value > 0 && value <= ceiling;
     }
 
     private ImmutableArray<ContentPart> Project(LanguageQueryResult result, int maximumResults)

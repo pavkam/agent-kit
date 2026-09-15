@@ -24,6 +24,10 @@ public static class ProcessSecurityBinding
             new ProtectedResource(
                 ProtectedResourceKind.Process,
                 $"sandbox:{intent.Request.SandboxProfile.Value}"),
+            .. intent.Request.ReadOnlyRoots.Select(static root =>
+                new ProtectedResource(
+                    ProtectedResourceKind.Directory,
+                    $"readonly:{root.ProfileId}:{root.AbsolutePath}")),
         ];
     }
 
@@ -34,26 +38,48 @@ public static class ProcessSecurityBinding
     public static InputFingerprint Fingerprint(ResolvedProcessIntent intent)
     {
         ArgumentNullException.ThrowIfNull(intent);
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new
-        {
-            operation = "process-run-v2",
-            operationId = intent.Request.Id.ToString(),
-            executablePath = intent.AbsoluteExecutablePath,
-            executableFingerprint = intent.ExecutableFingerprint.Value,
-            argumentFingerprints = intent.Request.Arguments.Select(FingerprintText),
-            workingDirectory = intent.Request.WorkingDirectory?.Value ?? ".",
-            environmentNames = intent.Request.Environment.Select(static item => item.Name),
-            environmentValueFingerprints = intent.Request.Environment.Select(static item => FingerprintText(item.Value)),
-            environmentFingerprint = intent.EnvironmentFingerprint.Value,
-            standardInputFingerprint = intent.StandardInputFingerprint.Value,
-            sandboxProfile = intent.Request.SandboxProfile.Value,
-            workspaceAccess = intent.Request.WorkspaceAccess,
-            sideEffectClass = intent.Request.SideEffectClass,
-            childPolicy = intent.Request.ChildPolicy,
-            timeoutTicks = intent.Request.Limits.Timeout.Ticks,
-            maximumOutputBytes = intent.Request.Limits.MaximumOutputBytes,
-            terminationGraceTicks = intent.Request.Limits.TerminationGracePeriod.Ticks,
-        });
+        var bytes = intent.Request.ReadOnlyRoots.IsEmpty
+            ? JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                operation = "process-run-v2",
+                operationId = intent.Request.Id.ToString(),
+                executablePath = intent.AbsoluteExecutablePath,
+                executableFingerprint = intent.ExecutableFingerprint.Value,
+                argumentFingerprints = intent.Request.Arguments.Select(FingerprintText),
+                workingDirectory = intent.Request.WorkingDirectory?.Value ?? ".",
+                environmentNames = intent.Request.Environment.Select(static item => item.Name),
+                environmentValueFingerprints = intent.Request.Environment.Select(static item => FingerprintText(item.Value)),
+                environmentFingerprint = intent.EnvironmentFingerprint.Value,
+                standardInputFingerprint = intent.StandardInputFingerprint.Value,
+                sandboxProfile = intent.Request.SandboxProfile.Value,
+                workspaceAccess = intent.Request.WorkspaceAccess,
+                sideEffectClass = intent.Request.SideEffectClass,
+                childPolicy = intent.Request.ChildPolicy,
+                timeoutTicks = intent.Request.Limits.Timeout.Ticks,
+                maximumOutputBytes = intent.Request.Limits.MaximumOutputBytes,
+                terminationGraceTicks = intent.Request.Limits.TerminationGracePeriod.Ticks,
+            })
+            : JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                operation = "process-run-v3",
+                operationId = intent.Request.Id.ToString(),
+                executablePath = intent.AbsoluteExecutablePath,
+                executableFingerprint = intent.ExecutableFingerprint.Value,
+                argumentFingerprints = intent.Request.Arguments.Select(FingerprintText),
+                workingDirectory = intent.Request.WorkingDirectory?.Value ?? ".",
+                environmentNames = intent.Request.Environment.Select(static item => item.Name),
+                environmentValueFingerprints = intent.Request.Environment.Select(static item => FingerprintText(item.Value)),
+                environmentFingerprint = intent.EnvironmentFingerprint.Value,
+                standardInputFingerprint = intent.StandardInputFingerprint.Value,
+                sandboxProfile = intent.Request.SandboxProfile.Value,
+                workspaceAccess = intent.Request.WorkspaceAccess,
+                sideEffectClass = intent.Request.SideEffectClass,
+                childPolicy = intent.Request.ChildPolicy,
+                readOnlyRoots = intent.Request.ReadOnlyRoots.Select(static root => new { root.ProfileId, root.AbsolutePath }),
+                timeoutTicks = intent.Request.Limits.Timeout.Ticks,
+                maximumOutputBytes = intent.Request.Limits.MaximumOutputBytes,
+                terminationGraceTicks = intent.Request.Limits.TerminationGracePeriod.Ticks,
+            });
         return new InputFingerprint($"sha256:{Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant()}");
     }

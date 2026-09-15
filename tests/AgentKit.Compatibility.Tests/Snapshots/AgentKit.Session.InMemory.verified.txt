@@ -8,6 +8,7 @@ namespace AgentKit.Session.InMemory
         public InMemorySessionDirectory(AgentKit.ComponentId securityAudience, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.InMemory.InMemorySessionDirectory>? logger = null) { }
         public bool Durable { get; }
         public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryListResult> ListAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryListRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionLocationResult> LocateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionOperationContext> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionCreationLocationResult> LocateForCreateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionCreateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryWriteResult> RecordAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryWriteRequest> request, System.Threading.CancellationToken cancellationToken = default) { }

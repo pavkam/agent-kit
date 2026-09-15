@@ -13,6 +13,8 @@ public sealed class SearchToolTests
     [InlineData( /*lang=json,strict*/"{\"pattern\":\"(x)\\\\1\"}")]
     [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"maximum_files\":10001}")]
     [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"base_path\":\"../escape\"}")]
+    [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"exclude_patterns\":[\"../obj/**\"]}")]
+    [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"exclude_patterns\":[false]}")]
     public async Task InvokeAsync_WhenArgumentsInvalid_DoesNotAuthorizeOrObserve(string json)
     {
         var searcher = new FakeFileContentSearcher();
@@ -44,7 +46,7 @@ public sealed class SearchToolTests
         var authority = new RecordingSecurityAuthority();
         var tool = CreateTool(searcher, authority);
         var result = await tool.InvokeAsync(Request(/*lang=json,strict*/
-        """{"pattern":"needle","regex":false,"base_path":"src","path_pattern":"**/*.cs","case_sensitive":false,"include_hidden":true,"maximum_depth":5,"maximum_files":8,"maximum_bytes":900,"maximum_matches":7,"maximum_line_bytes":100,"maximum_duration_ms":500}"""), TestContext.Current.CancellationToken);
+        """{"pattern":"needle","regex":false,"base_path":"src","path_pattern":"**/*.cs","exclude_patterns":["**/bin/**","**/obj/**"],"case_sensitive":false,"include_hidden":true,"maximum_depth":5,"maximum_files":8,"maximum_bytes":900,"maximum_matches":7,"maximum_line_bytes":100,"maximum_duration_ms":500}"""), TestContext.Current.CancellationToken);
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
         using var json = JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
         json.RootElement.GetProperty("matches")[0].GetProperty("path").GetString().ShouldBe("src/a.cs");
@@ -54,8 +56,10 @@ public sealed class SearchToolTests
         security.Kind.ShouldBe(SecurityOperationKind.FileSearch);
         security.Effect.ShouldBe(SecurityEffect.Observe);
         security.Resources.ShouldBe([FileSearchSecurityBinding.Resource(host.BasePath)]);
-        security.InputFingerprint.ShouldBe(FileSearchSecurityBinding.Fingerprint(host.BasePath, host.Pattern, host.PathPattern, host.CaseSensitive, host.IncludeHidden, host.MaximumDepth, host.MaximumFiles, host.MaximumBytes, host.MaximumMatches, host.MaximumLineBytes, host.MaximumDuration));
+        security.InputFingerprint.ShouldBe(FileSearchSecurityBinding.Fingerprint(host.BasePath, host.Pattern, host.PathPattern, host.CaseSensitive, host.IncludeHidden, host.MaximumDepth, host.MaximumFiles, host.MaximumBytes, host.MaximumMatches, host.MaximumLineBytes, host.MaximumDuration, host.ExcludedPathPatterns));
         host.Grant.RequestId.ShouldBe(security.Id);
+        host.ExcludedPathPatterns.ShouldBe(
+            [new GlobPattern("**/bin/**"), new GlobPattern("**/obj/**")]);
     }
 
     [Fact]
@@ -93,4 +97,5 @@ public sealed class SearchToolTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new SearchTool(new FakeFileContentSearcher(), new RecordingSecurityAuthority(), new StubSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(options)));
         exception.ParamName.ShouldBe("MaximumFiles");
     }
+
 }

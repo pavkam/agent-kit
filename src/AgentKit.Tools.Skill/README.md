@@ -5,6 +5,13 @@ Activate captured skill content through an explicit security boundary.
 Use this tool when a coding host offers selectable skills. The host owns
 resource discovery and trust; activating a skill does not widen permissions.
 
+`AddSkillTool` also registers `SkillToolPresentationFormatter` as an additive
+`IToolPresentationFormatter`. Applications using `IToolPresenter` receive
+readable inventory/activation summaries and literal Markdown skill content from
+the exact captured skill descriptor. Presentation omits backing paths, catalog
+and content fingerprints, and transport JSON; activated text remains explicitly
+non-authoritative data.
+
 ## Use this project
 
 Start with `AddSkillTool` in [ServiceExtensions.cs](ServiceExtensions.cs). Read

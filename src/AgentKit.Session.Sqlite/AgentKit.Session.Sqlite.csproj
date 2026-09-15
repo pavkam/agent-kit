@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>AgentKit.Session.Sqlite</PackageId>
+    <Title>AgentKit.Session.Sqlite</Title>
+    <Description>Durable host-local SQLite session storage and discovery for AgentKit.</Description>
+    <PackageTags>agents;ai;sessions;storage;sqlite</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj" />
+    <ProjectReference Include="../AgentKit.Observability/AgentKit.Observability.csproj" />
+    <ProjectReference Include="../AgentKit.Session/AgentKit.Session.csproj" />
+  </ItemGroup>
+  <ItemGroup><None Include="README.md" Pack="true" PackagePath="/" /></ItemGroup>
+</Project>

@@ -30,6 +30,7 @@ public static class ServiceExtensions
 
             services.TryAddSingleton<IIdentifierGenerator<QuestionId>, GuidQuestionIdGenerator>();
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, QuestionTool>());
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, QuestionToolPresentationFormatter>());
             return services;
         }
     }

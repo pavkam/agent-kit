@@ -27,11 +27,11 @@ public sealed class WriteFileTool: ITool
             "content": { "type": "string", "description": "The text content to write." },
             "mode": {
               "type": "string",
-              "enum": ["overwrite", "create_new", "append"],
-              "description": "How to treat an existing file. Defaults to 'overwrite'."
+              "enum": ["create_or_replace", "create_only", "replace_existing", "append", "overwrite", "create_new"],
+              "description": "Required target-state disposition. 'overwrite' and 'create_new' are legacy aliases."
             }
           },
-          "required": ["path", "content"]
+          "required": ["path", "content", "mode"]
         }
         """).RootElement;
 
@@ -62,18 +62,22 @@ public sealed class WriteFileTool: ITool
         _timeProvider = timeProvider;
     }
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
+    /// <value>The source-owned identity, schema, effects, and hints for this tool.</value>
+    internal static ToolDescriptor PresentationDescriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "write_file",
-        "Writes a text file within the sandboxed working directory, creating, overwriting, or appending as requested.",
+        "Writes a text file within the sandboxed working directory using an explicit create, replace, create-or-replace, or append disposition.",
         new JsonSchema(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"), _inputSchema),
         outputSchema: null,
         new ToolEffects(ToolEffect.Mutating, idempotency: null, requiredResourceKinds: null),
         new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
         new ToolSourceId("agentkit.tools.write"),
         ExtensionData.Empty);
+
+    /// <inheritdoc/>
+    public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
     public async Task<ToolInvocationResult> InvokeAsync(ToolInvocationRequest request, CancellationToken cancellationToken = default)
@@ -85,10 +89,12 @@ public sealed class WriteFileTool: ITool
             return Failed(pathError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
 
-        if (!ToolArguments.TryGetRequiredString(request.Arguments, "content", out var content, out var contentError))
+        if (!request.Arguments.TryGetProperty("content", out var contentProperty)
+            || contentProperty.ValueKind != JsonValueKind.String)
         {
-            return Failed(contentError, ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
+            return Failed("A string property 'content' is required.", ToolTerminalStatus.InvalidArguments, SideEffectCertainty.DefinitelyNotPerformed);
         }
+        var content = contentProperty.GetString()!;
 
         if (!TryParseMode(request.Arguments, out var mode, out var modeError))
         {
@@ -143,21 +149,26 @@ public sealed class WriteFileTool: ITool
 
     private static bool TryParseMode(JsonElement arguments, out FileWriteMode mode, [System.Diagnostics.CodeAnalysis.NotNullWhen(false)] out string? error)
     {
-        if (!ToolArguments.TryGetOptionalString(arguments, "mode", out var text) || text is null)
+        if (!ToolArguments.TryGetRequiredString(arguments, "mode", out var text, out error))
         {
-            mode = FileWriteMode.CreateOrOverwrite;
-            error = null;
-            return true;
+            mode = default;
+            return false;
         }
 
         switch (text)
         {
+            case "create_or_replace":
             case "overwrite":
                 mode = FileWriteMode.CreateOrOverwrite;
                 error = null;
                 return true;
+            case "create_only":
             case "create_new":
                 mode = FileWriteMode.CreateNew;
+                error = null;
+                return true;
+            case "replace_existing":
+                mode = FileWriteMode.ReplaceExisting;
                 error = null;
                 return true;
             case "append":
@@ -166,7 +177,7 @@ public sealed class WriteFileTool: ITool
                 return true;
             default:
                 mode = default;
-                error = $"'mode' must be one of 'overwrite', 'create_new', or 'append'; got '{text}'.";
+                error = $"'mode' must be one of 'create_or_replace', 'create_only', 'replace_existing', or 'append'; got '{text}'.";
                 return false;
         }
     }

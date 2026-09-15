@@ -43,4 +43,18 @@ public interface ISessionDirectory
     public ValueTask<SessionDirectoryWriteResult> RecordCreateAsync(
         AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest> request,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Enumerates one bounded page of routes visible to the exact tenant, owner, and agent.</summary>
+    /// <param name="request">The authorized bounded scan and directory-specific grant.</param>
+    /// <param name="cancellationToken">Cancels before access or grant consumption commits.</param>
+    /// <returns>The ordered page or a content-safe unavailable result.</returns>
+    public ValueTask<SessionDirectoryListResult> ListAsync(
+        AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest> request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionDirectoryListResult>(
+            new SessionDirectoryListUnavailable("This session directory does not support bounded discovery."));
+    }
 }

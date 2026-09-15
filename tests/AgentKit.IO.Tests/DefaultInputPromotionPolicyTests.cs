@@ -55,6 +55,29 @@ public sealed class DefaultInputPromotionPolicyTests: InputPromotionPolicyConfor
     }
 
     [Fact]
+    public async Task PlanAsync_WhenSteeringBoundaryHasOnlyFollowUps_ReturnsATypedResultRatherThanThrowing()
+    {
+        // input-admission-and-message-queues.md: promotion at a safe boundary with nothing eligible is a normal outcome.
+        var policy = ResolvePolicy();
+        var context = Context(PromotionBoundary.AfterTurnCommitted, 4, Admitted(1, InputDelivery.FollowUp), Admitted(2, InputDelivery.FollowUp));
+
+        var result = await policy.PlanAsync(context, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<InputPromotionPlanRejected>().Kind.ShouldBe(InputPromotionPlanRejectionKind.NothingEligible);
+    }
+
+    [Fact]
+    public async Task PlanAsync_WhenNoInputIsEligible_ReturnsATypedResultRatherThanThrowing()
+    {
+        var policy = ResolvePolicy();
+        var context = Context(PromotionBoundary.OtherwiseIdle, 4);
+
+        var result = await policy.PlanAsync(context, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<InputPromotionPlanRejected>().Kind.ShouldBe(InputPromotionPlanRejectionKind.NothingEligible);
+    }
+
+    [Fact]
     public async Task PlanAsync_WhenAlreadyCancelled_ThrowsOperationCanceledException()
     {
         var policy = ResolvePolicy();
@@ -80,7 +103,7 @@ public sealed class DefaultInputPromotionPolicyTests: InputPromotionPolicyConfor
 
     private static IInputPromotionPolicy ResolvePolicy() => new ServiceCollection().AddInputPromotionPolicy().BuildServiceProvider().GetRequiredService<IInputPromotionPolicy>();
     internal static InputPromotionContext Context(params AdmittedInput[] inputs) => Context(PromotionBoundary.AfterTurnCommitted, 16, inputs);
-    internal static InputPromotionContext Context(PromotionBoundary boundary, int maximumPromotions, params AdmittedInput[] inputs) => new(Agent(), Session(), Lane(), Operation(), new OperationStateRevision(2), new SessionBranchCursor(Branch(), Entry(9)), new SessionSequence(Math.Max(10, inputs.Max(static input => input.AdmittedSequence.Value))), new SessionVersion(4), null, boundary, Turn(), NextTurn(), [.. inputs], maximumPromotions);
+    internal static InputPromotionContext Context(PromotionBoundary boundary, int maximumPromotions, params AdmittedInput[] inputs) => new(Agent(), Session(), Lane(), Operation(), new OperationStateRevision(2), new SessionBranchCursor(Branch(), Entry(9)), new SessionSequence(inputs.Length == 0 ? 10 : Math.Max(10, inputs.Max(static input => input.AdmittedSequence.Value))), new SessionVersion(4), null, boundary, Turn(), NextTurn(), [.. inputs], maximumPromotions);
     internal static AdmittedInput Admitted(long sequence, InputDelivery delivery)
     {
         var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
@@ -138,7 +161,7 @@ public sealed class DefaultInputPromotionPolicyTests: InputPromotionPolicyConfor
         activity.GetTagItem(AgentKitTagNames.InputPromotionBoundary).ShouldBe(PromotionBoundary.AfterTurnCommitted.ToString());
         activity.TagObjects.Select(static tag => tag.Value?.ToString()).ShouldNotContain("input-1");
         logger.Messages.ShouldAllBe(message => !message.Contains("input-1", StringComparison.Ordinal));
-        logger.Events.ShouldHaveSingleItem().ShouldBe((1000, LogLevel.Information));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((22000, LogLevel.Information));
         measurements.ShouldBe(1);
         metricTags.Select(static tag => tag.Key).Distinct().ShouldBe([AgentKitTagNames.InputPromotionBoundary, AgentKitTagNames.Outcome], ignoreOrder: true);
         metricTags.ShouldAllBe(static tag => tag.Value is string);
@@ -170,7 +193,7 @@ public sealed class DefaultInputPromotionPolicyTests: InputPromotionPolicyConfor
         var activity = stopped.ShouldNotBeNull();
         activity.ParentId.ShouldBe(parent.Id);
         activity.Status.ShouldBe(ActivityStatusCode.Error);
-        logger.Events.ShouldHaveSingleItem().ShouldBe((1000, LogLevel.Information));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((22000, LogLevel.Information));
     }
 
     [Fact]
@@ -255,7 +278,7 @@ public sealed class DefaultInputPromotionPolicyTests: InputPromotionPolicyConfor
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("cancelled");
         activity.TagObjects.Select(static tag => tag.Value?.ToString()).ShouldNotContain("input-1");
-        logger.Events.ShouldHaveSingleItem().ShouldBe((1001, LogLevel.Information));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((22001, LogLevel.Information));
         logger.Messages.ShouldAllBe(message => !message.Contains("input-1", StringComparison.Ordinal));
         metricTags.Select(static tag => tag.Key).Distinct().ShouldBe([AgentKitTagNames.InputPromotionBoundary, AgentKitTagNames.Outcome], ignoreOrder: true);
         metricTags.Any(static tag => tag.Key == AgentKitTagNames.Outcome && Equals(tag.Value, "cancelled")).ShouldBeTrue();

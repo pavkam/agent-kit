@@ -76,8 +76,9 @@ public sealed class ResourceTool: ITool
         _catalogVersion = CatalogVersion(resources);
     }
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    /// <summary>Gets the exact immutable descriptor shared by invocation and application presentation.</summary>
+    /// <value>The feature-owned resource descriptor.</value>
+    internal static ToolDescriptor PresentationDescriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "resource",
@@ -88,6 +89,9 @@ public sealed class ResourceTool: ITool
         new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
         new ToolSourceId("agentkit.tools.resource"),
         ExtensionData.Empty);
+
+    /// <inheritdoc/>
+    public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
     public async Task<ToolInvocationResult> InvokeAsync(

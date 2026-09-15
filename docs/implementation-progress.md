@@ -78,8 +78,76 @@ owning spec.
 | Generic durable-operation codec and journal recording  | `JsonDurableOperationCodec<TState>`, `InMemoryDurableOperationJournal`; 68 focused cases; full solution: 7,841 passed                                             | Verified checkpoint; grant-consumption/audit gap in `IDurableOperationJournal` documented; coordinator, checkpoint store and recovery policy remain open |
 | Example workspace-scoped file-access security policy   | `WorkspaceScopedFileAccessPolicy` in `AgentKit.Permissions`; 27 focused cases; full solution: 7,868 passed                                                        | Verified checkpoint; illustrative, not exhaustive; applications author their own business-rule policies                                                  |
 | Deterministic in-memory filesystem                     | New `AgentKit.FileSystem.InMemory`; 86 focused cases; full solution: 7,955 passed                                                                                 | Verified checkpoint; proves the same seven contracts as `SandboxedFileSystem`; keyed profile composition remains open                                    |
+| Adversarial defect sweep                               | ~60 probing tests across 15 packages, 52 of which failed against the prior code; full solution: 8,431 passed after fixes                                          | Verified checkpoint; see the sweep summary below for the corrected contracts and the remaining open audit findings                                       |
 
 ## Latest integration evidence
+
+The adversarial defect sweep wrote probing tests from the normative concept
+documents first and fixed only what those tests exposed. The corrected
+contracts, each pinned by at least one test that failed before the fix:
+
+- Loop: a turn-limit stop, a faulting tool invoker, and a duplicate tool-call
+  identity can no longer leave a committed `ToolCallPart` without its
+  exactly-one terminal result; append-conflict retries re-read the actual branch
+  tip sequence instead of deriving it from the version; partial output is
+  committed with `CancellationToken.None` so a cancelled caller no longer
+  discards it; a `Length`/`Pending`/`Error` terminal is preserved as an
+  `Interrupted` message and settles as `AgentRunFailed` rather than
+  `AgentRunCompleted`.
+- Messages and security values: `ToolCallPart`, `StructuredDataPart`, and
+  `UnknownContentPart` compare their `JsonElement` by value, and
+  `SecurityRequest` compares its resources by sequence, so idempotent replay of
+  a persisted tool-call message (SQLite, or any reconstructed value) returns the
+  original receipt.
+- `FileSystemPath` rejects embedded NUL, which previously let the host effect
+  land on a truncated path the grant did not name. `NetworkDestinationPolicy`
+  classifies IPv4-mapped IPv6, `::`, CGNAT, multicast, and reserved ranges as
+  private, closing the `::ffff:169.254.169.254` bypass. `Append` follows the
+  disposition table (missing target: not found, no mutation) on both
+  filesystems, and an over-limit read is a `FileReadFailed` limit, not a
+  `FileReadDenied`.
+- Conversations expose only `SafeMessage`/`Kind` from failures (never
+  `ProviderFailure.DiagnosticCause`), survive disposal during an in-flight turn,
+  and forward a `Final` usage report that supersedes an `Interim` one.
+- Permissions bound an approved grant by the approved binding's expiry and use
+  count, and report broker unavailability as `security.approval_unavailable`
+  rather than as a human denial.
+- Tools: seven feature tools reject non-numeric JSON kinds as `InvalidArguments`
+  instead of throwing; `PatchTextPlanner` anchors hunk matches at line starts;
+  `DefaultToolInvoker` converts a resolution or authorizer fault into a
+  definitely-not-performed terminal.
+- Providers: the OpenAI-compatible base maps a transport timeout and a mid-body
+  `IOException` to typed failures; the parser surfaces in-stream `error` frames
+  with their code and retains `reasoning_content`/`reasoning`; Gemini routes
+  streamed part fragments by kind so a `functionCall` after text is no longer
+  dropped; Anthropic, Mistral, and Cohere fail typed on malformed tool arguments
+  instead of throwing or synthesizing `{}`; every non-OpenAI leaf now wraps its
+  observer in the new `SequencingModelResponseObserver`, guaranteeing one
+  `ModelResponseStarted` and contiguous sequences.
+- Context excludes system/developer messages found in history and validates
+  tool-call causality in order (unique call ids, no result before its call,
+  exactly one result per call). Output never spends repair attempts on
+  configuration-class failures. Hook isolation captures and restores permitted
+  mutable state through `AgentHookEventArgs.CaptureMutableState`/
+  `RestoreMutableState`. Compaction authors schema version `1` and sequences
+  from the last read entry. `InMemoryDurableLeaseManager` refuses to renew an
+  expired lease. `InputPromotionPlanRejectionKind.NothingEligible` replaces an
+  `ArgumentException` for the common empty-selection case.
+- `LoggerMessage` event IDs are now unique per package (IO 22000, Goals 23000,
+  Conversations 24000, Session.Sqlite 25000) and an architecture test enforces
+  it.
+
+Findings from the same sweep that remain open, because they need an architecture
+decision or a larger change than a defect fix: Linux/arm64
+`O_NOFOLLOW`/`O_DIRECTORY` flag values in `SandboxedFileSystem`;
+`CreateOrOverwrite` truncating in place rather than staging; process tests that
+pass vacuously without a sandbox binary; pooled-connection/cookie/proxy defaults
+in `DefaultNetworkTransport`; the approval flow's missing durable deferral,
+audit coverage, and approver-identity binding; provider `reasoning_effort`
+gating, choice-index enforcement, and extension-key shadowing; the SQLite
+session store's whole-blob persistence and directory hydrate/mutate race; and
+the `RecoveryEvidence`/`RecoveryDecision` and `IDurableOperationJournal` gaps
+already recorded above.
 
 The in-memory filesystem checkpoint adds `AgentKit.FileSystem.InMemory`, a
 deterministic, disk-free `InMemoryFileSystem` proving the same seven contracts

@@ -3,7 +3,11 @@
 Write file content through an authorized filesystem boundary.
 
 Use this tool for bounded writes with explicit target-state semantics. Select
-the write disposition and any separately authorized parent-directory creation.
+the required `mode` as `create_only`, `replace_existing`, `create_or_replace`,
+or `append`; `create_new` and `overwrite` remain explicit legacy aliases.
+`replace_existing` fails without mutation when the target is missing. Empty and
+whitespace-only content are valid. Parent-directory creation requires its own
+separate authorization.
 
 ## Use this project
 

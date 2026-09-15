@@ -35,7 +35,7 @@ public static class ServiceExtensions
                 _ => new GuidIdentifierGenerator<BranchId>(static value => new BranchId(value)));
             services.TryAddSingleton<IIdentifierGenerator<SecurityAuditRecordId>>(
                 _ => new GuidIdentifierGenerator<SecurityAuditRecordId>(static value => new SecurityAuditRecordId(value)));
-            _ = services.AddSingleton<ISessionStore, InMemorySessionStore>();
+            services.TryAddSingleton<ISessionStore, InMemorySessionStore>();
 
             return services;
         }

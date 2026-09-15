@@ -32,6 +32,7 @@ public static class ServiceExtensions
                 GuidSecurityEnforcementIntentIdGenerator>();
             services.TryAddSingleton<IPlanStateStore, SessionPlanStateStore>();
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, PlanTool>());
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, PlanToolPresentationFormatter>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, TodoTool>());
             return services;
         }

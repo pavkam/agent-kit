@@ -28,6 +28,8 @@ public static class ServiceExtensions
             services.TryAddSingleton<ISkillCatalog>(static provider => provider.GetRequiredService<ConfiguredSkillCatalog>());
             services.TryAddSingleton<ISkillCatalogContextSource>(static provider => provider.GetRequiredService<ConfiguredSkillCatalog>());
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, SkillTool>());
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IToolPresentationFormatter, SkillToolPresentationFormatter>());
             return services;
         }
     }

@@ -26,6 +26,12 @@ namespace AgentKit.Tools.Search
         public int MaximumLineBytes { get; set; }
         public int MaximumMatches { get; set; }
     }
+    public sealed class SearchToolPresentationFormatter : AgentKit.IToolPresentationFormatter
+    {
+        public SearchToolPresentationFormatter() { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation?> FormatAsync(AgentKit.ToolPresentationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)

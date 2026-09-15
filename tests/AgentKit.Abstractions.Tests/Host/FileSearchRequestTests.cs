@@ -19,4 +19,37 @@ public sealed class FileSearchRequestTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new FileSearchRequest(null, new FileSearchPattern("needle", FileSearchPatternKind.Literal), new GlobPattern("**/*"), true, false, maximumDepth, maximumFiles, maximumBytes, maximumMatches, maximumLineBytes, TimeSpan.FromSeconds(1), SecurityTestData.Grant()));
         exception.ParamName.ShouldBe(expectedParameter);
     }
+
+    [Fact]
+    public void FileSearchRequest_WhenExclusionsAreDefault_NormalizesToEmpty()
+    {
+        var request = CreateRequest() with { ExcludedPathPatterns = default };
+
+        request.ExcludedPathPatterns.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void FileSearchRequest_WhenExclusionIsUninitialized_ThrowsBeforeAssignment()
+    {
+        var exception = Should.Throw<ArgumentException>(() => CreateRequest() with
+        {
+            ExcludedPathPatterns = [default],
+        });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    private static FileSearchRequest CreateRequest() => new(
+        null,
+        new FileSearchPattern("needle", FileSearchPatternKind.Literal),
+        new GlobPattern("**/*"),
+        true,
+        false,
+        5,
+        100,
+        1_000,
+        10,
+        200,
+        TimeSpan.FromSeconds(2),
+        SecurityTestData.Grant());
 }

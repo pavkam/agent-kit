@@ -3,6 +3,14 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Permissions.InMemory
 {
+    public sealed class InMemoryApprovalStore : AgentKit.IApprovalStore
+    {
+        public InMemoryApprovalStore() { }
+        public AgentKit.ApprovalStoreCapabilities Capabilities { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreCreateResult> CreateAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreReadResult> ReadAsync(AgentKit.ApprovalRequestId requestId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreResolveResult> ResolveAsync(AgentKit.ApprovalResponse response, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class InMemorySecurityGrantStore : AgentKit.ISecurityGrantStore
     {
         public InMemorySecurityGrantStore(System.TimeProvider timeProvider) { }
@@ -16,6 +24,7 @@ namespace AgentKit.Permissions.InMemory
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemoryApprovalStore() { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddInMemorySecurityGrantStore() { }
         }
     }

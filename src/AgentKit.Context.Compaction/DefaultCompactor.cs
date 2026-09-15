@@ -245,7 +245,7 @@ public sealed class DefaultCompactor: ICompactor
                 break;
         }
 
-        return await ActivateAsync(sessionContext, context, request, cut, manifest, candidate, cancellationToken)
+        return await ActivateAsync(sessionContext, context, request, source, cut, manifest, candidate, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -283,12 +283,16 @@ public sealed class DefaultCompactor: ICompactor
         SessionOperationContext sessionContext,
         CompactionOperationContext context,
         CompactionRequest request,
+        CompactionSourceSnapshot source,
         CompactionCut cut,
         CompactionManifest manifest,
         CompactionCandidate candidate,
         CancellationToken cancellationToken)
     {
+        // Version and sequence advance independently (one version per append, one sequence per entry), so the
+        // new entry's sequence follows the last sequence actually read from the branch, never "version + 1".
         var activatedVersion = new SessionVersion(request.SourceVersion.Value + 1);
+        var nextSequence = new SessionSequence(source.ThroughSequence.Value + 1);
         var lastCoveredId = cut.CoveredEntryIds[^1];
 
         var record = new CompactionRecord(
@@ -308,10 +312,10 @@ public sealed class DefaultCompactor: ICompactor
             sessionContext.ToAddress(),
             context.Correlation,
             request.BranchId,
-            new SessionSequence(activatedVersion.Value),
+            nextSequence,
             lastCoveredId,
             _timeProvider.GetUtcNow(),
-            new SchemaVersion("1.0"),
+            new SchemaVersion("1"),
             record);
 
         var appendResult = await _coordinator.AppendAsync(

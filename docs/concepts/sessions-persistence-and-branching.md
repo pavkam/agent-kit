@@ -115,6 +115,9 @@ append, idempotency, versioning, and stable pagination.
 - append with expected version and idempotency key;
 - branch enumeration and active-leaf update semantics;
 - forward pagination by sequence and bounded page size;
+- stable prefix pagination: the first page captures address, branch, session
+  version, and inclusive upper sequence, and every continuation echoes that
+  snapshot while excluding later appends;
 - snapshot read/write ownership;
 - consistency and transaction guarantees;
 - retention, archival, deletion, and legal-hold behavior; and

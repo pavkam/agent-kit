@@ -107,8 +107,65 @@ public sealed record AgentRunRequest
         Extensions = extensions;
     }
 
+    /// <summary>Initializes a reduced run request from exact definition and configuration evidence.</summary>
+    /// <param name="agent">The exact immutable agent definition admitted for this run.</param>
+    /// <param name="sessionId">The session this run reads from and commits to.</param>
+    /// <param name="branchId">The branch this run reads from and commits to.</param>
+    /// <param name="runId">The stable identity of this run.</param>
+    /// <param name="identity">The authenticated identity on whose behalf the run executes.</param>
+    /// <param name="authorization">The captured run-start authorization evidence.</param>
+    /// <param name="sessionProfile">The exact session profile selected for this invocation.</param>
+    /// <param name="configuration">The exact effective configuration snapshot captured for the run.</param>
+    /// <param name="maxTurns">The positive maximum turn count.</param>
+    /// <param name="attemptTimeout">The positive model-attempt timeout.</param>
+    /// <param name="extensions">Caller-specific immutable request data.</param>
+    /// <exception cref="ArgumentNullException">A required reference is null.</exception>
+    /// <exception cref="ArgumentException">The definition or configuration revision differs from authorization evidence, or an inherited request invariant is violated.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">An inherited identity, count, or timeout invariant is violated.</exception>
+    public AgentRunRequest(
+        AgentDefinition agent,
+        SessionId sessionId,
+        BranchId branchId,
+        RunId runId,
+        ExecutionIdentity identity,
+        SecurityAuthorizationContext authorization,
+        SessionProfileSnapshot sessionProfile,
+        EffectiveConfigurationSnapshot configuration,
+        int maxTurns,
+        TimeSpan attemptTimeout,
+        ExtensionData extensions)
+        : this(
+            GetAgentId(agent),
+            sessionId,
+            branchId,
+            runId,
+            identity,
+            authorization,
+            sessionProfile,
+            agent.Models,
+            agent.ModelRequirements,
+            agent.Instructions,
+            agent.Tools,
+            agent.ToolChoice,
+            agent.Settings,
+            maxTurns,
+            attemptTimeout,
+            extensions)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentException.ThrowIfNotEqual(agent.Revision, authorization.AgentDefinitionRevision, nameof(agent));
+        ArgumentException.ThrowIfNotEqual(configuration.Version, authorization.ConfigurationVersion);
+        ArgumentException.ThrowIfNotEqual(configuration.Fingerprint, sessionProfile.ConfigurationFingerprint);
+        Agent = agent;
+        Configuration = configuration;
+    }
+
     /// <summary>Gets the agent this run belongs to.</summary>
     public AgentId AgentId { get; }
+
+    /// <summary>Gets the exact admitted agent definition when supplied by the evidence-aware constructor.</summary>
+    /// <value>The immutable definition, or null for a legacy reduced request.</value>
+    public AgentDefinition? Agent { get; }
 
     /// <summary>Gets the session this run reads from and commits to.</summary>
     public SessionId SessionId { get; }
@@ -125,6 +182,10 @@ public sealed record AgentRunRequest
     /// <summary>Gets the captured run-start authorization evidence.</summary>
     /// <value>Immutable evidence matching this request's identity, agent, session, and run.</value>
     public SecurityAuthorizationContext Authorization { get; }
+
+    /// <summary>Gets the exact effective configuration when supplied by the evidence-aware constructor.</summary>
+    /// <value>The immutable snapshot, or null for a legacy reduced request.</value>
+    public EffectiveConfigurationSnapshot? Configuration { get; }
 
     /// <summary>Gets the immutable session profile selected for this invocation.</summary>
     /// <value>The exact compiled profile supplied to session coordination.</value>
@@ -166,6 +227,13 @@ public sealed record AgentRunRequest
     /// <summary>Gets caller-specific or forward-compatible request data.</summary>
     public ExtensionData Extensions { get; init; }
 
+    /// <summary>Gets the optional best-effort observer for provisional model and tool progress.</summary>
+    /// <remarks>
+    /// The observer is operational wiring rather than semantic request data, so it does not participate in
+    /// structural equality or hashing. Its failures are isolated by the loop.
+    /// </remarks>
+    public IAgentRunObserver? Observer { get; init; }
+
     /// <inheritdoc/>
     public bool Equals(AgentRunRequest? other) =>
         other is not null
@@ -175,6 +243,8 @@ public sealed record AgentRunRequest
         && RunId.Equals(other.RunId)
         && Identity.Equals(other.Identity)
         && Authorization.Equals(other.Authorization)
+        && Equals(Agent, other.Agent)
+        && Equals(Configuration, other.Configuration)
         && SessionProfile.Equals(other.SessionProfile)
         && ModelPolicy.Equals(other.ModelPolicy)
         && ModelRequirements.Equals(other.ModelRequirements)
@@ -196,6 +266,8 @@ public sealed record AgentRunRequest
         hash.Add(RunId);
         hash.Add(Identity);
         hash.Add(Authorization);
+        hash.Add(Agent);
+        hash.Add(Configuration);
         hash.Add(SessionProfile);
         hash.Add(ModelPolicy);
         hash.Add(ModelRequirements);
@@ -215,5 +287,11 @@ public sealed record AgentRunRequest
         hash.Add(AttemptTimeout);
         hash.Add(Extensions);
         return hash.ToHashCode();
+    }
+
+    private static AgentId GetAgentId(AgentDefinition agent)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        return agent.Id;
     }
 }

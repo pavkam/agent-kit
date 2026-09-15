@@ -35,7 +35,69 @@ public static class FileSearchSecurityBinding
         long maximumBytes,
         int maximumMatches,
         int maximumLineBytes,
-        TimeSpan maximumDuration)
+        TimeSpan maximumDuration) => FingerprintCore(
+        basePath,
+        pattern,
+        pathPattern,
+        caseSensitive,
+        includeHidden,
+        maximumDepth,
+        maximumFiles,
+        maximumBytes,
+        maximumMatches,
+        maximumLineBytes,
+        maximumDuration);
+
+    /// <summary>Computes an exact fingerprint including explicit traversal exclusions.</summary>
+    /// <param name="basePath">The traversal base.</param>
+    /// <param name="pattern">The content pattern.</param>
+    /// <param name="pathPattern">The candidate-path glob.</param>
+    /// <param name="caseSensitive">Whether content matching is case-sensitive.</param>
+    /// <param name="includeHidden">Whether hidden names are visited.</param>
+    /// <param name="maximumDepth">The traversal-depth bound.</param>
+    /// <param name="maximumFiles">The candidate-file bound.</param>
+    /// <param name="maximumBytes">The observed-byte bound.</param>
+    /// <param name="maximumMatches">The retained-match bound.</param>
+    /// <param name="maximumLineBytes">The line-projection bound.</param>
+    /// <param name="maximumDuration">The elapsed-time bound.</param>
+    /// <param name="excludedPathPatterns">The ordered traversal exclusions.</param>
+    /// <returns>An algorithm-qualified SHA-256 fingerprint.</returns>
+    public static InputFingerprint Fingerprint(
+        FileSystemPath? basePath,
+        FileSearchPattern pattern,
+        GlobPattern pathPattern,
+        bool caseSensitive,
+        bool includeHidden,
+        int maximumDepth,
+        int maximumFiles,
+        long maximumBytes,
+        int maximumMatches,
+        int maximumLineBytes,
+        TimeSpan maximumDuration,
+        ImmutableArray<GlobPattern> excludedPathPatterns = default)
+    {
+        return excludedPathPatterns.IsDefaultOrEmpty
+            ? FingerprintCore(
+                basePath, pattern, pathPattern, caseSensitive, includeHidden, maximumDepth, maximumFiles, maximumBytes,
+                maximumMatches, maximumLineBytes, maximumDuration)
+            : FingerprintCore(
+                basePath, pattern, pathPattern, caseSensitive, includeHidden, maximumDepth, maximumFiles, maximumBytes,
+                maximumMatches, maximumLineBytes, maximumDuration, excludedPathPatterns);
+    }
+
+    private static InputFingerprint FingerprintCore(
+        FileSystemPath? basePath,
+        FileSearchPattern pattern,
+        GlobPattern pathPattern,
+        bool caseSensitive,
+        bool includeHidden,
+        int maximumDepth,
+        int maximumFiles,
+        long maximumBytes,
+        int maximumMatches,
+        int maximumLineBytes,
+        TimeSpan maximumDuration,
+        ImmutableArray<GlobPattern> excludedPathPatterns = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumDepth);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumFiles);
@@ -43,7 +105,7 @@ public static class FileSearchSecurityBinding
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumMatches);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumLineBytes);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maximumDuration, TimeSpan.Zero);
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new
+        var common = new
         {
             operation = "file-search",
             basePath = basePath?.Value ?? ".",
@@ -62,7 +124,28 @@ public static class FileSearchSecurityBinding
             maximumMatches,
             maximumLineBytes,
             maximumDurationTicks = maximumDuration.Ticks,
-        });
+        };
+        var bytes = excludedPathPatterns.IsDefaultOrEmpty
+            ? JsonSerializer.SerializeToUtf8Bytes(common)
+            : JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                common.operation,
+                common.basePath,
+                common.engine,
+                common.pattern,
+                common.pathDialect,
+                common.pathPattern,
+                common.caseSensitive,
+                common.includeHidden,
+                common.binaryPolicy,
+                common.maximumDepth,
+                common.maximumFiles,
+                common.maximumBytes,
+                common.maximumMatches,
+                common.maximumLineBytes,
+                common.maximumDurationTicks,
+                excludedPathPatterns = excludedPathPatterns.Select(static value => value.Value),
+            });
         return new InputFingerprint(
             $"sha256:{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant()}");
     }

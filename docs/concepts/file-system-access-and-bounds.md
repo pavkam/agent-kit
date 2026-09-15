@@ -168,6 +168,15 @@ Directory pages MUST bind continuation to the fingerprint of the complete
 ordered name snapshot. Resumption after a change MUST report a typed
 snapshot-changed result instead of mixing two directory versions.
 
+Recursive traversal requests MAY carry an explicit immutable ordered set of
+path-exclusion patterns. Exclusions MUST use the request's pinned path dialect
+and comparison policy, MUST be included in authorization evidence, and MUST be
+applied before an excluded path is opened. The excluded directory root consumes
+one visit, while its descendants consume no visit, file, or byte work because
+the subtree MUST be pruned before the root is opened. Ambient ignore files MUST
+NOT supply exclusions unless a separate profile explicitly selects, bounds, and
+fingerprints that policy.
+
 ## Determinism and time
 
 Deterministic implementations MUST use the injected `TimeProvider` for created,
@@ -203,6 +212,8 @@ for the same versioned inputs.
   performing a non-atomic replace.
 - Text decoded under a declared profile produces identical results regardless of
   process locale.
+- Explicitly excluded directory subtrees are not opened and do not exhaust the
+  traversal bound before a requested path match is reached.
 
 ## Related specifications
 

@@ -24,10 +24,19 @@ namespace AgentKit.Session.InMemory;
 /// and branch provenance) into the new branch's own list, so appends to either
 /// branch afterward never affect the other.
 /// </para>
+/// <para>
+/// Exact paged-read continuations require a snapshot previously issued by this
+/// store instance. The adapter retains at most 4,096 distinct issued snapshots;
+/// an evicted value fails as unavailable instead of being trusted as caller-authored evidence.
+/// </para>
 /// </remarks>
 public sealed partial class InMemorySessionStore: ISessionStore
 {
+    /// <summary>Bounds process-local continuation evidence retained by this ephemeral adapter.</summary>
+    private const int _maximumIssuedReadSnapshots = 4096;
     private readonly Lock _gate = new();
+    private readonly HashSet<SessionReadSnapshot> _issuedReadSnapshots = [];
+    private readonly Queue<SessionReadSnapshot> _issuedReadSnapshotOrder = [];
     private readonly Dictionary<SessionAddress, SessionRecord> _sessions = [];
     private readonly Dictionary<(TenantId TenantId, AgentId AgentId, IdempotencyKey Key), IdempotencyReceipt<SessionStoreCreateRequest, SessionCreated>> _createIdempotency = [];
     private readonly Dictionary<(TenantId TenantId, AgentId AgentId, IdempotencyKey Key), SessionStoreCreateRequest> _deletedCreateIdempotency = [];
@@ -331,16 +340,67 @@ public sealed partial class InMemorySessionStore: ISessionStore
                 return ValueTask.FromResult<SessionPageResult>(new SessionReadNotFound(address));
             }
 
+            var upperSequence = branch.Entries.Count == 0
+                ? new SessionSequence(0)
+                : branch.Entries[^1].Sequence;
+            if (request.Snapshot is null && request.FromSequenceExclusive.Value > upperSequence.Value)
+            {
+                return ValueTask.FromResult<SessionPageResult>(new SessionReadFailed(
+                    "The requested starting sequence is beyond the current branch tip."));
+            }
+
+            if (request.Snapshot is { } supplied
+                && (!_issuedReadSnapshots.Contains(supplied)
+                    || supplied.Version.Value > record.Version
+                    || supplied.UpperSequence.Value > upperSequence.Value))
+            {
+                return ValueTask.FromResult<SessionPageResult>(new SessionReadFailed(
+                    "The supplied session read snapshot is not available for this branch."));
+            }
+
+            var snapshot = request.Snapshot ?? new SessionReadSnapshot(
+                address,
+                request.BranchId,
+                new SessionVersion(record.Version),
+                upperSequence);
+            if (request.Snapshot is null)
+            {
+                RetainIssuedReadSnapshot(snapshot);
+            }
+
             var pageEntries = branch.Entries
-                .Where(entry => entry.Sequence.Value > request.FromSequenceExclusive.Value)
+                .Where(entry => entry.Sequence.Value > request.FromSequenceExclusive.Value
+                    && entry.Sequence.Value <= snapshot.UpperSequence.Value)
                 .Take(request.PageSize)
                 .ToImmutableArray();
             var throughSequence = pageEntries.IsEmpty
                 ? request.FromSequenceExclusive
                 : pageEntries[^1].Sequence;
-            var hasMore = branch.Entries.Any(entry => entry.Sequence.Value > throughSequence.Value);
+            var hasMore = branch.Entries.Any(entry => entry.Sequence.Value > throughSequence.Value
+                && entry.Sequence.Value <= snapshot.UpperSequence.Value);
 
-            return ValueTask.FromResult<SessionPageResult>(new SessionPage(pageEntries, throughSequence, hasMore));
+            return ValueTask.FromResult<SessionPageResult>(new SessionPage(
+                pageEntries,
+                throughSequence,
+                hasMore,
+                snapshot));
+        }
+    }
+
+    /// <summary>Retains bounded store-issued provenance for exact continuation snapshots.</summary>
+    /// <param name="snapshot">The snapshot created under the serialized read boundary.</param>
+    private void RetainIssuedReadSnapshot(SessionReadSnapshot snapshot)
+    {
+        Debug.Assert(snapshot is not null, "The read path creates a nonnull snapshot before retention.");
+        if (!_issuedReadSnapshots.Add(snapshot))
+        {
+            return;
+        }
+
+        _issuedReadSnapshotOrder.Enqueue(snapshot);
+        if (_issuedReadSnapshotOrder.Count > _maximumIssuedReadSnapshots)
+        {
+            _ = _issuedReadSnapshots.Remove(_issuedReadSnapshotOrder.Dequeue());
         }
     }
 

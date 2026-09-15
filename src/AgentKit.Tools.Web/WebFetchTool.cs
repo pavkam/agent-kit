@@ -373,7 +373,8 @@ public sealed class WebFetchTool: ITool
             return true;
         }
 
-        if (property.TryGetInt64(out var milliseconds)
+        if (property.ValueKind == JsonValueKind.Number
+            && property.TryGetInt64(out var milliseconds)
             && milliseconds > 0
             && milliseconds <= _options.MaximumTimeout.TotalMilliseconds)
         {
@@ -398,7 +399,8 @@ public sealed class WebFetchTool: ITool
             return true;
         }
 
-        return property.TryGetInt32(out value) && value > 0 && value <= ceiling;
+        value = 0;
+        return property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out value) && value > 0 && value <= ceiling;
     }
 
     private static ToolInvocationResult ResolutionFailure(NetworkResolutionResult result, SideEffectCertainty priorEffects) => result switch

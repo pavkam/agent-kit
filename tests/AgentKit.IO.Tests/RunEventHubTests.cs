@@ -251,7 +251,7 @@ public sealed class RunEventHubTests
         activity.GetTagItem(AgentKitTagNames.RunId).ShouldBe(basis.RunId.ToString());
         activity.TagObjects.ShouldAllBe(tag => !Equals(tag.Value, content));
         var (logId, logLevel, logFields) = logger.Entries.ShouldHaveSingleItem();
-        logId.ShouldBe(1006);
+        logId.ShouldBe(22006);
         logLevel.ShouldBe(LogLevel.Debug);
         logFields["Operation"].ShouldBe("Publish");
         logFields["RunId"].ShouldBe(basis.RunId);

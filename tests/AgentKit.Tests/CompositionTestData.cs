@@ -66,7 +66,12 @@ internal static class CompositionTestData
             maximumPageSize: 256,
             verifySnapshotHashes: true,
             deleteOnDispose: false,
-            new ContentHash("sha256:test-session-profile")));
+            new ContentHash("sha256:test-session-profile")),
+        new EffectiveConfigurationSnapshot(
+            new ConfigurationVersion(1),
+            new ContentHash("sha256:test-session-profile"),
+            [],
+            []));
 
     public static AgentRunOptions RunOptions(int? maxTurns = null, TimeSpan? attemptTimeout = null) =>
         new(SessionId, BranchId, Identity(), maxTurns, attemptTimeout);

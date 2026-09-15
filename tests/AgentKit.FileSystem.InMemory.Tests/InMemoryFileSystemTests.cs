@@ -228,6 +228,18 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
+    public async Task WriteAsync_WhenModeAppendAndTargetIsMissing_DoesNotCreateTheFile()
+    {
+        // file-system-access-and-bounds.md write-disposition table: Append + missing target => "Not found, no mutation".
+        var fs = CreateFileSystem();
+
+        var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("absent.log"), "line", FileWriteMode.Append, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileWriteFailed>();
+        fs.TryReadAllBytes(new FileSystemPath("absent.log"), out _).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task WriteAsync_WhenModeAppend_AppendsToExistingContent()
     {
         var fs = CreateFileSystem();
@@ -250,12 +262,40 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
-    public async Task ReadAsync_WhenFileExceedsMaximumReadBytes_ReturnsFileReadDenied()
+    public async Task WriteAsync_WhenModeReplaceExistingAndFileExists_ReplacesExactContent()
+    {
+        var fs = CreateFileSystem();
+        fs.Seed(new FileSystemPath("notes.txt"), "old content");
+
+        var result = await fs.WriteAsync(new FileWriteRequest(
+            new FileSystemPath("notes.txt"), " \t", FileWriteMode.ReplaceExisting, TestSecurity.Grant()),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileWritten>();
+        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out var bytes).ShouldBeTrue();
+        Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe(" \t");
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenModeReplaceExistingAndFileMissing_DoesNotCreateTarget()
+    {
+        var fs = CreateFileSystem();
+
+        var result = await fs.WriteAsync(new FileWriteRequest(
+            new FileSystemPath("notes.txt"), "replacement", FileWriteMode.ReplaceExisting, TestSecurity.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<FileWriteFailed>().SafeMessage.ShouldContain("does not exist");
+        fs.TryReadAllBytes(new FileSystemPath("notes.txt"), out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenFileExceedsMaximumReadBytes_ReturnsFileReadFailed()
     {
         var fs = CreateFileSystem(o => o.MaximumReadBytes = 4);
         fs.Seed(new FileSystemPath("notes.txt"), "this is too long");
         var result = await fs.ReadAsync(new FileReadRequest(new FileSystemPath("notes.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileReadDenied>();
+        _ = result.ShouldBeOfType<FileReadFailed>();
     }
 
     [Fact]
@@ -428,6 +468,29 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
+    public async Task GlobAsync_WhenSubtreeExcluded_PrunesItBeforeVisitBoundIsConsumed()
+    {
+        var fs = CreateFileSystem();
+        fs.CreateDirectory(new FileSystemPath("bin/generated"));
+        fs.CreateDirectory(new FileSystemPath("src"));
+        fs.Seed(new FileSystemPath("bin/generated/one.cs"), "generated");
+        fs.Seed(new FileSystemPath("bin/generated/two.cs"), "generated");
+        fs.Seed(new FileSystemPath("src/target.cs"), "source");
+        var request = new GlobRequest(
+            null, new GlobPattern("**/*.cs"), true, false, 10, 3, 20, TestSecurity.Grant())
+        {
+            ExcludedPathPatterns = [new GlobPattern("**/bin/**")],
+        };
+
+        var result = await fs.GlobAsync(request, TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(GlobStatus.Success);
+        result.Complete.ShouldBeTrue();
+        result.VisitedEntries.ShouldBe(3);
+        result.Matches.Select(static path => path.Value).ShouldBe(["src/target.cs"]);
+    }
+
+    [Fact]
     public async Task GlobAsync_WhenNoNameMatches_ReturnsDistinctNoMatchesOutcome()
     {
         var fs = CreateFileSystem();
@@ -529,6 +592,40 @@ public sealed class InMemoryFileSystemTests
         fs.Seed(new FileSystemPath("src/notes.md"), "item-99");
         var result = await fs.SearchAsync(SearchRequest(new FileSearchPattern( /*lang=regex*/"item-[0-9]+", FileSearchPatternKind.RegularExpression), pathPattern: new GlobPattern("**/*.cs")), TestContext.Current.CancellationToken);
         result.Matches.ShouldHaveSingleItem().Path.Value.ShouldBe("src/code.cs");
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenSubtreeExcluded_PrunesItBeforeCandidateFileBoundIsConsumed()
+    {
+        var fs = CreateFileSystem();
+        fs.CreateDirectory(new FileSystemPath("bin/generated"));
+        fs.CreateDirectory(new FileSystemPath("src"));
+        fs.Seed(new FileSystemPath("bin/generated/one.cs"), "needle");
+        fs.Seed(new FileSystemPath("bin/generated/two.cs"), "needle");
+        fs.Seed(new FileSystemPath("src/target.cs"), "needle");
+        var request = new FileSearchRequest(
+            null,
+            new FileSearchPattern("needle", FileSearchPatternKind.Literal),
+            new GlobPattern("**/*.cs"),
+            true,
+            false,
+            10,
+            1,
+            1024,
+            10,
+            1024,
+            TimeSpan.FromSeconds(10),
+            TestSecurity.Grant())
+        {
+            ExcludedPathPatterns = [new GlobPattern("**/bin/**")],
+        };
+
+        var result = await fs.SearchAsync(request, TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(FileSearchStatus.Success);
+        result.Complete.ShouldBeTrue();
+        result.VisitedFiles.ShouldBe(1);
+        result.Matches.ShouldHaveSingleItem().Path.Value.ShouldBe("src/target.cs");
     }
 
     [Fact]

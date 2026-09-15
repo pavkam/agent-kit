@@ -306,6 +306,21 @@ public interface ISessionStore
 }
 ```
 
+Forward paging captures an immutable `SessionReadSnapshot` on the first read.
+The snapshot contains the exact `SessionAddress`, `BranchId`, `SessionVersion`,
+and inclusive `UpperSequence`. Continuation requests echo that value, and stores
+return only entries whose sequence is greater than the page cursor and no
+greater than `UpperSequence`. Later appends therefore never leak into an
+in-progress read. `ThroughSequence` remains only the pagination position; it is
+not a session version and may exceed the branch tip for an empty legacy read.
+Stores reject future, wrong-address, wrong-branch, and beyond-tip snapshots with
+a typed read failure rather than substituting current state. Public construction
+does not establish provenance: a continuation is valid only when the selected
+store previously issued the equal snapshot. An adapter may retain that
+continuation evidence in a bounded transient cache; eviction or adapter restart
+fails the continuation explicitly instead of accepting an unproved
+version/upper-sequence pair.
+
 Stores are additive, keyed state implementations. Selection occurs when a
 session is created. Before creating store state, the coordinator idempotently
 records the chosen `SessionStoreKey` in `ISessionDirectory`; retries and crash

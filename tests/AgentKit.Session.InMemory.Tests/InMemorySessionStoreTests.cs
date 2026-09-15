@@ -236,6 +236,41 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
     }
 
     [Fact]
+    public async Task ReadAsync_WhenAppendOccursBetweenPages_ContinuationRetainsOriginalPrefix()
+    {
+        var (store, descriptor, context) = await SeedAsync(3);
+        var firstPage = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 2), TestContext.Current.CancellationToken);
+        var appendedEntry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 4, "later");
+        _ = await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(3), new IdempotencyKey("later"), [appendedEntry]), TestContext.Current.CancellationToken);
+
+        var issued = firstPage.Snapshot!;
+        var reconstructed = new SessionReadSnapshot(issued.Address, issued.BranchId, issued.Version, issued.UpperSequence);
+        var secondPage = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, firstPage.ThroughSequence, 10, reconstructed), TestContext.Current.CancellationToken);
+
+        secondPage.Snapshot.ShouldBe(reconstructed);
+        secondPage.Entries.ShouldHaveSingleItem().Sequence.ShouldBe(new SessionSequence(3));
+        secondPage.HasMore.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenOneAppendCommitsMultipleEntries_PreservesDistinctVersionAndUpperSequence()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var entries = ImmutableArray.Create<SessionEntry>(
+            TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1, "one"),
+            TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 2, "two"));
+        var appended = (SessionAppended) await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(0), new IdempotencyKey("batch"), entries), TestContext.Current.CancellationToken);
+
+        var page = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10), TestContext.Current.CancellationToken);
+
+        appended.NewVersion.ShouldBe(new SessionVersion(1));
+        page.Snapshot.ShouldNotBeNull().Version.ShouldBe(new SessionVersion(1));
+        page.Snapshot.UpperSequence.ShouldBe(new SessionSequence(2));
+    }
+
+    [Fact]
     public async Task ReadAsync_WhenBranchIsEmpty_ReturnsEmptyPageWithHasMoreFalse()
     {
         var store = TestFactory.CreateStore();
@@ -245,6 +280,23 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
         var page = result.ShouldBeOfType<SessionPage>();
         page.Entries.ShouldBeEmpty();
         page.HasMore.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenNewCursorIsBeyondBranchTip_ReturnsTypedFailure()
+    {
+        var (store, descriptor, context) = await SeedAsync(1);
+        var result = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(2), 10), TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<SessionReadFailed>();
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenSnapshotClaimsFutureState_ReturnsTypedFailure()
+    {
+        var (store, descriptor, context) = await SeedAsync(1);
+        var snapshot = new SessionReadSnapshot(descriptor.Address, descriptor.ActiveBranchId, new SessionVersion(9), new SessionSequence(9));
+        var result = await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10, snapshot), TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<SessionReadFailed>();
     }
 
     [Fact]

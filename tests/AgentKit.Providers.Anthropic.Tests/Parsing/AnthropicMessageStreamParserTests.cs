@@ -101,6 +101,19 @@ public sealed class AnthropicMessageStreamParserTests
         _ = failed.Failure.DiagnosticCause.ShouldBeOfType<JsonException>();
     }
 
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolArgumentsAreTruncatedByMaxTokens_ReturnsTypedFailureWithoutThrowing()
+    {
+        // Anthropic still sends content_block_stop after max_tokens truncates partial_json; the parser must return a typed failure.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_tool_use_truncated_arguments.sse"), 4096);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<ModelAttemptFailed>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
     public static TheoryData<int> ChunkSizes => [1, 2, 3, 7, 64, 4096];
 
     [Theory]

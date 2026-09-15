@@ -17,4 +17,10 @@ namespace AgentKit.Tools.Write
         public AgentKit.ToolDescriptor Descriptor { get; }
         public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class WriteFileToolPresentationFormatter : AgentKit.IToolPresentationFormatter
+    {
+        public WriteFileToolPresentationFormatter() { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation?> FormatAsync(AgentKit.ToolPresentationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
 }

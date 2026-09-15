@@ -23,4 +23,18 @@ internal sealed class OpenAIDelta
     /// <summary>Gets or sets the incremental tool-call fragments carried by this chunk.</summary>
     [JsonPropertyName("tool_calls")]
     public IReadOnlyList<OpenAIToolCallDelta>? ToolCalls { get; set; }
+
+    /// <summary>
+    /// Gets or sets the incremental visible reasoning fragment some OpenAI-compatible deployments
+    /// (DeepSeek, Moonshot, several local servers) emit under <c>reasoning_content</c>.
+    /// </summary>
+    [JsonPropertyName("reasoning_content")]
+    public string? ReasoningContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the incremental visible reasoning fragment emitted under the alternative
+    /// <c>reasoning</c> member used by OpenRouter and some compatible gateways.
+    /// </summary>
+    [JsonPropertyName("reasoning")]
+    public string? Reasoning { get; set; }
 }

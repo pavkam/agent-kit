@@ -31,6 +31,7 @@ public sealed class CommandTool: ITool
     private readonly TimeProvider _timeProvider;
     private readonly string _shellExecutable;
     private readonly ImmutableArray<string> _shellArguments;
+    private readonly ImmutableArray<ProcessEnvironmentVariable> _environment;
     private readonly SandboxProfileId _sandboxProfile;
     private readonly TimeSpan _defaultTimeout;
     private readonly TimeSpan _maximumTimeout;
@@ -78,6 +79,9 @@ public sealed class CommandTool: ITool
         _timeProvider = timeProvider;
         _shellExecutable = options.Value.ShellExecutable;
         _shellArguments = [.. options.Value.ShellArguments];
+        _environment = [.. options.Value.EnvironmentVariables
+            .OrderBy(static item => item.Key, StringComparer.Ordinal)
+            .Select(static item => new ProcessEnvironmentVariable(item.Key, item.Value))];
         _sandboxProfile = options.Value.SandboxProfile;
         _defaultTimeout = options.Value.DefaultTimeout;
         _maximumTimeout = options.Value.MaximumTimeout;
@@ -87,8 +91,9 @@ public sealed class CommandTool: ITool
         _maximumCommandBytes = options.Value.MaximumCommandBytes;
     }
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
+    /// <value>The source-owned identity, schema, effects, and hints for this tool.</value>
+    internal static ToolDescriptor PresentationDescriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "command",
@@ -99,6 +104,9 @@ public sealed class CommandTool: ITool
         new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
         new ToolSourceId("agentkit.tools.command"),
         ExtensionData.Empty);
+
+    /// <inheritdoc/>
+    public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
     public async Task<ToolInvocationResult> InvokeAsync(
@@ -117,7 +125,7 @@ public sealed class CommandTool: ITool
             _shellExecutable,
             arguments,
             parsed.WorkingDirectory,
-            [],
+            _environment,
             [],
             _sandboxProfile,
             parsed.WorkspaceAccess,
@@ -329,7 +337,8 @@ public sealed class CommandTool: ITool
             return true;
         }
 
-        if (property.TryGetInt64(out var milliseconds)
+        if (property.ValueKind == JsonValueKind.Number
+            && property.TryGetInt64(out var milliseconds)
             && milliseconds > 0
             && milliseconds <= ceiling.TotalMilliseconds)
         {
@@ -354,7 +363,8 @@ public sealed class CommandTool: ITool
             return true;
         }
 
-        return property.TryGetInt64(out value) && value > 0 && value <= ceiling;
+        value = 0;
+        return property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out value) && value > 0 && value <= ceiling;
     }
 
     private static void ValidateOptions(CommandToolOptions value)
@@ -366,6 +376,10 @@ public sealed class CommandTool: ITool
         foreach (var argument in value.ShellArguments)
         {
             ArgumentException.ThrowIfContainsNul(argument, nameof(value.ShellArguments));
+        }
+        foreach (var (name, environmentValue) in value.EnvironmentVariables)
+        {
+            _ = new ProcessEnvironmentVariable(name, environmentValue);
         }
         ArgumentException.ThrowIfNullOrWhiteSpace(value.SandboxProfile.Value, nameof(value.SandboxProfile));
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(value.DefaultTimeout, TimeSpan.Zero, nameof(value.DefaultTimeout));

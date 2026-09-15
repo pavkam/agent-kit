@@ -14,6 +14,6 @@ internal static partial class RunEventHubLog
     /// <param name="agentId">The accepted agent identity.</param>
     /// <param name="sessionId">The accepted session identity.</param>
     /// <param name="runId">The accepted run identity.</param>
-    [LoggerMessage(EventId = 1006, Message = "Run-event hub {Operation} ended with {Outcome}. Agent {AgentId} session {SessionId} run {RunId}.")]
+    [LoggerMessage(EventId = 22006, Message = "Run-event hub {Operation} ended with {Outcome}. Agent {AgentId} session {SessionId} run {RunId}.")]
     internal static partial void Completed(ILogger logger, LogLevel level, string operation, string outcome, AgentId agentId, SessionId sessionId, RunId runId);
 }

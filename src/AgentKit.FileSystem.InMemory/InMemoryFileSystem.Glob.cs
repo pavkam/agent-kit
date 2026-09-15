@@ -29,7 +29,8 @@ public sealed partial class InMemoryFileSystem
                 request.IncludeHidden,
                 request.MaximumDepth,
                 request.MaximumVisitedEntries,
-                request.MaximumResults));
+                request.MaximumResults,
+                request.ExcludedPathPatterns));
         var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
         var grantResult = await _grantStore.ValidateAndConsumeAsync(request.Grant, enforcement, intent, cancellationToken)
             .ConfigureAwait(false);
@@ -80,6 +81,7 @@ public sealed partial class InMemoryFileSystem
                 continue;
             }
 
+            var relative = directoryPath is null ? name : $"{directoryPath}/{name}";
             state.VisitedEntries++;
             if (state.VisitedEntries > state.Request.MaximumVisitedEntries)
             {
@@ -87,7 +89,11 @@ public sealed partial class InMemoryFileSystem
                 return;
             }
 
-            var relative = directoryPath is null ? name : $"{directoryPath}/{name}";
+            if (IsExcludedPath(relative, state.Request.ExcludedPathPatterns, state.Request.CaseSensitive))
+            {
+                continue;
+            }
+
             var workspacePath = state.Request.BasePath is null ? relative : $"{state.Request.BasePath.Value.Value}/{relative}";
             if (GlobMatches(state.Request.Pattern.Value, relative, state.Request.CaseSensitive))
             {
@@ -132,6 +138,30 @@ public sealed partial class InMemoryFileSystem
         var patternSegments = pattern.Split('/');
         var pathSegments = path.Split('/');
         return MatchGlobSegments(patternSegments, 0, pathSegments, 0, caseSensitive);
+    }
+
+    private static bool IsExcludedPath(
+        string path,
+        ImmutableArray<GlobPattern> excludedPathPatterns,
+        bool caseSensitive)
+    {
+        if (excludedPathPatterns.IsDefaultOrEmpty)
+        {
+            return false;
+        }
+
+        foreach (var pattern in excludedPathPatterns)
+        {
+            var value = pattern.Value;
+            if (GlobMatches(value, path, caseSensitive)
+                || (value.EndsWith("/**", StringComparison.Ordinal)
+                    && GlobMatches(value[..^3], path, caseSensitive)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool MatchGlobSegments(

@@ -3,18 +3,74 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Conversations
 {
+    public sealed class AsyncOwnedConversationSession : AgentKit.Conversations.IConversationSession, System.IAsyncDisposable
+    {
+        public AsyncOwnedConversationSession(AgentKit.Conversations.IConversationSession inner, System.IAsyncDisposable owner) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionListResult> ListAsync(AgentKit.SessionId? afterSessionId, int maximumResults, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionOpenResult> OpenAsync(AgentKit.SessionId sessionId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation?> PresentToolAsync(AgentKit.ContentPart part, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationHistoryReadResult> ReadHistoryAsync(AgentKit.SessionSequence afterSequence, int maximumEntries, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, AgentKit.Conversations.IConversationEventObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ConversationAssistantTextDeltaEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationAssistantTextDeltaEvent>
+    {
+        public ConversationAssistantTextDeltaEvent(string text) { }
+        public string Text { get; }
+    }
     public sealed class ConversationAssistantTextEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationAssistantTextEvent>
     {
         public ConversationAssistantTextEvent(string text) { }
         public string Text { get; init; }
     }
     public abstract class ConversationEvent : System.IEquatable<AgentKit.Conversations.ConversationEvent> { }
+    public sealed class ConversationHistoryPage : AgentKit.Conversations.ConversationHistoryReadResult, System.IEquatable<AgentKit.Conversations.ConversationHistoryPage>
+    {
+        public ConversationHistoryPage(System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> messages, AgentKit.SessionSequence nextCursor, bool complete) { }
+        public bool Complete { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Messages { get; }
+        public AgentKit.SessionSequence NextCursor { get; }
+        public bool Equals(AgentKit.Conversations.ConversationHistoryPage? other) { }
+        public override int GetHashCode() { }
+    }
+    public abstract class ConversationHistoryReadResult : System.IEquatable<AgentKit.Conversations.ConversationHistoryReadResult> { }
+    public sealed class ConversationHistoryUnavailable : AgentKit.Conversations.ConversationHistoryReadResult, System.IEquatable<AgentKit.Conversations.ConversationHistoryUnavailable>
+    {
+        public ConversationHistoryUnavailable(string safeMessage) { }
+        public string SafeMessage { get; }
+    }
+    public sealed class ConversationReasoningEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationReasoningEvent>
+    {
+        public ConversationReasoningEvent(string text) { }
+        public string Text { get; }
+    }
+    public abstract class ConversationSessionListResult : System.IEquatable<AgentKit.Conversations.ConversationSessionListResult> { }
+    public sealed class ConversationSessionListUnavailable : AgentKit.Conversations.ConversationSessionListResult, System.IEquatable<AgentKit.Conversations.ConversationSessionListUnavailable>
+    {
+        public ConversationSessionListUnavailable(string safeMessage) { }
+        public string SafeMessage { get; }
+    }
+    public sealed class ConversationSessionOpenRejected : AgentKit.Conversations.ConversationSessionOpenResult, System.IEquatable<AgentKit.Conversations.ConversationSessionOpenRejected>
+    {
+        public ConversationSessionOpenRejected(string safeMessage) { }
+        public string SafeMessage { get; }
+    }
+    public abstract class ConversationSessionOpenResult : System.IEquatable<AgentKit.Conversations.ConversationSessionOpenResult> { }
+    public sealed class ConversationSessionOpened : AgentKit.Conversations.ConversationSessionOpenResult, System.IEquatable<AgentKit.Conversations.ConversationSessionOpened>
+    {
+        public ConversationSessionOpened(AgentKit.SessionId SessionId, AgentKit.BranchId BranchId) { }
+        public AgentKit.BranchId BranchId { get; init; }
+        public AgentKit.SessionId SessionId { get; init; }
+    }
     public sealed class ConversationSessionOptions
     {
         public ConversationSessionOptions() { }
+        public AgentKit.AgentDefinition? Agent { get; set; }
         public AgentKit.AgentDefinitionRevision AgentDefinitionRevision { get; set; }
         public AgentKit.AgentId AgentId { get; set; }
         public System.TimeSpan AttemptTimeout { get; set; }
+        public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; set; }
         public AgentKit.ConfigurationVersion ConfigurationVersion { get; set; }
         public AgentKit.ExecutionIdentity? Identity { get; set; }
         public System.Collections.Generic.IList<AgentKit.AgentMessage> Instructions { get; }
@@ -25,20 +81,54 @@ namespace AgentKit.Conversations
         public AgentKit.SecurityProfileKey SecurityProfileKey { get; set; }
         public AgentKit.SessionProfileSnapshot? SessionProfile { get; set; }
         public AgentKit.LlmToolChoice ToolChoice { get; set; }
+        public System.Collections.Generic.IList<AgentKit.Conversations.ConversationToolPresentationBinding> ToolPresentationBindings { get; }
         public System.Collections.Generic.IList<AgentKit.LlmToolDefinition> Tools { get; }
+    }
+    public sealed class ConversationSessionPage : AgentKit.Conversations.ConversationSessionListResult, System.IEquatable<AgentKit.Conversations.ConversationSessionPage>
+    {
+        public ConversationSessionPage(System.Collections.Immutable.ImmutableArray<AgentKit.Conversations.ConversationSessionSummary> Sessions, AgentKit.SessionId? NextCursor) { }
+        public AgentKit.SessionId? NextCursor { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Conversations.ConversationSessionSummary> Sessions { get; init; }
+    }
+    public sealed class ConversationSessionSummary : System.IEquatable<AgentKit.Conversations.ConversationSessionSummary>
+    {
+        public ConversationSessionSummary(AgentKit.SessionId SessionId, AgentKit.SessionStoreKey StoreKey, System.DateTimeOffset RecordedAt) { }
+        public System.DateTimeOffset RecordedAt { get; init; }
+        public AgentKit.SessionId SessionId { get; init; }
+        public AgentKit.SessionStoreKey StoreKey { get; init; }
     }
     public sealed class ConversationToolCallEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationToolCallEvent>
     {
         public ConversationToolCallEvent(string toolName, string argumentsJson) { }
+        public ConversationToolCallEvent(AgentKit.ToolCallId callId, string toolName, string argumentsJson) { }
+        public ConversationToolCallEvent(AgentKit.ToolCallId callId, string toolName, string argumentsJson, AgentKit.ToolPresentation? presentation) { }
         public string ArgumentsJson { get; init; }
+        public AgentKit.ToolCallId CallId { get; init; }
+        public AgentKit.ToolPresentation? Presentation { get; }
         public string ToolName { get; init; }
+    }
+    public sealed class ConversationToolPresentationBinding : System.IEquatable<AgentKit.Conversations.ConversationToolPresentationBinding>
+    {
+        public ConversationToolPresentationBinding(AgentKit.ToolDescriptor descriptor, AgentKit.LlmToolDefinition advertisedTool) { }
+        public AgentKit.LlmToolDefinition AdvertisedTool { get; }
+        public AgentKit.ToolDescriptor Descriptor { get; }
     }
     public sealed class ConversationToolResultEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationToolResultEvent>
     {
         public ConversationToolResultEvent(string toolName, bool succeeded, string summary) { }
+        public ConversationToolResultEvent(AgentKit.ToolCallId callId, string toolName, bool succeeded, string summary) { }
+        public ConversationToolResultEvent(AgentKit.ToolCallId callId, string toolName, bool succeeded, string summary, AgentKit.ToolPresentation? presentation) { }
+        public AgentKit.ToolCallId CallId { get; init; }
+        public AgentKit.ToolPresentation? Presentation { get; }
         public bool Succeeded { get; init; }
         public string Summary { get; init; }
         public string ToolName { get; init; }
+    }
+    public sealed class ConversationTurnCompletedEvent : AgentKit.Conversations.ConversationEvent, System.IEquatable<AgentKit.Conversations.ConversationTurnCompletedEvent>
+    {
+        public ConversationTurnCompletedEvent(bool succeeded, string outcome) { }
+        public string Outcome { get; }
+        public bool Succeeded { get; }
     }
     public sealed class ConversationTurnResult : System.IEquatable<AgentKit.Conversations.ConversationTurnResult>
     {
@@ -54,12 +144,38 @@ namespace AgentKit.Conversations
     public sealed class DefaultConversationSession : AgentKit.Conversations.IConversationSession, System.IDisposable
     {
         public DefaultConversationSession(AgentKit.ISessionCoordinator sessionCoordinator, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IAgentLoop agentLoop, AgentKit.IIdentifierGenerator<AgentKit.RunId> runIds, AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds, AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> sessionEntryIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger = null) { }
+        public DefaultConversationSession(AgentKit.ISessionCoordinator sessionCoordinator, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IAgentLoop agentLoop, AgentKit.IIdentifierGenerator<AgentKit.RunId> runIds, AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds, AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> sessionEntryIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger, AgentKit.IToolPresenter? toolPresenter) { }
         public void Dispose() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionListResult> ListAsync(AgentKit.SessionId? afterSessionId, int maximumResults, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionOpenResult> OpenAsync(AgentKit.SessionId sessionId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation?> PresentToolAsync(AgentKit.ContentPart part, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationHistoryReadResult> ReadHistoryAsync(AgentKit.SessionSequence afterSequence, int maximumEntries, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, AgentKit.Conversations.IConversationEventObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public interface IConversationEventObserver
+    {
+        System.Threading.Tasks.ValueTask OnEventAsync(AgentKit.Conversations.ConversationEvent conversationEvent, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IConversationSession
     {
+        System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionListResult> ListAsync(AgentKit.SessionId? afterSessionId, int maximumResults, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionOpenResult> OpenAsync(AgentKit.SessionId sessionId, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation?> PresentToolAsync(AgentKit.ContentPart part, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationHistoryReadResult> ReadHistoryAsync(AgentKit.SessionSequence afterSequence, int maximumEntries, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, AgentKit.Conversations.IConversationEventObserver observer, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public sealed class OwnedConversationSession : AgentKit.Conversations.IConversationSession, System.IDisposable
+    {
+        public OwnedConversationSession(AgentKit.Conversations.IConversationSession inner, System.IDisposable owner) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionListResult> ListAsync(AgentKit.SessionId? afterSessionId, int maximumResults, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionOpenResult> OpenAsync(AgentKit.SessionId sessionId, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation?> PresentToolAsync(AgentKit.ContentPart part, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationHistoryReadResult> ReadHistoryAsync(AgentKit.SessionSequence afterSequence, int maximumEntries, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.Conversations.ConversationTurnResult> SendAsync(string userText, AgentKit.Conversations.IConversationEventObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ServiceExtensions
     {

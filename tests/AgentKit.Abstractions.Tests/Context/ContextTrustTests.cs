@@ -9,5 +9,5 @@ using AgentKit;
 public sealed class ContextTrustTests
 {
     [Fact]
-    public void ContextEnums_WhenEnumerated_ContainOnlyNormativeValues() => Enum.GetValues<ContextTrust>().ShouldBe([ContextTrust.Framework, ContextTrust.HostPolicy, ContextTrust.AgentDefinition, ContextTrust.Workspace, ContextTrust.User, ContextTrust.RetrievedData, ContextTrust.ToolData, ContextTrust.ModelGenerated,]);
+    public void ContextEnums_WhenEnumerated_ContainOnlyNormativeValues() => Enum.GetValues<ContextTrust>().ShouldBe([ContextTrust.Framework, ContextTrust.HostPolicy, ContextTrust.AgentDefinition, ContextTrust.Workspace, ContextTrust.User, ContextTrust.RetrievedData, ContextTrust.ToolData, ContextTrust.ModelGenerated, ContextTrust.Package,]);
 }

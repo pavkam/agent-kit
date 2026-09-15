@@ -40,7 +40,38 @@ public static class ServiceExtensions
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IIdentifierGenerator<GrantId>, GuidGrantIdGenerator>();
             services.TryAddSingleton<IIdentifierGenerator<SecurityRequestId>, GuidSecurityRequestIdGenerator>();
-            services.TryAddSingleton<ISecurityAuthority, SecurityAuthority>();
+            services.TryAddSingleton<IIdentifierGenerator<ApprovalRequestId>, GuidApprovalRequestIdGenerator>();
+            services.TryAddSingleton<IIdentifierGenerator<SecurityAuditRecordId>, GuidSecurityAuditRecordIdGenerator>();
+            services.TryAddSingleton<IApprovalHandler, DenyApprovalHandler>();
+            services.TryAddSingleton<IApprovalResponderAuthorizer, DenyApprovalResponderAuthorizer>();
+            services.TryAddSingleton<IApprovalBroker>(static provider => new DefaultApprovalBroker(
+                provider.GetRequiredService<IApprovalStore>(),
+                provider.GetRequiredService<IApprovalHandler>(),
+                provider.GetRequiredService<IApprovalResponderAuthorizer>(),
+                provider.GetRequiredService<ISecurityAuditDispatcher>(),
+                provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+                provider.GetRequiredService<TimeProvider>()));
+            services.TryAddSingleton<ISecurityAuthority>(static provider =>
+            {
+                var policies = provider.GetServices<ISecurityPolicy>();
+                var grantStore = provider.GetRequiredService<ISecurityGrantStore>();
+                var grantIds = provider.GetRequiredService<IIdentifierGenerator<GrantId>>();
+                var timeProvider = provider.GetRequiredService<TimeProvider>();
+                var permissionOptions = provider.GetRequiredService<IOptions<AgentPermissionOptions>>();
+                var logger = provider.GetService<ILogger<SecurityAuthority>>();
+                return provider.GetService<IApprovalStore>() is null
+                    ? new SecurityAuthority(policies, grantStore, grantIds, timeProvider, permissionOptions, logger)
+                    : new SecurityAuthority(
+                        policies,
+                        grantStore,
+                        grantIds,
+                        timeProvider,
+                        permissionOptions,
+                        provider.GetRequiredService<IApprovalBroker>(),
+                        provider.GetRequiredService<IIdentifierGenerator<ApprovalRequestId>>(),
+                        provider.GetRequiredService<ISecurityAuditDispatcher>(),
+                        logger);
+            });
             services.TryAddSingleton<ISecurityAuthoritySelector, DefaultSecurityAuthoritySelector>();
             services.TryAddSingleton<ISecurityProfilePublicationReader, DefaultSecurityProfilePublicationReader>();
             services.TryAddSingleton<ISecurityProfileSelector, DefaultSecurityProfileSelector>();

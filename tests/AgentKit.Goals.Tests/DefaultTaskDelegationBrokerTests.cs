@@ -228,7 +228,7 @@ public sealed class DefaultTaskDelegationBrokerTests
         activity.GetTagItem(AgentKitTagNames.TenantId).ShouldBe("tenant");
         activity.GetTagItem(AgentKitTagNames.TurnId).ShouldBeNull();
         string.Join('|', activity.TagObjects.Select(static tag => $"{tag.Key}={tag.Value}")).ShouldNotContain(request.Prompt.Objective);
-        logger.Events.ShouldHaveSingleItem().ShouldBe((2000, LogLevel.Information));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((23000, LogLevel.Information));
         logger.Messages.ShouldAllBe(message => !message.Contains(request.Prompt.Objective, StringComparison.Ordinal));
         Volatile.Read(ref countMeasurements).ShouldBe(1);
         Volatile.Read(ref durationMeasurements).ShouldBe(1);
@@ -388,7 +388,7 @@ public sealed class DefaultTaskDelegationBrokerTests
         var activity = stopped.ShouldNotBeNull();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("cancelled");
-        logger.Events.ShouldHaveSingleItem().ShouldBe((2001, LogLevel.Information));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((23001, LogLevel.Information));
     }
 
     [Fact]
@@ -415,7 +415,7 @@ public sealed class DefaultTaskDelegationBrokerTests
         var activity = stopped.ShouldNotBeNull();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("failed");
-        logger.Events.ShouldHaveSingleItem().ShouldBe((2002, LogLevel.Error));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((23002, LogLevel.Error));
         logger.Messages.ShouldAllBe(message => !message.Contains("raw child dispatch detail", StringComparison.Ordinal));
     }
 
@@ -444,7 +444,7 @@ public sealed class DefaultTaskDelegationBrokerTests
         var activity = stopped.ShouldNotBeNull();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("grant_denied");
-        logger.Events.ShouldHaveSingleItem().ShouldBe((2000, LogLevel.Information));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((23000, LogLevel.Information));
         logger.Messages.ShouldAllBe(message => !message.Contains(request.Prompt.Objective, StringComparison.Ordinal));
     }
 
@@ -509,7 +509,7 @@ public sealed class DefaultTaskDelegationBrokerTests
         var activity = stopped.ShouldNotBeNull();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("failed");
-        logger.Events.ShouldHaveSingleItem().ShouldBe((2000, LogLevel.Error));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((23000, LogLevel.Error));
     }
 
     [Fact]

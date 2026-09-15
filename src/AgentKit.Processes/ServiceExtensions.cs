@@ -27,6 +27,12 @@ public static class ServiceExtensions
                 .Configure(configure)
                 .Validate(static options => Path.IsPathRooted(options.RootDirectory), "RootDirectory must be absolute.")
                 .Validate(static options => options.AllowedExecutablePaths.Count > 0, "At least one executable is required.")
+                .Validate(
+                    static options => options.ReadOnlyToolchainRoots.All(static item =>
+                        !string.IsNullOrWhiteSpace(item.Key)
+                        && !string.IsNullOrWhiteSpace(item.Value)
+                        && Path.IsPathRooted(item.Value)),
+                    "ReadOnlyToolchainRoots must have non-blank identities and absolute paths.")
                 .Validate(static options => options.MaximumArgumentCount > 0, "MaximumArgumentCount must be positive.")
                 .Validate(static options => options.MaximumArgumentBytes > 0, "MaximumArgumentBytes must be positive.")
                 .Validate(static options => options.MaximumInputBytes >= 0, "MaximumInputBytes must be non-negative.")

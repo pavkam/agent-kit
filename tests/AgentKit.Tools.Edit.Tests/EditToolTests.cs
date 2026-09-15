@@ -117,6 +117,26 @@ public sealed class EditToolTests
         json.RootElement.GetProperty("replacements").GetInt32().ShouldBe(3);
     }
 
+    [Theory]
+    [InlineData("\"1\"")]
+    [InlineData("true")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("[1]")]
+    public async Task InvokeAsync_WhenMaximumBytesIsNotANumber_ReturnsInvalidArgumentsWithoutThrowing(string literal)
+    {
+        // Model-supplied argument values are untrusted input; a wrong JSON kind is InvalidArguments, never an exception.
+        var snapshot = new FakeSnapshotReader();
+        var replacer = new FakeAtomicFileReplacer();
+        var json = $$"""{"path":"src/a.cs","old_text":"old","new_text":"new","maximum_bytes":{{literal}}}""";
+
+        var result = await CreateTool(snapshot, replacer, new SequencedSecurityAuthority()).InvokeAsync(
+            Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        replacer.Requests.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task InvokeAsync_WhenReplacementIsIdentical_ReturnsNoChangeWithoutWriteAuthority()
     {

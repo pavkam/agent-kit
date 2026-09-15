@@ -5,6 +5,15 @@ namespace AgentKit.Tools.Command.Tests;
 
 public sealed class CommandToolTests
 {
+    [Fact]
+    public void CommandToolOptions_WhenDefaulted_UsesNonLoginShellAndEmptyEnvironment()
+    {
+        var options = new CommandToolOptions();
+
+        options.ShellArguments.ShouldBe(["-c"]);
+        options.EnvironmentVariables.ShouldBeEmpty();
+    }
+
     [Theory]
     [InlineData(/*lang=json,strict*/ "{}")]
     [InlineData(/*lang=json,strict*/ "{\"command\":1}")]
@@ -98,6 +107,8 @@ public sealed class CommandToolTests
         unresolved.WorkingDirectory.ShouldBe(new FileSystemPath("src"));
         unresolved.WorkspaceAccess.ShouldBe(ProcessWorkspaceAccess.ReadOnly);
         unresolved.SideEffectClass.ShouldBe(ProcessSideEffectClass.ReadOnly);
+        unresolved.Environment.ShouldBe(
+            [new ProcessEnvironmentVariable("LANG", "C.UTF-8"), new ProcessEnvironmentVariable("PATH", "/toolchain/bin")]);
         unresolved.Limits.Timeout.ShouldBe(TimeSpan.FromMilliseconds(500));
         unresolved.Limits.MaximumOutputBytes.ShouldBe(12);
 
@@ -292,6 +303,8 @@ public sealed class CommandToolTests
         };
         options.ShellArguments.Clear();
         options.ShellArguments.Add("--fixed");
+        options.EnvironmentVariables.Add("PATH", "/toolchain/bin");
+        options.EnvironmentVariables.Add("LANG", "C.UTF-8");
         return options;
     }
 

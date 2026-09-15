@@ -34,11 +34,14 @@ public readonly record struct FileSystemPath
     /// <param name="value">The non-empty, relative, traversal-free path text.</param>
     /// <exception cref="ArgumentException">
     /// <paramref name="value"/> is null, empty, or consists only of
-    /// whitespace; is rooted (absolute); or contains a <c>..</c> segment.
+    /// whitespace; contains an embedded NUL character (which would truncate the
+    /// path at the host boundary so the effect lands on a path other than the
+    /// one authorized); is rooted (absolute); or contains a <c>..</c> segment.
     /// </exception>
     public FileSystemPath(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        ArgumentException.ThrowIfContainsNul(value);
 
         if (Path.IsPathRooted(value))
         {

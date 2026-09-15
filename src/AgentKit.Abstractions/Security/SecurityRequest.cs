@@ -125,4 +125,45 @@ public sealed record SecurityRequest
     public DateTimeOffset Deadline { get; init; }
     /// <summary>Gets the requested maximum use count.</summary>
     public int RequestedUses { get; init; }
+
+    /// <summary>Compares every member structurally, including the ordered <see cref="Resources"/> sequence.</summary>
+    /// <param name="other">The request to compare with.</param>
+    /// <returns><see langword="true"/> when both requests describe the same protected operation.</returns>
+    public bool Equals(SecurityRequest? other) =>
+        other is not null
+        && Id == other.Id
+        && Scope == other.Scope
+        && ToolCallId == other.ToolCallId
+        && Identity == other.Identity
+        && Authorization == other.Authorization
+        && Audience == other.Audience
+        && Kind == other.Kind
+        && Effect == other.Effect
+        && Resources.SequenceEqual(other.Resources)
+        && InputFingerprint == other.InputFingerprint
+        && Deadline == other.Deadline
+        && RequestedUses == other.RequestedUses;
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Id);
+        hash.Add(Scope);
+        hash.Add(ToolCallId);
+        hash.Add(Identity);
+        hash.Add(Authorization);
+        hash.Add(Audience);
+        hash.Add(Kind);
+        hash.Add(Effect);
+        foreach (var resource in Resources)
+        {
+            hash.Add(resource);
+        }
+
+        hash.Add(InputFingerprint);
+        hash.Add(Deadline);
+        hash.Add(RequestedUses);
+        return hash.ToHashCode();
+    }
 }

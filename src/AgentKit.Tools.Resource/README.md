@@ -5,6 +5,13 @@ Load configured resources through bounded, security-aware operations.
 Use this tool to expose resource content under a captured configuration.
 Resource descriptions do not grant authority to retrieve arbitrary content.
 
+`AddResourceTool` also registers `ResourceToolPresentationFormatter` as an
+additive `IToolPresentationFormatter`. Applications using `IToolPresenter`
+receive readable list/read call summaries and literal loaded content from the
+exact captured resource descriptor. Presentation omits backing paths, catalog
+and content fingerprints, and transport JSON; loaded text remains explicitly
+non-authoritative data.
+
 ## Use this project
 
 Start with `AddResourceTool` in [ServiceExtensions.cs](ServiceExtensions.cs).

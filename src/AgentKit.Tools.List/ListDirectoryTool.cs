@@ -178,7 +178,8 @@ public sealed class ListDirectoryTool: ITool
 
         if (arguments.TryGetProperty("maximum_entries", out var maximumProperty))
         {
-            if (!maximumProperty.TryGetInt32(out maximumEntries)
+            if (maximumProperty.ValueKind != JsonValueKind.Number
+                || !maximumProperty.TryGetInt32(out maximumEntries)
                 || maximumEntries <= 0
                 || maximumEntries > _options.MaximumPageEntries)
             {
@@ -193,6 +194,7 @@ public sealed class ListDirectoryTool: ITool
                 || !cursorProperty.TryGetProperty("snapshot", out var snapshot)
                 || snapshot.ValueKind != JsonValueKind.String
                 || !cursorProperty.TryGetProperty("next_index", out var nextIndex)
+                || nextIndex.ValueKind != JsonValueKind.Number
                 || !nextIndex.TryGetInt32(out var parsedIndex)
                 || parsedIndex <= 0)
             {

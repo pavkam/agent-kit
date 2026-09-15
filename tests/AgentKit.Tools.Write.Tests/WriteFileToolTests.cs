@@ -5,6 +5,22 @@ namespace AgentKit.Tools.Write.Tests;
 
 public sealed class WriteFileToolTests
 {
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \n\t")]
+    public async Task InvokeAsync_WhenContentIsEmptyOrWhitespace_WritesExactContent(string content)
+    {
+        var fileSystem = new FakeFileSystem { OnWrite = static request => new FileWritten(request.Content.Length) };
+        var tool = TestFactory.Tool(fileSystem);
+
+        var result = await tool.InvokeAsync(
+            TestFactory.Request(JsonSerializer.Serialize(new { path = "a.txt", content, mode = "create_or_replace" })),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        fileSystem.ReceivedWrites.ShouldHaveSingleItem().Content.ShouldBe(content);
+    }
+
     [Fact]
     public void Constructor_WhenFileSystemNull_ThrowsArgumentNullException()
     {
@@ -24,6 +40,12 @@ public sealed class WriteFileToolTests
         descriptor.SourceId.ShouldBe(new ToolSourceId("agentkit.tools.write"));
         descriptor.InputSchema.Dialect.ShouldBe(new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"));
         descriptor.InputSchema.Document.TryGetProperty("additionalProperties", out _).ShouldBeFalse();
+        descriptor.InputSchema.Document.GetProperty("required").EnumerateArray()
+            .Select(static value => value.GetString())
+            .ShouldContain("mode");
+        descriptor.InputSchema.Document.GetProperty("properties").GetProperty("mode").GetProperty("enum")
+            .EnumerateArray().Select(static value => value.GetString())
+            .ShouldContain("replace_existing");
     }
 
     [Fact]
@@ -119,19 +141,23 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WhenModeOmitted_DefaultsToOverwrite()
+    public async Task InvokeAsync_WhenModeOmitted_ReturnsRejectedWithoutWriting()
     {
         var fileSystem = new FakeFileSystem { OnWrite = static r => new FileWritten(r.Content.Length) };
         var tool = TestFactory.Tool(fileSystem);
 
-        _ = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""), TestContext.Current.CancellationToken);
+        var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""), TestContext.Current.CancellationToken);
 
-        fileSystem.ReceivedWrites.ShouldHaveSingleItem().Mode.ShouldBe(FileWriteMode.CreateOrOverwrite);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        fileSystem.ReceivedWrites.ShouldBeEmpty();
     }
 
     [Theory]
     [InlineData("overwrite", FileWriteMode.CreateOrOverwrite)]
+    [InlineData("create_or_replace", FileWriteMode.CreateOrOverwrite)]
     [InlineData("create_new", FileWriteMode.CreateNew)]
+    [InlineData("create_only", FileWriteMode.CreateNew)]
+    [InlineData("replace_existing", FileWriteMode.ReplaceExisting)]
     [InlineData("append", FileWriteMode.Append)]
     public async Task InvokeAsync_WhenModeSpecified_TranslatesToRequestedFileWriteMode(string mode, FileWriteMode expected)
     {
@@ -150,7 +176,7 @@ public sealed class WriteFileToolTests
         var fileSystem = new FakeFileSystem { OnWrite = static _ => new FileWritten(42) };
         var tool = TestFactory.Tool(fileSystem);
 
-        var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""), TestContext.Current.CancellationToken);
+        var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_or_replace"}"""), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
         result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Succeeded);
@@ -181,7 +207,7 @@ public sealed class WriteFileToolTests
         var tool = TestFactory.Tool(fileSystem);
 
         var result = await tool.InvokeAsync(
-            TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""), TestContext.Current.CancellationToken);
+            TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_or_replace"}"""), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
         result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
@@ -195,7 +221,7 @@ public sealed class WriteFileToolTests
         var fileSystem = new FakeFileSystem { OnWrite = static _ => new FileWriteDenied("too large") };
         var tool = TestFactory.Tool(fileSystem);
 
-        var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""), TestContext.Current.CancellationToken);
+        var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_or_replace"}"""), TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
         result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Denied);
@@ -211,7 +237,7 @@ public sealed class WriteFileToolTests
         var tool = TestFactory.Tool(fileSystem, TestFactory.DenyingAuthority());
 
         var result = await tool.InvokeAsync(
-            TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi"}"""),
+            TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "content": "hi", "mode": "create_or_replace"}"""),
             TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
@@ -236,7 +262,7 @@ public sealed class WriteFileToolTests
             var tool = TestFactory.Tool(fileSystem);
 
             var result = await tool.InvokeAsync(
-                TestFactory.Request(/*lang=json,strict*/ """{"path": "doc.txt", "content": "hello"}"""), TestContext.Current.CancellationToken);
+                TestFactory.Request(/*lang=json,strict*/ """{"path": "doc.txt", "content": "hello", "mode": "create_only"}"""), TestContext.Current.CancellationToken);
 
             result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
             File.ReadAllText(Path.Combine(root, "doc.txt")).ShouldBe("hello");
@@ -249,4 +275,5 @@ public sealed class WriteFileToolTests
             }
         }
     }
+
 }

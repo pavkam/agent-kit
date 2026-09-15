@@ -22,6 +22,21 @@ engine composition is described in the
 Capabilities belong to the configured operation and model. A provider name or
 compatible wire format does not imply support for every feature.
 
+Tool results use the deterministic `agentkit.tool-result.v1` JSON envelope
+inside the wire message's `content` string. It retains exact outcome status,
+effect certainty, retry advice, failure reason, requested alias, and ordered
+text/JSON parts. Empty failure output remains an explicit failure. This is a
+projection for the model, not a reconstructed execution record or the
+human-facing tool presentation. The profile's positive
+`MaximumToolResultCharacters` bound defaults to 262,144; oversized source or
+serialized output fails before I/O instead of silently losing evidence. This
+intentionally changes the previous unwrapped tool-content mapping.
+
+Runtime notices map to a labeled JSON envelope under the `user` role. They never
+acquire system/developer instruction authority. OpenAI permits applications to
+choose a tool-output string format, including JSON and error codes; see the
+[official function-calling guide](https://developers.openai.com/api/docs/guides/function-calling#formatting-results).
+
 ## Related projects
 
 - [AgentKit.Providers.OpenAI](../AgentKit.Providers.OpenAI/README.md) — connect

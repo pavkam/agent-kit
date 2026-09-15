@@ -143,6 +143,32 @@ public sealed class InMemorySessionDirectoryTests
         exception.CancellationToken.ShouldBe(cancellation.Token);
     }
 
+    [Fact]
+    public async Task ListAsync_WhenRoutesSpanAgentsAndTenants_ReturnsOnlyVisibleOrderedPage()
+    {
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore());
+        var first = CreateRequest("first");
+        var second = CreateRequest("second");
+        var firstLocation = Location("22222222-2222-2222-2222-222222222222", "store-a");
+        var secondLocation = Location("33333333-3333-3333-3333-333333333333", "store-a");
+        _ = await directory.RecordCreateAsync(new AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>(
+            new SessionDirectoryCreateRecordRequest(first, secondLocation),
+            Grant(first, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()), TestContext.Current.CancellationToken);
+        _ = await directory.RecordCreateAsync(new AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>(
+            new SessionDirectoryCreateRecordRequest(second, firstLocation),
+            Grant(second, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()), TestContext.Current.CancellationToken);
+        var request = ListRequest();
+
+        var result = await directory.ListAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest>(
+                request, Grant(request), Intent()), TestContext.Current.CancellationToken);
+
+        var page = result.ShouldBeOfType<SessionDirectoryPage>();
+        page.Locations.Select(static location => location.Address.SessionId)
+            .ShouldBe([firstLocation.Address.SessionId]);
+        page.NextCursor.ShouldBe(firstLocation.Address.SessionId);
+    }
+
     private static InMemorySessionDirectory CreateDirectory(RecordingAuditDispatcher audits, RecordingGrantStore grants) => new(
         _audience,
         audits,
@@ -170,6 +196,19 @@ public sealed class InMemorySessionDirectoryTests
         return new SessionCreateRequest(agentId, identity, Authorization(agentId, null, correlation, identity), conversationId,
             new IdempotencyKey(idempotencyKey), extensions ?? ExtensionData.Empty);
     }
+
+    private static SessionDirectoryListRequest ListRequest()
+    {
+        var identity = TestSupport.TestExecutionIdentity.Create(
+            new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+        var agentId = new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
+        var correlation = new BeforeRunOperationCorrelation(GuidOperation(), null);
+        return new SessionDirectoryListRequest(
+            agentId, identity, Authorization(agentId, null, correlation, identity), null, 1);
+    }
+
+    private static OperationId GuidOperation() =>
+        new(Guid.Parse("33333333-3333-3333-3333-333333333333"));
 
     private static ExtensionData Extensions() => new(
         ImmutableDictionary<string, ExtensionValue>.Empty.Add("extension", new ExtensionValue([1, 2, 3])));
@@ -211,6 +250,13 @@ public sealed class InMemorySessionDirectoryTests
         new GrantId(Guid.NewGuid()), new SecurityRequestId(Guid.NewGuid()), request.Authorization.Scope, request.Identity, _audience,
         kind, effect, [SessionDirectorySecurityBinding.CreationResource(request.Identity.TenantId, request.AgentId, request.IdempotencyKey)],
         SessionDirectorySecurityBinding.LocateForCreateFingerprint(request), new SecurityPolicyVersion(1), new SecurityRevocationVersion(1),
+        DateTimeOffset.UnixEpoch, DateTimeOffset.MaxValue, 1);
+
+    private static SecurityGrant Grant(SessionDirectoryListRequest request) => new(
+        new GrantId(Guid.NewGuid()), new SecurityRequestId(Guid.NewGuid()), request.Authorization.Scope, request.Identity, _audience,
+        SecurityOperationKind.StateRead, SecurityEffect.Observe,
+        [SessionDirectorySecurityBinding.ListResource(request.Identity.TenantId, request.AgentId)],
+        SessionDirectorySecurityBinding.ListFingerprint(request), new SecurityPolicyVersion(1), new SecurityRevocationVersion(1),
         DateTimeOffset.UnixEpoch, DateTimeOffset.MaxValue, 1);
 
     private static SecurityEnforcementIntent Intent() => new(

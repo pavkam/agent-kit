@@ -50,6 +50,13 @@ Credentials and raw secret values MUST NOT enter the request, audit record, or
 model-visible result. Environment projection is an allowlist; the ambient
 environment MUST NOT be inherited implicitly.
 
+A host MAY capture explicitly identified external toolchain or runtime
+directories as additional read-only sandbox roots. Each root identity and
+canonical path MUST be immutable for the composition, included in canonical
+authorization resources and fingerprints, revalidated immediately before
+creation, and mounted or admitted read-only. No conventional installation path
+is implied, and an unconfigured external root remains inaccessible.
+
 ## Authorization and sandboxing
 
 Executable lookup, metadata reads, and hashing are protected observations with
@@ -144,6 +151,8 @@ implementations.
 - Arguments are passed through structurally, with no shell interpretation, quote
   rewriting, or glob expansion by the ordinary executor.
 - An environment variable outside the allowlist is absent from the child.
+- A configured toolchain root is readable but not writable, while the same root
+  remains inaccessible under a profile that did not capture it.
 - A required sandbox control the platform cannot enforce fails startup instead
   of running unsandboxed.
 - A child attempting to spawn its own child is denied unless that capability was

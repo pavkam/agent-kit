@@ -20,4 +20,8 @@ internal static partial class ContextLog
         ILogger logger,
         ModelRequestId modelRequestId,
         ContextPreparationFailureKind failureKind);
+
+    /// <summary>Logs that instruction-role messages found inside conversation history were excluded from the provider request.</summary>
+    [LoggerMessage(2003, LogLevel.Warning, "Excluded {ExcludedCount} system/developer messages found in history for model request {ModelRequestId}; history never carries instruction authority.")]
+    internal static partial void ExcludedInstructionMessagesFromHistory(ILogger logger, ModelRequestId modelRequestId, int excludedCount);
 }

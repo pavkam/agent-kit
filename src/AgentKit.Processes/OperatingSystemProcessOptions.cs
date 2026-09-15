@@ -18,6 +18,10 @@ public sealed class OperatingSystemProcessOptions
     /// <value>No names are allowed by default, and ambient environment is always cleared.</value>
     public List<string> AllowedEnvironmentVariableNames { get; } = [];
 
+    /// <summary>Gets stable profile identities mapped to existing absolute directories exposed read-only to children.</summary>
+    /// <value>The map is empty by default; no external toolchain directory is exposed implicitly.</value>
+    public Dictionary<string, string> ReadOnlyToolchainRoots { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Gets or sets the maximum structured argument count.</summary>
     /// <value>Defaults to 256 and must be positive.</value>
     public int MaximumArgumentCount { get; set; } = 256;

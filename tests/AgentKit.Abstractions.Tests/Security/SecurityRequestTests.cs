@@ -161,6 +161,22 @@ public sealed class SecurityRequestTests
         ).Authorization.ShouldBeSameAs(authorization);
     }
 
+    [Fact]
+    public void Equals_WhenResourcesAreStructurallyEqualButDistinctArrays_InstancesAreEqual()
+    {
+        // SecurityGrant and SecurityEnforcementRequest override equality for their ImmutableArray members; a request
+        // built twice from the same evidence must compare equal or every request-keyed replay/idempotency lookup breaks.
+        var scope = Scope();
+        var identity = Identity();
+        var authorization = Authorization(scope, identity);
+        var id = new SecurityRequestId(Guid.NewGuid());
+
+        SecurityRequest Build() => new(id, scope, null, identity, authorization, new ComponentId("session"), SecurityOperationKind.StateRead, SecurityEffect.Observe, [Resource()], new InputFingerprint("sha256:input"), DateTimeOffset.UnixEpoch.AddMinutes(1));
+
+        Build().ShouldBe(Build());
+        Build().GetHashCode().ShouldBe(Build().GetHashCode());
+    }
+
     private static SecurityRequest Request(SecurityAuthorizationScope scope, ExecutionIdentity identity, SecurityAuthorizationContext authorization) => new(new SecurityRequestId(Guid.NewGuid()), scope, null, identity, authorization, new ComponentId("session"), SecurityOperationKind.StateRead, SecurityEffect.Observe, [Resource()], new InputFingerprint("sha256:input"), DateTimeOffset.UnixEpoch.AddMinutes(1));
     private static SecurityGrant Grant(SecurityAuthorizationScope scope, ExecutionIdentity identity, SecurityAuthorizationContext authorization, SecurityPolicyVersion? policyVersion = null) => new(new GrantId(Guid.NewGuid()), new SecurityRequestId(Guid.NewGuid()), scope, identity, authorization, new ComponentId("session"), SecurityOperationKind.StateRead, SecurityEffect.Observe, [Resource()], new InputFingerprint("sha256:input"), policyVersion ?? new SecurityPolicyVersion(1), new SecurityRevocationVersion(1), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(1), 1);
     private static SecurityEnforcementRequest Enforcement(SecurityAuthorizationScope scope, ExecutionIdentity identity, SecurityAuthorizationContext authorization) => new(scope, identity, authorization, new ComponentId("session"), SecurityOperationKind.StateRead, SecurityEffect.Observe, [Resource()], new InputFingerprint("sha256:input"), new SecurityRevocationVersion(1));

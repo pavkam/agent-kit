@@ -24,6 +24,14 @@ public static class ServiceExtensions
                     static value => value.ShellArguments.All(
                         static argument => argument is not null && !argument.Contains('\0', StringComparison.Ordinal)),
                     "ShellArguments cannot contain null or NUL.")
+                .Validate(
+                    static value => value.EnvironmentVariables.All(static item =>
+                        !string.IsNullOrWhiteSpace(item.Key)
+                        && !item.Key.Contains('=', StringComparison.Ordinal)
+                        && !item.Key.Contains('\0', StringComparison.Ordinal)
+                        && item.Value is not null
+                        && !item.Value.Contains('\0', StringComparison.Ordinal)),
+                    "EnvironmentVariables must contain valid non-secret projection names and values.")
                 .Validate(static value => !string.IsNullOrWhiteSpace(value.SandboxProfile.Value), "SandboxProfile is required.")
                 .Validate(
                     static value => value.DefaultTimeout > TimeSpan.Zero && value.DefaultTimeout <= value.MaximumTimeout,
@@ -41,6 +49,7 @@ public static class ServiceExtensions
             }
 
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, CommandTool>());
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, CommandToolPresentationFormatter>());
             return services;
         }
     }

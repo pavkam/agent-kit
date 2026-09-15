@@ -83,6 +83,116 @@ public sealed class OperatingSystemProcessIntentResolverTests: IDisposable
         result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
     }
 
+    [Fact]
+    public async Task ResolveAsync_WhenReadOnlyToolchainRootConfigured_CapturesCanonicalRootInSecurityEvidence()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var toolchain = Path.Combine(_root, "toolchain");
+        _ = Directory.CreateDirectory(toolchain);
+        var options = OptionsFor("/bin/sh", 1024);
+        options.ReadOnlyToolchainRoots.Add("test-toolchain", toolchain);
+        var result = await new OperatingSystemProcessIntentResolver(Options.Create(options)).ResolveAsync(
+            Request("/bin/sh", []),
+            TestContext.Current.CancellationToken);
+
+        var intent = result.Intent.ShouldNotBeNull();
+        var capturedRoot = intent.Request.ReadOnlyRoots.ShouldHaveSingleItem();
+        capturedRoot.ProfileId.ShouldBe("test-toolchain");
+        Path.IsPathRooted(capturedRoot.AbsolutePath).ShouldBeTrue();
+        ProcessSecurityBinding.Resources(intent).ShouldContain(
+            new ProtectedResource(
+                ProtectedResourceKind.Directory,
+                $"readonly:test-toolchain:{capturedRoot.AbsolutePath}"));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenCapturedReadOnlyRootsChange_RejectsRevalidation()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var toolchain = Path.Combine(_root, "toolchain");
+        var different = Path.Combine(_root, "different");
+        _ = Directory.CreateDirectory(toolchain);
+        _ = Directory.CreateDirectory(different);
+        var options = OptionsFor("/bin/sh", 1024);
+        options.ReadOnlyToolchainRoots.Add("test-toolchain", toolchain);
+        var request = Request("/bin/sh", []) with
+        {
+            ReadOnlyRoots = [new ProcessReadOnlyRoot("test-toolchain", different)],
+        };
+
+        var result = await new OperatingSystemProcessIntentResolver(Options.Create(options)).ResolveAsync(
+            request,
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
+    [Fact]
+    public void Constructor_WhenReadOnlyToolchainRootDoesNotExist_RejectsConfiguration()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var options = OptionsFor("/bin/sh", 1024);
+        options.ReadOnlyToolchainRoots.Add("missing", Path.Combine(_root, "missing"));
+
+        _ = Should.Throw<ArgumentException>(() =>
+            new OperatingSystemProcessIntentResolver(Options.Create(options)));
+    }
+
+    [Fact]
+    public void Constructor_WhenReadOnlyToolchainRootIsAFile_RejectsConfiguration()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var file = Path.Combine(_root, "toolchain-file");
+        File.WriteAllText(file, "not a directory");
+        var options = OptionsFor("/bin/sh", 1024);
+        options.ReadOnlyToolchainRoots.Add("file", file);
+
+        _ = Should.Throw<ArgumentException>(() =>
+            new OperatingSystemProcessIntentResolver(Options.Create(options)));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenToolchainSymlinkTargetChanges_RejectsCapturedIntent()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var first = Path.Combine(_root, "toolchain-v1");
+        var second = Path.Combine(_root, "toolchain-v2");
+        var link = Path.Combine(_root, "toolchain-current");
+        _ = Directory.CreateDirectory(first);
+        _ = Directory.CreateDirectory(second);
+        _ = Directory.CreateSymbolicLink(link, first);
+        var options = OptionsFor("/bin/sh", 1024);
+        options.ReadOnlyToolchainRoots.Add("toolchain", link);
+        var resolver = new OperatingSystemProcessIntentResolver(Options.Create(options));
+        var captured = (await resolver.ResolveAsync(Request("/bin/sh", []), TestContext.Current.CancellationToken))
+            .Intent.ShouldNotBeNull();
+        Directory.Delete(link);
+        _ = Directory.CreateSymbolicLink(link, second);
+        var result = await resolver.ResolveAsync(captured.Request, TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
     private OperatingSystemProcessIntentResolver CreateResolver(string executable, long maximumOutputBytes = 1024) => new(Options.Create(OptionsFor(executable, maximumOutputBytes)));
     private OperatingSystemProcessOptions OptionsFor(string executable, long maximumOutputBytes, long maximumArtifactOutputBytes = 64 * 1024 * 1024)
     {

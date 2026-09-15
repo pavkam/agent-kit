@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.OpenAICompatible;
 
+using System.Diagnostics;
+
 /// <summary>
 /// The default <see cref="IOpenAIRequestTranslator"/>, covering the message
 /// roles, tool definitions, tool choice, and sampling settings supported by
@@ -81,6 +83,19 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
             body["seed"] = seed;
         }
 
+        if (context.Settings.ReasoningEffort is { } reasoningEffort)
+        {
+            body["reasoning_effort"] = reasoningEffort switch
+            {
+                LlmReasoningEffort.Low => "low",
+                LlmReasoningEffort.Medium => "medium",
+                LlmReasoningEffort.High => "high",
+                LlmReasoningEffort.ExtraHigh => "xhigh",
+                LlmReasoningEffort.None => "none",
+                _ => throw new UnreachableException($"Unknown reasoning effort '{reasoningEffort}'."),
+            };
+        }
+
         ApplyExtensions(body, context.Settings.Extensions);
         ApplyExtensions(body, request.Options.Extensions);
 
@@ -152,7 +167,11 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
                     break;
 
                 case RuntimeMessage:
-                    result.Add(CreateTextMessage("system", JoinText(message.Parts)));
+                    result.Add(CreateTextMessage("user", new JsonObject
+                    {
+                        ["format"] = "agentkit.runtime-message.v1",
+                        ["content"] = JoinText(message.Parts),
+                    }.ToJsonString()));
                     break;
 
                 case AssistantMessage:
@@ -160,7 +179,7 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
                     break;
 
                 case ToolMessage:
-                    foreach (var toolResultMessage in TranslateToolMessage(message.Parts, providerCallIds))
+                    foreach (var toolResultMessage in TranslateToolMessage(message.Parts, providerCallIds, profile))
                     {
                         result.Add(toolResultMessage);
                     }
@@ -275,38 +294,92 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
 
     private static IEnumerable<JsonObject> TranslateToolMessage(
         ImmutableArray<ContentPart> parts,
-        Dictionary<ToolCallId, string> providerCallIds)
+        Dictionary<ToolCallId, string> providerCallIds,
+        OpenAICompatibilityProfile profile)
     {
         foreach (var part in parts)
         {
-            if (part is not ToolResultPart result)
-            {
-                throw new NotSupportedException(
+            var result = part as ToolResultPart
+                ?? throw new NotSupportedException(
                     $"Content part kind '{part.GetType().Name}' is not supported in a tool message by " +
                     "the OpenAI-compatible request translator.");
-            }
-
-            var content = new StringBuilder();
-
-            foreach (var resultPart in result.Content)
-            {
-                _ = resultPart switch
-                {
-                    TextPart text => content.Append(text.Text),
-                    StructuredDataPart structuredData => content.Append(structuredData.Value.GetRawText()),
-                    _ => throw new NotSupportedException(
-                                                $"Tool result content part kind '{resultPart.GetType().Name}' is not " +
-                                                "supported by the OpenAI-compatible request translator."),
-                };
-            }
 
             yield return new JsonObject
             {
                 ["role"] = "tool",
                 ["tool_call_id"] = providerCallIds.GetValueOrDefault(result.CallId, result.CallId.ToString()),
-                ["content"] = content.ToString(),
+                ["content"] = TranslateToolResultContent(result, profile.MaximumToolResultCharacters),
             };
         }
+    }
+
+    /// <summary>Encodes projected outcome evidence and ordered content as data under the tool role.</summary>
+    /// <param name="result">The validated tool-result projection; never an authoritative execution record.</param>
+    /// <param name="maximumCharacters">The positive source-work and serialized-envelope bound.</param>
+    /// <returns>A versioned JSON envelope preserving failure, uncertainty, alias, identity, and content boundaries.</returns>
+    private static string TranslateToolResultContent(ToolResultPart result, int maximumCharacters)
+    {
+        Debug.Assert(result is not null, "A tool-result projection was established by the caller.");
+        Debug.Assert(maximumCharacters > 0, "The compatibility profile validates its positive bound.");
+        var remaining = maximumCharacters;
+        var version = result.Tool.Version?.ToString();
+        ConsumeToolResultBudget(result.Tool.Id.Value?.Length ?? 0, ref remaining);
+        ConsumeToolResultBudget(result.Tool.Name.Length, ref remaining);
+        ConsumeToolResultBudget(version?.Length ?? 0, ref remaining);
+        ConsumeToolResultBudget(result.Outcome.FailureReason?.Length ?? 0, ref remaining);
+        var content = new JsonArray();
+        foreach (var part in result.Content)
+        {
+            // Charge even empty parts before processing so part count cannot evade the bound.
+            ConsumeToolResultBudget(32, ref remaining);
+            var (kind, text) = part switch
+            {
+                TextPart value => ("text", value.Text),
+                StructuredDataPart value => ("json", value.Value.GetRawText()),
+                _ => throw new NotSupportedException(
+                    $"Tool result content part kind '{part.GetType().Name}' is not supported by the OpenAI-compatible request translator."),
+            };
+            ConsumeToolResultBudget(text.Length, ref remaining);
+            content.Add(new JsonObject { ["type"] = kind, ["text"] = text });
+        }
+
+        var envelope = new JsonObject
+        {
+            ["format"] = "agentkit.tool-result.v1",
+            ["tool"] = new JsonObject
+            {
+                ["id"] = result.Tool.Id.Value,
+                ["version"] = version,
+                ["requested_name"] = result.Tool.Name,
+            },
+            ["outcome"] = new JsonObject
+            {
+                ["kind"] = result.Outcome.Kind.ToString(),
+                ["source_status"] = (int) result.Outcome.SourceStatus,
+                ["source_status_name"] = Enum.GetName(result.Outcome.SourceStatus),
+                ["side_effect_certainty"] = result.Outcome.SideEffectCertainty.ToString(),
+                ["retryable"] = result.Outcome.Retryable,
+                ["failure_reason"] = result.Outcome.FailureReason,
+            },
+            ["content"] = content,
+        }.ToJsonString();
+        return envelope.Length <= maximumCharacters
+            ? envelope
+            : throw new NotSupportedException("The tool-result envelope exceeds the compatibility profile's character bound.");
+    }
+
+    /// <summary>Charges source text and per-part work before allocating a translated envelope.</summary>
+    /// <param name="characters">The nonnegative charge established from a string or fixed part cost.</param>
+    /// <param name="remaining">The nonnegative remaining profile budget, reduced only on success.</param>
+    private static void ConsumeToolResultBudget(int characters, ref int remaining)
+    {
+        Debug.Assert(characters >= 0 && remaining >= 0, "Source lengths and remaining budget are nonnegative.");
+        if (characters > remaining)
+        {
+            throw new NotSupportedException("The tool-result projection exceeds the compatibility profile's character bound.");
+        }
+
+        remaining -= characters;
     }
 
     private static JsonArray TranslateTools(ImmutableArray<LlmToolDefinition> tools)

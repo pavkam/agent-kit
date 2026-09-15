@@ -12,6 +12,9 @@ public enum FileWriteMode
     /// <summary>Create the file only if it does not already exist; fail otherwise.</summary>
     CreateNew,
 
-    /// <summary>Create the file if it does not exist, or append to its existing content if it does.</summary>
-    Append
+    /// <summary>Append to the existing content of an existing file exactly once; fail without mutation if the target is missing.</summary>
+    Append,
+
+    /// <summary>Replace the entire content of an existing file; fail if the target is missing.</summary>
+    ReplaceExisting
 }

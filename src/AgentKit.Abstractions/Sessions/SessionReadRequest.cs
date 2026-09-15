@@ -42,6 +42,29 @@ public sealed record SessionReadRequest
         PageSize = pageSize;
     }
 
+    /// <summary>Initializes a continuation read pinned to an exact previously captured branch prefix.</summary>
+    /// <param name="context">The operation context for this read.</param>
+    /// <param name="branchId">The branch to read from.</param>
+    /// <param name="fromSequenceExclusive">Read entries strictly after this sequence.</param>
+    /// <param name="pageSize">The positive maximum number of entries to return.</param>
+    /// <param name="snapshot">The exact snapshot returned by the first page.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> or <paramref name="snapshot"/> is null.</exception>
+    /// <exception cref="ArgumentException">The snapshot address or branch differs from the request.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageSize"/> is not positive.</exception>
+    public SessionReadRequest(
+        SessionOperationContext context,
+        BranchId branchId,
+        SessionSequence fromSequenceExclusive,
+        int pageSize,
+        SessionReadSnapshot snapshot)
+        : this(context, branchId, fromSequenceExclusive, pageSize)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentException.ThrowIfNotEqual(snapshot.Address, context.ToAddress(), nameof(snapshot));
+        ArgumentException.ThrowIfNotEqual(snapshot.BranchId, branchId, nameof(snapshot));
+        Snapshot = snapshot;
+    }
+
     /// <summary>Gets the operation context for this read.</summary>
     public SessionOperationContext Context { get; }
 
@@ -53,4 +76,8 @@ public sealed record SessionReadRequest
 
     /// <summary>Gets the maximum number of entries to return.</summary>
     public int PageSize { get; }
+
+    /// <summary>Gets the exact captured prefix for a continuation read.</summary>
+    /// <value>The first page's snapshot, or null when requesting a new snapshot.</value>
+    public SessionReadSnapshot? Snapshot { get; }
 }

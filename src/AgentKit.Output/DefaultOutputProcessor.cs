@@ -326,7 +326,11 @@ internal sealed class DefaultOutputProcessor: IOutputProcessor
             : failure;
         var allowedAttempts = Math.Min(definition.RetryPolicy.MaximumAttempts, _options.MaximumRepairAttempts);
 
-        if (attempt > allowedAttempts)
+        // Configuration-class failures (an unsupported mode, an unregistered validator) are not the model's
+        // fault: asking the model to "correct" them would spend repair budget on something it cannot change
+        // and would leak composition detail into model-facing text. They reject immediately.
+        if (attempt > allowedAttempts
+            || boundedFailure.Kind is OutputValidationFailureKind.UnsupportedMode or OutputValidationFailureKind.ValidatorNotFound)
         {
             return new OutputRejected(boundedFailure);
         }

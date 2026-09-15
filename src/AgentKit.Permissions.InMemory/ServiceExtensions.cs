@@ -8,6 +8,16 @@ public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
+        /// <summary>Adds explicitly ephemeral process-local approval storage.</summary>
+        /// <returns>The same service collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        public IServiceCollection AddInMemoryApprovalStore()
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            services.TryAddSingleton<IApprovalStore, InMemoryApprovalStore>();
+            return services;
+        }
+
         /// <summary>Adds the process-local store as one explicit security-grant adapter selection.</summary>
         /// <returns>The same service collection for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>

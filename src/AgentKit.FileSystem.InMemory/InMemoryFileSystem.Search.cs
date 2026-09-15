@@ -42,7 +42,8 @@ public sealed partial class InMemoryFileSystem
                 request.MaximumBytes,
                 request.MaximumMatches,
                 request.MaximumLineBytes,
-                request.MaximumDuration));
+                request.MaximumDuration,
+                request.ExcludedPathPatterns));
         var intent = new SecurityEnforcementIntent(_intentIds.Create(), null);
         var grantResult = await _grantStore.ValidateAndConsumeAsync(request.Grant, enforcement, intent, cancellationToken)
             .ConfigureAwait(false);
@@ -111,6 +112,11 @@ public sealed partial class InMemoryFileSystem
             }
 
             var relative = directoryPath is null ? name : $"{directoryPath}/{name}";
+            if (IsExcludedPath(relative, state.Request.ExcludedPathPatterns, caseSensitive: true))
+            {
+                continue;
+            }
+
             if (_directories.Contains(relative))
             {
                 if (depth < state.Request.MaximumDepth)

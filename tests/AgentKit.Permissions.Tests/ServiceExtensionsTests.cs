@@ -45,6 +45,20 @@ public sealed class ServiceExtensionsTests
         exception.Message.ShouldContain(nameof(ISecurityGrantStore));
     }
 
+    /// <summary>Verifies hosts that do not select approval storage can validate unrelated permission services.</summary>
+    [Fact]
+    public void AddAgentPermissions_WhenNoApprovalStoreIsSelected_AllowsValidationUntilApprovalBrokerIsRequested()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentPermissions();
+
+        using var provider = services.BuildServiceProvider(
+            new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+
+        var exception = Should.Throw<InvalidOperationException>(provider.GetRequiredService<IApprovalBroker>);
+        exception.Message.ShouldContain(nameof(IApprovalStore));
+    }
+
     [Fact]
     public async Task AddSecurityProfilePublication_WhenRegistrationsAreDistinct_ResolvesEachExactPublication()
     {

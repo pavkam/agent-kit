@@ -39,6 +39,20 @@ public interface ISessionCoordinator
         SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Lists one bounded page of visible sessions without probing concrete stores.</summary>
+    /// <param name="request">The sessionless authorized discovery request.</param>
+    /// <param name="cancellationToken">Cancels the directory operation.</param>
+    /// <returns>The visible page or a typed unavailable result.</returns>
+    public ValueTask<SessionDirectoryListResult> ListAsync(
+        SessionDirectoryListRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionDirectoryListResult>(
+            new SessionDirectoryListUnavailable("This session coordinator does not support bounded discovery."));
+    }
+
     /// <summary>
     /// Appends one or more entries to a branch, conditioned on an expected
     /// version.

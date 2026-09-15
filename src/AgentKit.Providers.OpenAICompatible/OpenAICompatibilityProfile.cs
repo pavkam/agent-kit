@@ -190,4 +190,18 @@ public sealed record OpenAICompatibilityProfile
     /// field carrying a portable <see cref="EmbeddingPurpose"/>.
     /// </summary>
     public bool SupportsEmbeddingPurpose { get; }
+
+    /// <summary>Gets the maximum UTF-16 character count of one serialized tool-result envelope.</summary>
+    /// <value>A positive bound, defaulting to 262,144 characters. Oversized results reject translation before provider I/O.</value>
+    /// <remarks>The translator also bounds source text and part count before constructing the envelope. It never silently truncates status or tool content.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The assigned bound is not positive.</exception>
+    public int MaximumToolResultCharacters
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 262_144;
 }

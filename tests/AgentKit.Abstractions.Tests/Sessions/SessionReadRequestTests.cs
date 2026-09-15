@@ -15,6 +15,14 @@ public sealed class SessionReadRequestTests
     private static readonly Guid _runGuid = Guid.Parse("55555555-5555-5555-5555-555555555555");
     [Fact]
     public void SessionReadRequest_Equality_WhenSameValues_InstancesAreEqual() => ReadRequest().ShouldBe(ReadRequest());
+
+    [Fact]
+    public void Constructor_WhenSnapshotMatches_PreservesExactContinuationBoundary()
+    {
+        var snapshot = new SessionReadSnapshot(new SessionAddress(AgentId, SessionId), BranchId, new SessionVersion(2), new SessionSequence(8));
+        var request = new SessionReadRequest(OperationContext(), BranchId, new SessionSequence(4), 10, snapshot);
+        request.Snapshot.ShouldBeSameAs(snapshot);
+    }
     private static AgentId AgentId => new(_agentGuid);
     private static SessionId SessionId => new(_sessionGuid);
     private static BranchId BranchId => new(_branchGuid);

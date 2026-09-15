@@ -63,6 +63,15 @@ public sealed class DefaultContextAssembler: IContextAssembler
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
+        var evidence = request.Evidence;
+        var agentId = evidence?.Agent.Id ?? request.AgentId;
+        var sessionId = evidence?.History.SourceCursor.SessionId ?? request.SessionId;
+        var history = evidence?.History.Messages ?? request.History;
+        var instructions = evidence?.Agent.Instructions ?? request.Instructions;
+        var tools = evidence?.Agent.Tools ?? request.Tools;
+        var toolChoice = evidence?.Agent.ToolChoice ?? request.ToolChoice;
+        var settings = evidence?.Agent.Settings ?? request.Settings;
+
         using var activity = AgentKitDiagnostics.Activities.StartActivity(
             AgentKitActivityNames.ContextPrepare,
             ActivityKind.Internal,
@@ -70,16 +79,20 @@ public sealed class DefaultContextAssembler: IContextAssembler
             tags: new ActivityTagsCollection
             {
                 { AgentKitTagNames.GenAiOperationName, AgentKitActivityNames.ContextPrepare },
-                { AgentKitTagNames.AgentId, request.AgentId.ToString() },
-                { AgentKitTagNames.SessionId, request.SessionId.ToString() },
+                { AgentKitTagNames.AgentId, agentId.ToString() },
+                { AgentKitTagNames.SessionId, sessionId.ToString() },
                 { AgentKitTagNames.RunId, request.RunId.ToString() },
                 { AgentKitTagNames.TurnId, request.TurnId.ToString() },
                 { AgentKitTagNames.ModelRequestId, request.ModelRequestId.ToString() },
                 { AgentKitTagNames.RequestModel, request.Model.ModelId.ToString() },
             });
-        ContextLog.Preparing(_logger, request.ModelRequestId, request.History.Length);
+        ContextLog.Preparing(_logger, request.ModelRequestId, history.Length);
 
-        var repairedHistory = RepairHistory(request.History);
+        var repairedHistory = RepairHistory(history, out var excludedInstructionMessages);
+        if (excludedInstructionMessages > 0)
+        {
+            ContextLog.ExcludedInstructionMessagesFromHistory(_logger, request.ModelRequestId, excludedInstructionMessages);
+        }
 
         if (repairedHistory.IsEmpty)
         {
@@ -105,15 +118,15 @@ public sealed class DefaultContextAssembler: IContextAssembler
             return Task.FromResult<ContextAssemblyResult>(new ContextPreparationFailed(causalityFailure));
         }
 
-        var messages = request.Instructions.AddRange(repairedHistory);
+        var messages = instructions.AddRange(repairedHistory);
 
         var context = new LlmRequestContext(
             request.ModelRequestId,
             request.Model,
             messages,
-            request.Tools,
-            request.ToolChoice,
-            request.Settings,
+            tools,
+            toolChoice,
+            settings,
             request.Extensions);
 
         activity.SetSuccessful("ready");
@@ -122,24 +135,43 @@ public sealed class DefaultContextAssembler: IContextAssembler
         return Task.FromResult<ContextAssemblyResult>(new ContextReady(context));
     }
 
-    private static ImmutableArray<AgentMessage> RepairHistory(ImmutableArray<AgentMessage> history)
+    /// <summary>
+    /// Retains only complete messages and excludes any system or developer message found in history:
+    /// instruction authority enters a request exclusively through the explicit instruction set, so a
+    /// stored or imported history can never promote content to system precedence.
+    /// </summary>
+    private static ImmutableArray<AgentMessage> RepairHistory(ImmutableArray<AgentMessage> history, out int excludedInstructionMessages)
     {
+        excludedInstructionMessages = 0;
         var builder = ImmutableArray.CreateBuilder<AgentMessage>(history.Length);
         foreach (var message in history)
         {
-            if (message.State == MessageState.Complete)
+            if (message.State != MessageState.Complete)
             {
-                builder.Add(message);
+                continue;
             }
+
+            if (message is SystemMessage or DeveloperMessage)
+            {
+                excludedInstructionMessages++;
+                continue;
+            }
+
+            builder.Add(message);
         }
 
         return builder.ToImmutable();
     }
 
+    /// <summary>
+    /// Validates tool-call causality in order: every call identity is unique, every result references a
+    /// call that precedes it, and every call receives exactly one terminal result.
+    /// </summary>
     private static ContextPreparationFailure? ValidateToolCallCausality(ImmutableArray<AgentMessage> repairedHistory)
     {
-        var callIds = new HashSet<ToolCallId>();
-        var resultIds = new HashSet<ToolCallId>();
+        var pendingCalls = new HashSet<ToolCallId>();
+        var seenCalls = new HashSet<ToolCallId>();
+        string? violation = null;
 
         foreach (var message in repairedHistory)
         {
@@ -147,24 +179,34 @@ public sealed class DefaultContextAssembler: IContextAssembler
             {
                 switch (part)
                 {
-                    case ToolCallPart toolCall:
-                        _ = callIds.Add(toolCall.CallId);
+                    case ToolCallPart toolCall when !seenCalls.Add(toolCall.CallId):
+                        violation = "History requested the same tool call identity more than once.";
                         break;
-                    case ToolResultPart toolResult:
-                        _ = resultIds.Add(toolResult.CallId);
+                    case ToolCallPart toolCall:
+                        _ = pendingCalls.Add(toolCall.CallId);
+                        break;
+                    case ToolResultPart toolResult when !pendingCalls.Remove(toolResult.CallId):
+                        violation = seenCalls.Contains(toolResult.CallId)
+                            ? "History carries more than one terminal result for one tool call."
+                            : "History carries a tool result that precedes, or has no, matching tool call.";
                         break;
                     default:
                         break;
                 }
+
+                if (violation is not null)
+                {
+                    return new ContextPreparationFailure(
+                        ContextPreparationFailureKind.BrokenToolCallCausality, violation, ExtensionData.Empty);
+                }
             }
         }
 
-        return callIds.SetEquals(resultIds)
+        return pendingCalls.Count == 0
             ? null
             : new ContextPreparationFailure(
                 ContextPreparationFailureKind.BrokenToolCallCausality,
-                "Every tool call in history must have exactly one matching terminal result, and every " +
-                    "result must reference a call present in the same history.",
+                "Every tool call in history must have exactly one matching terminal result.",
                 ExtensionData.Empty);
     }
 }

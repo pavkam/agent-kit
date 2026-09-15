@@ -27,8 +27,33 @@ public sealed class FileSearchSecurityBindingTests
             FileSearchSecurityBinding.Fingerprint(null, pattern, pathPattern, true, false, 5, 100, 1_000, 11, 200, TimeSpan.FromSeconds(2)),
             FileSearchSecurityBinding.Fingerprint(null, pattern, pathPattern, true, false, 5, 100, 1_000, 10, 201, TimeSpan.FromSeconds(2)),
             FileSearchSecurityBinding.Fingerprint(null, pattern, pathPattern, true, false, 5, 100, 1_000, 10, 200, TimeSpan.FromSeconds(3)),
+            FileSearchSecurityBinding.Fingerprint(
+                null,
+                pattern,
+                pathPattern,
+                true,
+                false,
+                5,
+                100,
+                1_000,
+                10,
+                200,
+                TimeSpan.FromSeconds(2),
+                [new GlobPattern("**/obj/**")]),
         };
         variants.ShouldAllBe(variant => variant != baseline);
         variants.Distinct().Count().ShouldBe(variants.Length);
+    }
+
+    [Fact]
+    public void Fingerprint_WhenExclusionsAreEmpty_PreservesOriginalEvidence()
+    {
+        var pattern = new FileSearchPattern("needle", FileSearchPatternKind.Literal);
+        var pathPattern = new GlobPattern("**/*");
+
+        FileSearchSecurityBinding.Fingerprint(
+            null, pattern, pathPattern, true, false, 5, 100, 1_000, 10, 200, TimeSpan.FromSeconds(2), [])
+            .ShouldBe(FileSearchSecurityBinding.Fingerprint(
+                null, pattern, pathPattern, true, false, 5, 100, 1_000, 10, 200, TimeSpan.FromSeconds(2)));
     }
 }

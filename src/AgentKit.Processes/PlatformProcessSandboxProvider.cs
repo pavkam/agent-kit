@@ -51,6 +51,18 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
             .Append("(allow signal (target self))\n")
             .Append("(allow sysctl-read)\n")
             .Append("(allow file-read-data (literal \"/\"))\n")
+            .Append("(allow file-read-metadata (literal \"/\"))\n");
+        foreach (var root in intent.Request.ReadOnlyRoots)
+        {
+            foreach (var ancestor in ParentPaths(root.AbsolutePath))
+            {
+                _ = profile.Append("(allow file-read-metadata ")
+                    .Append(LiteralPathRule(ancestor))
+                    .Append(")\n");
+            }
+        }
+
+        _ = profile
             .Append("(allow file-read* ")
             .Append(PathRule("/System"))
             .Append(' ')
@@ -69,6 +81,13 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
             .Append(PathRule("/dev"))
             .Append(' ')
             .Append(PathRule(intent.AbsoluteWorkspaceRoot))
+            .Append(' ');
+        foreach (var root in intent.Request.ReadOnlyRoots)
+        {
+            _ = profile.Append(PathRule(root.AbsolutePath)).Append(' ');
+        }
+
+        _ = profile
             .Append(")\n");
         if (intent.Request.WorkspaceAccess == ProcessWorkspaceAccess.ReadWrite)
         {
@@ -116,6 +135,12 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
         AddReadOnlyBindIfPresent(arguments, "/lib");
         AddReadOnlyBindIfPresent(arguments, "/lib64");
         AddReadOnlyBindIfPresent(arguments, "/etc");
+        foreach (var root in intent.Request.ReadOnlyRoots)
+        {
+            arguments.Add("--ro-bind");
+            arguments.Add(root.AbsolutePath);
+            arguments.Add(root.AbsolutePath);
+        }
         arguments.Add(intent.Request.WorkspaceAccess == ProcessWorkspaceAccess.ReadWrite ? "--bind" : "--ro-bind");
         arguments.Add(intent.AbsoluteWorkspaceRoot);
         arguments.Add(intent.AbsoluteWorkspaceRoot);
@@ -150,6 +175,18 @@ public sealed partial class PlatformProcessSandboxProvider(ILogger<PlatformProce
     }
 
     private static string PathRule(string path) => $"(subpath \"{EscapeSandboxString(path)}\")";
+
+    private static string LiteralPathRule(string path) => $"(literal \"{EscapeSandboxString(path)}\")";
+
+    private static IEnumerable<string> ParentPaths(string path)
+    {
+        for (var parent = Path.GetDirectoryName(path);
+             parent is not null && parent != Path.GetPathRoot(path);
+             parent = Path.GetDirectoryName(parent))
+        {
+            yield return parent;
+        }
+    }
 
     private static string EscapeSandboxString(string value) => value
         .Replace("\\", "\\\\", StringComparison.Ordinal)

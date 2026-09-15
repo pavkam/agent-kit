@@ -129,6 +129,23 @@ public sealed record LlmRequestSettings
     /// <summary>Gets the deterministic sampling seed, when supported and overridden.</summary>
     public long? Seed { get; init; }
 
+    /// <summary>Gets the portable reasoning-work level requested from a capable model.</summary>
+    /// <value>A semantic effort level, or <see langword="null"/> to use the provider's default.</value>
+    /// <exception cref="ArgumentOutOfRangeException">The assigned value is not defined.</exception>
+    public LlmReasoningEffort? ReasoningEffort
+    {
+        get;
+        init
+        {
+            if (value is { } effort)
+            {
+                ArgumentOutOfRangeException.ThrowIfNotEqual(Enum.IsDefined(effort), true, nameof(value));
+            }
+
+            field = value;
+        }
+    }
+
     /// <summary>Gets provider-specific sampling data.</summary>
     /// <exception cref="ArgumentNullException">
     /// The value assigned during initialization or non-destructive mutation is null.
@@ -152,6 +169,7 @@ public sealed record LlmRequestSettings
         && StopSequences.SequenceEqual(other.StopSequences)
         && ParallelToolCalls == other.ParallelToolCalls
         && Seed == other.Seed
+        && ReasoningEffort == other.ReasoningEffort
         && Extensions.Equals(other.Extensions);
 
     /// <inheritdoc/>
@@ -168,6 +186,7 @@ public sealed record LlmRequestSettings
 
         hash.Add(ParallelToolCalls);
         hash.Add(Seed);
+        hash.Add(ReasoningEffort);
         hash.Add(Extensions);
         return hash.ToHashCode();
     }

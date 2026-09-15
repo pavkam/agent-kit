@@ -56,6 +56,22 @@ public sealed class DefaultOutputProcessorTests
         rejected.Failure.Kind.ShouldBe(OutputValidationFailureKind.UnsupportedMode);
     }
 
+    [Theory]
+    [InlineData(OutputMode.SyntheticTool)]
+    [InlineData(OutputMode.Media)]
+    [InlineData(OutputMode.Union)]
+    public async Task ProcessAsync_WhenModeIsUnsupportedAndRetriesAreAllowed_DoesNotSpendModelRepairAttempts(OutputMode mode)
+    {
+        // AGENTS.md: "Unsupported assertions are configuration failures and never consume model repair attempts."
+        var processor = CreateProcessor();
+        var definition = TestFactory.Definition(mode, retryPolicy: new OutputRetryPolicy(2));
+        var request = TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("anything"));
+
+        var result = await processor.ProcessAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldNotBeOfType<OutputRetryRequired>();
+    }
+
     [Fact]
     public async Task ProcessAsync_TextMode_ReturnsAcceptedWithConcatenatedText()
     {

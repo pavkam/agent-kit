@@ -29,6 +29,29 @@ public sealed record SessionPage: SessionPageResult
         HasMore = hasMore;
     }
 
+    /// <summary>Initializes a page captured from one exact session-branch prefix.</summary>
+    /// <param name="entries">The entries in this page, in ascending sequence order.</param>
+    /// <param name="throughSequence">The last returned sequence, or the request starting sequence for an empty page.</param>
+    /// <param name="hasMore">Whether entries remain after <paramref name="throughSequence"/> in this captured version.</param>
+    /// <param name="snapshot">The exact immutable prefix shared by every page in this read.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="entries"/> is a default array.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A nonempty page advances beyond the snapshot upper sequence.</exception>
+    public SessionPage(
+        ImmutableArray<SessionEntry> entries,
+        SessionSequence throughSequence,
+        bool hasMore,
+        SessionReadSnapshot snapshot)
+        : this(entries, throughSequence, hasMore)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (!entries.IsEmpty)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(throughSequence.Value, snapshot.UpperSequence.Value);
+        }
+        Snapshot = snapshot;
+    }
+
     /// <summary>Gets the entries in this page, in ascending sequence order.</summary>
     public ImmutableArray<SessionEntry> Entries { get; init; }
 
@@ -44,12 +67,17 @@ public sealed record SessionPage: SessionPageResult
     /// </summary>
     public bool HasMore { get; init; }
 
+    /// <summary>Gets the exact session-branch prefix from which this page was read.</summary>
+    /// <value>The immutable prefix, or null for a legacy producer that cannot provide exact snapshot evidence.</value>
+    public SessionReadSnapshot? Snapshot { get; }
+
     /// <inheritdoc/>
     public bool Equals(SessionPage? other) =>
         other is not null
         && Entries.SequenceEqual(other.Entries)
         && ThroughSequence.Equals(other.ThroughSequence)
-        && HasMore == other.HasMore;
+        && HasMore == other.HasMore
+        && Snapshot == other.Snapshot;
 
     /// <inheritdoc/>
     public override int GetHashCode()
@@ -62,6 +90,7 @@ public sealed record SessionPage: SessionPageResult
 
         hash.Add(ThroughSequence);
         hash.Add(HasMore);
+        hash.Add(Snapshot);
         return hash.ToHashCode();
     }
 }

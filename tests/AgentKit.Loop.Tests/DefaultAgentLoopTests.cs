@@ -19,7 +19,9 @@ public sealed class DefaultAgentLoopTests
             new FakeToolInvoker(_ => TestFactory.SuccessResult()),
             new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
             FakeModelSelector.Selecting(TestFactory.Model()),
-            new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))),
+            new FakeLlmModelResolver(new RespondingLlmModel(
+                new ModelAlias("chat"),
+                modelRequest => TestFactory.CompletedWithText(modelRequest.Context.ModelRequestId))),
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
@@ -75,6 +77,40 @@ public sealed class DefaultAgentLoopTests
 
         _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
         result.NewMessages.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenExactEvidenceIsPresent_PropagatesSnapshotAndUsesAgentInsteadOfMutableMirrors()
+    {
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var descriptor = TestFactory.Model();
+        var selector = FakeModelSelector.Selecting(descriptor);
+        var assembler = new RecordingContextAssembler();
+        var request = TestFactory.ExactRunRequest(_agentId, _sessionId, _branchId) with
+        {
+            ModelPolicy = new ModelSelectionPolicy([new ModelAlias("poisoned")]),
+            Instructions = [TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1, "poisoned").Message],
+        };
+        var loop = CreateLoopWith(
+            coordinator,
+            new FakeModelCatalog(TestFactory.Catalog(descriptor)),
+            selector,
+            new FakeLlmModelResolver(new RespondingLlmModel(
+                new ModelAlias("chat"),
+                modelRequest => TestFactory.CompletedWithText(modelRequest.Context.ModelRequestId))),
+            assembler);
+
+        _ = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+
+        selector.LastRequest.ShouldNotBeNull().Policy.ShouldBe(request.Agent!.Models);
+        var evidence = assembler.Requests.ShouldHaveSingleItem().Evidence.ShouldNotBeNull();
+        evidence.Agent.ShouldBeSameAs(request.Agent);
+        evidence.Configuration.ShouldBeSameAs(request.Configuration);
+        _ = evidence.Authorization.Scope.Correlation.ShouldBeOfType<InRunOperationCorrelation>().TurnId.ShouldNotBeNull();
+        evidence.History.SourceCursor.Version.ShouldBe(new SessionVersion(1));
+        evidence.History.SourceCursor.Sequence.ShouldBe(new SessionSequence(1));
+        _ = evidence.History.Messages.ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -207,6 +243,7 @@ public sealed class DefaultAgentLoopTests
         result.RunId.ShouldBe(request.RunId);
         result.FinalVersion.ShouldBe(new SessionVersion(2));
         coordinator.Entries.Count.ShouldBe(2);
+        coordinator.Entries.OfType<MessageSessionEntry>().Last().SchemaVersion.ShouldBe(new SchemaVersion("1"));
         toolInvoker.ReceivedRequests.ShouldBeEmpty();
     }
 
@@ -297,8 +334,14 @@ public sealed class DefaultAgentLoopTests
         var turnLimit = result.Outcome.ShouldBeOfType<AgentRunTurnLimitReached>();
         turnLimit.MaxTurns.ShouldBe(1);
         toolInvoker.ReceivedRequests.ShouldBeEmpty();
-        result.NewMessages.Length.ShouldBe(1);
+        // The assistant message is committed, and every requested call still receives its exactly-one terminal
+        // result (rejected, definitely not performed) so the session remains causally valid for later runs.
+        result.NewMessages.Length.ShouldBe(2);
         _ = result.NewMessages[0].ShouldBeOfType<AssistantMessage>();
+        var rejected = result.NewMessages[1].ShouldBeOfType<ToolMessage>().Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolResultPart>();
+        rejected.CallId.ShouldBe(callId);
+        rejected.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        rejected.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
     }
 
     [Fact]
@@ -495,6 +538,92 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenToolObserverFails_PreservesOneEffectAndOneCorrelatedTerminalResult()
+    {
+        var callId = new ToolCallId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
+        var requestId = new ModelRequestId(Guid.Parse("20000000-0000-0000-0000-000000000002"));
+        var calls = 0;
+        var observer = new RecordingAgentRunObserver { ThrowAfterRecording = true };
+        var loop = CreateLoop(
+            out var coordinator,
+            out var invoker,
+            _ => ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer };
+
+        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        invoker.ReceivedRequests.ShouldHaveSingleItem().Context.ToolCallId.ShouldBe(callId);
+        var terminal = observer.Events.OfType<AgentRunToolCallCompleted>().ShouldHaveSingleItem();
+        terminal.Result.CallId.ShouldBe(callId);
+        observer.Events.OfType<AgentRunToolCallStarted>().ShouldHaveSingleItem().Call.CallId.ShouldBe(callId);
+        coordinator.Entries.OfType<MessageSessionEntry>()
+            .Select(static entry => entry.Message)
+            .OfType<ToolMessage>()
+            .Single().Parts.OfType<ToolResultPart>().ShouldHaveSingleItem().CallId.ShouldBe(callId);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenModelStreams_ForwardsTypedProgressToRunObserver()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var streamed = new ModelPartDelta(requestId, 1, 0, new TextContentDelta("partial"));
+        var observer = new RecordingAgentRunObserver();
+        var loop = CreateLoop(
+            out var coordinator,
+            out _,
+            _ => TestFactory.CompletedWithText(requestId),
+            modelEvent: streamed);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer },
+            TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var progress = observer.Events.OfType<AgentRunModelResponseEvent>().ShouldHaveSingleItem();
+        progress.ResponseEvent.ShouldBeSameAs(streamed);
+        progress.TurnId.ShouldNotBe(default);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCancellationRacesSuccessfulToolResultObservation_CommitsOneSuccessfulResult()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        using var cts = new CancellationTokenSource();
+        var observer = new RecordingAgentRunObserver
+        {
+            EventRecorded = runEvent =>
+            {
+                if (runEvent is AgentRunToolCallCompleted)
+                {
+                    cts.Cancel();
+                }
+            },
+        };
+        var loop = CreateLoop(
+            out var coordinator,
+            out var invoker,
+            _ => TestFactory.CompletedWithToolCall(requestId, callId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer },
+            cts.Token));
+
+        invoker.ReceivedRequests.ShouldHaveSingleItem().Context.ToolCallId.ShouldBe(callId);
+        observer.Events.OfType<AgentRunToolCallCompleted>().ShouldHaveSingleItem()
+            .Result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        var committed = coordinator.Entries.OfType<MessageSessionEntry>()
+            .Select(static entry => entry.Message).OfType<ToolMessage>()
+            .Single().Parts.OfType<ToolResultPart>().ShouldHaveSingleItem();
+        committed.CallId.ShouldBe(callId);
+        committed.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenAToolCallIsCancelledMidBatch_SettlesEveryRequestedCallBeforePropagatingCancellation()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
@@ -579,18 +708,183 @@ public sealed class DefaultAgentLoopTests
         committedParts[1].Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Interrupted);
     }
 
+    // ---- Probing tests: each documents a normative requirement and is expected to expose a defect if it fails. ----
+
+    [Fact]
+    public async Task RunAsync_WhenPreviousRunHitTurnLimitWithPendingToolCalls_NextRunStillAssemblesContext()
+    {
+        // AGENTS.md: "Every bounded, identified call reaches one terminal record ... including pre-invocation rejection."
+        // If the turn-limit path commits ToolCallParts with no ToolResultPart, the session is permanently poisoned.
+        var callId = new ToolCallId(Guid.NewGuid());
+        var firstRequestId = new ModelRequestId(Guid.NewGuid());
+        var secondRequestId = new ModelRequestId(Guid.NewGuid());
+        var calls = 0;
+        var loop = CreateLoop(
+            out var coordinator,
+            out _,
+            _ => ++calls == 1
+                ? TestFactory.CompletedWithToolCall(firstRequestId, callId)
+                : TestFactory.CompletedWithText(secondRequestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var first = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1), TestContext.Current.CancellationToken);
+        _ = first.Outcome.ShouldBeOfType<AgentRunTurnLimitReached>();
+
+        var second = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 4), TestContext.Current.CancellationToken);
+
+        _ = second.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAssistantAppendConflictsAfterMultiEntryConcurrentAppend_RebasesToTheActualSequence()
+    {
+        // The store requires whole-session sequence continuity (NextSequence + i + 1); version is not sequence.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.EnforceSequenceContinuity = true;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var conflicted = false;
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            if (conflicted)
+            {
+                return null;
+            }
+
+            conflicted = true;
+            // A concurrent writer commits two entries in one version bump: Version 1 -> 2, NextSequence 1 -> 3.
+            coordinator.SimulateConcurrentAppend(
+            [
+                TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2, "concurrent-a"),
+                TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 3, "concurrent-b"),
+            ]);
+            return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
+        };
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        coordinator.Entries[^1].Sequence.ShouldBe(new SessionSequence(4));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenModelAttemptCancelledWithPartialOutputAndTokenIsCancelled_CommitsInterruptedMessageBeforeReturning()
+    {
+        // The loop's own remarks: partial output "is first committed as an Interrupted AssistantMessage so it is never discarded".
+        // The real coordinator throws on a cancelled token, so the commit must not use the caller's cancelled token.
+        using var cts = new CancellationTokenSource();
+        var cancellation = TestFactory.Cancellation();
+        var loop = CreateLoop(out var coordinator, out _, _ =>
+        {
+            cts.Cancel();
+            return new ModelAttemptCancelled(
+                cancellation, [new TextPart("partial", TextSemantics.Plain, ExtensionData.Empty)], null);
+        });
+        coordinator.HonorCancellation = true;
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        try
+        {
+            _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Either a typed AgentRunCancelled or a thrown OCE is acceptable for the caller, but
+            // the partial output must have been committed either way.
+        }
+
+        var interrupted = coordinator.Entries.OfType<MessageSessionEntry>()
+            .Select(static entry => entry.Message)
+            .OfType<AssistantMessage>()
+            .ToArray();
+        _ = interrupted.ShouldHaveSingleItem();
+        interrupted[0].State.ShouldBe(MessageState.Interrupted);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenModelReturnsDuplicateToolCallIds_DoesNotInvokeTheSameIdentityTwice()
+    {
+        // tool-scheduling-and-concurrency.md: duplicate call IDs fail preflight; one identity must never produce two effects.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var calls = 0;
+        var response = new ModelAttemptCompleted(TestFactory.Response(
+            requestId,
+            [
+                new ToolCallPart(callId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                new ToolCallPart(callId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+            ],
+            NormalizedStopReason.ToolUse));
+        var loop = CreateLoop(
+            out var coordinator, out var invoker, _ => ++calls == 1 ? response : TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        invoker.ReceivedRequests.Count(request => request.Context.ToolCallId == callId).ShouldBeLessThanOrEqualTo(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenModelStopsBecauseOfOutputLength_DoesNotSettleAsCompleted()
+    {
+        // agent-loop-state-machine.md: the loop "MUST not silently pretend the agent chose to finish".
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => new ModelAttemptCompleted(TestFactory.Response(
+            requestId, [new TextPart("truncated", TextSemantics.Plain, ExtensionData.Empty)], NormalizedStopReason.Length)));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldNotBeOfType<AgentRunCompleted>();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenToolInvokerThrowsNonCancellationException_EveryRequestedCallStillReachesATerminalRecord()
+    {
+        // tool-call-lifecycle.md: one terminal record per identified call; an invoker fault must not orphan the ToolCallPart.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.NewGuid());
+        var calls = 0;
+        var loop = CreateLoop(
+            out var coordinator,
+            out _,
+            _ => ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            toolHandler: _ => throw new InvalidOperationException("invoker fault"));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        try
+        {
+            _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            // Propagating the fault is acceptable; leaving a dangling ToolCallPart in the session is not.
+        }
+
+        var committedCallIds = coordinator.Entries.OfType<MessageSessionEntry>()
+            .SelectMany(static entry => entry.Message.Parts.OfType<ToolCallPart>()).Select(static part => part.CallId).ToArray();
+        var committedResultIds = coordinator.Entries.OfType<MessageSessionEntry>()
+            .SelectMany(static entry => entry.Message.Parts.OfType<ToolResultPart>()).Select(static part => part.CallId).ToArray();
+        committedResultIds.ShouldBe(committedCallIds);
+    }
+
     private DefaultAgentLoop CreateLoop(
         out FakeSessionCoordinator coordinator,
         out FakeToolInvoker toolInvoker,
         Func<LlmModelRequest, ModelAttemptResult> respond,
         int maxTurns = 8,
         ToolInvocationResult? toolResult = null,
-        Func<ToolCallRequest, ToolInvocationResult>? toolHandler = null)
+        Func<ToolCallRequest, ToolInvocationResult>? toolHandler = null,
+        ModelResponseEvent? modelEvent = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
         toolInvoker = new FakeToolInvoker(toolHandler ?? (_ => toolResult ?? TestFactory.SuccessResult()));
-        var adapter = new RespondingLlmModel(new ModelAlias("chat"), respond);
+        var adapter = new RespondingLlmModel(new ModelAlias("chat"), respond, modelEvent);
         var descriptor = TestFactory.Model();
 
         return new DefaultAgentLoop(
@@ -614,11 +908,12 @@ public sealed class DefaultAgentLoopTests
         FakeSessionCoordinator coordinator,
         IModelCatalog catalog,
         IModelSelector selector,
-        ILlmModelResolver resolver) =>
+        ILlmModelResolver resolver,
+        IContextAssembler? contextAssembler = null) =>
         new(
             coordinator,
             new FakeSecurityProfileSelector(),
-            new DefaultContextAssembler(),
+            contextAssembler ?? new DefaultContextAssembler(),
             new FakeToolInvoker(_ => TestFactory.SuccessResult()),
             catalog,
             selector,
@@ -641,17 +936,29 @@ public sealed class DefaultAgentLoopTests
     private sealed class RespondingLlmModel: ILlmModel
     {
         private readonly Func<LlmModelRequest, ModelAttemptResult> _respond;
+        private readonly ModelResponseEvent? _modelEvent;
 
-        public RespondingLlmModel(ModelAlias alias, Func<LlmModelRequest, ModelAttemptResult> respond)
+        public RespondingLlmModel(
+            ModelAlias alias,
+            Func<LlmModelRequest, ModelAttemptResult> respond,
+            ModelResponseEvent? modelEvent = null)
         {
             Alias = alias;
             _respond = respond;
+            _modelEvent = modelEvent;
         }
 
         public ModelAlias Alias { get; }
 
-        public Task<ModelAttemptResult> ExecuteAsync(
-            LlmModelRequest request, IModelResponseObserver observer, CancellationToken cancellationToken = default) =>
-            Task.FromResult(_respond(request));
+        public async Task<ModelAttemptResult> ExecuteAsync(
+            LlmModelRequest request, IModelResponseObserver observer, CancellationToken cancellationToken = default)
+        {
+            if (_modelEvent is not null)
+            {
+                await observer.OnEventAsync(_modelEvent, cancellationToken);
+            }
+
+            return _respond(request);
+        }
     }
 }

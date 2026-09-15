@@ -15,6 +15,7 @@ namespace AgentKit.Tools.Command
         public CommandToolOptions() { }
         public long DefaultMaximumOutputBytes { get; set; }
         public System.TimeSpan DefaultTimeout { get; set; }
+        public System.Collections.Generic.Dictionary<string, string> EnvironmentVariables { get; }
         public long MaximumCommandBytes { get; set; }
         public long MaximumOutputBytes { get; set; }
         public System.TimeSpan MaximumTimeout { get; set; }
@@ -22,6 +23,12 @@ namespace AgentKit.Tools.Command
         public System.Collections.Generic.List<string> ShellArguments { get; }
         public string ShellExecutable { get; set; }
         public System.TimeSpan TerminationGracePeriod { get; set; }
+    }
+    public sealed class CommandToolPresentationFormatter : AgentKit.IToolPresentationFormatter
+    {
+        public CommandToolPresentationFormatter() { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation?> FormatAsync(AgentKit.ToolPresentationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ServiceExtensions
     {

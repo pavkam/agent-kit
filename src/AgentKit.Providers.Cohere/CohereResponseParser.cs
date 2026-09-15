@@ -94,7 +94,23 @@ public sealed class CohereResponseParser: ICohereResponseParser
                 cancellationToken).ConfigureAwait(false);
         }
 
-        var built = BuildParts(dto.Message, _toolCallIdGenerator);
+        List<(ContentDelta? Delta, ContentPart Part)> built;
+        try
+        {
+            built = BuildParts(dto.Message, _toolCallIdGenerator);
+        }
+        catch (JsonException exception)
+        {
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                ProviderFailureKind.ProtocolViolation,
+                "The provider returned malformed tool-call arguments.",
+                exception,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         var parts = ImmutableArray.CreateBuilder<ContentPart>();
 
         for (var index = 0; index < built.Count; index++)
@@ -241,8 +257,24 @@ public sealed class CohereResponseParser: ICohereResponseParser
                     break;
 
                 case "tool-call-end":
-                    sequence = await HandleToolCallEndAsync(observer, requestId, sequence, streamEvent, state, cancellationToken)
-                        .ConfigureAwait(false);
+                    try
+                    {
+                        sequence = await HandleToolCallEndAsync(observer, requestId, sequence, streamEvent, state, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (JsonException exception)
+                    {
+                        // Malformed accumulated arguments are a typed protocol failure; they are never replaced by {}.
+                        return await FailAsync(
+                        observer,
+                        context,
+                        sequence,
+                        ProviderFailureKind.ProtocolViolation,
+                        "The provider returned malformed tool-call arguments.",
+                        exception,
+                        cancellationToken).ConfigureAwait(false);
+                    }
+
                     break;
 
                 case "message-end":
@@ -280,7 +312,21 @@ public sealed class CohereResponseParser: ICohereResponseParser
         {
             if (!slot.Closed)
             {
-                sequence = await FinalizeSlotAsync(observer, requestId, sequence, slot, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    sequence = await FinalizeSlotAsync(observer, requestId, sequence, slot, cancellationToken).ConfigureAwait(false);
+                }
+                catch (JsonException exception)
+                {
+                    return await FailAsync(
+                    observer,
+                    context,
+                    sequence,
+                    ProviderFailureKind.ProtocolViolation,
+                    "The provider returned malformed tool-call arguments.",
+                    exception,
+                    cancellationToken).ConfigureAwait(false);
+                }
             }
 
             finalParts.Add(slot.FinalPart!);
@@ -657,6 +703,7 @@ public sealed class CohereResponseParser: ICohereResponseParser
         return results;
     }
 
+    /// <summary>Parses tool-call argument JSON; an absent value is an empty object, malformed JSON propagates as <see cref="JsonException"/>.</summary>
     private static JsonElement ParseArguments(string? json)
     {
         if (string.IsNullOrEmpty(json))
@@ -664,15 +711,8 @@ public sealed class CohereResponseParser: ICohereResponseParser
             return ParseEmptyObject();
         }
 
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            return document.RootElement.Clone();
-        }
-        catch (JsonException)
-        {
-            return ParseEmptyObject();
-        }
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
     }
 
     private static JsonElement ParseEmptyObject()

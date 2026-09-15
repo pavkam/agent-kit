@@ -1,0 +1,31 @@
+{
+  "id": "cmpl-02abc",
+  "object": "chat.completion",
+  "created": 1702256400,
+  "model": "mistral-large-latest-2412",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_xyz789",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"location\": "
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 30,
+    "completion_tokens": 12,
+    "total_tokens": 42
+  }
+}

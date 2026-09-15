@@ -9,6 +9,7 @@ public sealed class InMemorySessionDirectory: ISessionDirectory
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<SessionAddress, SessionLocation> _locations = [];
+    private readonly Dictionary<SessionAddress, PrincipalId> _owners = [];
     private readonly Dictionary<CreationRouteKey, CreationRoute> _creationRoutes = [];
     private readonly Dictionary<DirectoryWriteKey, DirectoryWriteRoute> _writeRoutes = [];
     private readonly ISecurityAuditDispatcher _auditDispatcher;
@@ -210,11 +211,17 @@ public sealed class InMemorySessionDirectory: ISessionDirectory
             if (!_locations.TryGetValue(write.Location.Address, out var existing))
             {
                 _locations.Add(write.Location.Address, write.Location);
+                _owners.Add(write.Location.Address, write.Context.Identity.PrincipalId);
                 _writeRoutes.Add(routeKey, new DirectoryWriteRoute(write, write.Location));
                 return new SessionLocationRecorded(write.Location, existing: false);
             }
 
             if (existing.TenantId != write.Context.Identity.TenantId)
+            {
+                return new SessionDirectoryWriteDenied("The directory route cannot be recorded.");
+            }
+            if (!_owners.TryGetValue(existing.Address, out var owner)
+                || owner != write.Context.Identity.PrincipalId)
             {
                 return new SessionDirectoryWriteDenied("The directory route cannot be recorded.");
             }
@@ -237,6 +244,53 @@ public sealed class InMemorySessionDirectory: ISessionDirectory
         return SessionDirectoryObservability.ObserveAsync(_logger, "record_create", request.Request.Request.AgentId,
             request.Request.Location.Address.SessionId, token => RecordCreateCoreAsync(request, token),
             static result => result is SessionLocationRecorded, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<SessionDirectoryListResult> ListAsync(
+        AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest> request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var scan = request.Request;
+        var resource = SessionDirectorySecurityBinding.ListResource(scan.Identity.TenantId, scan.AgentId);
+        var authorization = await AuthorizeAsync(
+            scan.Authorization,
+            scan.Identity,
+            request.Grant,
+            request.Intent,
+            SecurityOperationKind.StateRead,
+            SecurityEffect.Observe,
+            resource,
+            SessionDirectorySecurityBinding.ListFingerprint(scan),
+            cancellationToken).ConfigureAwait(false);
+        if (authorization is DirectoryAccessUnavailable unavailable)
+        {
+            return new SessionDirectoryListUnavailable(unavailable.SafeMessage);
+        }
+
+        if (authorization is DirectoryAccessDenied denied)
+        {
+            return new SessionDirectoryListUnavailable(denied.SafeMessage);
+        }
+
+        using (_gate.EnterScope())
+        {
+            var ordered = _locations.Values
+                .Where(location => location.TenantId == scan.Identity.TenantId
+                    && location.Address.AgentId == scan.AgentId
+                    && _owners.TryGetValue(location.Address, out var owner)
+                    && owner == scan.Identity.PrincipalId
+                    && (scan.AfterSessionId is null
+                        || location.Address.SessionId.Value.CompareTo(scan.AfterSessionId.Value.Value) > 0))
+                .OrderBy(static location => location.Address.SessionId.Value)
+                .Take(scan.MaximumResults + 1)
+                .ToArray();
+            var hasMore = ordered.Length > scan.MaximumResults;
+            var page = ordered.Take(scan.MaximumResults).ToImmutableArray();
+            var next = hasMore ? page[^1].Address.SessionId : (SessionId?) null;
+            return new SessionDirectoryPage(page, next);
+        }
     }
 
     private async ValueTask<SessionDirectoryWriteResult> RecordCreateCoreAsync(
@@ -289,6 +343,7 @@ public sealed class InMemorySessionDirectory: ISessionDirectory
             }
 
             _locations.Add(record.Location.Address, record.Location);
+            _owners.Add(record.Location.Address, create.Identity.PrincipalId);
             _creationRoutes.Add(routeKey, new CreationRoute(create, record.Location));
             return new SessionLocationRecorded(record.Location, existing: false);
         }

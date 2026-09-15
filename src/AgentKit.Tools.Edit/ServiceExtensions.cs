@@ -28,6 +28,7 @@ public static class ServiceExtensions
 
             services.TryAddSingleton<IIdentifierGenerator<WorkspaceMutationId>, GuidWorkspaceMutationIdGenerator>();
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, EditTool>());
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, EditToolPresentationFormatter>());
             return services;
         }
     }

@@ -41,6 +41,27 @@ public sealed record GlobRequest
         Grant = grant;
     }
 
+    /// <summary>
+    /// Gets immutable simple-glob patterns that exclude matching paths from results and prune matching directory
+    /// subtrees before they consume the visited-entry bound. A pattern ending in <c>/**</c> also matches its root
+    /// directory for pruning.
+    /// </summary>
+    /// <exception cref="ArgumentException">An exclusion contains an uninitialized pattern.</exception>
+    public ImmutableArray<GlobPattern> ExcludedPathPatterns
+    {
+        get;
+        init
+        {
+            var normalized = value.IsDefault ? [] : value;
+            foreach (var pattern in normalized)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(pattern.Value, nameof(value));
+            }
+
+            field = normalized;
+        }
+    } = [];
+
     /// <summary>Gets the traversal base, or null for root.</summary>
     public FileSystemPath? BasePath { get; init; }
     /// <summary>Gets the pinned simple glob.</summary>

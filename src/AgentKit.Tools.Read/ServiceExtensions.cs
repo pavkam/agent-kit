@@ -23,6 +23,7 @@ public static class ServiceExtensions
         public IServiceCollection AddReadTool()
         {
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, ReadFileTool>());
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, ReadFileToolPresentationFormatter>());
             return services;
         }
     }

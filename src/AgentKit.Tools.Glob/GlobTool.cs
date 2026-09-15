@@ -6,6 +6,7 @@ namespace AgentKit.Tools.Glob;
 /// <summary>Matches paths using AgentKit simple-glob v1 through an authorized no-follow host traversal.</summary>
 public sealed class GlobTool: ITool
 {
+    private const int _maximumExcludedPathPatterns = 100;
     /// <summary>The stable identity under which the tool is registered.</summary>
     public static readonly ToolId Id = new("glob");
 
@@ -18,6 +19,7 @@ public sealed class GlobTool: ITool
             "base_path": { "type": ["string", "null"], "description": "Optional directory relative to the workspace root." },
             "case_sensitive": { "type": "boolean", "default": true },
             "include_hidden": { "type": "boolean", "default": false },
+            "exclude_patterns": { "type": "array", "maxItems": 100, "items": { "type": "string" }, "default": [], "description": "Simple globs excluded before traversal. A pattern ending in /** prunes its matching directory subtree." },
             "maximum_depth": { "type": "integer", "minimum": 1 },
             "maximum_visited_entries": { "type": "integer", "minimum": 1 },
             "maximum_results": { "type": "integer", "minimum": 1 }
@@ -61,8 +63,9 @@ public sealed class GlobTool: ITool
         _options = options.Value;
     }
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
+    /// <value>The source-owned identity, schema, effects, and hints for this tool.</value>
+    internal static ToolDescriptor PresentationDescriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "glob",
@@ -73,6 +76,9 @@ public sealed class GlobTool: ITool
         new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
         new ToolSourceId("agentkit.tools.glob"),
         ExtensionData.Empty);
+
+    /// <inheritdoc/>
+    public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
     public async Task<ToolInvocationResult> InvokeAsync(
@@ -103,7 +109,8 @@ public sealed class GlobTool: ITool
                     parsed.IncludeHidden,
                     parsed.MaximumDepth,
                     parsed.MaximumVisitedEntries,
-                    parsed.MaximumResults),
+                    parsed.MaximumResults,
+                    parsed.ExcludedPathPatterns),
                 _timeProvider.GetUtcNow().AddMinutes(1)),
             cancellationToken).ConfigureAwait(false);
         if (decision is SecurityDenied denied)
@@ -125,7 +132,10 @@ public sealed class GlobTool: ITool
                 parsed.MaximumDepth,
                 parsed.MaximumVisitedEntries,
                 parsed.MaximumResults,
-                allowed.Grant),
+                allowed.Grant)
+            {
+                ExcludedPathPatterns = parsed.ExcludedPathPatterns,
+            },
             cancellationToken).ConfigureAwait(false);
         var json = JsonSerializer.Serialize(new
         {
@@ -193,13 +203,55 @@ public sealed class GlobTool: ITool
                 _options.DefaultMaximumVisitedEntries,
                 _options.MaximumVisitedEntries,
                 out var visited)
-            || !TryBound(arguments, "maximum_results", _options.DefaultMaximumResults, _options.MaximumResults, out var results))
+            || !TryBound(arguments, "maximum_results", _options.DefaultMaximumResults, _options.MaximumResults, out var results)
+            || !TryExcludedPathPatterns(arguments, out var excludedPathPatterns))
         {
             error = "Boolean options must be booleans and numeric bounds must be positive and within host ceilings.";
             return false;
         }
 
-        parsed = new ParsedArguments(basePath, pattern, caseSensitive, includeHidden, depth, visited, results);
+        parsed = new ParsedArguments(
+            basePath, pattern, caseSensitive, includeHidden, depth, visited, results, excludedPathPatterns);
+        return true;
+    }
+
+    private static bool TryExcludedPathPatterns(
+        JsonElement arguments,
+        out ImmutableArray<GlobPattern> excludedPathPatterns)
+    {
+        if (!arguments.TryGetProperty("exclude_patterns", out var property))
+        {
+            excludedPathPatterns = [];
+            return true;
+        }
+
+        if (property.ValueKind != JsonValueKind.Array || property.GetArrayLength() > _maximumExcludedPathPatterns)
+        {
+            excludedPathPatterns = [];
+            return false;
+        }
+
+        var builder = ImmutableArray.CreateBuilder<GlobPattern>(property.GetArrayLength());
+        foreach (var item in property.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                excludedPathPatterns = [];
+                return false;
+            }
+
+            try
+            {
+                builder.Add(new GlobPattern(item.GetString()!));
+            }
+            catch (ArgumentException)
+            {
+                excludedPathPatterns = [];
+                return false;
+            }
+        }
+
+        excludedPathPatterns = builder.MoveToImmutable();
         return true;
     }
 
@@ -229,7 +281,8 @@ public sealed class GlobTool: ITool
             return true;
         }
 
-        return property.TryGetInt32(out value) && value > 0 && value <= ceiling;
+        value = 0;
+        return property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out value) && value > 0 && value <= ceiling;
     }
 
     private static void ValidateOptions(GlobToolOptions options)
@@ -265,5 +318,6 @@ public sealed class GlobTool: ITool
         bool IncludeHidden,
         int MaximumDepth,
         int MaximumVisitedEntries,
-        int MaximumResults);
+        int MaximumResults,
+        ImmutableArray<GlobPattern> ExcludedPathPatterns);
 }

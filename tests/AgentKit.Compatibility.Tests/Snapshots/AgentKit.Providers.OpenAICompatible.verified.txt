@@ -52,6 +52,7 @@ namespace AgentKit.Providers.OpenAICompatible
         public string? EmbeddingsPath { get; }
         public System.Uri? EmbeddingsUri { get; }
         public bool IncludeStreamUsage { get; }
+        public int MaximumToolResultCharacters { get; init; }
         public bool PreferStreaming { get; }
         public bool SendDeveloperRoleAsSystem { get; }
         public bool SupportsEmbeddingPurpose { get; }

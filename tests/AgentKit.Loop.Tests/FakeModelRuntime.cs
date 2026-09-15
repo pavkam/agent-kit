@@ -28,6 +28,9 @@ internal sealed class FakeModelSelector(ModelSelectionResult result): IModelSele
     /// <summary>Gets the number of times the loop asked for a selection.</summary>
     public int SelectCount { get; private set; }
 
+    /// <summary>Gets the most recent exact selection request.</summary>
+    public ModelSelectionRequest? LastRequest { get; private set; }
+
     /// <summary>Creates a selector that always chooses <paramref name="model"/>.</summary>
     public static FakeModelSelector Selecting(ModelDescriptor model) =>
         new(new ModelSelected(new ModelSelectionDecision(
@@ -43,6 +46,7 @@ internal sealed class FakeModelSelector(ModelSelectionResult result): IModelSele
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
         SelectCount++;
+        LastRequest = request;
         return ValueTask.FromResult(result);
     }
 }

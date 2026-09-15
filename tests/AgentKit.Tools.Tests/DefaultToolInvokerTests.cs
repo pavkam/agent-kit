@@ -208,6 +208,38 @@ public sealed class DefaultToolInvokerTests
         tool.ReceivedToken.ShouldBe(source.Token);
     }
 
+    [Fact]
+    public async Task InvokeAsync_WhenAuthorizerThrows_ReturnsFailedWithoutInvokingTool()
+    {
+        // tool-call-lifecycle.md: every identified call reaches one terminal record, including pre-invocation failure.
+        // An authorizer fault must be a typed terminal, not an exception that orphans the model's ToolCallPart.
+        var invoked = false;
+        var tool = new FakeTool
+        {
+            Descriptor = TestFactory.Descriptor("guarded"),
+            OnInvoke = (_, _) =>
+            {
+                invoked = true;
+                return Task.FromResult(new ToolInvocationResult(
+                    new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+                    []));
+            },
+        };
+        var invoker = new DefaultToolInvoker(new ToolCatalog([tool]), new ThrowingAuthorizer());
+
+        var result = await invoker.InvokeAsync(TestFactory.CallRequest(new ToolId("guarded")), TestContext.Current.CancellationToken);
+
+        invoked.ShouldBeFalse();
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+    }
+
+    private sealed class ThrowingAuthorizer: IToolAuthorizer
+    {
+        public ValueTask<ToolAuthorizationDecision> AuthorizeAsync(ToolAuthorizationRequest request, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("policy store unreachable");
+    }
+
     private sealed class CapturingAuthorizer: IToolAuthorizer
     {
         public ToolDescriptor? Descriptor { get; private set; }

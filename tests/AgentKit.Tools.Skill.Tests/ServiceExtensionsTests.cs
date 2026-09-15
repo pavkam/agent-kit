@@ -14,6 +14,8 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddSkillTool().AddSkillTool();
         services.Count(descriptor => descriptor.ServiceType == typeof(ITool) && descriptor.ImplementationType == typeof(SkillTool)).ShouldBe(1);
+        services.Count(descriptor => descriptor.ServiceType == typeof(IToolPresentationFormatter)
+            && descriptor.ImplementationType == typeof(SkillToolPresentationFormatter)).ShouldBe(1);
     }
 
     [Fact]

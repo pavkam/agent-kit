@@ -23,6 +23,7 @@ public static class ServiceExtensions
         public IServiceCollection AddWriteTool()
         {
             services.TryAddEnumerable(ServiceDescriptor.Singleton<ITool, WriteFileTool>());
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IToolPresentationFormatter, WriteFileToolPresentationFormatter>());
             return services;
         }
     }

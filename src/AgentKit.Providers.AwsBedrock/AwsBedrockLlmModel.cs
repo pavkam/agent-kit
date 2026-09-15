@@ -88,6 +88,9 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(observer);
 
+        // This adapter and its wire parser both emit events; the sequencing wrapper guarantees the observer
+        // sees exactly one ModelResponseStarted, contiguous sequences, and nothing after a terminal event.
+        observer = new SequencingModelResponseObserver(observer);
         var requestId = request.Context.ModelRequestId;
         long sequence = 0;
 

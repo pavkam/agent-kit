@@ -59,6 +59,13 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         Version = new SessionVersion(_entries.Count);
     }
 
+    /// <summary>
+    /// Overrides the branch version independently of the entry count, modelling
+    /// a store where several entries were committed in one append.
+    /// </summary>
+    /// <param name="version">The version to report.</param>
+    public void SetVersion(SessionVersion version) => Version = version;
+
     /// <inheritdoc/>
     public ValueTask<SessionAppendResult> AppendAsync(
         SessionAppendRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default)
@@ -83,7 +90,7 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         }
 
         _entries.AddRange(request.Entries);
-        Version = new SessionVersion(_entries.Count);
+        Version = new SessionVersion(Version.Value + 1);
 
         return ValueTask.FromResult<SessionAppendResult>(new SessionAppended(Version, request.Entries));
     }

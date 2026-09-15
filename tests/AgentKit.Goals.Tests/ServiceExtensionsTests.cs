@@ -43,7 +43,7 @@ public sealed class ServiceExtensionsTests
         var broker = provider.GetRequiredService<ITaskDelegationBroker>();
         _ = await broker.DelegateAsync(Request(broker.SecurityAudience), TestContext.Current.CancellationToken);
         timeProvider.TimestampCalls.ShouldBe(2);
-        logger.Events.ShouldHaveSingleItem().ShouldBe((2000, LogLevel.Information));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((23000, LogLevel.Information));
         logger.FieldNames.ShouldHaveSingleItem().ShouldBe(["DelegationId", "TenantId", "AgentId", "SessionId", "RunId", "TurnId", "ToolCallId", "OperationId", "SecurityRequestId", "Outcome", "{OriginalFormat}"]);
     }
 

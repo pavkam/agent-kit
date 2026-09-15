@@ -57,8 +57,11 @@ descriptor-relative no-follow operations, and never consults ambient ignore
 files. Its profile pins ordinal path ordering, simple-glob v1 path selection,
 ordinal literal or .NET non-backtracking content matching, strict UTF-8, binary
 exclusion, and explicit depth, file, byte, match, line-projection, and monotonic
-duration bounds. Each match carries the full-file SHA-256 fingerprint and exact
-line and byte coordinates; partial limit and timeout results remain typed.
+duration bounds. Requests may carry ordered simple-glob exclusions that are
+fingerprinted with the authorization input and prune matching directory subtrees
+before traversal budgets are consumed. Each match carries the full-file SHA-256
+fingerprint and exact line and byte coordinates; partial limit and timeout
+results remain typed.
 
 Exact text editing uses two narrower capabilities rather than the general text
 writer. `IFileSnapshotReader` observes complete bounded bytes and their SHA-256

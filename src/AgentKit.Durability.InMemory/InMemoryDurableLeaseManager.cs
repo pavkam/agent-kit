@@ -138,9 +138,12 @@ public sealed class InMemoryDurableLeaseManager: IDurableLeaseManager
             DurableLeaseRenewalOutcome outcome;
             lock (_gate)
             {
-                if (_records.TryGetValue(lease.Address, out var current) && current.FencingToken == lease.FencingToken)
+                var now = _timeProvider.GetUtcNow();
+                if (_records.TryGetValue(lease.Address, out var current)
+                    && current.FencingToken == lease.FencingToken
+                    && current.ExpiresAt > now)
                 {
-                    var expiresAt = _timeProvider.GetUtcNow() + lease.Duration;
+                    var expiresAt = now + lease.Duration;
                     current.ExpiresAt = expiresAt;
                     lease.ExpiresAt = expiresAt;
                     result = new LeaseRenewed(expiresAt);
@@ -148,11 +151,10 @@ public sealed class InMemoryDurableLeaseManager: IDurableLeaseManager
                 }
                 else
                 {
-                    // A live lease reaches this branch only after another worker's takeover installed a new
-                    // record, so current is never null here: the only path that removes a record entirely is
-                    // this same lease's own Release, and InMemoryExecutionLease.RenewAsync already rejects a
-                    // disposed caller before delegating here. The null case remains for the interface's
-                    // general documented shape.
+                    // Ownership is lost either because another worker's takeover installed a new record, or
+                    // because this lease's own expiry passed before renewal: the lease service is authoritative
+                    // for expiry, so a worker that missed its window cannot resurrect ownership by renewing late.
+                    // The null case remains for the interface's general documented shape.
                     result = new LeaseLost(current?.FencingToken);
                     outcome = DurableLeaseRenewalOutcome.Lost;
                 }

@@ -160,7 +160,7 @@ public sealed class RunEventStreamTests: AgentRunStreamConformance
         captured!.ParentSpanId.ShouldBe(parent.SpanId);
         captured.GetTagItem(AgentKitTagNames.RunId).ShouldBe(RunResultTestData.Run.ToString());
         var (eventId, fields) = logger.Entries.Where(static entry => Equals(entry.Fields["Operation"], "AwaitCompletion")).ShouldHaveSingleItem();
-        eventId.ShouldBe(1006); fields["Outcome"].ShouldBe(cancel ? "Cancelled" : fail ? "Faulted" : "Succeeded");
+        eventId.ShouldBe(22006); fields["Outcome"].ShouldBe(cancel ? "Cancelled" : fail ? "Faulted" : "Succeeded");
         fields.Values.ShouldNotContain("output"); fields.Values.ShouldNotContain("private failure content");
         captured.TagObjects.ShouldAllBe(static tag => !Equals(tag.Value, "output") && !Equals(tag.Value, "private failure content"));
         measurements.Count.ShouldBe(2);

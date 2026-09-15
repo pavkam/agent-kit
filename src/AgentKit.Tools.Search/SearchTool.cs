@@ -6,6 +6,7 @@ namespace AgentKit.Tools.Search;
 /// <summary>Searches bounded workspace content through an authorized no-follow host capability.</summary>
 public sealed class SearchTool: ITool
 {
+    private const int _maximumExcludedPathPatterns = 100;
     /// <summary>The stable identity under which the tool is registered.</summary>
     public static readonly ToolId Id = new("search");
 
@@ -20,6 +21,7 @@ public sealed class SearchTool: ITool
             "base_path": { "type": ["string", "null"], "description": "Optional directory relative to the workspace root." },
             "case_sensitive": { "type": "boolean", "default": true },
             "include_hidden": { "type": "boolean", "default": false },
+            "exclude_patterns": { "type": "array", "maxItems": 100, "items": { "type": "string" }, "default": [], "description": "Simple globs excluded before traversal. A pattern ending in /** prunes its matching directory subtree." },
             "maximum_depth": { "type": "integer", "minimum": 1 },
             "maximum_files": { "type": "integer", "minimum": 1 },
             "maximum_bytes": { "type": "integer", "minimum": 1 },
@@ -66,8 +68,9 @@ public sealed class SearchTool: ITool
         _options = options.Value;
     }
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
+    /// <value>The source-owned identity, schema, effects, and hints for this tool.</value>
+    internal static ToolDescriptor PresentationDescriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "search",
@@ -78,6 +81,9 @@ public sealed class SearchTool: ITool
         new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
         new ToolSourceId("agentkit.tools.search"),
         ExtensionData.Empty);
+
+    /// <inheritdoc/>
+    public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
     public async Task<ToolInvocationResult> InvokeAsync(
@@ -170,14 +176,16 @@ public sealed class SearchTool: ITool
                 || !TryBound(arguments, "maximum_bytes", _options.DefaultMaximumBytes, _options.MaximumBytes, out var bytes)
                 || !TryBound(arguments, "maximum_matches", _options.DefaultMaximumMatches, _options.MaximumMatches, out var matches)
                 || !TryBound(arguments, "maximum_line_bytes", _options.DefaultMaximumLineBytes, _options.MaximumLineBytes, out var lineBytes)
-                || !TryDuration(arguments, out var duration))
+                || !TryDuration(arguments, out var duration)
+                || !TryExcludedPathPatterns(arguments, out var excludedPathPatterns))
             {
                 error = "Numeric bounds must be positive and within host ceilings.";
                 return false;
             }
 
             parsed = new ParsedArguments(
-                basePath, pattern, pathPattern, caseSensitive, includeHidden, depth, files, bytes, matches, lineBytes, duration);
+                basePath, pattern, pathPattern, caseSensitive, includeHidden, depth, files, bytes, matches, lineBytes,
+                duration, excludedPathPatterns);
             return true;
         }
         catch (ArgumentException exception)
@@ -213,7 +221,10 @@ public sealed class SearchTool: ITool
         value.MaximumMatches,
         value.MaximumLineBytes,
         value.MaximumDuration,
-        grant);
+        grant)
+    {
+        ExcludedPathPatterns = value.ExcludedPathPatterns,
+    };
 
     private static InputFingerprint Fingerprint(ParsedArguments value) => FileSearchSecurityBinding.Fingerprint(
         value.BasePath,
@@ -226,7 +237,48 @@ public sealed class SearchTool: ITool
         value.MaximumBytes,
         value.MaximumMatches,
         value.MaximumLineBytes,
-        value.MaximumDuration);
+        value.MaximumDuration,
+        value.ExcludedPathPatterns);
+
+    private static bool TryExcludedPathPatterns(
+        JsonElement arguments,
+        out ImmutableArray<GlobPattern> excludedPathPatterns)
+    {
+        if (!arguments.TryGetProperty("exclude_patterns", out var property))
+        {
+            excludedPathPatterns = [];
+            return true;
+        }
+
+        if (property.ValueKind != JsonValueKind.Array || property.GetArrayLength() > _maximumExcludedPathPatterns)
+        {
+            excludedPathPatterns = [];
+            return false;
+        }
+
+        var builder = ImmutableArray.CreateBuilder<GlobPattern>(property.GetArrayLength());
+        foreach (var item in property.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                excludedPathPatterns = [];
+                return false;
+            }
+
+            try
+            {
+                builder.Add(new GlobPattern(item.GetString()!));
+            }
+            catch (ArgumentException)
+            {
+                excludedPathPatterns = [];
+                return false;
+            }
+        }
+
+        excludedPathPatterns = builder.MoveToImmutable();
+        return true;
+    }
 
     private static FileSystemPath? OptionalPath(JsonElement arguments, string name)
     {
@@ -264,7 +316,8 @@ public sealed class SearchTool: ITool
             return true;
         }
 
-        return property.TryGetInt32(out value) && value > 0 && value <= ceiling;
+        value = 0;
+        return property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out value) && value > 0 && value <= ceiling;
     }
 
     private static bool TryBound(JsonElement arguments, string name, long fallback, long ceiling, out long value)
@@ -275,7 +328,8 @@ public sealed class SearchTool: ITool
             return true;
         }
 
-        return property.TryGetInt64(out value) && value > 0 && value <= ceiling;
+        value = 0;
+        return property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out value) && value > 0 && value <= ceiling;
     }
 
     private static void ValidateOptions(SearchToolOptions value)
@@ -323,5 +377,6 @@ public sealed class SearchTool: ITool
         long MaximumBytes,
         int MaximumMatches,
         int MaximumLineBytes,
-        TimeSpan MaximumDuration);
+        TimeSpan MaximumDuration,
+        ImmutableArray<GlobPattern> ExcludedPathPatterns);
 }

@@ -79,8 +79,9 @@ public sealed class PlanTool: ITool
         _maximumItems = options.Value.MaximumItems;
     }
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
+    /// <value>The source-owned identity, schema, effects, and hints for this tool.</value>
+    internal static ToolDescriptor PresentationDescriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "plan",
@@ -91,6 +92,9 @@ public sealed class PlanTool: ITool
         new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
         new ToolSourceId("agentkit.tools.plan"),
         ExtensionData.Empty);
+
+    /// <inheritdoc/>
+    public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
     public async Task<ToolInvocationResult> InvokeAsync(

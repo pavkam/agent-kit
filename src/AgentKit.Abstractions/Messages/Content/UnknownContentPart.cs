@@ -43,4 +43,20 @@ public sealed record UnknownContentPart: ContentPart
 
     /// <summary>Gets the raw JSON-compatible payload.</summary>
     public JsonElement Payload { get; init; }
+
+    /// <summary>
+    /// Compares this part structurally: <see cref="Payload"/> is compared by JSON value
+    /// (<see cref="JsonElement.DeepEquals"/>) rather than by backing-document identity.
+    /// </summary>
+    /// <param name="other">The part to compare with.</param>
+    /// <returns><see langword="true"/> when the type name, JSON payload, and extensions are equal.</returns>
+    public bool Equals(UnknownContentPart? other) =>
+        other is not null
+        && string.Equals(TypeName, other.TypeName, StringComparison.Ordinal)
+        && JsonElementValueEquality.Equals(Payload, other.Payload)
+        && Extensions.Equals(other.Extensions);
+
+    /// <summary>Hashes the non-JSON members only, consistent with <see cref="Equals(UnknownContentPart?)"/>.</summary>
+    /// <returns>A hash consistent with structural equality.</returns>
+    public override int GetHashCode() => HashCode.Combine(TypeName, Extensions);
 }

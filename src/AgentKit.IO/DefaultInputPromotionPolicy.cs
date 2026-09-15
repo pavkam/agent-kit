@@ -100,6 +100,17 @@ internal sealed class DefaultInputPromotionPolicy: IInputPromotionPolicy
         }
 
         var requiredCount = requiredSteers + (oldestFollowUp is null ? 0 : 1);
+        if (requiredCount == 0)
+        {
+            // Nothing qualifies at this boundary; that is the common case for a steering boundary with only
+            // follow-up input queued, and it is a typed planning outcome rather than a snapshot invariant failure.
+            return new InputPromotionPlanRejected(
+                InputPromotionPlanRejectionKind.NothingEligible,
+                requiredCount,
+                context.MaximumPromotions,
+                "No eligible input qualifies for promotion at this boundary.");
+        }
+
         if (requiredCount > context.MaximumPromotions)
         {
             return new InputPromotionPlanRejected(

@@ -65,4 +65,26 @@ public sealed record ToolCallPart: ContentPart
     /// correlation, when the provider supplies one.
     /// </summary>
     public ProviderToolCallId? ProviderCallId { get; init; }
+
+    /// <summary>
+    /// Compares this part structurally: <see cref="Arguments"/> is compared by JSON
+    /// value (<see cref="JsonElement.DeepEquals"/>) rather than by backing-document
+    /// identity, so a part rebuilt from persisted JSON equals its original.
+    /// </summary>
+    /// <param name="other">The part to compare with.</param>
+    /// <returns><see langword="true"/> when every member, including the JSON arguments, is equal.</returns>
+    public bool Equals(ToolCallPart? other) =>
+        other is not null
+        && CallId.Equals(other.CallId)
+        && Tool.Equals(other.Tool)
+        && JsonElementValueEquality.Equals(Arguments, other.Arguments)
+        && Nullable.Equals(ProviderCallId, other.ProviderCallId)
+        && Extensions.Equals(other.Extensions);
+
+    /// <summary>
+    /// Hashes the non-JSON members only, so structurally equal arguments with different
+    /// textual spellings still hash equally, as <see cref="Equals(ToolCallPart?)"/> requires.
+    /// </summary>
+    /// <returns>A hash consistent with structural equality.</returns>
+    public override int GetHashCode() => HashCode.Combine(CallId, Tool, ProviderCallId, Extensions);
 }

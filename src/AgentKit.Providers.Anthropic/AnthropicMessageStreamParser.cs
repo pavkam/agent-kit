@@ -204,7 +204,23 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
 
                 case "content_block_stop" when streamEvent is { Index: { } stopIndex }
                     && blocks.TryGetValue(stopIndex, out var stopAccumulator):
-                    stopAccumulator.Close();
+                    try
+                    {
+                        stopAccumulator.Close();
+                    }
+                    catch (JsonException exception)
+                    {
+                        // Anthropic still closes a tool_use block whose partial_json was truncated (for example by
+                        // max_tokens); malformed accumulated arguments are a typed protocol failure, never a throw.
+                        return await FailAsync(
+                            observer,
+                            context,
+                            sequence,
+                            "The provider returned malformed tool-call arguments.",
+                            exception,
+                            cancellationToken).ConfigureAwait(false);
+                    }
+
                     await observer.OnEventAsync(
                             new ModelPartCompleted(requestId, sequence++, stopIndex, stopAccumulator.Part!),
                             cancellationToken)

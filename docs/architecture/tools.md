@@ -1200,6 +1200,22 @@ directly. AgentKit defines no mandatory tool base class. A leaf package may add
 a base class only for demonstrated reusable mechanics such as remote stream
 assembly or typed argument binding while retaining direct interface support.
 
+### Application presentation
+
+`IToolPresenter` owns bounded, provider-neutral application presentation
+separately from execution, authorization, and model-history projection. A
+request carries an exact captured `ToolDescriptor` when available, plus either
+the original `ToolCallPart` or an explicitly labeled `ToolResultPart`
+projection. The presenter selects an additive `IToolPresentationFormatter` only
+when its complete source-owned descriptor is value-equal to the captured
+descriptor. It performs no alias guessing or live catalog lookup; absent or
+mismatched evidence uses bounded fallback.
+
+Presentations contain literal text, code, and diff parts with optional language
+or path hints. Core values contain no terminal markup or ANSI control sequences.
+Input bytes, output characters, and part count are bounded, truncation is
+reported, and cancellation propagates.
+
 ## Configuration and dependency injection
 
 All behavior that changes availability or execution is configurable through

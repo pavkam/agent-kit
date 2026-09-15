@@ -106,6 +106,10 @@ public sealed class DefaultHookDispatcher(ILogger<DefaultHookDispatcher>? logger
 
             if (failureMode == HookFailureMode.Isolate)
             {
+                // Isolation must not leak a partial mutation, replacement value, or short-circuit marker from a
+                // hook that failed midway: the permitted writable state is captured before the hook runs and
+                // restored if it throws, so later hooks and the owning operation observe the pre-hook state.
+                var snapshot = args.CaptureMutableState();
                 try
                 {
                     await invoke(hook, args, nestedScope, cancellationToken).ConfigureAwait(false);
@@ -129,6 +133,7 @@ public sealed class DefaultHookDispatcher(ILogger<DefaultHookDispatcher>? logger
                             { AgentKitTagNames.Outcome, "isolated" },
                             { AgentKitTagNames.ErrorType, exception.GetType().FullName ?? exception.GetType().Name },
                         }));
+                    args.RestoreMutableState(snapshot);
                     args.Validate();
                     continue;
                 }

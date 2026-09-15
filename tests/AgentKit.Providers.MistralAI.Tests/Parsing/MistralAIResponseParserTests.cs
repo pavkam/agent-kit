@@ -36,6 +36,18 @@ public sealed class MistralAIResponseParserTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenToolArgumentsAreMalformed_ReturnsProtocolFailureInsteadOfEmptyArguments()
+    {
+        // streaming-and-event-protocol.md: a malformed stream "MUST NOT synthesize success"; `{}` is a fabricated call.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_malformed_tool_arguments.json"));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
     public async Task ParseStreamingAsync_WhenOnlyNonterminalChunkCarriesUsage_RetainsInterimUsage()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());

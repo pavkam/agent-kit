@@ -342,6 +342,58 @@ public sealed class DefaultHookDispatcherTests
     }
 
     [Fact]
+    public async Task DispatchAsync_WhenIsolatedHookMutatesThenThrows_DoesNotLeakPartialMutationToLaterHooks()
+    {
+        // extensions-hooks-and-middleware.md: isolation "MUST NOT leak a partial mutation, short-circuit marker, or replacement value".
+        var dispatcher = new DefaultHookDispatcher();
+        var observedByB = "unset";
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (args, _, _) =>
+                {
+                    args.Payload = "partial-from-a";
+                    throw new InvalidOperationException("boom after mutating");
+                },
+            },
+            new TestHook { Id = new HookId("b"), OnInvoke = (args, _, _) => { observedByB = args.Payload; return Task.CompletedTask; } },
+        };
+        var args = new TestHookEventArgs { Payload = "original" };
+
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+
+        observedByB.ShouldBe("original");
+        args.Payload.ShouldBe("original");
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenIsolatedHookShortCircuitsThenThrows_DoesNotLeaveShortCircuitMarkerSet()
+    {
+        var dispatcher = new DefaultHookDispatcher();
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (args, _, _) =>
+                {
+                    args.IsShortCircuited = true;
+                    throw new InvalidOperationException("boom after short-circuit");
+                },
+            },
+            Hook("b"),
+        };
+        var args = new TestHookEventArgs();
+
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Either the marker is rolled back and b runs, or the dispatch honours the marker and b does not run; a set marker with b having run is incoherent.
+        (args.IsShortCircuited && args.InvocationOrder.Contains(new HookId("b"))).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task DispatchAsync_WhenFailureModeIsolateAndHookThrowsOperationCanceled_PropagatesWithoutIsolating()
     {
         var dispatcher = new DefaultHookDispatcher();
@@ -360,8 +412,10 @@ public sealed class DefaultHookDispatcherTests
     }
 
     [Fact]
-    public async Task DispatchAsync_WhenIsolatedHookThrowsAfterInvalidMutation_RejectsMutationAndStopsDispatch()
+    public async Task DispatchAsync_WhenIsolatedHookThrowsAfterInvalidMutation_RollsBackMutationAndContinues()
     {
+        // Isolation restores the captured writable state, so an invalid mutation left by the failing hook never
+        // reaches validation, later hooks, or the owning operation.
         var dispatcher = new DefaultHookDispatcher();
         var hooks = new[]
         {
@@ -377,8 +431,9 @@ public sealed class DefaultHookDispatcherTests
             Hook("b")
         };
         var args = new TestHookEventArgs();
-        _ = await Should.ThrowAsync<HookValidationException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken));
-        args.InvocationOrder.ShouldBe([new HookId("a")]);
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+        args.RejectPayload.ShouldBeFalse();
+        args.InvocationOrder.ShouldBe([new HookId("a"), new HookId("b")]);
     }
 
     [Fact]

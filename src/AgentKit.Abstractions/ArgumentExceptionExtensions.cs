@@ -25,6 +25,20 @@ public static class ArgumentExceptionExtensions
 {
     extension(ArgumentException)
     {
+        /// <summary>Throws when a path is not lexically rooted for the current platform.</summary>
+        /// <param name="path">The non-blank path to inspect without filesystem observation.</param>
+        /// <param name="paramName">The path parameter name inferred from the call site when omitted.</param>
+        /// <exception cref="ArgumentException"><paramref name="path"/> is not an absolute lexical path.</exception>
+        public static void ThrowIfPathNotRooted(
+            string path,
+            [CallerArgumentExpression(nameof(path))] string? paramName = null)
+        {
+            if (!Path.IsPathRooted(path))
+            {
+                throw new ArgumentException("The path must be absolute.", paramName);
+            }
+        }
+
         /// <summary>Throws when run-profile publications contain a null item or duplicate agent-definition coordinates.</summary>
         /// <param name="publications">The initialized immutable publication sequence to inspect.</param>
         /// <param name="paramName">The sequence parameter name inferred from the call site when omitted.</param>

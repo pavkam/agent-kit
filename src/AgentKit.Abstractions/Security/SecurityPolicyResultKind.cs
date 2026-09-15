@@ -12,4 +12,6 @@ public enum SecurityPolicyResultKind
     Allow,
     /// <summary>The policy denies the request and prevents grant issue.</summary>
     Deny,
+    /// <summary>The policy permits the request only after an exact authorized human approval.</summary>
+    RequireApproval,
 }

@@ -24,6 +24,15 @@ public sealed class SessionPageTests
         first.GetHashCode().ShouldBe(second.GetHashCode());
     }
 
+    [Fact]
+    public void Constructor_WhenEmptyPageStartsBeyondSnapshotUpperSequence_PreservesLegacyThroughSequence()
+    {
+        var snapshot = new SessionReadSnapshot(Address(), BranchId, new SessionVersion(1), new SessionSequence(1));
+        var page = new SessionPage([], new SessionSequence(5), hasMore: false, snapshot);
+        page.ThroughSequence.ShouldBe(new SessionSequence(5));
+        page.Snapshot.ShouldBeSameAs(snapshot);
+    }
+
     private static AgentId AgentId => new(_agentGuid);
     private static SessionId SessionId => new(_sessionGuid);
     private static BranchId BranchId => new(_branchGuid);

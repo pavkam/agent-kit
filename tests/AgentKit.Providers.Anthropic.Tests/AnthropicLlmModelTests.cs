@@ -9,8 +9,8 @@ using System.Net.Http.Headers;
 
 using AgentKit.Providers.Anthropic.Tests.Fakes;
 
-/// <summary>Verifies AnthropicChatModel behavior and contracts.</summary>
-public sealed class AnthropicChatModelTests
+/// <summary>Verifies AnthropicLlmModel behavior and contracts.</summary>
+public sealed class AnthropicLlmModelTests
 {
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
     private static LlmModelRequest CreateRequest(ModelDescriptor descriptor, DateTimeOffset deadline, ImmutableArray<LlmToolDefinition> tools = default, ProviderRequestOptions? options = null)
@@ -63,6 +63,21 @@ public sealed class AnthropicChatModelTests
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
         var sentBody = JsonNode.Parse(handler.RequestBodies[0]!);
         sentBody!["stream"]!.GetValue<bool>().ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenStreamingSuccess_EmitsExactlyOneResponseStartedWithContiguousSequences()
+    {
+        // streaming-and-event-protocol.md: exactly one ResponseStarted per attempt; sequences are strictly increasing.
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/streaming_text.sse", "text/event-stream");
+        var options = new AnthropicProviderOptions { BaseAddress = new Uri("https://api.anthropic.test/"), PreferStreaming = true };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-test")), options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        _ = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        observer.Events.OfType<ModelResponseStarted>().Count().ShouldBe(1);
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
     }
 
     [Fact]

@@ -219,7 +219,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         var historyLoad = await LoadHistoryAsync(
             sessionContext, request.SessionProfile, request.BranchId, cancellationToken).ConfigureAwait(false);
-        if (historyLoad is not var (initialEntries, loadedVersion))
+        if (historyLoad is not var (initialEntries, initialCursor))
         {
             return BuildResult(
                 request,
@@ -228,7 +228,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new SessionVersion(0));
         }
 
-        var currentVersion = loadedVersion;
+        var currentVersion = initialCursor.Version;
 
         var modelResolution = await ResolveModelAsync(request, operationId, cancellationToken)
             .ConfigureAwait(false);
@@ -244,7 +244,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _ = Activity.Current?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
 
         var committedMessages = ImmutableArray.CreateBuilder<AgentMessage>();
-        var history = ToMessages(initialEntries);
+        var history = new HistoryView(initialCursor, ToMessages(initialEntries), []);
 
         for (var turn = 1; turn <= request.MaxTurns; turn++)
         {
@@ -265,7 +265,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
             }
 
             currentVersion = result.Version;
-            history = history.AddRange(result.NewMessages);
+            Debug.Assert(result.Cursor is not null, "A continuing turn retains an exact updated history cursor.");
+            history = new HistoryView(result.Cursor, history.Messages.AddRange(result.NewMessages), []);
         }
 
         return BuildResult(request, new AgentRunTurnLimitReached(request.MaxTurns), committedMessages.ToImmutable(), currentVersion);
@@ -296,8 +297,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var selectionRequest = new ModelSelectionRequest(
             scope,
             _modelRequestIds.Create(),
-            request.ModelPolicy,
-            request.ModelRequirements,
+            request.Agent?.Models ?? request.ModelPolicy,
+            request.Agent?.ModelRequirements ?? request.ModelRequirements,
             catalog);
 
         var selection = await _modelSelector
@@ -349,7 +350,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ILlmModel llmModel,
         OperationId operationId,
         int turn,
-        ImmutableArray<AgentMessage> history,
+        HistoryView history,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
         CancellationToken cancellationToken)
@@ -389,20 +390,35 @@ public sealed class DefaultAgentLoop: IAgentLoop
             });
         LoopLog.TurnStarted(_logger, request.RunId, turnId, turn);
 
-        var assembleRequest = new ContextAssemblyRequest(
-            request.AgentId,
-            request.SessionId,
-            request.BranchId,
-            request.RunId,
-            turnId,
-            modelRequestId,
-            model,
-            request.Instructions,
-            history,
-            request.Tools,
-            request.ToolChoice,
-            request.Settings,
-            ExtensionData.Empty);
+        var assembleRequest = request is { Agent: { } agent, Configuration: { } configuration }
+            ? new ContextAssemblyRequest(
+                request.AgentId,
+                request.SessionId,
+                request.BranchId,
+                request.RunId,
+                turnId,
+                modelRequestId,
+                model,
+                agent.Instructions,
+                new ContextAssemblyEvidence(agent, request.Identity, history, turnAuthorization, configuration),
+                agent.Tools,
+                agent.ToolChoice,
+                agent.Settings,
+                ExtensionData.Empty)
+            : new ContextAssemblyRequest(
+                request.AgentId,
+                request.SessionId,
+                request.BranchId,
+                request.RunId,
+                turnId,
+                modelRequestId,
+                model,
+                request.Instructions,
+                history.Messages,
+                request.Tools,
+                request.ToolChoice,
+                request.Settings,
+                ExtensionData.Empty);
 
         var assembleResult = await _contextAssembler.AssembleAsync(assembleRequest, cancellationToken).ConfigureAwait(false);
 
@@ -435,7 +451,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
             {
                 attemptResult = await llmModel.ExecuteAsync(
                     chatRequest,
-                    NoOpModelResponseObserver.Instance,
+                    request.Observer is null
+                        ? NoOpModelResponseObserver.Instance
+                        : new RunModelResponseObserver(
+                            turnId,
+                            (runEvent, token) => ObserveAsync(request, runEvent, token)),
                     cancellationToken).ConfigureAwait(false);
                 if (attemptResult is ModelAttemptCompleted)
                 {
@@ -461,20 +481,20 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var turnOutcome = attemptResult switch
         {
             ModelAttemptFailed failed => await SettleInterruptedAsync(
-                request, model, turnSessionContext, turnCorrelation, turnId, modelRequestId,
+                request, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, modelRequestId,
                 failed.PartialParts, failed.Usage, NormalizedStopReason.Error, failed.Failure.RequestId,
-                new AgentRunFailed(failed.Failure), committedMessages, currentVersion, cancellationToken)
+                new AgentRunFailed(failed.Failure), committedMessages, currentVersion)
                 .ConfigureAwait(false),
 
             ModelAttemptCancelled cancelled => await SettleInterruptedAsync(
-                request, model, turnSessionContext, turnCorrelation, turnId, modelRequestId,
+                request, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, modelRequestId,
                 cancelled.PartialParts, cancelled.Usage, NormalizedStopReason.Cancelled,
                 cancelled.Cancellation.RequestId, new AgentRunCancelled(cancelled.Cancellation.SafeMessage),
-                committedMessages, currentVersion, cancellationToken)
+                committedMessages, currentVersion)
                 .ConfigureAwait(false),
 
             ModelAttemptCompleted completed => await SettleCompletedAsync(
-                request, turnSessionContext, turnCorrelation, turnId, turn, completed.Response,
+                request, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, turn, completed.Response,
                 committedMessages, currentVersion, cancellationToken)
                 .ConfigureAwait(false),
 
@@ -499,6 +519,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     private async Task<TurnOutcome> SettleCompletedAsync(
         AgentRunRequest request,
+        ModelDescriptor model,
+        MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
         InRunOperationCorrelation turnCorrelation,
         TurnId turnId,
@@ -508,12 +530,47 @@ public sealed class DefaultAgentLoop: IAgentLoop
         SessionVersion currentVersion,
         CancellationToken cancellationToken)
     {
+        // A terminal is accepted as a complete turn only when the provider reports it finished by choice
+        // (Completed) or by requesting tools (ToolUse). Length, Pending, Error, or Cancelled terminals are
+        // truthful partial output: they are preserved as an Interrupted message and settle the run as a typed
+        // failure rather than pretending the agent chose to finish.
+        if (response.StopReason is not (NormalizedStopReason.Completed or NormalizedStopReason.ToolUse))
+        {
+            LoopLog.ModelResponseNotAccepted(_logger, request.RunId, turnId, $"stop reason {response.StopReason}");
+            return await SettleInterruptedAsync(
+                request, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
+                response.Parts, response.Usage, response.StopReason, response.Identity.RequestId,
+                new AgentRunFailed(new ProviderFailure(
+                    ProviderFailureKind.Unknown, response.Identity.ProviderId, response.Identity.RequestId,
+                    statusCode: null, providerCode: null, retryAfter: null,
+                    $"The model stopped before completing its output (stop reason: {response.StopReason}).",
+                    diagnosticCause: null, ExtensionData.Empty)),
+                committedMessages, currentVersion).ConfigureAwait(false);
+        }
+
+        // Duplicate call identities cannot be honoured: one identity must never produce two effects, and the
+        // history contract requires exactly one terminal result per call. The response is a protocol violation.
+        var requestedCalls = response.Parts.OfType<ToolCallPart>().ToImmutableArray();
+        if (requestedCalls.Select(static call => call.CallId).Distinct().Count() != requestedCalls.Length)
+        {
+            LoopLog.ModelResponseNotAccepted(_logger, request.RunId, turnId, "duplicate tool call identities");
+            return await SettleInterruptedAsync(
+                request, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
+                response.Parts, response.Usage, NormalizedStopReason.Error, response.Identity.RequestId,
+                new AgentRunFailed(new ProviderFailure(
+                    ProviderFailureKind.ProtocolViolation, response.Identity.ProviderId, response.Identity.RequestId,
+                    statusCode: null, providerCode: null, retryAfter: null,
+                    "The model response requested the same tool call identity more than once.",
+                    diagnosticCause: null, ExtensionData.Empty)),
+                committedMessages, currentVersion).ConfigureAwait(false);
+        }
+
         var now = _timeProvider.GetUtcNow();
         var assistantMessage = new AssistantMessage(
             _messageIds.Create(),
             request.AgentId,
             request.SessionId,
-            conversationId: null,
+            sourceCursor.ConversationId,
             request.BranchId,
             request.RunId,
             turnId,
@@ -530,10 +587,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
             turnSessionContext.ToAddress(),
             turnCorrelation,
             request.BranchId,
-            new SessionSequence(currentVersion.Value + 1),
+            new SessionSequence(sourceCursor.Sequence.Value + 1),
             causalParentId: null,
             now,
-            new SchemaVersion("1.0"),
+            new SchemaVersion("1"),
             assistantMessage);
 
         var appendResult = await AppendWithDiagnosticsAsync(
@@ -555,22 +612,131 @@ public sealed class DefaultAgentLoop: IAgentLoop
         currentVersion = appended.NewVersion;
         committedMessages.Add(assistantMessage);
 
-        var toolCalls = response.Parts.OfType<ToolCallPart>().ToImmutableArray();
+        var toolCalls = requestedCalls;
 
         return toolCalls switch
         {
             { IsEmpty: true } => TurnOutcome.Settled(new AgentRunCompleted(assistantMessage), currentVersion),
-            _ when turn == request.MaxTurns =>
-                TurnOutcome.Settled(new AgentRunTurnLimitReached(request.MaxTurns), currentVersion),
+            _ when turn == request.MaxTurns => await SettleRejectedAtTurnLimitAsync(
+                request, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId, toolCalls,
+                committedMessages, currentVersion, appended.CommittedEntries[^1].Sequence)
+                .ConfigureAwait(false),
             _ => await InvokeToolsAsync(
-                request, turnSessionContext, turnCorrelation, turnId, assistantEntryId, assistantMessage, toolCalls,
-                committedMessages, currentVersion, cancellationToken)
+                request, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId, assistantMessage, toolCalls,
+                committedMessages, currentVersion, appended.CommittedEntries[^1].Sequence, cancellationToken)
                 .ConfigureAwait(false),
         };
     }
 
+    /// <summary>
+    /// Settles every tool call requested on the final permitted turn with a rejected terminal result, so the
+    /// already-committed assistant message never leaves a call without its exactly-one result.
+    /// </summary>
+    private async Task<TurnOutcome> SettleRejectedAtTurnLimitAsync(
+        AgentRunRequest request,
+        MessageCursor sourceCursor,
+        SessionOperationContext turnSessionContext,
+        InRunOperationCorrelation turnCorrelation,
+        TurnId turnId,
+        SessionEntryId assistantEntryId,
+        ImmutableArray<ToolCallPart> toolCalls,
+        ImmutableArray<AgentMessage>.Builder committedMessages,
+        SessionVersion currentVersion,
+        SessionSequence currentSequence)
+    {
+        LoopLog.ToolBatchRejectedAtTurnLimit(_logger, request.RunId, turnId, toolCalls.Length);
+        var resultParts = ImmutableArray.CreateBuilder<ContentPart>(toolCalls.Length);
+        foreach (var toolCall in toolCalls)
+        {
+            var rejected = new ToolResultPart(
+                toolCall.CallId,
+                toolCall.Tool,
+                new ToolCallOutcome(
+                    ToolCallOutcomeKind.Rejected,
+                    ToolTerminalStatus.Denied,
+                    SideEffectCertainty.DefinitelyNotPerformed,
+                    retryable: false,
+                    "The run reached its turn limit before this tool call could be invoked.",
+                    ExtensionData.Empty),
+                [],
+                ExtensionData.Empty);
+            resultParts.Add(rejected);
+            await ObserveAsync(request, new AgentRunToolCallCompleted(turnId, rejected), CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+
+        var appendResult = await CommitToolMessageAsync(
+            request, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId,
+            resultParts.ToImmutable(), currentVersion, currentSequence, committedMessages).ConfigureAwait(false);
+
+        return appendResult is SessionAppended appended
+            ? TurnOutcome.Settled(new AgentRunTurnLimitReached(request.MaxTurns), appended.NewVersion)
+            : TurnOutcome.Settled(new AgentRunSessionOperationFailed(DescribeAppendFailure(appendResult)), currentVersion);
+    }
+
+    /// <summary>
+    /// Builds and durably commits the tool message carrying one terminal result per requested call. The commit
+    /// always uses <see cref="CancellationToken.None"/>: the assistant message that requested these calls is already
+    /// committed, so its results must land no matter how the run itself settles.
+    /// </summary>
+    private async ValueTask<SessionAppendResult> CommitToolMessageAsync(
+        AgentRunRequest request,
+        MessageCursor sourceCursor,
+        SessionOperationContext turnSessionContext,
+        InRunOperationCorrelation turnCorrelation,
+        TurnId turnId,
+        SessionEntryId assistantEntryId,
+        ImmutableArray<ContentPart> resultParts,
+        SessionVersion currentVersion,
+        SessionSequence currentSequence,
+        ImmutableArray<AgentMessage>.Builder committedMessages)
+    {
+        var now = _timeProvider.GetUtcNow();
+        var toolMessage = new ToolMessage(
+            _messageIds.Create(),
+            request.AgentId,
+            request.SessionId,
+            sourceCursor.ConversationId,
+            request.BranchId,
+            request.RunId,
+            turnId,
+            now,
+            MessageState.Complete,
+            resultParts,
+            ExtensionData.Empty);
+
+        var toolEntry = new MessageSessionEntry(
+            _entryIds.Create(),
+            turnSessionContext.ToAddress(),
+            turnCorrelation,
+            request.BranchId,
+            new SessionSequence(currentSequence.Value + 1),
+            assistantEntryId,
+            now,
+            new SchemaVersion("1"),
+            toolMessage);
+
+        var appendResult = await AppendWithDiagnosticsAsync(
+            new SessionAppendRequest(
+                turnSessionContext,
+                request.BranchId,
+                currentVersion,
+                new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:tools"),
+                [toolEntry]),
+            request.SessionProfile,
+            CancellationToken.None).ConfigureAwait(false);
+
+        if (appendResult is SessionAppended)
+        {
+            committedMessages.Add(toolMessage);
+        }
+
+        return appendResult;
+    }
+
     private async Task<TurnOutcome> InvokeToolsAsync(
         AgentRunRequest request,
+        MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
         InRunOperationCorrelation turnCorrelation,
         TurnId turnId,
@@ -579,6 +745,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ImmutableArray<ToolCallPart> toolCalls,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
+        SessionSequence currentSequence,
         CancellationToken cancellationToken)
     {
         using var activity = AgentKitDiagnostics.Activities.StartActivity(
@@ -605,7 +772,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
             if (interrupted || cancellationToken.IsCancellationRequested)
             {
                 interrupted = true;
-                resultParts.Add(InterruptedResultPart(toolCall));
+                var skippedResult = InterruptedResultPart(toolCall);
+                resultParts.Add(skippedResult);
+                await ObserveAsync(
+                    request,
+                    new AgentRunToolCallCompleted(turnId, skippedResult),
+                    CancellationToken.None).ConfigureAwait(false);
                 continue;
             }
 
@@ -618,14 +790,20 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 turnSessionContext.Authorization,
                 request.SessionProfile);
 
+            ToolResultPart resultPart;
             try
             {
+                await ObserveAsync(
+                    request,
+                    new AgentRunToolCallStarted(turnId, toolCall),
+                    cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
                 var invocationResult = await _toolInvoker.InvokeAsync(
                     new ToolCallRequest(toolCall.Tool.Id, toolContext, toolCall.Arguments, _timeProvider.GetUtcNow()),
                     cancellationToken).ConfigureAwait(false);
 
-                resultParts.Add(new ToolResultPart(
-                    toolCall.CallId, toolCall.Tool, invocationResult.Outcome, invocationResult.Content, ExtensionData.Empty));
+                resultPart = new ToolResultPart(
+                    toolCall.CallId, toolCall.Tool, invocationResult.Outcome, invocationResult.Content, ExtensionData.Empty);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -636,52 +814,42 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 // call in this batch is settled the same way below, and the whole batch is committed with
                 // CancellationToken.None before this cancellation is allowed to propagate.
                 interrupted = true;
-                resultParts.Add(InterruptedResultPart(toolCall));
+                resultPart = InterruptedResultPart(toolCall);
             }
+            catch (Exception exception)
+            {
+                // An invoker fault (resolution, authorization, or an unguarded tool exception) is a terminal
+                // failure for this call, not for the session: the call still receives its exactly-one result.
+                LoopLog.ToolCallFaulted(_logger, request.RunId, toolCall.CallId, exception.GetType().FullName ?? exception.GetType().Name);
+                resultPart = new ToolResultPart(
+                    toolCall.CallId,
+                    toolCall.Tool,
+                    new ToolCallOutcome(
+                        ToolCallOutcomeKind.Failed,
+                        ToolTerminalStatus.InvocationFailed,
+                        SideEffectCertainty.Unknown,
+                        retryable: false,
+                        "The tool invocation faulted before it produced a result.",
+                        ExtensionData.Empty),
+                    [],
+                    ExtensionData.Empty);
+            }
+
+            resultParts.Add(resultPart);
+            await ObserveAsync(
+                request,
+                new AgentRunToolCallCompleted(turnId, resultPart),
+                CancellationToken.None).ConfigureAwait(false);
         }
 
-        var now = _timeProvider.GetUtcNow();
-        var toolMessage = new ToolMessage(
-            _messageIds.Create(),
-            request.AgentId,
-            request.SessionId,
-            conversationId: null,
-            request.BranchId,
-            request.RunId,
-            turnId,
-            now,
-            MessageState.Complete,
-            resultParts.ToImmutable(),
-            ExtensionData.Empty);
-
-        var toolEntry = new MessageSessionEntry(
-            _entryIds.Create(),
-            turnSessionContext.ToAddress(),
-            turnCorrelation,
-            request.BranchId,
-            new SessionSequence(currentVersion.Value + 1),
-            assistantEntryId,
-            now,
-            new SchemaVersion("1.0"),
-            toolMessage);
-
-        // This commit always uses CancellationToken.None, deliberately ignoring the caller's cancellation: the
-        // assistant message that requested these tool calls is already durably committed (in
-        // SettleCompletedAsync), so every one of its tool calls MUST receive a matching terminal result no
-        // matter how the run itself settles. A tool invoker may also absorb cancellation into an ordinary
-        // ToolCallOutcomeKind.Cancelled result instead of throwing (for example, a process runner that kills
-        // its child process and returns a settled "cancelled" outcome) — cancellationToken.IsCancellationRequested
-        // is checked explicitly below, after this commit, so that case still propagates cancellation to the
-        // caller instead of silently continuing to the next turn.
-        var appendResult = await AppendWithDiagnosticsAsync(
-            new SessionAppendRequest(
-                turnSessionContext,
-                request.BranchId,
-                currentVersion,
-                new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:tools"),
-                [toolEntry]),
-            request.SessionProfile,
-            CancellationToken.None).ConfigureAwait(false);
+        // The commit deliberately ignores the caller's cancellation (see CommitToolMessageAsync). A tool invoker
+        // may also absorb cancellation into an ordinary ToolCallOutcomeKind.Cancelled result instead of throwing
+        // (for example, a process runner that kills its child process and returns a settled "cancelled" outcome) —
+        // cancellationToken.IsCancellationRequested is checked explicitly below, after this commit, so that case
+        // still propagates cancellation to the caller instead of silently continuing to the next turn.
+        var appendResult = await CommitToolMessageAsync(
+            request, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId,
+            resultParts.ToImmutable(), currentVersion, currentSequence, committedMessages).ConfigureAwait(false);
 
         if (appendResult is not SessionAppended appended)
         {
@@ -691,7 +859,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new AgentRunSessionOperationFailed(DescribeAppendFailure(appendResult)), currentVersion);
         }
 
-        committedMessages.Add(toolMessage);
+        var toolMessage = committedMessages[^1];
 
         if (interrupted || cancellationToken.IsCancellationRequested)
         {
@@ -702,7 +870,15 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         activity.SetSuccessful("completed");
         LoopLog.ToolBatchCompleted(_logger, request.RunId, turnId, toolCalls.Length);
-        return TurnOutcome.Continue(appended.NewVersion, [assistantMessage, toolMessage]);
+        var committedSequence = appended.CommittedEntries[^1].Sequence;
+        var nextCursor = new MessageCursor(
+            sourceCursor.AgentId,
+            sourceCursor.SessionId,
+            sourceCursor.ConversationId,
+            sourceCursor.BranchId,
+            appended.NewVersion,
+            committedSequence);
+        return TurnOutcome.Continue(nextCursor, [assistantMessage, toolMessage]);
     }
 
     /// <summary>Builds a settled, cancelled terminal result for a tool call that was interrupted or never attempted.</summary>
@@ -720,6 +896,33 @@ public sealed class DefaultAgentLoop: IAgentLoop
             ExtensionData.Empty),
         [],
         ExtensionData.Empty);
+
+    /// <summary>Delivers optional run progress without allowing presentation failure to alter run semantics.</summary>
+    /// <param name="request">The run whose observer receives the event.</param>
+    /// <param name="runEvent">The immutable event to deliver.</param>
+    /// <param name="cancellationToken">Bounds delivery; cancellation is isolated like every observer failure.</param>
+    /// <returns>An operation completing after delivery succeeds or is safely dropped.</returns>
+    private async ValueTask ObserveAsync(
+        AgentRunRequest request,
+        AgentRunEvent runEvent,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "A validated run request is required for observer delivery.");
+        Debug.Assert(runEvent is not null, "A run event is required for observer delivery.");
+        if (request.Observer is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await request.Observer.OnEventAsync(runEvent, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            LoopLog.RunObserverFailed(_logger, request.RunId, runEvent.GetType().Name);
+        }
+    }
 
     private async ValueTask<SessionAppendResult> AppendWithDiagnosticsAsync(
         SessionAppendRequest request,
@@ -753,17 +956,25 @@ public sealed class DefaultAgentLoop: IAgentLoop
             LoopLog.SessionAppendConflictRetried(
                 _logger, request.Context.SessionId, conflict.ExpectedVersion, conflict.ActualVersion, attempt);
 
-            // Each entry's own Sequence was assigned from the stale expected version at build time; rebasing only
-            // ExpectedVersion is not enough; every entry must be renumbered to start immediately after the
-            // conflict's reported ActualVersion, in the same relative order, or the store rejects the retry with
-            // its own sequence-continuity error instead of a version conflict.
+            // Each entry's own Sequence was assigned from the stale tip at build time; rebasing only ExpectedVersion
+            // is not enough. Version and sequence advance independently (one version per append, one sequence per
+            // entry), so the actual tip sequence must be re-read rather than derived from the conflict's version.
+            var tipResult = await _sessionCoordinator.ReadAsync(
+                new SessionReadRequest(attemptRequest.Context, attemptRequest.BranchId, attemptRequest.Entries[0].Sequence, 1),
+                sessionProfile,
+                cancellationToken).ConfigureAwait(false);
+            if (tipResult is not SessionPage { Snapshot: { } tip })
+            {
+                break;
+            }
+
             var rebasedEntries = attemptRequest.Entries
-                .Select((entry, index) => entry with { Sequence = new SessionSequence(conflict.ActualVersion.Value + index + 1) })
+                .Select((entry, index) => entry with { Sequence = new SessionSequence(tip.UpperSequence.Value + index + 1) })
                 .ToImmutableArray();
             attemptRequest = new SessionAppendRequest(
                 attemptRequest.Context,
                 attemptRequest.BranchId,
-                conflict.ActualVersion,
+                tip.Version,
                 attemptRequest.IdempotencyKey,
                 rebasedEntries);
         }
@@ -784,6 +995,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private async Task<TurnOutcome> SettleInterruptedAsync(
         AgentRunRequest request,
         ModelDescriptor model,
+        MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
         InRunOperationCorrelation turnCorrelation,
         TurnId turnId,
@@ -794,8 +1006,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ProviderRequestId? providerRequestId,
         AgentRunOutcome outcome,
         ImmutableArray<AgentMessage>.Builder committedMessages,
-        SessionVersion currentVersion,
-        CancellationToken cancellationToken)
+        SessionVersion currentVersion)
     {
         if (partialParts.IsEmpty)
         {
@@ -817,7 +1028,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             _messageIds.Create(),
             request.AgentId,
             request.SessionId,
-            conversationId: null,
+            sourceCursor.ConversationId,
             request.BranchId,
             request.RunId,
             turnId,
@@ -833,12 +1044,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
             turnSessionContext.ToAddress(),
             turnCorrelation,
             request.BranchId,
-            new SessionSequence(currentVersion.Value + 1),
+            new SessionSequence(sourceCursor.Sequence.Value + 1),
             causalParentId: null,
             now,
-            new SchemaVersion("1.0"),
+            new SchemaVersion("1"),
             interruptedMessage);
 
+        // Partial output is committed with CancellationToken.None: the caller's token is usually the very reason
+        // the attempt was interrupted, and a cancelled token would otherwise discard output the class promises to keep.
         var appendResult = await AppendWithDiagnosticsAsync(
             new SessionAppendRequest(
                 turnSessionContext,
@@ -847,7 +1060,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 new IdempotencyKey($"run:{request.RunId}:turn:{turnId}:interrupted"),
                 [entry]),
             request.SessionProfile,
-            cancellationToken).ConfigureAwait(false);
+            CancellationToken.None).ConfigureAwait(false);
 
         if (appendResult is not SessionAppended appended)
         {
@@ -859,24 +1072,45 @@ public sealed class DefaultAgentLoop: IAgentLoop
         return TurnOutcome.Settled(outcome, appended.NewVersion);
     }
 
-    private async Task<(ImmutableArray<SessionEntry> Entries, SessionVersion Version)?> LoadHistoryAsync(
+    private async Task<(ImmutableArray<SessionEntry> Entries, MessageCursor Cursor)?> LoadHistoryAsync(
         SessionOperationContext sessionContext,
         SessionProfileSnapshot sessionProfile,
         BranchId branchId,
         CancellationToken cancellationToken)
     {
+        var loadResult = await _sessionCoordinator.LoadAsync(sessionContext, sessionProfile, cancellationToken)
+            .ConfigureAwait(false);
+        if (loadResult is not SessionLoaded loaded)
+        {
+            return null;
+        }
+
+        if (loaded.Descriptor.Address != sessionContext.ToAddress())
+        {
+            return null;
+        }
+
         var entries = ImmutableArray.CreateBuilder<SessionEntry>();
         var cursor = new SessionSequence(0);
+        SessionReadSnapshot? snapshot = null;
 
         while (true)
         {
             var pageResult = await _sessionCoordinator.ReadAsync(
-                new SessionReadRequest(sessionContext, branchId, cursor, _historyReadPageSize),
+                snapshot is null
+                    ? new SessionReadRequest(sessionContext, branchId, cursor, _historyReadPageSize)
+                    : new SessionReadRequest(sessionContext, branchId, cursor, _historyReadPageSize, snapshot),
                 sessionProfile,
                 cancellationToken)
                 .ConfigureAwait(false);
 
-            if (pageResult is not SessionPage page)
+            if (pageResult is not SessionPage { Snapshot: { } pageSnapshot } page)
+            {
+                return null;
+            }
+
+            snapshot ??= pageSnapshot;
+            if (pageSnapshot != snapshot)
             {
                 return null;
             }
@@ -890,7 +1124,20 @@ public sealed class DefaultAgentLoop: IAgentLoop
             }
         }
 
-        return (entries.ToImmutable(), new SessionVersion(cursor.Value));
+        Debug.Assert(snapshot is not null, "A successful first page supplies exact snapshot evidence.");
+        var reachedBoundary = cursor == snapshot.UpperSequence
+            || (entries.Count == 0 && cursor.Value > snapshot.UpperSequence.Value);
+        return reachedBoundary
+            ? (
+                entries.ToImmutable(),
+                new MessageCursor(
+                    sessionContext.AgentId,
+                    sessionContext.SessionId,
+                    loaded.Descriptor.ConversationId,
+                    branchId,
+                    snapshot.Version,
+                    snapshot.UpperSequence))
+            : null;
     }
 
     private async ValueTask<(SecurityAuthorizationContext? Authorization, string? SafeFailure)>
@@ -1006,10 +1253,11 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <summary>The result of running one turn: either it settled the run, or it should continue to another turn.</summary>
     private readonly struct TurnOutcome
     {
-        private TurnOutcome(AgentRunOutcome? outcome, SessionVersion version, ImmutableArray<AgentMessage> newMessages)
+        private TurnOutcome(AgentRunOutcome? outcome, SessionVersion version, MessageCursor? cursor, ImmutableArray<AgentMessage> newMessages)
         {
             Outcome = outcome;
             Version = version;
+            Cursor = cursor;
             NewMessages = newMessages;
         }
 
@@ -1019,14 +1267,20 @@ public sealed class DefaultAgentLoop: IAgentLoop
         /// <summary>Gets the session version after this turn's commits.</summary>
         public SessionVersion Version { get; }
 
+        /// <summary>Gets the exact history cursor after a continuing turn.</summary>
+        public MessageCursor? Cursor { get; }
+
         /// <summary>Gets the messages newly visible to the next turn's history, when continuing.</summary>
         public ImmutableArray<AgentMessage> NewMessages { get; }
 
         /// <summary>Creates a settled outcome.</summary>
-        public static TurnOutcome Settled(AgentRunOutcome outcome, SessionVersion version) => new(outcome, version, []);
+        public static TurnOutcome Settled(AgentRunOutcome outcome, SessionVersion version) => new(outcome, version, null, []);
 
         /// <summary>Creates a continuation outcome.</summary>
-        public static TurnOutcome Continue(SessionVersion version, ImmutableArray<AgentMessage> newMessages) =>
-            new(null, version, newMessages);
+        public static TurnOutcome Continue(MessageCursor cursor, ImmutableArray<AgentMessage> newMessages)
+        {
+            ArgumentNullException.ThrowIfNull(cursor);
+            return new(null, cursor.Version, cursor, newMessages);
+        }
     }
 }

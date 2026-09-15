@@ -95,6 +95,42 @@ public abstract class SessionStoreConformanceTests<TFixture>
         page.Entries.ShouldBe([firstEntry]);
     }
 
+    /// <summary>Verifies a caller cannot combine an issued old version with a later branch tip and present it as captured evidence.</summary>
+    [Fact]
+    public async Task ReadAsync_WhenSnapshotVersionAndUpperSequencePairWasNeverIssued_ReturnsTypedFailure()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(35));
+        var emptyRead = new SessionReadRequest(
+            context, descriptor.ActiveBranchId, new SessionSequence(0), 1);
+        var issued = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, emptyRead, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var entries = ImmutableArray.Create<SessionEntry>(
+            MessageEntry(descriptor, 36, 1, "one"),
+            MessageEntry(descriptor, 38, 2, "two"),
+            MessageEntry(descriptor, 40, 3, "three"));
+        var append = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version,
+            new IdempotencyKey("append-after-snapshot"), entries);
+        _ = await store.AppendAsync(
+            await AuthorizeAsync(fixture, append, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var forged = new SessionReadSnapshot(
+            descriptor.Address, descriptor.ActiveBranchId,
+            issued.Snapshot!.Version, new SessionSequence(3));
+        var continuedRead = new SessionReadRequest(
+            context, descriptor.ActiveBranchId, new SessionSequence(0), 10, forged);
+
+        var result = await store.ReadAsync(
+            await AuthorizeAsync(fixture, continuedRead, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionReadFailed>();
+    }
+
     /// <summary>Verifies a fully authorized foreign tenant observes absence and cannot mutate the owner's record.</summary>
     [Fact]
     public async Task Operations_WhenTenantDiffers_MaskExistenceAndPreserveOwnerState()
@@ -138,8 +174,8 @@ public abstract class SessionStoreConformanceTests<TFixture>
             TestContext.Current.CancellationToken);
 
         var replay = result.ShouldBeOfType<SessionInputReplayFound>();
-        replay.AdmittedInput.OriginalPayload.ShouldBe(admission.OriginalPayload);
-        replay.AdmittedInput.EffectivePayload.ShouldBe(admission.EffectivePayload);
+        replay.AdmittedInput.OriginalPayload.ShouldBeEquivalentTo(admission.OriginalPayload);
+        replay.AdmittedInput.EffectivePayload.ShouldBeEquivalentTo(admission.EffectivePayload);
         replay.AdmittedInput.Preprocessing.ShouldBe(admission.Preprocessing);
         replay.AdmittedInput.Identity.ShouldBe(context.Identity);
         replay.Receipt.Existing.ShouldBeTrue();
@@ -173,8 +209,8 @@ public abstract class SessionStoreConformanceTests<TFixture>
 
         accepted.Existing.ShouldBeFalse();
         replay.Existing.ShouldBeTrue();
-        replay.State.ShouldBe(accepted.State);
-        loaded.State.ShouldBe(accepted.State);
+        replay.State.ShouldBeEquivalentTo(accepted.State);
+        loaded.State.ShouldBeEquivalentTo(accepted.State);
         accepted.State.State.ShouldBe(DurableOperationState.Accepted);
         accepted.State.InitiatingAdmissionId.ShouldBe(prepared.Admission.AdmissionId);
         loaded.State.InitiatingAdmissionId.ShouldBe(prepared.Admission.AdmissionId);
@@ -184,7 +220,8 @@ public abstract class SessionStoreConformanceTests<TFixture>
         page.Entries.OfType<InputPromotedSessionEntry>().Single()
             .InitiatingAdmissionId.ShouldBe(prepared.Admission.AdmissionId);
         page.Entries.Count(static entry => entry is MessageSessionEntry).ShouldBe(1);
-        page.Entries[^1].ShouldBeOfType<OperationAcceptedSessionEntry>().State.ShouldBe(accepted.State);
+        page.Entries[^1].ShouldBeOfType<OperationAcceptedSessionEntry>().State
+            .ShouldBeEquivalentTo(accepted.State);
     }
 
     /// <summary>Verifies an admission identity collision leaves version, lane cursor, and sequence available to the next valid commit.</summary>

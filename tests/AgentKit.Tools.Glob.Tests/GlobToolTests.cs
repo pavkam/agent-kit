@@ -9,6 +9,8 @@ public sealed class GlobToolTests
     [InlineData(/*lang=json,strict*/ "{}")]
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"../*.cs\"}")]
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"case_sensitive\":\"yes\"}")]
+    [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"exclude_patterns\":[\"../bin/**\"]}")]
+    [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"exclude_patterns\":[42]}")]
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"maximum_results\":10001}")]
     public async Task InvokeAsync_WhenArgumentsInvalid_DoesNotAuthorizeOrObserve(string json)
     {
@@ -57,7 +59,7 @@ public sealed class GlobToolTests
         var result = await tool.InvokeAsync(
             Request(
                 /*lang=json,strict*/
-                """{"pattern":"**/*.cs","base_path":"src","case_sensitive":false,"include_hidden":true,"maximum_depth":8,"maximum_visited_entries":30,"maximum_results":4}"""),
+                """{"pattern":"**/*.cs","base_path":"src","case_sensitive":false,"include_hidden":true,"exclude_patterns":["**/bin/**","**/obj/**"],"maximum_depth":8,"maximum_visited_entries":30,"maximum_results":4}"""),
             TestContext.Current.CancellationToken);
 
         result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
@@ -73,13 +75,23 @@ public sealed class GlobToolTests
         securityRequest.Effect.ShouldBe(SecurityEffect.Observe);
         securityRequest.Resources.ShouldBe([GlobSecurityBinding.Resource(basePath)]);
         securityRequest.InputFingerprint.ShouldBe(
-            GlobSecurityBinding.Fingerprint(basePath, pattern, false, true, 8, 30, 4));
+            GlobSecurityBinding.Fingerprint(
+                basePath,
+                pattern,
+                false,
+                true,
+                8,
+                30,
+                4,
+                [new GlobPattern("**/bin/**"), new GlobPattern("**/obj/**")]));
 
         var hostRequest = globber.Requests.ShouldHaveSingleItem();
         hostRequest.Grant.RequestId.ShouldBe(securityRequest.Id);
         hostRequest.Pattern.ShouldBe(pattern);
         hostRequest.CaseSensitive.ShouldBeFalse();
         hostRequest.IncludeHidden.ShouldBeTrue();
+        hostRequest.ExcludedPathPatterns.ShouldBe(
+            [new GlobPattern("**/bin/**"), new GlobPattern("**/obj/**")]);
     }
 
     [Fact]
@@ -146,4 +158,5 @@ public sealed class GlobToolTests
                 ExecutionSubjectKind.Human)),
         JsonDocument.Parse(json).RootElement,
         DateTimeOffset.UnixEpoch);
+
 }

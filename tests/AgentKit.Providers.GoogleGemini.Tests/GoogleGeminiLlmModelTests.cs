@@ -46,6 +46,20 @@ public sealed class GoogleGeminiLlmModelTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenStreamingSuccess_EmitsExactlyOneResponseStartedWithContiguousSequences()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/streaming_text.sse", "text/event-stream");
+        var options = new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/"), PreferStreaming = true };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")), options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        _ = await model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        observer.Events.OfType<ModelResponseStarted>().Count().ShouldBe(1);
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenStreamingSuccess_SendsStreamGenerateContentUriAndReturnsCompletedResponse()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/streaming_text.sse", "text/event-stream");

@@ -55,11 +55,22 @@ metadata. They never grant authority.
 - `IToolResultProjectionPolicyCatalog` retains captured policy versions, and
   `IToolResultProjector` creates the bounded loss-aware history/model value
   without invoking the tool.
+- `IToolPresenter` selects an exact descriptor-bound
+  `IToolPresentationFormatter` and creates bounded application-facing literal
+  parts without invoking a tool.
 - Security and tool audit sinks receive correlated redacted decisions, grant
   consumption, and outcomes.
 
 Convenience function/reflection tools MAY implement these through adapters.
 Reflection and dynamic binding MUST NOT define the core contract.
+
+Application presentation uses the same immutable descriptor captured with the
+advertised tool mapping. Selection compares the complete descriptor, including
+source, version, and structural schemas; a current catalog lookup MUST NOT
+repair missing capture evidence. A `ToolResultPart` supplied for presentation
+remains explicit projected evidence and MUST NOT be promoted into an
+authoritative `ToolCallResult`. Missing bindings and malformed formatter
+payloads use bounded generic fallback, while cancellation propagates.
 
 ## Toolsets
 

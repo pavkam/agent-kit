@@ -11,8 +11,12 @@ public sealed class CommandToolOptions
     public string ShellExecutable { get; set; } = "/bin/sh";
 
     /// <summary>Gets the fixed arguments inserted before the untrusted command string.</summary>
-    /// <value>Defaults to <c>-lc</c>; the command is always one final structured argument.</value>
-    public List<string> ShellArguments { get; } = ["-lc"];
+    /// <value>Defaults to <c>-c</c>; the command is always one final structured argument and no login profile is read.</value>
+    public List<string> ShellArguments { get; } = ["-c"];
+
+    /// <summary>Gets the fixed non-secret environment variables projected into every command.</summary>
+    /// <value>The map is empty by default and the ambient environment is never inherited.</value>
+    public Dictionary<string, string> EnvironmentVariables { get; } = new(StringComparer.Ordinal);
 
     /// <summary>Gets or sets the required process sandbox profile.</summary>
     public SandboxProfileId SandboxProfile { get; set; } = new("workspace-no-network-v1");

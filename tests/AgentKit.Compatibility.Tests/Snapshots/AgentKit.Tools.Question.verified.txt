@@ -20,6 +20,12 @@ namespace AgentKit.Tools.Question
         public int MaximumPromptCharacters { get; set; }
         public System.TimeSpan MaximumTimeout { get; set; }
     }
+    public sealed class QuestionToolPresentationFormatter : AgentKit.IToolPresentationFormatter
+    {
+        public QuestionToolPresentationFormatter() { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation?> FormatAsync(AgentKit.ToolPresentationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)

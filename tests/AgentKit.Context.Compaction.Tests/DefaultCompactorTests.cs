@@ -69,6 +69,41 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
+    public async Task CompactAsync_WhenSuccessful_AppendsAnEntryTheFirstPartyCodecCatalogCanRoundTrip()
+    {
+        // The loop, stores, and every codec use schema version "1"; an entry authored with a different embedded version
+        // is persisted (the compaction codec does not cross-check) and then rejected on every later read of that session.
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string((char) ('a' + (i % 26)), 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(10), minimumRetainedEntries: 2, minimumReductionRatio: 0.1);
+        _ = (await compactor.CompactAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<CompactionSucceeded>();
+        var committed = coordinator.ReceivedAppends.Single().Entries.Single().ShouldBeOfType<CompactionSessionEntry>();
+        var catalog = new Session.SessionEntryCodecCatalog([new Session.CompactionSessionEntryCodec()], TimeProvider.System);
+
+        var encoded = catalog.Encode(committed).ShouldBeOfType<SessionEntryEncoded>();
+        var decoded = catalog.Decode(encoded.Wire);
+
+        _ = decoded.ShouldBeOfType<SessionEntryDecoded>();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenBranchVersionIsNotEqualToEntryCount_UsesTheLastCommittedSequenceNotVersionPlusOne()
+    {
+        // Real stores advance Version once per append but Sequence once per entry; after any multi-entry append
+        // (run start, batch tool results) Version + 1 is a stale sequence and the store rejects the compaction entry.
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('h', 200))));
+        coordinator.SetVersion(new SessionVersion(4)); // 10 entries committed across 4 appends.
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(10), minimumRetainedEntries: 2, minimumReductionRatio: 0.1);
+
+        _ = (await compactor.CompactAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<CompactionSucceeded>();
+
+        coordinator.ReceivedAppends.Single().Entries.Single().Sequence.ShouldBe(new SessionSequence(11));
+    }
+
+    [Fact]
     public async Task CompactAsync_WhenBranchVersionAdvancedSinceComputed_ReturnsCompactionConflict()
     {
         var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);

@@ -183,6 +183,85 @@ public sealed class OpenAIChatCompletionResponseParserTests
 
     [Theory]
     [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenMultibyteUtf8SplitAcrossChunks_ReassemblesText(int chunkSize)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllBytes("responses/streaming_multibyte.sse");
+        await using var stream = new ChunkedStream(payload, chunkSize);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.Single().ShouldBeOfType<TextPart>().Text.ShouldBe("héllo 👋 世界 — ok ✅");
+        var textDeltas = observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<TextContentDelta>().Select(d => d.Text).ToArray();
+        string.Concat(textDeltas).ShouldBe("héllo 👋 世界 — ok ✅");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenCrLfLineEndingsAndKeepaliveComments_ParsesEveryEvent()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_crlf_keepalive.sse"), 3);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<ModelAttemptCompleted>().Response.Parts.Single().ShouldBeOfType<TextPart>().Text.ShouldBe("Hi!");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolCallDeltasLackIndex_DoesNotMergeDistinctCalls()
+    {
+        // Several OpenAI-compatible servers omit `index`; two calls with distinct ids must never merge into one.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_tool_calls_without_index.sse"), 4096);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        if (result is ModelAttemptCompleted completed)
+        {
+            // Either both calls survive intact, or the parser rejects the ambiguity; a merged/corrupted single call is a silent effect change.
+            completed.Response.Parts.OfType<ToolCallPart>().Count().ShouldBe(2);
+            completed.Response.Parts.OfType<ToolCallPart>().Select(static part => part.ProviderCallId?.Value).ShouldBe(["call_a", "call_b"]);
+        }
+        else
+        {
+            _ = result.ShouldBeOfType<ModelAttemptFailed>();
+        }
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenChunkContainsErrorObject_ReturnsProviderFailureRetainingCode()
+    {
+        // error-taxonomy.md: preserve external status/code; an in-stream error frame is a provider failure, not "stream ended early".
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_error_frame.sse"), 4096);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldNotBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.ProviderCode.ShouldBe("rate_limit_exceeded");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenDeltaCarriesReasoningContent_DoesNotDiscardIt()
+    {
+        // model-providers-and-capabilities.md: unknown/provider-specific fields are preserved, not discarded.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_reasoning_content.sse"), 4096);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var retained = completed.Response.Parts.Any(static part => part is ReasoningPart)
+            || completed.Response.Extensions.Values.Count > 0
+            || observer.Events.OfType<ModelPartDelta>().Any(static e => e.Delta is ReasoningContentDelta);
+        retained.ShouldBeTrue("reasoning_content was silently dropped");
+    }
+
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
     public async Task ParseStreamingAsync_WhenToolCallStream_AccumulatesFragmentedArgumentsRegardlessOfFragmentation(int chunkSize)
     {
         var requestId = new ModelRequestId(Guid.NewGuid());

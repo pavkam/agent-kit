@@ -1,0 +1,73 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Session.Sqlite.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Session.Sqlite
+{
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSessionStore(AgentKit.Session.Sqlite.SqliteSessionStoreTarget target, AgentKit.Session.Sqlite.SqliteSessionStoreSettings? settings = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSessionDirectory(AgentKit.ComponentId securityAudience, AgentKit.Session.Sqlite.SqliteSessionStoreTarget target, AgentKit.Session.Sqlite.SqliteSessionStoreSettings? settings = null) { }
+        }
+    }
+    public enum SqliteDatabaseOpenMode
+    {
+        OpenExisting = 0,
+        CreateIfMissing = 1,
+    }
+    public enum SqliteSchemaMode
+    {
+        ValidateExact = 0,
+        ApplyKnownMigrations = 1,
+    }
+    public sealed class SqliteSessionDirectory : AgentKit.ISessionDirectory
+    {
+        public SqliteSessionDirectory(AgentKit.ComponentId securityAudience, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider, AgentKit.Session.Sqlite.SqliteSessionStoreTarget target, AgentKit.Session.Sqlite.SqliteSessionStoreSettings settings, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.Sqlite.SqliteSessionDirectory>? logger = null) { }
+        public bool Durable { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryListResult> ListAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryListRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionLocationResult> LocateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionOperationContext> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionCreationLocationResult> LocateForCreateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionCreateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryWriteResult> RecordAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryWriteRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryWriteResult> RecordCreateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryCreateRecordRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SqliteSessionStore : AgentKit.ISessionStore, System.IDisposable
+    {
+        public SqliteSessionStore(AgentKit.IIdentifierGenerator<AgentKit.BranchId> branchIds, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.ISecurityGrantStore grants, System.TimeProvider timeProvider, AgentKit.ISessionEntryCodecCatalog entryCodecs, AgentKit.Session.Sqlite.SqliteSessionStoreTarget target, AgentKit.Session.Sqlite.SqliteSessionStoreSettings settings, Microsoft.Extensions.Logging.ILogger<AgentKit.Session.Sqlite.SqliteSessionStore>? logger = null) { }
+        public AgentKit.SessionStoreDescriptor Descriptor { get; }
+        public AgentKit.ComponentId SecurityAudience { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionRunStartResult> AcceptRunAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunStartRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.InputAdmissionResult> AdmitInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputAdmissionRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionAppendResult> AppendAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionAppendRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionCreateResult> CreateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionStoreCreateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionBranchResult> CreateBranchAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionBranchRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionDeleteResult> DeleteAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionDeleteRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public void Dispose() { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionLoadResult> LoadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionOperationContext> context, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionRunStateResult> LoadRunStateAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunStateRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputLookupRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionExecutionLaneProvisionRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionPageResult> ReadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionReadRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public readonly struct SqliteSessionStoreInstanceId : System.IEquatable<AgentKit.Session.Sqlite.SqliteSessionStoreInstanceId>
+    {
+        public SqliteSessionStoreInstanceId(System.Guid value) { }
+        public System.Guid Value { get; }
+    }
+    public sealed class SqliteSessionStoreSettings : System.IEquatable<AgentKit.Session.Sqlite.SqliteSessionStoreSettings>
+    {
+        public SqliteSessionStoreSettings(System.TimeSpan lockTimeout, int maximumEntryPayloadBytes) { }
+        public System.TimeSpan LockTimeout { get; }
+        public int MaximumEntryPayloadBytes { get; }
+        public static AgentKit.Session.Sqlite.SqliteSessionStoreSettings CreateDefault() { }
+    }
+    public sealed class SqliteSessionStoreTarget : System.IEquatable<AgentKit.Session.Sqlite.SqliteSessionStoreTarget>
+    {
+        public SqliteSessionStoreTarget(string databasePath, AgentKit.Session.Sqlite.SqliteSessionStoreInstanceId expectedStoreInstanceId, AgentKit.Session.Sqlite.SqliteDatabaseOpenMode openMode, AgentKit.Session.Sqlite.SqliteSchemaMode schemaMode) { }
+        public string DatabasePath { get; }
+        public AgentKit.Session.Sqlite.SqliteSessionStoreInstanceId ExpectedStoreInstanceId { get; }
+        public AgentKit.Session.Sqlite.SqliteDatabaseOpenMode OpenMode { get; }
+        public AgentKit.Session.Sqlite.SqliteSchemaMode SchemaMode { get; }
+    }
+}

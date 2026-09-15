@@ -67,14 +67,14 @@ internal static class PatchTextPlanner
         {
             var oldBlock = BuildBlock(hunk.Lines, static line => line.Prefix is ' ' or '-');
             var newBlock = BuildBlock(hunk.Lines, static line => line.Prefix is ' ' or '+');
-            var match = normalized.IndexOf(oldBlock, searchOffset, StringComparison.Ordinal);
+            var match = IndexOfLineAnchoredBlock(normalized, oldBlock, searchOffset);
             if (match < 0)
             {
                 error = "A patch hunk did not match its exact source context.";
                 return false;
             }
 
-            if (normalized.IndexOf(oldBlock, match + 1, StringComparison.Ordinal) >= 0)
+            if (IndexOfLineAnchoredBlock(normalized, oldBlock, match + 1) >= 0)
             {
                 error = "A patch hunk source context is ambiguous.";
                 return false;
@@ -103,6 +103,39 @@ internal static class PatchTextPlanner
 
         finalContent = hasBom ? [0xef, 0xbb, 0xbf, .. body] : [.. body];
         return true;
+    }
+
+    /// <summary>
+    /// Finds <paramref name="block"/> in <paramref name="text"/> starting at a line boundary. A hunk removes
+    /// and keeps whole lines, so a block must never match the tail of a longer line (for example, <c>foo</c>
+    /// inside <c>xfoo</c>); only occurrences at offset zero or immediately after a newline count.
+    /// </summary>
+    /// <param name="text">The newline-normalized source text.</param>
+    /// <param name="block">The hunk's source block, each line terminated by a newline.</param>
+    /// <param name="startIndex">The first index at which a match may begin.</param>
+    /// <returns>The index of the first line-anchored occurrence, or -1 when none exists.</returns>
+    private static int IndexOfLineAnchoredBlock(string text, string block, int startIndex)
+    {
+        Debug.Assert(text is not null && block is not null, "Callers supply normalized text and a built block.");
+        Debug.Assert(startIndex >= 0, "The search offset advances monotonically through the text.");
+        var index = startIndex;
+        while (index <= text.Length)
+        {
+            var candidate = text.IndexOf(block, index, StringComparison.Ordinal);
+            if (candidate < 0)
+            {
+                return -1;
+            }
+
+            if (candidate == 0 || text[candidate - 1] == '\n')
+            {
+                return candidate;
+            }
+
+            index = candidate + 1;
+        }
+
+        return -1;
     }
 
     private static string BuildBlock(

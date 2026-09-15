@@ -30,6 +30,14 @@ public sealed class AgentRunProfilePublicationTests
         exception.ParamName.ShouldBe("duplicate");
     }
 
+    [Fact]
+    public void Constructor_WhenConfigurationMatchesProfiles_PreservesExactSnapshot()
+    {
+        var configuration = new EffectiveConfigurationSnapshot(new ConfigurationVersion(1), new ContentHash("sha256:session"), [], []);
+        var publication = new AgentRunProfilePublication(SecurityProfile(), SessionProfile(), configuration);
+        publication.Configuration.ShouldBeSameAs(configuration);
+    }
+
     private static SecurityProfilePublication SecurityProfile() => new(new AgentId(Guid.Parse("a0000000-0000-0000-0000-000000000001")), new AgentDefinitionRevision(1), new ConfigurationVersion(1), new SecurityProfileKey("security"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("d0000000-0000-0000-0000-000000000004")), new SecurityPolicyVersion(1), new ContentHash("sha256:policy")), new ComponentKey<ISecurityAuthority>("authority"));
     private static SessionProfileSnapshot SessionProfile() => new(new SessionProfileReference(new SessionProfileKey("session"), new SessionProfileVersion(1)), new ComponentKey<ISessionCoordinator>("coordinator"), new ComponentKey<ISessionRunCoordinator>("run-coordinator"), new SessionStoreKey("store"), SessionStoreCapabilities.None, false, false, new SessionRetentionProfileKey("retention"), SessionBusyBehavior.Reject, 128, 256, true, false, new ContentHash("sha256:session"));
 }

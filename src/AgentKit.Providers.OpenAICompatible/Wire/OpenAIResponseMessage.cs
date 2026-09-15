@@ -20,4 +20,12 @@ internal sealed class OpenAIResponseMessage
     /// <summary>Gets or sets the tool calls the model requested, when any.</summary>
     [JsonPropertyName("tool_calls")]
     public IReadOnlyList<OpenAIToolCall>? ToolCalls { get; set; }
+
+    /// <summary>Gets or sets visible reasoning some compatible deployments return under <c>reasoning_content</c>.</summary>
+    [JsonPropertyName("reasoning_content")]
+    public string? ReasoningContent { get; set; }
+
+    /// <summary>Gets or sets visible reasoning returned under the alternative <c>reasoning</c> member.</summary>
+    [JsonPropertyName("reasoning")]
+    public string? Reasoning { get; set; }
 }

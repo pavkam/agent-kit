@@ -82,4 +82,23 @@ public sealed record ProcessResolveRequest
     public ProcessChildPolicy ChildPolicy { get; }
     /// <summary>Gets the enforceable duration, output, and termination bounds.</summary>
     public ProcessResourceLimits Limits { get; }
+
+    /// <summary>Gets the exact host-captured external directories exposed read-only to the child.</summary>
+    /// <exception cref="ArgumentException">The array is default, contains null, duplicate identities, or duplicate paths.</exception>
+    public ImmutableArray<ProcessReadOnlyRoot> ReadOnlyRoots
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value);
+            ArgumentException.ThrowIfContainsNull(value);
+            if (value.Select(static root => root.ProfileId).Distinct(StringComparer.Ordinal).Count() != value.Length
+                || value.Select(static root => root.AbsolutePath).Distinct(StringComparer.Ordinal).Count() != value.Length)
+            {
+                throw new ArgumentException("Process read-only root identities and paths must be unique.", nameof(value));
+            }
+
+            field = value;
+        }
+    } = [];
 }

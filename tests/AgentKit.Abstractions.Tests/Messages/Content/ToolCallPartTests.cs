@@ -40,4 +40,21 @@ public sealed class ToolCallPartTests
         var tool = new ToolReference(new ToolId("t"), null, "tool");
         new ToolCallPart(callId, tool, default, null, ExtensionData.Empty).ShouldBe(new ToolCallPart(callId, tool, default, null, ExtensionData.Empty));
     }
+
+    [Fact]
+    public void ToolCallPart_Equality_WhenArgumentsAreStructurallyEqualButParsedSeparately_InstancesAreEqual()
+    {
+        // Messages are immutable values; a part rebuilt from persisted JSON must equal its original so idempotent
+        // replay, fingerprinting, and dedup do not depend on JsonElement backing-document identity.
+        var callId = new ToolCallId(Guid.NewGuid());
+        var tool = new ToolReference(new ToolId("t"), null, "tool");
+        using var first = System.Text.Json.JsonDocument.Parse("""{"path":"a.txt","limit":10}""");
+        using var second = System.Text.Json.JsonDocument.Parse("""{"path":"a.txt","limit":10}""");
+
+        var left = new ToolCallPart(callId, tool, first.RootElement.Clone(), null, ExtensionData.Empty);
+        var right = new ToolCallPart(callId, tool, second.RootElement.Clone(), null, ExtensionData.Empty);
+
+        left.ShouldBe(right);
+        left.GetHashCode().ShouldBe(right.GetHashCode());
+    }
 }

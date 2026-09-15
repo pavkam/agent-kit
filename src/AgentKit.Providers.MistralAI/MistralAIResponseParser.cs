@@ -95,7 +95,25 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
                 cancellationToken).ConfigureAwait(false);
         }
 
-        var built = BuildParts(choice.Message, _toolCallIdGenerator);
+        List<(ContentDelta? Delta, ContentPart Part)> built;
+        try
+        {
+            built = BuildParts(choice.Message, _toolCallIdGenerator);
+        }
+        catch (JsonException exception)
+        {
+            // Malformed tool-call arguments must never be replaced by an empty object: that would synthesize
+            // a well-formed call the model never made.
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                ProviderFailureKind.ProtocolViolation,
+                "The provider returned malformed tool-call arguments.",
+                exception,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         var parts = ImmutableArray.CreateBuilder<ContentPart>();
 
         for (var index = 0; index < built.Count; index++)
@@ -256,13 +274,33 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
         {
             if (!slot.Closed)
             {
+                JsonElement toolArguments = default;
+                if (slot.Kind == SlotKind.ToolCall)
+                {
+                    try
+                    {
+                        toolArguments = ParseArguments(slot.ToolCallArguments.ToString());
+                    }
+                    catch (JsonException exception)
+                    {
+                        return await FailAsync(
+                            observer,
+                            context,
+                            sequence,
+                            ProviderFailureKind.ProtocolViolation,
+                            "The provider returned malformed tool-call arguments.",
+                            exception,
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                }
+
                 slot.FinalPart = slot.Kind switch
                 {
                     SlotKind.Text => new TextPart(slot.Text.ToString(), TextSemantics.Plain, ExtensionData.Empty),
                     SlotKind.ToolCall => new ToolCallPart(
                         slot.AssignedCallId,
                         new ToolReference(new ToolId(slot.ToolCallName ?? string.Empty), null, slot.ToolCallName ?? string.Empty),
-                        ParseArguments(slot.ToolCallArguments.ToString()),
+                        toolArguments,
                         slot.ToolCallId is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
                         ExtensionData.Empty),
                     SlotKind.Unknown => throw new UnreachableException("An unknown-kind slot is always closed at creation."),
@@ -589,6 +627,7 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
             _ => ParseArguments(null),
         };
 
+    /// <summary>Parses tool-call argument JSON; an absent value is an empty object, malformed JSON propagates as <see cref="JsonException"/>.</summary>
     private static JsonElement ParseArguments(string? json)
     {
         if (string.IsNullOrEmpty(json))
@@ -596,15 +635,8 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
             return ParseEmptyObject();
         }
 
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            return document.RootElement.Clone();
-        }
-        catch (JsonException)
-        {
-            return ParseEmptyObject();
-        }
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
     }
 
     private static JsonElement ParseEmptyObject()

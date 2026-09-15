@@ -81,6 +81,64 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    public async Task WriteAsync_WhenPathContainsEmbeddedNul_DoesNotWriteToTheTruncatedPath()
+    {
+        // The grant binds the resource string "allowed.md\0x"; libc sees only "allowed.md". An effect on a different
+        // concrete path than the one authorized must be impossible (fail closed at path validation or at the host).
+        var fs = CreateFileSystem();
+        FileSystemPath path;
+        try
+        {
+            path = new FileSystemPath("allowed.md\0x");
+        }
+        catch (ArgumentException)
+        {
+            return; // Rejected at the value type: the safest outcome.
+        }
+
+        var result = await fs.WriteAsync(new FileWriteRequest(path, "payload", FileWriteMode.CreateOrOverwrite, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+
+        File.Exists(Path.Combine(_root, "allowed.md")).ShouldBeFalse("the effect landed on a path the grant did not name");
+        result.ShouldNotBeOfType<FileWritten>();
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenModeAppendAndTargetIsMissing_DoesNotCreateTheFile()
+    {
+        // file-system-access-and-bounds.md write-disposition table: Append + missing target => "Not found, no mutation".
+        var fs = CreateFileSystem();
+
+        var result = await fs.WriteAsync(new FileWriteRequest(new FileSystemPath("absent.log"), "line", FileWriteMode.Append, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+
+        result.ShouldNotBeOfType<FileWritten>();
+        File.Exists(Path.Combine(_root, "absent.log")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenFileIsExactlyAtMaximumReadBytes_ReturnsContent()
+    {
+        var fs = CreateFileSystem(options => options.MaximumReadBytes = 8);
+        File.WriteAllText(Path.Combine(_root, "exact.txt"), "12345678");
+
+        var result = await fs.ReadAsync(new FileReadRequest(new FileSystemPath("exact.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<FileRead>().Content.ShouldBe("12345678");
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenFileExceedsMaximumReadBytes_ReportsLimitRatherThanPermissionDenial()
+    {
+        // A size ceiling is resource exhaustion, not an authorization outcome; the model must not be told it was "denied".
+        var fs = CreateFileSystem(options => options.MaximumReadBytes = 4);
+        File.WriteAllText(Path.Combine(_root, "big.txt"), "12345678");
+
+        var result = await fs.ReadAsync(new FileReadRequest(new FileSystemPath("big.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
+
+        result.ShouldNotBeOfType<FileReadDenied>();
+        result.ShouldNotBeOfType<FileRead>();
+    }
+
+    [Fact]
     public async Task WriteAsync_WhenParentDirectoryMissing_DoesNotCreateParentDirectory()
     {
         var fs = CreateFileSystem();
@@ -344,13 +402,43 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
-    public async Task ReadAsync_WhenFileExceedsMaximumReadBytes_ReturnsFileReadDenied()
+    public async Task WriteAsync_WhenModeReplaceExistingAndFileExists_ReplacesAtomically()
+    {
+        var fs = CreateFileSystem();
+        _ = Directory.CreateDirectory(_root);
+        File.WriteAllText(Path.Combine(_root, "notes.txt"), "old content");
+
+        var result = await fs.WriteAsync(new FileWriteRequest(
+            new FileSystemPath("notes.txt"), "", FileWriteMode.ReplaceExisting, TestSecurity.Grant()),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<FileWritten>();
+        File.ReadAllText(Path.Combine(_root, "notes.txt")).ShouldBeEmpty();
+        Directory.EnumerateFiles(_root, ".agentkit-write-*.tmp").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenModeReplaceExistingAndFileMissing_DoesNotCreateTarget()
+    {
+        var fs = CreateFileSystem();
+        _ = Directory.CreateDirectory(_root);
+
+        var result = await fs.WriteAsync(new FileWriteRequest(
+            new FileSystemPath("notes.txt"), "replacement", FileWriteMode.ReplaceExisting, TestSecurity.Grant()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<FileWriteFailed>().SafeMessage.ShouldContain("does not exist");
+        File.Exists(Path.Combine(_root, "notes.txt")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenFileExceedsMaximumReadBytes_ReturnsFileReadFailed()
     {
         var fs = CreateFileSystem(o => o.MaximumReadBytes = 4);
         _ = Directory.CreateDirectory(_root);
         File.WriteAllText(Path.Combine(_root, "notes.txt"), "this is too long");
         var result = await fs.ReadAsync(new FileReadRequest(new FileSystemPath("notes.txt"), TestSecurity.Grant()), TestContext.Current.CancellationToken);
-        _ = result.ShouldBeOfType<FileReadDenied>();
+        _ = result.ShouldBeOfType<FileReadFailed>();
     }
 
     [Fact]
@@ -510,6 +598,29 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    public async Task GlobAsync_WhenSubtreeExcluded_PrunesItBeforeVisitBoundIsConsumed()
+    {
+        var fs = CreateFileSystem();
+        _ = Directory.CreateDirectory(Path.Combine(_root, "bin", "generated"));
+        _ = Directory.CreateDirectory(Path.Combine(_root, "src"));
+        File.WriteAllText(Path.Combine(_root, "bin", "generated", "one.cs"), "generated");
+        File.WriteAllText(Path.Combine(_root, "bin", "generated", "two.cs"), "generated");
+        File.WriteAllText(Path.Combine(_root, "src", "target.cs"), "source");
+        var request = new GlobRequest(
+            null, new GlobPattern("**/*.cs"), true, false, 10, 3, 20, TestSecurity.Grant())
+        {
+            ExcludedPathPatterns = [new GlobPattern("**/bin/**")],
+        };
+
+        var result = await fs.GlobAsync(request, TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(GlobStatus.Success);
+        result.Complete.ShouldBeTrue();
+        result.VisitedEntries.ShouldBe(3);
+        result.Matches.Select(static path => path.Value).ShouldBe(["src/target.cs"]);
+    }
+
+    [Fact]
     public async Task GlobAsync_WhenNoNameMatches_ReturnsDistinctNoMatchesOutcome()
     {
         var fs = CreateFileSystem();
@@ -633,6 +744,50 @@ public sealed class SandboxedFileSystemTests: IDisposable
         var fileSystem = CreateFileSystemSandboxedFileSystemSearch();
         var result = await fileSystem.SearchAsync(Request(new FileSearchPattern( /*lang=regex*/"item-[0-9]+", FileSearchPatternKind.RegularExpression), pathPattern: new GlobPattern("**/*.cs")), TestContext.Current.CancellationToken);
         result.Matches.ShouldHaveSingleItem().Path.Value.ShouldBe("src/code.cs");
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenSubtreeExcluded_PrunesItBeforeCandidateFileBoundIsConsumed()
+    {
+        _ = Directory.CreateDirectory(Path.Combine(_rootSandboxedFileSystemSearch, "bin", "generated"));
+        _ = Directory.CreateDirectory(Path.Combine(_rootSandboxedFileSystemSearch, "src"));
+        await File.WriteAllTextAsync(
+            Path.Combine(_rootSandboxedFileSystemSearch, "bin", "generated", "one.cs"),
+            "needle",
+            TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            Path.Combine(_rootSandboxedFileSystemSearch, "bin", "generated", "two.cs"),
+            "needle",
+            TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            Path.Combine(_rootSandboxedFileSystemSearch, "src", "target.cs"),
+            "needle",
+            TestContext.Current.CancellationToken);
+        var request = new FileSearchRequest(
+            null,
+            new FileSearchPattern("needle", FileSearchPatternKind.Literal),
+            new GlobPattern("**/*.cs"),
+            true,
+            false,
+            10,
+            1,
+            1024,
+            10,
+            1024,
+            TimeSpan.FromSeconds(10),
+            TestSecurity.Grant())
+        {
+            ExcludedPathPatterns = [new GlobPattern("**/bin/**")],
+        };
+
+        var result = await CreateFileSystemSandboxedFileSystemSearch().SearchAsync(
+            request,
+            TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(FileSearchStatus.Success);
+        result.Complete.ShouldBeTrue();
+        result.VisitedFiles.ShouldBe(1);
+        result.Matches.ShouldHaveSingleItem().Path.Value.ShouldBe("src/target.cs");
     }
 
     [Fact]

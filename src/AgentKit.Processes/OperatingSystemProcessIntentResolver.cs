@@ -10,6 +10,7 @@ public sealed partial class OperatingSystemProcessIntentResolver: IProcessIntent
     private readonly string _root;
     private readonly HashSet<string> _allowedExecutables;
     private readonly HashSet<string> _allowedEnvironmentNames;
+    private readonly ImmutableArray<(string ProfileId, string ConfiguredPath)> _configuredReadOnlyRoots;
     private readonly int _maximumArgumentCount;
     private readonly long _maximumArgumentBytes;
     private readonly long _maximumInputBytes;
@@ -44,6 +45,15 @@ public sealed partial class OperatingSystemProcessIntentResolver: IProcessIntent
         }
 
         _allowedEnvironmentNames = options.Value.AllowedEnvironmentVariableNames.ToHashSet(StringComparer.Ordinal);
+        _configuredReadOnlyRoots = [.. options.Value.ReadOnlyToolchainRoots
+            .OrderBy(static item => item.Key, StringComparer.Ordinal)
+            .Select(static item =>
+            {
+                var canonicalPath = CanonicalizeExistingPath(item.Value);
+                return canonicalPath is not null && Directory.Exists(canonicalPath)
+                    ? (item.Key, item.Value)
+                    : throw new ArgumentException("Every read-only toolchain root must resolve to an existing directory.");
+            })];
         _maximumArgumentCount = options.Value.MaximumArgumentCount;
         _maximumArgumentBytes = options.Value.MaximumArgumentBytes;
         _maximumInputBytes = options.Value.MaximumInputBytes;
@@ -97,6 +107,26 @@ public sealed partial class OperatingSystemProcessIntentResolver: IProcessIntent
             return Failure(ProcessResolutionStatus.ExecutableRejected, "The executable could not be fingerprinted safely.");
         }
 
+        var readOnlyRoots = ImmutableArray.CreateBuilder<ProcessReadOnlyRoot>(_configuredReadOnlyRoots.Length);
+        foreach (var (profileId, configuredPath) in _configuredReadOnlyRoots)
+        {
+            var canonicalPath = CanonicalizeExistingPath(configuredPath);
+            if (canonicalPath is null || !Directory.Exists(canonicalPath))
+            {
+                return Failure(
+                    ProcessResolutionStatus.InvalidIntent,
+                    "A captured process read-only root can no longer be resolved safely.");
+            }
+
+            readOnlyRoots.Add(new ProcessReadOnlyRoot(profileId, canonicalPath));
+        }
+
+        var capturedReadOnlyRoots = readOnlyRoots.MoveToImmutable();
+        if (!request.ReadOnlyRoots.IsEmpty && !request.ReadOnlyRoots.SequenceEqual(capturedReadOnlyRoots))
+        {
+            return Failure(ProcessResolutionStatus.InvalidIntent, "The process read-only roots do not match the captured host profile.");
+        }
+
         var canonicalEnvironment = request.Environment.OrderBy(static item => item.Name, StringComparer.Ordinal).ToImmutableArray();
         var canonicalRequest = new ProcessResolveRequest(
             request.Id,
@@ -109,7 +139,10 @@ public sealed partial class OperatingSystemProcessIntentResolver: IProcessIntent
             request.WorkspaceAccess,
             request.SideEffectClass,
             request.ChildPolicy,
-            request.Limits);
+            request.Limits)
+        {
+            ReadOnlyRoots = capturedReadOnlyRoots,
+        };
         var environmentFingerprint = ProcessSecurityBinding.FingerprintBytes(JsonSerializer.SerializeToUtf8Bytes(
             canonicalEnvironment.Select(static item => new
             {
@@ -312,6 +345,12 @@ public sealed partial class OperatingSystemProcessIntentResolver: IProcessIntent
     private static void ValidateOptions(OperatingSystemProcessOptions options)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(options.RootDirectory);
+        foreach (var (profileId, path) in options.ReadOnlyToolchainRoots)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(profileId, nameof(options.ReadOnlyToolchainRoots));
+            ArgumentException.ThrowIfNullOrWhiteSpace(path, nameof(options.ReadOnlyToolchainRoots));
+            ArgumentException.ThrowIfPathNotRooted(path, nameof(options.ReadOnlyToolchainRoots));
+        }
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaximumArgumentCount);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaximumArgumentBytes);
         ArgumentOutOfRangeException.ThrowIfNegative(options.MaximumInputBytes);

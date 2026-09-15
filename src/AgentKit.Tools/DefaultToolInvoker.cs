@@ -72,16 +72,42 @@ public sealed class DefaultToolInvoker: IToolInvoker
             tags: CreateActivityTags(request));
         ToolLog.Started(_logger, context.ToolCallId, request.ToolId);
 
-        if (!_catalog.TryResolve(request.ToolId, out var tool, out var descriptor))
+        ITool tool;
+        ToolAuthorizationDecision authorization;
+        try
         {
-            activity.SetFailed("unknown_tool", "unknown_tool");
-            ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "unknown_tool"));
-            ToolLog.Unknown(_logger, context.ToolCallId, request.ToolId);
-            return Rejected(ToolTerminalStatus.UnknownTool, $"Tool '{request.ToolId}' is not registered.");
-        }
+            if (!_catalog.TryResolve(request.ToolId, out var resolvedTool, out var descriptor))
+            {
+                activity.SetFailed("unknown_tool", "unknown_tool");
+                ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "unknown_tool"));
+                ToolLog.Unknown(_logger, context.ToolCallId, request.ToolId);
+                return Rejected(ToolTerminalStatus.UnknownTool, $"Tool '{request.ToolId}' is not registered.");
+            }
 
-        var authorization = await _authorizer.AuthorizeAsync(
-            new ToolAuthorizationRequest(request.Context, descriptor), cancellationToken).ConfigureAwait(false);
+            tool = resolvedTool;
+            authorization = await _authorizer.AuthorizeAsync(
+                new ToolAuthorizationRequest(request.Context, descriptor), cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            activity.SetFailed("cancelled", "cancellation");
+            ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "cancelled"));
+            ToolLog.Cancelled(_logger, context.ToolCallId, request.ToolId);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // Resolution and authorization run before any effect; a fault there is a pre-invocation terminal
+            // failure (definitely not performed), never an exception that would orphan the model's tool call.
+            activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
+            ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "failed"));
+            ToolLog.Failed(_logger, context.ToolCallId, request.ToolId, exception.GetType().FullName ?? exception.GetType().Name);
+            return new ToolInvocationResult(
+                new ToolCallOutcome(
+                    ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed,
+                    false, $"Tool '{request.ToolId}' could not be resolved or authorized.", ExtensionData.Empty),
+                []);
+        }
 
         if (authorization is ToolAuthorizationDenied denied)
         {

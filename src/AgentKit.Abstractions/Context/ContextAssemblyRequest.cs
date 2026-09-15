@@ -96,6 +96,52 @@ public sealed record ContextAssemblyRequest
         Extensions = extensions;
     }
 
+    /// <summary>Initializes a request from one atomically captured context-evidence value.</summary>
+    /// <param name="agentId">The agent this request is being assembled for.</param>
+    /// <param name="sessionId">The session this request's history was loaded from.</param>
+    /// <param name="branchId">The branch this request's history was loaded from.</param>
+    /// <param name="runId">The active run correlated by the authorization evidence.</param>
+    /// <param name="turnId">The active turn correlated by the authorization evidence.</param>
+    /// <param name="modelRequestId">The identity allocated for this model request.</param>
+    /// <param name="model">The selected model descriptor.</param>
+    /// <param name="instructions">The ordered system and developer instructions.</param>
+    /// <param name="evidence">The atomic definition, identity, history, authorization, and configuration evidence.</param>
+    /// <param name="tools">The tools available for the model to call.</param>
+    /// <param name="toolChoice">The tool-call selection policy.</param>
+    /// <param name="settings">The effective sampling and output settings.</param>
+    /// <param name="extensions">Caller-specific or forward-compatible request data.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="evidence"/>, <paramref name="model"/>, <paramref name="toolChoice"/>, <paramref name="settings"/>, or <paramref name="extensions"/> is null.</exception>
+    /// <exception cref="ArgumentException">Outer agent, session, branch, run, or turn coordinates differ from the captured evidence, or an array is uninitialized.</exception>
+    public ContextAssemblyRequest(
+        AgentId agentId,
+        SessionId sessionId,
+        BranchId branchId,
+        RunId runId,
+        TurnId turnId,
+        ModelRequestId modelRequestId,
+        ModelDescriptor model,
+        ImmutableArray<AgentMessage> instructions,
+        ContextAssemblyEvidence evidence,
+        ImmutableArray<LlmToolDefinition> tools,
+        LlmToolChoice toolChoice,
+        LlmRequestSettings settings,
+        ExtensionData extensions)
+        : this(
+            agentId,
+            sessionId,
+            branchId,
+            runId,
+            turnId,
+            modelRequestId,
+            model,
+            instructions,
+            ValidateEvidence(agentId, sessionId, branchId, runId, turnId, evidence),
+            tools,
+            toolChoice,
+            settings,
+            extensions)
+        => Evidence = evidence;
+
     /// <summary>Gets the agent this request is being assembled for.</summary>
     public AgentId AgentId { get; init; }
 
@@ -125,6 +171,10 @@ public sealed record ContextAssemblyRequest
     /// <summary>Gets the eligible conversation history, in ascending commit order.</summary>
     public ImmutableArray<AgentMessage> History { get; init; }
 
+    /// <summary>Gets the atomic assembly evidence when the evidence-aware constructor was used.</summary>
+    /// <value>The captured evidence, or null for requests created through the compatibility constructor.</value>
+    public ContextAssemblyEvidence? Evidence { get; }
+
     /// <summary>Gets the tools available for the model to call.</summary>
     public ImmutableArray<LlmToolDefinition> Tools { get; init; }
 
@@ -149,6 +199,7 @@ public sealed record ContextAssemblyRequest
         && Model.Equals(other.Model)
         && Instructions.SequenceEqual(other.Instructions)
         && History.SequenceEqual(other.History)
+        && Equals(Evidence, other.Evidence)
         && Tools.SequenceEqual(other.Tools)
         && ToolChoice.Equals(other.ToolChoice)
         && Settings.Equals(other.Settings)
@@ -181,8 +232,29 @@ public sealed record ContextAssemblyRequest
         }
 
         hash.Add(ToolChoice);
+        hash.Add(Evidence);
         hash.Add(Settings);
         hash.Add(Extensions);
         return hash.ToHashCode();
+    }
+
+    private static ImmutableArray<AgentMessage> ValidateEvidence(
+        AgentId agentId,
+        SessionId sessionId,
+        BranchId branchId,
+        RunId runId,
+        TurnId turnId,
+        ContextAssemblyEvidence evidence)
+    {
+        ArgumentNullException.ThrowIfNull(evidence);
+        ArgumentException.ThrowIfNotEqual(agentId, evidence.Agent.Id, nameof(agentId));
+        ArgumentException.ThrowIfNotEqual(sessionId, evidence.History.SourceCursor.SessionId, nameof(sessionId));
+        ArgumentException.ThrowIfNotEqual(branchId, evidence.History.SourceCursor.BranchId, nameof(branchId));
+        ArgumentException.ThrowIfNotEqual(evidence.Authorization.Scope.Correlation is InRunOperationCorrelation, true, nameof(evidence));
+
+        var correlation = (InRunOperationCorrelation) evidence.Authorization.Scope.Correlation;
+        ArgumentException.ThrowIfNotEqual(runId, correlation.RunId, nameof(runId));
+        ArgumentException.ThrowIfNotEqual(turnId, correlation.TurnId, nameof(turnId));
+        return evidence.History.Messages;
     }
 }

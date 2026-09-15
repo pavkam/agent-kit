@@ -98,4 +98,20 @@ internal static partial class LoopLog
     /// <summary>Logs an unexpected continuation-policy failure by exception type only.</summary>
     [LoggerMessage(1062, LogLevel.Error, "Continuation evaluation for run {RunId} failed with error type {ErrorType}.")]
     internal static partial void ContinuationFailed(ILogger logger, RunId runId, string errorType);
+
+    /// <summary>Logs an isolated run-observer failure without recording event content.</summary>
+    [LoggerMessage(1070, LogLevel.Warning, "Run observer for run {RunId} failed while receiving {EventType}; the run continues.")]
+    internal static partial void RunObserverFailed(ILogger logger, RunId runId, string eventType);
+
+    /// <summary>Logs a tool invoker fault that was converted into a failed terminal result so the call still settles.</summary>
+    [LoggerMessage(1034, LogLevel.Error, "Tool call {ToolCallId} in run {RunId} faulted with error type {ErrorType}; a failed terminal result was recorded.")]
+    internal static partial void ToolCallFaulted(ILogger logger, RunId runId, ToolCallId toolCallId, string errorType);
+
+    /// <summary>Logs that the turn limit settled pending tool calls with rejected terminal results instead of invoking them.</summary>
+    [LoggerMessage(1035, LogLevel.Information, "Turn limit reached for run {RunId} at turn {TurnId}; {ToolCount} requested tool calls were settled as rejected without invocation.")]
+    internal static partial void ToolBatchRejectedAtTurnLimit(ILogger logger, RunId runId, TurnId turnId, int toolCount);
+
+    /// <summary>Logs a model response that could not be accepted as a complete turn because its stop reason or tool-call identities were invalid.</summary>
+    [LoggerMessage(1024, LogLevel.Warning, "Model response for run {RunId} turn {TurnId} was not accepted as complete: {Reason}.")]
+    internal static partial void ModelResponseNotAccepted(ILogger logger, RunId runId, TurnId turnId, string reason);
 }

@@ -51,6 +51,12 @@ namespace AgentKit.Tools.Resource
         public int MaximumDescriptionCharacters { get; set; }
         public System.Collections.Generic.IList<AgentKit.Tools.Resource.FileResourceDefinition> Resources { get; }
     }
+    public sealed class ResourceToolPresentationFormatter : AgentKit.IToolPresentationFormatter
+    {
+        public ResourceToolPresentationFormatter() { }
+        public AgentKit.ToolDescriptor Descriptor { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation?> FormatAsync(AgentKit.ToolPresentationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public enum ResourceTrust
     {
         Managed = 0,

@@ -278,23 +278,36 @@ public sealed class AgentEngine: IAsyncDisposable
             await using var scope = _services.CreateAsyncScope();
             var loop = scope.ServiceProvider.GetRequiredService<IAgentLoop>();
 
-            var request = new AgentRunRequest(
-                definition.Id,
-                options.SessionId,
-                options.BranchId,
-                runId,
-                options.Identity,
-                captured.Authorization,
-                pinnedPublication.SessionProfile,
-                definition.Models,
-                definition.ModelRequirements,
-                definition.Instructions,
-                definition.Tools,
-                definition.ToolChoice,
-                definition.Settings,
-                maxTurns,
-                attemptTimeout,
-                definition.Extensions);
+            var request = pinnedPublication.Configuration is { } configuration
+                ? new AgentRunRequest(
+                    definition,
+                    options.SessionId,
+                    options.BranchId,
+                    runId,
+                    options.Identity,
+                    captured.Authorization,
+                    pinnedPublication.SessionProfile,
+                    configuration,
+                    maxTurns,
+                    attemptTimeout,
+                    definition.Extensions)
+                : new AgentRunRequest(
+                    definition.Id,
+                    options.SessionId,
+                    options.BranchId,
+                    runId,
+                    options.Identity,
+                    captured.Authorization,
+                    pinnedPublication.SessionProfile,
+                    definition.Models,
+                    definition.ModelRequirements,
+                    definition.Instructions,
+                    definition.Tools,
+                    definition.ToolChoice,
+                    definition.Settings,
+                    maxTurns,
+                    attemptTimeout,
+                    definition.Extensions);
 
             AgentAdmissionObservability.Complete(activity, _logger, "admitted");
             activity = null;

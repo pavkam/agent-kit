@@ -23,8 +23,19 @@ public sealed class GlobSecurityBindingTests
             GlobSecurityBinding.Fingerprint(basePath, pattern, true, false, 6, 100, 10),
             GlobSecurityBinding.Fingerprint(basePath, pattern, true, false, 5, 101, 10),
             GlobSecurityBinding.Fingerprint(basePath, pattern, true, false, 5, 100, 11),
+            GlobSecurityBinding.Fingerprint(
+                basePath, pattern, true, false, 5, 100, 10, [new GlobPattern("**/bin/**")]),
         };
         variants.ShouldAllBe(variant => variant != baseline);
         variants.Distinct().Count().ShouldBe(variants.Length);
+    }
+
+    [Fact]
+    public void Fingerprint_WhenExclusionsAreEmpty_PreservesOriginalEvidence()
+    {
+        var pattern = new GlobPattern("**/*.cs");
+
+        GlobSecurityBinding.Fingerprint(null, pattern, true, false, 5, 100, 10, [])
+            .ShouldBe(GlobSecurityBinding.Fingerprint(null, pattern, true, false, 5, 100, 10));
     }
 }

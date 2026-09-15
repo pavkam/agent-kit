@@ -20,8 +20,9 @@ explicitly a shell.
 Canonical operation identity includes the resolved executable, executable
 fingerprint where available, arguments, working directory, projected environment
 names and safe fingerprints, standard-input fingerprint, sandbox profile,
-resource limits, and intended side-effect class. Credentials and raw secret
-values never enter the request, audit, or model-visible result.
+resource limits, intended side-effect class, and any host-captured identified
+read-only toolchain roots. Credentials and raw secret values never enter the
+request, audit, or model-visible result.
 
 ## Security and sandboxing
 

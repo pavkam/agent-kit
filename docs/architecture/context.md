@@ -113,8 +113,47 @@ public enum ContextTrust
     User,
     RetrievedData,
     ToolData,
-    ModelGenerated
+    ModelGenerated,
+    Package
 }
+
+public enum ContextCandidateKind
+{
+    Instruction,
+    ReferenceData,
+    RuntimeData
+}
+
+public enum ContextScope
+{
+    Engine,
+    Agent,
+    Session,
+    Conversation,
+    Run,
+    Turn,
+    ModelRequest
+}
+
+public sealed record ContextCostEstimate(long Utf8Bytes, int? EstimatedTokens);
+
+public sealed record ContextFreshness(DateTimeOffset? ExpiresAt)
+{
+    public static ContextFreshness Pinned { get; }
+}
+
+public enum ContextDiagnosticSeverity
+{
+    Information,
+    Warning,
+    Error
+}
+
+public sealed record ContextDiagnostic(
+    ContextDiagnosticSeverity Severity,
+    string Code,
+    string SafeMessage,
+    ContextSourceReference? Source = null);
 
 public enum ContextEvaluationFrequency
 {
@@ -177,6 +216,13 @@ public interface IContextContributor
         ContextContributionRequest request,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record ContextAssemblyEvidence(
+    AgentDefinition Agent,
+    ExecutionIdentity Identity,
+    HistoryView History,
+    SecurityAuthorizationContext Authorization,
+    EffectiveConfigurationSnapshot Configuration);
 
 public sealed record ContextAssemblyRequest(
     AgentDefinition Agent,
@@ -290,6 +336,31 @@ internal sealed class DefaultContextAssembler(
 {
 }
 ```
+
+`ContextCandidateKind` controls projection and instruction authority, not
+origin. `ContextScope` names the narrowest applicability boundary and carries no
+identity or authority. Byte and known-token estimates are nonnegative. A null
+freshness expiry pins validity to the captured publication or lifecycle, never
+to the process forever. Diagnostic codes and safe messages are nonblank and
+content-safe; severity does not override registration failure policy.
+
+`ContextAssemblyEvidence` is the compatibility bridge for the current reduced
+implementation. Its agent, history cursor, identity, authorization scope,
+definition revision, and configuration version agree atomically. Conversation
+identity remains exact in the history cursor because the current authorization
+scope exposes no conversation coordinate to cross-check. The reduced
+`ContextAssemblyRequest` keeps its original constructor and adds an evidence
+constructor whose history is exactly `Evidence.History.Messages`; this does not
+replace the full normative request above.
+
+The reduced loop obtains `ConversationId` from the authoritative session
+descriptor and pages one prefix pinned by `SessionReadSnapshot`. It constructs
+`MessageCursor` from that snapshot's independent version and upper sequence,
+then passes the resulting `HistoryView` together with the exact admitted
+`AgentDefinition`, authenticated identity, fresh turn authorization, and exact
+effective configuration through `ContextAssemblyEvidence`. Legacy reduced run
+requests without exact definition/configuration evidence remain supported by the
+compatibility path and do not fabricate evidence.
 
 The body is intentionally omitted from this constructor/dependency shape; its
 observable members are exactly the `IContextAssembler` contract above. It does

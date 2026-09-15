@@ -141,4 +141,5 @@ public sealed class PlanToolTests
     private static PlanTool Tool(IPlanStateStore store, ISecurityAuthority authority, FixedSecurityRequestIdGenerator? ids = null) => new(store, authority, ids ?? new FixedSecurityRequestIdGenerator(), new FixedTimeProvider(), Options.Create(new PlanToolOptions()));
     private static ToolInvocationRequest Request(string json, bool includeSession = true) => new(TestSupport.TestSecurityEvidence.ToolContext(TestData.AgentId, includeSession ? TestData.SessionId : null, TestData.ToolCallId, TestData.Correlation, TestData.Identity), JsonDocument.Parse(json).RootElement, DateTimeOffset.UnixEpoch);
     private static JsonDocument Json(ToolInvocationResult result) => JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
+
 }

@@ -19,6 +19,11 @@ namespace AgentKit.Permissions
         public AllowAllSecurityPolicy() { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityPolicyResult> EvaluateAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public sealed class DefaultApprovalBroker : AgentKit.IApprovalBroker
+    {
+        public DefaultApprovalBroker(AgentKit.IApprovalStore store, AgentKit.IApprovalHandler handler, AgentKit.IApprovalResponderAuthorizer responderAuthorizer, AgentKit.ISecurityAuditDispatcher auditDispatcher, AgentKit.IIdentifierGenerator<AgentKit.SecurityAuditRecordId> auditRecordIds, System.TimeProvider timeProvider) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.ApprovalBrokerResult> RequestAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
     public sealed class DenyAllSecurityAuthority : AgentKit.ISecurityAuthority
     {
         public DenyAllSecurityAuthority() { }
@@ -28,6 +33,7 @@ namespace AgentKit.Permissions
     public sealed class SecurityAuthority : AgentKit.ISecurityAuthority
     {
         public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null) { }
+        public SecurityAuthority(System.Collections.Generic.IEnumerable<AgentKit.ISecurityPolicy> policies, AgentKit.ISecurityGrantStore grantStore, AgentKit.IIdentifierGenerator<AgentKit.GrantId> grantIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Permissions.AgentPermissionOptions> options, AgentKit.IApprovalBroker approvalBroker, AgentKit.IIdentifierGenerator<AgentKit.ApprovalRequestId> approvalRequestIds, AgentKit.ISecurityAuditDispatcher auditDispatcher, Microsoft.Extensions.Logging.ILogger<AgentKit.Permissions.SecurityAuthority>? logger = null) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SecurityDecision> AuthorizeAsync(AgentKit.SecurityRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ServiceExtensions

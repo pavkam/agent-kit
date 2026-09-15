@@ -3,12 +3,12 @@
 
 namespace AgentKit.Conversations;
 
-/// <summary>Reports one chunk of assistant-authored text committed during a conversational turn.</summary>
+/// <summary>Reports one complete assistant-authored text part committed during a turn.</summary>
 public sealed record ConversationAssistantTextEvent: ConversationEvent
 {
     /// <summary>Initializes an assistant-text event.</summary>
     /// <param name="text">The nonblank assistant-authored text.</param>
-    /// <exception cref="ArgumentException"><paramref name="text"/> is null, empty, or consists only of whitespace.</exception>
+    /// <exception cref="ArgumentException"><paramref name="text"/> is blank.</exception>
     public ConversationAssistantTextEvent(string text)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(text);

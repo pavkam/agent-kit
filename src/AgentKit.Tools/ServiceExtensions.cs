@@ -13,6 +13,17 @@ public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
+        /// <summary>Registers the replaceable bounded provider-neutral presenter over additive exact-descriptor formatters.</summary>
+        /// <returns>The same collection for continued composition.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>The singleton captures formatters once when activated. It performs no catalog lookup, authorization, invocation, or model-history projection.</remarks>
+        public IServiceCollection AddToolPresentation()
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            services.TryAddSingleton<IToolPresenter, ToolPresenter>();
+            return services;
+        }
+
         /// <summary>Registers the replaceable bounded canonical tool-schema compiler and its content-free diagnostics.</summary>
         /// <returns>The same service collection for continued composition.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
@@ -268,6 +279,7 @@ public static class ServiceExtensions
         /// </remarks>
         public IServiceCollection AddAgentTools(Action<AgentToolsOptions>? configure = null)
         {
+            _ = services.AddToolPresentation();
             _ = services.AddToolResultProjectionPolicyCatalog();
             var optionsBuilder = services.AddOptions<AgentToolsOptions>();
             if (configure is not null)

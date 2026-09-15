@@ -217,7 +217,7 @@ public sealed class DefaultHumanQuestionBrokerTests
         activity.GetTagItem(AgentKitTagNames.TenantId).ShouldBe("tenant");
         activity.GetTagItem(AgentKitTagNames.TurnId).ShouldBeNull();
         string.Join('|', activity.TagObjects.Select(static tag => $"{tag.Key}={tag.Value}")).ShouldNotContain(request.Prompt);
-        logger.Events.ShouldHaveSingleItem().ShouldBe((1003, LogLevel.Information));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((22003, LogLevel.Information));
         logger.FieldNames.ShouldHaveSingleItem().ShouldBe(["QuestionId", "TenantId", "AgentId", "SessionId", "RunId", "TurnId", "ToolCallId", "OperationId", "SecurityRequestId", "Outcome", "{OriginalFormat}"]);
         logger.Messages.ShouldAllBe(message => !message.Contains(request.Prompt, StringComparison.Ordinal));
         Volatile.Read(ref countMeasurements).ShouldBe(1);
@@ -369,7 +369,7 @@ public sealed class DefaultHumanQuestionBrokerTests
         var activity = stopped.ShouldNotBeNull();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("cancelled");
-        logger.Events.ShouldHaveSingleItem().ShouldBe((1004, LogLevel.Information));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((22004, LogLevel.Information));
     }
 
     [Fact]
@@ -396,7 +396,7 @@ public sealed class DefaultHumanQuestionBrokerTests
         var activity = stopped.ShouldNotBeNull();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("failed");
-        logger.Events.ShouldHaveSingleItem().ShouldBe((1005, LogLevel.Error));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((22005, LogLevel.Error));
         logger.Messages.ShouldAllBe(message => !message.Contains("raw channel-adjacent detail", StringComparison.Ordinal));
     }
 
@@ -432,7 +432,7 @@ public sealed class DefaultHumanQuestionBrokerTests
         var activity = stopped.ShouldNotBeNull();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("grant_denied");
-        logger.Events.ShouldHaveSingleItem().ShouldBe((1003, LogLevel.Information));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((22003, LogLevel.Information));
         logger.Messages.ShouldAllBe(message => !message.Contains(request.Prompt, StringComparison.Ordinal));
     }
 
@@ -497,7 +497,7 @@ public sealed class DefaultHumanQuestionBrokerTests
         var activity = stopped.ShouldNotBeNull();
         activity.Status.ShouldBe(ActivityStatusCode.Error);
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("failed");
-        logger.Events.ShouldHaveSingleItem().ShouldBe((1003, LogLevel.Error));
+        logger.Events.ShouldHaveSingleItem().ShouldBe((22003, LogLevel.Error));
     }
 
     [Fact]

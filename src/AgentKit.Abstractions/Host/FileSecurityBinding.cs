@@ -106,6 +106,7 @@ public static class FileSecurityBinding
     {
         FileWriteMode.CreateOrOverwrite => SecurityEffect.CreateOrReplace,
         FileWriteMode.CreateNew => SecurityEffect.Create,
+        FileWriteMode.ReplaceExisting => SecurityEffect.Replace,
         FileWriteMode.Append => SecurityEffect.Append,
         _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Undefined file write mode."),
     };

@@ -344,6 +344,37 @@ public sealed class OpenAICompatibleLlmModelBaseTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenHttpClientTimeoutFiresWithoutCallerCancellation_ReturnsTypedTimeoutFailure()
+    {
+        // error-taxonomy.md: a transport timeout is a typed failure and is never confused with caller cancellation.
+        // HttpClient.Timeout surfaces as TaskCanceledException while neither the caller token nor the deadline is cancelled.
+        var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException(
+            "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.",
+            new TimeoutException("The operation was canceled.")));
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var request = CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenConnectionIsRefused_ReturnsTypedUnavailableFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Connection refused", new System.Net.Sockets.SocketException(61)));
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenServerError_ReturnsUnavailableFailure()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.InternalServerError, "responses/error_500.json");

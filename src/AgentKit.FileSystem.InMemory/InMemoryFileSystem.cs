@@ -223,7 +223,7 @@ public sealed partial class InMemoryFileSystem:
         }
 
         return content.Length > _maximumReadBytes
-            ? new FileReadDenied($"File exceeds the configured maximum of {_maximumReadBytes} bytes.")
+            ? new FileReadFailed($"File exceeds the configured maximum of {_maximumReadBytes} bytes.")
             : new FileRead(Encoding.UTF8.GetString(content.AsSpan()), content.Length);
     }
 
@@ -270,6 +270,14 @@ public sealed partial class InMemoryFileSystem:
             if (request.Mode == FileWriteMode.CreateNew && exists)
             {
                 return new FileAlreadyExists(request.Path);
+            }
+            if (request.Mode == FileWriteMode.ReplaceExisting && !exists)
+            {
+                return new FileWriteFailed("The replacement target does not exist.");
+            }
+            if (request.Mode == FileWriteMode.Append && !exists)
+            {
+                return new FileWriteFailed("The append target does not exist.");
             }
 
             var bytes = Encoding.UTF8.GetBytes(request.Content);

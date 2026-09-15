@@ -77,8 +77,9 @@ public sealed class EditTool: ITool
         _options = options.Value;
     }
 
-    /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    /// <summary>Gets the immutable descriptor shared with exact presentation formatting.</summary>
+    /// <value>The source-owned identity, schema, effects, and hints for this tool.</value>
+    internal static ToolDescriptor PresentationDescriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "edit",
@@ -89,6 +90,9 @@ public sealed class EditTool: ITool
         new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
         new ToolSourceId("agentkit.tools.edit"),
         ExtensionData.Empty);
+
+    /// <inheritdoc/>
+    public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
     public async Task<ToolInvocationResult> InvokeAsync(
@@ -280,7 +284,9 @@ public sealed class EditTool: ITool
             return true;
         }
 
-        return property.TryGetInt64(out maximumBytes)
+        maximumBytes = 0;
+        return property.ValueKind == JsonValueKind.Number
+            && property.TryGetInt64(out maximumBytes)
             && maximumBytes > 0
             && maximumBytes <= _options.MaximumBytes;
     }

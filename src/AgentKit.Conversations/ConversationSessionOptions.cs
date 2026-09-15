@@ -13,6 +13,14 @@ namespace AgentKit.Conversations;
 /// </remarks>
 public sealed class ConversationSessionOptions
 {
+    /// <summary>Gets or sets the exact immutable agent definition for evidence-aware runs.</summary>
+    /// <value>The admitted definition, or null to retain the legacy decomposed options path.</value>
+    public AgentDefinition? Agent { get; set; }
+
+    /// <summary>Gets or sets the exact effective configuration captured with <see cref="Agent"/>.</summary>
+    /// <value>The immutable snapshot, or null when <see cref="Agent"/> is null.</value>
+    public EffectiveConfigurationSnapshot? Configuration { get; set; }
+
     /// <summary>Gets or sets the identity of the agent this session drives turns for.</summary>
     /// <value>A non-default identity; required.</value>
     public AgentId AgentId { get; set; }
@@ -52,6 +60,13 @@ public sealed class ConversationSessionOptions
     /// <summary>Gets the tool definitions advertised to the model on every run.</summary>
     /// <value>Empty by default; a host resolving tools from a DI-registered catalog adds their converted definitions here.</value>
     public IList<LlmToolDefinition> Tools { get; } = [];
+
+    /// <summary>Gets optional exact descriptor bindings used only to present calls and projected results.</summary>
+    /// <value>
+    /// Empty by default. Every binding must refer to an equal entry in <see cref="Tools"/> and have a unique tool
+    /// identity and advertised alias; the session validates and snapshots the bindings during construction.
+    /// </value>
+    public IList<ConversationToolPresentationBinding> ToolPresentationBindings { get; } = [];
 
     /// <summary>Gets or sets how the model may select among <see cref="Tools"/>.</summary>
     /// <value><see cref="LlmToolChoice.Auto"/> by default.</value>

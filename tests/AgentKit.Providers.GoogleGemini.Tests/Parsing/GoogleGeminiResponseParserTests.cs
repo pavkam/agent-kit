@@ -185,6 +185,34 @@ public sealed class GoogleGeminiResponseParserTests
         string.Concat(argumentFragments).ShouldBe( /*lang=json,strict*/"""{"location":"Paris"}""");
     }
 
+    [Fact]
+    public async Task ParseStreamingAsync_WhenTextChunkPrecedesFunctionCallChunk_EmitsBothParts()
+    {
+        // Real Gemini SSE chunks carry new parts each chunk (usually at parts[0]); a functionCall after text must not be lost.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_text_then_tool_use.sse"), 4096);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
+        completed.Response.Parts.OfType<TextPart>().Single().Text.ShouldBe("Let me check the weather.");
+        completed.Response.Parts.OfType<ToolCallPart>().Single().Tool.Name.ShouldBe("get_weather");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenThoughtChunkPrecedesAnswerChunkAtSameIndex_DoesNotMisfileAnswerAsReasoning()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_thinking_then_text_no_placeholder.sse"), 4096);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.OfType<ReasoningPart>().Single().Content.Text.ShouldBe("Let me consider...");
+        completed.Response.Parts.OfType<TextPart>().Single().Text.ShouldBe("The answer is 42.");
+    }
+
     [Theory]
     [MemberData(nameof(ChunkSizes))]
     public async Task ParseStreamingAsync_WhenThinkingThenTextStream_EmitsReasoningThenTextPartsInOrder(int chunkSize)

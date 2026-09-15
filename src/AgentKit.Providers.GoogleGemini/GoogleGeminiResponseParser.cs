@@ -233,10 +233,12 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             sawAnyCandidate = true;
             finishReason = candidate.FinishReason ?? finishReason;
 
-            var partsDto = candidate.Content?.Parts ?? [];
-            for (var index = 0; index < partsDto.Count; index++)
+            // Each streamed chunk carries new part fragments, not cumulative slots: a functionCall arriving at
+            // parts[0] after text at parts[0] is a new part, and answer text after thought text is a new part.
+            // Fragments are therefore routed by kind against the most recently opened accumulator.
+            foreach (var partDto in candidate.Content?.Parts ?? [])
             {
-                sequence = await ProcessStreamedPartAsync(observer, requestId, sequence, index, partsDto[index], parts, cancellationToken)
+                sequence = await ProcessStreamedPartAsync(observer, requestId, sequence, partDto, parts, cancellationToken)
                     .ConfigureAwait(false);
             }
         }
@@ -281,28 +283,8 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
         for (var index = 0; index < parts.Count; index++)
         {
             var accumulator = parts[index];
-            if (!accumulator.Closed)
-            {
-                accumulator.Part = accumulator.Kind switch
-                {
-                    PartKind.Text => new TextPart(accumulator.Text.ToString(), TextSemantics.Plain, ExtensionData.Empty),
-                    PartKind.Reasoning => new ReasoningPart(
-                        new ReasoningContent(accumulator.Text.ToString(), ReasoningVisibility.Visible, accumulator.Signature, ExtensionData.Empty),
-                        ExtensionData.Empty),
-                    PartKind.Unknown => new UnknownContentPart(
-                        _unknownPartTypeName,
-                        JsonSerializer.SerializeToElement(accumulator.UnknownDto, _serializerOptions),
-                        ExtensionData.Empty),
-                    _ => throw new UnreachableException($"Unrecognized {nameof(PartKind)} value '{accumulator.Kind}'."),
-                };
-                accumulator.Closed = true;
-
-                await observer.OnEventAsync(
-                        new ModelPartCompleted(requestId, sequence++, index, accumulator.Part),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
+            sequence = await CloseAccumulatorAsync(observer, requestId, sequence, index, accumulator, cancellationToken)
+                .ConfigureAwait(false);
             finalParts.Add(accumulator.Part!);
         }
 
@@ -326,104 +308,129 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
         return new ModelAttemptCompleted(response);
     }
 
+    /// <summary>
+    /// Routes one streamed part fragment to the open accumulator it continues, or opens a new one. Function
+    /// calls always form their own closed part; thought text continues an open reasoning part and plain text
+    /// continues an open text part; any kind change closes the previous accumulator first.
+    /// </summary>
     private async Task<long> ProcessStreamedPartAsync(
         IModelResponseObserver observer,
         ModelRequestId requestId,
         long sequence,
-        int index,
         GoogleGeminiPartDto partDto,
         List<PartAccumulator> parts,
         CancellationToken cancellationToken)
     {
-        if (index >= parts.Count)
+        var current = parts.Count == 0 ? null : parts[^1];
+        var currentIndex = parts.Count - 1;
+
+        if (partDto.FunctionCall is { } functionCall)
         {
+            if (current is not null)
+            {
+                sequence = await CloseAccumulatorAsync(observer, requestId, sequence, currentIndex, current, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            var index = parts.Count;
             var accumulator = new PartAccumulator();
             parts.Add(accumulator);
             await observer.OnEventAsync(new ModelPartStarted(requestId, sequence++, index), cancellationToken)
                 .ConfigureAwait(false);
 
-            if (partDto.FunctionCall is { } functionCall)
-            {
-                var callId = _toolCallIdGenerator.Create();
-                var arguments = functionCall.Args ?? ParseEmptyObject();
-                var toolCallPart = new ToolCallPart(
-                    callId,
-                    new ToolReference(new ToolId(functionCall.Name), null, functionCall.Name),
-                    arguments,
-                    functionCall.Id is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
-                    ExtensionData.Empty);
+            var callId = _toolCallIdGenerator.Create();
+            var arguments = functionCall.Args ?? ParseEmptyObject();
+            var toolCallPart = new ToolCallPart(
+                callId,
+                new ToolReference(new ToolId(functionCall.Name), null, functionCall.Name),
+                arguments,
+                functionCall.Id is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
+                ExtensionData.Empty);
 
-                await observer.OnEventAsync(
-                        new ModelPartDelta(requestId, sequence++, index, new ToolArgumentsContentDelta(callId, arguments.GetRawText())),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-
-                accumulator.Part = toolCallPart;
-                accumulator.Closed = true;
-                await observer.OnEventAsync(new ModelPartCompleted(requestId, sequence++, index, toolCallPart), cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            else if (partDto.Thought == true)
-            {
-                accumulator.Kind = PartKind.Reasoning;
-                accumulator.Signature = partDto.ThoughtSignature;
-                if (!string.IsNullOrEmpty(partDto.Text))
-                {
-                    _ = accumulator.Text.Append(partDto.Text);
-                    await observer.OnEventAsync(
-                            new ModelPartDelta(requestId, sequence++, index, new ReasoningContentDelta(partDto.Text, ExtensionData.Empty)),
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                }
-            }
-            else if (partDto.Text is not null)
-            {
-                accumulator.Kind = PartKind.Text;
-                if (partDto.Text.Length > 0)
-                {
-                    _ = accumulator.Text.Append(partDto.Text);
-                    await observer.OnEventAsync(
-                            new ModelPartDelta(requestId, sequence++, index, new TextContentDelta(partDto.Text)),
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                }
-            }
-            else
-            {
-                accumulator.Kind = PartKind.Unknown;
-                accumulator.UnknownDto = partDto;
-            }
-
-            return sequence;
-        }
-
-        var existing = parts[index];
-        if (existing.Closed)
-        {
-            return sequence;
-        }
-
-        if (existing.Kind == PartKind.Text && !string.IsNullOrEmpty(partDto.Text))
-        {
-            _ = existing.Text.Append(partDto.Text);
             await observer.OnEventAsync(
-                    new ModelPartDelta(requestId, sequence++, index, new TextContentDelta(partDto.Text)),
+                    new ModelPartDelta(requestId, sequence++, index, new ToolArgumentsContentDelta(callId, arguments.GetRawText())),
                     cancellationToken)
                 .ConfigureAwait(false);
+
+            accumulator.Part = toolCallPart;
+            accumulator.Closed = true;
+            await observer.OnEventAsync(new ModelPartCompleted(requestId, sequence++, index, toolCallPart), cancellationToken)
+                .ConfigureAwait(false);
+            return sequence;
         }
-        else if (existing.Kind == PartKind.Reasoning)
+
+        var kind = partDto.Thought == true
+            ? PartKind.Reasoning
+            : partDto.Text is not null ? PartKind.Text : PartKind.Unknown;
+
+        if (current is null || current.Closed || current.Kind != kind || kind == PartKind.Unknown)
         {
-            existing.Signature ??= partDto.ThoughtSignature;
-            if (!string.IsNullOrEmpty(partDto.Text))
+            if (current is not null)
             {
-                _ = existing.Text.Append(partDto.Text);
-                await observer.OnEventAsync(
-                        new ModelPartDelta(requestId, sequence++, index, new ReasoningContentDelta(partDto.Text, ExtensionData.Empty)),
-                        cancellationToken)
+                sequence = await CloseAccumulatorAsync(observer, requestId, sequence, currentIndex, current, cancellationToken)
                     .ConfigureAwait(false);
+            }
+
+            current = new PartAccumulator { Kind = kind };
+            currentIndex = parts.Count;
+            parts.Add(current);
+            await observer.OnEventAsync(new ModelPartStarted(requestId, sequence++, currentIndex), cancellationToken)
+                .ConfigureAwait(false);
+            if (kind == PartKind.Unknown)
+            {
+                current.UnknownDto = partDto;
+                return sequence;
             }
         }
 
+        if (kind == PartKind.Reasoning)
+        {
+            current.Signature ??= partDto.ThoughtSignature;
+        }
+
+        if (!string.IsNullOrEmpty(partDto.Text))
+        {
+            _ = current.Text.Append(partDto.Text);
+            ContentDelta delta = kind == PartKind.Reasoning
+                ? new ReasoningContentDelta(partDto.Text, ExtensionData.Empty)
+                : new TextContentDelta(partDto.Text);
+            await observer.OnEventAsync(new ModelPartDelta(requestId, sequence++, currentIndex, delta), cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return sequence;
+    }
+
+    /// <summary>Materializes an open accumulator into its final part and emits its completion exactly once.</summary>
+    private async Task<long> CloseAccumulatorAsync(
+        IModelResponseObserver observer,
+        ModelRequestId requestId,
+        long sequence,
+        int index,
+        PartAccumulator accumulator,
+        CancellationToken cancellationToken)
+    {
+        if (accumulator.Closed)
+        {
+            return sequence;
+        }
+
+        accumulator.Part = accumulator.Kind switch
+        {
+            PartKind.Text => new TextPart(accumulator.Text.ToString(), TextSemantics.Plain, ExtensionData.Empty),
+            PartKind.Reasoning => new ReasoningPart(
+                new ReasoningContent(accumulator.Text.ToString(), ReasoningVisibility.Visible, accumulator.Signature, ExtensionData.Empty),
+                ExtensionData.Empty),
+            PartKind.Unknown => new UnknownContentPart(
+                _unknownPartTypeName,
+                JsonSerializer.SerializeToElement(accumulator.UnknownDto, _serializerOptions),
+                ExtensionData.Empty),
+            _ => throw new UnreachableException($"Unrecognized {nameof(PartKind)} value '{accumulator.Kind}'."),
+        };
+        accumulator.Closed = true;
+
+        await observer.OnEventAsync(new ModelPartCompleted(requestId, sequence++, index, accumulator.Part), cancellationToken)
+            .ConfigureAwait(false);
         return sequence;
     }
 

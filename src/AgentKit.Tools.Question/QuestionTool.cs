@@ -88,7 +88,7 @@ public sealed class QuestionTool: ITool
     }
 
     /// <inheritdoc/>
-    public ToolDescriptor Descriptor { get; } = new(
+    internal static ToolDescriptor PresentationDescriptor { get; } = new(
         Id,
         new ToolVersion("1.0"),
         "question",
@@ -99,6 +99,9 @@ public sealed class QuestionTool: ITool
         new ToolExecutionHints(ToolSchedulingMode.Unspecified, concurrencyKey: null, expectedDuration: null, approvalMayBeCached: null),
         new ToolSourceId("agentkit.tools.question"),
         ExtensionData.Empty);
+
+    /// <inheritdoc/>
+    public ToolDescriptor Descriptor => PresentationDescriptor;
 
     /// <inheritdoc/>
     public async Task<ToolInvocationResult> InvokeAsync(

@@ -44,6 +44,19 @@ public static class SessionDirectorySecurityBinding
             $"session-directory-create:{tenantId}/{agentId}/sha256:{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(idempotencyKey.Value)))}");
     }
 
+    /// <summary>Names the tenant- and agent-scoped session discovery index.</summary>
+    /// <param name="tenantId">The nonblank tenant partition.</param>
+    /// <param name="agentId">The non-default owning agent.</param>
+    /// <returns>The content-free directory-list resource.</returns>
+    public static ProtectedResource ListResource(TenantId tenantId, AgentId agentId) =>
+        new(ProtectedResourceKind.ApplicationState, $"session-directory-list:{tenantId}/{agentId}");
+
+    /// <summary>Fingerprints one exact bounded discovery request.</summary>
+    /// <param name="request">The non-null discovery request.</param>
+    /// <returns>An algorithm-qualified digest over its complete evidence.</returns>
+    public static InputFingerprint ListFingerprint(SessionDirectoryListRequest request)
+    { ArgumentNullException.ThrowIfNull(request); return SecurityCanonicalFingerprint.Create(new DirectoryListPayload(_schema, request)); }
+
     /// <summary>Fingerprints the exact directory lookup represented by an operation context.</summary>
     /// <param name="context">The non-null context requesting the lookup.</param>
     /// <returns>An algorithm-qualified digest over the complete lookup evidence.</returns>
@@ -95,4 +108,6 @@ public static class SessionDirectorySecurityBinding
 
     /// <summary>Provides canonical immutable payload shape for one pre-store creation-route write.</summary>
     private sealed record DirectoryCreationRecordPayload(string Schema, SessionDirectoryCreateRecordRequest Request);
+    /// <summary>Provides canonical immutable payload shape for one bounded directory scan.</summary>
+    private sealed record DirectoryListPayload(string Schema, SessionDirectoryListRequest Request);
 }

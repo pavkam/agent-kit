@@ -202,7 +202,8 @@ public sealed partial class SandboxedFileSystem:
                     totalBytes += bytesRead;
                     if (totalBytes > _maximumReadBytes)
                     {
-                        return new FileReadDenied(
+                        // A size ceiling is resource exhaustion, not an authorization outcome; the grant was valid.
+                        return new FileReadFailed(
                             $"File exceeds the configured maximum of {_maximumReadBytes} bytes.");
                     }
 
@@ -270,6 +271,16 @@ public sealed partial class SandboxedFileSystem:
             using (parent)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (request.Mode == FileWriteMode.ReplaceExisting)
+                {
+                    return await ReplaceExistingWriteAsync(
+                        parent,
+                        fileName,
+                        request.Content,
+                        contentBytes,
+                        enforcementIntent.Id,
+                        cancellationToken).ConfigureAwait(false);
+                }
                 if (!TryOpenWriteTarget(
                     parent.DangerousGetHandle().ToInt32(),
                     fileName,
@@ -305,6 +316,100 @@ public sealed partial class SandboxedFileSystem:
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return new FileWriteFailed("The file could not be written.");
+        }
+    }
+
+    private static async ValueTask<FileWriteResult> ReplaceExistingWriteAsync(
+        SafeFileHandle parent,
+        string fileName,
+        string content,
+        int contentBytes,
+        SecurityEnforcementIntentId intentId,
+        CancellationToken cancellationToken)
+    {
+        var parentDescriptor = parent.DangerousGetHandle().ToInt32();
+        var currentDescriptor = OpenAt(
+            parentDescriptor,
+            fileName,
+            _openReadOnly | NoFollowFlag | CloseOnExecFlag | NonBlockingFlag,
+            0);
+        if (currentDescriptor < 0)
+        {
+            return Marshal.GetLastPInvokeError() == _errorNotFound
+                ? new FileWriteFailed("The replacement target does not exist.")
+                : new FileWriteFailed("The replacement target could not be opened.");
+        }
+
+        int mode;
+        using (var current = new SafeFileHandle(new IntPtr(currentDescriptor), ownsHandle: true))
+        {
+            if (!TryGetFileMode(currentDescriptor, out mode))
+            {
+                return new FileWriteFailed("The target mode could not be observed.");
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var stagingName = $".agentkit-write-{intentId.Value:N}.tmp";
+        var stagingDescriptor = OpenAt(
+            parentDescriptor,
+            stagingName,
+            _openWriteOnly | CreateFlag | ExclusiveFlag | NoFollowFlag | CloseOnExecFlag,
+            _ownerReadWritePermissions);
+        if (stagingDescriptor < 0)
+        {
+            return new FileWriteFailed("The replacement could not be staged.");
+        }
+
+        var stagingExists = true;
+        try
+        {
+            using (var stagingHandle = new SafeFileHandle(new IntPtr(stagingDescriptor), ownsHandle: true))
+            await using (var stream = new FileStream(
+                stagingHandle, FileAccess.Write, bufferSize: 81920, isAsync: false))
+            {
+                if (ChangeMode(stagingDescriptor, mode & 0x0FFF) < 0)
+                {
+                    return new FileWriteFailed("The target mode could not be preserved.");
+                }
+
+                var bytes = Encoding.UTF8.GetBytes(content);
+                await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+                stream.Flush(flushToDisk: true);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var stillExists = OpenAt(
+                parentDescriptor,
+                fileName,
+                _openReadOnly | NoFollowFlag | CloseOnExecFlag | NonBlockingFlag,
+                0);
+            if (stillExists < 0)
+            {
+                return new FileWriteFailed("The replacement target no longer exists.");
+            }
+            using (var current = new SafeFileHandle(new IntPtr(stillExists), ownsHandle: true))
+            {
+            }
+
+            if (RenameAt(parentDescriptor, stagingName, parentDescriptor, fileName) < 0)
+            {
+                return new FileWriteFailed("The staged replacement could not be committed.");
+            }
+
+            stagingExists = false;
+            return new FileWritten(contentBytes);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return new FileWriteFailed("The replacement could not be staged.");
+        }
+        finally
+        {
+            if (stagingExists)
+            {
+                _ = UnlinkAt(parentDescriptor, stagingName, 0);
+            }
         }
     }
 
@@ -437,7 +542,8 @@ public sealed partial class SandboxedFileSystem:
                 request.IncludeHidden,
                 request.MaximumDepth,
                 request.MaximumVisitedEntries,
-                request.MaximumResults));
+                request.MaximumResults,
+                request.ExcludedPathPatterns));
         var enforcementIntent = new SecurityEnforcementIntent(_intentIds.Create(), null);
         var grantResult = await _grantStore.ValidateAndConsumeAsync(
             request.Grant, enforcement, enforcementIntent, cancellationToken).ConfigureAwait(false);
@@ -508,6 +614,7 @@ public sealed partial class SandboxedFileSystem:
                 continue;
             }
 
+            var relative = relativeParent.Length == 0 ? name : $"{relativeParent}/{name}";
             state.VisitedEntries++;
             if (state.VisitedEntries > state.Request.MaximumVisitedEntries)
             {
@@ -515,7 +622,11 @@ public sealed partial class SandboxedFileSystem:
                 return;
             }
 
-            var relative = relativeParent.Length == 0 ? name : $"{relativeParent}/{name}";
+            if (IsExcludedPath(relative, state.Request.ExcludedPathPatterns, state.Request.CaseSensitive))
+            {
+                continue;
+            }
+
             var workspacePath = state.Request.BasePath is null
                 ? relative
                 : $"{state.Request.BasePath.Value.Value}/{relative}";
@@ -571,6 +682,30 @@ public sealed partial class SandboxedFileSystem:
         var patternSegments = pattern.Split('/');
         var pathSegments = path.Split('/');
         return MatchGlobSegments(patternSegments, 0, pathSegments, 0, caseSensitive);
+    }
+
+    private static bool IsExcludedPath(
+        string path,
+        ImmutableArray<GlobPattern> excludedPathPatterns,
+        bool caseSensitive)
+    {
+        if (excludedPathPatterns.IsDefaultOrEmpty)
+        {
+            return false;
+        }
+
+        foreach (var pattern in excludedPathPatterns)
+        {
+            var value = pattern.Value;
+            if (GlobMatches(value, path, caseSensitive)
+                || (value.EndsWith("/**", StringComparison.Ordinal)
+                    && GlobMatches(value[..^3], path, caseSensitive)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool MatchGlobSegments(
@@ -847,7 +982,8 @@ public sealed partial class SandboxedFileSystem:
                 _unixFilePermissions);
             if (descriptor >= 0)
             {
-                created = true;
+                // Append opens without O_CREAT, so a successful first open means the target already existed.
+                created = mode != FileWriteMode.Append;
                 error = 0;
                 return true;
             }
@@ -886,8 +1022,10 @@ public sealed partial class SandboxedFileSystem:
         FileWriteMode.CreateOrOverwrite =>
             _openWriteOnly | CreateFlag | ExclusiveFlag | TruncateFlag | NoFollowFlag | CloseOnExecFlag,
         FileWriteMode.CreateNew => _openWriteOnly | CreateFlag | ExclusiveFlag | NoFollowFlag | CloseOnExecFlag,
-        FileWriteMode.Append =>
-            _openWriteOnly | CreateFlag | ExclusiveFlag | _openAppend | NoFollowFlag | CloseOnExecFlag,
+        FileWriteMode.ReplaceExisting => throw new UnreachableException(),
+        // Append never creates: the disposition table requires "not found, no mutation" for a missing target,
+        // so the new-file open is attempted without O_CREAT and fails with ENOENT when the target is absent.
+        FileWriteMode.Append => _openWriteOnly | _openAppend | NoFollowFlag | CloseOnExecFlag,
         _ => throw new UnreachableException()
     };
 
@@ -895,6 +1033,7 @@ public sealed partial class SandboxedFileSystem:
     {
         FileWriteMode.CreateOrOverwrite => _openWriteOnly | TruncateFlag | NoFollowFlag | CloseOnExecFlag,
         FileWriteMode.Append => _openWriteOnly | _openAppend | NoFollowFlag | CloseOnExecFlag,
+        FileWriteMode.ReplaceExisting => throw new UnreachableException(),
         // TryOpenWriteTarget returns the already-exists failure for CreateNew before reopening an existing file.
         FileWriteMode.CreateNew => throw new UnreachableException(),
         _ => throw new UnreachableException()

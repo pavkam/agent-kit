@@ -1,5 +1,12 @@
 # AgentKit.Session
 
+Session discovery uses `ISessionCoordinator.ListAsync` over the singular,
+explicitly selected `ISessionDirectory`. Pages are ordered by `SessionId`, use
+an exclusive typed cursor, and remain scoped to the exact tenant, principal, and
+agent. The coordinator authorizes the directory scan; it never probes registered
+stores. Directories that cannot enumerate return a typed unavailable result
+through the additive default interface implementation.
+
 Coordinate session lifecycle, run ownership, branching, and store routing.
 
 Use this package with an explicitly selected session store. It owns coordination

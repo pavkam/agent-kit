@@ -1,0 +1,5 @@
+data: {"id":"chatcmpl-11","object":"chat.completion.chunk","created":1700000110,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"},"finish_reason":null}]}
+
+data: {"error":{"message":"Rate limit exceeded for this key.","type":"rate_limit_error","code":"rate_limit_exceeded"}}
+
+data: [DONE]

@@ -20,7 +20,7 @@
     {
       "role": "tool",
       "tool_call_id": "call_abc123",
-      "content": "15 degrees and sunny"
+      "content": "{\"format\":\"agentkit.tool-result.v1\",\"tool\":{\"id\":\"get_weather\",\"version\":null,\"requested_name\":\"get_weather\"},\"outcome\":{\"kind\":\"Success\",\"source_status\":1,\"source_status_name\":\"Succeeded\",\"side_effect_certainty\":\"DefinitelyPerformed\",\"retryable\":false,\"failure_reason\":null},\"content\":[{\"type\":\"text\",\"text\":\"15 degrees and sunny\"}]}"
     }
   ],
   "stream": true,

@@ -1,0 +1,4 @@
+data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "Let me check the weather."}]}, "index": 0}]}
+
+data: {"candidates": [{"content": {"role": "model", "parts": [{"functionCall": {"id": "toolu_stream_02", "name": "get_weather", "args": {"location":"Paris"}}}]}, "finishReason": "STOP", "index": 0}], "usageMetadata": {"promptTokenCount": 8, "candidatesTokenCount": 5, "totalTokenCount": 13}, "modelVersion": "gemini-2.5-flash-001", "responseId": "resp_stream_04"}
+

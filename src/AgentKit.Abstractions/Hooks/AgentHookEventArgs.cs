@@ -82,4 +82,25 @@ public abstract class AgentHookEventArgs: EventArgs
     public virtual void Validate()
     {
     }
+
+    /// <summary>
+    /// Captures every writable property this hook point permits so the dispatcher can roll a failed,
+    /// isolated hook's partial mutation back before the next hook runs.
+    /// </summary>
+    /// <remarks>
+    /// The base implementation captures nothing and returns <see langword="null"/>, which is correct only
+    /// for an argument type with no writable state. A derived type that exposes writable properties
+    /// (including a short-circuit marker) MUST override this member together with
+    /// <see cref="RestoreMutableState"/>; otherwise an isolated failure may leak a partial mutation to
+    /// later hooks and to the owning operation.
+    /// </remarks>
+    /// <returns>An opaque immutable snapshot understood only by <see cref="RestoreMutableState"/>, or <see langword="null"/> when there is no writable state.</returns>
+    public virtual object? CaptureMutableState() => null;
+
+    /// <summary>Restores the writable properties captured by <see cref="CaptureMutableState"/>.</summary>
+    /// <param name="snapshot">The value previously returned by <see cref="CaptureMutableState"/> on this instance.</param>
+    /// <remarks>The base implementation does nothing; see <see cref="CaptureMutableState"/> for when an override is required.</remarks>
+    public virtual void RestoreMutableState(object? snapshot)
+    {
+    }
 }

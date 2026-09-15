@@ -243,6 +243,8 @@ namespace AgentKit
         public AgentKit.HookInvocationId InvocationId { get; }
         public AgentKit.SessionId? SessionId { get; }
         public System.DateTimeOffset Timestamp { get; }
+        public virtual object? CaptureMutableState() { }
+        public virtual void RestoreMutableState(object? snapshot) { }
         public virtual void Validate() { }
     }
     public readonly struct AgentId : System.IEquatable<AgentKit.AgentId>
@@ -303,6 +305,7 @@ namespace AgentKit
         public AgentRunContextPreparationFailed(AgentKit.ContextPreparationFailure failure) { }
         public AgentKit.ContextPreparationFailure Failure { get; init; }
     }
+    public abstract class AgentRunEvent : System.IEquatable<AgentKit.AgentRunEvent> { }
     public sealed class AgentRunFailed : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunFailed>
     {
         public AgentRunFailed(AgentKit.ProviderFailure failure) { }
@@ -336,6 +339,12 @@ namespace AgentKit
         public AgentRunInvalidState(string safeMessage) { }
         public string SafeMessage { get; }
     }
+    public sealed class AgentRunModelResponseEvent : AgentKit.AgentRunEvent, System.IEquatable<AgentKit.AgentRunModelResponseEvent>
+    {
+        public AgentRunModelResponseEvent(AgentKit.TurnId turnId, AgentKit.ModelResponseEvent responseEvent) { }
+        public AgentKit.ModelResponseEvent ResponseEvent { get; init; }
+        public AgentKit.TurnId TurnId { get; init; }
+    }
     public sealed class AgentRunModelSelectionFailed : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunModelSelectionFailed>
     {
         public AgentRunModelSelectionFailed(string safeReason, System.Collections.Immutable.ImmutableArray<AgentKit.ModelSelectionDiagnostic> diagnostics) { }
@@ -355,6 +364,8 @@ namespace AgentKit
     public sealed class AgentRunProfilePublication : System.IEquatable<AgentKit.AgentRunProfilePublication>
     {
         public AgentRunProfilePublication(AgentKit.SecurityProfilePublication securityProfile, AgentKit.SessionProfileSnapshot sessionProfile) { }
+        public AgentRunProfilePublication(AgentKit.SecurityProfilePublication securityProfile, AgentKit.SessionProfileSnapshot sessionProfile, AgentKit.EffectiveConfigurationSnapshot configuration) { }
+        public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; }
         public AgentKit.SecurityProfilePublication SecurityProfile { get; }
         public AgentKit.SessionProfileSnapshot SessionProfile { get; }
     }
@@ -383,6 +394,7 @@ namespace AgentKit
     }
     public sealed class AgentRunRequest : System.IEquatable<AgentKit.AgentRunRequest>
     {
+        public AgentRunRequest(AgentKit.AgentDefinition agent, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.ExecutionIdentity identity, AgentKit.SecurityAuthorizationContext authorization, AgentKit.SessionProfileSnapshot sessionProfile, AgentKit.EffectiveConfigurationSnapshot configuration, int maxTurns, System.TimeSpan attemptTimeout, AgentKit.ExtensionData extensions) { }
         public AgentRunRequest(
                     AgentKit.AgentId agentId,
                     AgentKit.SessionId sessionId,
@@ -400,16 +412,19 @@ namespace AgentKit
                     int maxTurns,
                     System.TimeSpan attemptTimeout,
                     AgentKit.ExtensionData extensions) { }
+        public AgentKit.AgentDefinition? Agent { get; }
         public AgentKit.AgentId AgentId { get; }
         public System.TimeSpan AttemptTimeout { get; init; }
         public AgentKit.SecurityAuthorizationContext Authorization { get; }
         public AgentKit.BranchId BranchId { get; init; }
+        public AgentKit.EffectiveConfigurationSnapshot? Configuration { get; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.ExecutionIdentity Identity { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Instructions { get; init; }
         public int MaxTurns { get; init; }
         public AgentKit.ModelSelectionPolicy ModelPolicy { get; init; }
         public AgentKit.ModelRequirements ModelRequirements { get; init; }
+        public AgentKit.IAgentRunObserver? Observer { get; init; }
         public AgentKit.RunId RunId { get; }
         public AgentKit.SessionId SessionId { get; }
         public AgentKit.SessionProfileSnapshot SessionProfile { get; }
@@ -461,6 +476,18 @@ namespace AgentKit
         public AgentRunStreamStarted(AgentKit.IAgentRunStream<TOutput> stream) { }
         public AgentKit.IAgentRunStream<TOutput> Stream { get; }
     }
+    public sealed class AgentRunToolCallCompleted : AgentKit.AgentRunEvent, System.IEquatable<AgentKit.AgentRunToolCallCompleted>
+    {
+        public AgentRunToolCallCompleted(AgentKit.TurnId turnId, AgentKit.ToolResultPart result) { }
+        public AgentKit.ToolResultPart Result { get; init; }
+        public AgentKit.TurnId TurnId { get; init; }
+    }
+    public sealed class AgentRunToolCallStarted : AgentKit.AgentRunEvent, System.IEquatable<AgentKit.AgentRunToolCallStarted>
+    {
+        public AgentRunToolCallStarted(AgentKit.TurnId turnId, AgentKit.ToolCallPart call) { }
+        public AgentKit.ToolCallPart Call { get; init; }
+        public AgentKit.TurnId TurnId { get; init; }
+    }
     public sealed class AgentRunTurnLimitReached : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunTurnLimitReached>
     {
         public AgentRunTurnLimitReached(int maxTurns) { }
@@ -477,16 +504,133 @@ namespace AgentKit
         public ApiKeyProviderCredential(string apiKey) { }
         public string ApiKey { get; init; }
     }
+    public sealed class ApprovalBrokerApproved : AgentKit.ApprovalBrokerResult, System.IEquatable<AgentKit.ApprovalBrokerApproved>
+    {
+        public ApprovalBrokerApproved(AgentKit.ApprovalResponse Response) { }
+        public AgentKit.ApprovalResponse Response { get; }
+    }
+    public sealed class ApprovalBrokerDenied : AgentKit.ApprovalBrokerResult, System.IEquatable<AgentKit.ApprovalBrokerDenied>
+    {
+        public ApprovalBrokerDenied(AgentKit.ApprovalResponse Response) { }
+        public AgentKit.ApprovalResponse Response { get; }
+    }
+    public sealed class ApprovalBrokerExpired : AgentKit.ApprovalBrokerResult, System.IEquatable<AgentKit.ApprovalBrokerExpired>
+    {
+        public ApprovalBrokerExpired() { }
+    }
+    public abstract class ApprovalBrokerResult : System.IEquatable<AgentKit.ApprovalBrokerResult>
+    {
+        protected ApprovalBrokerResult() { }
+    }
+    public sealed class ApprovalBrokerUnavailable : AgentKit.ApprovalBrokerResult, System.IEquatable<AgentKit.ApprovalBrokerUnavailable>
+    {
+        public ApprovalBrokerUnavailable(string SafeReason) { }
+        public string SafeReason { get; }
+    }
+    public sealed class ApprovalHandlerResponded : AgentKit.ApprovalHandlerResult, System.IEquatable<AgentKit.ApprovalHandlerResponded>
+    {
+        public ApprovalHandlerResponded(AgentKit.ApprovalResponse Response) { }
+        public AgentKit.ApprovalResponse Response { get; }
+    }
+    public abstract class ApprovalHandlerResult : System.IEquatable<AgentKit.ApprovalHandlerResult>
+    {
+        protected ApprovalHandlerResult() { }
+    }
+    public sealed class ApprovalHandlerUnavailable : AgentKit.ApprovalHandlerResult, System.IEquatable<AgentKit.ApprovalHandlerUnavailable>
+    {
+        public ApprovalHandlerUnavailable(string SafeReason) { }
+        public string SafeReason { get; }
+    }
+    public sealed class ApprovalRequest : System.IEquatable<AgentKit.ApprovalRequest>
+    {
+        public ApprovalRequest(AgentKit.ApprovalRequestId id, AgentKit.ApprovalScopeBinding binding, string safePresentation, System.DateTimeOffset createdAt) { }
+        public AgentKit.ApprovalScopeBinding Binding { get; }
+        public System.DateTimeOffset CreatedAt { get; }
+        public AgentKit.ApprovalRequestId Id { get; }
+        public string SafePresentation { get; }
+    }
     public readonly struct ApprovalRequestId : System.IEquatable<AgentKit.ApprovalRequestId>
     {
         public ApprovalRequestId(System.Guid value) { }
         public System.Guid Value { get; }
         public override string ToString() { }
     }
+    public enum ApprovalResolution
+    {
+        Denied = 0,
+        Approved = 1,
+    }
+    public abstract class ApprovalResponderAuthorizationResult : System.IEquatable<AgentKit.ApprovalResponderAuthorizationResult>
+    {
+        protected ApprovalResponderAuthorizationResult() { }
+    }
+    public sealed class ApprovalResponderAuthorized : AgentKit.ApprovalResponderAuthorizationResult, System.IEquatable<AgentKit.ApprovalResponderAuthorized>
+    {
+        public ApprovalResponderAuthorized() { }
+    }
+    public sealed class ApprovalResponderUnauthorized : AgentKit.ApprovalResponderAuthorizationResult, System.IEquatable<AgentKit.ApprovalResponderUnauthorized>
+    {
+        public ApprovalResponderUnauthorized(string SafeReason) { }
+        public string SafeReason { get; }
+    }
+    public sealed class ApprovalResponse : System.IEquatable<AgentKit.ApprovalResponse>
+    {
+        public ApprovalResponse(AgentKit.ApprovalResponseId id, AgentKit.ApprovalRequestId requestId, AgentKit.ApprovalScopeBinding binding, AgentKit.ApprovalResolution resolution, AgentKit.ExecutionIdentity approverIdentity, System.DateTimeOffset respondedAt) { }
+        public AgentKit.ExecutionIdentity ApproverIdentity { get; }
+        public AgentKit.ApprovalScopeBinding Binding { get; }
+        public AgentKit.ApprovalResponseId Id { get; }
+        public AgentKit.ApprovalRequestId RequestId { get; }
+        public AgentKit.ApprovalResolution Resolution { get; }
+        public System.DateTimeOffset RespondedAt { get; }
+    }
+    public readonly struct ApprovalResponseId : System.IEquatable<AgentKit.ApprovalResponseId>
+    {
+        public ApprovalResponseId(System.Guid value) { }
+        public System.Guid Value { get; }
+        public override string ToString() { }
+    }
+    public sealed class ApprovalScopeBinding : System.IEquatable<AgentKit.ApprovalScopeBinding>
+    {
+        public ApprovalScopeBinding(AgentKit.SecurityRequest request, AgentKit.SecurityPolicyVersion policyVersion, AgentKit.SecurityRevocationVersion revocationVersion, System.DateTimeOffset notBefore, System.DateTimeOffset expiresAt, int allowedUses) { }
+        public int AllowedUses { get; }
+        public System.DateTimeOffset ExpiresAt { get; }
+        public System.DateTimeOffset NotBefore { get; }
+        public AgentKit.SecurityPolicyVersion PolicyVersion { get; }
+        public AgentKit.SecurityRequest Request { get; }
+        public AgentKit.SecurityRevocationVersion RevocationVersion { get; }
+        public bool Equals(AgentKit.ApprovalScopeBinding? other) { }
+        public override int GetHashCode() { }
+    }
+    public readonly struct ApprovalStoreCapabilities : System.IEquatable<AgentKit.ApprovalStoreCapabilities>
+    {
+        public ApprovalStoreCapabilities(bool IsDurable, bool ProvidesTrustedControlPlane = false) { }
+        public bool IsDurable { get; init; }
+        public bool ProvidesTrustedControlPlane { get; init; }
+    }
+    public enum ApprovalStoreCreateResult
+    {
+        Created = 0,
+        AlreadyExists = 1,
+        Conflict = 2,
+    }
+    public sealed class ApprovalStoreReadResult : System.IEquatable<AgentKit.ApprovalStoreReadResult>
+    {
+        public ApprovalStoreReadResult(AgentKit.ApprovalRequest? request, AgentKit.ApprovalResponse? response) { }
+        public AgentKit.ApprovalRequest? Request { get; }
+        public AgentKit.ApprovalResponse? Response { get; }
+    }
+    public enum ApprovalStoreResolveResult
+    {
+        Resolved = 0,
+        AlreadyResolved = 1,
+        NotFound = 2,
+        Conflict = 3,
+    }
     public static class ArgumentExceptionExtensions
     {
         extension(System.ArgumentException)
         {
+            public static void ThrowIfPathNotRooted(string path, [System.Runtime.CompilerServices.CallerArgumentExpression("path")] string? paramName = null) { }
             public static void ThrowIfDuplicateAgentRunProfileCoordinates(System.Collections.Immutable.ImmutableArray<AgentKit.AgentRunProfilePublication> publications, [System.Runtime.CompilerServices.CallerArgumentExpression("publications")] string? paramName = null) { }
             public static void ThrowIfDuplicateSecurityAuditEventKind(System.Collections.Immutable.ImmutableArray<AgentKit.SecurityAuditEventKind> eventKinds, [System.Runtime.CompilerServices.CallerArgumentExpression("eventKinds")] string? paramName = null) { }
             public static void ThrowIfInvalidSessionEntryCodecReadableVersions(System.Collections.Immutable.ImmutableArray<AgentKit.SchemaVersion> readableVersions, AgentKit.SchemaVersion writeVersion, [System.Runtime.CompilerServices.CallerArgumentExpression("readableVersions")] string? paramName = null) { }
@@ -2180,11 +2324,22 @@ namespace AgentKit
     {
         public AgentKit.ExtensionData Extensions { get; init; }
     }
+    public sealed class ContextAssemblyEvidence : System.IEquatable<AgentKit.ContextAssemblyEvidence>
+    {
+        public ContextAssemblyEvidence(AgentKit.AgentDefinition agent, AgentKit.ExecutionIdentity identity, AgentKit.HistoryView history, AgentKit.SecurityAuthorizationContext authorization, AgentKit.EffectiveConfigurationSnapshot configuration) { }
+        public AgentKit.AgentDefinition Agent { get; }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public AgentKit.EffectiveConfigurationSnapshot Configuration { get; }
+        public AgentKit.HistoryView History { get; }
+        public AgentKit.ExecutionIdentity Identity { get; }
+    }
     public sealed class ContextAssemblyRequest : System.IEquatable<AgentKit.ContextAssemblyRequest>
     {
+        public ContextAssemblyRequest(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.TurnId turnId, AgentKit.ModelRequestId modelRequestId, AgentKit.ModelDescriptor model, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, AgentKit.ContextAssemblyEvidence evidence, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.ExtensionData extensions) { }
         public ContextAssemblyRequest(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.TurnId turnId, AgentKit.ModelRequestId modelRequestId, AgentKit.ModelDescriptor model, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> instructions, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> history, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.ExtensionData extensions) { }
         public AgentKit.AgentId AgentId { get; init; }
         public AgentKit.BranchId BranchId { get; init; }
+        public AgentKit.ContextAssemblyEvidence? Evidence { get; }
         public AgentKit.ExtensionData Extensions { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> History { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Instructions { get; init; }
@@ -2200,11 +2355,37 @@ namespace AgentKit
         public override int GetHashCode() { }
     }
     public abstract class ContextAssemblyResult : System.IEquatable<AgentKit.ContextAssemblyResult> { }
+    public enum ContextCandidateKind
+    {
+        Instruction = 0,
+        ReferenceData = 1,
+        RuntimeData = 2,
+    }
     public readonly struct ContextContributorCatalogVersion : System.IEquatable<AgentKit.ContextContributorCatalogVersion>
     {
         public ContextContributorCatalogVersion(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public sealed class ContextCostEstimate : System.IEquatable<AgentKit.ContextCostEstimate>
+    {
+        public ContextCostEstimate(long utf8Bytes, int? estimatedTokens) { }
+        public int? EstimatedTokens { get; }
+        public long Utf8Bytes { get; }
+    }
+    public sealed class ContextDiagnostic : System.IEquatable<AgentKit.ContextDiagnostic>
+    {
+        public ContextDiagnostic(AgentKit.ContextDiagnosticSeverity severity, string code, string safeMessage, AgentKit.ContextSourceReference? source = null) { }
+        public string Code { get; }
+        public string SafeMessage { get; }
+        public AgentKit.ContextDiagnosticSeverity Severity { get; }
+        public AgentKit.ContextSourceReference? Source { get; }
+    }
+    public enum ContextDiagnosticSeverity
+    {
+        Information = 0,
+        Warning = 1,
+        Error = 2,
     }
     public readonly struct ContextEpoch : System.IEquatable<AgentKit.ContextEpoch>
     {
@@ -2216,6 +2397,12 @@ namespace AgentKit
     {
         OncePerRun = 0,
         OncePerModelRequest = 1,
+    }
+    public sealed class ContextFreshness : System.IEquatable<AgentKit.ContextFreshness>
+    {
+        public ContextFreshness(System.DateTimeOffset? expiresAt) { }
+        public System.DateTimeOffset? ExpiresAt { get; }
+        public static AgentKit.ContextFreshness Pinned { get; }
     }
     public sealed class ContextPreparationFailed : AgentKit.ContextAssemblyResult, System.IEquatable<AgentKit.ContextPreparationFailed>
     {
@@ -2239,6 +2426,16 @@ namespace AgentKit
     {
         public ContextReady(AgentKit.LlmRequestContext context) { }
         public AgentKit.LlmRequestContext Context { get; init; }
+    }
+    public enum ContextScope
+    {
+        Engine = 0,
+        Agent = 1,
+        Session = 2,
+        Conversation = 3,
+        Run = 4,
+        Turn = 5,
+        ModelRequest = 6,
     }
     public readonly struct ContextSourceKey : System.IEquatable<AgentKit.ContextSourceKey>
     {
@@ -2275,6 +2472,7 @@ namespace AgentKit
         RetrievedData = 5,
         ToolData = 6,
         ModelGenerated = 7,
+        Package = 8,
     }
     public sealed class ContinuationReason : System.IEquatable<AgentKit.ContinuationReason>
     {
@@ -2997,6 +3195,7 @@ namespace AgentKit
         public FileSearchRequest(AgentKit.FileSystemPath? basePath, AgentKit.FileSearchPattern pattern, AgentKit.GlobPattern pathPattern, bool caseSensitive, bool includeHidden, int maximumDepth, int maximumFiles, long maximumBytes, int maximumMatches, int maximumLineBytes, System.TimeSpan maximumDuration, AgentKit.SecurityGrant grant) { }
         public AgentKit.FileSystemPath? BasePath { get; init; }
         public bool CaseSensitive { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.GlobPattern> ExcludedPathPatterns { get; init; }
         public AgentKit.SecurityGrant Grant { get; init; }
         public bool IncludeHidden { get; init; }
         public long MaximumBytes { get; init; }
@@ -3023,6 +3222,7 @@ namespace AgentKit
     public static class FileSearchSecurityBinding
     {
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.FileSystemPath? basePath, AgentKit.FileSearchPattern pattern, AgentKit.GlobPattern pathPattern, bool caseSensitive, bool includeHidden, int maximumDepth, int maximumFiles, long maximumBytes, int maximumMatches, int maximumLineBytes, System.TimeSpan maximumDuration) { }
+        public static AgentKit.InputFingerprint Fingerprint(AgentKit.FileSystemPath? basePath, AgentKit.FileSearchPattern pattern, AgentKit.GlobPattern pathPattern, bool caseSensitive, bool includeHidden, int maximumDepth, int maximumFiles, long maximumBytes, int maximumMatches, int maximumLineBytes, System.TimeSpan maximumDuration, System.Collections.Immutable.ImmutableArray<AgentKit.GlobPattern> excludedPathPatterns = default) { }
         public static AgentKit.ProtectedResource Resource(AgentKit.FileSystemPath? basePath) { }
     }
     public enum FileSearchStatus
@@ -3094,6 +3294,7 @@ namespace AgentKit
         CreateOrOverwrite = 0,
         CreateNew = 1,
         Append = 2,
+        ReplaceExisting = 3,
     }
     public sealed class FileWriteRequest : System.IEquatable<AgentKit.FileWriteRequest>
     {
@@ -3122,6 +3323,7 @@ namespace AgentKit
         public GlobRequest(AgentKit.FileSystemPath? basePath, AgentKit.GlobPattern pattern, bool caseSensitive, bool includeHidden, int maximumDepth, int maximumVisitedEntries, int maximumResults, AgentKit.SecurityGrant grant) { }
         public AgentKit.FileSystemPath? BasePath { get; init; }
         public bool CaseSensitive { get; init; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.GlobPattern> ExcludedPathPatterns { get; init; }
         public AgentKit.SecurityGrant Grant { get; init; }
         public bool IncludeHidden { get; init; }
         public int MaximumDepth { get; init; }
@@ -3143,6 +3345,7 @@ namespace AgentKit
     public static class GlobSecurityBinding
     {
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.FileSystemPath? basePath, AgentKit.GlobPattern pattern, bool caseSensitive, bool includeHidden, int maximumDepth, int maximumVisitedEntries, int maximumResults) { }
+        public static AgentKit.InputFingerprint Fingerprint(AgentKit.FileSystemPath? basePath, AgentKit.GlobPattern pattern, bool caseSensitive, bool includeHidden, int maximumDepth, int maximumVisitedEntries, int maximumResults, System.Collections.Immutable.ImmutableArray<AgentKit.GlobPattern> excludedPathPatterns = default) { }
         public static AgentKit.ProtectedResource Resource(AgentKit.FileSystemPath? basePath) { }
     }
     public enum GlobStatus
@@ -3202,6 +3405,38 @@ namespace AgentKit
     {
         public HaltRun(AgentKit.AgentRunOutcome outcome) { }
         public AgentKit.AgentRunOutcome Outcome { get; }
+    }
+    public sealed class HistoryRepair : System.IEquatable<AgentKit.HistoryRepair>
+    {
+        public HistoryRepair(System.Collections.Immutable.ImmutableArray<AgentKit.MessageId> sourceMessageIds, AgentKit.HistoryRepairKind kind, string reason, AgentKit.ExtensionData diagnostics) { }
+        public AgentKit.ExtensionData Diagnostics { get; }
+        public AgentKit.HistoryRepairKind Kind { get; }
+        public string Reason { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.MessageId> SourceMessageIds { get; }
+        public bool Equals(AgentKit.HistoryRepair? other) { }
+        public override int GetHashCode() { }
+    }
+    public enum HistoryRepairKind
+    {
+        NormalizedContent = 0,
+        SettledInterruptedToolCall = 1,
+        ExcludedIncompleteAssistantContent = 2,
+        DegradedReasoning = 3,
+        OmittedReasoning = 4,
+        RelocatedMedia = 5,
+        RemovedProviderMetadata = 6,
+        MergedAdjacentUserContent = 7,
+        NormalizedToolCallIdentity = 8,
+        ProjectedImportedOrphanToolCall = 9,
+    }
+    public sealed class HistoryView : System.IEquatable<AgentKit.HistoryView>
+    {
+        public HistoryView(AgentKit.MessageCursor sourceCursor, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> messages, System.Collections.Immutable.ImmutableArray<AgentKit.HistoryRepair> repairs) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Messages { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.HistoryRepair> Repairs { get; }
+        public AgentKit.MessageCursor SourceCursor { get; }
+        public bool Equals(AgentKit.HistoryView? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class HookCompositionException : System.Exception
     {
@@ -3352,6 +3587,10 @@ namespace AgentKit
     {
         System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.AgentRunRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
+    public interface IAgentRunObserver
+    {
+        System.Threading.Tasks.ValueTask OnEventAsync(AgentKit.AgentRunEvent runEvent, System.Threading.CancellationToken cancellationToken = default);
+    }
     public interface IAgentRunProfilePublicationReader
     {
         AgentKit.AgentRunProfilePublicationSnapshot? CurrentSnapshot { get; }
@@ -3365,6 +3604,25 @@ namespace AgentKit
         AgentKit.RunId RunId { get; }
         AgentKit.SessionId SessionId { get; }
         System.Collections.Generic.IAsyncEnumerable<AgentKit.RunEvent> ReadAllAsync(System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IApprovalBroker
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ApprovalBrokerResult> RequestAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IApprovalHandler
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ApprovalHandlerResult> TryResolveAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IApprovalResponderAuthorizer
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ApprovalResponderAuthorizationResult> AuthorizeAsync(AgentKit.ApprovalRequest request, AgentKit.ApprovalResponse candidateResponse, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IApprovalStore
+    {
+        AgentKit.ApprovalStoreCapabilities Capabilities { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreCreateResult> CreateAsync(AgentKit.ApprovalRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreReadResult> ReadAsync(AgentKit.ApprovalRequestId requestId, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.ApprovalStoreResolveResult> ResolveAsync(AgentKit.ApprovalResponse response, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IArtifactCoordinator
     {
@@ -3744,6 +4002,7 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask<AgentKit.SessionBranchResult> BranchAsync(AgentKit.SessionBranchRequest request, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionCreateResult> CreateAsync(AgentKit.SessionCreateRequest request, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionDeleteResult> DeleteAsync(AgentKit.SessionDeleteRequest request, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryListResult> ListAsync(AgentKit.SessionDirectoryListRequest request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionLoadResult> LoadAsync(AgentKit.SessionOperationContext context, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionRunStateResult> LoadRunStateAsync(AgentKit.SessionRunStateRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.SessionInputLookupRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
@@ -3754,6 +4013,7 @@ namespace AgentKit
     {
         bool Durable { get; }
         AgentKit.ComponentId SecurityAudience { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryListResult> ListAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryListRequest> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionLocationResult> LocateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionOperationContext> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionCreationLocationResult> LocateForCreateAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionCreateRequest> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionDirectoryWriteResult> RecordAsync(AgentKit.AuthorizedSessionDirectoryRequest<AgentKit.SessionDirectoryWriteRequest> request, System.Threading.CancellationToken cancellationToken = default);
@@ -3865,6 +4125,15 @@ namespace AgentKit
         AgentKit.IToolInvoker Invoker { get; }
         AgentKit.ToolSourceVersion SourceVersion { get; }
         AgentKit.ToolDescriptor Tool { get; }
+    }
+    public interface IToolPresentationFormatter
+    {
+        AgentKit.ToolDescriptor Descriptor { get; }
+        System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation?> FormatAsync(AgentKit.ToolPresentationRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IToolPresenter
+    {
+        System.Threading.Tasks.ValueTask<AgentKit.ToolPresentation> PresentAsync(AgentKit.ToolPresentationRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IToolProvider
     {
@@ -4153,6 +4422,7 @@ namespace AgentKit
     {
         SelectionLimitExceeded = 0,
         InconsistentEligibleInput = 1,
+        NothingEligible = 2,
     }
     public abstract class InputPromotionPlanningResult : System.IEquatable<AgentKit.InputPromotionPlanningResult> { }
     public sealed class InputPromotionRejected : AgentKit.InputPromotionResult, System.IEquatable<AgentKit.InputPromotionRejected>
@@ -4378,6 +4648,14 @@ namespace AgentKit
         public System.DateTimeOffset Deadline { get; init; }
         public AgentKit.ProviderRequestOptions Options { get; init; }
     }
+    public enum LlmReasoningEffort
+    {
+        Low = 0,
+        Medium = 1,
+        High = 2,
+        ExtraHigh = 3,
+        None = 4,
+    }
     public sealed class LlmRequestContext : System.IEquatable<AgentKit.LlmRequestContext>
     {
         public LlmRequestContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ModelDescriptor model, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> messages, System.Collections.Immutable.ImmutableArray<AgentKit.LlmToolDefinition> tools, AgentKit.LlmToolChoice toolChoice, AgentKit.LlmRequestSettings settings, AgentKit.ExtensionData extensions) { }
@@ -4397,6 +4675,7 @@ namespace AgentKit
         public AgentKit.ExtensionData Extensions { get; init; }
         public long? MaxOutputTokens { get; init; }
         public bool? ParallelToolCalls { get; init; }
+        public AgentKit.LlmReasoningEffort? ReasoningEffort { get; init; }
         public long? Seed { get; init; }
         public System.Collections.Immutable.ImmutableArray<string> StopSequences { get; init; }
         public double? Temperature { get; init; }
@@ -5538,6 +5817,12 @@ namespace AgentKit
         StandardOutput = 0,
         StandardError = 1,
     }
+    public sealed class ProcessReadOnlyRoot : System.IEquatable<AgentKit.ProcessReadOnlyRoot>
+    {
+        public ProcessReadOnlyRoot(string profileId, string absolutePath) { }
+        public string AbsolutePath { get; }
+        public string ProfileId { get; }
+    }
     public sealed class ProcessResolutionResult : System.IEquatable<AgentKit.ProcessResolutionResult>
     {
         public ProcessResolutionResult(AgentKit.ProcessResolutionStatus status, AgentKit.ResolvedProcessIntent? intent, string? safeMessage) { }
@@ -5562,6 +5847,7 @@ namespace AgentKit
         public string Executable { get; }
         public AgentKit.ProcessOperationId Id { get; }
         public AgentKit.ProcessResourceLimits Limits { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ProcessReadOnlyRoot> ReadOnlyRoots { get; init; }
         public AgentKit.SandboxProfileId SandboxProfile { get; }
         public AgentKit.ProcessSideEffectClass SideEffectClass { get; }
         public System.Collections.Immutable.ImmutableArray<byte> StandardInput { get; }
@@ -6504,6 +6790,7 @@ namespace AgentKit
         Abstain = 0,
         Allow = 1,
         Deny = 2,
+        RequireApproval = 3,
     }
     public readonly struct SecurityPolicySnapshotId : System.IEquatable<AgentKit.SecurityPolicySnapshotId>
     {
@@ -6579,6 +6866,8 @@ namespace AgentKit
         public System.Collections.Immutable.ImmutableArray<AgentKit.ProtectedResource> Resources { get; init; }
         public AgentKit.SecurityAuthorizationScope Scope { get; init; }
         public AgentKit.ToolCallId? ToolCallId { get; init; }
+        public bool Equals(AgentKit.SecurityRequest? other) { }
+        public override int GetHashCode() { }
     }
     public readonly struct SecurityRequestId : System.IEquatable<AgentKit.SecurityRequestId>
     {
@@ -6591,6 +6880,16 @@ namespace AgentKit
         public SecurityRevocationVersion(long value) { }
         public long Value { get; }
         public override string ToString() { }
+    }
+    public sealed class SequencingModelResponseObserver : AgentKit.IModelResponseObserver
+    {
+        public SequencingModelResponseObserver(AgentKit.IModelResponseObserver inner) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> CompletedParts { get; }
+        public bool HasStarted { get; }
+        public bool HasTerminated { get; }
+        public long NextSequence { get; }
+        public AgentKit.ModelUsage? Usage { get; }
+        public System.Threading.Tasks.ValueTask OnEventAsync(AgentKit.ModelResponseEvent responseEvent, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ServiceExtensions
     {
@@ -6840,6 +7139,21 @@ namespace AgentKit
         public SessionDirectoryCreationLookupUnavailable(string safeMessage) { }
         public string SafeMessage { get; }
     }
+    public sealed class SessionDirectoryListRequest : System.IEquatable<AgentKit.SessionDirectoryListRequest>
+    {
+        public SessionDirectoryListRequest(AgentKit.AgentId agentId, AgentKit.ExecutionIdentity identity, AgentKit.SecurityAuthorizationContext authorization, AgentKit.SessionId? afterSessionId, int maximumResults) { }
+        public AgentKit.SessionId? AfterSessionId { get; }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.SecurityAuthorizationContext Authorization { get; }
+        public AgentKit.ExecutionIdentity Identity { get; }
+        public int MaximumResults { get; }
+    }
+    public abstract class SessionDirectoryListResult : System.IEquatable<AgentKit.SessionDirectoryListResult> { }
+    public sealed class SessionDirectoryListUnavailable : AgentKit.SessionDirectoryListResult, System.IEquatable<AgentKit.SessionDirectoryListUnavailable>
+    {
+        public SessionDirectoryListUnavailable(string safeMessage) { }
+        public string SafeMessage { get; }
+    }
     public sealed class SessionDirectoryLookupDenied : AgentKit.SessionLocationResult, System.IEquatable<AgentKit.SessionDirectoryLookupDenied>
     {
         public SessionDirectoryLookupDenied(string safeMessage) { }
@@ -6850,6 +7164,12 @@ namespace AgentKit
         public SessionDirectoryLookupUnavailable(string safeMessage) { }
         public string SafeMessage { get; }
     }
+    public sealed class SessionDirectoryPage : AgentKit.SessionDirectoryListResult, System.IEquatable<AgentKit.SessionDirectoryPage>
+    {
+        public SessionDirectoryPage(System.Collections.Immutable.ImmutableArray<AgentKit.SessionLocation> locations, AgentKit.SessionId? nextCursor) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.SessionLocation> Locations { get; }
+        public AgentKit.SessionId? NextCursor { get; }
+    }
     public readonly struct SessionDirectoryRevision : System.IEquatable<AgentKit.SessionDirectoryRevision>
     {
         public SessionDirectoryRevision(long value) { }
@@ -6859,6 +7179,8 @@ namespace AgentKit
     public static class SessionDirectorySecurityBinding
     {
         public static AgentKit.ProtectedResource CreationResource(AgentKit.TenantId tenantId, AgentKit.AgentId agentId, AgentKit.IdempotencyKey idempotencyKey) { }
+        public static AgentKit.InputFingerprint ListFingerprint(AgentKit.SessionDirectoryListRequest request) { }
+        public static AgentKit.ProtectedResource ListResource(AgentKit.TenantId tenantId, AgentKit.AgentId agentId) { }
         public static AgentKit.InputFingerprint LocateFingerprint(AgentKit.SessionOperationContext context) { }
         public static AgentKit.InputFingerprint LocateForCreateFingerprint(AgentKit.SessionCreateRequest request) { }
         public static AgentKit.InputFingerprint RecordCreateFingerprint(AgentKit.SessionDirectoryCreateRecordRequest request) { }
@@ -7156,8 +7478,10 @@ namespace AgentKit
     public sealed class SessionPage : AgentKit.SessionPageResult, System.IEquatable<AgentKit.SessionPage>
     {
         public SessionPage(System.Collections.Immutable.ImmutableArray<AgentKit.SessionEntry> entries, AgentKit.SessionSequence throughSequence, bool hasMore) { }
+        public SessionPage(System.Collections.Immutable.ImmutableArray<AgentKit.SessionEntry> entries, AgentKit.SessionSequence throughSequence, bool hasMore, AgentKit.SessionReadSnapshot snapshot) { }
         public System.Collections.Immutable.ImmutableArray<AgentKit.SessionEntry> Entries { get; init; }
         public bool HasMore { get; init; }
+        public AgentKit.SessionReadSnapshot? Snapshot { get; }
         public AgentKit.SessionSequence ThroughSequence { get; init; }
         public bool Equals(AgentKit.SessionPage? other) { }
         public override int GetHashCode() { }
@@ -7217,10 +7541,20 @@ namespace AgentKit
     public sealed class SessionReadRequest : System.IEquatable<AgentKit.SessionReadRequest>
     {
         public SessionReadRequest(AgentKit.SessionOperationContext context, AgentKit.BranchId branchId, AgentKit.SessionSequence fromSequenceExclusive, int pageSize) { }
+        public SessionReadRequest(AgentKit.SessionOperationContext context, AgentKit.BranchId branchId, AgentKit.SessionSequence fromSequenceExclusive, int pageSize, AgentKit.SessionReadSnapshot snapshot) { }
         public AgentKit.BranchId BranchId { get; }
         public AgentKit.SessionOperationContext Context { get; }
         public AgentKit.SessionSequence FromSequenceExclusive { get; }
         public int PageSize { get; }
+        public AgentKit.SessionReadSnapshot? Snapshot { get; }
+    }
+    public sealed class SessionReadSnapshot : System.IEquatable<AgentKit.SessionReadSnapshot>
+    {
+        public SessionReadSnapshot(AgentKit.SessionAddress address, AgentKit.BranchId branchId, AgentKit.SessionVersion version, AgentKit.SessionSequence upperSequence) { }
+        public AgentKit.SessionAddress Address { get; }
+        public AgentKit.BranchId BranchId { get; }
+        public AgentKit.SessionSequence UpperSequence { get; }
+        public AgentKit.SessionVersion Version { get; }
     }
     public enum SessionRetentionAction
     {
@@ -7499,6 +7833,8 @@ namespace AgentKit
         public StructuredDataPart(System.Text.Json.JsonElement value, AgentKit.JsonSchemaReference? schema, AgentKit.ExtensionData extensions) { }
         public AgentKit.JsonSchemaReference? Schema { get; init; }
         public System.Text.Json.JsonElement Value { get; init; }
+        public bool Equals(AgentKit.StructuredDataPart? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class SystemMessage : AgentKit.AgentMessage, System.IEquatable<AgentKit.SystemMessage>
     {
@@ -7673,6 +8009,13 @@ namespace AgentKit
         public AgentKit.ToolCallId CallId { get; init; }
         public AgentKit.ProviderToolCallId? ProviderCallId { get; init; }
         public AgentKit.ToolReference Tool { get; init; }
+        public bool Equals(AgentKit.ToolCallPart? other) { }
+        public override int GetHashCode() { }
+    }
+    public sealed class ToolCallPresentationSource : AgentKit.ToolPresentationSource, System.IEquatable<AgentKit.ToolCallPresentationSource>
+    {
+        public ToolCallPresentationSource(AgentKit.ToolCallPart call) { }
+        public AgentKit.ToolCallPart Call { get; }
     }
     public sealed class ToolCallRequest : System.IEquatable<AgentKit.ToolCallRequest>
     {
@@ -7977,6 +8320,51 @@ namespace AgentKit
     {
         public ToolMessage(AgentKit.MessageId id, AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.ConversationId? conversationId, AgentKit.BranchId branchId, AgentKit.RunId? runId, AgentKit.TurnId? turnId, System.DateTimeOffset createdAt, AgentKit.MessageState state, System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> parts, AgentKit.ExtensionData extensions) { }
     }
+    public sealed class ToolPresentation : System.IEquatable<AgentKit.ToolPresentation>
+    {
+        public ToolPresentation(System.Collections.Immutable.ImmutableArray<AgentKit.ToolPresentationPart> parts, AgentKit.ToolPresentationDisposition disposition, long omittedCharacters = 0) { }
+        public AgentKit.ToolPresentationDisposition Disposition { get; }
+        public long OmittedCharacters { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.ToolPresentationPart> Parts { get; }
+    }
+    public sealed class ToolPresentationBounds : System.IEquatable<AgentKit.ToolPresentationBounds>
+    {
+        public ToolPresentationBounds(int maximumInputBytes = 262144, int maximumOutputCharacters = 32768, int maximumParts = 16) { }
+        public int MaximumInputBytes { get; }
+        public int MaximumOutputCharacters { get; }
+        public int MaximumParts { get; }
+    }
+    public enum ToolPresentationDisposition
+    {
+        Formatted = 0,
+        Truncated = 1,
+        Fallback = 2,
+    }
+    public sealed class ToolPresentationPart : System.IEquatable<AgentKit.ToolPresentationPart>
+    {
+        public ToolPresentationPart(AgentKit.ToolPresentationPartKind kind, string text, string? language = null, string? path = null) { }
+        public AgentKit.ToolPresentationPartKind Kind { get; }
+        public string? Language { get; }
+        public string? Path { get; }
+        public string Text { get; }
+    }
+    public enum ToolPresentationPartKind
+    {
+        Text = 0,
+        Code = 1,
+        Diff = 2,
+    }
+    public sealed class ToolPresentationRequest : System.IEquatable<AgentKit.ToolPresentationRequest>
+    {
+        public ToolPresentationRequest(AgentKit.ToolDescriptor? descriptor, AgentKit.ToolPresentationSource source, AgentKit.ToolPresentationBounds bounds) { }
+        public AgentKit.ToolPresentationBounds Bounds { get; }
+        public AgentKit.ToolDescriptor? Descriptor { get; }
+        public AgentKit.ToolPresentationSource Source { get; }
+    }
+    public abstract class ToolPresentationSource : System.IEquatable<AgentKit.ToolPresentationSource>
+    {
+        protected ToolPresentationSource() { }
+    }
     public sealed class ToolProviderBinding
     {
         public ToolProviderBinding(AgentKit.ToolSourceId sourceId, AgentKit.IToolProvider provider) { }
@@ -8074,6 +8462,11 @@ namespace AgentKit
         public AgentKit.ToolReference Tool { get; init; }
         public bool Equals(AgentKit.ToolResultPart? other) { }
         public override int GetHashCode() { }
+    }
+    public sealed class ToolResultPresentationSource : AgentKit.ToolPresentationSource, System.IEquatable<AgentKit.ToolResultPresentationSource>
+    {
+        public ToolResultPresentationSource(AgentKit.ToolResultPart result) { }
+        public AgentKit.ToolResultPart Result { get; }
     }
     public sealed class ToolResultProjectionBounds : System.IEquatable<AgentKit.ToolResultProjectionBounds>
     {
@@ -8365,6 +8758,8 @@ namespace AgentKit
         public UnknownContentPart(string typeName, System.Text.Json.JsonElement payload, AgentKit.ExtensionData extensions) { }
         public System.Text.Json.JsonElement Payload { get; init; }
         public string TypeName { get; init; }
+        public bool Equals(AgentKit.UnknownContentPart? other) { }
+        public override int GetHashCode() { }
     }
     public sealed class UnsupportedCapability : System.IEquatable<AgentKit.UnsupportedCapability>
     {

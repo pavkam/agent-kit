@@ -70,7 +70,10 @@ internal static class FakeMessages
             ExtensionData.Empty);
 
     /// <summary>Builds a failed tool-result content part answering <paramref name="call"/> with the given safe failure reason.</summary>
-    public static ToolResultPart ToolFailure(ToolCallPart call, string failureReason) =>
+    public static ToolResultPart ToolFailure(
+        ToolCallPart call,
+        string failureReason,
+        string? resultText = null) =>
         new(
             call.CallId,
             call.Tool,
@@ -81,7 +84,7 @@ internal static class FakeMessages
                 retryable: true,
                 failureReason: failureReason,
                 ExtensionData.Empty),
-            [],
+            resultText is null ? [] : [new TextPart(resultText, TextSemantics.Plain, ExtensionData.Empty)],
             ExtensionData.Empty);
 
     private static AssistantResponseMetadata ResponseMetadata(ModelUsage usage) =>

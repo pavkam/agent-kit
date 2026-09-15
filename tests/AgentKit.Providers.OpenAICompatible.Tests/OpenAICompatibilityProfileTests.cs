@@ -9,6 +9,22 @@ namespace AgentKit.Providers.OpenAICompatible.Tests;
 /// </summary>
 public sealed class OpenAICompatibilityProfileTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void MaximumToolResultCharacters_WhenNonPositive_RejectsBeforeAssignment(int value)
+    {
+        // Arrange
+        var profile = new OpenAICompatibilityProfile(new Uri("https://api.example.test/"),
+            "chat/completions", false, false, true, true, []);
+
+        // Act / Assert
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() =>
+            profile with { MaximumToolResultCharacters = value });
+        exception.ParamName.ShouldBe("value");
+        profile.MaximumToolResultCharacters.ShouldBe(262_144);
+    }
+
     [Fact]
     public void Constructor_WhenExistingEightParameterSignatureIsInspected_RemainsAvailableWithItsDefault()
     {

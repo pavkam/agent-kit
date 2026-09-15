@@ -9,6 +9,16 @@ using AgentKit;
 public sealed class LlmRequestSettingsTests
 {
     [Fact]
+    public void ReasoningEffort_WhenConfigured_ParticipatesInStructuralEquality()
+    {
+        var low = LlmRequestSettings.Default with { ReasoningEffort = LlmReasoningEffort.Low };
+        var high = LlmRequestSettings.Default with { ReasoningEffort = LlmReasoningEffort.High };
+
+        low.ShouldNotBe(high);
+        low.ReasoningEffort.ShouldBe(LlmReasoningEffort.Low);
+    }
+
+    [Fact]
     public void LlmRequestSettings_Equality_WhenSameValues_InstancesAreEqual()
     {
         var first = LlmRequestSettings.Default with

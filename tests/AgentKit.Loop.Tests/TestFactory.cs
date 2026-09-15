@@ -72,6 +72,51 @@ internal static class TestFactory
             ExtensionData.Empty);
     }
 
+    /// <summary>Builds a fully evidenced run request from one exact agent definition.</summary>
+    public static AgentRunRequest ExactRunRequest(
+        AgentId agentId,
+        SessionId sessionId,
+        BranchId branchId,
+        RunId? runId = null)
+    {
+        var selectedRunId = runId ?? new RunId(Guid.NewGuid());
+        var identity = Identity();
+        var correlation = new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), selectedRunId, null);
+        var authorization = TestSupport.TestSecurityEvidence.Authorization(agentId, sessionId, correlation, identity);
+        var profile = TestSupport.TestSecurityEvidence.SessionProfile();
+        var agent = new AgentDefinition(
+            agentId,
+            authorization.AgentDefinitionRevision,
+            "agent",
+            Policy(),
+            ModelRequirements.None,
+            [],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)),
+            ExtensionData.Empty,
+            new SecurityProfileKey("test-security"),
+            new SessionProfileKey("test-session"));
+        var configuration = new EffectiveConfigurationSnapshot(
+            authorization.ConfigurationVersion,
+            profile.ConfigurationFingerprint,
+            [],
+            []);
+        return new AgentRunRequest(
+            agent,
+            sessionId,
+            branchId,
+            selectedRunId,
+            identity,
+            authorization,
+            profile,
+            configuration,
+            8,
+            TimeSpan.FromMinutes(1),
+            ExtensionData.Empty);
+    }
+
     public static OperationCorrelation Correlation(RunId? runId = null) =>
         new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), runId ?? new RunId(Guid.NewGuid()), null);
 

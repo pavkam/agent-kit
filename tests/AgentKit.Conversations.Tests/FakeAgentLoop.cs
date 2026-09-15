@@ -21,6 +21,9 @@ internal sealed class FakeAgentLoop: IAgentLoop
     /// <summary>Gets or sets a signal set the moment <see cref="RunAsync"/> is entered, before it awaits <see cref="Gate"/>.</summary>
     public TaskCompletionSource? EnteredSignal { get; set; }
 
+    /// <summary>Gets or sets provisional progress delivered before the completion gate is released.</summary>
+    public AgentRunEvent? ProgressEvent { get; set; }
+
     public async Task<AgentLoopResult> RunAsync(AgentRunRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -28,6 +31,11 @@ internal sealed class FakeAgentLoop: IAgentLoop
         LastRequest = request;
         cancellationToken.ThrowIfCancellationRequested();
         _ = EnteredSignal?.TrySetResult();
+
+        if (ProgressEvent is not null && request.Observer is not null)
+        {
+            await request.Observer.OnEventAsync(ProgressEvent, cancellationToken).ConfigureAwait(false);
+        }
 
         if (Gate is not null)
         {

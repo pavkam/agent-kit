@@ -216,6 +216,22 @@ public sealed class InMemoryDurableLeaseManagerTests
     }
 
     [Fact]
+    public async Task RenewAsync_WhenLeaseHasExpiredButNoOneTookOver_DoesNotResurrectOwnership()
+    {
+        // durable-execution-and-recovery.md: the lease service is authoritative for expiry; a worker that missed its
+        // renewal window has lost ownership even if nobody else acquired yet. Renewing must not silently resurrect it.
+        var clock = new FakeTimeProvider(Epoch);
+        var manager = Manager(clock);
+        var acquired = await manager.AcquireAsync(new ExecutionLeaseRequest(Address, WorkerA, TimeSpan.FromMinutes(1)), TestContext.Current.CancellationToken);
+        await using var lease = acquired.ShouldBeOfType<ExecutionLeaseAcquired>().Lease;
+        clock.Advance(TimeSpan.FromMinutes(5));
+
+        var renewal = await lease.RenewAsync(TestContext.Current.CancellationToken);
+
+        _ = renewal.ShouldBeOfType<LeaseLost>();
+    }
+
+    [Fact]
     public async Task RenewAsync_WhenLeaseIsAlreadyDisposed_ThrowsObjectDisposedException()
     {
         var manager = Manager();

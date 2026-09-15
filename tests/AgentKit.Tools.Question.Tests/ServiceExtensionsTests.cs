@@ -15,5 +15,7 @@ public sealed class ServiceExtensionsTests
         _ = services.AddQuestionTool().AddQuestionTool();
         services.Count(descriptor => descriptor.ServiceType == typeof(ITool) && descriptor.ImplementationType == typeof(QuestionTool)).ShouldBe(1);
         services.Count(descriptor => descriptor.ServiceType == typeof(IIdentifierGenerator<QuestionId>)).ShouldBe(1);
+        services.Count(descriptor => descriptor.ServiceType == typeof(IToolPresentationFormatter)
+            && descriptor.ImplementationType == typeof(QuestionToolPresentationFormatter)).ShouldBe(1);
     }
 }

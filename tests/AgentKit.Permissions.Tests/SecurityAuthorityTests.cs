@@ -64,14 +64,18 @@ public sealed class SecurityAuthorityTests
     {
         var clock = new FakeTimeProvider(_now);
         var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var deny = new StubPolicy(SecurityPolicyResultKind.Deny);
+        var allow = new StubPolicy(SecurityPolicyResultKind.Allow);
         var authority = CreateAuthority(
-            [new StubPolicy(SecurityPolicyResultKind.Deny), new StubPolicy(SecurityPolicyResultKind.Allow)],
+            [deny, allow],
             store,
             clock);
 
         var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
 
         decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("test.deny");
+        deny.CallCount.ShouldBe(1);
+        allow.CallCount.ShouldBe(1);
         store.RegisterCount.ShouldBe(0);
     }
 
@@ -85,6 +89,90 @@ public sealed class SecurityAuthorityTests
         var decision = await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken);
 
         decision.ShouldBeOfType<SecurityAllowed>().Grant.RequestId.ShouldBe(request.Id);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenApprovalConditionIsSatisfied_RechecksAndRegistersBoundGrant()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var broker = new ApprovingBroker();
+        var authority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
+            store,
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            broker,
+            new StubApprovalRequestIdGenerator(),
+            new AcceptingAuditDispatcher());
+
+        var request = CreateRequest();
+        var decision = await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken);
+
+        var allowed = decision.ShouldBeOfType<SecurityAllowed>();
+        allowed.Grant.RequestId.ShouldBe(request.Id);
+        allowed.Grant.InputFingerprint.ShouldBe(request.InputFingerprint);
+        broker.CallCount.ShouldBe(1);
+        store.RegisterCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenApprovalTakesTime_GrantDoesNotOutliveApprovedBinding()
+    {
+        // ApprovalScopeBinding.ExpiresAt is documented as "the exclusive approval and grant expiry"; the human approved
+        // that bound. Re-basing the grant lifetime on the post-approval clock silently widens what was approved.
+        var clock = new FakeTimeProvider(_now);
+        var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var broker = new SlowApprovingBroker(clock, TimeSpan.FromMinutes(3));
+        var authority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
+            store,
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions { MaximumGrantLifetime = TimeSpan.FromMinutes(5) }),
+            broker,
+            new StubApprovalRequestIdGenerator(),
+            new AcceptingAuditDispatcher());
+        var request = CreateRequest() with { Deadline = _now.AddHours(1) };
+
+        var decision = await authority.AuthorizeAsync(request, TestContext.Current.CancellationToken);
+
+        var allowed = decision.ShouldBeOfType<SecurityAllowed>();
+        var approvedBinding = broker.LastRequest.ShouldNotBeNull().Binding;
+        allowed.Grant.ExpiresAt.ShouldBeLessThanOrEqualTo(approvedBinding.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenBrokerIsUnavailable_DeniesWithACodeDistinctFromHumanDenial()
+    {
+        // Infrastructure unavailability and an explicit human "no" are different facts; audit must not conflate them.
+        var clock = new FakeTimeProvider(_now);
+        var unavailableAuthority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
+            new InMemorySecurityGrantStore(clock),
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            new FixedBroker(new ApprovalBrokerUnavailable("store offline")),
+            new StubApprovalRequestIdGenerator(),
+            new AcceptingAuditDispatcher());
+        var deniedAuthority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
+            new InMemorySecurityGrantStore(clock),
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            new DenyingBroker(),
+            new StubApprovalRequestIdGenerator(),
+            new AcceptingAuditDispatcher());
+
+        var unavailable = await unavailableAuthority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+        var denied = await deniedAuthority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        var unavailableCode = unavailable.ShouldBeOfType<SecurityDenied>().Denial.Code;
+        var deniedCode = denied.ShouldBeOfType<SecurityDenied>().Denial.Code;
+        unavailableCode.ShouldNotBe(deniedCode);
     }
 
     [Fact]
@@ -299,6 +387,7 @@ public sealed class SecurityAuthorityTests
             {
                 SecurityPolicyResultKind.Abstain => new SecurityPolicyResult(result, null, null),
                 SecurityPolicyResultKind.Allow => new SecurityPolicyResult(result, "test.allow", "Allowed by test policy."),
+                SecurityPolicyResultKind.RequireApproval => new SecurityPolicyResult(result, "test.approval", "Approval required by test policy."),
                 SecurityPolicyResultKind.Deny => new SecurityPolicyResult(result, "test.deny", "Denied by test policy."),
                 _ => throw new InvalidOperationException(),
             });
@@ -308,6 +397,85 @@ public sealed class SecurityAuthorityTests
     private sealed class StubGrantIdGenerator: IIdentifierGenerator<GrantId>
     {
         public GrantId Create() => new(Guid.Parse("70000000-0000-0000-0000-000000000007"));
+    }
+
+    private sealed class StubApprovalRequestIdGenerator: IIdentifierGenerator<ApprovalRequestId>
+    {
+        public ApprovalRequestId Create() =>
+            new(Guid.Parse("80000000-0000-0000-0000-000000000008"));
+    }
+
+    private sealed class ApprovingBroker: IApprovalBroker
+    {
+        public int CallCount { get; private set; }
+
+        public ValueTask<ApprovalBrokerResult> RequestAsync(
+            ApprovalRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CallCount++;
+            var response = new ApprovalResponse(
+                new ApprovalResponseId(Guid.Parse("90000000-0000-0000-0000-000000000009")),
+                request.Id,
+                request.Binding,
+                ApprovalResolution.Approved,
+                request.Binding.Request.Identity,
+                request.CreatedAt.AddSeconds(1));
+            return ValueTask.FromResult<ApprovalBrokerResult>(new ApprovalBrokerApproved(response));
+        }
+    }
+
+    private sealed class SlowApprovingBroker(FakeTimeProvider clock, TimeSpan thinkTime): IApprovalBroker
+    {
+        public ApprovalRequest? LastRequest { get; private set; }
+
+        public ValueTask<ApprovalBrokerResult> RequestAsync(ApprovalRequest request, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LastRequest = request;
+            clock.Advance(thinkTime);
+            var response = new ApprovalResponse(
+                new ApprovalResponseId(Guid.Parse("90000000-0000-0000-0000-000000000009")),
+                request.Id,
+                request.Binding,
+                ApprovalResolution.Approved,
+                request.Binding.Request.Identity,
+                clock.GetUtcNow());
+            return ValueTask.FromResult<ApprovalBrokerResult>(new ApprovalBrokerApproved(response));
+        }
+    }
+
+    private sealed class FixedBroker(ApprovalBrokerResult result): IApprovalBroker
+    {
+        public ValueTask<ApprovalBrokerResult> RequestAsync(ApprovalRequest request, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(result);
+    }
+
+    private sealed class DenyingBroker: IApprovalBroker
+    {
+        public ValueTask<ApprovalBrokerResult> RequestAsync(ApprovalRequest request, CancellationToken cancellationToken = default)
+        {
+            var response = new ApprovalResponse(
+                new ApprovalResponseId(Guid.Parse("90000000-0000-0000-0000-000000000009")),
+                request.Id,
+                request.Binding,
+                ApprovalResolution.Denied,
+                request.Binding.Request.Identity,
+                request.CreatedAt.AddSeconds(1));
+            return ValueTask.FromResult<ApprovalBrokerResult>(new ApprovalBrokerDenied(response));
+        }
+    }
+
+    private sealed class AcceptingAuditDispatcher: ISecurityAuditDispatcher
+    {
+        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(
+            SecurityAuditRecord record,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<SecurityAuditDispatchResult>(new SecurityAuditAccepted());
+        }
     }
 
     private sealed class ThrowingPolicy: ISecurityPolicy

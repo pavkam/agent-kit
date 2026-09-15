@@ -31,4 +31,11 @@ internal sealed class OpenAIChatCompletionChunk
     /// </summary>
     [JsonPropertyName("usage")]
     public OpenAIUsage? Usage { get; set; }
+
+    /// <summary>
+    /// Gets or sets an error object delivered as a stream frame. Some deployments (OpenRouter, several
+    /// gateways) report mid-stream failures this way instead of closing the connection with an HTTP error.
+    /// </summary>
+    [JsonPropertyName("error")]
+    public OpenAIErrorDetail? Error { get; set; }
 }

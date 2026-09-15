@@ -84,7 +84,9 @@ public sealed record NetworkDestinationPolicy
 
     /// <summary>
     /// Gets a value indicating whether a resolved address in a private,
-    /// loopback, or link-local range is permitted.
+    /// loopback, link-local, carrier-grade NAT, multicast, unspecified, or
+    /// reserved range is permitted. IPv4-mapped IPv6 addresses are classified
+    /// by their embedded IPv4 address.
     /// </summary>
     public bool AllowPrivateAddresses { get; init; }
 
@@ -113,21 +115,34 @@ public sealed record NetworkDestinationPolicy
         return AllowPrivateAddresses || !IsPrivateOrLoopback(address);
     }
 
+    // An IPv4-mapped IPv6 address (::ffff:a.b.c.d) connects to the embedded IPv4 target on dual-stack
+    // hosts, so it must be classified by that embedded address rather than by its IPv6 spelling.
     private static bool IsPrivateOrLoopback(IPAddress address) =>
-        IPAddress.IsLoopback(address)
-        || address.IsIPv6LinkLocal
-        || address.IsIPv6SiteLocal
-        || address.IsIPv6UniqueLocal
-        || (address.AddressFamily == AddressFamily.InterNetwork && IsPrivateIPv4(address.GetAddressBytes()));
+        address.IsIPv4MappedToIPv6
+            ? IsPrivateOrLoopback(address.MapToIPv4())
+            : IPAddress.IsLoopback(address)
+              || address.Equals(IPAddress.IPv6Any)
+              || address.IsIPv6LinkLocal
+              || address.IsIPv6SiteLocal
+              || address.IsIPv6UniqueLocal
+              || address.IsIPv6Multicast
+              || (address.AddressFamily == AddressFamily.InterNetwork && IsPrivateOrSpecialUseIPv4(address.GetAddressBytes()));
 
-    private static bool IsPrivateIPv4(byte[] octets) => octets[0] switch
+    /// <summary>
+    /// Classifies non-routable or special-use IPv4 ranges: RFC 1918 private space, loopback, link-local
+    /// (including cloud metadata endpoints), "this network", carrier-grade NAT (RFC 6598), multicast,
+    /// and the reserved/broadcast 240/4 block.
+    /// </summary>
+    private static bool IsPrivateOrSpecialUseIPv4(byte[] octets) => octets[0] switch
     {
         10 => true,
         127 => true,
         169 when octets[1] == 254 => true,
         172 when octets[1] is >= 16 and <= 31 => true,
         192 when octets[1] == 168 => true,
+        100 when octets[1] is >= 64 and <= 127 => true,
         0 => true,
+        >= 224 => true,
         _ => false,
     };
 
