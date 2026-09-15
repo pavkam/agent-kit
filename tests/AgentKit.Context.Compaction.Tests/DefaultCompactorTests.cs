@@ -7,6 +7,7 @@ using AgentKit.TestSupport;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 
 /// <summary>Verifies DefaultCompactor behavior and contracts.</summary>
 public sealed class DefaultCompactorTests
@@ -398,6 +399,48 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
+    public async Task CompactAsync_WhenDeadlineAlreadyPassed_ReturnsDeadlineExceededWithoutReadingOrAppending()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30, timeProvider: new FakeTimeProvider(DateTimeOffset.UnixEpoch.AddMinutes(10)));
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('d', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<CompactionRejected>();
+        rejected.Rejection.Kind.ShouldBe(CompactionRejectionKind.DeadlineExceeded);
+        coordinator.ReceivedReads.ShouldBeEmpty();
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenClockIsExactlyAtDeadline_ReturnsDeadlineExceeded()
+    {
+        var address = Address();
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, new SessionVersion(5), new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30, timeProvider: new FakeTimeProvider(request.Deadline));
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('d', 200))));
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<CompactionRejected>().Rejection.Kind.ShouldBe(CompactionRejectionKind.DeadlineExceeded);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenClockIsJustBeforeDeadline_Proceeds()
+    {
+        var address = Address();
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, new SessionVersion(5), new SessionSequence(5), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30, timeProvider: new FakeTimeProvider(request.Deadline.AddTicks(-1)));
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('d', 200))));
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<CompactionSucceeded>();
+    }
+
+    [Fact]
     public async Task CompactAsync_WhenStoreReportsUnexpectedNewVersion_ReturnsActivationFailureAndLogsWarning()
     {
         // The record is built before the append with ActivatedSessionVersion = SourceVersion + 1. If the store reports
@@ -728,12 +771,15 @@ public sealed class DefaultCompactorTests
     }
 
     private SessionAddress Address() => new(_agentId, _sessionId);
-    private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactor(int maximumCheckpointCharacters = 16_000, int maximumSourceEntries = 5_000, int sourceReadPageSize = 256, ILogger<DefaultCompactor>? logger = null)
+    /// <summary>Requests from <see cref="TestFactory.Request"/> are stamped at the Unix epoch with a five-minute deadline; the clock starts inside that window.</summary>
+    private static FakeTimeProvider Clock() => new(DateTimeOffset.UnixEpoch.AddMinutes(1));
+
+    private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactor(int maximumCheckpointCharacters = 16_000, int maximumSourceEntries = 5_000, int sourceReadPageSize = 256, ILogger<DefaultCompactor>? logger = null, TimeProvider? timeProvider = null)
     {
         var coordinator = new FakeSessionCoordinator(_branchId);
         var options = Options.Create(new CompactionOptions { MaximumCheckpointCharacters = maximumCheckpointCharacters, MaximumSourceEntries = maximumSourceEntries, SourceReadPageSize = sourceReadPageSize });
         var estimator = new CharacterCompactionSizeEstimator(options);
-        var compactor = new DefaultCompactor(coordinator, new StructuralCompactionCutSelector(options), new ExtractiveCompactionStrategy(estimator, options), new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), TimeProvider.System, options, logger);
+        var compactor = new DefaultCompactor(coordinator, new StructuralCompactionCutSelector(options), new ExtractiveCompactionStrategy(estimator, options), new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), timeProvider ?? Clock(), options, logger);
         return (compactor, coordinator);
     }
 
@@ -742,7 +788,7 @@ public sealed class DefaultCompactorTests
         var coordinator = new FakeSessionCoordinator(_branchId);
         var options = Options.Create(new CompactionOptions());
         var estimator = new CharacterCompactionSizeEstimator(options);
-        var compactor = new DefaultCompactor(coordinator, cutSelector ?? new StructuralCompactionCutSelector(options), strategy ?? new ExtractiveCompactionStrategy(estimator, options), validator ?? new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), TimeProvider.System, options);
+        var compactor = new DefaultCompactor(coordinator, cutSelector ?? new StructuralCompactionCutSelector(options), strategy ?? new ExtractiveCompactionStrategy(estimator, options), validator ?? new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), Clock(), options);
         return (compactor, coordinator);
     }
 
@@ -762,7 +808,7 @@ public sealed class DefaultCompactorTests
         coordinator.Seed([TestFactory.MessageEntry(new SessionAddress(agentId, sessionId), branchId, 1, protectedContent)]);
         var options = Options.Create(new CompactionOptions());
         var estimator = new CharacterCompactionSizeEstimator(options);
-        var compactor = new DefaultCompactor(coordinator, new StructuralCompactionCutSelector(options), new ExtractiveCompactionStrategy(estimator, options), new DefaultCompactionValidator(estimator, options), estimator, new GuidIdentifierGenerator<CompactionManifestId>(static value => new CompactionManifestId(value)), new GuidIdentifierGenerator<SessionEntryId>(static value => new SessionEntryId(value)), TimeProvider.System, options);
+        var compactor = new DefaultCompactor(coordinator, new StructuralCompactionCutSelector(options), new ExtractiveCompactionStrategy(estimator, options), new DefaultCompactionValidator(estimator, options), estimator, new GuidIdentifierGenerator<CompactionManifestId>(static value => new CompactionManifestId(value)), new GuidIdentifierGenerator<SessionEntryId>(static value => new SessionEntryId(value)), Clock(), options);
         var request = TestFactory.Request(TestFactory.CompactionContext(agentId, sessionId), branchId, coordinator.Version, new SessionSequence(1), minimumRetainedEntries: 5);
         using var activities = new ActivityCollector(static source => source.Name == AgentKitDiagnostics.ActivitySourceName, activity => activity.OperationName == AgentKitActivityNames.ContextCompact && Equals(activity.GetTagItem(AgentKitTagNames.CompactionId), request.Context.CompactionId.ToString()));
         _ = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);

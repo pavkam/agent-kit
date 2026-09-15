@@ -19,5 +19,11 @@ public enum CompactionRejectionKind
     SourceLimitExceeded,
 
     /// <summary>A configured policy constraint was violated by every candidate cut.</summary>
-    PolicyViolation
+    PolicyViolation,
+
+    /// <summary>
+    /// The request's <see cref="CompactionRequest.Deadline"/> had already passed when the attempt started, so the
+    /// compactor declined before any session read or append.
+    /// </summary>
+    DeadlineExceeded
 }

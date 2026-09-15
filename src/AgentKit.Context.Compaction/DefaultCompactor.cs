@@ -181,11 +181,26 @@ public sealed class DefaultCompactor: ICompactor
         }
     }
 
+    /// <summary>
+    /// Runs the attempt pipeline: deadline check, source load, cut selection, production, validation, activation.
+    /// </summary>
     private async Task<CompactionResult> CompactCoreAsync(
         CompactionRequest request, CancellationToken cancellationToken)
     {
+        Debug.Assert(request is not null, "The public entry point validates the request.");
 
         var context = request.Context;
+        if (_timeProvider.GetUtcNow() >= request.Deadline)
+        {
+            // Deadline is enforced before any protected read or append so an expired request has no side effect.
+            return new CompactionRejected(
+                context,
+                new CompactionRejection(
+                    CompactionRejectionKind.DeadlineExceeded,
+                    "The request deadline had already passed when the attempt started.",
+                    ExtensionData.Empty));
+        }
+
         var sessionContext = new SessionOperationContext(
             context.AgentId,
             context.SessionId,

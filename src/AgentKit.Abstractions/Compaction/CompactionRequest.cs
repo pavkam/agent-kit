@@ -29,6 +29,10 @@ namespace AgentKit;
 public sealed record CompactionRequest
 {
     private readonly double _minimumReductionRatio;
+    private readonly int _targetInputTokens;
+    private readonly int _minimumRetainedEntries;
+    private readonly DateTimeOffset _requestedAt;
+    private readonly DateTimeOffset _deadline;
 
     /// <summary>Initializes a new instance of the <see cref="CompactionRequest"/> record.</summary>
     /// <param name="context">The operation context for this attempt.</param>
@@ -37,7 +41,10 @@ public sealed record CompactionRequest
     /// <param name="sourceThrough">The last sequence eligible to be covered by this attempt.</param>
     /// <param name="contextEpoch">The context epoch this request was computed under.</param>
     /// <param name="trigger">Why this attempt was requested.</param>
-    /// <param name="targetInputTokens">The token budget the resulting checkpoint plus retained suffix should fit within.</param>
+    /// <param name="targetInputTokens">
+    /// The advisory token budget the resulting checkpoint plus retained suffix should fit within; zero means no
+    /// target. The first-party validator does not reject a candidate for exceeding it.
+    /// </param>
     /// <param name="minimumReductionRatio">
     /// The minimum fraction (in the open interval (0, 1)) the candidate's
     /// estimated size must shrink by for the attempt to count as a
@@ -53,12 +60,10 @@ public sealed record CompactionRequest
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="targetInputTokens"/> or
-    /// <paramref name="minimumRetainedEntries"/> is negative, or
+    /// <paramref name="minimumRetainedEntries"/> is negative,
     /// <paramref name="minimumReductionRatio"/> is not in the open interval
-    /// (0, 1).
-    /// </exception>
-    /// <exception cref="ArgumentException">
-    /// <paramref name="deadline"/> does not follow <paramref name="requestedAt"/>.
+    /// (0, 1), or <paramref name="deadline"/> does not follow
+    /// <paramref name="requestedAt"/>.
     /// </exception>
     public CompactionRequest(
         CompactionOperationContext context,
@@ -84,10 +89,7 @@ public sealed record CompactionRequest
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
             minimumReductionRatio, 1d, nameof(minimumReductionRatio));
 
-        if (deadline <= requestedAt)
-        {
-            throw new ArgumentException("Deadline must follow RequestedAt.", nameof(deadline));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(deadline, requestedAt);
 
         Context = context;
         BranchId = branchId;
@@ -95,11 +97,11 @@ public sealed record CompactionRequest
         SourceThrough = sourceThrough;
         ContextEpoch = contextEpoch;
         Trigger = trigger;
-        TargetInputTokens = targetInputTokens;
+        _targetInputTokens = targetInputTokens;
         _minimumReductionRatio = minimumReductionRatio;
-        MinimumRetainedEntries = minimumRetainedEntries;
-        RequestedAt = requestedAt;
-        Deadline = deadline;
+        _minimumRetainedEntries = minimumRetainedEntries;
+        _requestedAt = requestedAt;
+        _deadline = deadline;
         Extensions = extensions;
     }
 
@@ -122,10 +124,26 @@ public sealed record CompactionRequest
     public CompactionTrigger Trigger { get; init; }
 
     /// <summary>
-    /// Gets the token budget the resulting checkpoint plus retained suffix
-    /// should fit within.
+    /// Gets the advisory token budget the resulting checkpoint plus retained
+    /// suffix should fit within.
     /// </summary>
-    public int TargetInputTokens { get; init; }
+    /// <value>
+    /// A nonnegative token count; zero means no target. The value informs
+    /// strategies and callers but the first-party validator does not reject a
+    /// candidate for exceeding it, because measurable reduction is governed by
+    /// <see cref="MinimumReductionRatio"/> and the retained suffix is outside
+    /// the compactor's control.
+    /// </value>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer attempts to set a negative value.</exception>
+    public int TargetInputTokens
+    {
+        get => _targetInputTokens;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value, nameof(TargetInputTokens));
+            _targetInputTokens = value;
+        }
+    }
 
     /// <summary>
     /// Gets the minimum fraction the candidate's estimated size must shrink
@@ -147,13 +165,50 @@ public sealed record CompactionRequest
     }
 
     /// <summary>Gets the minimum number of entries that must remain in the retained suffix.</summary>
-    public int MinimumRetainedEntries { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">An initializer attempts to set a negative value.</exception>
+    public int MinimumRetainedEntries
+    {
+        get => _minimumRetainedEntries;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value, nameof(MinimumRetainedEntries));
+            _minimumRetainedEntries = value;
+        }
+    }
 
     /// <summary>Gets the time this request was created.</summary>
-    public DateTimeOffset RequestedAt { get; init; }
+    /// <remarks>
+    /// An initializer that moves this value must keep it strictly before <see cref="Deadline"/>. When both values
+    /// change in one <c>with</c> expression, set <see cref="Deadline"/> first or construct a new request, because
+    /// initializers run in textual order and each is validated against the value the other currently holds.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer attempts to set a value at or after <see cref="Deadline"/>.</exception>
+    public DateTimeOffset RequestedAt
+    {
+        get => _requestedAt;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(value, _deadline, nameof(RequestedAt));
+            _requestedAt = value;
+        }
+    }
 
     /// <summary>Gets the instant by which this attempt must complete.</summary>
-    public DateTimeOffset Deadline { get; init; }
+    /// <remarks>
+    /// The first-party compactor compares this value with its injected <see cref="TimeProvider"/> before any
+    /// session read and rejects an already-expired request with
+    /// <see cref="CompactionRejectionKind.DeadlineExceeded"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">An initializer attempts to set a value at or before <see cref="RequestedAt"/>.</exception>
+    public DateTimeOffset Deadline
+    {
+        get => _deadline;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(value, _requestedAt, nameof(Deadline));
+            _deadline = value;
+        }
+    }
 
     /// <summary>Gets caller-specific or forward-compatible request data.</summary>
     public ExtensionData Extensions { get; init; }

@@ -163,7 +163,20 @@ public sealed record CompactionRequest(
 Construction validates that correlation values agree with the authorization
 scope, the deadline follows the request time, bounds are positive, the source
 sequence exists in the named version and branch, and the strategy order has no
-duplicates. The invocation's `SessionExecutionCapability.Profile.Reference` must
+duplicates. The same constraints hold for `with` expressions: every validated
+property has a validating `init` accessor, so a copied request cannot carry a
+negative bound or a deadline at or before its request time.
+
+`Deadline` is enforced by the first-party compactor against its injected
+`TimeProvider` before any session read or append; a request whose deadline has
+already passed is rejected with `DeadlineExceeded` and has no side effect.
+`TargetInputTokens` is advisory: it names the budget the checkpoint plus the
+retained suffix should fit within, but the retained suffix beyond the eligible
+range and the model's mandatory reserve are outside the compactor's knowledge,
+so the first-party validator does not reject a candidate for exceeding it.
+Measurable reduction is governed by `MinimumReductionRatio`; whether mandatory
+context still fits is the context component's typed `ContextLimitExceeded`
+decision. The invocation's `SessionExecutionCapability.Profile.Reference` must
 equal `SessionProfile`; a mismatch is rejected before authorization or session
 I/O. Provider overflow includes the failed provider request's `OperationId` as
 the causal operation. Text such as `Reason` is descriptive and never used as

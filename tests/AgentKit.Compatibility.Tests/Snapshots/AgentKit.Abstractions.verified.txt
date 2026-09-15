@@ -2009,6 +2009,7 @@ namespace AgentKit
         NoSafeCut = 1,
         SourceLimitExceeded = 2,
         PolicyViolation = 3,
+        DeadlineExceeded = 4,
     }
     public sealed class CompactionRequest : System.IEquatable<AgentKit.CompactionRequest>
     {

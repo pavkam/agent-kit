@@ -52,7 +52,100 @@ public sealed class CompactionRequestTests
         changed.MinimumReductionRatio.ShouldBe(maximum);
     }
 
-    private static CompactionRequest CreateRequest(double minimumReductionRatio) => new(
+    [Fact]
+    public void Constructor_WhenDeadlineDoesNotFollowRequestedAt_ThrowsArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(
+            () => CreateRequest(0.5d, deadline: DateTimeOffset.UnixEpoch));
+
+        exception.ParamName.ShouldBe("deadline");
+    }
+
+    [Fact]
+    public void With_WhenMinimumRetainedEntriesNegative_ThrowsArgumentOutOfRangeException()
+    {
+        var request = CreateRequest(0.5d);
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => request with { MinimumRetainedEntries = -1 });
+
+        exception.ParamName.ShouldBe(nameof(CompactionRequest.MinimumRetainedEntries));
+    }
+
+    [Fact]
+    public void With_WhenMinimumRetainedEntriesZero_AcceptsValue()
+    {
+        var request = CreateRequest(0.5d);
+
+        var changed = request with { MinimumRetainedEntries = 0 };
+
+        changed.MinimumRetainedEntries.ShouldBe(0);
+    }
+
+    [Fact]
+    public void With_WhenTargetInputTokensNegative_ThrowsArgumentOutOfRangeException()
+    {
+        var request = CreateRequest(0.5d);
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => request with { TargetInputTokens = -1 });
+
+        exception.ParamName.ShouldBe(nameof(CompactionRequest.TargetInputTokens));
+    }
+
+    [Fact]
+    public void With_WhenTargetInputTokensZero_AcceptsValue()
+    {
+        var request = CreateRequest(0.5d);
+
+        var changed = request with { TargetInputTokens = 0 };
+
+        changed.TargetInputTokens.ShouldBe(0);
+    }
+
+    [Fact]
+    public void With_WhenDeadlineDoesNotFollowRequestedAt_ThrowsArgumentOutOfRangeException()
+    {
+        var request = CreateRequest(0.5d);
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => request with { Deadline = request.RequestedAt });
+
+        exception.ParamName.ShouldBe(nameof(CompactionRequest.Deadline));
+    }
+
+    [Fact]
+    public void With_WhenDeadlineFollowsRequestedAt_AcceptsValue()
+    {
+        var request = CreateRequest(0.5d);
+        var later = request.RequestedAt.AddTicks(1);
+
+        var changed = request with { Deadline = later };
+
+        changed.Deadline.ShouldBe(later);
+    }
+
+    [Fact]
+    public void With_WhenRequestedAtReachesDeadline_ThrowsArgumentOutOfRangeException()
+    {
+        var request = CreateRequest(0.5d);
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => request with { RequestedAt = request.Deadline });
+
+        exception.ParamName.ShouldBe(nameof(CompactionRequest.RequestedAt));
+    }
+
+    [Fact]
+    public void With_WhenDeadlineIsSetBeforeRequestedAtInOneExpression_AcceptsBothValues()
+    {
+        var request = CreateRequest(0.5d);
+        var newRequestedAt = request.Deadline.AddHours(1);
+        var newDeadline = newRequestedAt.AddMinutes(1);
+
+        var changed = request with { Deadline = newDeadline, RequestedAt = newRequestedAt };
+
+        changed.RequestedAt.ShouldBe(newRequestedAt);
+        changed.Deadline.ShouldBe(newDeadline);
+    }
+
+    private static CompactionRequest CreateRequest(double minimumReductionRatio, DateTimeOffset? deadline = null) => new(
         TestSupport.TestSecurityEvidence.CompactionContext(
             new CompactionId(Guid.NewGuid()),
             new AgentId(Guid.NewGuid()),
@@ -74,6 +167,6 @@ public sealed class CompactionRequestTests
         minimumReductionRatio,
         1,
         DateTimeOffset.UnixEpoch,
-        DateTimeOffset.UnixEpoch.AddMinutes(1),
+        deadline ?? DateTimeOffset.UnixEpoch.AddMinutes(1),
         ExtensionData.Empty);
 }
