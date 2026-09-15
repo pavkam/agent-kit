@@ -323,6 +323,412 @@ public abstract class SessionStoreConformanceTests<TFixture>
             .ShouldBe(firstAccepted.Receipt.AdmittedSequence.Value + 1);
     }
 
+    /// <summary>Verifies pre-cancelled callers observe cancellation before any protected creation effect.</summary>
+    [Fact]
+    public async Task CreateAsync_WhenAlreadyCancelled_ThrowsOperationCanceledException()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var request = CreateStoreRequest();
+        var authorized = await AuthorizeAsync(fixture, request, SecurityOperationKind.StateMutation, SecurityEffect.Create);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await store.CreateAsync(authorized, cancellation.Token));
+        var context = SessionContext(request.Address, Identity(), Correlation(130));
+        var loaded = await store.LoadAsync(
+            await AuthorizeAsync(fixture, context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+        _ = loaded.ShouldBeOfType<SessionNotFound>();
+    }
+
+    /// <summary>Verifies sequential appends commit in append order with one version step per append.</summary>
+    [Fact]
+    public async Task AppendAsync_WhenAppendedTwiceInSequence_OrdersEntriesByAppendOrder()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 2);
+
+        var page = (SessionPage) await ReadAllAsync(fixture, store, descriptor, context);
+        var loaded = (SessionLoaded) await store.LoadAsync(
+            await AuthorizeAsync(fixture, context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        loaded.Descriptor.Version.ShouldBe(new SessionVersion(2));
+        page.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2]);
+        page.Entries.Cast<MessageSessionEntry>().Select(static entry => entry.Message.Parts.OfType<TextPart>().Single().Text)
+            .ShouldBe(["seed-0", "seed-1"]);
+    }
+
+    /// <summary>Verifies an exact retried append returns the original receipt without duplicating history.</summary>
+    [Fact]
+    public async Task AppendAsync_WhenRetriedWithSameIdempotencyKey_DoesNotDuplicateEntries()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(140));
+        var request = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("dupe"),
+            [MessageEntry(descriptor, 141, 1, "once")]);
+
+        var first = (SessionAppended) await store.AppendAsync(
+            await AuthorizeAsync(fixture, request, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var second = (SessionAppended) await store.AppendAsync(
+            await AuthorizeAsync(fixture, request, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var page = (SessionPage) await ReadAllAsync(fixture, store, descriptor, context);
+
+        second.NewVersion.ShouldBe(first.NewVersion);
+        _ = page.Entries.ShouldHaveSingleItem();
+    }
+
+    /// <summary>Verifies two racing appends at one expected version yield exactly one commit and one typed conflict.</summary>
+    [Fact]
+    public async Task AppendAsync_WhenConcurrentAppendsShareExpectedVersion_YieldsOneSuccessAndOneConflict()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(150));
+        var racerA = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("racer-a"),
+            [MessageEntry(descriptor, 151, 1, "a")]);
+        var racerB = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("racer-b"),
+            [MessageEntry(descriptor, 154, 1, "b")]);
+        var authorizedA = await AuthorizeAsync(fixture, racerA, SecurityOperationKind.StateMutation, SecurityEffect.Append);
+        var authorizedB = await AuthorizeAsync(fixture, racerB, SecurityOperationKind.StateMutation, SecurityEffect.Append);
+
+        var results = await Task.WhenAll(
+            store.AppendAsync(authorizedA, TestContext.Current.CancellationToken).AsTask(),
+            store.AppendAsync(authorizedB, TestContext.Current.CancellationToken).AsTask());
+        var page = (SessionPage) await ReadAllAsync(fixture, store, descriptor, context);
+
+        results.OfType<SessionAppended>().Count().ShouldBe(1);
+        results.OfType<SessionAppendConflict>().Count().ShouldBe(1);
+        _ = page.Entries.ShouldHaveSingleItem();
+    }
+
+    /// <summary>Verifies a page smaller than the branch reports a continuation cursor and more data.</summary>
+    [Fact]
+    public async Task ReadAsync_WhenPageSizeSmallerThanTotal_ReturnsPartialPageWithHasMoreTrue()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 5);
+        var read = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 2);
+
+        var page = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, read, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        page.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2]);
+        page.HasMore.ShouldBeTrue();
+        page.ThroughSequence.ShouldBe(new SessionSequence(2));
+    }
+
+    /// <summary>Verifies continuing from the previous cursor returns the next contiguous page.</summary>
+    [Fact]
+    public async Task ReadAsync_WhenContinuingFromPreviousPage_ReturnsRemainingEntries()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 5);
+        var firstRead = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 2);
+        var firstPage = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, firstRead, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var secondRead = new SessionReadRequest(context, descriptor.ActiveBranchId, firstPage.ThroughSequence, 2);
+
+        var secondPage = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, secondRead, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        secondPage.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([3, 4]);
+        secondPage.HasMore.ShouldBeTrue();
+        secondPage.ThroughSequence.ShouldBe(new SessionSequence(4));
+    }
+
+    /// <summary>Verifies an issued snapshot pins a continuation to the prefix visible when the first page was read.</summary>
+    [Fact]
+    public async Task ReadAsync_WhenAppendOccursBetweenPages_ContinuationRetainsOriginalPrefix()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 3);
+        var firstRead = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 2);
+        var firstPage = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, firstRead, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var later = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, new SessionVersion(3), new IdempotencyKey("later"),
+            [MessageEntry(descriptor, 160, 4, "later")]);
+        _ = (await store.AppendAsync(
+            await AuthorizeAsync(fixture, later, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken)).ShouldBeOfType<SessionAppended>();
+        var issued = firstPage.Snapshot.ShouldNotBeNull();
+        var reconstructed = new SessionReadSnapshot(issued.Address, issued.BranchId, issued.Version, issued.UpperSequence);
+        var secondRead = new SessionReadRequest(
+            context, descriptor.ActiveBranchId, firstPage.ThroughSequence, 10, reconstructed);
+
+        var secondPage = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, secondRead, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        secondPage.Snapshot.ShouldBe(reconstructed);
+        secondPage.Entries.ShouldHaveSingleItem().Sequence.ShouldBe(new SessionSequence(3));
+        secondPage.HasMore.ShouldBeFalse();
+    }
+
+    /// <summary>Verifies one multi-entry append advances the version once while the snapshot tracks the last sequence.</summary>
+    [Fact]
+    public async Task ReadAsync_WhenOneAppendCommitsMultipleEntries_PreservesDistinctVersionAndUpperSequence()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(170));
+        var batch = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("batch"),
+            [MessageEntry(descriptor, 171, 1, "one"), MessageEntry(descriptor, 174, 2, "two")]);
+
+        var appended = (SessionAppended) await store.AppendAsync(
+            await AuthorizeAsync(fixture, batch, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var page = (SessionPage) await ReadAllAsync(fixture, store, descriptor, context);
+
+        appended.NewVersion.ShouldBe(new SessionVersion(descriptor.Version.Value + 1));
+        page.Snapshot.ShouldNotBeNull().Version.ShouldBe(appended.NewVersion);
+        page.Snapshot.UpperSequence.ShouldBe(new SessionSequence(2));
+    }
+
+    /// <summary>Verifies an empty branch reads as an empty page without more data.</summary>
+    [Fact]
+    public async Task ReadAsync_WhenBranchIsEmpty_ReturnsEmptyPageWithHasMoreFalse()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(180));
+
+        var page = (SessionPage) await ReadAllAsync(fixture, store, descriptor, context);
+
+        page.Entries.ShouldBeEmpty();
+        page.HasMore.ShouldBeFalse();
+        page.ThroughSequence.ShouldBe(new SessionSequence(0));
+    }
+
+    /// <summary>Verifies a fresh read cursor beyond the branch tip is a typed failure rather than an empty page.</summary>
+    [Fact]
+    public async Task ReadAsync_WhenNewCursorIsBeyondBranchTip_ReturnsTypedFailure()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 1);
+        var read = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(2), 10);
+
+        var result = await store.ReadAsync(
+            await AuthorizeAsync(fixture, read, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionReadFailed>();
+    }
+
+    /// <summary>Verifies a caller-authored snapshot claiming future state is rejected.</summary>
+    [Fact]
+    public async Task ReadAsync_WhenSnapshotClaimsFutureState_ReturnsTypedFailure()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 1);
+        var forged = new SessionReadSnapshot(
+            descriptor.Address, descriptor.ActiveBranchId, new SessionVersion(9), new SessionSequence(9));
+        var read = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10, forged);
+
+        var result = await store.ReadAsync(
+            await AuthorizeAsync(fixture, read, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionReadFailed>();
+    }
+
+    /// <summary>Verifies reading an unknown branch of an existing session reports not found.</summary>
+    [Fact]
+    public async Task ReadAsync_WhenBranchDoesNotExist_ReturnsNotFound()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(190));
+        var read = new SessionReadRequest(context, Identifier<BranchId>(191), new SessionSequence(0), 10);
+
+        var result = await store.ReadAsync(
+            await AuthorizeAsync(fixture, read, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionReadNotFound>();
+    }
+
+    /// <summary>Verifies a midway fork copies only the parent entries up to and including the fork sequence.</summary>
+    [Fact]
+    public async Task CreateBranchAsync_WhenForkingMidway_CreatesBranchWithOnlyEntriesUpToForkPoint()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 4);
+        var fork = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(2), new IdempotencyKey("b1"));
+
+        var branched = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var read = new SessionReadRequest(context, branched.NewBranchId, new SessionSequence(0), 10);
+        var page = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, read, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        branched.ForkedAtSequence.ShouldBe(new SessionSequence(2));
+        page.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2]);
+    }
+
+    /// <summary>Verifies appending to a fork never changes the original branch, and the fork continues from the session sequence.</summary>
+    [Fact]
+    public async Task CreateBranchAsync_WhenForkIsAppended_LeavesOriginalBranchUnchanged()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 4);
+        var fork = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(2), new IdempotencyKey("b1"));
+        var branched = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var append = new SessionAppendRequest(
+            context, branched.NewBranchId, new SessionVersion(5), new IdempotencyKey("nb1"),
+            [MessageEntry(descriptor, 200, 5, "new-branch-only", branched.NewBranchId)]);
+
+        var appended = await store.AppendAsync(
+            await AuthorizeAsync(fixture, append, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var originalPage = (SessionPage) await ReadAllAsync(fixture, store, descriptor, context);
+        var branchRead = new SessionReadRequest(context, branched.NewBranchId, new SessionSequence(0), 10);
+        var branchPage = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, branchRead, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        appended.ShouldBeOfType<SessionAppended>().NewVersion.ShouldBe(new SessionVersion(6));
+        originalPage.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2, 3, 4]);
+        branchPage.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2, 5]);
+    }
+
+    /// <summary>Verifies an exact retried fork returns the originally created branch.</summary>
+    [Fact]
+    public async Task CreateBranchAsync_WhenRetriedWithSameIdempotencyKey_ReturnsSameBranch()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 2);
+        var fork = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(1), new IdempotencyKey("dupe"));
+
+        var first = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var second = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var loaded = (SessionLoaded) await store.LoadAsync(
+            await AuthorizeAsync(fixture, context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        second.ShouldBe(first);
+        loaded.Descriptor.Version.ShouldBe(new SessionVersion(3));
+    }
+
+    /// <summary>Verifies a replayed fork key with different evidence is rejected and the original receipt survives.</summary>
+    [Fact]
+    public async Task CreateBranchAsync_WhenReplayCarriesChangedForkPoint_RejectsAndPreservesOriginalReceipt()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 2);
+        var key = new IdempotencyKey("branch-evidence");
+        var original = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(1), key);
+        var changed = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(2), key);
+
+        var first = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, original, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var rejected = await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, changed, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var replay = await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, original, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+
+        _ = rejected.ShouldBeOfType<SessionBranchFailed>();
+        first.ForkedAtSequence.ShouldBe(new SessionSequence(1));
+        replay.ShouldBe(first);
+    }
+
+    /// <summary>Verifies a fork sequence beyond the parent tip reports the parent as not found.</summary>
+    [Fact]
+    public async Task CreateBranchAsync_WhenForkPointExceedsParentLength_ReturnsParentNotFound()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 2);
+        var fork = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(10), new IdempotencyKey("b1"));
+
+        var result = await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionBranchParentNotFound(descriptor.ActiveBranchId, new SessionSequence(10)));
+    }
+
+    /// <summary>Verifies forking from an unknown parent branch reports the parent as not found.</summary>
+    [Fact]
+    public async Task CreateBranchAsync_WhenParentBranchDoesNotExist_ReturnsParentNotFound()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(210));
+        var unknown = Identifier<BranchId>(211);
+        var fork = new SessionBranchRequest(context, unknown, new SessionSequence(0), new IdempotencyKey("b1"));
+
+        var result = await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionBranchParentNotFound(unknown, new SessionSequence(0)));
+    }
+
+    /// <summary>Verifies forking at sequence zero creates an empty branch.</summary>
+    [Fact]
+    public async Task CreateBranchAsync_WhenForkingAtZero_CreatesEmptyBranch()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 3);
+        var fork = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), new IdempotencyKey("b1"));
+
+        var branched = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var read = new SessionReadRequest(context, branched.NewBranchId, new SessionSequence(0), 10);
+        var page = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, read, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        page.Entries.ShouldBeEmpty();
+        page.HasMore.ShouldBeFalse();
+    }
+
     private static async ValueTask<AuthorizedSessionStoreRequest<TRequest>> AuthorizeAsync<TRequest>(
         TFixture fixture, TRequest request, SecurityOperationKind kind, SecurityEffect effect)
         where TRequest : class =>
@@ -335,6 +741,26 @@ public abstract class SessionStoreConformanceTests<TFixture>
             await AuthorizeAsync(fixture, request, SecurityOperationKind.StateMutation, SecurityEffect.Create),
             TestContext.Current.CancellationToken);
         return result.ShouldBeOfType<SessionCreated>().Descriptor;
+    }
+
+    /// <summary>Creates one session and commits <paramref name="entryCount"/> single-entry appends numbered from sequence one.</summary>
+    private static async ValueTask<(SessionDescriptor Descriptor, SessionOperationContext Context)> SeedAsync(
+        TFixture fixture, ISessionStore store, int entryCount)
+    {
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(1000));
+        for (var index = 0; index < entryCount; index++)
+        {
+            var append = new SessionAppendRequest(
+                context, descriptor.ActiveBranchId, new SessionVersion(descriptor.Version.Value + index),
+                new IdempotencyKey($"seed-{index}"),
+                [MessageEntry(descriptor, 1010 + (index * 3), index + 1, $"seed-{index}")]);
+            _ = (await store.AppendAsync(
+                await AuthorizeAsync(fixture, append, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+                TestContext.Current.CancellationToken)).ShouldBeOfType<SessionAppended>();
+        }
+
+        return (descriptor, context);
     }
 
     private static async ValueTask<SessionPageResult> ReadAllAsync(
@@ -508,6 +934,7 @@ public abstract class SessionStoreConformanceTests<TFixture>
             var type when type == typeof(RunId) => (T) (object) new RunId(guid),
             var type when type == typeof(TurnId) => (T) (object) new TurnId(guid),
             var type when type == typeof(ExecutionLaneId) => (T) (object) new ExecutionLaneId(guid),
+            var type when type == typeof(BranchId) => (T) (object) new BranchId(guid),
             var type when type == typeof(SessionEntryId) => (T) (object) new SessionEntryId(guid),
             var type when type == typeof(MessageId) => (T) (object) new MessageId(guid),
             var type when type == typeof(AdmissionId) => (T) (object) new AdmissionId(guid),

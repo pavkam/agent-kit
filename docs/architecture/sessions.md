@@ -840,9 +840,11 @@ Combining them into one cheerful bucket called memory would destroy their policy
 and consistency boundaries.
 
 Both the in-memory and SQLite stores run through the same session-store
-conformance suite for ordering, idempotency, optimistic concurrency, branching,
-pagination, cancellation, and disposal. SQLite additionally proves committed
-state survives close and reopen. It advertises durable local transactions, not
+conformance suite for ordering, idempotency, optimistic concurrency, concurrent
+appends, branching, pagination and snapshot continuation, tenant masking, input
+admission and promotion, and cancellation. SQLite additionally proves committed
+state survives close and reopen and that a disposed store fails closed without
+touching persisted state. It advertises durable local transactions, not
 distributed lane fencing or atomicity with a security, budget, artifact, or
 provider store; profiles requiring those guarantees select a capable backend.
 

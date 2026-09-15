@@ -168,6 +168,41 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
     }
 
     [Fact]
+    public async Task Operations_WhenStoreIsDisposed_ThrowObjectDisposedExceptionWithoutTouchingDatabase()
+    {
+        // Disposal releases the process gate; every protected operation fails closed afterward and persisted state is untouched.
+        using var directory = new TempDirectory();
+        var instance = new SqliteSessionStoreInstanceId(Guid.NewGuid());
+        SessionDescriptor descriptor;
+        SessionOperationContext context;
+        await using (var first = Harness.Open(directory.Path, instance))
+        {
+            descriptor = await first.CreateSessionAsync();
+            context = Harness.SessionContext(descriptor.Address, 20);
+            var append = new SessionAppendRequest(
+                context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("late"),
+                [Harness.MessageEntry(descriptor, 30, 1, "late")]);
+            var authorized = await first.AuthorizeAsync(append, SecurityOperationKind.StateMutation, SecurityEffect.Append);
+            first.Store.Dispose();
+            first.Store.Dispose();
+
+            _ = await Should.ThrowAsync<ObjectDisposedException>(async () =>
+                await first.Store.AppendAsync(authorized, TestContext.Current.CancellationToken));
+            _ = await Should.ThrowAsync<ObjectDisposedException>(async () =>
+                await first.Store.LoadAsync(
+                    await first.AuthorizeAsync(context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+                    TestContext.Current.CancellationToken));
+        }
+
+        await using var reopened = Harness.Open(directory.Path, instance);
+        var loaded = await reopened.Store.LoadAsync(
+            await reopened.AuthorizeAsync(context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        loaded.ShouldBeOfType<SessionLoaded>().Descriptor.Version.ShouldBe(descriptor.Version);
+    }
+
+    [Fact]
     public void AddSqliteSessionStore_WhenCalledTwice_DoesNotRegisterDuplicateStore()
     {
         // Repeating the SQLite registration is idempotent for the single "agentkit.sqlite" store key.
