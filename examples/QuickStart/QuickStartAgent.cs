@@ -12,8 +12,13 @@ internal static class QuickStartAgent
 {
     /// <summary>Builds the composition and returns a conversation that owns the service provider.</summary>
     /// <param name="apiKey">The OpenAI API key. Credentials are never fabricated as defaults.</param>
+    /// <param name="configure">
+    /// An optional last-word hook over the service collection, used by the example's tests to substitute the
+    /// <see cref="HttpClient"/> with a loopback stub. Applications do not need it.
+    /// </param>
     /// <returns>A conversation whose disposal also disposes the composition.</returns>
-    public static OwnedConversationSession Create(string apiKey)
+    /// <exception cref="ArgumentException"><paramref name="apiKey"/> is null, empty, or whitespace.</exception>
+    public static OwnedConversationSession Create(string apiKey, Action<IServiceCollection>? configure = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
 
@@ -74,6 +79,7 @@ internal static class QuickStartAgent
             options.AttemptTimeout = TimeSpan.FromMinutes(1);
         });
 
+        configure?.Invoke(services);
         var provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
         return new OwnedConversationSession(provider.GetRequiredService<IConversationSession>(), provider);

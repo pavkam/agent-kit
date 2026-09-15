@@ -121,6 +121,85 @@ public sealed class KnownModelCatalogTests
     }
 
     [Fact]
+    public async Task Default_WhenAccessedConcurrently_ReturnsOneInstance()
+    {
+        var instances = await Task.WhenAll(Enumerable.Range(0, 16).Select(static _ => Task.Run(static () => KnownModelCatalog.Default)));
+
+        instances.Distinct().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public void Default_WhenInspected_ModelsAreSortedByProviderThenModelId()
+    {
+        // The import script sorts deterministically so the resource diff reads as a changelog; a hand edit that breaks
+        // the order would be the first sign the file was not regenerated.
+        var keys = KnownModelCatalog.Default.Models.Select(static m => (m.ProviderId.Value, m.ModelId.Value)).ToArray();
+
+        keys.ShouldBe([.. keys.OrderBy(static k => k.Item1, StringComparer.Ordinal).ThenBy(static k => k.Item2, StringComparer.Ordinal)]);
+    }
+
+    [Fact]
+    public void Default_WhenInspected_ContainsNoDisabledModelsAndSomeDeprecatedOnes()
+    {
+        // A disabled model is retired upstream and is not imported; if that changes, the docs and picker semantics must too.
+        KnownModelCatalog.Default.Models.ShouldAllBe(static m => m.Status != KnownModelStatus.Disabled);
+        KnownModelCatalog.Default.Models.ShouldContain(static m => m.Status == KnownModelStatus.Deprecated);
+    }
+
+    [Fact]
+    public void TryFind_WhenModelIdDiffersOnlyByCase_ReturnsFalse() =>
+        KnownModelCatalog.Default.TryFind(new ProviderId("openai"), new ModelId("GPT-4O-MINI"), out _).ShouldBeFalse();
+
+    [Fact]
+    public void ForProvider_WhenProviderIsUnknown_ReturnsEmpty() =>
+        KnownModelCatalog.Default.ForProvider(new ProviderId("no-such-provider")).ShouldBeEmpty();
+
+    [Fact]
+    public void Providers_WhenEnumerated_ListsEachProviderOnceInCatalogOrder()
+    {
+        var providers = KnownModelCatalog.Default.Providers.Select(static p => p.Value).ToArray();
+
+        providers.Distinct().Count().ShouldBe(providers.Length);
+        providers.ShouldBe([.. providers.OrderBy(static p => p, StringComparer.Ordinal)]);
+    }
+
+    [Fact]
+    public void Constructor_WhenProvenanceIsNull_ThrowsArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => new KnownModelCatalog(null!, [])).ParamName.ShouldBe("provenance");
+
+    [Fact]
+    public void Constructor_WhenModelsIsDefault_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => new KnownModelCatalog(KnownModelCatalog.Default.Provenance, default)).ParamName.ShouldBe("models");
+
+    [Fact]
+    public void Constructor_WhenModelsContainsNull_ThrowsArgumentException() =>
+        Should.Throw<ArgumentException>(() => new KnownModelCatalog(KnownModelCatalog.Default.Provenance, [KnownModelCatalog.Default.Models[0], null!])).ParamName.ShouldBe("models");
+
+    [Fact]
+    public void Constructor_WhenModelsIsEmpty_CreatesAnEmptyCatalog()
+    {
+        var catalog = new KnownModelCatalog(KnownModelCatalog.Default.Provenance, []);
+
+        catalog.Models.ShouldBeEmpty();
+        catalog.Providers.ShouldBeEmpty();
+        catalog.TryFind(new ProviderId("openai"), new ModelId("gpt-4o"), out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Constructor_WhenSameModelIdIsServedByTwoProviders_AcceptsBoth()
+    {
+        var openAi = KnownModelCatalog.Default.Models.First(static m => m.ProviderId.Value == "openai");
+        var elsewhere = new KnownModel(new ProviderId("groq"), openAi.ModelId, openAi.DisplayName, openAi.Status, openAi.SupportsReasoning, openAi.SupportsVisionInput, openAi.SupportsToolCalls, openAi.Limits, null, null);
+
+        var catalog = new KnownModelCatalog(KnownModelCatalog.Default.Provenance, [openAi, elsewhere]);
+
+        catalog.TryFind(new ProviderId("openai"), openAi.ModelId, out var first).ShouldBeTrue();
+        catalog.TryFind(new ProviderId("groq"), openAi.ModelId, out var second).ShouldBeTrue();
+        first.ShouldBeSameAs(openAi);
+        second.ShouldBeSameAs(elsewhere);
+    }
+
+    [Fact]
     public void Constructor_WhenTwoModelsShareProviderAndId_ThrowsArgumentException()
     {
         var model = KnownModelCatalog.Default.Models[0];
@@ -153,6 +232,107 @@ public sealed class KnownModelCatalogTests
 
         _ = Should.Throw<ArgumentOutOfRangeException>(() => KnownModelCatalog.Parse(Encoding.UTF8.GetBytes(json)));
     }
+
+    [Fact]
+    public void Parse_WhenBytesAreNotJson_ThrowsJsonException() =>
+        Should.Throw<JsonException>(() => KnownModelCatalog.Parse("not json"u8));
+
+    [Fact]
+    public void Parse_WhenDocumentIsJsonNull_ThrowsInvalidOperationException() =>
+        Should.Throw<InvalidOperationException>(() => KnownModelCatalog.Parse("null"u8));
+
+    [Theory]
+    [InlineData("source")]
+    [InlineData("models")]
+    public void Parse_WhenARequiredTopLevelMemberIsMissing_ThrowsInvalidOperationException(string member)
+    {
+        using var parsed = JsonDocument.Parse(Valid);
+        var trimmed = parsed.RootElement.EnumerateObject().Where(p => p.Name != member).ToDictionary(static p => p.Name, static p => p.Value.Clone());
+
+        _ = Should.Throw<InvalidOperationException>(() => KnownModelCatalog.Parse(JsonSerializer.SerializeToUtf8Bytes(trimmed)));
+    }
+
+    [Theory]
+    [InlineData("providerId")]
+    [InlineData("modelId")]
+    [InlineData("displayName")]
+    public void Parse_WhenARequiredModelMemberIsBlank_ThrowsInvalidOperationException(string member)
+    {
+        var json = WithModel($$$"""{"providerId":"openai","modelId":"m","displayName":"M","status":"available","{{{member}}}":"  "}""");
+
+        _ = Should.Throw<InvalidOperationException>(() => KnownModelCatalog.Parse(json));
+    }
+
+    [Fact]
+    public void Parse_WhenALimitIsAString_ThrowsJsonException()
+    {
+        var json = WithModel(/*lang=json,strict*/ """{"providerId":"openai","modelId":"m","displayName":"M","status":"available","maxContextTokens":"128000"}""");
+
+        _ = Should.Throw<JsonException>(() => KnownModelCatalog.Parse(json));
+    }
+
+    [Fact]
+    public void Parse_WhenALimitIsNegative_ThrowsArgumentOutOfRangeException()
+    {
+        var json = WithModel(/*lang=json,strict*/ """{"providerId":"openai","modelId":"m","displayName":"M","status":"available","maxContextTokens":-1}""");
+
+        _ = Should.Throw<ArgumentOutOfRangeException>(() => KnownModelCatalog.Parse(json));
+    }
+
+    [Fact]
+    public void Parse_WhenPricingCurrencyIsMissing_ThrowsInvalidOperationException()
+    {
+        var json = WithModel(/*lang=json,strict*/ """{"providerId":"openai","modelId":"m","displayName":"M","status":"available","pricing":{"inputPerMillionTokens":1}}""");
+
+        _ = Should.Throw<InvalidOperationException>(() => KnownModelCatalog.Parse(json));
+    }
+
+    [Fact]
+    public void Parse_WhenEntryIsMinimal_DefaultsOptionalFacts()
+    {
+        var json = WithModel(/*lang=json,strict*/ """{"providerId":"openai","modelId":"m","displayName":"M","status":"preview","replacedBy":""}""");
+
+        var catalog = KnownModelCatalog.Parse(json);
+
+        var model = catalog.Models.ShouldHaveSingleItem();
+        model.Status.ShouldBe(KnownModelStatus.Preview);
+        model.SupportsReasoning.ShouldBeFalse();
+        model.SupportsVisionInput.ShouldBeFalse();
+        model.SupportsToolCalls.ShouldBeFalse();
+        model.Limits.MaxContextTokens.ShouldBeNull();
+        model.Limits.MaxOutputTokens.ShouldBeNull();
+        model.Pricing.ShouldBeNull();
+        model.ReplacedBy.ShouldBeNull();
+        catalog.Provenance.SourceCommit.ShouldBeNull();
+        catalog.Provenance.GeneratedAt.ShouldBe(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        catalog.Provenance.ImportedAt.ShouldBe(new DateTimeOffset(2026, 1, 2, 0, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public void Parse_WhenEntryCarriesUnknownMembers_IgnoresThem()
+    {
+        // The import script may add facts before the reader learns to use them; a newer resource must not break an older reader.
+        var json = WithModel(/*lang=json,strict*/ """{"providerId":"openai","modelId":"m","displayName":"M","status":"available","futureFact":{"nested":[1,2,3]}}""");
+
+        KnownModelCatalog.Parse(json).Models.ShouldHaveSingleItem().ModelId.ShouldBe(new ModelId("m"));
+    }
+
+    [Fact]
+    public void Parse_WhenEmbeddedResourceIsParsedAgain_EqualsDefault()
+    {
+        using var stream = typeof(KnownModelCatalog).Assembly.GetManifestResourceStream("AgentKit.Providers.Resources.known-models.json").ShouldNotBeNull();
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+
+        var reparsed = KnownModelCatalog.Parse(buffer.ToArray());
+
+        reparsed.Provenance.ShouldBe(KnownModelCatalog.Default.Provenance);
+        reparsed.Models.ShouldBe(KnownModelCatalog.Default.Models);
+    }
+
+    private const string Valid = /*lang=json,strict*/ """{"schemaVersion":1,"source":{"name":"x","url":"https://example.test/c.json","commit":null,"generatedAt":"2026-01-01T00:00:00Z","importedAt":"2026-01-02T00:00:00Z"},"models":[]}""";
+
+    private static byte[] WithModel(string model) => Encoding.UTF8.GetBytes(Valid.Replace("\"models\":[]", $"\"models\":[{model}]", StringComparison.Ordinal));
 
     [Fact]
     public void Parse_WhenSourceUrlIsRelative_ThrowsInvalidOperationException()

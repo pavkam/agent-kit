@@ -35,8 +35,8 @@ public sealed record KnownModel
     /// <param name="limits">The published context and output token limits; unknown limits stay <see langword="null"/>.</param>
     /// <param name="pricing">The published list prices, or <see langword="null"/> when the feed publishes none.</param>
     /// <param name="replacedBy">The successor model the vendor names for a deprecated model, when any.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="limits"/> is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="providerId"/> or <paramref name="modelId"/> is default, or <paramref name="displayName"/> is blank.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="limits"/> is null, or <paramref name="providerId"/> or <paramref name="modelId"/> is a default value carrying no identifier text.</exception>
+    /// <exception cref="ArgumentException"><paramref name="displayName"/> is null, empty, or whitespace.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="status"/> is not a defined value.</exception>
     public KnownModel(
         ProviderId providerId,
@@ -109,8 +109,7 @@ public sealed record KnownModel
     /// and structured-output flags are kept; reasoning, vision, and tool-call flags are replaced by this model's facts.
     /// </param>
     /// <returns>A descriptor with this model's identity, capabilities, limits, and pricing and no deployment.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="baselineCapabilities"/> is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="alias"/> or <paramref name="apiFamily"/> is default.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="baselineCapabilities"/> is null, or <paramref name="alias"/> or <paramref name="apiFamily"/> is a default value carrying no identifier text.</exception>
     public ModelDescriptor ToDescriptor(ModelAlias alias, ApiFamilyId apiFamily, ModelCapabilities baselineCapabilities)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(alias.Value, nameof(alias));

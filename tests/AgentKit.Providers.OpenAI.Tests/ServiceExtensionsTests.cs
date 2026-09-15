@@ -164,6 +164,133 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddOpenAIKnownLlmModel_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        Should.Throw<ArgumentNullException>(() => services.AddOpenAIKnownLlmModel(new ModelAlias("x"), new ModelId("gpt-4o-mini"))).ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddOpenAIKnownLlmModel_WhenAliasIsDefault_ThrowsArgumentNullExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddOpenAIKnownLlmModel(default, new ModelId("gpt-4o-mini"))).ParamName.ShouldBe("alias");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddOpenAIKnownLlmModel_WhenModelIdIsDefault_ThrowsArgumentNullExceptionBeforeRegistering()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddOpenAIKnownLlmModel(new ModelAlias("x"), default)).ParamName.ShouldBe("modelId");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddOpenAIKnownLlmModel_WhenModelIsUnknown_RegistersNothing()
+    {
+        var services = new ServiceCollection();
+
+        _ = Should.Throw<ArgumentException>(() => services.AddOpenAIKnownLlmModel(new ModelAlias("x"), new ModelId("no-such-model")));
+
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddOpenAIKnownLlmModel_WhenModelBelongsToAnotherProviderInTheCatalog_ThrowsArgumentException()
+    {
+        // The catalog knows claude-sonnet-4-5 for anthropic; the OpenAI registration must not borrow it.
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentException>(() => services.AddOpenAIKnownLlmModel(new ModelAlias("x"), new ModelId("claude-sonnet-4-5"))).ParamName.ShouldBe("modelId");
+    }
+
+    [Fact]
+    public async Task AddOpenAIKnownLlmModel_WhenCustomCatalogIsSupplied_UsesItInsteadOfDefault()
+    {
+        var custom = new KnownModelCatalog(
+            KnownModelCatalog.Default.Provenance,
+            [
+                new KnownModel(OpenAIProviderDefaults.ProviderId, new ModelId("gpt-private"), "Private", KnownModelStatus.Available,
+                    supportsReasoning: true, supportsVisionInput: false, supportsToolCalls: true, new ModelLimits(1000, 100), null, null),
+            ]);
+        var services = new ServiceCollection();
+        _ = services.AddAgentProviders();
+        _ = services.AddOpenAI();
+        _ = services.AddOpenAIApiKeyCredential("sk-test-key");
+        _ = services.AddOpenAIKnownLlmModel(new ModelAlias("private"), new ModelId("gpt-private"), custom);
+        using var provider = services.BuildServiceProvider();
+
+        var snapshot = await provider.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.ModelId.ShouldBe(new ModelId("gpt-private"));
+        published.Capabilities.SupportsReasoning.ShouldBeTrue();
+        published.Capabilities.SupportsStreaming.ShouldBe(OpenAIProviderDefaults.DefaultCapabilities.SupportsStreaming);
+        published.Limits.ShouldBe(new ModelLimits(1000, 100));
+        published.Pricing.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task AddOpenAIKnownLlmModel_WhenCalledForTwoModels_RegistersBothAdaptersAndBothDescriptors()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentProviders();
+        _ = services.AddOpenAI();
+        _ = services.AddOpenAIApiKeyCredential("sk-test-key");
+        _ = services.AddOpenAIKnownLlmModel(new ModelAlias("fast"), new ModelId("gpt-4o-mini"));
+        _ = services.AddOpenAIKnownLlmModel(new ModelAlias("smart"), new ModelId("gpt-5"));
+        using var provider = services.BuildServiceProvider();
+
+        var adapters = provider.GetServices<ILlmModel>().Select(static m => m.Alias.Value).ToArray();
+        var snapshot = await provider.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        adapters.ShouldBe(["fast", "smart"], ignoreOrder: true);
+        snapshot.ConversationModels.Select(static m => m.Alias.Value).ShouldBe(["fast", "smart"], ignoreOrder: true);
+        snapshot.ConversationModels.Single(static m => m.Alias.Value == "smart").Capabilities.SupportsReasoning.ShouldBeTrue();
+        snapshot.ConversationModels.Single(static m => m.Alias.Value == "fast").Capabilities.SupportsReasoning.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AddOpenAILlmModel_WhenDescriptorIsNull_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+
+        Should.Throw<ArgumentNullException>(() => services.AddOpenAILlmModel(descriptor: null!)).ParamName.ShouldBe("descriptor");
+    }
+
+    [Fact]
+    public void AddOpenAILlmModel_WhenDescriptorNamesAnotherApiFamily_ThrowsArgumentException()
+    {
+        var services = new ServiceCollection();
+        var foreign = new ModelDescriptor(
+            new ModelAlias("x"), OpenAIProviderDefaults.ProviderId, new ApiFamilyId("openai-responses"), new ModelId("m"), null,
+            OpenAIProviderDefaults.DefaultCapabilities, OpenAIProviderDefaults.DefaultLimits, null, ExtensionData.Empty);
+
+        Should.Throw<ArgumentException>(() => services.AddOpenAILlmModel(foreign)).ParamName.ShouldBe("descriptor");
+        services.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void AddOpenAILlmModel_WhenDescriptorIsValid_AdapterExposesItsAlias()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOpenAI();
+        _ = services.AddOpenAIApiKeyCredential("sk-test-key");
+        var descriptor = new ModelDescriptor(
+            new ModelAlias("exact"), OpenAIProviderDefaults.ProviderId, OpenAIProviderDefaults.ApiFamily, new ModelId("gpt-4o"), null,
+            OpenAIProviderDefaults.DefaultCapabilities, new ModelLimits(1, 1), new ModelPricing(1m, 2m, "USD"), ExtensionData.Empty);
+
+        _ = services.AddOpenAILlmModel(descriptor);
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OpenAILlmModel>().Alias.ShouldBe(new ModelAlias("exact"));
+    }
+
+    [Fact]
     public void AddOpenAILlmModel_WhenDescriptorNamesAnotherProvider_ThrowsArgumentException()
     {
         var services = new ServiceCollection();
