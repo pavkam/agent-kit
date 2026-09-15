@@ -324,6 +324,67 @@ public sealed class AwsBedrockLlmModelTests
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
     }
 
+    /// <summary>Verifies caller cancellation while reading an error body returns one cancellation outcome that keeps the HTTP evidence.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenCallerCancelsDuringErrorBodyRead_ReturnsCancelledResult()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StreamContent(body)
+            };
+            response.Headers.Add("x-amzn-RequestId", "req_cancelled");
+            response.Headers.Add("x-amzn-errortype", "ThrottlingException");
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(17));
+            return response;
+        });
+        var model = CreateModel(handler, CreateCredentials());
+        var observer = new RecordingModelResponseObserver();
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, cancellation.Token);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>().Cancellation;
+        cancelled.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        cancelled.StatusCode.ShouldBe(429);
+        cancelled.RequestId.ShouldBe(new ProviderRequestId("req_cancelled"));
+        cancelled.ProviderCode.ShouldBe("ThrottlingException");
+        cancelled.RetryAfter.ShouldBe(TimeSpan.FromSeconds(17));
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseCancelled>();
+    }
+
+    /// <summary>Verifies a connection fault while reading an error body still yields the status-mapped failure with the fault retained as diagnostics.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyReadFails_ReturnsStatusOnlyFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            {
+                Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"message\":"u8.ToArray()))
+            };
+            response.Headers.Add("x-amzn-RequestId", "req_reset");
+            return response;
+        });
+        var model = CreateModel(handler, CreateCredentials());
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.StatusCode.ShouldBe(500);
+        failure.RequestId.ShouldBe(new ProviderRequestId("req_reset"));
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 500.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<IOException>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
     /// <summary>Verifies a connection reset while the body streams is a typed unavailable failure with exactly one terminal event.</summary>
     [Fact]
     public async Task ExecuteAsync_WhenBodyStreamFailsMidRead_ReturnsTypedUnavailableFailure()

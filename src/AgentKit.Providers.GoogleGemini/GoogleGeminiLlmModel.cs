@@ -235,6 +235,10 @@ public sealed class GoogleGeminiLlmModel: ILlmModel
                 {
                     return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The provider error response was not received before the request deadline.", exception)).ConfigureAwait(false);
                 }
+                catch (OperationCanceledException exception)
+                {
+                    return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The transport timed out while the provider error response was being received.", exception)).ConfigureAwait(false);
+                }
 
                 return await FailAsync(failure).ConfigureAwait(false);
             }

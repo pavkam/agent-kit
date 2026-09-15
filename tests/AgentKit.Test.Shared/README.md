@@ -37,6 +37,9 @@ no standalone test run or production registration API.
 - [FaultingReadStream](FaultingReadStream.cs) — a response-body stream that
   serves an optional prefix and then fails mid-read, for provider transport
   fault mapping tests.
+- [GatedReadStream](GatedReadStream.cs) — a response-body stream that blocks
+  its first read behind entry/release signals, for deterministic cancellation
+  and deadline tests during body reads.
 
 Add a helper when multiple test projects need it. Reusable contract assertions
 belong in AgentKit.Conformance; production packages must not depend on either

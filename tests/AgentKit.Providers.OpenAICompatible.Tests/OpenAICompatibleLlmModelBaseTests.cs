@@ -520,6 +520,110 @@ public sealed class OpenAICompatibleLlmModelBaseTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenCallerCancelsDuringErrorBodyRead_ReturnsCancelledResult()
+    {
+        // The error-body read is part of the guarded attempt: caller cancellation mid-read is a typed cancellation
+        // that keeps the already-received status, request id, and Retry-After evidence instead of escaping.
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StreamContent(body),
+            };
+            response.Headers.Add("x-request-id", "req_cancelled");
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(17));
+            return response;
+        });
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var observer = new RecordingModelResponseObserver();
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1)), observer, cancellation.Token);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>().Cancellation;
+        cancelled.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        cancelled.StatusCode.ShouldBe(429);
+        cancelled.RequestId.ShouldBe(new ProviderRequestId("req_cancelled"));
+        cancelled.RetryAfter.ShouldBe(TimeSpan.FromSeconds(17));
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseCancelled>();
+        observer.Events.Count(e => e is ModelResponseCancelled or ModelResponseFailed).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineExpiresDuringErrorBodyRead_ReturnsTimeoutWithStatus()
+    {
+        var clock = new FakeTimeProvider(Now);
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+        {
+            Content = new StreamContent(body),
+        });
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")), timeProvider: clock);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.Gpt4O, Now.AddSeconds(1)), observer, TestContext.Current.CancellationToken);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var result = await pending;
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failure.StatusCode.ShouldBe(503);
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyReadFails_ReturnsStatusOnlyFailure()
+    {
+        // A connection fault while reading a 5xx body must not escape; the status remains authoritative evidence.
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            {
+                Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"error\":"u8.ToArray())),
+            };
+            response.Headers.Add("x-request-id", "req_reset");
+            return response;
+        });
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.StatusCode.ShouldBe(500);
+        failure.RequestId.ShouldBe(new ProviderRequestId("req_reset"));
+        failure.ProviderCode.ShouldBeNull();
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 500.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<IOException>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenTransportTimesOutDuringErrorBodyRead_ReturnsTimeoutWithStatus()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StreamContent(new FaultingReadStream(static () => new TaskCanceledException("The transport timed out.", new TimeoutException()))),
+        });
+        var model = CreateModel(handler, NonStreamingProfile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.Gpt4O, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failure.StatusCode.ShouldBe(502);
+        _ = failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenBodyStreamFailsMidRead_ReturnsTypedUnavailableFailure()
     {
         // A connection reset while the body is streaming is a transport fault; it must surface as a typed

@@ -199,6 +199,60 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
     }
 
     [Fact]
+    public async Task GenerateAsync_WhenCallerCancelsDuringErrorBodyRead_ReturnsCancelledResult()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StreamContent(body),
+            };
+            response.Headers.Add("x-request-id", "req_cancelled");
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(17));
+            return response;
+        });
+        var model = CreateModel(handler, Profile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.GenerateAsync(CreateRequest(TestModels.TextEmbedding3Small, Now.AddMinutes(1)), cancellation.Token);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<EmbeddingAttemptCancelled>().Cancellation;
+        cancelled.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        cancelled.StatusCode.ShouldBe(429);
+        cancelled.RequestId.ShouldBe(new ProviderRequestId("req_cancelled"));
+        cancelled.RetryAfter.ShouldBe(TimeSpan.FromSeconds(17));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenErrorBodyReadFails_ReturnsStatusOnlyFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            {
+                Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"error\":"u8.ToArray())),
+            };
+            response.Headers.Add("x-request-id", "req_reset");
+            return response;
+        });
+        var model = CreateModel(handler, Profile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+
+        var result = await model.GenerateAsync(CreateRequest(TestModels.TextEmbedding3Small, Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<EmbeddingAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.StatusCode.ShouldBe(500);
+        failure.RequestId.ShouldBe(new ProviderRequestId("req_reset"));
+        failure.ProviderCode.ShouldBeNull();
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 500.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<IOException>();
+    }
+
+    [Fact]
     public async Task GenerateAsync_WhenBodyStreamFailsMidRead_ReturnsTypedUnavailableFailure()
     {
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)

@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.OpenAICompatible;
 
+using System.Diagnostics;
 using System.Net.Http;
 
 using AgentKit.Providers.Http;
@@ -215,7 +216,22 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         {
             if (!response.IsSuccessStatusCode)
             {
-                return Fail(await BuildHttpFailureAsync(response, linkedSource.Token).ConfigureAwait(false));
+                try
+                {
+                    return Fail(await BuildHttpFailureAsync(response, linkedSource.Token).ConfigureAwait(false));
+                }
+                catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+                {
+                    return new EmbeddingAttemptCancelled(BuildInterruptedHttpFailure(response, ProviderFailureKind.Cancellation, "The attempt was cancelled while receiving the provider error response.", exception));
+                }
+                catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
+                {
+                    return Fail(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The provider error response was not received before the request deadline.", exception));
+                }
+                catch (OperationCanceledException exception)
+                {
+                    return Fail(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The transport timed out while the provider error response was being received.", exception));
+                }
             }
 
             var parseContext = new OpenAIEmbeddingResponseParseContext(
@@ -285,6 +301,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
     private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         string? providerCode = null;
+        Exception? diagnosticCause = null;
 
         try
         {
@@ -297,9 +314,11 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
                 providerCode = error?.Error?.Code ?? error?.Error?.Type;
             }
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            // The error body was not valid JSON; fall back to a generic message below.
+            // The error body was malformed, truncated, or the connection failed while reading it. The HTTP status
+            // is still authoritative evidence, so fall back to a status-only failure and keep the cause for diagnostics.
+            diagnosticCause = exception;
         }
 
         return new ProviderFailure(
@@ -310,7 +329,31 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
             providerCode,
             RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             $"The provider returned HTTP status {(int) response.StatusCode}.",
-            diagnosticCause: null,
+            diagnosticCause,
+            ExtensionData.Empty);
+    }
+
+    /// <summary>Builds an interrupted error-body failure while preserving response evidence already received.</summary>
+    /// <param name="response">The response whose headers were received before interruption.</param>
+    /// <param name="kind">The normalized interruption classification.</param>
+    /// <param name="safeMessage">The bounded message safe for ordinary application handling.</param>
+    /// <param name="diagnosticCause">The classified exception that interrupted response-body processing.</param>
+    /// <returns>A failure retaining the raw HTTP status, Retry-After guidance, and provider request identity.</returns>
+    private ProviderFailure BuildInterruptedHttpFailure(HttpResponseMessage response, ProviderFailureKind kind, string safeMessage, Exception? diagnosticCause)
+    {
+        Debug.Assert(response is not null, "The error response must have been received before its body read can be interrupted.");
+        Debug.Assert(Enum.IsDefined(kind), "The interruption kind must be a defined provider failure kind.");
+        Debug.Assert(!string.IsNullOrWhiteSpace(safeMessage), "The interrupted failure must have a bounded safe message.");
+
+        return new ProviderFailure(
+            kind,
+            _descriptor.ProviderId,
+            ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName),
+            (int) response.StatusCode,
+            providerCode: null,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
+            safeMessage,
+            diagnosticCause,
             ExtensionData.Empty);
     }
 }

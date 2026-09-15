@@ -84,6 +84,48 @@ public sealed class GoogleGeminiEmbeddingModelTests
         _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
     }
 
+    /// <summary>Verifies caller cancellation while reading an error body returns one cancellation outcome that keeps the HTTP evidence.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenCallerCancelsDuringErrorBodyRead_ReturnsCancelledResult()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StreamContent(body)
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("gemini-test-key")));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.GenerateAsync(CreateRequest(TestModels.TextEmbedding004, Now.AddMinutes(1)), cancellation.Token);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<EmbeddingAttemptCancelled>().Cancellation;
+        cancelled.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        cancelled.StatusCode.ShouldBe(429);
+    }
+
+    /// <summary>Verifies a connection fault while reading an error body still yields the status-mapped failure with the fault retained as diagnostics.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenErrorBodyReadFails_ReturnsStatusOnlyFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"error\":"u8.ToArray()))
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("gemini-test-key")));
+
+        var result = await model.GenerateAsync(CreateRequest(TestModels.TextEmbedding004, Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<EmbeddingAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.StatusCode.ShouldBe(500);
+        failure.ProviderCode.ShouldBeNull();
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 500.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<IOException>();
+    }
+
     /// <summary>Verifies a connection reset while the body is being read is a typed unavailable failure.</summary>
     [Fact]
     public async Task GenerateAsync_WhenBodyStreamFailsMidRead_ReturnsTypedUnavailableFailure()

@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.AzureOpenAI;
 
+using System.Diagnostics;
 using System.Net.Http;
 
 using AgentKit.Providers.AzureOpenAI.Wire;
@@ -125,9 +126,9 @@ public sealed class AzureOpenAILlmModel: ILlmModel
                 cause,
                 ExtensionData.Empty));
 
-        async Task<ModelAttemptResult> CancelAsync()
+        async Task<ModelAttemptResult> CancelAsync(ProviderFailure? knownFailure = null)
         {
-            var cancellation = new ProviderFailure(
+            var cancellation = knownFailure ?? new ProviderFailure(
                 ProviderFailureKind.Cancellation,
                 _descriptor.ProviderId,
                 requestId: null,
@@ -244,8 +245,25 @@ public sealed class AzureOpenAILlmModel: ILlmModel
         {
             if (!response.IsSuccessStatusCode)
             {
-                return await FailAsync(await BuildHttpFailureAsync(response, linkedSource.Token).ConfigureAwait(false))
-                    .ConfigureAwait(false);
+                ProviderFailure failure;
+                try
+                {
+                    failure = await BuildHttpFailureAsync(response, linkedSource.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+                {
+                    return await CancelAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Cancellation, "The attempt was cancelled while receiving the provider error response.", exception)).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
+                {
+                    return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The provider error response was not received before the request deadline.", exception)).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException exception)
+                {
+                    return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The transport timed out while the provider error response was being received.", exception)).ConfigureAwait(false);
+                }
+
+                return await FailAsync(failure).ConfigureAwait(false);
             }
 
             var parseContext = new OpenAIResponseParseContext(
@@ -320,6 +338,7 @@ public sealed class AzureOpenAILlmModel: ILlmModel
     {
         string? safeMessage = null;
         string? providerCode = null;
+        Exception? diagnosticCause = null;
 
         try
         {
@@ -333,9 +352,11 @@ public sealed class AzureOpenAILlmModel: ILlmModel
                 providerCode = envelope?.Error?.Code ?? envelope?.Error?.Type;
             }
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            // The error body was not valid JSON; fall back to a generic message below.
+            // The error body was malformed, truncated, or the connection failed while reading it. The HTTP status
+            // is still authoritative evidence, so fall back to a status-only failure and keep the cause for diagnostics.
+            diagnosticCause = exception;
         }
 
         return new ProviderFailure(
@@ -346,7 +367,31 @@ public sealed class AzureOpenAILlmModel: ILlmModel
             providerCode,
             RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
-            diagnosticCause: null,
+            diagnosticCause,
+            ExtensionData.Empty);
+    }
+
+    /// <summary>Builds an interrupted error-body failure while preserving response evidence already received.</summary>
+    /// <param name="response">The response whose headers were received before interruption.</param>
+    /// <param name="kind">The normalized interruption classification.</param>
+    /// <param name="safeMessage">The bounded message safe for ordinary application handling.</param>
+    /// <param name="diagnosticCause">The classified exception that interrupted response-body processing.</param>
+    /// <returns>A failure retaining the raw HTTP status, Retry-After guidance, and Azure request identity.</returns>
+    private ProviderFailure BuildInterruptedHttpFailure(HttpResponseMessage response, ProviderFailureKind kind, string safeMessage, Exception? diagnosticCause)
+    {
+        Debug.Assert(response is not null, "The error response must have been received before its body read can be interrupted.");
+        Debug.Assert(Enum.IsDefined(kind), "The interruption kind must be a defined provider failure kind.");
+        Debug.Assert(!string.IsNullOrWhiteSpace(safeMessage), "The interrupted failure must have a bounded safe message.");
+
+        return new ProviderFailure(
+            kind,
+            _descriptor.ProviderId,
+            ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName),
+            (int) response.StatusCode,
+            providerCode: null,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
+            safeMessage,
+            diagnosticCause,
             ExtensionData.Empty);
     }
 }

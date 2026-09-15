@@ -254,6 +254,48 @@ public sealed class GoogleGeminiLlmModelTests
         failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(23));
     }
 
+    /// <summary>Verifies a connection fault while reading an error body still yields the status-mapped failure with the fault retained as diagnostics.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyReadFails_ReturnsStatusOnlyFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"error\":"u8.ToArray()))
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.StatusCode.ShouldBe(500);
+        failure.ProviderCode.ShouldBeNull();
+        failure.SafeMessage.ShouldBe("The Google Gemini request failed with HTTP status 500.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<IOException>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    /// <summary>Verifies the transport's own timeout while reading an error body is a typed timeout that keeps the HTTP status.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTransportTimesOutDuringErrorBodyRead_ReturnsTimeoutWithStatus()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StreamContent(new FaultingReadStream(static () => new TaskCanceledException("The transport timed out.", new TimeoutException())))
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failure.StatusCode.ShouldBe(502);
+        _ = failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
     /// <summary>Verifies observer cancellation during failure publication cannot trigger a second terminal event.</summary>
     [Fact]
     public async Task ExecuteAsync_WhenFailureObserverThrowsCancellation_DoesNotPublishSecondTerminalEvent()

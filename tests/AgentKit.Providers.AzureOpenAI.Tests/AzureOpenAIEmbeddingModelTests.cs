@@ -79,6 +79,56 @@ public sealed class AzureOpenAIEmbeddingModelTests
         _ = failed.Failure.DiagnosticCause.ShouldBeOfType<HttpRequestException>();
     }
 
+    /// <summary>Verifies caller cancellation while reading an error body returns one cancellation outcome that keeps the HTTP evidence.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenCallerCancelsDuringErrorBodyRead_ReturnsCancelledResult()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StreamContent(body)
+            };
+            response.Headers.Add("x-request-id", "req_cancelled");
+            return response;
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.GenerateAsync(CreateRequest(descriptor), cancellation.Token);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<EmbeddingAttemptCancelled>().Cancellation;
+        cancelled.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        cancelled.StatusCode.ShouldBe(429);
+        cancelled.RequestId.ShouldBe(new ProviderRequestId("req_cancelled"));
+    }
+
+    /// <summary>Verifies a connection fault while reading an error body still yields the status-mapped failure with the fault retained as diagnostics.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenErrorBodyReadFails_ReturnsStatusOnlyFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StreamContent(FaultingReadStream.ConnectionReset("{\"error\":"u8.ToArray()))
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+
+        var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<EmbeddingAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.StatusCode.ShouldBe(500);
+        failure.ProviderCode.ShouldBeNull();
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 500.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<IOException>();
+    }
+
     /// <summary>Verifies a connection reset while the body is being read is a typed unavailable failure.</summary>
     [Fact]
     public async Task GenerateAsync_WhenBodyStreamFailsMidRead_ReturnsTypedUnavailableFailure()
