@@ -68,9 +68,9 @@ or a `ToolResultPart` outside a `ToolMessage` fails with
 `ContextPreparationFailureKind.InvalidRolePartCombination`, which also rejects a
 call and its result sharing one message; a repeated call identity, a result
 before or without its call, a call without a result, or a call with two results
-fails with `BrokenToolCallCausality`. Role/part validation runs before
-causality validation, so a result can only ever be accepted from a tool message
-strictly after the assistant message that requested it.
+fails with `BrokenToolCallCausality`. Role/part validation runs before causality
+validation, so a result can only ever be accepted from a tool message strictly
+after the assistant message that requested it.
 
 ## Request-view repair
 

@@ -58,8 +58,8 @@ allocate fresh identities. Selection diagnostics therefore always correlate to
 one real attempt instead of a throwaway identity.
 
 The reduced first-party loop consults the selected `IRunContinuationPolicy`
-after every committed turn: after a no-tool assistant commit with an empty
-cause set, and after the tool-result commit with a
+after every committed turn: after a no-tool assistant commit with an empty cause
+set, and after the tool-result commit with a
 `CommittedToolResultsContinuationCause`. `ContinueRun` drives another turn while
 one remains and otherwise settles as the typed turn limit, because a policy
 cannot widen a hard limit; `CompleteRun` and `HaltRun` settle with the proposed
@@ -70,8 +70,8 @@ carries an explicit lane and policy snapshot, it drives one implicit lane per
 branch (the lane identity is the branch identity), reports the turn number as
 its operation-state revision, and names a single fixed policy version. The
 reduced loop projects each tool batch into one tool-message entry; because the
-committed-turn boundary requires one distinct terminal-record identity per
-call, a batch of more than one call currently continues under the canonical
+committed-turn boundary requires one distinct terminal-record identity per call,
+a batch of more than one call currently continues under the canonical
 committed-tool-results rule without a policy call, and the loop logs that
 bypass.
 
@@ -89,28 +89,27 @@ to the session and can never gain system or developer precedence. The history
 cursor still names the real branch tip, so appends stay guarded by the actual
 version. When several active checkpoints exist the newest wins, and a newer
 record that does not cover an older one is logged and still used. Because
-session reads page forward only, the loop still reads from the branch origin
-and discards buffered covered entries once the checkpoint is encountered; this
+session reads page forward only, the loop still reads from the branch origin and
+discards buffered covered entries once the checkpoint is encountered; this
 bounds retention, not read cost. This satisfies the
 [context compaction](../concepts/context-compaction.md) requirement that
 reconstruction stops at the newest checkpoint and reproduces exactly its
 summary, retained tail, and later suffix.
 
 Before its first turn, after loading eligible history, the reduced loop is the
-recovery owner for tool calls a previous run left without a terminal result
-(for example, a tool-message commit that failed or a process that crashed after
-the assistant commit). It durably appends one tool message carrying an
-interrupted terminal result with unknown side-effect certainty per dangling
-call, under an idempotency key derived from the dangling assistant message and
-causally parented to that message's entry, then continues with the settlement
-in the history it assembles. Recovery inspects only the history the loop
-retained, so a call left dangling inside a checkpoint's covered range is not
-settled; one inside the retained suffix still is. The settlement never invokes
-a tool, and a branch
-whose recovery settlement cannot be committed fails closed instead of starting
-a model request. Required terminal commits that a store reports as failed are
-retried under their unchanged idempotency key with bounded backoff until the
-settlement timeout elapses.
+recovery owner for tool calls a previous run left without a terminal result (for
+example, a tool-message commit that failed or a process that crashed after the
+assistant commit). It durably appends one tool message carrying an interrupted
+terminal result with unknown side-effect certainty per dangling call, under an
+idempotency key derived from the dangling assistant message and causally
+parented to that message's entry, then continues with the settlement in the
+history it assembles. Recovery inspects only the history the loop retained, so a
+call left dangling inside a checkpoint's covered range is not settled; one
+inside the retained suffix still is. The settlement never invokes a tool, and a
+branch whose recovery settlement cannot be committed fails closed instead of
+starting a model request. Required terminal commits that a store reports as
+failed are retried under their unchanged idempotency key with bounded backoff
+until the settlement timeout elapses.
 
 Every commit is guarded by the branch version the loop last observed. When a
 concurrent writer advanced the branch, the loop re-reads the interleaved range
@@ -388,15 +387,15 @@ the append-conflict retry limit (rebases after a concurrent writer advanced the
 branch; zero disables rebasing), whether the final permitted turn is requested
 without tools and with an explicit `None` tool choice so the model produces its
 final response (the default; a model that requests calls anyway has them settled
-as rejected and the run reports the typed turn limit), the settlement timeout that bounds each
-required terminal commit made independently of the caller's cancellation (the
-tool message settling a committed assistant request and the interrupted message
-preserving partial output), and the observer-delivery timeout that bounds each
-event delivered outside the caller's token. All are validated at composition and
-measured with the injected `TimeProvider`. When the settlement bound elapses the
-run settles as a session-operation failure that states the commit outcome is
-unknown; the loop never hangs on settlement and never claims a lost append
-committed.
+as rejected and the run reports the typed turn limit), the settlement timeout
+that bounds each required terminal commit made independently of the caller's
+cancellation (the tool message settling a committed assistant request and the
+interrupted message preserving partial output), and the observer-delivery
+timeout that bounds each event delivered outside the caller's token. All are
+validated at composition and measured with the injected `TimeProvider`. When the
+settlement bound elapses the run settles as a session-operation failure that
+states the commit outcome is unknown; the loop never hangs on settlement and
+never claims a lost append committed.
 
 Authorization is captured fresh for the run and for every turn. When the
 security authority cannot capture it, the run settles with the typed
