@@ -143,8 +143,41 @@ namespace AgentKit.Conversations
     }
     public sealed class DefaultConversationSession : AgentKit.Conversations.IConversationSession, System.IDisposable
     {
-        public DefaultConversationSession(AgentKit.ISessionCoordinator sessionCoordinator, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IAgentLoop agentLoop, AgentKit.IIdentifierGenerator<AgentKit.RunId> runIds, AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds, AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> sessionEntryIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger = null) { }
-        public DefaultConversationSession(AgentKit.ISessionCoordinator sessionCoordinator, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IAgentLoop agentLoop, AgentKit.IIdentifierGenerator<AgentKit.RunId> runIds, AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds, AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> sessionEntryIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger, AgentKit.IToolPresenter? toolPresenter) { }
+        public DefaultConversationSession(
+                    AgentKit.ISessionCoordinator sessionCoordinator,
+                    AgentKit.ISecurityProfileSelector securityProfileSelector,
+                    AgentKit.IAgentLoop agentLoop,
+                    AgentKit.IContextAssembler contextAssembler,
+                    AgentKit.IToolInvoker toolInvoker,
+                    AgentKit.IModelCatalog modelCatalog,
+                    AgentKit.IModelSelector modelSelector,
+                    AgentKit.ILlmModelResolver llmModelResolver,
+                    [Microsoft.Extensions.DependencyInjection.FromKeyedServices("agentkit-default-continuation")] AgentKit.IRunContinuationPolicy continuationPolicy,
+                    AgentKit.IIdentifierGenerator<AgentKit.RunId> runIds,
+                    AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds,
+                    AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds,
+                    AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> sessionEntryIds,
+                    System.TimeProvider timeProvider,
+                    Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options,
+                    Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger = null) { }
+        public DefaultConversationSession(
+                    AgentKit.ISessionCoordinator sessionCoordinator,
+                    AgentKit.ISecurityProfileSelector securityProfileSelector,
+                    AgentKit.IAgentLoop agentLoop,
+                    AgentKit.IContextAssembler contextAssembler,
+                    AgentKit.IToolInvoker toolInvoker,
+                    AgentKit.IModelCatalog modelCatalog,
+                    AgentKit.IModelSelector modelSelector,
+                    AgentKit.ILlmModelResolver llmModelResolver,
+                    AgentKit.IRunContinuationPolicy continuationPolicy,
+                    AgentKit.IIdentifierGenerator<AgentKit.RunId> runIds,
+                    AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds,
+                    AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds,
+                    AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> sessionEntryIds,
+                    System.TimeProvider timeProvider,
+                    Microsoft.Extensions.Options.IOptions<AgentKit.Conversations.ConversationSessionOptions> options,
+                    Microsoft.Extensions.Logging.ILogger<AgentKit.Conversations.DefaultConversationSession>? logger,
+                    AgentKit.IToolPresenter? toolPresenter) { }
         public void Dispose() { }
         public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionListResult> ListAsync(AgentKit.SessionId? afterSessionId, int maximumResults, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.Conversations.ConversationSessionOpenResult> OpenAsync(AgentKit.SessionId sessionId, System.Threading.CancellationToken cancellationToken = default) { }

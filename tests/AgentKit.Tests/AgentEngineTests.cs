@@ -67,6 +67,49 @@ public sealed class AgentEngineTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenTwoDefinitionsSelectDifferentLoopKeys_EachCompilesItsOwnKeyedContextAssembler()
+    {
+        // This is the regression the keyed, scoped IAgentLoop fix exists for: before it, every agent definition
+        // in one engine shared whatever single unkeyed IContextAssembler (and every other collaborator) happened
+        // to be registered, because DefaultAgentLoop resolved it through an unkeyed constructor dependency that
+        // could never honor a per-definition key. With the fix, AgentRunServicesFactory compiles a distinct
+        // AgentRunServices bundle per run, preferring the collaborator registered under the run's own loop key.
+        var firstLoopKey = new ComponentKey<IAgentLoop>("regression-loop-a");
+        var secondLoopKey = new ComponentKey<IAgentLoop>("regression-loop-b");
+        var firstDefinition = CompositionTestData.Definition(new AgentId(Guid.NewGuid()), "first") with { LoopKey = firstLoopKey };
+        var secondDefinition = CompositionTestData.Definition(new AgentId(Guid.NewGuid()), "second") with { LoopKey = secondLoopKey };
+        var firstLoop = new RecordingAgentLoop();
+        var secondLoop = new RecordingAgentLoop();
+        var firstContextAssembler = new TestSupport.UnsupportedContextAssembler();
+        var secondContextAssembler = new TestSupport.UnsupportedContextAssembler();
+
+        var builder = AgentEngine.CreateBuilder();
+        CompositionTestData.AddRunServicesFakes(builder.Services);
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(firstLoopKey.Value, firstLoop);
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(secondLoopKey.Value, secondLoop);
+        _ = builder.Services.AddKeyedSingleton<IContextAssembler>(firstLoopKey.Value, firstContextAssembler);
+        _ = builder.Services.AddKeyedSingleton<IContextAssembler>(secondLoopKey.Value, secondContextAssembler);
+        _ = builder.Services.AddAgent(firstDefinition);
+        _ = builder.Services.AddAgent(secondDefinition);
+        CompositionTestData.AddRunProfiles(builder.Services, firstDefinition, secondDefinition);
+
+        await using var engine = builder.Build();
+        var firstAgent = (await engine.GetAgentAsync(firstDefinition.Id, TestContext.Current.CancellationToken))!;
+        var secondAgent = (await engine.GetAgentAsync(secondDefinition.Id, TestContext.Current.CancellationToken))!;
+
+        _ = await firstAgent.RunAsync(
+            CompositionTestData.RunOptions() with { SessionId = new SessionId(Guid.NewGuid()) },
+            TestContext.Current.CancellationToken);
+        _ = await secondAgent.RunAsync(
+            CompositionTestData.RunOptions() with { SessionId = new SessionId(Guid.NewGuid()) },
+            TestContext.Current.CancellationToken);
+
+        firstLoop.ReceivedServices.ShouldHaveSingleItem().Context.ShouldBeSameAs(firstContextAssembler);
+        secondLoop.ReceivedServices.ShouldHaveSingleItem().Context.ShouldBeSameAs(secondContextAssembler);
+        firstLoop.ReceivedServices[0].Context.ShouldNotBeSameAs(secondLoop.ReceivedServices[0].Context);
+    }
+
+    [Fact]
     public async Task RunAsync_BuildsARequestFromTheDefinitionAndOptions()
     {
         var loop = new RecordingAgentLoop();

@@ -187,6 +187,17 @@ public sealed record AgentDefinition
     /// <value>A nonblank key for runnable definitions; default only on the retained legacy unrunnable shape.</value>
     public SessionProfileKey SessionProfile { get; }
 
+    /// <summary>Gets the explicitly selected keyed <see cref="IAgentLoop"/> this definition runs under.</summary>
+    /// <value>
+    /// The selected key, or <see langword="null"/> when this definition leaves the loop unspecified. A
+    /// <see langword="null"/> value resolves to <see cref="AgentLoopComponentDefaults.LoopKey"/> at run
+    /// activation rather than to an ambient unkeyed registration, so every definition — configured or not —
+    /// always names an exact keyed <see cref="IAgentLoop"/> selection. This lets one engine host several
+    /// definitions that each select a different keyed loop, and therefore a different compiled
+    /// <see cref="AgentRunServices"/> bundle, without any definition depending on Microsoft DI types.
+    /// </value>
+    public ComponentKey<IAgentLoop>? LoopKey { get; init; }
+
     /// <summary>Gets the human-readable name used in diagnostics.</summary>
     /// <exception cref="ArgumentException">
     /// An initializer attempts to set null, empty, or whitespace-only text.
@@ -335,6 +346,7 @@ public sealed record AgentDefinition
         && Revision.Equals(other.Revision)
         && SecurityProfile.Equals(other.SecurityProfile)
         && SessionProfile.Equals(other.SessionProfile)
+        && LoopKey.Equals(other.LoopKey)
         && string.Equals(DisplayName, other.DisplayName, StringComparison.Ordinal)
         && Models.Equals(other.Models)
         && ModelRequirements.Equals(other.ModelRequirements)
@@ -359,6 +371,7 @@ public sealed record AgentDefinition
         hash.Add(Revision);
         hash.Add(SecurityProfile);
         hash.Add(SessionProfile);
+        hash.Add(LoopKey);
         hash.Add(DisplayName, StringComparer.Ordinal);
         hash.Add(Models);
         hash.Add(ModelRequirements);

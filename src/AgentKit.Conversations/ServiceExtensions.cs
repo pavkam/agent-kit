@@ -16,12 +16,16 @@ public static class ServiceExtensions
         /// <returns>The same service collection for chaining.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="configure"/> is null.</exception>
         /// <remarks>
-        /// This does not register <c>ISessionCoordinator</c>, <c>ISecurityProfileSelector</c>, or
-        /// <c>IAgentLoop</c>: the host still selects a session store, security policies and authority, and the
-        /// tool/provider registrations its agent needs, exactly as any other AgentKit composition does. Every
-        /// registration here is idempotent (<c>TryAdd</c>) except the bound options, so calling this more than
-        /// once with different <paramref name="configure"/> delegates applies every delegate to the same options
-        /// instance in call order.
+        /// This does not register <c>ISessionCoordinator</c>, <c>ISecurityProfileSelector</c>, <c>IAgentLoop</c>,
+        /// <c>IContextAssembler</c>, <c>IToolInvoker</c>, <c>IModelCatalog</c>, <c>IModelSelector</c>,
+        /// <c>ILlmModelResolver</c>, or the keyed <c>IRunContinuationPolicy</c>: the host still selects a session
+        /// store, security policies and authority, and the tool/provider registrations its one agent needs, exactly
+        /// as any other AgentKit composition does. This type drives exactly one agent and never selects among
+        /// several keyed loops, so every one of those collaborators is resolved unkeyed except the continuation
+        /// policy, which is resolved from the fixed key named by
+        /// <see cref="AgentLoopComponentDefaults.ContinuationPolicyKey"/>. Every registration here is idempotent
+        /// (<c>TryAdd</c>) except the bound options, so calling this more than once with different
+        /// <paramref name="configure"/> delegates applies every delegate to the same options instance in call order.
         /// </remarks>
         public IServiceCollection AddConversationSession(Action<ConversationSessionOptions> configure)
         {

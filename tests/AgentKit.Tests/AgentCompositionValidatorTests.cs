@@ -63,7 +63,7 @@ public sealed class AgentCompositionValidatorTests
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
-        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = services.AddSingleton<ISecurityGrantStore>(_ =>
         {
             storeFactoryCalls++;
@@ -87,7 +87,7 @@ public sealed class AgentCompositionValidatorTests
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
-        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = services.AddKeyedSingleton<ISecurityGrantStore>(null, grantStore);
         var snapshot = ComponentRegistrationSnapshot.Capture(services);
         var store = snapshot.Services.Where(static descriptor => descriptor.ServiceType == typeof(ISecurityGrantStore)).ShouldHaveSingleItem();
@@ -141,7 +141,6 @@ public sealed class AgentCompositionValidatorTests
     [InlineData(typeof(TimeProvider), "agentkit.time")]
     [InlineData(typeof(IIdentifierGenerator<RunId>), "agentkit.runid")]
     [InlineData(typeof(IIdentifierGenerator<OperationId>), "agentkit.operationid")]
-    [InlineData(typeof(IAgentLoop), "agentkit.loop")]
     public void ValidateComponentRegistrations_WhenOnlyKeyedServiceRemains_ReportsMissingWithoutFactories(Type serviceType, string code)
     {
         // Arrange
@@ -156,8 +155,29 @@ public sealed class AgentCompositionValidatorTests
         // Act
         var exception = Should.Throw<AgentCompositionException>(() => AgentCompositionValidator.ValidateComponentRegistrations(ComponentRegistrationSnapshot.Capture(builder.Services)));
         // Assert
-        var expected = serviceType == typeof(IAgentLoop) ? "agentkit.loop.unresolvable" : $"{code}.missing";
-        exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == expected);
+        exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == $"{code}.missing");
+        factoryCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public void ValidateComponentRegistrations_WhenLoopIsOnlyRegisteredUnderAnUnselectedKey_AcceptsTheNarrowFacadeCheck()
+    {
+        // ValidateComponentRegistrations alone (unlike the full AgentCompositionValidator.Validate used at engine
+        // build time) does not know which key an agent definition selects, so it only proves that some keyed
+        // IAgentLoop registration exists. Whether it is the exact key a definition selects is proven separately
+        // by ValidateCatalog, exercised end-to-end by
+        // AgentEngineBuilderTests.Build_WhenLoopIsRegisteredUnderADifferentKeyThanTheDefinitionSelects_RejectsWithAMissingLoopDiagnostic.
+        var builder = CompositionTestData.RunnableBuilder();
+        _ = builder.Services.RemoveAll<IAgentLoop>();
+        var factoryCalls = 0;
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>("separate", (_, _) =>
+        {
+            factoryCalls++;
+            throw new InvalidOperationException("An unselected keyed loop alternative must not be activated.");
+        });
+
+        Should.NotThrow(() => AgentCompositionValidator.ValidateComponentRegistrations(ComponentRegistrationSnapshot.Capture(builder.Services)));
+
         factoryCalls.ShouldBe(0);
     }
 

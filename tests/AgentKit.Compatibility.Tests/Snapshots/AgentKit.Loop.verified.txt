@@ -34,30 +34,18 @@ namespace AgentKit.Loop
     }
     public sealed class DefaultAgentLoop : AgentKit.IAgentLoop
     {
-        public DefaultAgentLoop(
-                    AgentKit.ISessionCoordinator sessionCoordinator,
-                    AgentKit.ISecurityProfileSelector securityProfileSelector,
-                    AgentKit.IContextAssembler contextAssembler,
-                    AgentKit.IToolInvoker toolInvoker,
-                    AgentKit.IModelCatalog modelCatalog,
-                    AgentKit.IModelSelector modelSelector,
-                    AgentKit.ILlmModelResolver llmModelResolver,
-                    [Microsoft.Extensions.DependencyInjection.FromKeyedServices("agentkit-default-continuation")] AgentKit.IRunContinuationPolicy continuationPolicy,
-                    AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.TurnId> turnIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.ModelRequestId> modelRequestIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds,
-                    AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds,
-                    System.TimeProvider timeProvider,
-                    Microsoft.Extensions.Options.IOptions<AgentKit.Loop.AgentLoopOptions> options,
-                    Microsoft.Extensions.Logging.ILogger<AgentKit.Loop.DefaultAgentLoop>? logger = null) { }
-        public System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.AgentRunRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+        public DefaultAgentLoop(AgentKit.IIdentifierGenerator<AgentKit.OperationId> operationIds, AgentKit.IIdentifierGenerator<AgentKit.TurnId> turnIds, AgentKit.IIdentifierGenerator<AgentKit.ModelRequestId> modelRequestIds, AgentKit.IIdentifierGenerator<AgentKit.MessageId> messageIds, AgentKit.IIdentifierGenerator<AgentKit.SessionEntryId> entryIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptionsMonitor<AgentKit.Loop.AgentLoopOptions> optionsMonitor, [Microsoft.Extensions.DependencyInjection.ServiceKey] string loopKey, Microsoft.Extensions.Logging.ILogger<AgentKit.Loop.DefaultAgentLoop>? logger = null) { }
+        public System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.AgentRunRequest request, AgentKit.AgentRunServices services, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentLoop(System.Action<AgentKit.Loop.AgentLoopOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentLoop(AgentKit.ComponentKey<AgentKit.IAgentLoop> key, System.Action<AgentKit.Loop.AgentLoopOptions>? configure = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentLoop<TLoop>(AgentKit.ComponentKey<AgentKit.IAgentLoop> key)
+                where TLoop :  class, AgentKit.IAgentLoop { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection ReplaceAgentLoop<TLoop>(AgentKit.ComponentKey<AgentKit.IAgentLoop> key)
+                where TLoop :  class, AgentKit.IAgentLoop { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunContinuationPolicy<TPolicy>(AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> key)
                 where TPolicy :  class, AgentKit.IRunContinuationPolicy { }
         }

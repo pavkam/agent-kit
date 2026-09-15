@@ -287,7 +287,9 @@ public sealed class AgentEngine: IAsyncDisposable
             }
 
             await using var scope = Services.CreateAsyncScope();
-            var loop = scope.ServiceProvider.GetRequiredService<IAgentLoop>();
+            var loopKey = definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey;
+            var loop = scope.ServiceProvider.GetRequiredKeyedService<IAgentLoop>(loopKey.Value);
+            var runServices = AgentRunServicesFactory.Compile(scope.ServiceProvider, loopKey);
 
             var request = pinnedPublication.Configuration is { } configuration
                 ? new AgentRunRequest(
@@ -323,7 +325,7 @@ public sealed class AgentEngine: IAsyncDisposable
             AgentAdmissionObservability.Complete(activity, _logger, "admitted");
             activity = null;
             admissionCompleted = true;
-            return await loop.RunAsync(request, cancellationToken).ConfigureAwait(false);
+            return await loop.RunAsync(request, runServices, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!admissionCompleted && cancellationToken.IsCancellationRequested)
         {

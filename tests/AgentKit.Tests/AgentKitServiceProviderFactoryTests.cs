@@ -576,7 +576,7 @@ public sealed class AgentKitServiceProviderFactoryTests
         _ = services.AddAgentKit();
         CompositionTestData.AddRequiredSecurityGrantStore(services);
         _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
-        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
         using var provider = CompositionTestData.BuildHostedProvider(services);
         var exception = Should.Throw<AgentCompositionException>(provider.GetRequiredService<AgentEngine>);
@@ -590,7 +590,7 @@ public sealed class AgentKitServiceProviderFactoryTests
         ThrowingBootstrapTestSource.Reset();
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
-        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
         var definition = CompositionTestData.Definition();
         _ = services.AddAgentDefinitionSnapshot(new AgentDefinitionSourceSnapshot(new AgentDefinitionSourceId("test-source"), new AgentDefinitionSourceVersion(1), 0, [definition]));
@@ -670,7 +670,7 @@ public sealed class AgentKitServiceProviderFactoryTests
     private static void ConfigureRunnable(IServiceCollection services)
     {
         _ = services.AddAgentKit();
-        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         var definition = CompositionTestData.Definition();
         _ = services.AddAgent(definition);
         CompositionTestData.AddRunProfiles(services, definition);
@@ -712,10 +712,10 @@ public sealed class AgentKitServiceProviderFactoryTests
             typeof(IIdentifierGenerator<OperationId>),
             "agentkit.operationid"
         },
-        {
-            typeof(IAgentLoop),
-            "agentkit.loop"
-        },
+
+        // IAgentLoop is deliberately excluded: it is keyed and scoped rather than singular and unkeyed, so its
+        // duplicate/keyed-alternative semantics are covered by AgentEngineBuilderTests's dedicated loop tests
+        // instead of this shared "singular unkeyed service" theory.
     };
 
     [Theory]

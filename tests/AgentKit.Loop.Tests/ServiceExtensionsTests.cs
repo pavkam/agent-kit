@@ -5,15 +5,17 @@ namespace AgentKit.Loop.Tests;
 
 public sealed class ServiceExtensionsTests
 {
+    private static readonly ComponentKey<IAgentLoop> LoopKey = new("test-loop");
+
     [Fact]
-    public void AddAgentLoop_WhenCalled_RegistersDefaultAgentLoop()
+    public void AddAgentLoop_WhenCalled_RegistersKeyedDefaultAgentLoop()
     {
         var services = BuildComposableServices();
 
-        _ = services.AddAgentLoop();
+        _ = services.AddAgentLoop(LoopKey);
 
         using var provider = services.BuildServiceProvider();
-        _ = provider.GetRequiredService<IAgentLoop>().ShouldBeOfType<DefaultAgentLoop>();
+        _ = provider.GetRequiredKeyedService<IAgentLoop>(LoopKey.Value).ShouldBeOfType<DefaultAgentLoop>();
     }
 
     [Fact]
@@ -21,18 +23,57 @@ public sealed class ServiceExtensionsTests
     {
         var services = BuildComposableServices();
 
-        _ = services.AddAgentLoop();
-        _ = services.AddAgentLoop();
+        _ = services.AddAgentLoop(LoopKey);
+        _ = services.AddAgentLoop(LoopKey);
 
         using var provider = services.BuildServiceProvider();
-        provider.GetServices<IAgentLoop>().Count().ShouldBe(1);
+        provider.GetKeyedServices<IAgentLoop>(LoopKey.Value).Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddAgentLoop_WhenAConflictingImplementationIsAlreadyRegisteredUnderTheSameKey_ThrowsInvalidOperationException()
+    {
+        var services = BuildComposableServices();
+        _ = services.AddAgentLoop<ScriptedRunContinuationPolicyHostLoop>(LoopKey);
+
+        var exception = Should.Throw<InvalidOperationException>(() => services.AddAgentLoop(LoopKey));
+
+        exception.Message.ShouldContain(LoopKey.Value);
+    }
+
+    [Fact]
+    public void ReplaceAgentLoop_WhenCalled_ReplacesTheExistingKeyedRegistration()
+    {
+        var services = BuildComposableServices();
+        _ = services.AddAgentLoop(LoopKey);
+
+        _ = services.ReplaceAgentLoop<ScriptedRunContinuationPolicyHostLoop>(LoopKey);
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredKeyedService<IAgentLoop>(LoopKey.Value)
+            .ShouldBeOfType<ScriptedRunContinuationPolicyHostLoop>();
+    }
+
+    [Fact]
+    public void AddAgentLoop_WhenTwoKeysAreRegistered_ResolvesEachLoopIndependently()
+    {
+        var services = BuildComposableServices();
+        var otherKey = new ComponentKey<IAgentLoop>("other-loop");
+        _ = services.AddAgentLoop(LoopKey);
+        _ = services.AddAgentLoop<ScriptedRunContinuationPolicyHostLoop>(otherKey);
+
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredKeyedService<IAgentLoop>(LoopKey.Value).ShouldBeOfType<DefaultAgentLoop>();
+        _ = provider.GetRequiredKeyedService<IAgentLoop>(otherKey.Value)
+            .ShouldBeOfType<ScriptedRunContinuationPolicyHostLoop>();
     }
 
     [Fact]
     public void AddAgentLoop_WhenCalled_RegistersOnlyKeyedDefaultContinuationPolicy()
     {
         var services = BuildComposableServices();
-        _ = services.AddAgentLoop();
+        _ = services.AddAgentLoop(LoopKey);
 
         using var provider = services.BuildServiceProvider();
 
@@ -83,10 +124,10 @@ public sealed class ServiceExtensionsTests
         var policy = new ScriptedRunContinuationPolicy(static _ => throw new NotSupportedException());
         _ = services.AddKeyedSingleton<IRunContinuationPolicy>(AgentLoopDefaults.ContinuationPolicyKey.Value, policy);
 
-        _ = services.AddAgentLoop();
+        _ = services.AddAgentLoop(LoopKey);
 
         using var provider = services.BuildServiceProvider();
-        _ = provider.GetRequiredService<IAgentLoop>().ShouldBeOfType<DefaultAgentLoop>();
+        _ = provider.GetRequiredKeyedService<IAgentLoop>(LoopKey.Value).ShouldBeOfType<DefaultAgentLoop>();
         provider.GetRequiredKeyedService<IRunContinuationPolicy>(AgentLoopDefaults.ContinuationPolicyKey.Value)
             .ShouldBeSameAs(policy);
     }
@@ -96,10 +137,10 @@ public sealed class ServiceExtensionsTests
     {
         var services = BuildComposableServices();
 
-        _ = services.AddAgentLoop();
+        _ = services.AddAgentLoop(LoopKey);
 
         using var provider = services.BuildServiceProvider();
-        _ = provider.GetRequiredService<IAgentLoop>().ShouldBeOfType<DefaultAgentLoop>();
+        _ = provider.GetRequiredKeyedService<IAgentLoop>(LoopKey.Value).ShouldBeOfType<DefaultAgentLoop>();
         _ = provider.GetRequiredKeyedService<IRunContinuationPolicy>(AgentLoopDefaults.ContinuationPolicyKeyValue)
             .ShouldBeOfType<DefaultRunContinuationPolicy>();
         AgentLoopDefaults.ContinuationPolicyKey.Value.ShouldBe(AgentLoopDefaults.ContinuationPolicyKeyValue);
@@ -110,10 +151,10 @@ public sealed class ServiceExtensionsTests
     {
         var services = BuildComposableServices();
 
-        _ = services.AddAgentLoop(static options => options.HistoryReadPageSize = 0);
+        _ = services.AddAgentLoop(LoopKey, static options => options.HistoryReadPageSize = 0);
 
         using var provider = services.BuildServiceProvider();
-        _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IAgentLoop>);
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredKeyedService<IAgentLoop>(LoopKey.Value));
     }
 
     [Fact]
@@ -121,10 +162,10 @@ public sealed class ServiceExtensionsTests
     {
         var services = BuildComposableServices();
 
-        _ = services.AddAgentLoop(static options => options.AppendConflictRetryLimit = -1);
+        _ = services.AddAgentLoop(LoopKey, static options => options.AppendConflictRetryLimit = -1);
 
         using var provider = services.BuildServiceProvider();
-        _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IAgentLoop>);
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredKeyedService<IAgentLoop>(LoopKey.Value));
     }
 
     [Fact]
@@ -132,10 +173,10 @@ public sealed class ServiceExtensionsTests
     {
         var services = BuildComposableServices();
 
-        _ = services.AddAgentLoop(static options => options.AppendConflictRetryLimit = 0);
+        _ = services.AddAgentLoop(LoopKey, static options => options.AppendConflictRetryLimit = 0);
 
         using var provider = services.BuildServiceProvider();
-        _ = provider.GetRequiredService<IAgentLoop>().ShouldBeOfType<DefaultAgentLoop>();
+        _ = provider.GetRequiredKeyedService<IAgentLoop>(LoopKey.Value).ShouldBeOfType<DefaultAgentLoop>();
     }
 
     [Theory]
@@ -145,10 +186,10 @@ public sealed class ServiceExtensionsTests
     {
         var services = BuildComposableServices();
 
-        _ = services.AddAgentLoop(options => options.SettlementTimeout = TimeSpan.FromSeconds(seconds));
+        _ = services.AddAgentLoop(LoopKey, options => options.SettlementTimeout = TimeSpan.FromSeconds(seconds));
 
         using var provider = services.BuildServiceProvider();
-        _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IAgentLoop>);
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredKeyedService<IAgentLoop>(LoopKey.Value));
     }
 
     [Theory]
@@ -158,10 +199,10 @@ public sealed class ServiceExtensionsTests
     {
         var services = BuildComposableServices();
 
-        _ = services.AddAgentLoop(options => options.ObserverDeliveryTimeout = TimeSpan.FromSeconds(seconds));
+        _ = services.AddAgentLoop(LoopKey, options => options.ObserverDeliveryTimeout = TimeSpan.FromSeconds(seconds));
 
         using var provider = services.BuildServiceProvider();
-        _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IAgentLoop>);
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredKeyedService<IAgentLoop>(LoopKey.Value));
     }
 
     [Fact]
@@ -206,6 +247,15 @@ public sealed class ServiceExtensionsTests
     {
         public ValueTask<RunContinuationDecision> DecideAsync(
             RunContinuationContext context,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    /// <summary>A minimal alternate <see cref="IAgentLoop"/> used only to prove replacement and conflict diagnosis.</summary>
+    private sealed class ScriptedRunContinuationPolicyHostLoop: IAgentLoop
+    {
+        public Task<AgentLoopResult> RunAsync(
+            AgentRunRequest request,
+            AgentRunServices services,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

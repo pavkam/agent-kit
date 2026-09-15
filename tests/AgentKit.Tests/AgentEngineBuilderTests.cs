@@ -74,7 +74,7 @@ public sealed class AgentEngineBuilderTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
-        _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
         exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.catalog.empty");
     }
@@ -96,8 +96,9 @@ public sealed class AgentEngineBuilderTests
         var definition = CompositionTestData.Definition();
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRunProfiles(builder.Services, definition);
+        CompositionTestData.AddRunServicesFakes(builder.Services);
         _ = builder.Services.AddAgent(definition);
-        _ = builder.Services.AddScoped<IAgentLoop>(_ =>
+        _ = builder.Services.AddKeyedScoped<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, (_, _) =>
         {
             factoryCalls++;
             return new RecordingAgentLoop();
@@ -117,12 +118,12 @@ public sealed class AgentEngineBuilderTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRunProfiles(builder.Services, definition);
         _ = builder.Services.AddAgent(definition);
-        _ = builder.Services.AddScoped<IAgentLoop>(_ =>
+        _ = builder.Services.AddKeyedScoped<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, (_, _) =>
         {
             factoryCalls++;
             return new RecordingAgentLoop();
         });
-        _ = builder.Services.AddScoped<IAgentLoop>(_ =>
+        _ = builder.Services.AddKeyedScoped<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, (_, _) =>
         {
             factoryCalls++;
             return new RecordingAgentLoop();
@@ -140,14 +141,14 @@ public sealed class AgentEngineBuilderTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRunProfiles(builder.Services, definition);
         _ = builder.Services.AddAgent(definition);
-        _ = builder.Services.AddScoped<IAgentLoop, MissingDependencyAgentLoop>();
+        _ = builder.Services.AddKeyedScoped<IAgentLoop, MissingDependencyAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue);
         var exception = Should.Throw<AggregateException>(builder.Build);
         exception.ToString().ShouldContain(nameof(UnregisteredLoopDependency));
         MissingDependencyAgentLoop.ConstructorCalls.ShouldBe(0);
     }
 
     [Fact]
-    public void Build_WhenOnlyKeyedLoopIsRegistered_RejectsCurrentUnkeyedRuntime()
+    public void Build_WhenLoopIsRegisteredUnderADifferentKeyThanTheDefinitionSelects_RejectsWithAMissingLoopDiagnostic()
     {
         var factoryCalls = 0;
         var definition = CompositionTestData.Definition();
@@ -160,7 +161,22 @@ public sealed class AgentEngineBuilderTests
             return new RecordingAgentLoop();
         });
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
-        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.loop.unresolvable");
+        exception.Diagnostics.ShouldContain(static diagnostic => diagnostic.Code == "agentkit.definition.loop.missing");
+        factoryCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Build_WhenLoopHasAKeyedAlternativeUnderAnUnselectedKey_AcceptsWithoutActivatingTheAlternative()
+    {
+        var factoryCalls = 0;
+        var builder = CompositionTestData.RunnableBuilder();
+        _ = builder.Services.AddKeyedScoped<IAgentLoop>("unselected", (_, _) =>
+        {
+            factoryCalls++;
+            throw new InvalidOperationException("An unselected keyed loop alternative must not be activated.");
+        });
+        await using var engine = builder.Build();
+        _ = engine.ShouldNotBeNull();
         factoryCalls.ShouldBe(0);
     }
 
@@ -173,7 +189,7 @@ public sealed class AgentEngineBuilderTests
         _ = services.AddAgentKit();
         CompositionTestData.AddRunProfiles(services, definition);
         _ = services.AddAgent(definition);
-        _ = services.AddScoped<IAgentLoop>(_ =>
+        _ = services.AddKeyedScoped<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, (_, _) =>
         {
             factoryCalls++;
             return new RecordingAgentLoop();
@@ -191,7 +207,7 @@ public sealed class AgentEngineBuilderTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRunProfiles(builder.Services, definition);
         _ = builder.Services.AddAgent(definition);
-        _ = builder.Services.AddSingleton<IAgentLoop>(loop);
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, loop);
         await using var engine = builder.Build();
         loop.DisposeCount.ShouldBe(0);
     }
@@ -256,14 +272,14 @@ public sealed class AgentEngineBuilderTests
 
         public static int ConstructorCalls { get; set; }
 
-        public Task<AgentLoopResult> RunAsync(AgentRunRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AgentLoopResult> RunAsync(AgentRunRequest request, AgentRunServices services, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class DisposableAgentLoop: IAgentLoop, IDisposable
     {
         public int DisposeCount { get; private set; }
 
-        public Task<AgentLoopResult> RunAsync(AgentRunRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AgentLoopResult> RunAsync(AgentRunRequest request, AgentRunServices services, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public void Dispose() => DisposeCount++;
     }
 
@@ -400,7 +416,7 @@ public sealed class AgentEngineBuilderTests
         var definition = CompositionTestData.Definition();
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
-        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         CompositionTestData.AddRunProfiles(services, definition);
         _ = services.AddAgent(definition);
         return services;
@@ -428,7 +444,7 @@ public sealed class AgentEngineBuilderTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
-        _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = builder.Services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
         exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.catalog.not-ready");
@@ -441,7 +457,7 @@ public sealed class AgentEngineBuilderTests
         ThrowingBootstrapTestSource.Reset();
         var definition = CompositionTestData.Definition();
         var builder = AgentEngine.CreateBuilder();
-        _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = builder.Services.AddAgentDefinitionSource<ThrowingBootstrapTestSource>();
         _ = builder.Services.AddAgentDefinitionSnapshot(new AgentDefinitionSourceSnapshot(new AgentDefinitionSourceId("test-source"), new AgentDefinitionSourceVersion(1), 0, [definition]));
         CompositionTestData.AddRunProfiles(builder.Services, definition);
@@ -454,7 +470,7 @@ public sealed class AgentEngineBuilderTests
     public async Task Build_WhenAgentIsRegistered_UsesMaterializedBootstrapWithoutReadingSource()
     {
         var builder = AgentEngine.CreateBuilder();
-        _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         var definition = CompositionTestData.Definition();
         _ = builder.Services.AddAgent(definition);
         CompositionTestData.AddRunProfiles(builder.Services, definition);
@@ -551,7 +567,7 @@ public sealed class AgentEngineBuilderTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(legacy);
-        _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         var exception = Should.Throw<AgentCompositionException>(builder.Build);
         exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.definition.profiles.missing");
@@ -612,7 +628,7 @@ public sealed class AgentEngineBuilderTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(definition);
-        _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentRunProfilePublicationReader>(reader));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
@@ -628,7 +644,7 @@ public sealed class AgentEngineBuilderTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(definition);
-        _ = builder.Services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
         _ = builder.Services.Replace(ServiceDescriptor.Singleton(reader));
         return builder;
@@ -668,10 +684,10 @@ public sealed class AgentEngineBuilderTests
             typeof(IIdentifierGenerator<OperationId>),
             "agentkit.operationid"
         },
-        {
-            typeof(IAgentLoop),
-            "agentkit.loop"
-        },
+
+        // IAgentLoop is deliberately excluded: it is keyed and scoped rather than singular and unkeyed, so its
+        // duplicate/keyed-alternative semantics are covered by its own dedicated tests above instead of this
+        // shared "singular unkeyed service" theory.
     };
 
     [Theory]

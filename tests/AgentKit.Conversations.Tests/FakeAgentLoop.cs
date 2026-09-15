@@ -24,9 +24,13 @@ internal sealed class FakeAgentLoop: IAgentLoop
     /// <summary>Gets or sets provisional progress delivered before the completion gate is released.</summary>
     public AgentRunEvent? ProgressEvent { get; set; }
 
-    public async Task<AgentLoopResult> RunAsync(AgentRunRequest request, CancellationToken cancellationToken = default)
+    public async Task<AgentLoopResult> RunAsync(
+        AgentRunRequest request,
+        AgentRunServices services,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(services);
         CallCount++;
         LastRequest = request;
         cancellationToken.ThrowIfCancellationRequested();

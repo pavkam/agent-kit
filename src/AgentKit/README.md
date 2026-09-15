@@ -41,9 +41,17 @@ Standalone builds and `AgentKitServiceProviderFactory` validate core service
 registrations before activating application services. Register exactly one
 unkeyed engine, agent-definition catalog, run-profile publication reader,
 security-profile selector, security grant store, clock, run identity generator,
-operation identity generator and loop. Replace a default with `Replace` or
+and operation identity generator. Replace a default with `Replace` or
 `RemoveAll` followed by an explicit registration; appending a second unkeyed
 implementation is rejected. Keyed alternatives remain independent.
+
+`IAgentLoop` is the one exception to "singular and unkeyed": it is deliberately
+keyed and scoped, so different agent definitions can select different loops
+(`AgentDefinition.LoopKey`, defaulting to `AgentLoopComponentDefaults.LoopKey`
+when unset). Composition requires at least one keyed `IAgentLoop` registration
+and, once the catalog is ready, that every published definition's exact
+selected key actually resolves; two registrations sharing one key are
+ambiguous.
 
 Missing and ambiguous services produce stable composition diagnostics, including
 when Microsoft DI constructor validation is disabled. Feature-only hosts using

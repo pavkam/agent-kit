@@ -76,6 +76,25 @@ internal static class CompositionTestData
     public static AgentRunOptions RunOptions(int? maxTurns = null, TimeSpan? attemptTimeout = null) =>
         new(SessionId, BranchId, Identity(), maxTurns, attemptTimeout);
 
+    /// <summary>
+    /// Registers unbehavioral placeholder collaborators for every part of the compiled
+    /// <see cref="AgentRunServices"/> bundle a scripted <see cref="IAgentLoop"/> like <see cref="RecordingAgentLoop"/>
+    /// never actually reaches, so <see cref="AgentEngine.RunAgentAsync"/> can compile the bundle without throwing.
+    /// </summary>
+    public static void AddRunServicesFakes(IServiceCollection services)
+    {
+        services.TryAddSingleton<ISessionCoordinator, TestSupport.UnsupportedSessionCoordinator>();
+        services.TryAddSingleton<IContextAssembler, TestSupport.UnsupportedContextAssembler>();
+        services.TryAddSingleton<IToolInvoker, TestSupport.CaptureTestToolInvoker>();
+        services.TryAddSingleton<IModelCatalog>(
+            new TestSupport.StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])));
+        services.TryAddSingleton<IModelSelector>(
+            new TestSupport.ScriptedModelSelector(new InvalidModelPolicy("This test double never selects a model.")));
+        services.TryAddSingleton<ILlmModelResolver>(new TestSupport.AliasLlmModelResolver());
+        services.TryAddKeyedSingleton<IRunContinuationPolicy>(
+            AgentLoopComponentDefaults.ContinuationPolicyKeyValue, new TestSupport.UnsupportedRunContinuationPolicy());
+    }
+
     public static void AddRequiredSecurityGrantStore(IServiceCollection services) =>
         services.TryAddSingleton<ISecurityGrantStore>(static _ =>
             throw new InvalidOperationException("The reduced facade fixture must not activate security grant storage."));
@@ -109,7 +128,9 @@ internal static class CompositionTestData
         AgentDefinition? definition = null)
     {
         var builder = AgentEngine.CreateBuilder();
-        _ = builder.Services.AddSingleton<IAgentLoop>(loop ?? new RecordingAgentLoop());
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(
+            AgentLoopComponentDefaults.LoopKeyValue, loop ?? new RecordingAgentLoop());
+        AddRunServicesFakes(builder.Services);
         var selectedDefinition = definition ?? Definition();
         AddRunProfiles(builder.Services, selectedDefinition);
         _ = builder.Services.AddAgent(selectedDefinition);
@@ -126,13 +147,19 @@ internal sealed class RecordingAgentLoop: IAgentLoop
     /// <summary>Gets every request this loop received, in call order.</summary>
     public List<AgentRunRequest> ReceivedRequests { get; } = [];
 
+    /// <summary>Gets every compiled per-run collaborator bundle this loop received, in call order.</summary>
+    public List<AgentRunServices> ReceivedServices { get; } = [];
+
     public Task<AgentLoopResult> RunAsync(
         AgentRunRequest request,
+        AgentRunServices services,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(services);
         cancellationToken.ThrowIfCancellationRequested();
         ReceivedRequests.Add(request);
+        ReceivedServices.Add(services);
 
         return Task.FromResult(new AgentLoopResult(
             request.AgentId,

@@ -77,7 +77,7 @@ internal static class AgentCompositionValidator
         AgentRunProfilePublicationSnapshot? validatedRunProfiles = null;
         if (catalog is not null)
         {
-            validatedRunProfiles = ValidateCatalog(catalog, profileReader, diagnostics);
+            validatedRunProfiles = ValidateCatalog(catalog, profileReader, componentRegistrations, diagnostics);
         }
 
         if (diagnostics.Count > 0)
@@ -137,8 +137,48 @@ internal static class AgentCompositionValidator
         ValidateSingularRegistration<TimeProvider>(snapshot, diagnostics, "agentkit.time");
         ValidateSingularRegistration<IIdentifierGenerator<RunId>>(snapshot, diagnostics, "agentkit.runid");
         ValidateSingularRegistration<IIdentifierGenerator<OperationId>>(snapshot, diagnostics, "agentkit.operationid");
-        ValidateSingularRegistration<IAgentLoop>(snapshot, diagnostics, "agentkit.loop", "unresolvable");
+        ValidateAgentLoopRegistered(snapshot, diagnostics);
         return diagnostics.ToImmutable();
+    }
+
+    /// <summary>Checks that at least one keyed <see cref="IAgentLoop"/> registration exists, without resolving it.</summary>
+    /// <param name="snapshot">The non-null immutable build-local registrations.</param>
+    /// <param name="diagnostics">The initialized collector for deterministic missing diagnostics.</param>
+    /// <remarks>
+    /// <see cref="IAgentLoop"/> is deliberately keyed and scoped rather than singular and unkeyed (see
+    /// <see cref="ValidateSingularRegistration{TService}"/>), so every agent definition can select its own loop
+    /// and, through it, its own compiled <see cref="AgentRunServices"/> bundle. This check only proves that some
+    /// keyed registration exists; <see cref="ValidateCatalog"/> proves that every published definition's exact
+    /// selected key — or the engine-wide default when it selects none — actually resolves.
+    /// </remarks>
+    private static void ValidateAgentLoopRegistered(
+        ComponentRegistrationSnapshot snapshot,
+        ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
+    {
+        Debug.Assert(snapshot is not null, "Composition validation supplies captured registrations.");
+        Debug.Assert(diagnostics is not null, "Composition validation owns an initialized diagnostic collector.");
+
+        var keyedLoopDescriptors = snapshot.Services
+            .Where(static service => service.IsKeyedService && service.ServiceType == typeof(IAgentLoop))
+            .ToArray();
+        if (keyedLoopDescriptors.Length == 0)
+        {
+            diagnostics.Add(new CompositionDiagnostic(
+                "agentkit.loop.unresolvable",
+                "Expected at least one keyed IAgentLoop registration; found none. Call AddAgentLoop with an explicit key."));
+            return;
+        }
+
+        foreach (var group in keyedLoopDescriptors.GroupBy(static service => service.ServiceKey as string ?? string.Empty))
+        {
+            var count = group.Count();
+            if (count != 1)
+            {
+                diagnostics.Add(new CompositionDiagnostic(
+                    "agentkit.loop.ambiguous",
+                    $"Expected exactly one keyed IAgentLoop registration for key '{group.Key}'; found {count}. Use ReplaceAgentLoop to replace an existing registration explicitly."));
+            }
+        }
     }
 
     /// <summary>Checks one required unkeyed registration without activating application services.</summary>
@@ -172,6 +212,7 @@ internal static class AgentCompositionValidator
     private static AgentRunProfilePublicationSnapshot? ValidateCatalog(
         IAgentDefinitionCatalog catalog,
         IAgentRunProfilePublicationReader? profileReader,
+        ComponentRegistrationSnapshot componentRegistrations,
         ImmutableArray<CompositionDiagnostic>.Builder diagnostics)
     {
         var snapshot = catalog.CurrentSnapshot;
@@ -234,6 +275,18 @@ internal static class AgentCompositionValidator
                 diagnostics.Add(new CompositionDiagnostic(
                     "agentkit.run-profile.key-mismatch",
                     $"Agent '{definition.Id}' selects profile keys that differ from its exact publication."));
+            }
+
+            var loopKey = (definition.LoopKey ?? AgentLoopComponentDefaults.LoopKey).Value;
+            var hasSelectedLoop = componentRegistrations.Services.Any(service =>
+                service.IsKeyedService
+                && service.ServiceType == typeof(IAgentLoop)
+                && loopKey.Equals(service.ServiceKey as string, StringComparison.Ordinal));
+            if (!hasSelectedLoop)
+            {
+                diagnostics.Add(new CompositionDiagnostic(
+                    "agentkit.definition.loop.missing",
+                    $"Agent '{definition.Id}' selects loop key '{loopKey}' but no keyed IAgentLoop is registered for it."));
             }
         }
 

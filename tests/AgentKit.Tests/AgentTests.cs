@@ -154,7 +154,9 @@ public sealed class AgentTests
         var builder = AgentEngine.CreateBuilder();
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentDefinitionCatalog>(catalog));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
-        _ = builder.Services.AddScoped<IAgentLoop>(_ => new ScopedRecordingAgentLoop(new AdmissionRunEffects()));
+        _ = builder.Services.AddKeyedScoped<IAgentLoop>(
+            AgentLoopComponentDefaults.LoopKeyValue, (_, _) => new ScopedRecordingAgentLoop(new AdmissionRunEffects()));
+        CompositionTestData.AddRunServicesFakes(builder.Services);
         CompositionTestData.AddRunProfiles(builder.Services, definition);
         await using var successfullyBuilt = builder.Build();
         await using var provider = builder.Services.BuildServiceProvider();
@@ -268,7 +270,9 @@ public sealed class AgentTests
         var builder = AgentEngine.CreateBuilder();
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentDefinitionCatalog>(catalog));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
-        _ = builder.Services.AddScoped<IAgentLoop>(_ => new ScopedRecordingAgentLoop(effects));
+        _ = builder.Services.AddKeyedScoped<IAgentLoop>(
+            AgentLoopComponentDefaults.LoopKeyValue, (_, _) => new ScopedRecordingAgentLoop(effects));
+        CompositionTestData.AddRunServicesFakes(builder.Services);
         var snapshot = catalog.CurrentSnapshot ?? throw new InvalidOperationException("The test catalog must be ready before engine construction.");
         CompositionTestData.AddRunProfiles(builder.Services, [.. snapshot.Definitions]);
         if (logger is not null)
@@ -303,7 +307,7 @@ public sealed class AgentTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(definition);
-        _ = builder.Services.AddSingleton<IAgentLoop>(loop);
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, loop);
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(selector);
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentRunProfilePublicationReader>(reader));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
@@ -346,7 +350,8 @@ public sealed class AgentTests
         var effects = new AdmissionRunEffects();
         var builder = CompositionTestData.RunnableBuilder(definition: definition);
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<ISecurityProfileSelector>(selector));
-        _ = builder.Services.Replace(ServiceDescriptor.Scoped<IAgentLoop>(_ => new ScopedRecordingAgentLoop(effects)));
+        _ = builder.Services.Replace(ServiceDescriptor.KeyedScoped<IAgentLoop>(
+            AgentLoopComponentDefaults.LoopKeyValue, (_, _) => new ScopedRecordingAgentLoop(effects)));
         await using var engine = builder.Build();
         var baselineScopes = effects.Scopes;
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
@@ -371,7 +376,7 @@ public sealed class AgentTests
         var builder = AgentEngine.CreateBuilder();
         CompositionTestData.AddRequiredSecurityGrantStore(builder.Services);
         _ = builder.Services.AddAgent(definition);
-        _ = builder.Services.AddSingleton<IAgentLoop>(loop);
+        _ = builder.Services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, loop);
         _ = builder.Services.AddSingleton<ISecurityProfileSelector>(selector);
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentRunProfilePublicationReader>(reader));
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
@@ -396,7 +401,8 @@ public sealed class AgentTests
         var effects = new AdmissionRunEffects();
         var builder = CompositionTestData.RunnableBuilder(definition: definition);
         _ = builder.Services.Replace(ServiceDescriptor.Singleton<ISecurityProfileSelector>(selector));
-        _ = builder.Services.Replace(ServiceDescriptor.Scoped<IAgentLoop>(_ => new ScopedRecordingAgentLoop(effects)));
+        _ = builder.Services.Replace(ServiceDescriptor.KeyedScoped<IAgentLoop>(
+            AgentLoopComponentDefaults.LoopKeyValue, (_, _) => new ScopedRecordingAgentLoop(effects)));
         await using var engine = builder.Build();
         var baselineScopes = effects.Scopes;
         var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;

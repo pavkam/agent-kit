@@ -63,14 +63,6 @@ using Microsoft.Extensions.Options;
 /// </remarks>
 public sealed class DefaultAgentLoop: IAgentLoop
 {
-    private readonly ISessionCoordinator _sessionCoordinator;
-    private readonly ISecurityProfileSelector _securityProfileSelector;
-    private readonly IContextAssembler _contextAssembler;
-    private readonly IToolInvoker _toolInvoker;
-    private readonly IModelCatalog _modelCatalog;
-    private readonly IModelSelector _modelSelector;
-    private readonly ILlmModelResolver _llmModelResolver;
-    private readonly IRunContinuationPolicy _continuationPolicy;
     private readonly IIdentifierGenerator<OperationId> _operationIds;
     private readonly IIdentifierGenerator<TurnId> _turnIds;
     private readonly IIdentifierGenerator<ModelRequestId> _modelRequestIds;
@@ -117,81 +109,61 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private static readonly RunPolicyVersion _policyVersion = new(1);
 
     /// <summary>Initializes a new instance of the <see cref="DefaultAgentLoop"/> class.</summary>
-    /// <param name="sessionCoordinator">Loads eligible history and commits every produced message.</param>
-    /// <param name="securityProfileSelector">Captures fresh authorization for each newly identified run operation.</param>
-    /// <param name="contextAssembler">Assembles the provider-ready request for each turn.</param>
-    /// <param name="toolInvoker">Resolves, authorizes, and invokes every requested tool call.</param>
-    /// <param name="modelCatalog">Supplies the engine-wide versioned view of configured models.</param>
-    /// <param name="modelSelector">Chooses one configured model for each run.</param>
-    /// <param name="llmModelResolver">Resolves the chosen descriptor to its provider adapter.</param>
-    /// <param name="continuationPolicy">
-    /// Decides, at every committed-turn boundary, whether the run continues, completes, or halts. Resolved from
-    /// the keyed registration named by <see cref="AgentLoopDefaults.ContinuationPolicyKeyValue"/>.
-    /// </param>
     /// <param name="operationIds">Generates the run's causal operation identity.</param>
     /// <param name="turnIds">Generates each turn's identity.</param>
     /// <param name="modelRequestIds">Generates each model request's identity.</param>
     /// <param name="messageIds">Generates each committed message's identity.</param>
     /// <param name="entryIds">Generates each appended session entry's identity.</param>
     /// <param name="timeProvider">The clock used to timestamp committed messages and attempt deadlines.</param>
-    /// <param name="options">The validated loop options.</param>
+    /// <param name="optionsMonitor">
+    /// The named options source. This instance's options are the value named by <paramref name="loopKey"/>, so
+    /// a host that registered several keyed loops through <c>AddAgentLoop</c> with different
+    /// <c>configure</c> callbacks gets independently bounded behavior per key.
+    /// </param>
+    /// <param name="loopKey">
+    /// The exact key text this instance was resolved under, supplied automatically by dependency injection for
+    /// a keyed service constructor parameter attributed <c>[ServiceKey]</c>. It selects this instance's named
+    /// <see cref="AgentLoopOptions"/> from <paramref name="optionsMonitor"/> and is otherwise never used: every
+    /// per-agent collaborator this instance drives a run with arrives through <see cref="RunAsync"/>'s
+    /// <see cref="AgentRunServices"/> parameter instead, so this constructor stays genuinely key-independent
+    /// beyond selecting its own bounded options.
+    /// </param>
     /// <param name="logger">
     /// The optional logger that receives safe run-lifecycle diagnostics; a
     /// Microsoft null logger is used when omitted.
     /// </param>
-    /// <exception cref="ArgumentNullException">Any parameter is null.</exception>
+    /// <exception cref="ArgumentNullException">Any parameter other than <paramref name="logger"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="options"/> carries a non-positive <see cref="AgentLoopOptions.HistoryReadPageSize"/>,
-    /// a negative <see cref="AgentLoopOptions.AppendConflictRetryLimit"/>, or a non-positive
+    /// The named <see cref="AgentLoopOptions"/> selected by <paramref name="loopKey"/> carries a non-positive
+    /// <see cref="AgentLoopOptions.HistoryReadPageSize"/>, a negative
+    /// <see cref="AgentLoopOptions.AppendConflictRetryLimit"/>, or a non-positive
     /// <see cref="AgentLoopOptions.SettlementTimeout"/> or <see cref="AgentLoopOptions.ObserverDeliveryTimeout"/>.
     /// </exception>
     public DefaultAgentLoop(
-        ISessionCoordinator sessionCoordinator,
-        ISecurityProfileSelector securityProfileSelector,
-        IContextAssembler contextAssembler,
-        IToolInvoker toolInvoker,
-        IModelCatalog modelCatalog,
-        IModelSelector modelSelector,
-        ILlmModelResolver llmModelResolver,
-        [FromKeyedServices(AgentLoopDefaults.ContinuationPolicyKeyValue)] IRunContinuationPolicy continuationPolicy,
         IIdentifierGenerator<OperationId> operationIds,
         IIdentifierGenerator<TurnId> turnIds,
         IIdentifierGenerator<ModelRequestId> modelRequestIds,
         IIdentifierGenerator<MessageId> messageIds,
         IIdentifierGenerator<SessionEntryId> entryIds,
         TimeProvider timeProvider,
-        IOptions<AgentLoopOptions> options,
+        IOptionsMonitor<AgentLoopOptions> optionsMonitor,
+        [ServiceKey] string loopKey,
         ILogger<DefaultAgentLoop>? logger = null)
     {
-        ArgumentNullException.ThrowIfNull(sessionCoordinator);
-        ArgumentNullException.ThrowIfNull(securityProfileSelector);
-        ArgumentNullException.ThrowIfNull(contextAssembler);
-        ArgumentNullException.ThrowIfNull(toolInvoker);
-        ArgumentNullException.ThrowIfNull(modelCatalog);
-        ArgumentNullException.ThrowIfNull(modelSelector);
-        ArgumentNullException.ThrowIfNull(llmModelResolver);
-        ArgumentNullException.ThrowIfNull(continuationPolicy);
         ArgumentNullException.ThrowIfNull(operationIds);
         ArgumentNullException.ThrowIfNull(turnIds);
         ArgumentNullException.ThrowIfNull(modelRequestIds);
         ArgumentNullException.ThrowIfNull(messageIds);
         ArgumentNullException.ThrowIfNull(entryIds);
         ArgumentNullException.ThrowIfNull(timeProvider);
-        ArgumentNullException.ThrowIfNull(options);
-        var loopOptions = options.Value;
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(loopOptions.HistoryReadPageSize, 0, nameof(options));
-        ArgumentOutOfRangeException.ThrowIfNegative(loopOptions.AppendConflictRetryLimit, nameof(options));
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(loopOptions.SettlementTimeout, TimeSpan.Zero, nameof(options));
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(loopOptions.ObserverDeliveryTimeout, TimeSpan.Zero, nameof(options));
+        ArgumentNullException.ThrowIfNull(optionsMonitor);
+        ArgumentNullException.ThrowIfNull(loopKey);
+        var loopOptions = optionsMonitor.Get(loopKey);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(loopOptions.HistoryReadPageSize, 0, nameof(optionsMonitor));
+        ArgumentOutOfRangeException.ThrowIfNegative(loopOptions.AppendConflictRetryLimit, nameof(optionsMonitor));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(loopOptions.SettlementTimeout, TimeSpan.Zero, nameof(optionsMonitor));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(loopOptions.ObserverDeliveryTimeout, TimeSpan.Zero, nameof(optionsMonitor));
 
-        _sessionCoordinator = sessionCoordinator;
-        _securityProfileSelector = securityProfileSelector;
-        _contextAssembler = contextAssembler;
-        _toolInvoker = toolInvoker;
-        _modelCatalog = modelCatalog;
-        _modelSelector = modelSelector;
-        _llmModelResolver = llmModelResolver;
-        _continuationPolicy = continuationPolicy;
         _operationIds = operationIds;
         _turnIds = turnIds;
         _modelRequestIds = modelRequestIds;
@@ -207,9 +179,13 @@ public sealed class DefaultAgentLoop: IAgentLoop
     }
 
     /// <inheritdoc/>
-    public async Task<AgentLoopResult> RunAsync(AgentRunRequest request, CancellationToken cancellationToken = default)
+    public async Task<AgentLoopResult> RunAsync(
+        AgentRunRequest request,
+        AgentRunServices services,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(services);
 
         var operationId = _operationIds.Create();
         var startedTimestamp = _timeProvider.GetTimestamp();
@@ -229,7 +205,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         try
         {
-            var result = await RunCoreAsync(request, operationId, activity, cancellationToken).ConfigureAwait(false);
+            var result = await RunCoreAsync(request, services, operationId, activity, cancellationToken).ConfigureAwait(false);
             var outcome = result.Outcome.GetType().Name;
             if (result.Outcome is AgentRunCompleted)
             {
@@ -264,6 +240,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     /// <summary>Drives the run after its activity and start diagnostics are in place.</summary>
     /// <param name="request">The validated run request.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
     /// <param name="operationId">The run's causal operation identity.</param>
     /// <param name="runActivity">
     /// The loop's own run activity, or null when no listener sampled it. Model tags are set on this activity
@@ -274,6 +251,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <returns>The complete result of the run.</returns>
     private async Task<AgentLoopResult> RunCoreAsync(
         AgentRunRequest request,
+        AgentRunServices services,
         OperationId operationId,
         Activity? runActivity,
         CancellationToken cancellationToken)
@@ -281,7 +259,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         Debug.Assert(request is not null, "A validated run request is required by the loop core.");
         var runCorrelation = new InRunOperationCorrelation(operationId, request.RunId, turnId: null);
         var (runAuthorization, runCaptureFailure) = await CaptureAuthorizationAsync(
-            request, runCorrelation, cancellationToken)
+            request, services, runCorrelation, cancellationToken)
             .ConfigureAwait(false);
         if (runAuthorization is null)
         {
@@ -298,7 +276,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             runAuthorization);
 
         var historyLoad = await LoadHistoryAsync(
-            request.RunId, sessionContext, request.SessionProfile, request.BranchId, cancellationToken).ConfigureAwait(false);
+            request.RunId, services, sessionContext, request.SessionProfile, request.BranchId, cancellationToken).ConfigureAwait(false);
         if (historyLoad is not { } loaded)
         {
             return BuildResult(
@@ -331,7 +309,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         var (history, recoveryFailure) = await SettleDanglingToolCallsAsync(
-            request, sessionContext, runCorrelation, loaded.Entries, initialMessages, initialCursor, committedMessages, cancellationToken)
+            request, services, sessionContext, runCorrelation, loaded.Entries, initialMessages, initialCursor, committedMessages, cancellationToken)
             .ConfigureAwait(false);
         if (recoveryFailure is not null)
         {
@@ -340,7 +318,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         currentVersion = history.SourceCursor.Version;
 
-        var modelResolution = await ResolveModelAsync(request, operationId, cancellationToken)
+        var modelResolution = await ResolveModelAsync(request, services, operationId, cancellationToken)
             .ConfigureAwait(false);
 
         if (modelResolution.Outcome is { } selectionFailure)
@@ -360,6 +338,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             {
                 result = await RunTurnAsync(
                     request,
+                    services,
                     model,
                     llmModel,
                     operationId,
@@ -412,12 +391,13 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </remarks>
     private async Task<ModelResolution> ResolveModelAsync(
         AgentRunRequest request,
+        AgentRunServices services,
         OperationId operationId,
         CancellationToken cancellationToken)
     {
         Debug.Assert(request is not null, "A validated run request is required to resolve a model.");
 
-        var catalog = await _modelCatalog.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var catalog = await services.Models.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         var scope = new SecurityAuthorizationScope(
             request.AgentId,
             request.SessionId,
@@ -433,7 +413,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             request.Agent?.ModelRequirements ?? request.ModelRequirements,
             catalog);
 
-        var selection = await _modelSelector
+        var selection = await services.ModelSelector
             .SelectAsync(selectionRequest, cancellationToken)
             .ConfigureAwait(false);
 
@@ -455,7 +435,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
             case ModelSelected selected:
                 var descriptor = selected.Decision.Model;
-                var adapter = _llmModelResolver.Resolve(descriptor);
+                var adapter = services.ModelResolver.Resolve(descriptor);
                 if (adapter is null)
                 {
                     LoopLog.ModelSelectionFailed(
@@ -478,6 +458,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     private async Task<TurnOutcome> RunTurnAsync(
         AgentRunRequest request,
+        AgentRunServices services,
         ModelDescriptor model,
         ILlmModel llmModel,
         OperationId operationId,
@@ -491,7 +472,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var turnId = _turnIds.Create();
         var turnCorrelation = new InRunOperationCorrelation(operationId, request.RunId, turnId);
         var (turnAuthorization, turnCaptureFailure) = await CaptureAuthorizationAsync(
-            request, turnCorrelation, cancellationToken)
+            request, services, turnCorrelation, cancellationToken)
             .ConfigureAwait(false);
         if (turnAuthorization is null)
         {
@@ -561,7 +542,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 request.Settings,
                 ExtensionData.Empty);
 
-        var assembleResult = await _contextAssembler.AssembleAsync(assembleRequest, cancellationToken).ConfigureAwait(false);
+        var assembleResult = await services.Context.AssembleAsync(assembleRequest, cancellationToken).ConfigureAwait(false);
 
         if (assembleResult is ContextPreparationFailed prepFailed)
         {
@@ -622,20 +603,20 @@ public sealed class DefaultAgentLoop: IAgentLoop
         var turnOutcome = attemptResult switch
         {
             ModelAttemptFailed failed => await SettleInterruptedAsync(
-                request, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, modelRequestId,
+                request, services, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, modelRequestId,
                 failed.PartialParts, failed.Usage, NormalizedStopReason.Error, failed.Failure.RequestId,
                 new AgentRunFailed(failed.Failure), committedMessages, currentVersion)
                 .ConfigureAwait(false),
 
             ModelAttemptCancelled cancelled => await SettleInterruptedAsync(
-                request, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, modelRequestId,
+                request, services, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, modelRequestId,
                 cancelled.PartialParts, cancelled.Usage, NormalizedStopReason.Cancelled,
                 cancelled.Cancellation.RequestId, new AgentRunCancelled(cancelled.Cancellation.SafeMessage),
                 committedMessages, currentVersion)
                 .ConfigureAwait(false),
 
             ModelAttemptCompleted completed => await SettleCompletedAsync(
-                request, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, turn, completed.Response,
+                request, services, model, history.SourceCursor, turnSessionContext, turnCorrelation, turnId, turn, completed.Response,
                 committedMessages, currentVersion, cancellationToken)
                 .ConfigureAwait(false),
 
@@ -660,6 +641,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     private async Task<TurnOutcome> SettleCompletedAsync(
         AgentRunRequest request,
+        AgentRunServices services,
         ModelDescriptor model,
         MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
@@ -679,7 +661,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             LoopLog.ModelResponseNotAccepted(_logger, request.RunId, turnId, $"stop reason {response.StopReason}");
             return await SettleInterruptedAsync(
-                request, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
+                request, services, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
                 response.Parts, response.Usage, response.StopReason, response.Identity.RequestId,
                 OutcomeForUnacceptedStop(response),
                 committedMessages, currentVersion).ConfigureAwait(false);
@@ -693,7 +675,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             LoopLog.ModelResponseNotAccepted(_logger, request.RunId, turnId, "tool-use stop without any tool call");
             return await SettleInterruptedAsync(
-                request, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
+                request, services, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
                 response.Parts, response.Usage, NormalizedStopReason.Error, response.Identity.RequestId,
                 new AgentRunFailed(new ProviderFailure(
                     ProviderFailureKind.ProtocolViolation, response.Identity.ProviderId, response.Identity.RequestId,
@@ -709,7 +691,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             LoopLog.ModelResponseNotAccepted(_logger, request.RunId, turnId, "duplicate tool call identities");
             return await SettleInterruptedAsync(
-                request, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
+                request, services, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
                 response.Parts, response.Usage, NormalizedStopReason.Error, response.Identity.RequestId,
                 new AgentRunFailed(new ProviderFailure(
                     ProviderFailureKind.ProtocolViolation, response.Identity.ProviderId, response.Identity.RequestId,
@@ -750,6 +732,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         // The response was generated against the history this turn saw. A concurrent message landing ahead of it
         // makes it stale, so the append fails closed rather than rebasing (allowInterleavedMessages: false).
         var appendAttempt = await AppendWithDiagnosticsAsync(
+            services,
             new SessionAppendRequest(
                 turnSessionContext,
                 request.BranchId,
@@ -785,15 +768,15 @@ public sealed class DefaultAgentLoop: IAgentLoop
         return toolCalls switch
         {
             { IsEmpty: true } => await DecideContinuationAsync(
-                request, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
+                request, services, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
                 NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, cancellationToken)
                 .ConfigureAwait(false),
             _ when turn == request.MaxTurns => await SettleRejectedAtTurnLimitAsync(
-                request, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId, toolCalls,
+                request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId, toolCalls,
                 committedMessages, currentVersion, committedSequence)
                 .ConfigureAwait(false),
             _ => await InvokeToolsAsync(
-                request, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId, assistantMessage, toolCalls,
+                request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId, assistantMessage, toolCalls,
                 committedMessages, currentVersion, committedSequence, cancellationToken)
                 .ConfigureAwait(false),
         };
@@ -805,6 +788,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </summary>
     private async Task<TurnOutcome> SettleRejectedAtTurnLimitAsync(
         AgentRunRequest request,
+        AgentRunServices services,
         MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
         InRunOperationCorrelation turnCorrelation,
@@ -836,7 +820,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         var appendAttempt = await CommitToolMessageAsync(
-            request, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId,
+            request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId,
             resultParts.ToImmutable(), currentVersion, currentSequence, committedMessages).ConfigureAwait(false);
 
         return appendAttempt.Result is SessionAppended appended
@@ -853,6 +837,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </summary>
     private async ValueTask<AppendAttempt> CommitToolMessageAsync(
         AgentRunRequest request,
+        AgentRunServices services,
         MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
         InRunOperationCorrelation turnCorrelation,
@@ -890,6 +875,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         var appendAttempt = await AppendWithSettlementBoundAsync(
             request.RunId,
+            services,
             new SessionAppendRequest(
                 turnSessionContext,
                 request.BranchId,
@@ -909,6 +895,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     private async Task<TurnOutcome> InvokeToolsAsync(
         AgentRunRequest request,
+        AgentRunServices services,
         MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
         InRunOperationCorrelation turnCorrelation,
@@ -969,7 +956,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     new AgentRunToolCallStarted(turnId, toolCall),
                     cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
-                var invocationResult = await _toolInvoker.InvokeAsync(
+                var invocationResult = await services.Tools.InvokeAsync(
                     new ToolCallRequest(toolCall.Tool.Id, toolContext, toolCall.Arguments, _timeProvider.GetUtcNow()),
                     cancellationToken).ConfigureAwait(false);
 
@@ -1016,7 +1003,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         // cancellationToken.IsCancellationRequested is checked explicitly below, after this commit, so that case
         // still propagates cancellation to the caller instead of silently continuing to the next turn.
         var appendAttempt = await CommitToolMessageAsync(
-            request, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId,
+            request, services, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId,
             resultParts.ToImmutable(), currentVersion, currentSequence, committedMessages).ConfigureAwait(false);
 
         if (appendAttempt.Result is not SessionAppended appended)
@@ -1052,7 +1039,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             .Select(call => new CommittedToolResultReference(toolEntry.Id, call.CallId, turnId))
             .ToImmutableArray();
         return await DecideContinuationAsync(
-            request, turnCorrelation, turn, assistantMessage, toolResultReferences, toolEntry.Id, nextCursor,
+            request, services, turnCorrelation, turn, assistantMessage, toolResultReferences, toolEntry.Id, nextCursor,
             [assistantMessage, .. appendAttempt.InterleavedMessages, toolMessage], appended.NewVersion, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -1062,6 +1049,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// proposal onto the loop's own transition.
     /// </summary>
     /// <param name="request">The run being driven.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
     /// <param name="turnCorrelation">The committed turn's in-run correlation.</param>
     /// <param name="turn">The one-based number of the committed turn.</param>
     /// <param name="assistantMessage">The complete, committed assistant response of the turn.</param>
@@ -1093,6 +1081,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </remarks>
     private async ValueTask<TurnOutcome> DecideContinuationAsync(
         AgentRunRequest request,
+        AgentRunServices services,
         InRunOperationCorrelation turnCorrelation,
         int turn,
         AssistantMessage assistantMessage,
@@ -1145,7 +1134,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         RunContinuationDecision decision;
         try
         {
-            decision = await _continuationPolicy.DecideAsync(context, cancellationToken).ConfigureAwait(false);
+            decision = await services.ContinuationPolicy.DecideAsync(context, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1275,6 +1264,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// caller's cancellation, so evidence of how the run stopped can land without the loop ever hanging on it.
     /// </summary>
     /// <param name="runId">The run whose settlement is bounded, for diagnostics.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
     /// <param name="request">The append to commit.</param>
     /// <param name="sessionProfile">The run's immutable session profile.</param>
     /// <param name="allowInterleavedMessages">Whether the append may still commit after a concurrent message landed ahead of it.</param>
@@ -1284,6 +1274,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </returns>
     private async ValueTask<AppendAttempt> AppendWithSettlementBoundAsync(
         RunId runId,
+        AgentRunServices services,
         SessionAppendRequest request,
         SessionProfileSnapshot sessionProfile,
         bool allowInterleavedMessages)
@@ -1295,7 +1286,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         {
             for (var attempt = 1; ; attempt++)
             {
-                var appendAttempt = await AppendWithDiagnosticsAsync(request, sessionProfile, allowInterleavedMessages, settlement.Token)
+                var appendAttempt = await AppendWithDiagnosticsAsync(services, request, sessionProfile, allowInterleavedMessages, settlement.Token)
                     .ConfigureAwait(false);
                 if (appendAttempt.Result is not SessionAppendFailed)
                 {
@@ -1343,6 +1334,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <summary>
     /// Appends with commit diagnostics, rebasing onto the actual branch tip after a concurrent writer advanced it.
     /// </summary>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
     /// <param name="request">The append built against the loop's last-observed tip.</param>
     /// <param name="sessionProfile">The run's immutable session profile.</param>
     /// <param name="allowInterleavedMessages">
@@ -1363,6 +1355,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// the stale tip when it was built.
     /// </remarks>
     private async ValueTask<AppendAttempt> AppendWithDiagnosticsAsync(
+        AgentRunServices services,
         SessionAppendRequest request,
         SessionProfileSnapshot sessionProfile,
         bool allowInterleavedMessages,
@@ -1388,7 +1381,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         SessionAppendResult result;
         for (var attempt = 1; ; attempt++)
         {
-            result = await _sessionCoordinator.AppendAsync(
+            result = await services.Session.AppendAsync(
                 attemptRequest, sessionProfile, cancellationToken).ConfigureAwait(false);
             if (result is not SessionAppendConflict conflict || attempt > _appendConflictRetryLimit)
             {
@@ -1399,7 +1392,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 _logger, request.Context.SessionId, conflict.ExpectedVersion, conflict.ActualVersion, attempt);
 
             var interleavedRead = await ReadInterleavedEntriesAsync(
-                attemptRequest, sessionProfile, cancellationToken).ConfigureAwait(false);
+                services, attemptRequest, sessionProfile, cancellationToken).ConfigureAwait(false);
             if (interleavedRead is not var (interleavedEntries, tip))
             {
                 break;
@@ -1442,11 +1435,13 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// Reads, under one pinned snapshot, every entry a concurrent writer committed at or after the sequence the
     /// conflicting append had claimed, through the actual branch tip.
     /// </summary>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
     /// <param name="attemptRequest">The conflicting append whose first entry names the sequence the loop believed was free.</param>
     /// <param name="sessionProfile">The run's immutable session profile.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>The interleaved entries in sequence order with the pinned tip snapshot, or null when the range could not be read consistently.</returns>
     private async ValueTask<(ImmutableArray<SessionEntry> Entries, SessionReadSnapshot Tip)?> ReadInterleavedEntriesAsync(
+        AgentRunServices services,
         SessionAppendRequest attemptRequest,
         SessionProfileSnapshot sessionProfile,
         CancellationToken cancellationToken)
@@ -1461,7 +1456,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         SessionReadSnapshot? snapshot = null;
         while (true)
         {
-            var pageResult = await _sessionCoordinator.ReadAsync(
+            var pageResult = await services.Session.ReadAsync(
                 snapshot is null
                     ? new SessionReadRequest(attemptRequest.Context, attemptRequest.BranchId, cursor, _historyReadPageSize)
                     : new SessionReadRequest(attemptRequest.Context, attemptRequest.BranchId, cursor, _historyReadPageSize, snapshot),
@@ -1492,6 +1487,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
     private async Task<TurnOutcome> SettleInterruptedAsync(
         AgentRunRequest request,
+        AgentRunServices services,
         ModelDescriptor model,
         MessageCursor sourceCursor,
         SessionOperationContext turnSessionContext,
@@ -1554,6 +1550,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         // live reply, so a concurrently interleaved message never refuses it (allowInterleavedMessages: true).
         var appendAttempt = await AppendWithSettlementBoundAsync(
             request.RunId,
+            services,
             new SessionAppendRequest(
                 turnSessionContext,
                 request.BranchId,
@@ -1578,6 +1575,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// branch becomes causally valid again instead of rejecting every later run.
     /// </summary>
     /// <param name="request">The run performing the recovery.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
     /// <param name="sessionContext">The run-scoped session context that writes the settlement.</param>
     /// <param name="runCorrelation">The run's in-run correlation recorded as the entry's writer.</param>
     /// <param name="entries">
@@ -1604,6 +1602,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </remarks>
     private async ValueTask<(HistoryView History, AgentRunOutcome? Failure)> SettleDanglingToolCallsAsync(
         AgentRunRequest request,
+        AgentRunServices services,
         SessionOperationContext sessionContext,
         InRunOperationCorrelation runCorrelation,
         ImmutableArray<SessionEntry> entries,
@@ -1686,6 +1685,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             toolMessage);
 
         var appendAttempt = await AppendWithDiagnosticsAsync(
+            services,
             new SessionAppendRequest(
                 sessionContext,
                 request.BranchId,
@@ -1714,6 +1714,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// checkpoint's retained suffix and every entry after the checkpoint.
     /// </summary>
     /// <param name="runId">The run loading its history, for diagnostics.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
     /// <param name="sessionContext">The run-scoped session context authorizing the read.</param>
     /// <param name="sessionProfile">The run's immutable session profile.</param>
     /// <param name="branchId">The branch to load.</param>
@@ -1741,13 +1742,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </remarks>
     private async Task<LoadedHistory?> LoadHistoryAsync(
         RunId runId,
+        AgentRunServices services,
         SessionOperationContext sessionContext,
         SessionProfileSnapshot sessionProfile,
         BranchId branchId,
         CancellationToken cancellationToken)
     {
         Debug.Assert(sessionContext is not null, "A run-scoped session context is required to load history.");
-        var loadResult = await _sessionCoordinator.LoadAsync(sessionContext, sessionProfile, cancellationToken)
+        var loadResult = await services.Session.LoadAsync(sessionContext, sessionProfile, cancellationToken)
             .ConfigureAwait(false);
         if (loadResult is not SessionLoaded loaded)
         {
@@ -1768,7 +1770,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         while (true)
         {
-            var pageResult = await _sessionCoordinator.ReadAsync(
+            var pageResult = await services.Session.ReadAsync(
                 snapshot is null
                     ? new SessionReadRequest(sessionContext, branchId, cursor, _historyReadPageSize)
                     : new SessionReadRequest(sessionContext, branchId, cursor, _historyReadPageSize, snapshot),
@@ -1862,6 +1864,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// Captures fresh authorization for one run operation and verifies it against the run-start evidence.
     /// </summary>
     /// <param name="request">The run whose baseline evidence the capture must match.</param>
+    /// <param name="services">The compiled per-run collaborator bundle.</param>
     /// <param name="correlation">The operation (run or turn) the authorization is captured for.</param>
     /// <param name="cancellationToken">Cancels the capture.</param>
     /// <returns>
@@ -1872,6 +1875,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private async ValueTask<(SecurityAuthorizationContext? Authorization, AgentRunOutcome? Failure)>
         CaptureAuthorizationAsync(
             AgentRunRequest request,
+            AgentRunServices services,
             InRunOperationCorrelation correlation,
             CancellationToken cancellationToken)
     {
@@ -1880,7 +1884,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         var baseline = request.Authorization;
         var scope = new SecurityAuthorizationScope(request.AgentId, request.SessionId, correlation);
-        var result = await _securityProfileSelector.SelectAsync(
+        var result = await services.SecurityProfileSelector.SelectAsync(
             new SecurityAuthorizationCaptureRequest(
                 scope,
                 baseline.ProfileKey,

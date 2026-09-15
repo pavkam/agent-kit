@@ -18,6 +18,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     private readonly ISessionCoordinator _sessionCoordinator;
     private readonly ISecurityProfileSelector _securityProfileSelector;
     private readonly IAgentLoop _agentLoop;
+    private readonly AgentRunServices _runServices;
     private readonly IIdentifierGenerator<RunId> _runIds;
     private readonly IIdentifierGenerator<OperationId> _operationIds;
     private readonly IIdentifierGenerator<MessageId> _messageIds;
@@ -181,6 +182,15 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <param name="sessionCoordinator">Creates, loads, and appends to the underlying session.</param>
     /// <param name="securityProfileSelector">Captures authorization for session admission and each run.</param>
     /// <param name="agentLoop">Drives the multi-turn tool-calling run.</param>
+    /// <param name="contextAssembler">Assembles the provider-ready request for each turn the loop drives.</param>
+    /// <param name="toolInvoker">Resolves, authorizes, and invokes every tool call the loop requests.</param>
+    /// <param name="modelCatalog">Supplies the engine-wide versioned view of configured models.</param>
+    /// <param name="modelSelector">Chooses one configured model for the loop's run.</param>
+    /// <param name="llmModelResolver">Resolves the chosen model descriptor to its executable provider adapter.</param>
+    /// <param name="continuationPolicy">
+    /// Decides, at every committed-turn boundary, whether the loop's run continues, completes, or halts. Resolved
+    /// from the keyed registration named by <see cref="AgentLoopComponentDefaults.ContinuationPolicyKey"/>.
+    /// </param>
     /// <param name="runIds">Generates each turn's run identity.</param>
     /// <param name="operationIds">Generates each turn's operation identity.</param>
     /// <param name="messageIds">Generates each committed message's identity.</param>
@@ -199,6 +209,12 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         ISessionCoordinator sessionCoordinator,
         ISecurityProfileSelector securityProfileSelector,
         IAgentLoop agentLoop,
+        IContextAssembler contextAssembler,
+        IToolInvoker toolInvoker,
+        IModelCatalog modelCatalog,
+        IModelSelector modelSelector,
+        ILlmModelResolver llmModelResolver,
+        [FromKeyedServices(AgentLoopComponentDefaults.ContinuationPolicyKeyValue)] IRunContinuationPolicy continuationPolicy,
         IIdentifierGenerator<RunId> runIds,
         IIdentifierGenerator<OperationId> operationIds,
         IIdentifierGenerator<MessageId> messageIds,
@@ -210,6 +226,12 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
             sessionCoordinator,
             securityProfileSelector,
             agentLoop,
+            contextAssembler,
+            toolInvoker,
+            modelCatalog,
+            modelSelector,
+            llmModelResolver,
+            continuationPolicy,
             runIds,
             operationIds,
             messageIds,
@@ -225,6 +247,14 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <param name="sessionCoordinator">Creates, loads, and appends to the underlying session.</param>
     /// <param name="securityProfileSelector">Captures authorization for session admission and each run.</param>
     /// <param name="agentLoop">Drives the multi-turn tool-calling run.</param>
+    /// <param name="contextAssembler">Assembles the provider-ready request for each turn the loop drives.</param>
+    /// <param name="toolInvoker">Resolves, authorizes, and invokes every tool call the loop requests.</param>
+    /// <param name="modelCatalog">Supplies the engine-wide versioned view of configured models.</param>
+    /// <param name="modelSelector">Chooses one configured model for the loop's run.</param>
+    /// <param name="llmModelResolver">Resolves the chosen model descriptor to its executable provider adapter.</param>
+    /// <param name="continuationPolicy">
+    /// Decides, at every committed-turn boundary, whether the loop's run continues, completes, or halts.
+    /// </param>
     /// <param name="runIds">Generates each turn's run identity.</param>
     /// <param name="operationIds">Generates each turn's operation identity.</param>
     /// <param name="messageIds">Generates each committed message's identity.</param>
@@ -239,6 +269,12 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         ISessionCoordinator sessionCoordinator,
         ISecurityProfileSelector securityProfileSelector,
         IAgentLoop agentLoop,
+        IContextAssembler contextAssembler,
+        IToolInvoker toolInvoker,
+        IModelCatalog modelCatalog,
+        IModelSelector modelSelector,
+        ILlmModelResolver llmModelResolver,
+        IRunContinuationPolicy continuationPolicy,
         IIdentifierGenerator<RunId> runIds,
         IIdentifierGenerator<OperationId> operationIds,
         IIdentifierGenerator<MessageId> messageIds,
@@ -251,6 +287,12 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         ArgumentNullException.ThrowIfNull(sessionCoordinator);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
         ArgumentNullException.ThrowIfNull(agentLoop);
+        ArgumentNullException.ThrowIfNull(contextAssembler);
+        ArgumentNullException.ThrowIfNull(toolInvoker);
+        ArgumentNullException.ThrowIfNull(modelCatalog);
+        ArgumentNullException.ThrowIfNull(modelSelector);
+        ArgumentNullException.ThrowIfNull(llmModelResolver);
+        ArgumentNullException.ThrowIfNull(continuationPolicy);
         ArgumentNullException.ThrowIfNull(runIds);
         ArgumentNullException.ThrowIfNull(operationIds);
         ArgumentNullException.ThrowIfNull(messageIds);
@@ -283,6 +325,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         _sessionCoordinator = sessionCoordinator;
         _securityProfileSelector = securityProfileSelector;
         _agentLoop = agentLoop;
+        _runServices = new AgentRunServices(
+            sessionCoordinator, securityProfileSelector, contextAssembler, toolInvoker,
+            modelCatalog, modelSelector, llmModelResolver, continuationPolicy);
         _runIds = runIds;
         _operationIds = operationIds;
         _messageIds = messageIds;
@@ -507,7 +552,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                     _toolPresentationBindings),
         };
 
-        var loopResult = await _agentLoop.RunAsync(request, cancellationToken).ConfigureAwait(false);
+        var loopResult = await _agentLoop.RunAsync(request, _runServices, cancellationToken).ConfigureAwait(false);
         var events = ProjectEvents(loopResult);
         if (loopResult.Outcome is AgentRunCompleted)
         {

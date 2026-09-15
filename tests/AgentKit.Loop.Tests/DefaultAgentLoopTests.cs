@@ -5,79 +5,59 @@ namespace AgentKit.Loop.Tests;
 
 public sealed class DefaultAgentLoopTests
 {
+    private const string TestLoopKey = "test-loop";
+
     private readonly AgentId _agentId = new(Guid.NewGuid());
     private readonly SessionId _sessionId = new(Guid.NewGuid());
     private readonly BranchId _branchId = new(Guid.NewGuid());
+    private AgentRunServices _services = null!;
 
     [Fact]
-    public void Constructor_WhenSessionCoordinatorIsNull_ThrowsArgumentNullException()
+    public void Constructor_WhenOperationIdsIsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultAgentLoop(
             null!,
-            new FakeSecurityProfileSelector(),
-            new DefaultContextAssembler(),
-            new FakeToolInvoker(_ => TestFactory.SuccessResult()),
-            new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
-            FakeModelSelector.Selecting(TestFactory.Model()),
-            new FakeLlmModelResolver(new RespondingLlmModel(
-                new ModelAlias("chat"),
-                modelRequest => TestFactory.CompletedWithText(modelRequest.Context.ModelRequestId))),
-            new DefaultRunContinuationPolicy(TimeProvider.System),
-            IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
             IdGenerator(static v => new MessageId(v)),
             IdGenerator(static v => new SessionEntryId(v)),
             TimeProvider.System,
-            Options.Create(new AgentLoopOptions())));
+            new FakeOptionsMonitor<AgentLoopOptions>(new AgentLoopOptions()),
+            TestLoopKey));
 
-        exception.ParamName.ShouldBe("sessionCoordinator");
+        exception.ParamName.ShouldBe("operationIds");
     }
 
     [Fact]
-    public void Constructor_WhenModelSelectorIsNull_ThrowsArgumentNullException()
+    public void Constructor_WhenOptionsMonitorIsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultAgentLoop(
-            new FakeSessionCoordinator(_branchId),
-            new FakeSecurityProfileSelector(),
-            new DefaultContextAssembler(),
-            new FakeToolInvoker(_ => TestFactory.SuccessResult()),
-            new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
-            null!,
-            new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))),
-            new DefaultRunContinuationPolicy(TimeProvider.System),
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
             IdGenerator(static v => new MessageId(v)),
             IdGenerator(static v => new SessionEntryId(v)),
             TimeProvider.System,
-            Options.Create(new AgentLoopOptions())));
+            null!,
+            TestLoopKey));
 
-        exception.ParamName.ShouldBe("modelSelector");
+        exception.ParamName.ShouldBe("optionsMonitor");
     }
 
     [Fact]
-    public void Constructor_WhenContinuationPolicyIsNull_ThrowsArgumentNullException()
+    public void Constructor_WhenLoopKeyIsNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultAgentLoop(
-            new FakeSessionCoordinator(_branchId),
-            new FakeSecurityProfileSelector(),
-            new DefaultContextAssembler(),
-            new FakeToolInvoker(_ => TestFactory.SuccessResult()),
-            new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
-            FakeModelSelector.Selecting(TestFactory.Model()),
-            new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))),
-            null!,
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
             IdGenerator(static v => new MessageId(v)),
             IdGenerator(static v => new SessionEntryId(v)),
             TimeProvider.System,
-            Options.Create(new AgentLoopOptions())));
+            new FakeOptionsMonitor<AgentLoopOptions>(new AgentLoopOptions()),
+            null!));
 
-        exception.ParamName.ShouldBe("continuationPolicy");
+        exception.ParamName.ShouldBe("loopKey");
     }
 
     [Fact]
@@ -90,7 +70,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
 
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         var context = policy.Contexts.ShouldHaveSingleItem();
@@ -118,7 +98,7 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), continuationPolicy: policy);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         result.Outcome.ShouldBeSameAs(halt);
         result.NewMessages.ShouldHaveSingleItem().State.ShouldBe(MessageState.Complete);
@@ -140,7 +120,7 @@ public sealed class DefaultAgentLoopTests
             continuationPolicy: policy);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         result.Outcome.ShouldBeSameAs(halt);
         modelCalls.ShouldBe(1);
@@ -171,7 +151,7 @@ public sealed class DefaultAgentLoopTests
             continuationPolicy: policy);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         result.Outcome.ShouldBeOfType<AgentRunCompleted>().FinalMessage.ShouldBeSameAs(result.NewMessages[0]);
         modelCalls.ShouldBe(1);
@@ -199,7 +179,7 @@ public sealed class DefaultAgentLoopTests
             continuationPolicy: policy);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         modelCalls.ShouldBe(2);
@@ -218,7 +198,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1), TestContext.Current.CancellationToken);
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1), _services, TestContext.Current.CancellationToken);
 
         result.Outcome.ShouldBeOfType<AgentRunTurnLimitReached>().MaxTurns.ShouldBe(1);
         _ = result.NewMessages.ShouldHaveSingleItem();
@@ -237,7 +217,7 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), continuationPolicy: policy);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, cts.Token);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
         _ = result.NewMessages.ShouldHaveSingleItem();
@@ -261,23 +241,16 @@ public sealed class DefaultAgentLoopTests
         };
 
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new DefaultAgentLoop(
-            new FakeSessionCoordinator(_branchId),
-            new FakeSecurityProfileSelector(),
-            new DefaultContextAssembler(),
-            new FakeToolInvoker(_ => TestFactory.SuccessResult()),
-            new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
-            FakeModelSelector.Selecting(TestFactory.Model()),
-            new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))),
-            new DefaultRunContinuationPolicy(TimeProvider.System),
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
             IdGenerator(static v => new MessageId(v)),
             IdGenerator(static v => new SessionEntryId(v)),
             TimeProvider.System,
-            Options.Create(options)));
+            new FakeOptionsMonitor<AgentLoopOptions>(options),
+            TestLoopKey));
 
-        exception.ParamName.ShouldBe("options");
+        exception.ParamName.ShouldBe("optionsMonitor");
     }
 
     [Fact]
@@ -294,7 +267,7 @@ public sealed class DefaultAgentLoopTests
             return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
         };
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
         _ = coordinator.ReceivedAppends.ShouldHaveSingleItem();
@@ -314,7 +287,7 @@ public sealed class DefaultAgentLoopTests
             return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
         };
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
         coordinator.ReceivedAppends.Count.ShouldBe(3);
@@ -333,7 +306,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         coordinator.StallAppend = static request => request.IdempotencyKey.Value.EndsWith(":tools", StringComparison.Ordinal);
 
-        var run = loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var run = loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
         await coordinator.AppendStalled.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         run.IsCompleted.ShouldBeFalse();
         clock.Advance(TimeSpan.FromSeconds(29));
@@ -360,7 +333,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         coordinator.StallAppend = static _ => true;
 
-        var run = loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var run = loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
         await coordinator.AppendStalled.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         clock.Advance(TimeSpan.FromSeconds(5));
 
@@ -389,7 +362,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var run = loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer },
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer }, _services,
             TestContext.Current.CancellationToken);
         await observer.DeliveryStalled.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         run.IsCompleted.ShouldBeFalse();
@@ -413,7 +386,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1), dangling]);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
 
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         invoker.ReceivedRequests.ShouldBeEmpty();
@@ -452,12 +425,12 @@ public sealed class DefaultAgentLoopTests
         coordinator.ConditionalAppendOverride = static request =>
             request.IdempotencyKey.Value.EndsWith(":tools", StringComparison.Ordinal) ? new SessionAppendFailed("store fault") : null;
 
-        var first = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var first = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
         _ = first.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
         _ = first.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
         coordinator.ConditionalAppendOverride = null;
 
-        var second = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var second = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = second.Outcome.ShouldBeOfType<AgentRunCompleted>();
         _ = invoker.ReceivedRequests.ShouldHaveSingleItem();
@@ -479,8 +452,8 @@ public sealed class DefaultAgentLoopTests
             TestFactory.SeedAssistantToolCallEntry(_agentId, _sessionId, _branchId, 2, callId),
         ]);
 
-        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
-        var second = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+        var second = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = second.Outcome.ShouldBeOfType<AgentRunCompleted>();
         _ = second.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
@@ -503,7 +476,7 @@ public sealed class DefaultAgentLoopTests
         ]);
         coordinator.AppendOverride = static _ => new SessionAppendFailed("store fault");
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
         result.NewMessages.ShouldBeEmpty();
@@ -534,7 +507,7 @@ public sealed class DefaultAgentLoopTests
             return new SessionAppendFailed("transient store fault");
         };
 
-        var run = loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var run = loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
         // The retry backoff is measured on the fake clock; advance it in small steps until the run settles so the
         // test never depends on when the delay's timer is registered.
         for (var i = 0; i < 100 && !run.IsCompleted; i++)
@@ -567,7 +540,7 @@ public sealed class DefaultAgentLoopTests
         var later6 = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 6, "after checkpoint");
         coordinator.Seed([covered1, covered2, retained3, retained4, checkpoint, later6]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         var history = assembler.Requests.ShouldHaveSingleItem().History;
@@ -617,7 +590,7 @@ public sealed class DefaultAgentLoopTests
             later,
         ]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         var history = assembler.Requests.ShouldHaveSingleItem().History;
@@ -647,7 +620,7 @@ public sealed class DefaultAgentLoopTests
             later7,
         ]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         var history = assembler.Requests.ShouldHaveSingleItem().History;
@@ -682,7 +655,7 @@ public sealed class DefaultAgentLoopTests
             newest,
         ]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         var history = assembler.Requests.ShouldHaveSingleItem().History;
@@ -715,7 +688,7 @@ public sealed class DefaultAgentLoopTests
             fourth,
         ]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         var history = assembler.Requests.ShouldHaveSingleItem().History;
@@ -738,7 +711,7 @@ public sealed class DefaultAgentLoopTests
             TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 5),
         ]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         result.FinalVersion.ShouldBe(new SessionVersion(2));
@@ -766,7 +739,7 @@ public sealed class DefaultAgentLoopTests
             later,
         ]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         invoker.ReceivedRequests.ShouldBeEmpty();
@@ -795,7 +768,7 @@ public sealed class DefaultAgentLoopTests
             TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 4, coveredStart: 1, coveredEnd: 2, retainedSuffixStart: 3),
         ]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         result.NewMessages.Length.ShouldBe(2);
@@ -819,8 +792,8 @@ public sealed class DefaultAgentLoopTests
         var checkpoint = TestFactory.SeedCompactionEntry(_agentId, _sessionId, _branchId, 2, coveredStart: 1, coveredEnd: 1, retainedSuffixStart: 2);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1), checkpoint]);
 
-        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
-        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         assembler.Requests.Count.ShouldBe(2);
         var first = assembler.Requests[0].History[0].ShouldBeOfType<RuntimeMessage>();
@@ -856,7 +829,7 @@ public sealed class DefaultAgentLoopTests
         ]);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
 
-        _ = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 1091);
         entry.Level.ShouldBe(Microsoft.Extensions.Logging.LogLevel.Information);
@@ -880,7 +853,7 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(out _, out _, static _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())));
 
         var exception = await Should.ThrowAsync<ArgumentNullException>(
-            () => loop.RunAsync(null!, TestContext.Current.CancellationToken));
+            () => loop.RunAsync(null!, _services, TestContext.Current.CancellationToken));
 
         exception.ParamName.ShouldBe("request");
     }
@@ -892,7 +865,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.ReadOverride = static request => new SessionReadFailed("store unavailable");
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
         result.NewMessages.ShouldBeEmpty();
@@ -914,7 +887,7 @@ public sealed class DefaultAgentLoopTests
         }, securityProfileSelector: selector);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         result.Outcome.ShouldBeOfType<AgentRunAuthorizationUnavailable>().SafeReason.ShouldBe("authority offline");
         result.NewMessages.ShouldBeEmpty();
@@ -943,7 +916,7 @@ public sealed class DefaultAgentLoopTests
             securityProfileSelector: selector);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunAuthorizationUnavailable>();
         result.NewMessages.Length.ShouldBe(2);
@@ -975,7 +948,7 @@ public sealed class DefaultAgentLoopTests
             out var coordinator, out _, static _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())), securityProfileSelector: selector);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunInvalidState>();
         result.NewMessages.ShouldBeEmpty();
@@ -1004,7 +977,7 @@ public sealed class DefaultAgentLoopTests
                 modelRequest => TestFactory.CompletedWithText(modelRequest.Context.ModelRequestId))),
             assembler);
 
-        _ = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         selector.LastRequest.ShouldNotBeNull().Policy.ShouldBe(request.Agent!.Models);
         var evidence = assembler.Requests.ShouldHaveSingleItem().Evidence.ShouldNotBeNull();
@@ -1030,7 +1003,7 @@ public sealed class DefaultAgentLoopTests
             new FakeLlmModelResolver(null));
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId),
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services,
             TestContext.Current.CancellationToken);
 
         var failed = result.Outcome.ShouldBeOfType<AgentRunModelSelectionFailed>();
@@ -1054,7 +1027,7 @@ public sealed class DefaultAgentLoopTests
             new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))));
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId),
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services,
             TestContext.Current.CancellationToken);
 
         var failed = result.Outcome.ShouldBeOfType<AgentRunModelSelectionFailed>();
@@ -1074,7 +1047,7 @@ public sealed class DefaultAgentLoopTests
             new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))));
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId),
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services,
             TestContext.Current.CancellationToken);
 
         result.Outcome.ShouldBeOfType<AgentRunModelSelectionFailed>()
@@ -1106,7 +1079,7 @@ public sealed class DefaultAgentLoopTests
             new FakeLlmModelResolver(adapter));
 
         _ = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId),
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services,
             TestContext.Current.CancellationToken);
 
         callCount.ShouldBe(2);
@@ -1138,7 +1111,7 @@ public sealed class DefaultAgentLoopTests
             assembler);
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         var selectionRequestId = selector.LastRequest.ShouldNotBeNull().ModelRequestId;
@@ -1156,7 +1129,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedIncompleteMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         var failed = result.Outcome.ShouldBeOfType<AgentRunContextPreparationFailed>();
         failed.Failure.Kind.ShouldBe(ContextPreparationFailureKind.EmptyHistory);
@@ -1171,7 +1144,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         var completed = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         completed.FinalMessage.State.ShouldBe(MessageState.Complete);
@@ -1206,7 +1179,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
 
-        _ = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         var run = stopped.Single(activity => activity.OperationName == AgentKitActivityNames.InvokeAgent);
         var turn = stopped.Single(activity => activity.OperationName == AgentKitActivityNames.AgentTurn);
@@ -1246,7 +1219,7 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         Activity.Current.ShouldBeSameAs(parent);
@@ -1273,7 +1246,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         toolInvoker.ReceivedRequests.Count.ShouldBe(1);
@@ -1303,7 +1276,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         var turnLimit = result.Outcome.ShouldBeOfType<AgentRunTurnLimitReached>();
         turnLimit.MaxTurns.ShouldBe(1);
@@ -1333,7 +1306,7 @@ public sealed class DefaultAgentLoopTests
         var tool = new LlmToolDefinition(new ToolId("search"), "search", null, default);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 2) with { Tools = [tool] };
 
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         _ = invoker.ReceivedRequests.ShouldHaveSingleItem();
@@ -1360,7 +1333,7 @@ public sealed class DefaultAgentLoopTests
         var tool = new LlmToolDefinition(new ToolId("search"), "search", null, default);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 2) with { Tools = [tool] };
 
-        _ = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        _ = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         assembler.Requests.Count.ShouldBe(2);
         assembler.Requests[1].Tools.ShouldBe([tool]);
@@ -1378,7 +1351,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1), TestContext.Current.CancellationToken);
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1), _services, TestContext.Current.CancellationToken);
 
         assembler.Requests.ShouldHaveSingleItem().ToolChoice.ShouldBe(LlmToolChoice.None);
         _ = result.Outcome.ShouldBeOfType<AgentRunTurnLimitReached>();
@@ -1397,7 +1370,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         var failedOutcome = result.Outcome.ShouldBeOfType<AgentRunFailed>();
         failedOutcome.Failure.ShouldBe(failure);
@@ -1416,7 +1389,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         var failedOutcome = result.Outcome.ShouldBeOfType<AgentRunFailed>();
         failedOutcome.Failure.ShouldBe(failure);
@@ -1434,7 +1407,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         var cancelledOutcome = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
         cancelledOutcome.SafeMessage.ShouldBe(cancellation.SafeMessage);
@@ -1452,7 +1425,7 @@ public sealed class DefaultAgentLoopTests
             new SessionAppendConflict(request.ExpectedVersion, new SessionVersion(request.ExpectedVersion.Value + 5));
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
     }
@@ -1481,7 +1454,7 @@ public sealed class DefaultAgentLoopTests
         };
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         coordinator.ReceivedAppends.Count.ShouldBe(2);
@@ -1512,7 +1485,7 @@ public sealed class DefaultAgentLoopTests
         };
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
         result.NewMessages.ShouldBeEmpty();
@@ -1552,7 +1525,7 @@ public sealed class DefaultAgentLoopTests
         };
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         // The run's own committed messages exclude the concurrent writer's message.
@@ -1582,7 +1555,7 @@ public sealed class DefaultAgentLoopTests
             request.FromSequenceExclusive.Value == 0 ? null : new SessionReadFailed("store unavailable");
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
         coordinator.ReceivedAppends.Count.ShouldBe(1);
@@ -1606,7 +1579,7 @@ public sealed class DefaultAgentLoopTests
         };
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
         coordinator.Entries.Count.ShouldBe(2);
@@ -1641,7 +1614,7 @@ public sealed class DefaultAgentLoopTests
         };
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         coordinator.ReceivedAppends.Count.ShouldBe(4);
@@ -1671,7 +1644,7 @@ public sealed class DefaultAgentLoopTests
         }, toolResult: invocation);
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         nextRequestOutcome.ShouldBe(outcome);
         result.NewMessages.OfType<ToolMessage>().Single().Parts.OfType<ToolResultPart>().Single().Outcome.ShouldBe(outcome);
@@ -1694,7 +1667,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer };
 
-        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(request, _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         invoker.ReceivedRequests.ShouldHaveSingleItem().Context.ToolCallId.ShouldBe(callId);
@@ -1721,7 +1694,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer },
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer }, _services,
             TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
@@ -1753,7 +1726,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer },
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer }, _services,
             cts.Token);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
@@ -1800,7 +1773,7 @@ public sealed class DefaultAgentLoopTests
         });
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, cts.Token);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
         result.NewMessages.Length.ShouldBe(2);
@@ -1844,7 +1817,7 @@ public sealed class DefaultAgentLoopTests
         });
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, cts.Token);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
         result.NewMessages.Length.ShouldBe(2);
@@ -1878,11 +1851,11 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var first = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1), TestContext.Current.CancellationToken);
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1), _services, TestContext.Current.CancellationToken);
         _ = first.Outcome.ShouldBeOfType<AgentRunTurnLimitReached>();
 
         var second = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 4), TestContext.Current.CancellationToken);
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 4), _services, TestContext.Current.CancellationToken);
 
         _ = second.Outcome.ShouldBeOfType<AgentRunCompleted>();
     }
@@ -1915,7 +1888,7 @@ public sealed class DefaultAgentLoopTests
         };
 
         var result = await loop.RunAsync(
-            TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
         coordinator.Entries[^1].Sequence.ShouldBe(new SessionSequence(4));
@@ -1937,7 +1910,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.HonorCancellation = true;
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, cts.Token);
 
         // Once partial output is committed the run has a durable effect, so cancellation settles as a typed
         // outcome carrying that message rather than throwing and discarding it.
@@ -1963,7 +1936,7 @@ public sealed class DefaultAgentLoopTests
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         _ = await Should.ThrowAsync<OperationCanceledException>(
-            () => loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token));
+            () => loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, cts.Token));
 
         coordinator.Entries.Count.ShouldBe(1);
     }
@@ -1987,7 +1960,7 @@ public sealed class DefaultAgentLoopTests
         });
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, cts.Token);
 
         _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
         result.NewMessages.Length.ShouldBe(2);
@@ -2013,7 +1986,7 @@ public sealed class DefaultAgentLoopTests
             out var coordinator, out var invoker, _ => ++calls == 1 ? response : TestFactory.CompletedWithText(requestId));
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         invoker.ReceivedRequests.Count(request => request.Context.ToolCallId == callId).ShouldBeLessThanOrEqualTo(1);
     }
@@ -2027,7 +2000,7 @@ public sealed class DefaultAgentLoopTests
             TestFactory.Response(requestId, [textPart], NormalizedStopReason.ToolUse)));
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         var failed = result.Outcome.ShouldBeOfType<AgentRunFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
@@ -2048,7 +2021,7 @@ public sealed class DefaultAgentLoopTests
             requestId, [new TextPart("truncated", TextSemantics.Plain, ExtensionData.Empty)], NormalizedStopReason.Length)));
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         result.Outcome.ShouldNotBeOfType<AgentRunCompleted>();
     }
@@ -2068,7 +2041,7 @@ public sealed class DefaultAgentLoopTests
             requestId, [new TextPart("partial", TextSemantics.Plain, ExtensionData.Empty)], stopReason)));
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         result.Outcome.ShouldBeOfType(expectedOutcome);
         var interrupted = result.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
@@ -2085,7 +2058,7 @@ public sealed class DefaultAgentLoopTests
             requestId, [new TextPart("truncated", TextSemantics.Plain, ExtensionData.Empty)], NormalizedStopReason.Length)));
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         var limit = result.Outcome.ShouldBeOfType<AgentRunOutputLengthLimitReached>();
         limit.ModelRequestId.ShouldBe(requestId);
@@ -2102,7 +2075,7 @@ public sealed class DefaultAgentLoopTests
         var loop = CreateLoop(out var coordinator, out _, _ => new ModelAttemptCompleted(TestFactory.Response(requestId, [], stopReason)));
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
 
         var failed = result.Outcome.ShouldBeOfType<AgentRunFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
@@ -2126,7 +2099,7 @@ public sealed class DefaultAgentLoopTests
 
         try
         {
-            _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+            _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
         }
         catch (InvalidOperationException)
         {
@@ -2161,7 +2134,7 @@ public sealed class DefaultAgentLoopTests
         var adapter = new RespondingLlmModel(new ModelAlias("chat"), respond, modelEvent);
         var descriptor = TestFactory.Model();
 
-        return new DefaultAgentLoop(
+        _services = new AgentRunServices(
             coordinator,
             securityProfileSelector ?? new FakeSecurityProfileSelector(),
             contextAssembler ?? new DefaultContextAssembler(),
@@ -2169,24 +2142,28 @@ public sealed class DefaultAgentLoopTests
             new FakeModelCatalog(TestFactory.Catalog(descriptor)),
             FakeModelSelector.Selecting(descriptor),
             new FakeLlmModelResolver(adapter),
-            continuationPolicy ?? new DefaultRunContinuationPolicy(TimeProvider.System),
+            continuationPolicy ?? new DefaultRunContinuationPolicy(TimeProvider.System));
+
+        return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
             IdGenerator(static v => new MessageId(v)),
             IdGenerator(static v => new SessionEntryId(v)),
             timeProvider ?? TimeProvider.System,
-            Options.Create(options ?? new AgentLoopOptions()),
+            new FakeOptionsMonitor<AgentLoopOptions>(options ?? new AgentLoopOptions()),
+            TestLoopKey,
             logger);
     }
 
-    private static DefaultAgentLoop CreateLoopWith(
+    private DefaultAgentLoop CreateLoopWith(
         FakeSessionCoordinator coordinator,
         IModelCatalog catalog,
         IModelSelector selector,
         ILlmModelResolver resolver,
-        IContextAssembler? contextAssembler = null) =>
-        new(
+        IContextAssembler? contextAssembler = null)
+    {
+        _services = new AgentRunServices(
             coordinator,
             new FakeSecurityProfileSelector(),
             contextAssembler ?? new DefaultContextAssembler(),
@@ -2194,14 +2171,18 @@ public sealed class DefaultAgentLoopTests
             catalog,
             selector,
             resolver,
-            new DefaultRunContinuationPolicy(TimeProvider.System),
+            new DefaultRunContinuationPolicy(TimeProvider.System));
+
+        return new DefaultAgentLoop(
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
             IdGenerator(static v => new MessageId(v)),
             IdGenerator(static v => new SessionEntryId(v)),
             TimeProvider.System,
-            Options.Create(new AgentLoopOptions()));
+            new FakeOptionsMonitor<AgentLoopOptions>(new AgentLoopOptions()),
+            TestLoopKey);
+    }
 
     private static GuidIdentifierGenerator<T> IdGenerator<T>(Func<Guid, T> factory)
         where T : struct =>

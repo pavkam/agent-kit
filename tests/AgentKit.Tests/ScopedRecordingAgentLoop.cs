@@ -18,9 +18,13 @@ internal sealed class ScopedRecordingAgentLoop: IAgentLoop
     }
 
     /// <inheritdoc/>
-    public Task<AgentLoopResult> RunAsync(AgentRunRequest request, CancellationToken cancellationToken = default)
+    public Task<AgentLoopResult> RunAsync(
+        AgentRunRequest request,
+        AgentRunServices services,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(services);
         cancellationToken.ThrowIfCancellationRequested();
         _effects.Requests.Add(request);
         return _effects.LoopException is { } exception

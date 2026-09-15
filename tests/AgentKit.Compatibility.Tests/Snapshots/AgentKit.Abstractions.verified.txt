@@ -118,6 +118,7 @@ namespace AgentKit
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.AgentId Id { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> Instructions { get; init; }
+        public AgentKit.ComponentKey<AgentKit.IAgentLoop>? LoopKey { get; init; }
         public AgentKit.ModelRequirements ModelRequirements { get; init; }
         public AgentKit.ModelSelectionPolicy Models { get; init; }
         public AgentKit.AgentDefinitionRevision Revision { get; init; }
@@ -260,6 +261,13 @@ namespace AgentKit
         public AgentKit.ExtensionData Extensions { get; }
         public AgentKit.InputId Id { get; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> Parts { get; }
+    }
+    public static class AgentLoopComponentDefaults
+    {
+        public const string ContinuationPolicyKeyValue = "agentkit-default-continuation";
+        public const string LoopKeyValue = "agentkit-default-loop";
+        public static AgentKit.ComponentKey<AgentKit.IRunContinuationPolicy> ContinuationPolicyKey { get; }
+        public static AgentKit.ComponentKey<AgentKit.IAgentLoop> LoopKey { get; }
     }
     public sealed class AgentLoopResult : System.IEquatable<AgentKit.AgentLoopResult>
     {
@@ -449,6 +457,18 @@ namespace AgentKit
     public abstract class AgentRunResult<TOutput> : System.IEquatable<AgentKit.AgentRunResult<TOutput>>
     {
         protected AgentRunResult(AgentKit.AgentRunResult<TOutput> original) { }
+    }
+    public sealed class AgentRunServices
+    {
+        public AgentRunServices(AgentKit.ISessionCoordinator session, AgentKit.ISecurityProfileSelector securityProfileSelector, AgentKit.IContextAssembler context, AgentKit.IToolInvoker tools, AgentKit.IModelCatalog models, AgentKit.IModelSelector modelSelector, AgentKit.ILlmModelResolver modelResolver, AgentKit.IRunContinuationPolicy continuationPolicy) { }
+        public AgentKit.IContextAssembler Context { get; }
+        public AgentKit.IRunContinuationPolicy ContinuationPolicy { get; }
+        public AgentKit.ILlmModelResolver ModelResolver { get; }
+        public AgentKit.IModelSelector ModelSelector { get; }
+        public AgentKit.IModelCatalog Models { get; }
+        public AgentKit.ISecurityProfileSelector SecurityProfileSelector { get; }
+        public AgentKit.ISessionCoordinator Session { get; }
+        public AgentKit.IToolInvoker Tools { get; }
     }
     public sealed class AgentRunSessionOperationFailed : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunSessionOperationFailed>
     {
@@ -3615,7 +3635,7 @@ namespace AgentKit
     }
     public interface IAgentLoop
     {
-        System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.AgentRunRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.AgentLoopResult> RunAsync(AgentKit.AgentRunRequest request, AgentKit.AgentRunServices services, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IAgentRunObserver
     {

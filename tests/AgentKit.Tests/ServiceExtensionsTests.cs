@@ -47,7 +47,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddSingleton<TimeProvider>(timeProvider);
         _ = services.AddAgentKit();
-        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         var definition = CompositionTestData.Definition();
         _ = services.AddAgent(definition);
         CompositionTestData.AddRunProfiles(services, definition);
@@ -61,7 +61,7 @@ public sealed class ServiceExtensionsTests
         var timeProvider = new TrackingTimeProvider();
         var services = new ServiceCollection();
         _ = services.AddAgentKit();
-        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         var definition = CompositionTestData.Definition();
         _ = services.AddAgent(definition);
         CompositionTestData.AddRunProfiles(services, definition);
@@ -96,7 +96,7 @@ public sealed class ServiceExtensionsTests
         var services = new ServiceCollection();
         _ = services.AddSingleton<TimeProvider>(_ => timeProvider = new TrackingTimeProvider());
         _ = services.AddAgentKit();
-        _ = services.AddSingleton<IAgentLoop>(new RecordingAgentLoop());
+        _ = services.AddKeyedSingleton<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue, new RecordingAgentLoop());
         var definition = CompositionTestData.Definition();
         _ = services.AddAgent(definition);
         CompositionTestData.AddRunProfiles(services, definition);
