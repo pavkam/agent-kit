@@ -30,8 +30,9 @@ compatible wire format does not imply support for every feature.
   values.
 
 Direct project references:
-[AgentKit.Abstractions](../AgentKit.Abstractions/README.md). Other related
-projects above are composition collaborators, not necessarily dependencies.
+[AgentKit.Abstractions](../AgentKit.Abstractions/README.md),
+[AgentKit.Providers](../AgentKit.Providers/README.md). Other related projects
+above are composition collaborators, not necessarily dependencies.
 
 ## Tests and reference
 

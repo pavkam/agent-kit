@@ -5,6 +5,7 @@ namespace AgentKit.Providers.AwsBedrock.Tests;
 
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 
 using AgentKit.Providers.AwsBedrock.Tests.Fakes;
 
@@ -117,6 +118,56 @@ public sealed class AwsBedrockLlmModelTests
         var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenThrottledWithHttpDateRetryAfter_ComputesDeltaFromCurrentTime()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(
+            (HttpStatusCode) 429,
+            "responses/error_throttling.json",
+            configureHeaders: response =>
+            {
+                response.Headers.Add("x-amzn-errortype", "ThrottlingException");
+                response.Headers.RetryAfter = new RetryConditionHeaderValue(Now.AddSeconds(45));
+            });
+        var options = new AwsBedrockProviderOptions
+        {
+            Region = "us-east-1",
+            PreferStreaming = false
+        };
+        var model = CreateModel(handler, CreateCredentials(), options: options);
+        var request = CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+        failed.Failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(45));
+    }
+
+    /// <summary>Verifies the Bedrock 424 model-error override sits on top of the shared HTTP status table when no error-type header is present.</summary>
+    [Theory]
+    [InlineData(408, ProviderFailureKind.Timeout)]
+    [InlineData(424, ProviderFailureKind.Unavailable)]
+    [InlineData(504, ProviderFailureKind.Timeout)]
+    public async Task ExecuteAsync_WhenErrorStatusHasNoErrorTypeHeader_UsesSharedTableWithBedrockOverrides(int statusCode, ProviderFailureKind expected)
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage((HttpStatusCode) statusCode) { Content = new StringContent("not-json", Encoding.UTF8, "text/plain") });
+        var options = new AwsBedrockProviderOptions
+        {
+            Region = "us-east-1",
+            PreferStreaming = false
+        };
+        var model = CreateModel(handler, CreateCredentials(), options: options);
+        var request = CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1));
+
+        var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(expected);
+        failed.Failure.StatusCode.ShouldBe(statusCode);
     }
 
     [Fact]

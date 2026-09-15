@@ -6,6 +6,7 @@ namespace AgentKit.Providers.GoogleVertexAI;
 using System.Net.Http;
 
 using AgentKit.Providers.GoogleVertexAI.Wire;
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// The Google Vertex AI embedding <see cref="IEmbeddingModel"/>, performing
@@ -237,7 +238,7 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
 
         var kind = status is not null
             ? GoogleVertexAIErrorMapping.MapStatus(status)
-            : GoogleVertexAIErrorMapping.MapStatusCode(response.StatusCode);
+            : HttpStatusFailureKindMapper.Map(response.StatusCode);
 
         return new ProviderFailure(
             kind,
@@ -245,7 +246,7 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
             requestId: null,
             (int) response.StatusCode,
             status,
-            response.Headers.RetryAfter?.Delta,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause: null,
             ExtensionData.Empty);

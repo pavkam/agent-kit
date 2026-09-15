@@ -6,6 +6,7 @@ namespace AgentKit.Providers.AzureOpenAI;
 using System.Net.Http;
 
 using AgentKit.Providers.AzureOpenAI.Wire;
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// The Azure OpenAI conversational <see cref="ILlmModel"/>, performing
@@ -36,6 +37,9 @@ using AgentKit.Providers.AzureOpenAI.Wire;
 /// </remarks>
 public sealed class AzureOpenAILlmModel: ILlmModel
 {
+    /// <summary>The response header Azure OpenAI uses to return its request identifier.</summary>
+    private const string _requestIdHeaderName = "x-request-id";
+
     private readonly ModelDescriptor _descriptor;
     private readonly OpenAICompatibilityProfile _profile;
     private readonly IOpenAIRequestTranslator _translator;
@@ -237,7 +241,7 @@ public sealed class AzureOpenAILlmModel: ILlmModel
                 _descriptor.ApiFamily,
                 _descriptor.ModelId,
                 _descriptor.DeploymentId,
-                TryReadProviderRequestId(response));
+                ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName));
 
             try
             {
@@ -307,19 +311,14 @@ public sealed class AzureOpenAILlmModel: ILlmModel
         }
 
         return new ProviderFailure(
-            AzureOpenAIErrorMapping.MapStatusCode(response.StatusCode),
+            HttpStatusFailureKindMapper.Map(response.StatusCode),
             _descriptor.ProviderId,
-            TryReadProviderRequestId(response),
+            ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName),
             (int) response.StatusCode,
             providerCode,
-            response.Headers.RetryAfter?.Delta,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause: null,
             ExtensionData.Empty);
     }
-
-    private static ProviderRequestId? TryReadProviderRequestId(HttpResponseMessage response) =>
-        response.Headers.TryGetValues("x-request-id", out var values) && values.FirstOrDefault() is { Length: > 0 } value
-            ? new ProviderRequestId(value)
-            : null;
 }

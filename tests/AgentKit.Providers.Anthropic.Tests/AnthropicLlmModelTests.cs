@@ -137,6 +137,29 @@ public sealed class AnthropicLlmModelTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenThrottledWithHttpDateRetryAfter_ComputesDeltaFromCurrentTime()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(
+            HttpStatusCode.TooManyRequests,
+            "responses/error_429.json",
+            configureHeaders: response => response.Headers.RetryAfter = new RetryConditionHeaderValue(Now.AddSeconds(45)));
+        var options = new AnthropicProviderOptions
+        {
+            BaseAddress = new Uri("https://api.anthropic.test/"),
+            PreferStreaming = false
+        };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-ant-test")), options: options);
+        var request = CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+        failed.Failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(45));
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenOverloaded529_ReturnsUnavailableFailure()
     {
         var handler = StubHttpMessageHandler.FromFixture((HttpStatusCode) 529, "responses/error_529.json");
@@ -156,10 +179,12 @@ public sealed class AnthropicLlmModelTests
 
     /// <summary>Verifies non-success status families always produce a typed failure without following redirects.</summary>
     [Theory]
-    [InlineData(302, ProviderFailureKind.InvalidRequest)]
+    [InlineData(302, ProviderFailureKind.ProtocolViolation)]
     [InlineData(408, ProviderFailureKind.Timeout)]
     [InlineData(409, ProviderFailureKind.InvalidRequest)]
+    [InlineData(413, ProviderFailureKind.InvalidRequest)]
     [InlineData(503, ProviderFailureKind.Unavailable)]
+    [InlineData(504, ProviderFailureKind.Timeout)]
     [InlineData(599, ProviderFailureKind.Unavailable)]
     [InlineData(600, ProviderFailureKind.Unknown)]
     public async Task ExecuteAsync_WhenErrorStatusHasNoUsableBody_UsesHttpFallback(int statusCode, ProviderFailureKind expected)

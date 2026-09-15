@@ -3,13 +3,16 @@
 
 namespace AgentKit.Providers.GoogleVertexAI;
 
-using System.Net;
-
 /// <summary>
-/// Maps Google's canonical <c>google.rpc.Status</c> status vocabulary, or
-/// failing that an HTTP status code, onto the normalized
-/// <see cref="ProviderFailureKind"/> taxonomy.
+/// Maps Google's canonical <c>google.rpc.Status</c> status vocabulary onto
+/// the normalized <see cref="ProviderFailureKind"/> taxonomy.
 /// </summary>
+/// <remarks>
+/// When no canonical status string is available the adapters fall back to
+/// the shared HTTP status table in
+/// <see cref="Http.HttpStatusFailureKindMapper"/>; Vertex AI has
+/// no provider-specific HTTP status semantics beyond that table.
+/// </remarks>
 internal static class GoogleVertexAIErrorMapping
 {
     /// <summary>Maps a Google canonical status string onto a normalized failure kind.</summary>
@@ -26,21 +29,6 @@ internal static class GoogleVertexAIErrorMapping
             "DEADLINE_EXCEEDED" => ProviderFailureKind.Timeout,
             "UNAVAILABLE" or "INTERNAL" or "ABORTED" => ProviderFailureKind.Unavailable,
             "CANCELLED" => ProviderFailureKind.Cancellation,
-            _ => ProviderFailureKind.Unknown,
-        };
-
-    /// <summary>Maps an HTTP status code onto a normalized failure kind, used when no canonical status string is available.</summary>
-    /// <param name="statusCode">The HTTP status code the provider returned.</param>
-    /// <returns>The normalized failure kind.</returns>
-    public static ProviderFailureKind MapStatusCode(HttpStatusCode statusCode) =>
-        (int) statusCode switch
-        {
-            401 => ProviderFailureKind.Authentication,
-            403 => ProviderFailureKind.Authorization,
-            429 => ProviderFailureKind.Throttling,
-            400 or 404 => ProviderFailureKind.InvalidRequest,
-            >= 500 => ProviderFailureKind.Unavailable,
-            >= 400 and < 500 => ProviderFailureKind.InvalidRequest,
             _ => ProviderFailureKind.Unknown,
         };
 }

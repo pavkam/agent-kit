@@ -4,10 +4,10 @@
 namespace AgentKit.Providers.Anthropic;
 
 using System.Diagnostics;
-using System.Net;
 using System.Net.Http;
 
 using AgentKit.Providers.Anthropic.Wire;
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// The Anthropic Claude conversational <see cref="ILlmModel"/>, performing
@@ -28,6 +28,9 @@ using AgentKit.Providers.Anthropic.Wire;
 /// </remarks>
 public sealed class AnthropicLlmModel: ILlmModel
 {
+    /// <summary>The response header Anthropic uses to return its request identifier.</summary>
+    private const string _requestIdHeaderName = "request-id";
+
     private readonly ModelDescriptor _descriptor;
     private readonly AnthropicProviderOptions _options;
     private readonly IAnthropicMessageTranslator _translator;
@@ -233,7 +236,7 @@ public sealed class AnthropicLlmModel: ILlmModel
                 _descriptor.ApiFamily,
                 _descriptor.ModelId,
                 deploymentId: null,
-                TryReadProviderRequestId(response));
+                ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName));
 
             try
             {
@@ -302,34 +305,19 @@ public sealed class AnthropicLlmModel: ILlmModel
         }
 
         var mappedBodyKind = AnthropicErrorMapping.MapErrorType(errorType);
-        var kind = mappedBodyKind == ProviderFailureKind.Unknown ? MapStatusCode(response.StatusCode) : mappedBodyKind;
+        var kind = mappedBodyKind == ProviderFailureKind.Unknown ? HttpStatusFailureKindMapper.Map(response.StatusCode) : mappedBodyKind;
 
         return new ProviderFailure(
             kind,
             _descriptor.ProviderId,
-            TryReadProviderRequestId(response),
+            ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName),
             (int) response.StatusCode,
             errorType,
-            response.Headers.RetryAfter?.Delta,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             $"The Anthropic request failed with HTTP status {(int) response.StatusCode}.",
             diagnosticCause,
             ExtensionData.Empty);
     }
-
-    private static ProviderFailureKind MapStatusCode(HttpStatusCode statusCode) =>
-        (int) statusCode switch
-        {
-            401 => ProviderFailureKind.Authentication,
-            403 => ProviderFailureKind.Authorization,
-            429 => ProviderFailureKind.Throttling,
-            408 => ProviderFailureKind.Timeout,
-            400 or 404 or 413 => ProviderFailureKind.InvalidRequest,
-            529 => ProviderFailureKind.Unavailable,
-            >= 500 and <= 599 => ProviderFailureKind.Unavailable,
-            >= 300 and <= 499 => ProviderFailureKind.InvalidRequest,
-            >= 100 and <= 299 => ProviderFailureKind.ProtocolViolation,
-            _ => ProviderFailureKind.Unknown,
-        };
 
     /// <summary>Builds an interrupted error-body failure while preserving response evidence already received.</summary>
     /// <param name="response">The response whose headers were received before interruption.</param>
@@ -346,17 +334,12 @@ public sealed class AnthropicLlmModel: ILlmModel
         return new ProviderFailure(
             kind,
             _descriptor.ProviderId,
-            TryReadProviderRequestId(response),
+            ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName),
             (int) response.StatusCode,
             providerCode: null,
-            response.Headers.RetryAfter?.Delta,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             safeMessage,
             diagnosticCause,
             ExtensionData.Empty);
     }
-
-    private static ProviderRequestId? TryReadProviderRequestId(HttpResponseMessage response) =>
-        response.Headers.TryGetValues("request-id", out var values) && values.FirstOrDefault() is { Length: > 0 } value
-            ? new ProviderRequestId(value)
-            : null;
 }

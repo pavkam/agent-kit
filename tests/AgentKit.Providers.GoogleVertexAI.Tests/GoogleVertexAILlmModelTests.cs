@@ -4,6 +4,9 @@
 namespace AgentKit.Providers.GoogleVertexAI.Tests;
 
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
 
 using AgentKit.Providers.GoogleVertexAI.Tests.Fakes;
 
@@ -108,6 +111,46 @@ public sealed class GoogleVertexAILlmModelTests
         var result = await model.ExecuteAsync(CreateRequest(descriptor), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenThrottledWithHttpDateRetryAfter_ComputesDeltaFromCurrentTime()
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent(File.ReadAllText(TestResources.GetPath("responses/error_429.json")), Encoding.UTF8, "application/json"),
+            };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(Now.AddSeconds(45));
+            return response;
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+        failed.Failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(45));
+    }
+
+    /// <summary>Verifies Vertex AI falls back to the shared HTTP status table when the body carries no canonical status.</summary>
+    [Theory]
+    [InlineData(408, ProviderFailureKind.Timeout)]
+    [InlineData(409, ProviderFailureKind.InvalidRequest)]
+    [InlineData(504, ProviderFailureKind.Timeout)]
+    public async Task ExecuteAsync_WhenErrorStatusHasNoUsableBody_UsesSharedHttpStatusTable(int statusCode, ProviderFailureKind expected)
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage((HttpStatusCode) statusCode) { Content = new StringContent("not-json", Encoding.UTF8, "text/plain") });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(expected);
+        failed.Failure.StatusCode.ShouldBe(statusCode);
     }
 
     [Fact]

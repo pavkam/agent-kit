@@ -15,6 +15,9 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 - [DefaultModelCapabilityValidatorTests](DefaultModelCapabilityValidatorTests.cs)
 - [DefaultModelCatalogTests](DefaultModelCatalogTests.cs)
 - [DefaultModelSelectorTests](DefaultModelSelectorTests.cs)
+- [HttpStatusFailureKindMapperTests](Http/HttpStatusFailureKindMapperTests.cs)
+- [RetryAfterResolverTests](Http/RetryAfterResolverTests.cs)
+- [ProviderRequestIdReaderTests](Http/ProviderRequestIdReaderTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

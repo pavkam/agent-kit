@@ -3,10 +3,10 @@
 
 namespace AgentKit.Providers.OpenAICompatible;
 
-using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 
+using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Wire;
 
 /// <summary>
@@ -33,6 +33,9 @@ using AgentKit.Providers.OpenAICompatible.Wire;
 /// </remarks>
 public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
 {
+    /// <summary>The response header OpenAI-compatible endpoints use to return their request identifier.</summary>
+    private const string _requestIdHeaderName = "x-request-id";
+
     private readonly EmbeddingModelDescriptor _descriptor;
     private readonly OpenAICompatibilityProfile _profile;
     private readonly IOpenAIEmbeddingRequestTranslator _translator;
@@ -209,7 +212,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
                 _descriptor.ApiFamily,
                 _descriptor.ModelId,
                 _descriptor.DeploymentId,
-                TryReadProviderRequestId(response));
+                ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName));
 
             try
             {
@@ -272,43 +275,15 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
             // The error body was not valid JSON; fall back to a generic message below.
         }
 
-        var kind = MapStatusCode(response.StatusCode);
-        var retryAfter = response.Headers.RetryAfter?.Delta
-            ?? (response.Headers.RetryAfter?.Date is { } retryAfterDate
-                ? retryAfterDate - _timeProvider.GetUtcNow()
-                : null);
-
         return new ProviderFailure(
-            kind,
+            HttpStatusFailureKindMapper.Map(response.StatusCode),
             _descriptor.ProviderId,
-            TryReadProviderRequestId(response),
+            ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName),
             (int) response.StatusCode,
             providerCode,
-            retryAfter,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause: null,
             ExtensionData.Empty);
     }
-
-    private static ProviderFailureKind MapStatusCode(HttpStatusCode statusCode)
-    {
-        var statusCodeValue = (int) statusCode;
-
-        return statusCodeValue switch
-        {
-            (int) HttpStatusCode.Unauthorized => ProviderFailureKind.Authentication,
-            (int) HttpStatusCode.Forbidden => ProviderFailureKind.Authorization,
-            (int) HttpStatusCode.TooManyRequests => ProviderFailureKind.Throttling,
-            (int) HttpStatusCode.RequestTimeout or (int) HttpStatusCode.GatewayTimeout =>
-                ProviderFailureKind.Timeout,
-            >= 400 and < 500 => ProviderFailureKind.InvalidRequest,
-            >= 500 => ProviderFailureKind.Unavailable,
-            _ => ProviderFailureKind.Unknown,
-        };
-    }
-
-    private static ProviderRequestId? TryReadProviderRequestId(HttpResponseMessage response) =>
-        response.Headers.TryGetValues("x-request-id", out var values) && values.FirstOrDefault() is { Length: > 0 } value
-            ? new ProviderRequestId(value)
-            : null;
 }

@@ -6,6 +6,7 @@ namespace AgentKit.Providers.GoogleVertexAI;
 using System.Net.Http;
 
 using AgentKit.Providers.GoogleVertexAI.Wire;
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// The Google Vertex AI conversational <see cref="ILlmModel"/>, performing
@@ -295,7 +296,7 @@ public sealed class GoogleVertexAILlmModel: ILlmModel
 
         var kind = status is not null
             ? GoogleVertexAIErrorMapping.MapStatus(status)
-            : GoogleVertexAIErrorMapping.MapStatusCode(response.StatusCode);
+            : HttpStatusFailureKindMapper.Map(response.StatusCode);
 
         return new ProviderFailure(
             kind,
@@ -303,7 +304,7 @@ public sealed class GoogleVertexAILlmModel: ILlmModel
             requestId: null,
             (int) response.StatusCode,
             status,
-            response.Headers.RetryAfter?.Delta,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause: null,
             ExtensionData.Empty);

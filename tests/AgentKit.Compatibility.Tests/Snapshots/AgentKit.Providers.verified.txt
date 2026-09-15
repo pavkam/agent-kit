@@ -1,6 +1,23 @@
 ﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.Tests")]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers.Http
+{
+    public static class HttpStatusFailureKindMapper
+    {
+        public static AgentKit.ProviderFailureKind Map(System.Net.HttpStatusCode statusCode) { }
+        public static AgentKit.ProviderFailureKind Map(System.Net.HttpStatusCode statusCode, System.Collections.Generic.IReadOnlyDictionary<System.Net.HttpStatusCode, AgentKit.ProviderFailureKind>? overrides) { }
+    }
+    public static class ProviderRequestIdReader
+    {
+        public static AgentKit.ProviderRequestId? TryRead(System.Net.Http.Headers.HttpResponseHeaders headers, [System.Runtime.CompilerServices.ParamCollection] [System.Runtime.CompilerServices.ScopedRef] System.ReadOnlySpan<string> headerNames) { }
+        public static AgentKit.ProviderRequestId? TryRead(System.Net.Http.Headers.HttpResponseHeaders headers, string headerName) { }
+    }
+    public static class RetryAfterResolver
+    {
+        public static System.TimeSpan? Resolve(System.Net.Http.Headers.HttpResponseHeaders headers, System.TimeProvider timeProvider) { }
+    }
+}
 namespace AgentKit.Providers
 {
     public sealed class KnownModel : System.IEquatable<AgentKit.Providers.KnownModel>

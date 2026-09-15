@@ -3,7 +3,10 @@
 
 namespace AgentKit.Providers.AwsBedrock;
 
+using System.Collections.Frozen;
 using System.Net;
+
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// Maps a Bedrock Runtime exception name or HTTP status code onto the
@@ -24,6 +27,25 @@ using System.Net;
 /// </remarks>
 internal static class AwsBedrockErrorMapping
 {
+    /// <summary>
+    /// Bedrock-specific HTTP status semantics layered over the shared
+    /// <see cref="HttpStatusFailureKindMapper"/> table.
+    /// </summary>
+    /// <remarks>
+    /// Bedrock Runtime returns <c>424 Failed Dependency</c> for
+    /// <c>ModelErrorException</c>: the request was valid but the hosted
+    /// model itself failed while processing it. That is a transient
+    /// provider-side fault, so it is classified as
+    /// <see cref="ProviderFailureKind.Unavailable"/> to match the
+    /// exception-name mapping rather than the generic 4xx caller-fault
+    /// default.
+    /// </remarks>
+    private static readonly FrozenDictionary<HttpStatusCode, ProviderFailureKind> _statusOverrides =
+        new Dictionary<HttpStatusCode, ProviderFailureKind>
+        {
+            [HttpStatusCode.FailedDependency] = ProviderFailureKind.Unavailable,
+        }.ToFrozenDictionary();
+
     /// <summary>Maps a Bedrock exception shape name onto a normalized failure kind.</summary>
     /// <param name="exceptionName">
     /// The exception shape name, from either the buffered response's
@@ -74,20 +96,16 @@ internal static class AwsBedrockErrorMapping
         };
     }
 
-    /// <summary>Maps an HTTP status code onto a normalized failure kind.</summary>
+    /// <summary>
+    /// Maps an HTTP status code onto a normalized failure kind, used when
+    /// no <c>x-amzn-errortype</c> header is available.
+    /// </summary>
     /// <param name="statusCode">The HTTP status code the provider returned.</param>
-    /// <returns>The normalized failure kind.</returns>
+    /// <returns>
+    /// The Bedrock-specific override for <paramref name="statusCode"/> when
+    /// one exists; otherwise the shared canonical mapping from
+    /// <see cref="HttpStatusFailureKindMapper"/>.
+    /// </returns>
     public static ProviderFailureKind MapStatusCode(HttpStatusCode statusCode) =>
-        (int) statusCode switch
-        {
-            401 => ProviderFailureKind.Authentication,
-            403 => ProviderFailureKind.Authorization,
-            408 => ProviderFailureKind.Timeout,
-            424 => ProviderFailureKind.Unavailable,
-            429 => ProviderFailureKind.Throttling,
-            400 or 404 or 413 => ProviderFailureKind.InvalidRequest,
-            >= 500 => ProviderFailureKind.Unavailable,
-            >= 400 and < 500 => ProviderFailureKind.InvalidRequest,
-            _ => ProviderFailureKind.Unknown,
-        };
+        HttpStatusFailureKindMapper.Map(statusCode, _statusOverrides);
 }

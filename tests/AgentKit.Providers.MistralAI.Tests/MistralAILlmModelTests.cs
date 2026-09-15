@@ -5,6 +5,7 @@ namespace AgentKit.Providers.MistralAI.Tests;
 
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 
 using AgentKit.Providers.MistralAI.Tests.Fakes;
 
@@ -98,6 +99,57 @@ public sealed class MistralAILlmModelTests
         var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenThrottledWithHttpDateRetryAfter_ComputesDeltaFromCurrentTime()
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent(File.ReadAllText(TestResources.GetPath("responses/error_429.json")), Encoding.UTF8, "application/json"),
+            };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(Now.AddSeconds(45));
+            return response;
+        });
+        var options = new MistralAIProviderOptions
+        {
+            BaseAddress = new Uri("https://api.mistral.test/v1/"),
+            PreferStreaming = false
+        };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), options: options);
+        var request = CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+        failed.Failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(45));
+    }
+
+    /// <summary>Verifies Mistral relies entirely on the shared HTTP status table, including the normalized 504 timeout.</summary>
+    [Theory]
+    [InlineData(408, ProviderFailureKind.Timeout)]
+    [InlineData(504, ProviderFailureKind.Timeout)]
+    [InlineData(503, ProviderFailureKind.Unavailable)]
+    public async Task ExecuteAsync_WhenErrorStatusHasNoUsableBody_UsesSharedHttpStatusTable(int statusCode, ProviderFailureKind expected)
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage((HttpStatusCode) statusCode) { Content = new StringContent("not-json", Encoding.UTF8, "text/plain") });
+        var options = new MistralAIProviderOptions
+        {
+            BaseAddress = new Uri("https://api.mistral.test/v1/"),
+            PreferStreaming = false
+        };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), options: options);
+        var request = CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1));
+
+        var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(expected);
+        failed.Failure.StatusCode.ShouldBe(statusCode);
     }
 
     [Fact]

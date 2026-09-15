@@ -4,10 +4,10 @@
 namespace AgentKit.Providers.GoogleGemini;
 
 using System.Diagnostics;
-using System.Net;
 using System.Net.Http;
 
 using AgentKit.Providers.GoogleGemini.Wire;
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// The Google Gemini conversational <see cref="ILlmModel"/>, performing
@@ -301,7 +301,7 @@ public sealed class GoogleGeminiLlmModel: ILlmModel
         }
 
         var mappedBodyKind = GoogleGeminiErrorMapping.MapStatus(status);
-        var kind = mappedBodyKind == ProviderFailureKind.Unknown ? MapStatusCode(response.StatusCode) : mappedBodyKind;
+        var kind = mappedBodyKind == ProviderFailureKind.Unknown ? HttpStatusFailureKindMapper.Map(response.StatusCode) : mappedBodyKind;
 
         return new ProviderFailure(
             kind,
@@ -309,25 +309,11 @@ public sealed class GoogleGeminiLlmModel: ILlmModel
             requestId: null,
             (int) response.StatusCode,
             status,
-            response.Headers.RetryAfter?.Delta,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             $"The Google Gemini request failed with HTTP status {(int) response.StatusCode}.",
             diagnosticCause,
             ExtensionData.Empty);
     }
-
-    private static ProviderFailureKind MapStatusCode(HttpStatusCode statusCode) =>
-        (int) statusCode switch
-        {
-            401 => ProviderFailureKind.Authentication,
-            403 => ProviderFailureKind.Authorization,
-            429 => ProviderFailureKind.Throttling,
-            408 => ProviderFailureKind.Timeout,
-            400 or 404 => ProviderFailureKind.InvalidRequest,
-            >= 500 and <= 599 => ProviderFailureKind.Unavailable,
-            >= 300 and <= 499 => ProviderFailureKind.InvalidRequest,
-            >= 100 and <= 299 => ProviderFailureKind.ProtocolViolation,
-            _ => ProviderFailureKind.Unknown,
-        };
 
     /// <summary>Builds an interrupted error-body failure while preserving response evidence already received.</summary>
     /// <param name="response">The response whose headers were received before interruption.</param>
@@ -347,7 +333,7 @@ public sealed class GoogleGeminiLlmModel: ILlmModel
             requestId: null,
             (int) response.StatusCode,
             providerCode: null,
-            response.Headers.RetryAfter?.Delta,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             safeMessage,
             diagnosticCause,
             ExtensionData.Empty);

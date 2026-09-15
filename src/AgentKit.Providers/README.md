@@ -21,6 +21,25 @@ described in the [composition guide](../../docs/guides/composition.md).
 Capabilities belong to the configured operation and model. A provider name or
 compatible wire format does not imply support for every feature.
 
+## Shared HTTP failure helpers
+
+`AgentKit.Providers.Http` holds the provider-neutral HTTP mechanics every
+first-party HTTP adapter shares so their failure semantics cannot drift:
+
+- `HttpStatusFailureKindMapper` is the one canonical HTTP status →
+  `ProviderFailureKind` table (401 authentication, 403 authorization, 429
+  throttling, 408/504 timeout, 413 invalid request, 529 unavailable, other 4xx
+  invalid request, other 5xx unavailable, 1xx–3xx protocol violation). A
+  provider passes an explicit override dictionary only for a documented
+  provider-specific status such as Bedrock's 424 or Cohere's 498.
+- `RetryAfterResolver` turns a `Retry-After` header in either delta-seconds or
+  HTTP-date form into a non-negative delay against the injected `TimeProvider`.
+- `ProviderRequestIdReader` reads the first non-blank value of a provider-named
+  request-id header into a `ProviderRequestId`.
+
+Body-driven vocabularies (Anthropic `error.type`, Google `error.status`, Bedrock
+`x-amzn-errortype`) stay in the owning provider package.
+
 ## Known-model catalog
 
 `KnownModelCatalog.Default` is reference data embedded in this assembly: the

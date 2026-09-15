@@ -5,6 +5,7 @@ namespace AgentKit.Providers.Cohere.Tests;
 
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 
 using AgentKit.Providers.Cohere.Tests.Fakes;
 
@@ -134,6 +135,60 @@ public sealed class CohereLlmModelTests
         var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenThrottledWithHttpDateRetryAfter_ComputesDeltaFromCurrentTime()
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent(File.ReadAllText(TestResources.GetPath("responses/error_429.json")), Encoding.UTF8, "application/json"),
+            };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(Now.AddSeconds(45));
+            return response;
+        });
+        var options = new CohereProviderOptions
+        {
+            BaseAddress = new Uri("https://api.cohere.test/"),
+            PreferStreaming = false
+        };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")), options: options);
+        var request = CreateRequest(TestModels.CommandAPlus, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+        failed.Failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(45));
+    }
+
+    /// <summary>Verifies Cohere-specific status overrides sit on top of the shared HTTP status table; a server-sent 499 is never caller cancellation.</summary>
+    [Theory]
+    [InlineData(402, ProviderFailureKind.Authorization)]
+    [InlineData(408, ProviderFailureKind.Timeout)]
+    [InlineData(498, ProviderFailureKind.Authentication)]
+    [InlineData(499, ProviderFailureKind.InvalidRequest)]
+    [InlineData(501, ProviderFailureKind.InvalidRequest)]
+    [InlineData(504, ProviderFailureKind.Timeout)]
+    public async Task ExecuteAsync_WhenErrorStatusHasNoUsableBody_UsesSharedTableWithCohereOverrides(int statusCode, ProviderFailureKind expected)
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage((HttpStatusCode) statusCode) { Content = new StringContent("not-json", Encoding.UTF8, "text/plain") });
+        var options = new CohereProviderOptions
+        {
+            BaseAddress = new Uri("https://api.cohere.test/"),
+            PreferStreaming = false
+        };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")), options: options);
+        var request = CreateRequest(TestModels.CommandAPlus, Now.AddMinutes(1));
+
+        var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(expected);
+        failed.Failure.StatusCode.ShouldBe(statusCode);
     }
 
     [Fact]

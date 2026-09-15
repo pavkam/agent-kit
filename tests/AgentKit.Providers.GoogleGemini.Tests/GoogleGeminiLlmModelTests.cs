@@ -134,6 +134,34 @@ public sealed class GoogleGeminiLlmModelTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenThrottledWithHttpDateRetryAfter_ComputesDeltaFromCurrentTime()
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent(File.ReadAllText(TestResources.GetPath("responses/error_429.json")), Encoding.UTF8, "application/json"),
+            };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(Now.AddSeconds(45));
+            return response;
+        });
+        var options = new GoogleGeminiProviderOptions
+        {
+            BaseAddress = new Uri("https://generativelanguage.test/"),
+            PreferStreaming = false
+        };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")), options: options);
+        var request = CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+        failed.Failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(45));
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenInternalServerError_ReturnsUnavailableFailure()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.InternalServerError, "responses/error_500.json");
@@ -153,10 +181,11 @@ public sealed class GoogleGeminiLlmModelTests
 
     /// <summary>Verifies non-success status families always produce typed failures without redirect or retry effects.</summary>
     [Theory]
-    [InlineData(307, ProviderFailureKind.InvalidRequest)]
+    [InlineData(307, ProviderFailureKind.ProtocolViolation)]
     [InlineData(408, ProviderFailureKind.Timeout)]
     [InlineData(409, ProviderFailureKind.InvalidRequest)]
     [InlineData(502, ProviderFailureKind.Unavailable)]
+    [InlineData(504, ProviderFailureKind.Timeout)]
     [InlineData(599, ProviderFailureKind.Unavailable)]
     [InlineData(600, ProviderFailureKind.Unknown)]
     public async Task ExecuteAsync_WhenErrorStatusHasMalformedBody_UsesHttpFallback(int statusCode, ProviderFailureKind expected)

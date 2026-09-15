@@ -34,6 +34,7 @@ compatible wire format does not imply support for every feature.
 
 Direct project references:
 [AgentKit.Abstractions](../AgentKit.Abstractions/README.md),
+[AgentKit.Providers](../AgentKit.Providers/README.md),
 [AgentKit.Providers.OpenAICompatible](../AgentKit.Providers.OpenAICompatible/README.md).
 Other related projects above are composition collaborators, not necessarily
 dependencies.

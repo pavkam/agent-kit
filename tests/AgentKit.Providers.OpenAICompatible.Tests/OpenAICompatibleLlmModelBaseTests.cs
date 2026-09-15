@@ -391,7 +391,11 @@ public sealed class OpenAICompatibleLlmModelBaseTests
 
     [Theory]
     [InlineData(HttpStatusCode.Conflict, ProviderFailureKind.InvalidRequest)]
-    [InlineData(HttpStatusCode.MovedPermanently, ProviderFailureKind.Unknown)]
+    [InlineData(HttpStatusCode.RequestTimeout, ProviderFailureKind.Timeout)]
+    [InlineData(HttpStatusCode.GatewayTimeout, ProviderFailureKind.Timeout)]
+    [InlineData(HttpStatusCode.RequestEntityTooLarge, ProviderFailureKind.InvalidRequest)]
+    [InlineData((HttpStatusCode) 529, ProviderFailureKind.Unavailable)]
+    [InlineData(HttpStatusCode.MovedPermanently, ProviderFailureKind.ProtocolViolation)]
     public async Task ExecuteAsync_WhenOtherNonSuccessStatus_ReturnsTypedFailure(
         HttpStatusCode statusCode,
         ProviderFailureKind expectedKind)

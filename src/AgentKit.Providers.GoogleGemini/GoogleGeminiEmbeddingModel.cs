@@ -3,10 +3,10 @@
 
 namespace AgentKit.Providers.GoogleGemini;
 
-using System.Net;
 using System.Net.Http;
 
 using AgentKit.Providers.GoogleGemini.Wire;
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// The Google Gemini embedding <see cref="IEmbeddingModel"/>, performing
@@ -236,7 +236,7 @@ public sealed class GoogleGeminiEmbeddingModel: IEmbeddingModel
 
         var kind = status is not null
             ? GoogleGeminiErrorMapping.MapStatus(status)
-            : MapStatusCode(response.StatusCode);
+            : HttpStatusFailureKindMapper.Map(response.StatusCode);
 
         return new ProviderFailure(
             kind,
@@ -244,21 +244,9 @@ public sealed class GoogleGeminiEmbeddingModel: IEmbeddingModel
             requestId: null,
             (int) response.StatusCode,
             status,
-            response.Headers.RetryAfter?.Delta,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause: null,
             ExtensionData.Empty);
     }
-
-    private static ProviderFailureKind MapStatusCode(HttpStatusCode statusCode) =>
-        (int) statusCode switch
-        {
-            401 => ProviderFailureKind.Authentication,
-            403 => ProviderFailureKind.Authorization,
-            429 => ProviderFailureKind.Throttling,
-            400 or 404 => ProviderFailureKind.InvalidRequest,
-            >= 500 => ProviderFailureKind.Unavailable,
-            >= 400 and < 500 => ProviderFailureKind.InvalidRequest,
-            _ => ProviderFailureKind.Unknown,
-        };
 }

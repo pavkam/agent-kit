@@ -4,6 +4,9 @@
 namespace AgentKit.Providers.AzureOpenAI.Tests;
 
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
 
 using AgentKit.Providers.AzureOpenAI.Tests.Fakes;
 
@@ -95,6 +98,29 @@ public sealed class AzureOpenAILlmModelTests
         var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenThrottledWithHttpDateRetryAfter_ComputesDeltaFromCurrentTime()
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent(File.ReadAllText(TestResources.GetPath("responses/error_429.json")), Encoding.UTF8, "application/json"),
+            };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(Now.AddSeconds(45));
+            return response;
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Throttling);
+        failed.Failure.RetryAfter.ShouldBe(TimeSpan.FromSeconds(45));
     }
 
     [Fact]

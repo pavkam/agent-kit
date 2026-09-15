@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 
 using AgentKit.Providers.AwsBedrock.Wire;
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// The Amazon Bedrock Runtime conversational <see cref="ILlmModel"/>,
@@ -24,6 +25,9 @@ using AgentKit.Providers.AwsBedrock.Wire;
 /// </remarks>
 public sealed class AwsBedrockLlmModel: ILlmModel
 {
+    /// <summary>The response header Bedrock Runtime uses to return its request identifier.</summary>
+    private const string _requestIdHeaderName = "x-amzn-RequestId";
+
     private static readonly MediaTypeHeaderValue _jsonContentType = new("application/json");
 
     private readonly ModelDescriptor _descriptor;
@@ -217,7 +221,7 @@ public sealed class AwsBedrockLlmModel: ILlmModel
                 _descriptor.ApiFamily,
                 _descriptor.ModelId,
                 _descriptor.DeploymentId,
-                TryReadProviderRequestId(response));
+                ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName));
 
             try
             {
@@ -316,10 +320,10 @@ public sealed class AwsBedrockLlmModel: ILlmModel
         return new ProviderFailure(
             kind,
             _descriptor.ProviderId,
-            TryReadProviderRequestId(response),
+            ProviderRequestIdReader.TryRead(response.Headers, _requestIdHeaderName),
             (int) response.StatusCode,
             errorType,
-            response.Headers.RetryAfter?.Delta,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause: null,
             ExtensionData.Empty);
@@ -328,10 +332,5 @@ public sealed class AwsBedrockLlmModel: ILlmModel
     private static string? TryReadErrorType(HttpResponseMessage response) =>
         response.Headers.TryGetValues("x-amzn-errortype", out var values) && values.FirstOrDefault() is { Length: > 0 } value
             ? value
-            : null;
-
-    private static ProviderRequestId? TryReadProviderRequestId(HttpResponseMessage response) =>
-        response.Headers.TryGetValues("x-amzn-RequestId", out var values) && values.FirstOrDefault() is { Length: > 0 } value
-            ? new ProviderRequestId(value)
             : null;
 }

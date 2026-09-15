@@ -5,6 +5,7 @@ namespace AgentKit.Providers.MistralAI;
 
 using System.Net.Http;
 
+using AgentKit.Providers.Http;
 using AgentKit.Providers.MistralAI.Wire;
 
 /// <summary>
@@ -233,12 +234,12 @@ public sealed class MistralAIEmbeddingModel: IEmbeddingModel
         }
 
         return new ProviderFailure(
-            MistralAIErrorMapping.MapStatusCode(response.StatusCode),
+            HttpStatusFailureKindMapper.Map(response.StatusCode),
             _descriptor.ProviderId,
             requestId: null,
             (int) response.StatusCode,
             providerCode: null,
-            response.Headers.RetryAfter?.Delta,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause: null,
             ExtensionData.Empty);

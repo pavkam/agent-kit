@@ -6,6 +6,7 @@ namespace AgentKit.Providers.Cohere;
 using System.Net.Http;
 
 using AgentKit.Providers.Cohere.Wire;
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// The Cohere conversational <see cref="ILlmModel"/>, performing
@@ -289,7 +290,7 @@ public sealed class CohereLlmModel: ILlmModel
             requestId: null,
             (int) response.StatusCode,
             providerCode: null,
-            response.Headers.RetryAfter?.Delta,
+            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
             safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause: null,
             ExtensionData.Empty);
