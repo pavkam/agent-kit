@@ -4,7 +4,6 @@
 namespace AgentKit.Session;
 
 using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 
 /// <summary>Encodes and decodes the bounded portable version-one message-entry schema.</summary>
 public sealed class MessageSessionEntryCodec: ISessionEntryCodec
@@ -82,41 +81,12 @@ public sealed class MessageSessionEntryCodec: ISessionEntryCodec
 
     private static JsonSerializerOptions CreateOptions()
     {
-        var resolver = new DefaultJsonTypeInfoResolver();
-        resolver.Modifiers.Add(static info =>
+        var options = new JsonSerializerOptions
         {
-            if (info.Type == typeof(OperationCorrelation))
-            {
-                info.PolymorphismOptions = Polymorphism(
-                    (typeof(BeforeRunOperationCorrelation), "before-run"),
-                    (typeof(InRunOperationCorrelation), "in-run"),
-                    (typeof(AfterRunOperationCorrelation), "after-run"));
-            }
-            else if (info.Type == typeof(AgentMessage))
-            {
-                info.PolymorphismOptions = Polymorphism(
-                    (typeof(SystemMessage), "system"), (typeof(DeveloperMessage), "developer"),
-                    (typeof(UserMessage), "user"), (typeof(AssistantMessage), "assistant"),
-                    (typeof(ToolMessage), "tool"), (typeof(RuntimeMessage), "runtime"));
-            }
-            else if (info.Type == typeof(ContentPart))
-            {
-                info.PolymorphismOptions = Polymorphism(
-                    (typeof(TextPart), "text"), (typeof(StructuredDataPart), "structured"),
-                    (typeof(ToolCallPart), "tool-call"), (typeof(ToolResultPart), "tool-result"),
-                    (typeof(ReasoningPart), "reasoning"), (typeof(MediaReferencePart), "media"),
-                    (typeof(UnknownContentPart), "unknown"));
-            }
-        });
-        var options = new JsonSerializerOptions { TypeInfoResolver = resolver, MaxDepth = _limits.MaximumJsonDepth };
+            TypeInfoResolver = PortableSessionJsonPolymorphism.CreateResolver(),
+            MaxDepth = _limits.MaximumJsonDepth,
+        };
         options.Converters.Add(new PortableValueObjectJsonConverterFactory());
         return options;
-    }
-
-    private static JsonPolymorphismOptions Polymorphism(params (Type Type, string Name)[] types)
-    {
-        var result = new JsonPolymorphismOptions { TypeDiscriminatorPropertyName = "$kind" };
-        foreach (var (type, name) in types) { result.DerivedTypes.Add(new JsonDerivedType(type, name)); }
-        return result;
     }
 }

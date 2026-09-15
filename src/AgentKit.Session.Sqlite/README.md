@@ -28,6 +28,13 @@ persisted in an existing database. The store and the directory apply the same
 rules: each validates its own table and the persisted instance identity, and
 neither installs or migrates schema unless `ApplyKnownMigrations` is selected.
 
+Polymorphic message, content-part, and correlation values inside persisted
+state use the shared `$kind` discriminators from
+`AgentKit.Session.PortableSessionJsonPolymorphism`; this package does not
+declare its own map. Earlier builds wrote `StructuredDataPart` state with a
+`json` discriminator that the portable entry codecs never recognized; that value
+now reads and writes as `structured` everywhere.
+
 Committed descriptors, entries, branch state, execution lanes, accepted-run
 state, idempotency receipts, directory ownership, and routing survive disposal
 and process restart. Reopening uses the same absolute target and store instance

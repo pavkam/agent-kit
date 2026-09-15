@@ -493,6 +493,20 @@ keys are rejected before constructing the immutable dictionary. Typed portable
 fields remain first-class members; extension data preserves only genuinely
 provider-specific or forward-compatible content.
 
+### Durable JSON discriminators
+
+`AgentMessage`, `ContentPart`, and `OperationCorrelation` are closed
+hierarchies. When they enter durable JSON, every first-party writer uses the one
+`$kind` discriminator map declared by `AgentKit.Session`'s
+`PortableSessionJsonPolymorphism` (`text`, `structured`, `tool-call`,
+`tool-result`, `reasoning`, `media`, `unknown`; `system`, `developer`, `user`,
+`assistant`, `tool`, `runtime`; `before-run`, `in-run`, `after-run`). The
+portable entry codecs and every first-party store adapter apply that map rather
+than spelling their own tuples, and the map is strict: an unrecognized
+discriminator fails deserialization and an unlisted derived type fails
+serialization instead of degrading to a base-type payload. A store adapter that
+copied the tuples would silently fork the durable format.
+
 ## Normative minimal history contracts
 
 The session component owns reads and appends. The history pipeline owns

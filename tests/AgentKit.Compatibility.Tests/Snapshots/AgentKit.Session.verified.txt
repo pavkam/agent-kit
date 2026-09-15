@@ -73,6 +73,15 @@ namespace AgentKit.Session
         public AgentKit.SessionEntryDecodeResult Decode(AgentKit.SessionEntryWireEnvelope wire) { }
         public AgentKit.SessionEntryEncodeResult Encode(AgentKit.SessionEntry entry) { }
     }
+    public static class PortableSessionJsonPolymorphism
+    {
+        public const string DiscriminatorPropertyName = "$kind";
+        public static void Apply(System.Text.Json.Serialization.Metadata.JsonTypeInfo typeInfo) { }
+        public static System.Text.Json.Serialization.Metadata.JsonPolymorphismOptions Correlations() { }
+        public static System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver CreateResolver() { }
+        public static System.Text.Json.Serialization.Metadata.JsonPolymorphismOptions Messages() { }
+        public static System.Text.Json.Serialization.Metadata.JsonPolymorphismOptions Parts() { }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
