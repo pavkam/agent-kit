@@ -6,6 +6,16 @@ namespace AgentKit.Tools.Write.Tests;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
+    public void AddWriteTool_WhenServicesNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(services.AddWriteTool);
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
     public void AddWriteTool_WhenCalled_RegistersWriteFileTool()
     {
         var services = new ServiceCollection();
