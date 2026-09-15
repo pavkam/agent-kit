@@ -9,6 +9,14 @@ calls `InitializeAsync` during trusted bootstrap. Repeating the same
 registration is idempotent; competing ledgers stay visible so runtime
 composition rejects ambiguity.
 
+Pass explicit `SqliteBudgetLedgerSettings`, or use the standard configure
+delegate to adjust the documented defaults; invalid bounds throw at
+registration:
+
+```csharp
+services.AddSqliteBudgetLedger(target, options => options.MaximumBatchSize = 64);
+```
+
 Initialization may create the configured database file and SQLite recovery
 sidecars. It never creates parent directories. Exact validation checks the
 application identity, store identity, tables, constraints, indexes, views,
