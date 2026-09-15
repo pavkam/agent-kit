@@ -11,6 +11,19 @@ Start with `AddReadTool` in [ServiceExtensions.cs](ServiceExtensions.cs). Read
 the overloads and XML documentation for required collaborators, lifetimes, and
 duplicate-registration behavior.
 
+```csharp
+services.AddReadTool();                                   // 2,000-line default window, 20,000-line ceiling
+services.AddReadTool(o => o.DefaultMaximumLines = 500);   // narrower window when the model omits `limit`
+```
+
+The returned window is always finite. When the model omits `limit`, the tool
+returns at most `ReadFileToolOptions.DefaultMaximumLines` logical lines from the
+requested offset; an explicit `limit` above `ReadFileToolOptions.MaximumLines`
+is rejected as invalid arguments before authorization or any read. A successful
+outcome carries the `agentkit.read.complete` extension (`true` or `false`) so
+callers can tell whether lines remain beyond the returned window. Byte and
+encoding limits belong to the selected `IFileSystem`, not to these options.
+
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
 described in the [composition guide](../../docs/guides/composition.md).

@@ -6,6 +6,49 @@ namespace AgentKit.Tools.Read.Tests;
 public sealed class ServiceExtensionsTests
 {
     [Fact]
+    public void AddReadTool_WhenServicesNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(() => services.AddReadTool());
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddReadTool_WhenConfigureProvided_AppliesOptions()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
+        _ = TestFactory.AddSecurityDependencies(services);
+
+        _ = services.AddReadTool(static options =>
+        {
+            options.DefaultMaximumLines = 500;
+            options.MaximumLines = 5_000;
+        });
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<ReadFileToolOptions>>().Value;
+        options.DefaultMaximumLines.ShouldBe(500);
+        options.MaximumLines.ShouldBe(5_000);
+        _ = provider.GetServices<ITool>().ShouldHaveSingleItem().ShouldBeOfType<ReadFileTool>();
+    }
+
+    [Fact]
+    public void AddReadTool_WhenOptionsInvalid_FailsValidation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<IFileSystem>(new FakeFileSystem());
+        _ = TestFactory.AddSecurityDependencies(services);
+
+        _ = services.AddReadTool(static options => options.DefaultMaximumLines = options.MaximumLines + 1);
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<ReadFileToolOptions>>().Value);
+    }
+
+    [Fact]
     public void AddReadTool_WhenCalled_RegistersReadFileTool()
     {
         var services = new ServiceCollection();

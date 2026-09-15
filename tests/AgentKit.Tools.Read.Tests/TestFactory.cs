@@ -6,15 +6,24 @@ namespace AgentKit.Tools.Read.Tests;
 /// <summary>Provides construction helpers for read-file tool tests.</summary>
 internal static class TestFactory
 {
-    public static ReadFileTool Tool(IFileSystem? fileSystem = null, ISecurityAuthority? authority = null) => new(
+    public static ReadFileTool Tool(
+        IFileSystem? fileSystem = null,
+        ISecurityAuthority? authority = null,
+        ReadFileToolOptions? options = null) => new(
         fileSystem ?? new FakeFileSystem(),
         authority ?? new AllowingSecurityAuthority(),
         new SecurityRequestIdGenerator(),
-        TimeProvider.System);
+        TimeProvider.System,
+        Options.Create(options ?? new ReadFileToolOptions()));
+
+    public static bool ReadComplete(ToolInvocationResult result) =>
+        JsonSerializer.Deserialize<bool>(result.Outcome.Extensions.Values[ReadFileTool.CompleteExtensionKey].CanonicalJson.AsSpan());
 
     public static ISecurityGrantStore GrantStore() => new AlwaysConsumeGrantStore();
 
     public static ISecurityAuthority DenyingAuthority() => new DenyingSecurityAuthority();
+
+    public static IIdentifierGenerator<SecurityRequestId> RequestIds() => new SecurityRequestIdGenerator();
 
     public static ExecutionIdentity Identity() =>
         TestSupport.TestExecutionIdentity.Create(new TenantId("tenant-1"), new PrincipalId("user-1"), ExecutionSubjectKind.Human);

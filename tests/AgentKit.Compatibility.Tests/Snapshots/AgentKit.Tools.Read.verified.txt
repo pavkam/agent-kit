@@ -5,10 +5,17 @@ namespace AgentKit.Tools.Read
 {
     public sealed class ReadFileTool : AgentKit.ITool
     {
+        public const string CompleteExtensionKey = "agentkit.read.complete";
         public static readonly AgentKit.ToolId Id;
-        public ReadFileTool(AgentKit.IFileSystem fileSystem, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider) { }
+        public ReadFileTool(AgentKit.IFileSystem fileSystem, AgentKit.ISecurityAuthority securityAuthority, AgentKit.IIdentifierGenerator<AgentKit.SecurityRequestId> requestIds, System.TimeProvider timeProvider, Microsoft.Extensions.Options.IOptions<AgentKit.Tools.Read.ReadFileToolOptions> options) { }
         public AgentKit.ToolDescriptor Descriptor { get; }
         public System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolInvocationRequest request, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ReadFileToolOptions
+    {
+        public ReadFileToolOptions() { }
+        public int DefaultMaximumLines { get; set; }
+        public int MaximumLines { get; set; }
     }
     public sealed class ReadFileToolPresentationFormatter : AgentKit.IToolPresentationFormatter
     {
@@ -20,7 +27,7 @@ namespace AgentKit.Tools.Read
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddReadTool() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddReadTool(System.Action<AgentKit.Tools.Read.ReadFileToolOptions>? configure = null) { }
         }
     }
 }

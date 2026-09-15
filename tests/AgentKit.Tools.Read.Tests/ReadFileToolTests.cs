@@ -9,9 +9,45 @@ public sealed class ReadFileToolTests
     public void Constructor_WhenFileSystemNull_ThrowsArgumentNullException()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(
-            null!, null!, null!, null!));
+            null!, null!, null!, null!, null!));
 
         exception.ParamName.ShouldBe("fileSystem");
+    }
+
+    [Fact]
+    public void Constructor_WhenOptionsNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new ReadFileTool(
+            new FakeFileSystem(),
+            TestFactory.DenyingAuthority(),
+            TestFactory.RequestIds(),
+            TimeProvider.System,
+            null!));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Theory]
+    [InlineData(0, 10)]
+    [InlineData(-1, 10)]
+    [InlineData(10, 0)]
+    [InlineData(10, -1)]
+    [InlineData(11, 10)]
+    public void Constructor_WhenOptionsInvalid_ThrowsArgumentOutOfRangeException(int defaultMaximumLines, int maximumLines)
+    {
+        var options = new ReadFileToolOptions { DefaultMaximumLines = defaultMaximumLines, MaximumLines = maximumLines };
+
+        _ = Should.Throw<ArgumentOutOfRangeException>(() => TestFactory.Tool(options: options));
+    }
+
+    [Fact]
+    public void Constructor_WhenDefaultEqualsMaximum_Succeeds()
+    {
+        var options = new ReadFileToolOptions { DefaultMaximumLines = 10, MaximumLines = 10 };
+
+        var tool = TestFactory.Tool(options: options);
+
+        tool.Descriptor.Id.ShouldBe(ReadFileTool.Id);
     }
 
     [Fact]
@@ -179,6 +215,77 @@ public sealed class ReadFileToolTests
             TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": 2, "limit": 10}"""), TestContext.Current.CancellationToken);
 
         TestFactory.ReadText(result).ShouldBe("l2\nl3");
+        TestFactory.ReadComplete(result).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenLimitOmitted_UsesConfiguredDefaultWindow()
+    {
+        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
+        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 10 });
+
+        var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        TestFactory.ReadText(result).ShouldBe("l1\nl2");
+        TestFactory.ReadComplete(result).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenLimitOmittedAndOffsetProvided_UsesConfiguredDefaultWindowFromOffset()
+    {
+        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
+        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 10 });
+
+        var result = await tool.InvokeAsync(
+            TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "offset": 3}"""), TestContext.Current.CancellationToken);
+
+        TestFactory.ReadText(result).ShouldBe("l3\nl4");
+        TestFactory.ReadComplete(result).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenLimitOmittedAndFileFitsWindow_ReturnsFullContentMarkedComplete()
+    {
+        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\r\nl2", 6) };
+        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 10 });
+
+        var result = await tool.InvokeAsync(TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt"}"""), TestContext.Current.CancellationToken);
+
+        TestFactory.ReadText(result).ShouldBe("l1\r\nl2");
+        TestFactory.ReadComplete(result).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenLimitWithinMaximum_ReturnsRequestedLines()
+    {
+        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3\nl4\nl5", 14) };
+        var tool = TestFactory.Tool(fileSystem, options: new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 4 });
+
+        var result = await tool.InvokeAsync(
+            TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "limit": 4}"""), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        TestFactory.ReadText(result).ShouldBe("l1\nl2\nl3\nl4");
+        TestFactory.ReadComplete(result).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenLimitExceedsMaximum_ReturnsInvalidArguments()
+    {
+        var fileSystem = new FakeFileSystem { OnRead = static _ => new FileRead("l1\nl2\nl3", 8) };
+        var tool = TestFactory.Tool(
+            fileSystem, new TestSupport.UninvokedSecurityAuthority(), new ReadFileToolOptions { DefaultMaximumLines = 2, MaximumLines = 4 });
+
+        var result = await tool.InvokeAsync(
+            TestFactory.Request(/*lang=json,strict*/ """{"path": "a.txt", "limit": 5}"""), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+        result.Outcome.Retryable.ShouldBeFalse();
+        result.Outcome.FailureReason.ShouldBe("Property 'limit' must be between 1 and 4.");
+        fileSystem.ReceivedReads.ShouldBeEmpty();
     }
 
     [Fact]
