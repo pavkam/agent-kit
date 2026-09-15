@@ -39,7 +39,19 @@ public sealed record UnknownContentPart: ContentPart
     }
 
     /// <summary>Gets a stable, provider-defined type name for the payload.</summary>
-    public string TypeName { get; init; }
+    /// <exception cref="ArgumentException">
+    /// The value assigned during initialization or non-destructive mutation is null, empty, or
+    /// consists only of whitespace.
+    /// </exception>
+    public string TypeName
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the raw JSON-compatible payload.</summary>
     public JsonElement Payload { get; init; }

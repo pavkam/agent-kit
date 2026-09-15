@@ -29,7 +29,7 @@ public sealed record ToolResultPart: ContentPart
     /// <paramref name="extensions"/> is null.
     /// </exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="content"/> is a default, uninitialized array.
+    /// <paramref name="content"/> is a default, uninitialized array or contains a null element.
     /// </exception>
     public ToolResultPart(
         ToolCallId callId,
@@ -41,7 +41,7 @@ public sealed record ToolResultPart: ContentPart
     {
         ArgumentNullException.ThrowIfNull(tool);
         ArgumentNullException.ThrowIfNull(outcome);
-        ArgumentException.ThrowIfDefault(content);
+        ArgumentException.ThrowIfContainsNull(content);
 
         CallId = callId;
         Tool = tool;
@@ -53,13 +53,47 @@ public sealed record ToolResultPart: ContentPart
     public ToolCallId CallId { get; init; }
 
     /// <summary>Gets the tool that was resolved and invoked.</summary>
-    public ToolReference Tool { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ToolReference Tool
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the terminal disposition of the call.</summary>
-    public ToolCallOutcome Outcome { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ToolCallOutcome Outcome
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the ordered result content returned to the model.</summary>
-    public ImmutableArray<ContentPart> Content { get; init; }
+    /// <exception cref="ArgumentException">
+    /// The value assigned during initialization or non-destructive mutation is a default,
+    /// uninitialized array or contains a null element.
+    /// </exception>
+    public ImmutableArray<ContentPart> Content
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfContainsNull(value);
+            field = value;
+        }
+    }
 
     /// <inheritdoc/>
     public bool Equals(ToolResultPart? other) =>

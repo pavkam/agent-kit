@@ -69,7 +69,7 @@ public abstract record AgentMessage
     /// <param name="extensions">Provider-specific or forward-compatible data.</param>
     /// <exception cref="ArgumentNullException"><paramref name="extensions"/> is null.</exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="parts"/> is a default, uninitialized array.
+    /// <paramref name="parts"/> is a default, uninitialized array or contains a null element.
     /// </exception>
     private protected AgentMessage(
         MessageId id,
@@ -84,7 +84,7 @@ public abstract record AgentMessage
         ImmutableArray<ContentPart> parts,
         ExtensionData extensions)
     {
-        ArgumentException.ThrowIfDefault(parts);
+        ArgumentException.ThrowIfContainsNull(parts);
         ArgumentNullException.ThrowIfNull(extensions);
 
         Id = id;
@@ -139,10 +139,33 @@ public abstract record AgentMessage
     public MessageState State { get; init; }
 
     /// <summary>Gets the ordered, typed content of this message.</summary>
-    public ImmutableArray<ContentPart> Parts { get; init; }
+    /// <exception cref="ArgumentException">
+    /// The value assigned during initialization or non-destructive mutation is a default,
+    /// uninitialized array or contains a null element.
+    /// </exception>
+    public ImmutableArray<ContentPart> Parts
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfContainsNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets provider-specific or forward-compatible data.</summary>
-    public ExtensionData Extensions { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ExtensionData Extensions
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Determines whether this message and <paramref name="other"/> are

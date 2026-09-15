@@ -57,4 +57,14 @@ public sealed class ToolCallPartTests
         left.ShouldBe(right);
         left.GetHashCode().ShouldBe(right.GetHashCode());
     }
+
+    [Fact]
+    public void With_WhenToolIsNull_ThrowsArgumentNullException()
+    {
+        var part = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("read"), null, "read"), default, null, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => part with { Tool = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

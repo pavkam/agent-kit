@@ -45,4 +45,53 @@ public sealed class ToolResultPartTests
         var second = new ToolResultPart(callId, tool, outcome, [new TextPart("b", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         first.ShouldNotBe(second);
     }
+
+    [Fact]
+    public void ToolResultPart_WhenContentContainsNull_ThrowsArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("read"), null, "read"), Outcome(), [null!], ExtensionData.Empty));
+        exception.ParamName.ShouldBe("content");
+    }
+
+    [Fact]
+    public void With_WhenContentIsDefault_ThrowsArgumentException()
+    {
+        var part = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("read"), null, "read"), Outcome(), [], ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => part with { Content = default });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenContentContainsNull_ThrowsArgumentException()
+    {
+        var part = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("read"), null, "read"), Outcome(), [], ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => part with { Content = [null!] });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenToolIsNull_ThrowsArgumentNullException()
+    {
+        var part = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("read"), null, "read"), Outcome(), [], ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => part with { Tool = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenOutcomeIsNull_ThrowsArgumentNullException()
+    {
+        var part = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("read"), null, "read"), Outcome(), [], ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => part with { Outcome = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    private static ToolCallOutcome Outcome() => new(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty);
 }

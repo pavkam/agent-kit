@@ -55,7 +55,18 @@ public sealed record ToolCallPart: ContentPart
     public ToolCallId CallId { get; init; }
 
     /// <summary>Gets the tool being called.</summary>
-    public ToolReference Tool { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ToolReference Tool
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the raw, unvalidated call arguments as provided by the model.</summary>
     public JsonElement Arguments { get; init; }

@@ -26,4 +26,14 @@ public sealed class TextPartTests
 
     [Fact]
     public void TextPart_Equality_WhenSameValues_InstancesAreEqual() => new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty).ShouldBe(new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty));
+
+    [Fact]
+    public void With_WhenTextIsNull_ThrowsArgumentNullException()
+    {
+        var part = new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => part with { Text = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

@@ -41,7 +41,7 @@ public sealed record AssistantMessage: AgentMessage
     /// <paramref name="response"/> or <paramref name="extensions"/> is null.
     /// </exception>
     /// <exception cref="ArgumentException">
-    /// <paramref name="parts"/> is a default, uninitialized array.
+    /// <paramref name="parts"/> is a default, uninitialized array or contains a null element.
     /// </exception>
     public AssistantMessage(
         MessageId id,
@@ -77,5 +77,16 @@ public sealed record AssistantMessage: AgentMessage
     /// Gets provider, usage, and stop-reason metadata for the committed
     /// response.
     /// </summary>
-    public AssistantResponseMetadata Response { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public AssistantResponseMetadata Response
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 }

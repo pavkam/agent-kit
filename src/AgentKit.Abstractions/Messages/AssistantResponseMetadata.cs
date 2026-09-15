@@ -73,7 +73,18 @@ public sealed record AssistantResponseMetadata
     public ModelRequestId RequestId { get; init; }
 
     /// <summary>Gets the exact provider response identity.</summary>
-    public ProviderResponseIdentity Response { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ProviderResponseIdentity Response
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the normalized, portable stop reason.</summary>
     public NormalizedStopReason StopReason { get; init; }
@@ -87,8 +98,30 @@ public sealed record AssistantResponseMetadata
 
     /// <summary>Gets usage evidence for this response with its independent provider report state.</summary>
     /// <value>A non-null report preserving unknown fields as null and reported zero as a known value.</value>
-    public ModelUsage Usage { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ModelUsage Usage
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets provider-specific response metadata.</summary>
-    public ExtensionData Extensions { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ExtensionData Extensions
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 }

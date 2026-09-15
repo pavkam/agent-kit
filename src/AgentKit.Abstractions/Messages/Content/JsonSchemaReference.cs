@@ -32,7 +32,19 @@ public sealed record JsonSchemaReference
     }
 
     /// <summary>Gets the registered schema name.</summary>
-    public string Name { get; init; }
+    /// <exception cref="ArgumentException">
+    /// The value assigned during initialization or non-destructive mutation is null, empty, or
+    /// consists only of whitespace.
+    /// </exception>
+    public string Name
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the registered schema version.</summary>
     public SchemaVersion Version { get; init; }

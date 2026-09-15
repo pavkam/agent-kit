@@ -45,4 +45,37 @@ public sealed class SystemMessageTests
 
     [Fact]
     public void Constructor_WhenExtensionsIsNull_ThrowsArgumentNullException() => Should.Throw<ArgumentNullException>(() => CreateSystemMessage(_sampleParts, null!)).ParamName.ShouldBe("extensions");
+
+    [Fact]
+    public void Constructor_WhenPartsContainNull_ThrowsArgumentException() => Should.Throw<ArgumentException>(() => CreateSystemMessage([null!], ExtensionData.Empty)).ParamName.ShouldBe("parts");
+
+    [Fact]
+    public void With_WhenPartsIsDefault_ThrowsArgumentException()
+    {
+        var message = CreateSystemMessage(_sampleParts, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => message with { Parts = default });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenPartsContainNull_ThrowsArgumentException()
+    {
+        var message = CreateSystemMessage(_sampleParts, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => message with { Parts = [null!] });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenExtensionsIsNull_ThrowsArgumentNullException()
+    {
+        var message = CreateSystemMessage(_sampleParts, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => message with { Extensions = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

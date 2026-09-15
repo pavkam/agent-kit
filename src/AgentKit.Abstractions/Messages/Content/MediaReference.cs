@@ -74,7 +74,19 @@ public sealed record MediaReference
     public MediaSourceKind SourceKind { get; init; }
 
     /// <summary>Gets the IANA media (MIME) type of the content.</summary>
-    public string MediaType { get; init; }
+    /// <exception cref="ArgumentException">
+    /// The value assigned during initialization or non-destructive mutation is null, empty, or
+    /// consists only of whitespace.
+    /// </exception>
+    public string MediaType
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value);
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Gets the remote location of the content when <see cref="SourceKind"/>
@@ -86,7 +98,19 @@ public sealed record MediaReference
     /// Gets the embedded content when <see cref="SourceKind"/> is
     /// <see cref="MediaSourceKind.InlineBytes"/>; otherwise empty.
     /// </summary>
-    public ImmutableArray<byte> InlineBytes { get; init; }
+    /// <exception cref="ArgumentException">
+    /// The value assigned during initialization or non-destructive mutation is a default,
+    /// uninitialized array.
+    /// </exception>
+    public ImmutableArray<byte> InlineBytes
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfDefault(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the content size in bytes, when known.</summary>
     public long? SizeInBytes { get; init; }
@@ -95,7 +119,18 @@ public sealed record MediaReference
     public ContentHash? Hash { get; init; }
 
     /// <summary>Gets provider-specific or forward-compatible data.</summary>
-    public ExtensionData Extensions { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ExtensionData Extensions
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <inheritdoc/>
     public bool Equals(MediaReference? other) =>

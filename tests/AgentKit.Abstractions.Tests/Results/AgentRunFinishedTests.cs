@@ -161,9 +161,6 @@ public sealed class AgentRunFinishedTests
     [InlineData("turn", "range")]
     [InlineData("state", "range")]
     [InlineData("incomplete", "argument")]
-    [InlineData("parts", "argument")]
-    [InlineData("null-part", "argument")]
-    [InlineData("extensions", "null")]
     public void Constructor_WhenRetainedMessageIsInvalid_RejectsBeforeCapturingEvidence(string invalid, string exceptionKind)
     {
         var id = Guid.Parse("00000000-0000-0000-0000-000000000099");
@@ -180,10 +177,7 @@ public sealed class AgentRunFinishedTests
             "default-run" => basis with { RunId = default(RunId) },
             "turn" => basis with { TurnId = default(TurnId) },
             "state" => basis with { State = (MessageState) (-1) },
-            "incomplete" => basis with { State = MessageState.Incomplete },
-            "parts" => basis with { Parts = default },
-            "null-part" => basis with { Parts = [null!] },
-            _ => basis with { Extensions = null! },
+            _ => basis with { State = MessageState.Incomplete },
         };
         var exception = Should.Throw<ArgumentException>(() => RunResultTestData.Finished(messages: [message]));
         exception.ParamName.ShouldBe("newMessages");

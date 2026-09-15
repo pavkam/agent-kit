@@ -34,18 +34,6 @@ public sealed class ToolResultStructuredContentTests
     }
 
     [Fact]
-    public void ToolResultStructuredContent_Constructor_WhenCopiedSchemaIsInvalid_ThrowsExactException()
-    {
-        using var document = JsonDocument.Parse("{}");
-        var malformed = new JsonSchemaReference("schema", new SchemaVersion("1")) with
-        {
-            Name = null!
-        };
-        var exception = Should.Throw<ArgumentNullException>(() => new ToolResultStructuredContent(document.RootElement, malformed, ExtensionData.Empty));
-        exception.ParamName.ShouldBe("schema");
-    }
-
-    [Fact]
     public void ToolResultStructuredContent_Constructor_WhenExtensionsNull_ThrowsExactException()
     {
         using var document = JsonDocument.Parse("{}");

@@ -14,4 +14,14 @@ public sealed class ContentPartTests
         var exception = Should.Throw<ArgumentNullException>(() => new TextPart("hi", TextSemantics.Plain, null!));
         exception.ParamName.ShouldBe("extensions");
     }
+
+    [Fact]
+    public void With_WhenExtensionsIsNull_ThrowsArgumentNullException()
+    {
+        var part = new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => part with { Extensions = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

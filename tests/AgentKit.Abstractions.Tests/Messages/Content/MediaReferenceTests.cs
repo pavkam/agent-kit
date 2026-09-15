@@ -49,4 +49,34 @@ public sealed class MediaReferenceTests
         _ = reference.Uri.ShouldNotBeNull();
         reference.SizeInBytes.ShouldBe(1024);
     }
+
+    [Fact]
+    public void With_WhenMediaTypeIsWhitespace_ThrowsArgumentException()
+    {
+        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", null, [1], 1, null, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => reference with { MediaType = " " });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenInlineBytesIsDefault_ThrowsArgumentException()
+    {
+        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", null, [1], 1, null, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => reference with { InlineBytes = default });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenExtensionsIsNull_ThrowsArgumentNullException()
+    {
+        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", null, [1], 1, null, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => reference with { Extensions = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

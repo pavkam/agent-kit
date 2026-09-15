@@ -70,5 +70,16 @@ public sealed record ReasoningContent
     public string? SignatureToken { get; init; }
 
     /// <summary>Gets provider-specific or forward-compatible data.</summary>
-    public ExtensionData Extensions { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ExtensionData Extensions
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 }

@@ -34,7 +34,18 @@ public sealed record MediaReferencePart: ContentPart
     }
 
     /// <summary>Gets the referenced media item.</summary>
-    public MediaReference Reference { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public MediaReference Reference
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the role this media plays in the message.</summary>
     public MediaSemantics Semantics { get; init; }

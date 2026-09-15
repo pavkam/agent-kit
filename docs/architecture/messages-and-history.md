@@ -487,6 +487,16 @@ immutable and safe for concurrent readers. Media buffers and authorized object
 references document ownership explicitly; disposing a provider stream cannot
 invalidate already committed message content.
 
+Message and content-part invariants hold for every instance, not only for
+constructor output. `Parts` and `ToolResultPart.Content` are initialized arrays
+without null elements, `Extensions` is never null, and reference-typed
+collaborators such as `Tool`, `Outcome`, `Response`, `Usage`, `Reference`, and
+`Content` are never null. The `init` accessors of these members enforce the same
+guards as the constructors, so a `with` expression cannot produce a message or
+part the constructor would have rejected; consumers such as `HistoryView`,
+`AgentRunFinished`, and tool-result content may rely on those invariants without
+re-checking them.
+
 Extension values own bounded canonical JSON bytes. They never retain a
 caller-owned buffer, mutable JSON node, or disposable document, and duplicate
 keys are rejected before constructing the immutable dictionary. Typed portable

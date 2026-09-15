@@ -26,10 +26,7 @@ public sealed class ToolResultMediaContentTests
     [Theory]
     [InlineData(0, typeof(ArgumentOutOfRangeException))]
     [InlineData(1, typeof(ArgumentOutOfRangeException))]
-    [InlineData(2, typeof(ArgumentNullException))]
-    [InlineData(3, typeof(ArgumentException))]
     [InlineData(4, typeof(ArgumentOutOfRangeException))]
-    [InlineData(5, typeof(ArgumentNullException))]
     [InlineData(6, typeof(ArgumentException))]
     public void ToolResultMediaContent_Constructor_WhenCopiedReferenceInvalid_ThrowsExactException(int invalidCase, Type exceptionType)
     {
@@ -44,21 +41,9 @@ public sealed class ToolResultMediaContentTests
             {
                 SourceKind = (MediaSourceKind) 99
             },
-            2 => valid with
-            {
-                MediaType = null!
-            },
-            3 => valid with
-            {
-                InlineBytes = default
-            },
             4 => valid with
             {
                 SizeInBytes = -1
-            },
-            5 => valid with
-            {
-                Extensions = null!
             },
             6 => valid with
             {

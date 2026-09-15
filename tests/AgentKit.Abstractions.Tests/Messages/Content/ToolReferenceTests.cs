@@ -18,4 +18,14 @@ public sealed class ToolReferenceTests
         var exception = Should.Throw<ArgumentException>(() => new ToolReference(new ToolId("read"), null, "   "));
         exception.ParamName.ShouldBe("name");
     }
+
+    [Fact]
+    public void With_WhenNameIsWhitespace_ThrowsArgumentException()
+    {
+        var reference = new ToolReference(new ToolId("t"), null, "tool");
+
+        var exception = Should.Throw<ArgumentException>(() => reference with { Name = " " });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

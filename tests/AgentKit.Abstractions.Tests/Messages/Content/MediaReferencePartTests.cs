@@ -28,4 +28,17 @@ public sealed class MediaReferencePartTests
         var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.Uri, "image/png", new Uri("https://example.com/a.png"), [], null, null, ExtensionData.Empty);
         new MediaReferencePart(reference, MediaSemantics.Input, ExtensionData.Empty).ShouldBe(new MediaReferencePart(reference, MediaSemantics.Input, ExtensionData.Empty));
     }
+
+    [Fact]
+    public void With_WhenReferenceIsNull_ThrowsArgumentNullException()
+    {
+        var part = new MediaReferencePart(
+            new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", null, [1], 1, null, ExtensionData.Empty),
+            MediaSemantics.Input,
+            ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => part with { Reference = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

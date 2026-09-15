@@ -30,5 +30,16 @@ public sealed record ReasoningPart: ContentPart
     }
 
     /// <summary>Gets the reasoning content.</summary>
-    public ReasoningContent Content { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ReasoningContent Content
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 }

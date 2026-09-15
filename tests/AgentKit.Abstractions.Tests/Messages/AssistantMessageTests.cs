@@ -25,6 +25,57 @@ public sealed class AssistantMessageTests
         message.Response.ShouldBe(response);
     }
 
+    private static AssistantMessage CreateAssistantMessage(ImmutableArray<ContentPart> parts, ExtensionData extensions) => new(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), null, new BranchId(Guid.NewGuid()), new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()), DateTimeOffset.UnixEpoch, MessageState.Complete, parts, CreateResponse(), extensions);
+
+    [Fact]
+    public void Constructor_WhenPartsIsDefault_ThrowsArgumentException() => Should.Throw<ArgumentException>(() => CreateAssistantMessage(default, ExtensionData.Empty)).ParamName.ShouldBe("parts");
+
+    [Fact]
+    public void Constructor_WhenPartsContainNull_ThrowsArgumentException() => Should.Throw<ArgumentException>(() => CreateAssistantMessage([null!], ExtensionData.Empty)).ParamName.ShouldBe("parts");
+
+    [Fact]
+    public void Constructor_WhenExtensionsIsNull_ThrowsArgumentNullException() => Should.Throw<ArgumentNullException>(() => CreateAssistantMessage(_sampleParts, null!)).ParamName.ShouldBe("extensions");
+
+    [Fact]
+    public void With_WhenPartsIsDefault_ThrowsArgumentException()
+    {
+        var message = CreateAssistantMessage(_sampleParts, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => message with { Parts = default });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenPartsContainNull_ThrowsArgumentException()
+    {
+        var message = CreateAssistantMessage(_sampleParts, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => message with { Parts = [null!] });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenExtensionsIsNull_ThrowsArgumentNullException()
+    {
+        var message = CreateAssistantMessage(_sampleParts, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => message with { Extensions = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenResponseIsNull_ThrowsArgumentNullException()
+    {
+        var message = CreateAssistantMessage(_sampleParts, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => message with { Response = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
     private static readonly Guid _messageGuid = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid _agentGuid = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly Guid _sessionGuid = Guid.Parse("33333333-3333-3333-3333-333333333333");

@@ -28,4 +28,14 @@ public sealed class ReasoningPartTests
         var content = new ReasoningContent("thinking", ReasoningVisibility.Visible, null, ExtensionData.Empty);
         new ReasoningPart(content, ExtensionData.Empty).ShouldBe(new ReasoningPart(content, ExtensionData.Empty));
     }
+
+    [Fact]
+    public void With_WhenContentIsNull_ThrowsArgumentNullException()
+    {
+        var part = new ReasoningPart(new ReasoningContent("why", ReasoningVisibility.Visible, null, ExtensionData.Empty), ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => part with { Content = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

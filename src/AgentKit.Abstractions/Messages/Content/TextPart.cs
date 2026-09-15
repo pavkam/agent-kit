@@ -30,7 +30,18 @@ public sealed record TextPart: ContentPart
     }
 
     /// <summary>Gets the literal text content.</summary>
-    public string Text { get; init; }
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public string Text
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets how the text should be interpreted or rendered.</summary>
     public TextSemantics Semantics { get; init; }

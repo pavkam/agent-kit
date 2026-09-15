@@ -23,4 +23,14 @@ public sealed class UnknownContentPartTests
         var raw = JsonDocument.Parse("{}").RootElement;
         new UnknownContentPart("custom", raw, ExtensionData.Empty).ShouldBe(new UnknownContentPart("custom", raw, ExtensionData.Empty));
     }
+
+    [Fact]
+    public void With_WhenTypeNameIsWhitespace_ThrowsArgumentException()
+    {
+        var part = new UnknownContentPart("vendor.kind", default, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => part with { TypeName = " " });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

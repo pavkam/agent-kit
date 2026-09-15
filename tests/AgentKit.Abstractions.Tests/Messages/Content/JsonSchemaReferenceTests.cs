@@ -26,4 +26,14 @@ public sealed class JsonSchemaReferenceTests
         var exception = Should.Throw<ArgumentException>(() => new JsonSchemaReference("   ", new SchemaVersion("1")));
         exception.ParamName.ShouldBe("name");
     }
+
+    [Fact]
+    public void With_WhenNameIsWhitespace_ThrowsArgumentException()
+    {
+        var reference = new JsonSchemaReference("schema", new SchemaVersion("1"));
+
+        var exception = Should.Throw<ArgumentException>(() => reference with { Name = " " });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

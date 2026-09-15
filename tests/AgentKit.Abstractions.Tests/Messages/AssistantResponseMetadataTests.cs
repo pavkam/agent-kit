@@ -36,4 +36,28 @@ public sealed class AssistantResponseMetadataTests
     public void AssistantResponseMetadata_Equality_WhenSameValues_InstancesAreEqual() => ResponseMetadata().ShouldBe(ResponseMetadata());
     private static ProviderResponseIdentity ResponseIdentity() => new(new ProviderId("openai"), null, new ApiFamilyId("chat"), new ModelId("gpt"), new ModelId("gpt"), null, null, null);
     private static AssistantResponseMetadata ResponseMetadata() => new(new ModelRequestId(_messageGuid), ResponseIdentity(), NormalizedStopReason.Completed, null, ModelUsage.NotReported, ExtensionData.Empty);
+
+    [Fact]
+    public void With_WhenResponseIsNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => ResponseMetadata() with { Response = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenUsageIsNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => ResponseMetadata() with { Usage = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenExtensionsIsNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => ResponseMetadata() with { Extensions = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

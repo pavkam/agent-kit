@@ -31,4 +31,14 @@ public sealed class ReasoningContentTests
         content.Text.ShouldBeNull();
         content.Visibility.ShouldBe(ReasoningVisibility.Redacted);
     }
+
+    [Fact]
+    public void With_WhenExtensionsIsNull_ThrowsArgumentNullException()
+    {
+        var content = new ReasoningContent("thinking", ReasoningVisibility.Visible, null, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => content with { Extensions = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }

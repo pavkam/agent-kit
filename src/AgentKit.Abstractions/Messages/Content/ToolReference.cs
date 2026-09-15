@@ -62,5 +62,17 @@ public sealed record ToolReference
     /// Gets the tool name exactly as advertised to the model at the time of
     /// the call.
     /// </summary>
-    public string Name { get; init; }
+    /// <exception cref="ArgumentException">
+    /// The value assigned during initialization or non-destructive mutation is null, empty, or
+    /// consists only of whitespace.
+    /// </exception>
+    public string Name
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value);
+            field = value;
+        }
+    }
 }

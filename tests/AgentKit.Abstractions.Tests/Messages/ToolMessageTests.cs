@@ -27,4 +27,37 @@ public sealed class ToolMessageTests
 
     [Fact]
     public void Constructor_WhenExtensionsIsNull_ThrowsArgumentNullException() => Should.Throw<ArgumentNullException>(() => CreateToolMessage(_sampleParts, null!)).ParamName.ShouldBe("extensions");
+
+    [Fact]
+    public void Constructor_WhenPartsContainNull_ThrowsArgumentException() => Should.Throw<ArgumentException>(() => CreateToolMessage([null!], ExtensionData.Empty)).ParamName.ShouldBe("parts");
+
+    [Fact]
+    public void With_WhenPartsIsDefault_ThrowsArgumentException()
+    {
+        var message = CreateToolMessage(_sampleParts, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => message with { Parts = default });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenPartsContainNull_ThrowsArgumentException()
+    {
+        var message = CreateToolMessage(_sampleParts, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentException>(() => message with { Parts = [null!] });
+
+        exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void With_WhenExtensionsIsNull_ThrowsArgumentNullException()
+    {
+        var message = CreateToolMessage(_sampleParts, ExtensionData.Empty);
+
+        var exception = Should.Throw<ArgumentNullException>(() => message with { Extensions = null! });
+
+        exception.ParamName.ShouldBe("value");
+    }
 }
