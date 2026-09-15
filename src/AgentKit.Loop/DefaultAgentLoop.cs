@@ -333,6 +333,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     llmModel,
                     operationId,
                     turn,
+                    turn == 1 ? modelResolution.FirstModelRequestId : null,
                     history,
                     committedMessages,
                     currentVersion,
@@ -374,7 +375,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// Selection happens once per run rather than once per turn, so every
     /// turn of a run talks to the same model and the same catalog version. A
     /// mid-run catalog reload therefore cannot silently move a conversation
-    /// to a different provider.
+    /// to a different provider. The selection's <see cref="ModelSelectionRequest.ModelRequestId"/>
+    /// is the identity of the first turn's attempt; later turns allocate fresh
+    /// identities, so selection diagnostics always correlate to one real attempt.
     /// </remarks>
     private async Task<ModelResolution> ResolveModelAsync(
         AgentRunRequest request,
@@ -389,9 +392,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
             request.SessionId,
             new InRunOperationCorrelation(operationId, request.RunId, turnId: null));
 
+        // The selection is correlated to a real attempt: its identity becomes the first turn's model request
+        // identity rather than a throwaway value that never matches any attempt.
+        var firstModelRequestId = _modelRequestIds.Create();
         var selectionRequest = new ModelSelectionRequest(
             scope,
-            _modelRequestIds.Create(),
+            firstModelRequestId,
             request.Agent?.Models ?? request.ModelPolicy,
             request.Agent?.ModelRequirements ?? request.ModelRequirements,
             catalog);
@@ -431,7 +437,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                         selected.Decision.Diagnostics));
                 }
 
-                return ModelResolution.Resolved(descriptor, adapter);
+                return ModelResolution.Resolved(descriptor, adapter, firstModelRequestId);
 
             default:
                 throw new InvalidOperationException(
@@ -445,6 +451,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ILlmModel llmModel,
         OperationId operationId,
         int turn,
+        ModelRequestId? reservedModelRequestId,
         HistoryView history,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
@@ -467,7 +474,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             turnCorrelation,
             request.Identity,
             turnAuthorization);
-        var modelRequestId = _modelRequestIds.Create();
+        var modelRequestId = reservedModelRequestId ?? _modelRequestIds.Create();
         using var turnActivity = AgentKitDiagnostics.Activities.StartActivity(
             AgentKitActivityNames.AgentTurn,
             ActivityKind.Internal,
@@ -1831,11 +1838,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </summary>
     private readonly struct ModelResolution
     {
-        private ModelResolution(AgentRunOutcome? outcome, ModelDescriptor? model, ILlmModel? adapter)
+        private ModelResolution(AgentRunOutcome? outcome, ModelDescriptor? model, ILlmModel? adapter, ModelRequestId? firstModelRequestId)
         {
             Outcome = outcome;
             Model = model;
             Adapter = adapter;
+            FirstModelRequestId = firstModelRequestId;
         }
 
         /// <summary>Gets the terminal outcome, when no model could be used.</summary>
@@ -1847,12 +1855,15 @@ public sealed class DefaultAgentLoop: IAgentLoop
         /// <summary>Gets the adapter that executes the chosen model, when resolution succeeded.</summary>
         public ILlmModel? Adapter { get; }
 
+        /// <summary>Gets the selection's model request identity, which the first turn's attempt reuses, when resolution succeeded.</summary>
+        public ModelRequestId? FirstModelRequestId { get; }
+
         /// <summary>Creates a successful resolution.</summary>
-        public static ModelResolution Resolved(ModelDescriptor model, ILlmModel adapter) =>
-            new(null, model, adapter);
+        public static ModelResolution Resolved(ModelDescriptor model, ILlmModel adapter, ModelRequestId firstModelRequestId) =>
+            new(null, model, adapter, firstModelRequestId);
 
         /// <summary>Creates a resolution that settles the run before it starts.</summary>
-        public static ModelResolution Failed(AgentRunOutcome outcome) => new(outcome, null, null);
+        public static ModelResolution Failed(AgentRunOutcome outcome) => new(outcome, null, null, null);
     }
 
     /// <summary>

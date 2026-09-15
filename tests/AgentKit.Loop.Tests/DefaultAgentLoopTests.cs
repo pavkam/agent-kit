@@ -792,6 +792,42 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_ReusesTheSelectionModelRequestIdForTheFirstAttemptAndAllocatesFreshIdsAfterwards()
+    {
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var descriptor = TestFactory.Model();
+        var selector = FakeModelSelector.Selecting(descriptor);
+        var assembler = new RecordingContextAssembler();
+        var attemptRequestIds = new List<ModelRequestId>();
+        var callId = new ToolCallId(Guid.NewGuid());
+        var adapter = new RespondingLlmModel(new ModelAlias("chat"), modelRequest =>
+        {
+            attemptRequestIds.Add(modelRequest.Context.ModelRequestId);
+            return attemptRequestIds.Count == 1
+                ? TestFactory.CompletedWithToolCall(modelRequest.Context.ModelRequestId, callId)
+                : TestFactory.CompletedWithText(modelRequest.Context.ModelRequestId);
+        });
+        var loop = CreateLoopWith(
+            coordinator,
+            new FakeModelCatalog(TestFactory.Catalog(descriptor)),
+            selector,
+            new FakeLlmModelResolver(adapter),
+            assembler);
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var selectionRequestId = selector.LastRequest.ShouldNotBeNull().ModelRequestId;
+        attemptRequestIds.Count.ShouldBe(2);
+        attemptRequestIds[0].ShouldBe(selectionRequestId);
+        attemptRequestIds[1].ShouldNotBe(selectionRequestId);
+        assembler.Requests[0].ModelRequestId.ShouldBe(selectionRequestId);
+        result.NewMessages[0].ShouldBeOfType<AssistantMessage>().Response.RequestId.ShouldBe(selectionRequestId);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenContextAssemblyFails_ReturnsAgentRunContextPreparationFailed()
     {
         var loop = CreateLoop(out var coordinator, out _, static _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())));

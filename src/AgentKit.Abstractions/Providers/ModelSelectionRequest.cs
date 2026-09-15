@@ -95,6 +95,12 @@ public sealed record ModelSelectionRequest
     }
 
     /// <summary>Gets the model request this selection is for.</summary>
+    /// <value>
+    /// A non-default identity that a loop must reuse for the first attempt the selection governs, so selection
+    /// diagnostics correlate to a real attempt rather than a throwaway identity. A loop that selects once per run
+    /// (as the first-party loop does) reuses it for the first turn's attempt and allocates fresh identities for
+    /// later turns.
+    /// </value>
     /// <exception cref="ArgumentOutOfRangeException">
     /// An initializer attempts to set the default, empty identity.
     /// </exception>

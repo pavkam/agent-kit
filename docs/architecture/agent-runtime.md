@@ -51,6 +51,12 @@ The runtime does not admit input, publish output, select history items, select a
 model, translate provider wire formats, authorize tools, or implement storage.
 It sequences the components that do.
 
+The reduced first-party loop selects the model once per run, so every turn talks
+to the same descriptor and catalog version. The selection request's
+`ModelRequestId` is the identity of the first turn's attempt; later turns
+allocate fresh identities. Selection diagnostics therefore always correlate to
+one real attempt instead of a throwaway identity.
+
 The reduced first-party loop consults the selected `IRunContinuationPolicy`
 after every committed turn: after a no-tool assistant commit with an empty
 cause set, and after the tool-result commit with a
