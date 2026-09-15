@@ -3,7 +3,7 @@
 
 namespace AgentKit.Providers.GoogleVertexAI.Tests;
 
-
+using AgentKit.Providers.Http;
 
 /// <summary>Verifies GoogleVertexAIProviderDefaults behavior and contracts.</summary>
 public sealed class GoogleVertexAIProviderDefaultsTests
@@ -73,5 +73,22 @@ public sealed class GoogleVertexAIProviderDefaultsTests
         GoogleVertexAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsPurpose.ShouldBeTrue();
         GoogleVertexAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsDimensions.ShouldBeTrue();
         GoogleVertexAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsEncodingSelection.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AuthorizationScheme_WhenApiKeyCredential_IsDeniedBecauseVertexHasNoApiKeyMode()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2025, 6, 1, 12, 0, 0, TimeSpan.Zero));
+
+        GoogleVertexAIProviderDefaults.AuthorizationScheme.SupportsApiKey.ShouldBeFalse();
+        var result = ProviderAuthorizationHeaderFactory.Create(
+            new ApiKeyProviderCredential("some-key"),
+            GoogleVertexAIProviderDefaults.ProviderId,
+            clock,
+            GoogleVertexAIProviderDefaults.AuthorizationScheme);
+
+        var denied = result.ShouldBeOfType<ProviderAuthorizationDenied>();
+        denied.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        denied.Failure.ProviderId.ShouldBe(GoogleVertexAIProviderDefaults.ProviderId);
     }
 }

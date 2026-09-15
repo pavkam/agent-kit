@@ -11,7 +11,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [GoogleGeminiAuthorizationHeaderFactoryTests](Authorization/GoogleGeminiAuthorizationHeaderFactoryTests.cs)
+- [GoogleGeminiProviderDefaultsTests](GoogleGeminiProviderDefaultsTests.cs)
 - [GoogleGeminiContentTranslatorTests](Translation/GoogleGeminiContentTranslatorTests.cs)
 - [GoogleGeminiEmbeddingModelTests](GoogleGeminiEmbeddingModelTests.cs)
 - [GoogleGeminiEmbeddingRequestTranslatorTests](Translation/GoogleGeminiEmbeddingRequestTranslatorTests.cs)

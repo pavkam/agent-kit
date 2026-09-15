@@ -14,12 +14,16 @@ execution, permissions, compaction, or durable storage.
 AgentKit.Providers contains the first-party model catalog, selector, capability
 validator, and model request executor. AddAgentProviders registers those
 replaceable services. The package never references a vendor SDK or assumes an
-OpenAI wire shape. It also owns the shared, wire-neutral HTTP failure mechanics
-in `AgentKit.Providers.Http`: the canonical HTTP status → `ProviderFailureKind`
+OpenAI wire shape. It also owns the shared, wire-neutral HTTP mechanics in
+`AgentKit.Providers.Http`: the canonical HTTP status → `ProviderFailureKind`
 table, `Retry-After` resolution in both delta and HTTP-date forms against the
-injected `TimeProvider`, and request-identifier header reading. Concrete
-adapters consume these helpers and add only documented provider-specific status
-overrides; body-driven error vocabularies remain in the owning provider package.
+injected `TimeProvider`, request-identifier header reading, and the closed
+`ProviderAuthorizationResult` hierarchy that resolves a `ProviderCredential`
+into one granted header (with its secret value redacted from any textual
+rendering) or one typed authentication denial. Concrete adapters consume these
+helpers and add only documented provider-specific status overrides and their
+`ProviderAuthorizationScheme` constant; body-driven error vocabularies remain in
+the owning provider package.
 
 The catalog is shared by the process-level engine; model selectors and request
 executors are keyed strategies selected by each `AgentDefinition`. One engine

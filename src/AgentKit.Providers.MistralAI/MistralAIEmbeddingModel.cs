@@ -111,13 +111,17 @@ public sealed class MistralAIEmbeddingModel: IEmbeddingModel
             return Cancel(_descriptor.ProviderId);
         }
 
-        var authorization = MistralAIAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
-        if (authorization is MistralAIAuthorizationDenied denied)
+        var authorization = ProviderAuthorizationHeaderFactory.Create(
+            credential,
+            _descriptor.ProviderId,
+            _timeProvider,
+            MistralAIProviderDefaults.AuthorizationScheme);
+        if (authorization is ProviderAuthorizationDenied denied)
         {
             return new EmbeddingAttemptFailed(denied.Failure);
         }
 
-        var granted = (MistralAIAuthorizationGranted) authorization;
+        var granted = (ProviderAuthorizationGranted) authorization;
 
         JsonObject payload;
         try
@@ -200,7 +204,7 @@ public sealed class MistralAIEmbeddingModel: IEmbeddingModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, MistralAIAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
     {
         var uri = MistralAIProviderDefaults.BuildEmbeddingsUri(_options);
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri)
@@ -208,7 +212,7 @@ public sealed class MistralAIEmbeddingModel: IEmbeddingModel
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        _ = httpRequest.Headers.TryAddWithoutValidation(authorization.HeaderName, authorization.HeaderValue);
+        authorization.Apply(httpRequest.Headers);
 
         return httpRequest;
     }

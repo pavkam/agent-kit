@@ -3,22 +3,6 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Providers.GoogleGemini
 {
-    public sealed class GoogleGeminiAuthorizationDenied : AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationResult, System.IEquatable<AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationDenied>
-    {
-        public GoogleGeminiAuthorizationDenied(AgentKit.ProviderFailure failure) { }
-        public AgentKit.ProviderFailure Failure { get; init; }
-    }
-    public sealed class GoogleGeminiAuthorizationGranted : AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationResult, System.IEquatable<AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationGranted>
-    {
-        public GoogleGeminiAuthorizationGranted(string headerName, string headerValue) { }
-        public string HeaderName { get; init; }
-        public string HeaderValue { get; init; }
-    }
-    public static class GoogleGeminiAuthorizationHeaderFactory
-    {
-        public static AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
-    }
-    public abstract class GoogleGeminiAuthorizationResult : System.IEquatable<AgentKit.Providers.GoogleGemini.GoogleGeminiAuthorizationResult> { }
     public sealed class GoogleGeminiContentTranslator : AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator
     {
         public GoogleGeminiContentTranslator() { }
@@ -58,6 +42,7 @@ namespace AgentKit.Providers.GoogleGemini
     {
         public const string DefaultApiVersion = "v1beta";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
         public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }

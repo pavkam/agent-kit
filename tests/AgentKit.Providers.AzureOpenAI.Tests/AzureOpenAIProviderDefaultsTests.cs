@@ -3,7 +3,7 @@
 
 namespace AgentKit.Providers.AzureOpenAI.Tests;
 
-
+using AgentKit.Providers.Http;
 
 /// <summary>Verifies AzureOpenAIProviderDefaults behavior and contracts.</summary>
 public sealed class AzureOpenAIProviderDefaultsTests
@@ -55,5 +55,21 @@ public sealed class AzureOpenAIProviderDefaultsTests
         AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsDimensions.ShouldBeTrue();
         AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsEncodingSelection.ShouldBeTrue();
         AzureOpenAIProviderDefaults.DefaultEmbeddingCapabilities.SupportsPurpose.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AuthorizationScheme_WhenApiKeyCredential_ResolvesToapikeyHeader()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2025, 6, 1, 12, 0, 0, TimeSpan.Zero));
+
+        var result = ProviderAuthorizationHeaderFactory.Create(
+            new ApiKeyProviderCredential("azure-key"),
+            AzureOpenAIProviderDefaults.ProviderId,
+            clock,
+            AzureOpenAIProviderDefaults.AuthorizationScheme);
+
+        var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();
+        granted.HeaderName.ShouldBe("api-key");
+        granted.HeaderValue.ShouldBe("azure-key");
     }
 }

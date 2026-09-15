@@ -3,22 +3,6 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Providers.Anthropic
 {
-    public sealed class AnthropicAuthorizationDenied : AgentKit.Providers.Anthropic.AnthropicAuthorizationResult, System.IEquatable<AgentKit.Providers.Anthropic.AnthropicAuthorizationDenied>
-    {
-        public AnthropicAuthorizationDenied(AgentKit.ProviderFailure failure) { }
-        public AgentKit.ProviderFailure Failure { get; init; }
-    }
-    public sealed class AnthropicAuthorizationGranted : AgentKit.Providers.Anthropic.AnthropicAuthorizationResult, System.IEquatable<AgentKit.Providers.Anthropic.AnthropicAuthorizationGranted>
-    {
-        public AnthropicAuthorizationGranted(string headerName, string headerValue) { }
-        public string HeaderName { get; init; }
-        public string HeaderValue { get; init; }
-    }
-    public static class AnthropicAuthorizationHeaderFactory
-    {
-        public static AgentKit.Providers.Anthropic.AnthropicAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
-    }
-    public abstract class AnthropicAuthorizationResult : System.IEquatable<AgentKit.Providers.Anthropic.AnthropicAuthorizationResult> { }
     public sealed class AnthropicLlmModel : AgentKit.ILlmModel
     {
         public AnthropicLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.Anthropic.AnthropicProviderOptions options, AgentKit.Providers.Anthropic.IAnthropicMessageTranslator translator, AgentKit.Providers.Anthropic.IAnthropicMessageStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -42,6 +26,7 @@ namespace AgentKit.Providers.Anthropic
         public const long DefaultMaxOutputTokensFallback = 4096;
         public const string DefaultMessagesPath = "v1/messages";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }

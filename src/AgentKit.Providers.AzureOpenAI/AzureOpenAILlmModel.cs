@@ -170,13 +170,17 @@ public sealed class AzureOpenAILlmModel: ILlmModel
             return await CancelAsync().ConfigureAwait(false);
         }
 
-        var authorization = AzureOpenAIAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
-        if (authorization is AzureOpenAIAuthorizationDenied denied)
+        var authorization = ProviderAuthorizationHeaderFactory.Create(
+            credential,
+            _descriptor.ProviderId,
+            _timeProvider,
+            AzureOpenAIProviderDefaults.AuthorizationScheme);
+        if (authorization is ProviderAuthorizationDenied denied)
         {
             return await FailAsync(denied.Failure).ConfigureAwait(false);
         }
 
-        var granted = (AzureOpenAIAuthorizationGranted) authorization;
+        var granted = (ProviderAuthorizationGranted) authorization;
         var useStreaming = _profile.PreferStreaming && _descriptor.Capabilities.SupportsStreaming;
 
         JsonObject payload;
@@ -271,14 +275,14 @@ public sealed class AzureOpenAILlmModel: ILlmModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, AzureOpenAIAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
     {
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, _profile.ChatCompletionsUri)
         {
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        _ = httpRequest.Headers.TryAddWithoutValidation(authorization.HeaderName, authorization.HeaderValue);
+        authorization.Apply(httpRequest.Headers);
 
         foreach (var header in _profile.DefaultRequestHeaders)
         {

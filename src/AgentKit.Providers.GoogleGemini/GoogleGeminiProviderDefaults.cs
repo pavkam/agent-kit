@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.GoogleGemini;
 
+using AgentKit.Providers.Http;
+
 /// <summary>
 /// The fixed identity, endpoint, and capability defaults for the Google
 /// Gemini Developer API integration.
@@ -22,6 +24,16 @@ public static class GoogleGeminiProviderDefaults
 {
     /// <summary>Gets the stable <see cref="ProviderId"/> for Google Gemini.</summary>
     public static ProviderId ProviderId { get; } = new("google-gemini");
+
+    /// <summary>
+    /// Gets the verified header authentication scheme for the Gemini
+    /// Developer API: an <see cref="ApiKeyProviderCredential"/> is sent as
+    /// <c>x-goog-api-key: &lt;key&gt;</c>, matching the documented header
+    /// authentication, while an <see cref="OAuthTokenProviderCredential"/>
+    /// for a Google Cloud identity with Generative Language API scope is
+    /// sent as <c>Authorization: Bearer &lt;token&gt;</c>.
+    /// </summary>
+    public static ProviderAuthorizationScheme AuthorizationScheme { get; } = ProviderAuthorizationScheme.ForApiKeyHeader("x-goog-api-key");
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Gemini's GenerateContent wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("google-gemini-generate-content");

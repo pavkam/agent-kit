@@ -149,13 +149,17 @@ public sealed class AzureOpenAIEmbeddingModel: IEmbeddingModel
             return Cancel(_descriptor.ProviderId);
         }
 
-        var authorization = AzureOpenAIAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
-        if (authorization is AzureOpenAIAuthorizationDenied denied)
+        var authorization = ProviderAuthorizationHeaderFactory.Create(
+            credential,
+            _descriptor.ProviderId,
+            _timeProvider,
+            AzureOpenAIProviderDefaults.AuthorizationScheme);
+        if (authorization is ProviderAuthorizationDenied denied)
         {
             return new EmbeddingAttemptFailed(denied.Failure);
         }
 
-        var granted = (AzureOpenAIAuthorizationGranted) authorization;
+        var granted = (ProviderAuthorizationGranted) authorization;
 
         JsonObject payload;
         try
@@ -244,14 +248,14 @@ public sealed class AzureOpenAIEmbeddingModel: IEmbeddingModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, AzureOpenAIAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
     {
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, _profile.EmbeddingsUri)
         {
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        _ = httpRequest.Headers.TryAddWithoutValidation(authorization.HeaderName, authorization.HeaderValue);
+        authorization.Apply(httpRequest.Headers);
 
         foreach (var header in _profile.DefaultRequestHeaders)
         {

@@ -54,10 +54,12 @@ namespace AgentKit.Providers.AwsBedrock
     }
     public sealed class AwsSigV4Credential : System.IEquatable<AgentKit.Providers.AwsBedrock.AwsSigV4Credential>
     {
+        public const string RedactionMarker = "[REDACTED]";
         public AwsSigV4Credential(string accessKeyId, string secretAccessKey, string? sessionToken) { }
         public string AccessKeyId { get; init; }
         public string SecretAccessKey { get; init; }
         public string? SessionToken { get; init; }
+        public override string ToString() { }
     }
     public interface IAwsBedrockRequestTranslator
     {

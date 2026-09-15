@@ -3,22 +3,6 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Providers.GoogleVertexAI
 {
-    public sealed class GoogleVertexAIAuthorizationDenied : AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationResult, System.IEquatable<AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationDenied>
-    {
-        public GoogleVertexAIAuthorizationDenied(AgentKit.ProviderFailure failure) { }
-        public AgentKit.ProviderFailure Failure { get; init; }
-    }
-    public sealed class GoogleVertexAIAuthorizationGranted : AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationResult, System.IEquatable<AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationGranted>
-    {
-        public GoogleVertexAIAuthorizationGranted(string headerName, string headerValue) { }
-        public string HeaderName { get; init; }
-        public string HeaderValue { get; init; }
-    }
-    public static class GoogleVertexAIAuthorizationHeaderFactory
-    {
-        public static AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
-    }
-    public abstract class GoogleVertexAIAuthorizationResult : System.IEquatable<AgentKit.Providers.GoogleVertexAI.GoogleVertexAIAuthorizationResult> { }
     public sealed class GoogleVertexAIEmbeddingModel : AgentKit.IEmbeddingModel
     {
         public GoogleVertexAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.Providers.GoogleVertexAI.IGoogleVertexAIEmbeddingRequestTranslator translator, AgentKit.Providers.GoogleVertexAI.IGoogleVertexAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -55,6 +39,7 @@ namespace AgentKit.Providers.GoogleVertexAI
         public const string DefaultApiVersion = "v1";
         public const string DefaultPublisher = "google";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
         public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
         public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }

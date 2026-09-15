@@ -111,13 +111,17 @@ public sealed class CohereEmbeddingModel: IEmbeddingModel
             return Cancel(_descriptor.ProviderId);
         }
 
-        var authorization = CohereAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
-        if (authorization is CohereAuthorizationDenied denied)
+        var authorization = ProviderAuthorizationHeaderFactory.Create(
+            credential,
+            _descriptor.ProviderId,
+            _timeProvider,
+            CohereProviderDefaults.AuthorizationScheme);
+        if (authorization is ProviderAuthorizationDenied denied)
         {
             return new EmbeddingAttemptFailed(denied.Failure);
         }
 
-        var granted = (CohereAuthorizationGranted) authorization;
+        var granted = (ProviderAuthorizationGranted) authorization;
 
         JsonObject payload;
         try
@@ -201,7 +205,7 @@ public sealed class CohereEmbeddingModel: IEmbeddingModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, CohereAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
     {
         var uri = CohereProviderDefaults.BuildEmbedUri(_options);
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri)
@@ -209,7 +213,7 @@ public sealed class CohereEmbeddingModel: IEmbeddingModel
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        _ = httpRequest.Headers.TryAddWithoutValidation(authorization.HeaderName, authorization.HeaderValue);
+        authorization.Apply(httpRequest.Headers);
 
         if (_options.ClientName is { Length: > 0 } clientName)
         {

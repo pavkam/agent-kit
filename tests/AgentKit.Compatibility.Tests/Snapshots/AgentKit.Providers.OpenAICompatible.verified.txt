@@ -20,21 +20,6 @@ namespace AgentKit.Providers.OpenAICompatible
         System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
     }
-    public sealed class OpenAIAuthorizationDenied : AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationResult, System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationDenied>
-    {
-        public OpenAIAuthorizationDenied(AgentKit.ProviderFailure failure) { }
-        public AgentKit.ProviderFailure Failure { get; init; }
-    }
-    public sealed class OpenAIAuthorizationGranted : AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationResult, System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationGranted>
-    {
-        public OpenAIAuthorizationGranted(System.Net.Http.Headers.AuthenticationHeaderValue authorization) { }
-        public System.Net.Http.Headers.AuthenticationHeaderValue Authorization { get; init; }
-    }
-    public static class OpenAIAuthorizationHeaderFactory
-    {
-        public static AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
-    }
-    public abstract class OpenAIAuthorizationResult : System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAIAuthorizationResult> { }
     public sealed class OpenAIChatCompletionResponseParser : AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser
     {
         public OpenAIChatCompletionResponseParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }

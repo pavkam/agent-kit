@@ -112,13 +112,17 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
             return Cancel(_descriptor.ProviderId);
         }
 
-        var authorization = GoogleVertexAIAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
-        if (authorization is GoogleVertexAIAuthorizationDenied denied)
+        var authorization = ProviderAuthorizationHeaderFactory.Create(
+            credential,
+            _descriptor.ProviderId,
+            _timeProvider,
+            GoogleVertexAIProviderDefaults.AuthorizationScheme);
+        if (authorization is ProviderAuthorizationDenied denied)
         {
             return new EmbeddingAttemptFailed(denied.Failure);
         }
 
-        var granted = (GoogleVertexAIAuthorizationGranted) authorization;
+        var granted = (ProviderAuthorizationGranted) authorization;
 
         JsonObject payload;
         try
@@ -201,7 +205,7 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, GoogleVertexAIAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
     {
         var uri = GoogleVertexAIProviderDefaults.BuildPredictUri(_options, _descriptor.ModelId, _descriptor.DeploymentId);
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri)
@@ -209,7 +213,7 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        _ = httpRequest.Headers.TryAddWithoutValidation(authorization.HeaderName, authorization.HeaderValue);
+        authorization.Apply(httpRequest.Headers);
 
         return httpRequest;
     }

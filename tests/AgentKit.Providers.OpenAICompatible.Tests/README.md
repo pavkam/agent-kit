@@ -12,7 +12,6 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 ## Start with these tests
 
 - [DelegatingOAuthCredentialSourceTests](Authorization/DelegatingOAuthCredentialSourceTests.cs)
-- [OpenAIAuthorizationHeaderFactoryTests](Authorization/OpenAIAuthorizationHeaderFactoryTests.cs)
 - [OpenAIChatCompletionResponseParserTests](Parsing/OpenAIChatCompletionResponseParserTests.cs)
 - [OpenAICompatibilityProfileTests](OpenAICompatibilityProfileTests.cs)
 

@@ -11,7 +11,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [AnthropicAuthorizationHeaderFactoryTests](Authorization/AnthropicAuthorizationHeaderFactoryTests.cs)
+- [AnthropicProviderDefaultsTests](AnthropicProviderDefaultsTests.cs)
 - [AnthropicLlmModelTests](AnthropicLlmModelTests.cs)
 - [AnthropicMessageStreamParserTests](Parsing/AnthropicMessageStreamParserTests.cs)
 - [AnthropicMessageTranslatorTests](Translation/AnthropicMessageTranslatorTests.cs)

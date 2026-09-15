@@ -153,13 +153,17 @@ public sealed class MistralAILlmModel: ILlmModel
             return await CancelAsync().ConfigureAwait(false);
         }
 
-        var authorization = MistralAIAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
-        if (authorization is MistralAIAuthorizationDenied denied)
+        var authorization = ProviderAuthorizationHeaderFactory.Create(
+            credential,
+            _descriptor.ProviderId,
+            _timeProvider,
+            MistralAIProviderDefaults.AuthorizationScheme);
+        if (authorization is ProviderAuthorizationDenied denied)
         {
             return await FailAsync(denied.Failure).ConfigureAwait(false);
         }
 
-        var granted = (MistralAIAuthorizationGranted) authorization;
+        var granted = (ProviderAuthorizationGranted) authorization;
         var useStreaming = _options.PreferStreaming && _descriptor.Capabilities.SupportsStreaming;
 
         JsonObject payload;
@@ -249,7 +253,7 @@ public sealed class MistralAILlmModel: ILlmModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, MistralAIAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
     {
         var uri = MistralAIProviderDefaults.BuildChatCompletionsUri(_options);
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri)
@@ -257,7 +261,7 @@ public sealed class MistralAILlmModel: ILlmModel
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        _ = httpRequest.Headers.TryAddWithoutValidation(authorization.HeaderName, authorization.HeaderValue);
+        authorization.Apply(httpRequest.Headers);
 
         return httpRequest;
     }

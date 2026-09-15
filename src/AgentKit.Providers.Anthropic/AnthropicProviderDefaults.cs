@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Anthropic;
 
+using AgentKit.Providers.Http;
+
 /// <summary>
 /// The fixed identity, endpoint, and capability defaults for the Anthropic
 /// Claude integration.
@@ -23,6 +25,16 @@ public static class AnthropicProviderDefaults
 {
     /// <summary>Gets the stable <see cref="ProviderId"/> for Anthropic.</summary>
     public static ProviderId ProviderId { get; } = new("anthropic");
+
+    /// <summary>
+    /// Gets the verified header authentication scheme for the Anthropic
+    /// Messages API: an <see cref="ApiKeyProviderCredential"/> is sent as
+    /// <c>x-api-key: &lt;key&gt;</c>, matching Anthropic's documented direct
+    /// API-key authentication, while an <see cref="OAuthTokenProviderCredential"/>
+    /// (for example, from Workload Identity Federation) is sent as
+    /// <c>Authorization: Bearer &lt;token&gt;</c>.
+    /// </summary>
+    public static ProviderAuthorizationScheme AuthorizationScheme { get; } = ProviderAuthorizationScheme.ForApiKeyHeader("x-api-key");
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Anthropic's Messages wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("anthropic-messages");

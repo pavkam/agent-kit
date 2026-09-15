@@ -16,6 +16,8 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 - [DefaultModelCatalogTests](DefaultModelCatalogTests.cs)
 - [DefaultModelSelectorTests](DefaultModelSelectorTests.cs)
 - [HttpStatusFailureKindMapperTests](Http/HttpStatusFailureKindMapperTests.cs)
+- [ProviderAuthorizationHeaderFactoryTests](Http/ProviderAuthorizationHeaderFactoryTests.cs)
+- [ProviderAuthorizationGrantedTests](Http/ProviderAuthorizationGrantedTests.cs)
 - [RetryAfterResolverTests](Http/RetryAfterResolverTests.cs)
 - [ProviderRequestIdReaderTests](Http/ProviderRequestIdReaderTests.cs)
 

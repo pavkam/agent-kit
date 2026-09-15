@@ -4,7 +4,6 @@
 namespace AgentKit.Providers.OpenAICompatible;
 
 using System.Net.Http;
-using System.Net.Http.Headers;
 
 using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Wire;
@@ -148,13 +147,17 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
             return Cancel(_descriptor.ProviderId);
         }
 
-        var authorization = OpenAIAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
-        if (authorization is OpenAIAuthorizationDenied denied)
+        var authorization = ProviderAuthorizationHeaderFactory.Create(
+            credential,
+            _descriptor.ProviderId,
+            _timeProvider,
+            ProviderAuthorizationScheme.BearerToken);
+        if (authorization is ProviderAuthorizationDenied denied)
         {
             return Fail(denied.Failure);
         }
 
-        var granted = (OpenAIAuthorizationGranted) authorization;
+        var granted = (ProviderAuthorizationGranted) authorization;
 
         JsonObject payload;
         try
@@ -169,7 +172,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
                 exception);
         }
 
-        using var httpRequest = CreateHttpRequest(payload, granted.Authorization);
+        using var httpRequest = CreateHttpRequest(payload, granted);
         using var deadlineSource = new CancellationTokenSource(remaining, _timeProvider);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token);
 
@@ -238,14 +241,14 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, AuthenticationHeaderValue authorization)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
     {
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, _profile.EmbeddingsUri)
         {
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        httpRequest.Headers.Authorization = authorization;
+        authorization.Apply(httpRequest.Headers);
 
         foreach (var header in _profile.DefaultRequestHeaders)
         {

@@ -3,7 +3,7 @@
 
 namespace AgentKit.Providers.Cohere.Tests;
 
-
+using AgentKit.Providers.Http;
 
 /// <summary>Verifies CohereProviderDefaults behavior and contracts.</summary>
 public sealed class CohereProviderDefaultsTests
@@ -54,4 +54,20 @@ public sealed class CohereProviderDefaultsTests
 
     [Fact]
     public void DefaultEmbeddingLimits_CapsInputsAtNinetySix() => CohereProviderDefaults.DefaultEmbeddingLimits.MaxInputsPerRequest.ShouldBe(96);
+
+    [Fact]
+    public void AuthorizationScheme_WhenApiKeyCredential_ResolvesToAuthorizationBearerHeader()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2025, 6, 1, 12, 0, 0, TimeSpan.Zero));
+
+        var result = ProviderAuthorizationHeaderFactory.Create(
+            new ApiKeyProviderCredential("co-test-key"),
+            CohereProviderDefaults.ProviderId,
+            clock,
+            CohereProviderDefaults.AuthorizationScheme);
+
+        var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();
+        granted.HeaderName.ShouldBe("Authorization");
+        granted.HeaderValue.ShouldBe("Bearer co-test-key");
+    }
 }

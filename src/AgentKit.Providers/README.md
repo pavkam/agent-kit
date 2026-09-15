@@ -21,10 +21,11 @@ described in the [composition guide](../../docs/guides/composition.md).
 Capabilities belong to the configured operation and model. A provider name or
 compatible wire format does not imply support for every feature.
 
-## Shared HTTP failure helpers
+## Shared HTTP helpers
 
 `AgentKit.Providers.Http` holds the provider-neutral HTTP mechanics every
-first-party HTTP adapter shares so their failure semantics cannot drift:
+first-party HTTP adapter shares so their failure and authentication semantics
+cannot drift:
 
 - `HttpStatusFailureKindMapper` is the one canonical HTTP status →
   `ProviderFailureKind` table (401 authentication, 403 authorization, 429
@@ -36,6 +37,17 @@ first-party HTTP adapter shares so their failure semantics cannot drift:
   HTTP-date form into a non-negative delay against the injected `TimeProvider`.
 - `ProviderRequestIdReader` reads the first non-blank value of a provider-named
   request-id header into a `ProviderRequestId`.
+- `ProviderAuthorizationHeaderFactory` resolves a `ProviderCredential` into the
+  closed `ProviderAuthorizationResult` hierarchy: `ProviderAuthorizationGranted`
+  (one header name and value, applied to a request through `Apply`) or
+  `ProviderAuthorizationDenied` (a typed `Authentication` failure for an expired
+  OAuth token or a credential kind the provider does not accept). An OAuth token
+  is always sent as `Authorization: Bearer`; each provider's
+  `ProviderAuthorizationScheme` constant on its `*ProviderDefaults` type states
+  how it accepts a static API key (`BearerToken`, a dedicated header via
+  `ForApiKeyHeader`, or `OAuthTokenOnly`). `ProviderAuthorizationGranted`
+  redacts its header value from `ToString()` so a granted result can never print
+  a key or token.
 
 Body-driven vocabularies (Anthropic `error.type`, Google `error.status`, Bedrock
 `x-amzn-errortype`) stay in the owning provider package.

@@ -11,7 +11,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [MistralAIAuthorizationHeaderFactoryTests](Authorization/MistralAIAuthorizationHeaderFactoryTests.cs)
+- [MistralAIProviderDefaultsTests](MistralAIProviderDefaultsTests.cs)
 - [MistralAIEmbeddingModelTests](MistralAIEmbeddingModelTests.cs)
 - [MistralAIEmbeddingRequestTranslatorTests](Translation/MistralAIEmbeddingRequestTranslatorTests.cs)
 - [MistralAIEmbeddingResponseParserTests](Parsing/MistralAIEmbeddingResponseParserTests.cs)

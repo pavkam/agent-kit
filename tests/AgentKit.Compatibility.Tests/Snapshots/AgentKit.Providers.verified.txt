@@ -8,6 +8,36 @@ namespace AgentKit.Providers.Http
         public static AgentKit.ProviderFailureKind Map(System.Net.HttpStatusCode statusCode) { }
         public static AgentKit.ProviderFailureKind Map(System.Net.HttpStatusCode statusCode, System.Collections.Generic.IReadOnlyDictionary<System.Net.HttpStatusCode, AgentKit.ProviderFailureKind>? overrides) { }
     }
+    public sealed class ProviderAuthorizationDenied : AgentKit.Providers.Http.ProviderAuthorizationResult, System.IEquatable<AgentKit.Providers.Http.ProviderAuthorizationDenied>
+    {
+        public ProviderAuthorizationDenied(AgentKit.ProviderFailure failure) { }
+        public AgentKit.ProviderFailure Failure { get; init; }
+    }
+    public sealed class ProviderAuthorizationGranted : AgentKit.Providers.Http.ProviderAuthorizationResult, System.IEquatable<AgentKit.Providers.Http.ProviderAuthorizationGranted>
+    {
+        public const string RedactionMarker = "[REDACTED]";
+        public ProviderAuthorizationGranted(string headerName, string headerValue) { }
+        public string HeaderName { get; init; }
+        public string HeaderValue { get; init; }
+        public void Apply(System.Net.Http.Headers.HttpRequestHeaders headers) { }
+        protected override bool PrintMembers(System.Text.StringBuilder builder) { }
+        public override string ToString() { }
+    }
+    public static class ProviderAuthorizationHeaderFactory
+    {
+        public static AgentKit.Providers.Http.ProviderAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider, AgentKit.Providers.Http.ProviderAuthorizationScheme scheme) { }
+    }
+    public abstract class ProviderAuthorizationResult : System.IEquatable<AgentKit.Providers.Http.ProviderAuthorizationResult> { }
+    public sealed class ProviderAuthorizationScheme : System.IEquatable<AgentKit.Providers.Http.ProviderAuthorizationScheme>
+    {
+        public ProviderAuthorizationScheme(string? apiKeyHeaderName, string apiKeyValuePrefix) { }
+        public string? ApiKeyHeaderName { get; init; }
+        public string ApiKeyValuePrefix { get; init; }
+        public bool SupportsApiKey { get; }
+        public static AgentKit.Providers.Http.ProviderAuthorizationScheme BearerToken { get; }
+        public static AgentKit.Providers.Http.ProviderAuthorizationScheme OAuthTokenOnly { get; }
+        public static AgentKit.Providers.Http.ProviderAuthorizationScheme ForApiKeyHeader(string headerName) { }
+    }
     public static class ProviderRequestIdReader
     {
         public static AgentKit.ProviderRequestId? TryRead(System.Net.Http.Headers.HttpResponseHeaders headers, [System.Runtime.CompilerServices.ParamCollection] [System.Runtime.CompilerServices.ScopedRef] System.ReadOnlySpan<string> headerNames) { }

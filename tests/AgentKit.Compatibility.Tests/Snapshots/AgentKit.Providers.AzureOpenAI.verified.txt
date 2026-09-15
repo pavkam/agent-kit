@@ -3,22 +3,6 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Providers.AzureOpenAI
 {
-    public sealed class AzureOpenAIAuthorizationDenied : AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationResult, System.IEquatable<AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationDenied>
-    {
-        public AzureOpenAIAuthorizationDenied(AgentKit.ProviderFailure failure) { }
-        public AgentKit.ProviderFailure Failure { get; init; }
-    }
-    public sealed class AzureOpenAIAuthorizationGranted : AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationResult, System.IEquatable<AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationGranted>
-    {
-        public AzureOpenAIAuthorizationGranted(string headerName, string headerValue) { }
-        public string HeaderName { get; init; }
-        public string HeaderValue { get; init; }
-    }
-    public static class AzureOpenAIAuthorizationHeaderFactory
-    {
-        public static AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
-    }
-    public abstract class AzureOpenAIAuthorizationResult : System.IEquatable<AgentKit.Providers.AzureOpenAI.AzureOpenAIAuthorizationResult> { }
     public sealed class AzureOpenAIEmbeddingModel : AgentKit.IEmbeddingModel
     {
         public AzureOpenAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -36,6 +20,7 @@ namespace AgentKit.Providers.AzureOpenAI
         public const string DefaultChatCompletionsPath = "openai/v1/chat/completions";
         public const string DefaultEmbeddingsPath = "openai/v1/embeddings";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
         public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }
         public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }

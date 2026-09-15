@@ -3,22 +3,6 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Providers.Cohere
 {
-    public sealed class CohereAuthorizationDenied : AgentKit.Providers.Cohere.CohereAuthorizationResult, System.IEquatable<AgentKit.Providers.Cohere.CohereAuthorizationDenied>
-    {
-        public CohereAuthorizationDenied(AgentKit.ProviderFailure failure) { }
-        public AgentKit.ProviderFailure Failure { get; init; }
-    }
-    public sealed class CohereAuthorizationGranted : AgentKit.Providers.Cohere.CohereAuthorizationResult, System.IEquatable<AgentKit.Providers.Cohere.CohereAuthorizationGranted>
-    {
-        public CohereAuthorizationGranted(string headerName, string headerValue) { }
-        public string HeaderName { get; init; }
-        public string HeaderValue { get; init; }
-    }
-    public static class CohereAuthorizationHeaderFactory
-    {
-        public static AgentKit.Providers.Cohere.CohereAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
-    }
-    public abstract class CohereAuthorizationResult : System.IEquatable<AgentKit.Providers.Cohere.CohereAuthorizationResult> { }
     public sealed class CohereEmbeddingModel : AgentKit.IEmbeddingModel
     {
         public CohereEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.Cohere.CohereProviderOptions options, AgentKit.Providers.Cohere.ICohereEmbeddingRequestTranslator translator, AgentKit.Providers.Cohere.ICohereEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -56,6 +40,7 @@ namespace AgentKit.Providers.Cohere
         public const string DefaultChatPath = "v2/chat";
         public const string DefaultEmbedPath = "v2/embed";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
         public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }

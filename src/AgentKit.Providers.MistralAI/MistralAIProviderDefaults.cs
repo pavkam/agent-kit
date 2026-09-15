@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.MistralAI;
 
+using AgentKit.Providers.Http;
+
 /// <summary>
 /// The fixed identity, endpoint, and capability defaults for the Mistral AI
 /// Chat Completions integration.
@@ -21,6 +23,14 @@ public static class MistralAIProviderDefaults
 {
     /// <summary>Gets the stable <see cref="ProviderId"/> for Mistral AI.</summary>
     public static ProviderId ProviderId { get; } = new("mistral-ai");
+
+    /// <summary>
+    /// Gets the verified header authentication scheme for the Mistral AI
+    /// API: both an <see cref="ApiKeyProviderCredential"/> and an
+    /// <see cref="OAuthTokenProviderCredential"/> are sent as
+    /// <c>Authorization: Bearer &lt;value&gt;</c>.
+    /// </summary>
+    public static ProviderAuthorizationScheme AuthorizationScheme { get; } = ProviderAuthorizationScheme.BearerToken;
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Mistral's Chat Completions wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("mistral-chat-completions");

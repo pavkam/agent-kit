@@ -11,7 +11,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [CohereAuthorizationHeaderFactoryTests](Authorization/CohereAuthorizationHeaderFactoryTests.cs)
+- [CohereProviderDefaultsTests](CohereProviderDefaultsTests.cs)
 - [CohereEmbeddingModelTests](CohereEmbeddingModelTests.cs)
 - [CohereEmbeddingRequestTranslatorTests](Translation/CohereEmbeddingRequestTranslatorTests.cs)
 - [CohereEmbeddingResponseParserTests](Parsing/CohereEmbeddingResponseParserTests.cs)

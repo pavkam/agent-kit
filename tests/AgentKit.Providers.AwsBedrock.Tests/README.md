@@ -15,6 +15,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 - [AwsBedrockProviderDefaultsTests](AwsBedrockProviderDefaultsTests.cs)
 - [AwsBedrockRequestTranslatorTests](Translation/AwsBedrockRequestTranslatorTests.cs)
 - [AwsBedrockResponseParserTests](Parsing/AwsBedrockResponseParserTests.cs)
+- [AwsSigV4CredentialTests](Signing/AwsSigV4CredentialTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance. Provider pipeline tests use controlled fixtures and do not require

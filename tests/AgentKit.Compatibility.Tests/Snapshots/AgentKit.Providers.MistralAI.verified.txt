@@ -20,22 +20,6 @@ namespace AgentKit.Providers.MistralAI
         System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.MistralAI.MistralAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.MistralAI.MistralAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
     }
-    public sealed class MistralAIAuthorizationDenied : AgentKit.Providers.MistralAI.MistralAIAuthorizationResult, System.IEquatable<AgentKit.Providers.MistralAI.MistralAIAuthorizationDenied>
-    {
-        public MistralAIAuthorizationDenied(AgentKit.ProviderFailure failure) { }
-        public AgentKit.ProviderFailure Failure { get; init; }
-    }
-    public sealed class MistralAIAuthorizationGranted : AgentKit.Providers.MistralAI.MistralAIAuthorizationResult, System.IEquatable<AgentKit.Providers.MistralAI.MistralAIAuthorizationGranted>
-    {
-        public MistralAIAuthorizationGranted(string headerName, string headerValue) { }
-        public string HeaderName { get; init; }
-        public string HeaderValue { get; init; }
-    }
-    public static class MistralAIAuthorizationHeaderFactory
-    {
-        public static AgentKit.Providers.MistralAI.MistralAIAuthorizationResult Create(AgentKit.ProviderCredential credential, AgentKit.ProviderId providerId, System.TimeProvider timeProvider) { }
-    }
-    public abstract class MistralAIAuthorizationResult : System.IEquatable<AgentKit.Providers.MistralAI.MistralAIAuthorizationResult> { }
     public sealed class MistralAIEmbeddingModel : AgentKit.IEmbeddingModel
     {
         public MistralAIEmbeddingModel(AgentKit.EmbeddingModelDescriptor descriptor, AgentKit.Providers.MistralAI.MistralAIProviderOptions options, AgentKit.Providers.MistralAI.IMistralAIEmbeddingRequestTranslator translator, AgentKit.Providers.MistralAI.IMistralAIEmbeddingResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -72,6 +56,7 @@ namespace AgentKit.Providers.MistralAI
         public const string DefaultChatCompletionsPath = "chat/completions";
         public const string DefaultEmbeddingsPath = "embeddings";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
+        public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static System.Uri DefaultBaseAddress { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
         public static AgentKit.EmbeddingCapabilities DefaultEmbeddingCapabilities { get; }

@@ -11,7 +11,6 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [AzureOpenAIAuthorizationHeaderFactoryTests](Authorization/AzureOpenAIAuthorizationHeaderFactoryTests.cs)
 - [AzureOpenAIEmbeddingModelTests](AzureOpenAIEmbeddingModelTests.cs)
 - [AzureOpenAILlmModelTests](AzureOpenAILlmModelTests.cs)
 - [AzureOpenAIProviderDefaultsTests](AzureOpenAIProviderDefaultsTests.cs)

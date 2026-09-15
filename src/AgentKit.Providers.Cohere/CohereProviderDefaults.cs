@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Cohere;
 
+using AgentKit.Providers.Http;
+
 /// <summary>
 /// The fixed identity, endpoint, and capability defaults for the Cohere v2
 /// Chat integration.
@@ -19,6 +21,14 @@ public static class CohereProviderDefaults
 {
     /// <summary>Gets the stable <see cref="ProviderId"/> for Cohere.</summary>
     public static ProviderId ProviderId { get; } = new("cohere");
+
+    /// <summary>
+    /// Gets the verified header authentication scheme for the Cohere v2 API:
+    /// both an <see cref="ApiKeyProviderCredential"/> and an
+    /// <see cref="OAuthTokenProviderCredential"/> are sent as
+    /// <c>Authorization: Bearer &lt;value&gt;</c>.
+    /// </summary>
+    public static ProviderAuthorizationScheme AuthorizationScheme { get; } = ProviderAuthorizationScheme.BearerToken;
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Cohere's v2 Chat wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("cohere-chat-v2");

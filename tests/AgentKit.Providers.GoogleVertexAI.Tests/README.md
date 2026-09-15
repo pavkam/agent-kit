@@ -11,7 +11,7 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 
 ## Start with these tests
 
-- [GoogleVertexAIAuthorizationHeaderFactoryTests](Authorization/GoogleVertexAIAuthorizationHeaderFactoryTests.cs)
+- [GoogleVertexAIProviderDefaultsTests](GoogleVertexAIProviderDefaultsTests.cs)
 - [GoogleVertexAIEmbeddingModelTests](GoogleVertexAIEmbeddingModelTests.cs)
 - [GoogleVertexAIEmbeddingRequestTranslatorTests](Translation/GoogleVertexAIEmbeddingRequestTranslatorTests.cs)
 - [GoogleVertexAIEmbeddingResponseParserTests](Parsing/GoogleVertexAIEmbeddingResponseParserTests.cs)

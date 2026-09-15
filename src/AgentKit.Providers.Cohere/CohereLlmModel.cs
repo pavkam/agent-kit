@@ -151,13 +151,17 @@ public sealed class CohereLlmModel: ILlmModel
             return await CancelAsync().ConfigureAwait(false);
         }
 
-        var authorization = CohereAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
-        if (authorization is CohereAuthorizationDenied denied)
+        var authorization = ProviderAuthorizationHeaderFactory.Create(
+            credential,
+            _descriptor.ProviderId,
+            _timeProvider,
+            CohereProviderDefaults.AuthorizationScheme);
+        if (authorization is ProviderAuthorizationDenied denied)
         {
             return await FailAsync(denied.Failure).ConfigureAwait(false);
         }
 
-        var granted = (CohereAuthorizationGranted) authorization;
+        var granted = (ProviderAuthorizationGranted) authorization;
         var useStreaming = _options.PreferStreaming && _descriptor.Capabilities.SupportsStreaming;
 
         JsonObject payload;
@@ -247,7 +251,7 @@ public sealed class CohereLlmModel: ILlmModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, CohereAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
     {
         var uri = CohereProviderDefaults.BuildChatUri(_options);
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri)
@@ -255,7 +259,7 @@ public sealed class CohereLlmModel: ILlmModel
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        _ = httpRequest.Headers.TryAddWithoutValidation(authorization.HeaderName, authorization.HeaderValue);
+        authorization.Apply(httpRequest.Headers);
         if (_options.ClientName is { Length: > 0 } clientName)
         {
             _ = httpRequest.Headers.TryAddWithoutValidation("X-Client-Name", clientName);

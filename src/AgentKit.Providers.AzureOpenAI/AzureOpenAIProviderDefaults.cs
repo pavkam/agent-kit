@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.AzureOpenAI;
 
+using AgentKit.Providers.Http;
+
 /// <summary>
 /// The fixed identity, path, and capability defaults for the Azure OpenAI
 /// GA v1 Chat Completions integration.
@@ -25,6 +27,16 @@ public static class AzureOpenAIProviderDefaults
 {
     /// <summary>Gets the stable <see cref="ProviderId"/> for Azure OpenAI.</summary>
     public static ProviderId ProviderId { get; } = new("azure-openai");
+
+    /// <summary>
+    /// Gets the verified header authentication scheme for the Azure OpenAI
+    /// GA v1 API: an <see cref="ApiKeyProviderCredential"/> is sent as
+    /// <c>api-key: &lt;key&gt;</c> with no scheme prefix, while an
+    /// <see cref="OAuthTokenProviderCredential"/> carrying a Microsoft Entra
+    /// token acquired for <c>https://cognitiveservices.azure.com/.default</c>
+    /// is sent as <c>Authorization: Bearer &lt;token&gt;</c>.
+    /// </summary>
+    public static ProviderAuthorizationScheme AuthorizationScheme { get; } = ProviderAuthorizationScheme.ForApiKeyHeader("api-key");
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for the Azure OpenAI GA v1 Chat Completions wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("azure-openai-chat-completions");

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.GoogleVertexAI;
 
+using AgentKit.Providers.Http;
+
 /// <summary>
 /// The fixed identity and capability defaults for the Google Cloud Vertex
 /// AI native <c>generateContent</c> integration.
@@ -25,6 +27,17 @@ public static class GoogleVertexAIProviderDefaults
 {
     /// <summary>Gets the stable <see cref="ProviderId"/> for Google Vertex AI.</summary>
     public static ProviderId ProviderId { get; } = new("google-vertex-ai");
+
+    /// <summary>
+    /// Gets the verified header authentication scheme for the Vertex AI REST
+    /// API. Vertex documents exactly one mechanism,
+    /// <c>Authorization: Bearer &lt;token&gt;</c> from Google OAuth 2.0 or
+    /// Application Default Credentials with <c>aiplatform.*</c> IAM
+    /// permissions, and has no API-key mode, so an
+    /// <see cref="ApiKeyProviderCredential"/> is always denied before any
+    /// request is sent.
+    /// </summary>
+    public static ProviderAuthorizationScheme AuthorizationScheme { get; } = ProviderAuthorizationScheme.OAuthTokenOnly;
 
     /// <summary>Gets the stable <see cref="ApiFamilyId"/> for Vertex's native generateContent wire format.</summary>
     public static ApiFamilyId ApiFamily { get; } = new("google-vertex-ai-generate-content");

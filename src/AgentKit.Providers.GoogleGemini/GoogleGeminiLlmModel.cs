@@ -153,13 +153,17 @@ public sealed class GoogleGeminiLlmModel: ILlmModel
             return await CancelAsync().ConfigureAwait(false);
         }
 
-        var authorization = GoogleGeminiAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
-        if (authorization is GoogleGeminiAuthorizationDenied denied)
+        var authorization = ProviderAuthorizationHeaderFactory.Create(
+            credential,
+            _descriptor.ProviderId,
+            _timeProvider,
+            GoogleGeminiProviderDefaults.AuthorizationScheme);
+        if (authorization is ProviderAuthorizationDenied denied)
         {
             return await FailAsync(denied.Failure).ConfigureAwait(false);
         }
 
-        var granted = (GoogleGeminiAuthorizationGranted) authorization;
+        var granted = (ProviderAuthorizationGranted) authorization;
         var useStreaming = _options.PreferStreaming && _descriptor.Capabilities.SupportsStreaming;
 
         JsonObject payload;
@@ -262,7 +266,7 @@ public sealed class GoogleGeminiLlmModel: ILlmModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, GoogleGeminiAuthorizationGranted authorization, bool useStreaming)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization, bool useStreaming)
     {
         var uri = GoogleGeminiProviderDefaults.BuildGenerateContentUri(_options, _descriptor.ModelId, useStreaming);
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri)
@@ -270,7 +274,7 @@ public sealed class GoogleGeminiLlmModel: ILlmModel
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        _ = httpRequest.Headers.TryAddWithoutValidation(authorization.HeaderName, authorization.HeaderValue);
+        authorization.Apply(httpRequest.Headers);
 
         return httpRequest;
     }

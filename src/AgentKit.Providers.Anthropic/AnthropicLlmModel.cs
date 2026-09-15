@@ -157,13 +157,17 @@ public sealed class AnthropicLlmModel: ILlmModel
             return await CancelAsync().ConfigureAwait(false);
         }
 
-        var authorization = AnthropicAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
-        if (authorization is AnthropicAuthorizationDenied denied)
+        var authorization = ProviderAuthorizationHeaderFactory.Create(
+            credential,
+            _descriptor.ProviderId,
+            _timeProvider,
+            AnthropicProviderDefaults.AuthorizationScheme);
+        if (authorization is ProviderAuthorizationDenied denied)
         {
             return await FailAsync(denied.Failure).ConfigureAwait(false);
         }
 
-        var granted = (AnthropicAuthorizationGranted) authorization;
+        var granted = (ProviderAuthorizationGranted) authorization;
         var useStreaming = _options.PreferStreaming && _descriptor.Capabilities.SupportsStreaming;
 
         JsonObject payload;
@@ -266,14 +270,14 @@ public sealed class AnthropicLlmModel: ILlmModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, AnthropicAuthorizationGranted authorization)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization)
     {
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, AnthropicProviderDefaults.BuildMessagesUri(_options))
         {
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        _ = httpRequest.Headers.TryAddWithoutValidation(authorization.HeaderName, authorization.HeaderValue);
+        authorization.Apply(httpRequest.Headers);
         _ = httpRequest.Headers.TryAddWithoutValidation("anthropic-version", _options.AnthropicVersion);
 
         return httpRequest;

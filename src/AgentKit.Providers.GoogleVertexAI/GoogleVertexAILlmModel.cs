@@ -163,13 +163,17 @@ public sealed class GoogleVertexAILlmModel: ILlmModel
             return await CancelAsync().ConfigureAwait(false);
         }
 
-        var authorization = GoogleVertexAIAuthorizationHeaderFactory.Create(credential, _descriptor.ProviderId, _timeProvider);
-        if (authorization is GoogleVertexAIAuthorizationDenied denied)
+        var authorization = ProviderAuthorizationHeaderFactory.Create(
+            credential,
+            _descriptor.ProviderId,
+            _timeProvider,
+            GoogleVertexAIProviderDefaults.AuthorizationScheme);
+        if (authorization is ProviderAuthorizationDenied denied)
         {
             return await FailAsync(denied.Failure).ConfigureAwait(false);
         }
 
-        var granted = (GoogleVertexAIAuthorizationGranted) authorization;
+        var granted = (ProviderAuthorizationGranted) authorization;
         var useStreaming = _options.PreferStreaming && _descriptor.Capabilities.SupportsStreaming;
 
         JsonObject payload;
@@ -259,7 +263,7 @@ public sealed class GoogleVertexAILlmModel: ILlmModel
         }
     }
 
-    private HttpRequestMessage CreateHttpRequest(JsonObject payload, GoogleVertexAIAuthorizationGranted authorization, bool useStreaming)
+    private HttpRequestMessage CreateHttpRequest(JsonObject payload, ProviderAuthorizationGranted authorization, bool useStreaming)
     {
         var uri = GoogleVertexAIProviderDefaults.BuildGenerateContentUri(_options, _descriptor.ModelId, _descriptor.DeploymentId, useStreaming);
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri)
@@ -267,7 +271,7 @@ public sealed class GoogleVertexAILlmModel: ILlmModel
             Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
         };
 
-        _ = httpRequest.Headers.TryAddWithoutValidation(authorization.HeaderName, authorization.HeaderValue);
+        authorization.Apply(httpRequest.Headers);
 
         return httpRequest;
     }

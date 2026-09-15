@@ -3,7 +3,7 @@
 
 namespace AgentKit.Providers.MistralAI.Tests;
 
-
+using AgentKit.Providers.Http;
 
 /// <summary>Verifies MistralAIProviderDefaults behavior and contracts.</summary>
 public sealed class MistralAIProviderDefaultsTests
@@ -48,5 +48,21 @@ public sealed class MistralAIProviderDefaultsTests
         MistralAIProviderDefaults.DefaultCapabilities.SupportsStructuredOutput.ShouldBeFalse();
         MistralAIProviderDefaults.DefaultCapabilities.SupportsParallelToolCalls.ShouldBeTrue();
         MistralAIProviderDefaults.DefaultCapabilities.SupportsToolCalls.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void AuthorizationScheme_WhenApiKeyCredential_ResolvesToAuthorizationBearerHeader()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2025, 6, 1, 12, 0, 0, TimeSpan.Zero));
+
+        var result = ProviderAuthorizationHeaderFactory.Create(
+            new ApiKeyProviderCredential("mistral-test-key"),
+            MistralAIProviderDefaults.ProviderId,
+            clock,
+            MistralAIProviderDefaults.AuthorizationScheme);
+
+        var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();
+        granted.HeaderName.ShouldBe("Authorization");
+        granted.HeaderValue.ShouldBe("Bearer mistral-test-key");
     }
 }

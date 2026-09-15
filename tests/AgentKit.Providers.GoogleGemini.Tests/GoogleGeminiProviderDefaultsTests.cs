@@ -3,7 +3,7 @@
 
 namespace AgentKit.Providers.GoogleGemini.Tests;
 
-
+using AgentKit.Providers.Http;
 
 /// <summary>Verifies GoogleGeminiProviderDefaults behavior and contracts.</summary>
 public sealed class GoogleGeminiProviderDefaultsTests
@@ -71,5 +71,21 @@ public sealed class GoogleGeminiProviderDefaultsTests
         GoogleGeminiProviderDefaults.DefaultEmbeddingCapabilities.SupportsTruncationControl.ShouldBeTrue();
         GoogleGeminiProviderDefaults.DefaultEmbeddingCapabilities.SupportsEncodingSelection.ShouldBeFalse();
         GoogleGeminiProviderDefaults.DefaultEmbeddingCapabilities.SupportsDimensions.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void AuthorizationScheme_WhenApiKeyCredential_ResolvesToxgoogapikeyHeader()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2025, 6, 1, 12, 0, 0, TimeSpan.Zero));
+
+        var result = ProviderAuthorizationHeaderFactory.Create(
+            new ApiKeyProviderCredential("AIza-test"),
+            GoogleGeminiProviderDefaults.ProviderId,
+            clock,
+            GoogleGeminiProviderDefaults.AuthorizationScheme);
+
+        var granted = result.ShouldBeOfType<ProviderAuthorizationGranted>();
+        granted.HeaderName.ShouldBe("x-goog-api-key");
+        granted.HeaderValue.ShouldBe("AIza-test");
     }
 }
