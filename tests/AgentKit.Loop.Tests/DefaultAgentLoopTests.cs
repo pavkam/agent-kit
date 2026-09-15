@@ -706,6 +706,8 @@ public sealed class DefaultAgentLoopTests
         var model = stopped.Single(activity => activity.OperationName == AgentKitActivityNames.Chat);
         var commit = stopped.Single(activity => activity.OperationName == AgentKitActivityNames.SessionCommit);
         run.Status.ShouldBe(ActivityStatusCode.Ok);
+        run.GetTagItem(AgentKitTagNames.RequestModel).ShouldBe("test-model");
+        run.GetTagItem(AgentKitTagNames.ProviderName).ShouldBe("test-provider");
         turn.ParentSpanId.ShouldBe(run.SpanId);
         context.ParentSpanId.ShouldBe(turn.SpanId);
         model.ParentSpanId.ShouldBe(turn.SpanId);
@@ -713,6 +715,36 @@ public sealed class DefaultAgentLoopTests
         stopped.SelectMany(static activity => activity.TagObjects)
             .Select(static tag => tag.Value?.ToString())
             .ShouldNotContain(protectedOutput);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheRunActivityIsNotSampled_DoesNotTagTheHostParentActivity()
+    {
+        using var hostSource = new ActivitySource("agentkit-tests-host");
+        using var hostListener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == "agentkit-tests-host",
+            Sample = SampleAllData,
+        };
+        using var loopListener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = SampleNone,
+        };
+        ActivitySource.AddActivityListener(hostListener);
+        ActivitySource.AddActivityListener(loopListener);
+        using var parent = hostSource.StartActivity("host-request").ShouldNotBeNull();
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        Activity.Current.ShouldBeSameAs(parent);
+        parent.GetTagItem(AgentKitTagNames.RequestModel).ShouldBeNull();
+        parent.GetTagItem(AgentKitTagNames.ProviderName).ShouldBeNull();
+        parent.TagObjects.ShouldBeEmpty();
     }
 
     [Fact]
@@ -1667,6 +1699,9 @@ public sealed class DefaultAgentLoopTests
 
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) =>
         ActivitySamplingResult.AllDataAndRecorded;
+
+    private static ActivitySamplingResult SampleNone(ref ActivityCreationOptions<ActivityContext> _) =>
+        ActivitySamplingResult.None;
 
     private sealed class RespondingLlmModel: ILlmModel
     {

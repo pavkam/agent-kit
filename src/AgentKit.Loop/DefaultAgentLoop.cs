@@ -207,7 +207,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         try
         {
-            var result = await RunCoreAsync(request, operationId, cancellationToken).ConfigureAwait(false);
+            var result = await RunCoreAsync(request, operationId, activity, cancellationToken).ConfigureAwait(false);
             var outcome = result.Outcome.GetType().Name;
             if (result.Outcome is AgentRunCompleted)
             {
@@ -240,9 +240,20 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
     }
 
+    /// <summary>Drives the run after its activity and start diagnostics are in place.</summary>
+    /// <param name="request">The validated run request.</param>
+    /// <param name="operationId">The run's causal operation identity.</param>
+    /// <param name="runActivity">
+    /// The loop's own run activity, or null when no listener sampled it. Model tags are set on this activity
+    /// only; they are never written to whatever <see cref="Activity.Current"/> happens to be, which may be a
+    /// host-owned parent when the loop's activity was not sampled.
+    /// </param>
+    /// <param name="cancellationToken">The caller's cancellation.</param>
+    /// <returns>The complete result of the run.</returns>
     private async Task<AgentLoopResult> RunCoreAsync(
         AgentRunRequest request,
         OperationId operationId,
+        Activity? runActivity,
         CancellationToken cancellationToken)
     {
         Debug.Assert(request is not null, "A validated run request is required by the loop core.");
@@ -287,8 +298,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         var model = modelResolution.Model!;
         var llmModel = modelResolution.Adapter!;
-        _ = Activity.Current?.SetTag(AgentKitTagNames.RequestModel, model.ModelId.ToString());
-        _ = Activity.Current?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
+        _ = runActivity?.SetTag(AgentKitTagNames.RequestModel, model.ModelId.ToString());
+        _ = runActivity?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
 
         var committedMessages = ImmutableArray.CreateBuilder<AgentMessage>();
         var history = new HistoryView(initialCursor, ToMessages(initialEntries), []);
