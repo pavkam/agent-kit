@@ -1,0 +1,46 @@
+{
+  "model": "mistral-large-latest",
+  "messages": [
+    { "role": "system", "content": "You are a weather assistant." },
+    { "role": "user", "content": "What's the weather in Paris?" },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "D681PevKs",
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "arguments": "{\"location\":\"Paris\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "15 degrees and sunny",
+      "tool_call_id": "D681PevKs",
+      "name": "get_weather"
+    }
+  ],
+  "stream": false,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Gets the current weather for a location.",
+        "parameters": {
+          "type": "object",
+          "properties": { "location": { "type": "string" } },
+          "required": ["location"]
+        }
+      }
+    }
+  ],
+  "tool_choice": "any",
+  "parallel_tool_calls": false,
+  "max_tokens": 200,
+  "stop": ["STOP"]
+}

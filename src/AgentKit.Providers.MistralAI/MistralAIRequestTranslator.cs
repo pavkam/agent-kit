@@ -9,20 +9,35 @@ namespace AgentKit.Providers.MistralAI;
 /// generation settings supported by the Mistral AI Chat Completions wire
 /// format.
 /// </summary>
+/// <remarks>
+/// Mistral accepts only nine-character alphanumeric tool-call identifiers.
+/// The translator therefore allocates one wire identifier per canonical
+/// <see cref="ToolCallId"/> for the whole request (see
+/// <see cref="MistralAIToolCallIdCodec"/>), keeping a preserved
+/// <see cref="ToolCallPart.ProviderCallId"/> only when it already has that
+/// shape, and uses the same identifier for the assistant
+/// <c>tool_calls[].id</c> and the tool <c>tool_call_id</c>.
+/// </remarks>
 public sealed class MistralAIRequestTranslator: IMistralAIRequestTranslator
 {
+    /// <summary>
+    /// The number of successive disambiguators tried before a derived wire
+    /// identifier collision is reported as untranslatable.
+    /// </summary>
+    private const int _maxDisambiguationAttempts = 16;
+
     /// <inheritdoc/>
     public JsonObject Translate(LlmModelRequest request, bool useStreaming)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         var context = request.Context;
-        var providerCallIds = CollectProviderCallIds(context.Messages);
+        var wireCallIds = AllocateWireCallIds(context.Messages);
 
         var body = new JsonObject
         {
             ["model"] = context.Model.ModelId.Value,
-            ["messages"] = TranslateMessages(context.Messages, providerCallIds),
+            ["messages"] = TranslateMessages(context.Messages, wireCallIds),
             ["stream"] = useStreaming,
         };
 
@@ -94,22 +109,92 @@ public sealed class MistralAIRequestTranslator: IMistralAIRequestTranslator
         }
     }
 
-    private static Dictionary<ToolCallId, string> CollectProviderCallIds(ImmutableArray<AgentMessage> messages)
+    /// <summary>
+    /// Allocates, once per request, the nine-character wire identifier used
+    /// for every tool call and tool result in <paramref name="messages"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The first pass keeps a preserved <see cref="ToolCallPart.ProviderCallId"/>
+    /// only when it already satisfies Mistral's
+    /// <c>^[a-zA-Z0-9]{9}$</c> constraint and no earlier call in the request
+    /// claimed the same value; an identifier minted by another provider (or a
+    /// duplicate) is not a Mistral identity and is discarded. The second pass
+    /// derives an identifier through <see cref="MistralAIToolCallIdCodec"/> for
+    /// every remaining call and result in encounter order, incrementing the
+    /// disambiguator while the derived value is already claimed, so distinct
+    /// canonical identities never share a wire identifier within one request.
+    /// </para>
+    /// <para>
+    /// Exhausting <see cref="_maxDisambiguationAttempts"/> consecutive
+    /// collisions is treated as an untranslatable request rather than
+    /// silently emitting a duplicate identifier.
+    /// </para>
+    /// </remarks>
+    /// <param name="messages">The complete request history.</param>
+    /// <returns>A map from every canonical identity in the history to its unique wire identifier.</returns>
+    /// <exception cref="NotSupportedException">
+    /// No distinct wire identifier could be derived for a call within
+    /// <see cref="_maxDisambiguationAttempts"/> attempts.
+    /// </exception>
+    private static Dictionary<ToolCallId, string> AllocateWireCallIds(ImmutableArray<AgentMessage> messages)
     {
         var map = new Dictionary<ToolCallId, string>();
+        var claimed = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var message in messages)
         {
             foreach (var part in message.Parts)
             {
-                if (part is ToolCallPart toolCall)
+                if (part is ToolCallPart toolCall
+                    && toolCall.ProviderCallId?.Value is { } providerCallId
+                    && MistralAIToolCallIdCodec.IsWireId(providerCallId)
+                    && !map.ContainsKey(toolCall.CallId)
+                    && claimed.Add(providerCallId))
                 {
-                    map[toolCall.CallId] = toolCall.ProviderCallId?.Value ?? toolCall.CallId.ToString();
+                    map[toolCall.CallId] = providerCallId;
+                }
+            }
+        }
+
+        foreach (var message in messages)
+        {
+            foreach (var part in message.Parts)
+            {
+                var callId = part switch
+                {
+                    ToolCallPart toolCall => toolCall.CallId,
+                    ToolResultPart toolResult => toolResult.CallId,
+                    _ => default(ToolCallId?),
+                };
+
+                if (callId is { } unmapped && !map.ContainsKey(unmapped))
+                {
+                    map[unmapped] = AllocateDerivedWireId(unmapped, claimed);
                 }
             }
         }
 
         return map;
+    }
+
+    private static string AllocateDerivedWireId(ToolCallId callId, HashSet<string> claimed)
+    {
+        Debug.Assert(callId != default, "Only real identities are allocated wire identifiers.");
+
+        for (var disambiguator = 0; disambiguator < _maxDisambiguationAttempts; disambiguator++)
+        {
+            var candidate = MistralAIToolCallIdCodec.Encode(callId, disambiguator);
+            if (claimed.Add(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new NotSupportedException(
+            $"A distinct nine-character Mistral AI tool-call identifier could not be derived for tool call " +
+            $"'{callId}' after {_maxDisambiguationAttempts} attempts because every candidate collides with " +
+            "another identifier in the same request.");
     }
 
     private static JsonArray TranslateMessages(
@@ -201,7 +286,7 @@ public sealed class MistralAIRequestTranslator: IMistralAIRequestTranslator
                 case ToolCallPart toolCall:
                     toolCalls.Add(new JsonObject
                     {
-                        ["id"] = providerCallIds.GetValueOrDefault(toolCall.CallId, toolCall.CallId.ToString()),
+                        ["id"] = providerCallIds[toolCall.CallId],
                         ["type"] = "function",
                         ["function"] = new JsonObject
                         {
@@ -248,7 +333,7 @@ public sealed class MistralAIRequestTranslator: IMistralAIRequestTranslator
                 {
                     ["role"] = "tool",
                     ["content"] = BuildToolResultContent(toolResult),
-                    ["tool_call_id"] = providerCallIds.GetValueOrDefault(toolResult.CallId, toolResult.CallId.ToString()),
+                    ["tool_call_id"] = providerCallIds[toolResult.CallId],
                     ["name"] = toolResult.Tool.Name,
                 };
         }

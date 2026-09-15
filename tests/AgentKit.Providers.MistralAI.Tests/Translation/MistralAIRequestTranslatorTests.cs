@@ -48,12 +48,15 @@ public sealed class MistralAIRequestTranslatorTests
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000001"));
         var toolReference = new ToolReference(new ToolId("get_weather"), null, "get_weather");
 
+        // "D681PevKs" is the nine-character identifier shape Mistral mints
+        // (see https://docs.mistral.ai/capabilities/function_calling/), so
+        // the translator must echo it back unchanged.
         var assistantMessage = TestMessages.Assistant(
             new ToolCallPart(
                 callId,
                 toolReference,
                 JsonDocument.Parse("""{"location":"Paris"}""").RootElement,
-                new ProviderToolCallId("call_abc123"),
+                new ProviderToolCallId("D681PevKs"),
                 ExtensionData.Empty));
 
         var toolMessage = TestMessages.Tool(
@@ -105,7 +108,7 @@ public sealed class MistralAIRequestTranslatorTests
         var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
 
         var actual = new MistralAIRequestTranslator().Translate(request, useStreaming: false);
-        var expected = JsonNode.Parse(TestResources.ReadAllText("requests/request_with_tools.json"));
+        var expected = JsonNode.Parse(TestResources.ReadAllText("requests/request_with_tools_mistral_ids.json"));
 
         JsonNode.DeepEquals(actual, expected).ShouldBeTrue(actual.ToJsonString());
     }
@@ -330,9 +333,9 @@ public sealed class MistralAIRequestTranslatorTests
 
         messages.Count.ShouldBe(2);
         messages[0]!["content"]!.GetValue<string>().ShouldBe("result a");
-        messages[0]!["tool_call_id"]!.GetValue<string>().ShouldBe(callIdA.ToString());
+        messages[0]!["tool_call_id"]!.GetValue<string>().ShouldBe(MistralAIToolCallIdCodec.Encode(callIdA));
         messages[1]!["content"]!.GetValue<string>().ShouldBe("Error: boom");
-        messages[1]!["tool_call_id"]!.GetValue<string>().ShouldBe(callIdB.ToString());
+        messages[1]!["tool_call_id"]!.GetValue<string>().ShouldBe(MistralAIToolCallIdCodec.Encode(callIdB));
     }
 
     [Fact]
@@ -378,4 +381,161 @@ public sealed class MistralAIRequestTranslatorTests
 
         body["prompt_cache_key"]!.GetValue<string>().ShouldBe("end-user-42");
     }
+
+    [Fact]
+    public void Translate_WhenToolCallHasNoProviderCallId_EmitsMatchingNineCharacterWireIds()
+    {
+        var callId = new ToolCallId(Guid.Parse("7a4d2c0e-5b1f-4e8a-9c3d-2f6e1b0a9d8c"));
+        var toolReference = new ToolReference(new ToolId("get_weather"), null, "get_weather");
+
+        // Cross-provider replay or compacted history: the canonical identity
+        // exists but no provider ever minted a wire identifier for it.
+        var assistantMessage = TestMessages.Assistant(
+            new ToolCallPart(
+                callId,
+                toolReference,
+                JsonDocument.Parse("""{"location":"Paris"}""").RootElement,
+                providerCallId: null,
+                ExtensionData.Empty));
+
+        var toolMessage = TestMessages.Tool(
+            new ToolResultPart(
+                callId,
+                toolReference,
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+                [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)],
+                ExtensionData.Empty));
+
+        var body = Translate(
+            TestMessages.User("What's the weather in Paris?"),
+            assistantMessage,
+            toolMessage,
+            TestMessages.User("And tomorrow?"));
+        var messages = body["messages"]!.AsArray();
+
+        var wireId = messages[1]!["tool_calls"]![0]!["id"]!.GetValue<string>();
+        wireId.Length.ShouldBe(MistralAIToolCallIdCodec.WireLength);
+        wireId.ShouldAllBe(character => char.IsAsciiLetterOrDigit(character));
+        wireId.ShouldNotBe(callId.ToString());
+        messages[2]!["tool_call_id"]!.GetValue<string>().ShouldBe(wireId);
+    }
+
+    [Fact]
+    public void Translate_WhenProviderCallIdIsNotMistralShaped_ReplacesItWithDerivedWireId()
+    {
+        var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000010"));
+        var toolReference = new ToolReference(new ToolId("noop"), null, "noop");
+
+        // An identifier minted by another provider is not a Mistral identity.
+        var assistantMessage = TestMessages.Assistant(
+            new ToolCallPart(
+                callId,
+                toolReference,
+                JsonDocument.Parse("{}").RootElement,
+                new ProviderToolCallId("call_abc123"),
+                ExtensionData.Empty));
+        var toolMessage = TestMessages.Tool(SuccessResult(callId, toolReference));
+
+        var body = Translate(assistantMessage, toolMessage);
+        var messages = body["messages"]!.AsArray();
+
+        var expected = MistralAIToolCallIdCodec.Encode(callId);
+        messages[0]!["tool_calls"]![0]!["id"]!.GetValue<string>().ShouldBe(expected);
+        messages[1]!["tool_call_id"]!.GetValue<string>().ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Translate_WhenDerivedWireIdCollidesWithPreservedProviderCallId_UsesNextDisambiguator()
+    {
+        var preservedCallId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000020"));
+        var derivedCallId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000021"));
+        var toolReference = new ToolReference(new ToolId("noop"), null, "noop");
+
+        // The later call legitimately owns the wire value the earlier call
+        // would have derived; the earlier call must yield to it.
+        var collidingWireId = MistralAIToolCallIdCodec.Encode(derivedCallId);
+        var derivedFirst = TestMessages.Assistant(
+            new ToolCallPart(derivedCallId, toolReference, JsonDocument.Parse("{}").RootElement, providerCallId: null, ExtensionData.Empty));
+        var preservedSecond = TestMessages.Assistant(
+            new ToolCallPart(preservedCallId, toolReference, JsonDocument.Parse("{}").RootElement, new ProviderToolCallId(collidingWireId), ExtensionData.Empty));
+
+        var body = Translate(
+            derivedFirst,
+            TestMessages.Tool(SuccessResult(derivedCallId, toolReference)),
+            preservedSecond,
+            TestMessages.Tool(SuccessResult(preservedCallId, toolReference)));
+        var messages = body["messages"]!.AsArray();
+
+        var expectedDerived = MistralAIToolCallIdCodec.Encode(derivedCallId, disambiguator: 1);
+        messages[0]!["tool_calls"]![0]!["id"]!.GetValue<string>().ShouldBe(expectedDerived);
+        messages[1]!["tool_call_id"]!.GetValue<string>().ShouldBe(expectedDerived);
+        messages[2]!["tool_calls"]![0]!["id"]!.GetValue<string>().ShouldBe(collidingWireId);
+        messages[3]!["tool_call_id"]!.GetValue<string>().ShouldBe(collidingWireId);
+    }
+
+    [Fact]
+    public void Translate_WhenTwoCallsSharePreservedProviderCallId_DerivesWireIdForSecondCall()
+    {
+        var firstCallId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000030"));
+        var secondCallId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000031"));
+        var toolReference = new ToolReference(new ToolId("noop"), null, "noop");
+        var sharedProviderCallId = new ProviderToolCallId("D681PevKs");
+
+        var body = Translate(
+            TestMessages.Assistant(
+                new ToolCallPart(firstCallId, toolReference, JsonDocument.Parse("{}").RootElement, sharedProviderCallId, ExtensionData.Empty),
+                new ToolCallPart(secondCallId, toolReference, JsonDocument.Parse("{}").RootElement, sharedProviderCallId, ExtensionData.Empty)),
+            TestMessages.Tool(SuccessResult(firstCallId, toolReference), SuccessResult(secondCallId, toolReference)));
+        var messages = body["messages"]!.AsArray();
+
+        var toolCalls = messages[0]!["tool_calls"]!.AsArray();
+        toolCalls[0]!["id"]!.GetValue<string>().ShouldBe(sharedProviderCallId.Value);
+        toolCalls[1]!["id"]!.GetValue<string>().ShouldBe(MistralAIToolCallIdCodec.Encode(secondCallId));
+        messages[1]!["tool_call_id"]!.GetValue<string>().ShouldBe(sharedProviderCallId.Value);
+        messages[2]!["tool_call_id"]!.GetValue<string>().ShouldBe(MistralAIToolCallIdCodec.Encode(secondCallId));
+    }
+
+    [Fact]
+    public void Translate_WhenEveryDisambiguatorCollides_ThrowsNotSupportedException()
+    {
+        var victimCallId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000040"));
+        var toolReference = new ToolReference(new ToolId("noop"), null, "noop");
+
+        // Sixteen distinct calls preserve exactly the sixteen candidates the
+        // victim could derive, so no distinct wire identifier remains.
+        var blockers = Enumerable.Range(0, 16)
+            .Select(disambiguator => new ToolCallPart(
+                new ToolCallId(Guid.Parse($"00000000-0000-0000-0000-0000000001{disambiguator:x2}")),
+                toolReference,
+                JsonDocument.Parse("{}").RootElement,
+                new ProviderToolCallId(MistralAIToolCallIdCodec.Encode(victimCallId, disambiguator)),
+                ExtensionData.Empty))
+            .ToArray<ContentPart>();
+        var victim = new ToolCallPart(victimCallId, toolReference, JsonDocument.Parse("{}").RootElement, providerCallId: null, ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => Translate(TestMessages.Assistant(blockers), TestMessages.Assistant(victim)));
+    }
+
+    private static JsonObject Translate(params AgentMessage[] messages)
+    {
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.MistralLarge,
+            [.. messages],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        return new MistralAIRequestTranslator().Translate(request, useStreaming: false);
+    }
+
+    private static ToolResultPart SuccessResult(ToolCallId callId, ToolReference toolReference) =>
+        new(
+            callId,
+            toolReference,
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+            [new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
 }

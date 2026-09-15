@@ -62,6 +62,20 @@ types. Assistant messages can carry <code>tool_calls[]</code>; tool messages
 identify the call and return content. Preserve chunk order and unknown chunk
 tags.
 
+Mistral validates every <code>tool_calls[].id</code> and
+<code>tool_call_id</code> against <code>^[a-zA-Z0-9]{9}$</code> and rejects
+anything else with a 422
+(`Tool call id was … but must be a-z, A-Z, 0-9, with a length of 9.`). The
+request translator therefore allocates one nine-character wire identifier per
+canonical <code>ToolCallId</code> for the whole request: a preserved
+<code>ProviderToolCallId</code> is echoed only when it already has that shape
+and is unique within the request; otherwise the identifier is derived
+deterministically (SHA-256 over the big-endian GUID bytes plus a disambiguator,
+leading 53 bits, nine base-62 digits). A derived value that collides with an
+already-claimed identifier moves to the next disambiguator, and the same map is
+used for the call and its result so correlation holds. An identifier minted by
+another provider is not a Mistral identity and is never sent verbatim.
+
 <code>Tool</code> is an open union:
 
 - custom function with JSON Schema parameters;
