@@ -29,7 +29,7 @@ public sealed class MediaReferenceTests
     [Fact]
     public void MediaReference_WhenMediaTypeIsWhitespace_ThrowsArgumentException()
     {
-        var exception = Should.Throw<ArgumentException>(() => new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "   ", null, [], null, null, ExtensionData.Empty));
+        var exception = Should.Throw<ArgumentException>(() => new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "   ", null, [1], null, null, ExtensionData.Empty));
         exception.ParamName.ShouldBe("mediaType");
     }
 
@@ -61,16 +61,6 @@ public sealed class MediaReferenceTests
     }
 
     [Fact]
-    public void With_WhenInlineBytesIsDefault_ThrowsArgumentException()
-    {
-        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", null, [1], 1, null, ExtensionData.Empty);
-
-        var exception = Should.Throw<ArgumentException>(() => reference with { InlineBytes = default });
-
-        exception.ParamName.ShouldBe("value");
-    }
-
-    [Fact]
     public void With_WhenExtensionsIsNull_ThrowsArgumentNullException()
     {
         var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", null, [1], 1, null, ExtensionData.Empty);
@@ -78,5 +68,84 @@ public sealed class MediaReferenceTests
         var exception = Should.Throw<ArgumentNullException>(() => reference with { Extensions = null! });
 
         exception.ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void Constructor_WhenSourceKindIsUndefined_ThrowsArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new MediaReference(new MediaId(Guid.NewGuid()), (MediaSourceKind) 99, "image/png", null, [], null, null, ExtensionData.Empty));
+
+        exception.ParamName.ShouldBe("sourceKind");
+    }
+
+    [Fact]
+    public void Constructor_WhenInlineSourceHasUri_ThrowsArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", new Uri("https://example.test/a.png"), [1], null, null, ExtensionData.Empty));
+
+        exception.ParamName.ShouldBe("uri");
+    }
+
+    [Fact]
+    public void Constructor_WhenInlineSourceHasNoBytes_ThrowsArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", null, [], null, null, ExtensionData.Empty));
+
+        exception.ParamName.ShouldBe("inlineBytes");
+    }
+
+    [Fact]
+    public void Constructor_WhenUriSourceHasNoUri_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.Uri, "image/png", null, [], null, null, ExtensionData.Empty));
+
+        exception.ParamName.ShouldBe("uri");
+    }
+
+    [Theory]
+    [InlineData(MediaSourceKind.Uri)]
+    [InlineData(MediaSourceKind.FileReference)]
+    public void Constructor_WhenReferenceSourceInlinesBytes_ThrowsArgumentException(MediaSourceKind sourceKind)
+    {
+        var exception = Should.Throw<ArgumentException>(() => new MediaReference(new MediaId(Guid.NewGuid()), sourceKind, "image/png", new Uri("https://example.test/a.png"), [1], null, null, ExtensionData.Empty));
+
+        exception.ParamName.ShouldBe("inlineBytes");
+    }
+
+    [Fact]
+    public void Constructor_WhenSizeIsNegative_ThrowsArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", null, [1], -1, null, ExtensionData.Empty));
+
+        exception.ParamName.ShouldBe("sizeInBytes");
+    }
+
+    [Theory]
+    [InlineData(0L)]
+    [InlineData(1L)]
+    public void Constructor_WhenSizeIsZeroOrPositive_Succeeds(long sizeInBytes)
+    {
+        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.Uri, "image/png", new Uri("https://example.test/a.png"), [], sizeInBytes, null, ExtensionData.Empty);
+
+        reference.SizeInBytes.ShouldBe(sizeInBytes);
+    }
+
+    [Fact]
+    public void Constructor_WhenFileReferenceOmitsUri_Succeeds()
+    {
+        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.FileReference, "text/plain", null, [], null, null, ExtensionData.Empty);
+
+        reference.Uri.ShouldBeNull();
+        reference.InlineBytes.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Constructor_WhenFileReferenceCarriesLocatorUri_RetainsUriWithoutResolution()
+    {
+        var uri = new Uri("file:///workspace/result.txt");
+
+        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.FileReference, "text/plain", uri, [], null, null, ExtensionData.Empty);
+
+        reference.Uri.ShouldBe(uri);
     }
 }

@@ -18,53 +18,26 @@ public sealed class ToolResultMediaContentTests
     [Fact]
     public void ToolResultMediaContent_Constructor_WhenExtensionsNull_ThrowsExactException()
     {
-        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "text/plain", null, [], 0, null, ExtensionData.Empty);
+        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "text/plain", null, [1], 1, null, ExtensionData.Empty);
         var exception = Should.Throw<ArgumentNullException>(() => new ToolResultMediaContent(reference, null!));
         exception.ParamName.ShouldBe("extensions");
     }
 
-    [Theory]
-    [InlineData(0, typeof(ArgumentOutOfRangeException))]
-    [InlineData(1, typeof(ArgumentOutOfRangeException))]
-    [InlineData(4, typeof(ArgumentOutOfRangeException))]
-    [InlineData(6, typeof(ArgumentException))]
-    public void ToolResultMediaContent_Constructor_WhenCopiedReferenceInvalid_ThrowsExactException(int invalidCase, Type exceptionType)
+    [Fact]
+    public void ToolResultMediaContent_Constructor_WhenCopiedReferenceIdIsDefault_ThrowsExactException()
     {
-        var valid = Media();
-        var malformed = invalidCase switch
+        var malformed = Media() with
         {
-            0 => valid with
-            {
-                Id = default
-            },
-            1 => valid with
-            {
-                SourceKind = (MediaSourceKind) 99
-            },
-            4 => valid with
-            {
-                SizeInBytes = -1
-            },
-            6 => valid with
-            {
-                Uri = new Uri("https://example.test/media")
-            },
-            _ => throw new ArgumentOutOfRangeException(nameof(invalidCase)),
+            Id = default
         };
-        var exception = Should.Throw<ArgumentException>(() => new ToolResultMediaContent(malformed, ExtensionData.Empty));
-        exception.GetType().ShouldBe(exceptionType);
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ToolResultMediaContent(malformed, ExtensionData.Empty));
         exception.ParamName.ShouldBe("reference");
     }
 
     [Fact]
     public void ToolResultMediaContent_Constructor_WhenFileReferenceRetainsUri_PreservesEvidenceWithoutResolution()
     {
-        var reference = Media() with
-        {
-            SourceKind = MediaSourceKind.FileReference,
-            Uri = new Uri("file:///workspace/result.txt"),
-            InlineBytes = [],
-        };
+        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.FileReference, "text/plain", new Uri("file:///workspace/result.txt"), [], 1, new ContentHash("hash"), ExtensionData.Empty);
         var content = new ToolResultMediaContent(reference, ExtensionData.Empty);
         content.Reference.ShouldBe(reference);
     }

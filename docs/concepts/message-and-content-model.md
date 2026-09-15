@@ -89,6 +89,18 @@ Parts MUST preserve source order. Unknown parts MUST round-trip through durable
 storage and compatible provider continuation paths even when the core cannot
 interpret them.
 
+A media reference's source kind governs its locator fields, and the value
+enforces that agreement at construction: an inline medium carries at least one
+byte and no URI; a URI medium carries a URI and no bytes; a file-reference
+medium carries no bytes and MAY retain an unresolved locator URI as evidence. A
+known size is never negative. Reasoning content enforces its visibility
+contract the same way: redacted and signature-only reasoning carry no text, and
+signature-only reasoning always carries a nonblank signature token. Visible
+reasoning MAY carry null text because some providers emit a thought block
+without text; consumers treat that as absent text, not as redaction. Because
+these are cross-field invariants, the governed members are read-only rather
+than `init`, so a `with` expression cannot break the agreement.
+
 ## Assistant response metadata
 
 An assistant response SHOULD retain:

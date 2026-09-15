@@ -4734,11 +4734,11 @@ namespace AgentKit
         public AgentKit.ExtensionData Extensions { get; init; }
         public AgentKit.ContentHash? Hash { get; init; }
         public AgentKit.MediaId Id { get; init; }
-        public System.Collections.Immutable.ImmutableArray<byte> InlineBytes { get; init; }
+        public System.Collections.Immutable.ImmutableArray<byte> InlineBytes { get; }
         public string MediaType { get; init; }
-        public long? SizeInBytes { get; init; }
-        public AgentKit.MediaSourceKind SourceKind { get; init; }
-        public System.Uri? Uri { get; init; }
+        public long? SizeInBytes { get; }
+        public AgentKit.MediaSourceKind SourceKind { get; }
+        public System.Uri? Uri { get; }
         public bool Equals(AgentKit.MediaReference? other) { }
         public override int GetHashCode() { }
     }
@@ -6206,9 +6206,9 @@ namespace AgentKit
     {
         public ReasoningContent(string? text, AgentKit.ReasoningVisibility visibility, string? signatureToken, AgentKit.ExtensionData extensions) { }
         public AgentKit.ExtensionData Extensions { get; init; }
-        public string? SignatureToken { get; init; }
-        public string? Text { get; init; }
-        public AgentKit.ReasoningVisibility Visibility { get; init; }
+        public string? SignatureToken { get; }
+        public string? Text { get; }
+        public AgentKit.ReasoningVisibility Visibility { get; }
     }
     public sealed class ReasoningContentDelta : AgentKit.ContentDelta, System.IEquatable<AgentKit.ReasoningContentDelta>
     {
