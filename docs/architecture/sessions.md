@@ -678,7 +678,13 @@ and store clients are owned and disposed by the container that created them;
 returned leases are owned by the caller and disposed exactly once. Different
 session addresses may progress concurrently. Appends and directory records use
 expected state and idempotency, and cancellation never reports an unknown commit
-as definitely absent or reroutes a retry to another store.
+as definitely absent or reroutes a retry to another store. Once a store has
+returned a typed result, the coordinator returns that result even if the
+caller's token was cancelled meanwhile; it does not replace a committed outcome
+with `OperationCanceledException`. Post-commit event publication is best-effort
+and ignores caller cancellation because the effect it describes already
+happened. Cancellation raised before or inside the store propagates as the
+original exception.
 
 ## Composition validation and unsupported behavior
 

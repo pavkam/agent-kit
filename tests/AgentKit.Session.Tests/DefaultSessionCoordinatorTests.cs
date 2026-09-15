@@ -203,6 +203,70 @@ public sealed class DefaultSessionCoordinatorTests
     }
 
     [Fact]
+    public async Task AppendAsync_WhenCancelledAfterStoreCommit_ReturnsAppendedAndPublishesEvent()
+    {
+        // A store result is a committed effect; caller cancellation observed afterward must not hide it or skip publication.
+        var sink = new FakeSessionEventSink();
+        var harness = new Harness(eventSinks: [sink]);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        using var cancellation = new CancellationTokenSource();
+        harness.Store.OnAppend = request =>
+        {
+            cancellation.Cancel();
+            return new SessionAppended(
+                new SessionVersion(request.ExpectedVersion.Value + request.Entries.Length), request.Entries);
+        };
+        CancellationToken? publishedToken = null;
+        sink.OnPublish = (_, token) =>
+        {
+            publishedToken = token;
+            return ValueTask.CompletedTask;
+        };
+        var request = new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version,
+            new IdempotencyKey("append"), [TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1)]);
+
+        var result = await harness.CreateCoordinator().AppendAsync(request, TestFactory.Profile(), cancellation.Token);
+
+        result.ShouldBeOfType<SessionAppended>().NewVersion.ShouldBe(new SessionVersion(descriptor.Version.Value + 1));
+        var published = sink.Received.ShouldHaveSingleItem().ShouldBeOfType<SessionAppendedEvent>();
+        published.NewVersion.ShouldBe(new SessionVersion(descriptor.Version.Value + 1));
+        publishedToken.ShouldNotBeNull().IsCancellationRequested.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenStoreThrowsCancellation_PreservesOriginalException()
+    {
+        var harness = new Harness();
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        using var cancellation = new CancellationTokenSource();
+        var original = new OperationCanceledException("store cancelled", cancellation.Token);
+        harness.Store.OnAppend = _ =>
+        {
+            cancellation.Cancel();
+            throw original;
+        };
+        var request = new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version,
+            new IdempotencyKey("append"), [TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1)]);
+
+        // Awaited directly: Shouldly's task-based helper reports a canceled task as a fresh TaskCanceledException.
+        OperationCanceledException? observed = null;
+        try
+        {
+            _ = await harness.CreateCoordinator().AppendAsync(request, TestFactory.Profile(), cancellation.Token);
+        }
+        catch (OperationCanceledException exception)
+        {
+            observed = exception;
+        }
+
+        observed.ShouldBeSameAs(original);
+    }
+
+    [Fact]
     public async Task AppendAsync_WhenPostCommitEventClockThrows_PreservesCommittedSuccess()
     {
         var timeProvider = new ArmableThrowingTimeProvider();

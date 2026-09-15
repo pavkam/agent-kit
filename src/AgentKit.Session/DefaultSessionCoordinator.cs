@@ -161,8 +161,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
                     await PublishBestEffortAsync(
                         () => new SessionAppendedEvent(
                             request.Context.ToAddress(), _timeProvider.GetUtcNow(), request.BranchId,
-                            appended.NewVersion, appended.CommittedEntries.Length),
-                        cancellationToken).ConfigureAwait(false);
+                            appended.NewVersion, appended.CommittedEntries.Length)).ConfigureAwait(false);
                 }
                 return result;
             }, cancellationToken);
@@ -205,8 +204,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
                     await PublishBestEffortAsync(
                         () => new SessionBranchedEvent(
                             request.Context.ToAddress(), _timeProvider.GetUtcNow(), request.ParentBranchId,
-                            branched.NewBranchId, branched.ForkedAtSequence),
-                        cancellationToken).ConfigureAwait(false);
+                            branched.NewBranchId, branched.ForkedAtSequence)).ConfigureAwait(false);
                 }
                 return result;
             }, cancellationToken);
@@ -229,8 +227,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
                 if (result is SessionDeleted)
                 {
                     await PublishBestEffortAsync(
-                        () => new SessionDeletedEvent(request.Context.ToAddress(), _timeProvider.GetUtcNow()),
-                        cancellationToken).ConfigureAwait(false);
+                        () => new SessionDeletedEvent(request.Context.ToAddress(), _timeProvider.GetUtcNow())).ConfigureAwait(false);
                 }
                 return result;
             }, cancellationToken);
@@ -415,8 +412,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         {
             await PublishBestEffortAsync(
                 () => new SessionCreatedEvent(
-                    created.Descriptor.Address, _timeProvider.GetUtcNow(), created.Descriptor),
-                cancellationToken).ConfigureAwait(false);
+                    created.Descriptor.Address, _timeProvider.GetUtcNow(), created.Descriptor)).ConfigureAwait(false);
         }
         return result;
     }
@@ -473,6 +469,11 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
                 StoreRequest(request, selected.Descriptor.Key, storeGrant), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Invokes the selected store and returns its typed result even when the caller cancelled meanwhile.</summary>
+    /// <remarks>
+    /// The store decides whether cancellation prevents its effect. Once it has returned a result, that result is the
+    /// committed truth and is never replaced by <see cref="OperationCanceledException"/>.
+    /// </remarks>
     private static async ValueTask<TResult> InvokeStoreAsync<TRequest, TResult>(
         Func<ISessionStore, AuthorizedSessionStoreRequest<TRequest>, CancellationToken, ValueTask<TResult>> operation,
         ISessionStore store, AuthorizedSessionStoreRequest<TRequest> request, CancellationToken cancellationToken)
@@ -481,9 +482,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         Debug.Assert(operation is not null, "A validated store operation delegate is required.");
         Debug.Assert(store is not null, "A selected session store is required.");
         Debug.Assert(request is not null, "An authorized store request is required.");
-        var result = await operation(store, request, cancellationToken).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        return result;
+        return await operation(store, request, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<SessionOperationContext?> CaptureCreateContextAsync(SessionCreateRequest request,
@@ -594,7 +593,6 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         {
             cancellationToken.ThrowIfCancellationRequested();
             var result = await action().ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
             var outcome = Outcome(result);
             TryObserve(() =>
             {
@@ -636,7 +634,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
                     context.Identity.TenantId, context.AgentId, context.SessionId, context.ExecutionLaneId,
                     context.Correlation.OperationId, runId, turnId));
             }
-            throw new OperationCanceledException(cancellationToken);
+            throw;
         }
         catch (Exception exception)
         {
@@ -678,9 +676,14 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
             new KeyValuePair<string, object?>(AgentKitTagNames.SessionOperation, operation),
             new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome)));
 
-    private async ValueTask PublishBestEffortAsync(
-        Func<SessionEvent> eventFactory,
-        CancellationToken cancellationToken)
+    /// <summary>Publishes one post-commit semantic event to every sink without letting observation alter the committed result.</summary>
+    /// <param name="eventFactory">Builds the event from the already committed store outcome.</param>
+    /// <remarks>
+    /// Publication deliberately ignores caller cancellation: the protected effect has already been committed, so a
+    /// caller that stopped waiting must still see the event reach its sinks. Each sink receives
+    /// <see cref="CancellationToken.None"/>, and construction or sink failures are swallowed.
+    /// </remarks>
+    private async ValueTask PublishBestEffortAsync(Func<SessionEvent> eventFactory)
     {
         Debug.Assert(eventFactory is not null, "A committed semantic-event factory is required.");
         SessionEvent sessionEvent;
@@ -698,7 +701,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
         {
             try
             {
-                await sink.PublishAsync(sessionEvent, cancellationToken).ConfigureAwait(false);
+                await sink.PublishAsync(sessionEvent, CancellationToken.None).ConfigureAwait(false);
             }
             catch
             {
