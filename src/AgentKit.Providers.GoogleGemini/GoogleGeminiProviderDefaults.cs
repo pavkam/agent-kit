@@ -53,7 +53,10 @@ public static class GoogleGeminiProviderDefaults
     /// </summary>
     /// <remarks>
     /// This package's translator and parser round-trip Gemini's
-    /// <c>thought</c>/<c>thoughtSignature</c> reasoning parts, so
+    /// <c>thought</c>/<c>thoughtSignature</c> reasoning parts, and preserve
+    /// the <c>thoughtSignature</c> a <c>functionCall</c> or answer
+    /// <c>text</c> part carries under
+    /// <see cref="GoogleGeminiExtensionKeys.ThoughtSignature"/>, so
     /// <c>SupportsReasoning</c> is <see langword="true"/>. Image, file, and
     /// executable-code content parts, citations, and native structured
     /// output are not yet translated, so vision and structured-output

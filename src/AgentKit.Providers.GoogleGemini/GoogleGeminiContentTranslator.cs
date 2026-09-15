@@ -240,19 +240,21 @@ public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslato
             switch (part)
             {
                 case TextPart text:
-                    result.Add(new JsonObject { ["text"] = text.Text });
+                    result.Add(WithThoughtSignature(new JsonObject { ["text"] = text.Text }, text.Extensions));
                     break;
 
                 case ToolCallPart toolCall:
-                    result.Add(new JsonObject
-                    {
-                        ["functionCall"] = new JsonObject
+                    result.Add(WithThoughtSignature(
+                        new JsonObject
                         {
-                            ["id"] = providerCallIds.GetValueOrDefault(toolCall.CallId, toolCall.CallId.ToString()),
-                            ["name"] = toolCall.Tool.Name,
-                            ["args"] = JsonNode.Parse(toolCall.Arguments.GetRawText()),
+                            ["functionCall"] = new JsonObject
+                            {
+                                ["id"] = providerCallIds.GetValueOrDefault(toolCall.CallId, toolCall.CallId.ToString()),
+                                ["name"] = toolCall.Tool.Name,
+                                ["args"] = JsonNode.Parse(toolCall.Arguments.GetRawText()),
+                            },
                         },
-                    });
+                        toolCall.Extensions));
                     break;
 
                 case ReasoningPart reasoning when reasoning.Content.Visibility == ReasoningVisibility.Visible:
@@ -277,6 +279,27 @@ public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslato
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Re-emits the <c>thoughtSignature</c> a model part carried, if any, as a sibling field on the same wire
+    /// part. Gemini requires the signature to be returned inside its original part, so it is never moved to a
+    /// separate part or merged with another part's signature.
+    /// </summary>
+    /// <param name="wirePart">The <c>text</c> or <c>functionCall</c> wire part being emitted.</param>
+    /// <param name="extensions">The source part's extension data.</param>
+    /// <returns><paramref name="wirePart"/>, with <c>thoughtSignature</c> added when one was retained.</returns>
+    private static JsonObject WithThoughtSignature(JsonObject wirePart, ExtensionData extensions)
+    {
+        Debug.Assert(wirePart is not null, "Callers supply the wire part they are about to emit.");
+        Debug.Assert(extensions is not null, "Content parts always carry non-null extension data.");
+
+        if (GoogleGeminiThoughtSignature.TryRead(extensions) is { } signature)
+        {
+            wirePart["thoughtSignature"] = signature;
+        }
+
+        return wirePart;
     }
 
     private static JsonArray TranslateToolResultParts(

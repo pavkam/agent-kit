@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.GoogleGemini.Tests.Translation;
 
+using AgentKit.Providers.GoogleGemini.Tests.Fakes;
+
 /// <summary>
 /// Verifies that <see cref="GoogleGeminiContentTranslator"/> produces the
 /// exact Gemini GenerateContent request body expected for representative
@@ -199,6 +201,136 @@ public sealed class GoogleGeminiContentTranslatorTests
         part["text"]!.GetValue<string>().ShouldBe("internal thoughts");
         part["thought"]!.GetValue<bool>().ShouldBeTrue();
         part["thoughtSignature"]!.GetValue<string>().ShouldBe("sig-token");
+    }
+
+    /// <summary>Verifies a retained function-call thoughtSignature is re-emitted as a sibling of functionCall on the same wire part.</summary>
+    [Fact]
+    public void Translate_WhenToolCallPartCarriesThoughtSignature_EmitsThoughtSignatureOnFunctionCallPart()
+    {
+        var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000003"));
+        var toolReference = new ToolReference(new ToolId("check_flight"), null, "check_flight");
+        var signedCall = new ToolCallPart(
+            callId,
+            toolReference,
+            JsonDocument.Parse("""{"flight":"AA100"}""").RootElement,
+            new ProviderToolCallId("call_sig_001"),
+            GoogleGeminiThoughtSignature.Create("sig_fc_alpha"));
+        var unsignedCall = new ToolCallPart(
+            new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000004")),
+            new ToolReference(new ToolId("book_taxi"), null, "book_taxi"),
+            JsonDocument.Parse("""{"time":"18:00"}""").RootElement,
+            new ProviderToolCallId("call_sig_002"),
+            ExtensionData.Empty);
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [TestMessages.User("Check AA100."), TestMessages.Assistant(signedCall, unsignedCall)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new GoogleGeminiContentTranslator().Translate(request);
+        var parts = body["contents"]![1]!["parts"]!.AsArray();
+
+        var expectedSigned = JsonNode.Parse(
+            /*lang=json,strict*/ """{"functionCall":{"id":"call_sig_001","name":"check_flight","args":{"flight":"AA100"}},"thoughtSignature":"sig_fc_alpha"}""");
+        JsonNode.DeepEquals(parts[0], expectedSigned).ShouldBeTrue(parts[0]!.ToJsonString());
+        parts[1]!.AsObject().ContainsKey("thoughtSignature").ShouldBeFalse(parts[1]!.ToJsonString());
+        parts[1]!["functionCall"]!.AsObject().ContainsKey("thoughtSignature").ShouldBeFalse();
+    }
+
+    /// <summary>Verifies a retained answer-text thoughtSignature is re-emitted on the same text wire part.</summary>
+    [Fact]
+    public void Translate_WhenTextPartCarriesThoughtSignature_EmitsThoughtSignatureOnTextPart()
+    {
+        var assistant = TestMessages.Assistant(
+            new TextPart("Flight AA100 is on time.", TextSemantics.Plain, GoogleGeminiThoughtSignature.Create("sig_text_omega")));
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [assistant],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new GoogleGeminiContentTranslator().Translate(request);
+        var part = body["contents"]![0]!["parts"]![0]!;
+
+        var expected = JsonNode.Parse(/*lang=json,strict*/ """{"text":"Flight AA100 is on time.","thoughtSignature":"sig_text_omega"}""");
+        JsonNode.DeepEquals(part, expected).ShouldBeTrue(part.ToJsonString());
+    }
+
+    /// <summary>Verifies a user-authored text part never gains a thoughtSignature field, even if it carries the extension.</summary>
+    [Fact]
+    public void Translate_WhenUserTextPartCarriesThoughtSignatureExtension_DoesNotEmitThoughtSignature()
+    {
+        var user = TestMessages.User(new TextPart("hi", TextSemantics.Plain, GoogleGeminiThoughtSignature.Create("sig_not_model")));
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [user],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new GoogleGeminiContentTranslator().Translate(request);
+
+        body["contents"]![0]!["parts"]![0]!.AsObject().ContainsKey("thoughtSignature").ShouldBeFalse();
+    }
+
+    /// <summary>Verifies a parsed response with signed function-call, reasoning, and text parts translates back with every signature in place.</summary>
+    [Fact]
+    public async Task Translate_WhenAssistantPartsComeFromParsedResponses_RoundTripsEveryThoughtSignatureInPlace()
+    {
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        var parseContext = new GoogleGeminiResponseParseContext(
+            new ModelRequestId(Guid.NewGuid()),
+            GoogleGeminiProviderDefaults.ProviderId,
+            GoogleGeminiProviderDefaults.ApiFamily,
+            new ModelId("gemini-2.5-flash"),
+            deploymentId: null,
+            providerRequestId: null);
+        var parts = new List<ContentPart>();
+        foreach (var fixture in new[] { "responses/buffered_tool_use_with_signature.json", "responses/buffered_thinking.json", "responses/buffered_text_with_signature.json" })
+        {
+            await using var body = File.OpenRead(TestResources.GetPath(fixture));
+            var completed = (await parser.ParseBufferedAsync(body, parseContext, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken))
+                .ShouldBeOfType<ModelAttemptCompleted>();
+            parts.AddRange(completed.Response.Parts);
+        }
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [TestMessages.Assistant([.. parts])],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var wireParts = new GoogleGeminiContentTranslator().Translate(request)["contents"]![0]!["parts"]!.AsArray();
+
+        wireParts.Count.ShouldBe(5);
+        wireParts[0]!["functionCall"]!["name"]!.GetValue<string>().ShouldBe("check_flight");
+        wireParts[0]!["thoughtSignature"]!.GetValue<string>().ShouldBe("sig_fc_alpha");
+        wireParts[1]!["functionCall"]!["name"]!.GetValue<string>().ShouldBe("book_taxi");
+        wireParts[1]!.AsObject().ContainsKey("thoughtSignature").ShouldBeFalse();
+        wireParts[2]!["thought"]!.GetValue<bool>().ShouldBeTrue();
+        wireParts[2]!["thoughtSignature"]!.GetValue<string>().ShouldBe("sig_abc123");
+        wireParts[3]!["text"]!.GetValue<string>().ShouldBe("The answer is 42.");
+        wireParts[3]!.AsObject().ContainsKey("thoughtSignature").ShouldBeFalse();
+        wireParts[4]!["text"]!.GetValue<string>().ShouldBe("Flight AA100 is on time.");
+        wireParts[4]!["thoughtSignature"]!.GetValue<string>().ShouldBe("sig_text_omega");
     }
 
     [Fact]

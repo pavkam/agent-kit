@@ -23,8 +23,10 @@ internal sealed class GoogleGeminiPartDto
     public bool? Thought { get; set; }
 
     /// <summary>
-    /// Gets or sets the opaque provider signature for a thought part,
-    /// required to echo the thought back on a continuation request.
+    /// Gets or sets the opaque provider signature attached to this part.
+    /// It appears on thought parts, on <c>functionCall</c> parts, and
+    /// possibly on the final text part of an answer, and must be echoed
+    /// back inside the same part on a continuation request.
     /// </summary>
     [JsonPropertyName("thoughtSignature")]
     public string? ThoughtSignature { get; set; }

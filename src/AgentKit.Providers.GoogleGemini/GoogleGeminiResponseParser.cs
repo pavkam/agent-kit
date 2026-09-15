@@ -345,12 +345,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
 
             var callId = _toolCallIdGenerator.Create();
             var arguments = functionCall.Args ?? ParseEmptyObject();
-            var toolCallPart = new ToolCallPart(
-                callId,
-                new ToolReference(new ToolId(functionCall.Name), null, functionCall.Name),
-                arguments,
-                functionCall.Id is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
-                ExtensionData.Empty);
+            var toolCallPart = CreateToolCallPart(callId, functionCall, arguments, partDto.ThoughtSignature);
 
             await observer.OnEventAsync(
                     new ModelPartDelta(requestId, sequence++, index, new ToolArgumentsContentDelta(callId, arguments.GetRawText())),
@@ -368,7 +363,13 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             ? PartKind.Reasoning
             : partDto.Text is not null ? PartKind.Text : PartKind.Unknown;
 
-        if (current is null || current.Closed || current.Kind != kind || kind == PartKind.Unknown)
+        // A signature belongs to exactly one wire part and two signed parts must never be merged, so a fragment
+        // carrying a different signature than the open accumulator starts a new part of the same kind.
+        var carriesDistinctSignature = partDto.ThoughtSignature is { Length: > 0 } signature
+            && current is { Closed: false, Signature: { } existing }
+            && !string.Equals(existing, signature, StringComparison.Ordinal);
+
+        if (current is null || current.Closed || current.Kind != kind || kind == PartKind.Unknown || carriesDistinctSignature)
         {
             if (current is not null)
             {
@@ -388,10 +389,9 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             }
         }
 
-        if (kind == PartKind.Reasoning)
-        {
-            current.Signature ??= partDto.ThoughtSignature;
-        }
+        // The signature may arrive on any fragment of the part, including a trailing fragment with empty text;
+        // the first one observed is retained for the whole part.
+        current.Signature ??= partDto.ThoughtSignature;
 
         if (!string.IsNullOrEmpty(partDto.Text))
         {
@@ -438,7 +438,10 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
 
         return accumulator.Kind switch
         {
-            PartKind.Text => new TextPart(accumulator.Text.ToString(), TextSemantics.Plain, ExtensionData.Empty),
+            PartKind.Text => new TextPart(
+                accumulator.Text.ToString(),
+                TextSemantics.Plain,
+                GoogleGeminiThoughtSignature.Create(accumulator.Signature)),
             PartKind.Reasoning => new ReasoningPart(
                 new ReasoningContent(accumulator.Text.ToString(), ReasoningVisibility.Visible, accumulator.Signature, ExtensionData.Empty),
                 ExtensionData.Empty),
@@ -534,12 +537,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             var callId = toolCallIdGenerator.Create();
             var arguments = functionCall.Args ?? ParseEmptyObject();
             var delta = new ToolArgumentsContentDelta(callId, arguments.GetRawText());
-            var toolCallPart = new ToolCallPart(
-                callId,
-                new ToolReference(new ToolId(functionCall.Name), null, functionCall.Name),
-                arguments,
-                functionCall.Id is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
-                ExtensionData.Empty);
+            var toolCallPart = CreateToolCallPart(callId, functionCall, arguments, part.ThoughtSignature);
 
             return (delta, toolCallPart);
         }
@@ -555,10 +553,39 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
 
         if (part.Text is not null)
         {
-            return (new TextContentDelta(part.Text), new TextPart(part.Text, TextSemantics.Plain, ExtensionData.Empty));
+            // A non-function-call answer may carry the turn's thought signature on its final text part; it is kept
+            // on that exact part so the translator can echo it back in place.
+            return (
+                new TextContentDelta(part.Text),
+                new TextPart(part.Text, TextSemantics.Plain, GoogleGeminiThoughtSignature.Create(part.ThoughtSignature)));
         }
 
         return (null, new UnknownContentPart(_unknownPartTypeName, JsonSerializer.SerializeToElement(part, _serializerOptions), ExtensionData.Empty));
+    }
+
+    /// <summary>
+    /// Builds the tool-call part for one <c>functionCall</c> wire part, retaining the part's
+    /// <c>thoughtSignature</c> as typed extension data so it can be echoed back inside the same part.
+    /// </summary>
+    /// <param name="callId">The internal call identity minted for this request.</param>
+    /// <param name="functionCall">The parsed <c>functionCall</c> object.</param>
+    /// <param name="arguments">The call arguments, already defaulted to an empty object when absent.</param>
+    /// <param name="thoughtSignature">The sibling <c>thoughtSignature</c> on the enclosing part, when any.</param>
+    /// <returns>The immutable tool-call part.</returns>
+    private static ToolCallPart CreateToolCallPart(
+        ToolCallId callId,
+        GoogleGeminiFunctionCallDto functionCall,
+        JsonElement arguments,
+        string? thoughtSignature)
+    {
+        Debug.Assert(functionCall is not null, "Callers only build a tool-call part for a functionCall wire part.");
+
+        return new ToolCallPart(
+            callId,
+            new ToolReference(new ToolId(functionCall.Name), null, functionCall.Name),
+            arguments,
+            functionCall.Id is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
+            GoogleGeminiThoughtSignature.Create(thoughtSignature));
     }
 
     private static JsonElement ParseEmptyObject()
@@ -592,7 +619,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
         var extensions = usage.ToolUsePromptTokenCount is { } toolUseTokens
             ? new ExtensionData(
                 ImmutableDictionary<string, ExtensionValue>.Empty.Add(
-                    "tool_use_prompt_token_count",
+                    GoogleGeminiExtensionKeys.ToolUsePromptTokenCount,
                     new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(toolUseTokens)])))
             : ExtensionData.Empty;
 
@@ -638,6 +665,10 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
 
         public StringBuilder Text { get; } = new();
 
+        /// <summary>
+        /// The first <c>thoughtSignature</c> observed on any fragment of this part. A reasoning part surfaces it
+        /// as <see cref="ReasoningContent.SignatureToken"/>; a text part retains it as typed extension data.
+        /// </summary>
         public string? Signature { get; set; }
 
         public GoogleGeminiPartDto? UnknownDto { get; set; }

@@ -32,6 +32,11 @@ namespace AgentKit.Providers.GoogleGemini
         public GoogleGeminiEmbeddingResponseParser() { }
         public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public static class GoogleGeminiExtensionKeys
+    {
+        public const string ThoughtSignature = "gemini.thought_signature";
+        public const string ToolUsePromptTokenCount = "tool_use_prompt_token_count";
+    }
     public sealed class GoogleGeminiLlmModel : AgentKit.ILlmModel
     {
         public GoogleGeminiLlmModel(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.GoogleGemini.GoogleGeminiProviderOptions options, AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator translator, AgentKit.Providers.GoogleGemini.IGoogleGeminiResponseParser responseParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }
@@ -80,6 +85,11 @@ namespace AgentKit.Providers.GoogleGemini
         public GoogleGeminiResponseParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class GoogleGeminiThoughtSignature
+    {
+        public static AgentKit.ExtensionData Create(string? signature) { }
+        public static string? TryRead(AgentKit.ExtensionData extensions) { }
     }
     public interface IGoogleGeminiContentTranslator
     {

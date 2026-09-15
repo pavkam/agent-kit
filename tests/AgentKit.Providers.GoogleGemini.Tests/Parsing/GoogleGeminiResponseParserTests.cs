@@ -75,6 +75,59 @@ public sealed class GoogleGeminiResponseParserTests
         completed.Response.Usage.ReasoningTokens.ShouldBe(18);
     }
 
+    /// <summary>Verifies a function-call part's thoughtSignature is retained on that exact part and a sibling unsigned call stays unsigned.</summary>
+    [Fact]
+    public async Task ParseBufferedAsync_WhenFunctionCallPartCarriesThoughtSignature_RetainsSignatureOnThatToolCallPart()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_tool_use_with_signature.json"));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
+        completed.Response.Parts.Length.ShouldBe(2);
+        var signedCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
+        signedCall.Tool.Name.ShouldBe("check_flight");
+        signedCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_sig_001"));
+        GoogleGeminiThoughtSignature.TryRead(signedCall.Extensions).ShouldBe("sig_fc_alpha");
+        signedCall.Extensions.Values.Keys.ShouldBe([GoogleGeminiExtensionKeys.ThoughtSignature]);
+        var unsignedCall = completed.Response.Parts[1].ShouldBeOfType<ToolCallPart>();
+        unsignedCall.Tool.Name.ShouldBe("book_taxi");
+        unsignedCall.Extensions.ShouldBe(ExtensionData.Empty);
+        observer.Events.OfType<ModelPartCompleted>().Select(e => e.Part).ShouldBe(completed.Response.Parts);
+    }
+
+    /// <summary>Verifies a final answer's text part keeps its thoughtSignature as typed extension data.</summary>
+    [Fact]
+    public async Task ParseBufferedAsync_WhenTextPartCarriesThoughtSignature_RetainsSignatureOnTextPart()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_text_with_signature.json"));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.Completed);
+        var text = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>();
+        text.Text.ShouldBe("Flight AA100 is on time.");
+        GoogleGeminiThoughtSignature.TryRead(text.Extensions).ShouldBe("sig_text_omega");
+    }
+
+    /// <summary>Verifies an unsigned text part carries no extension entry, so pre-existing behavior is unchanged.</summary>
+    [Fact]
+    public async Task ParseBufferedAsync_WhenTextPartHasNoThoughtSignature_LeavesExtensionsEmpty()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        await using var body = File.OpenRead(TestResources.GetPath("responses/buffered_text.json"));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var text = result.ShouldBeOfType<ModelAttemptCompleted>().Response.Parts[0].ShouldBeOfType<TextPart>();
+        text.Extensions.ShouldBe(ExtensionData.Empty);
+        GoogleGeminiThoughtSignature.TryRead(text.Extensions).ShouldBeNull();
+    }
+
     [Fact]
     public async Task ParseBufferedAsync_WhenUnknownPartKind_WrapsAsUnknownContentPart()
     {
@@ -183,6 +236,94 @@ public sealed class GoogleGeminiResponseParserTests
         toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
         var argumentFragments = observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<ToolArgumentsContentDelta>().Select(d => d.JsonFragment).ToArray();
         string.Concat(argumentFragments).ShouldBe( /*lang=json,strict*/"""{"location":"Paris"}""");
+    }
+
+    /// <summary>Verifies a streamed function-call part's thoughtSignature is retained on that tool-call part at every fragmentation.</summary>
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenFunctionCallChunkCarriesThoughtSignature_RetainsSignatureOnThatToolCallPart(int chunkSize)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllBytes("responses/streaming_tool_use_with_signature.sse");
+        await using var stream = new ChunkedStream(payload, chunkSize);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
+        completed.Response.Parts.Length.ShouldBe(2);
+        var signedCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
+        signedCall.Tool.Name.ShouldBe("check_flight");
+        GoogleGeminiThoughtSignature.TryRead(signedCall.Extensions).ShouldBe("sig_fc_stream_alpha");
+        var unsignedCall = completed.Response.Parts[1].ShouldBeOfType<ToolCallPart>();
+        unsignedCall.Tool.Name.ShouldBe("book_taxi");
+        unsignedCall.Extensions.ShouldBe(ExtensionData.Empty);
+        observer.Events.OfType<ModelPartCompleted>().Select(e => e.Part).ShouldBe(completed.Response.Parts);
+    }
+
+    /// <summary>Verifies a signature delivered on a trailing empty-text fragment is attached to the accumulated text part.</summary>
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenThoughtSignatureArrivesOnTrailingEmptyTextChunk_RetainsSignatureOnTextPart(int chunkSize)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllBytes("responses/streaming_text_with_signature.sse");
+        await using var stream = new ChunkedStream(payload, chunkSize);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.Completed);
+        var text = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>();
+        text.Text.ShouldBe("Flight AA100 is on time.");
+        GoogleGeminiThoughtSignature.TryRead(text.Extensions).ShouldBe("sig_text_stream_omega");
+        var textDeltas = observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<TextContentDelta>().Select(d => d.Text).ToArray();
+        textDeltas.ShouldBe(["Flight AA100 ", "is on time."]);
+    }
+
+    /// <summary>Verifies two signed text fragments are never merged into one part, because their signatures cannot be combined.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenSecondTextChunkCarriesDifferentThoughtSignature_StartsNewTextPart()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            data: {"candidates":[{"content":{"role":"model","parts":[{"text":"First.","thoughtSignature":"sig_one"}]},"index":0}]}
+
+            data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Second.","thoughtSignature":"sig_two"}]},"finishReason":"STOP","index":0}]}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.Length.ShouldBe(2);
+        var first = completed.Response.Parts[0].ShouldBeOfType<TextPart>();
+        first.Text.ShouldBe("First.");
+        GoogleGeminiThoughtSignature.TryRead(first.Extensions).ShouldBe("sig_one");
+        var second = completed.Response.Parts[1].ShouldBeOfType<TextPart>();
+        second.Text.ShouldBe("Second.");
+        GoogleGeminiThoughtSignature.TryRead(second.Extensions).ShouldBe("sig_two");
+    }
+
+    /// <summary>Verifies the same signature repeated on later fragments of one part is retained once without splitting the part.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenLaterTextChunkRepeatsSameThoughtSignature_KeepsSinglePart()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hello","thoughtSignature":"sig_same"}]},"index":0}]}
+
+            data: {"candidates":[{"content":{"role":"model","parts":[{"text":"!","thoughtSignature":"sig_same"}]},"finishReason":"STOP","index":0}]}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var text = result.ShouldBeOfType<ModelAttemptCompleted>().Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>();
+        text.Text.ShouldBe("Hello!");
+        GoogleGeminiThoughtSignature.TryRead(text.Extensions).ShouldBe("sig_same");
     }
 
     [Fact]

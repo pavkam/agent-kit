@@ -178,6 +178,18 @@ modes include automatic, any/forced, none, and validated variants depending on
 API/model. Preserve thought signatures when supplied; some reasoning/tool flows
 require them on later turns.
 
+A <code>thoughtSignature</code> is part metadata, not a separate part: it
+appears on <code>thought</code> parts, on <code>functionCall</code> parts (only
+the first call of a parallel batch is signed; every call of a sequential
+multi-step turn is), and possibly on the final <code>text</code> part of a
+non-tool answer, where a stream may deliver it in a trailing empty-text
+fragment. Gemini 3 models reject a request that omits a required function-call
+signature with HTTP 400. The adapter surfaces a thought part's signature as
+<code>ReasoningContent.SignatureToken</code> and retains a function-call or text
+part's signature on that exact part under
+<code>GoogleGeminiExtensionKeys.ThoughtSignature</code>, then re-emits each one
+inside its original part on the next request; signed parts are never merged.
+
 ## Embeddings
 
 Under AgentKit's [semantic-operation contract](semantic-operations.md),

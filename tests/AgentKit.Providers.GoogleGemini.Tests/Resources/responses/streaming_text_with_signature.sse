@@ -1,0 +1,6 @@
+data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "Flight AA100 "}]}, "index": 0}]}
+
+data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "is on time."}]}, "index": 0}]}
+
+data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "", "thoughtSignature": "sig_text_stream_omega"}]}, "finishReason": "STOP", "index": 0}], "usageMetadata": {"promptTokenCount": 25, "candidatesTokenCount": 8, "thoughtsTokenCount": 4, "totalTokenCount": 37}, "modelVersion": "gemini-3-pro-preview", "responseId": "resp_sig_stream_02"}
+

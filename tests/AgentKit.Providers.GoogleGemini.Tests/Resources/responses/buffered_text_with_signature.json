@@ -1,0 +1,25 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "Flight AA100 is on time.",
+            "thoughtSignature": "sig_text_omega"
+          }
+        ]
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 25,
+    "candidatesTokenCount": 8,
+    "thoughtsTokenCount": 4,
+    "totalTokenCount": 37
+  },
+  "modelVersion": "gemini-3-pro-preview",
+  "responseId": "resp_sig_02"
+}

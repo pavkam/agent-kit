@@ -1,0 +1,4 @@
+data: {"candidates": [{"content": {"role": "model", "parts": [{"functionCall": {"id": "call_sig_stream_01", "name": "check_flight", "args": {"flight":"AA100"}}, "thoughtSignature": "sig_fc_stream_alpha"}]}, "index": 0}]}
+
+data: {"candidates": [{"content": {"role": "model", "parts": [{"functionCall": {"id": "call_sig_stream_02", "name": "book_taxi", "args": {"time":"18:00"}}}]}, "finishReason": "STOP", "index": 0}], "usageMetadata": {"promptTokenCount": 40, "candidatesTokenCount": 21, "thoughtsTokenCount": 9, "totalTokenCount": 70}, "modelVersion": "gemini-3-pro-preview", "responseId": "resp_sig_stream_01"}
+
