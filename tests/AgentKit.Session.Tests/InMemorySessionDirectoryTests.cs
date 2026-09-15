@@ -169,12 +169,59 @@ public sealed class InMemorySessionDirectoryTests
         page.NextCursor.ShouldBe(firstLocation.Address.SessionId);
     }
 
-    private static InMemorySessionDirectory CreateDirectory(RecordingAuditDispatcher audits, RecordingGrantStore grants) => new(
+    [Fact]
+    public async Task ListAsync_WhenObserved_EmitsDirectoryActivityAndLog()
+    {
+        var logger = new TestSupport.RecordingLogger<InMemorySessionDirectory>();
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore(), logger);
+        var request = ListRequest();
+        using var activities = new TestSupport.ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            activity => activity.OperationName == AgentKitActivityNames.SessionDirectoryOperation
+                && activity.GetTagItem(AgentKitTagNames.SessionOperation)?.Equals("list") == true
+                && activity.GetTagItem(AgentKitTagNames.AgentId)?.Equals(request.AgentId.ToString()) == true);
+
+        var result = await directory.ListAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest>(
+                request, Grant(request), Intent()), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionDirectoryPage>();
+        var activity = activities.Snapshot().ShouldHaveSingleItem();
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("success");
+        var completed = logger.Snapshot().ShouldHaveSingleItem();
+        completed.EventId.Id.ShouldBe(16002);
+        completed.State["Operation"].ShouldBe("list");
+        completed.State["Outcome"].ShouldBe("success");
+    }
+
+    [Fact]
+    public async Task ListAsync_WhenCancelledAfterConsumption_ThrowsBeforeReadingRoutes()
+    {
+        var grants = new RecordingGrantStore();
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), grants);
+        var request = ListRequest();
+        using var cancellation = new CancellationTokenSource();
+        grants.AfterConsume = cancellation.Cancel;
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await directory.ListAsync(
+                new AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest>(
+                    request, Grant(request), Intent()), cancellation.Token));
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+    }
+
+    private static InMemorySessionDirectory CreateDirectory(
+        RecordingAuditDispatcher audits,
+        RecordingGrantStore grants,
+        Microsoft.Extensions.Logging.ILogger<InMemorySessionDirectory>? logger = null) => new(
         _audience,
         audits,
         grants,
         new SequenceAuditRecordIds(),
-        TimeProvider.System);
+        TimeProvider.System,
+        logger);
 
     private static SessionOperationContext Context(string tenant = "tenant", SessionId? sessionId = null)
     {

@@ -107,7 +107,7 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
     {
         ArgumentNullException.ThrowIfNull(request);
         return ObserveAsync(
-            "session.directory.list",
+            AgentKitActivityNames.SessionDirectoryList,
             request.AgentId,
             null,
             request.Authorization.Scope.Correlation.OperationId,

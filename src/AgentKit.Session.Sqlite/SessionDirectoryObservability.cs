@@ -67,11 +67,12 @@ internal static class SessionDirectoryObservability
     private static string Outcome<TResult>(TResult result) where TResult : class => result switch
     {
         SessionLocated or SessionLocationNotFound or SessionCreationLocationLocated or
-            SessionCreationLocationNotFound or SessionLocationRecorded => "success",
+            SessionCreationLocationNotFound or SessionLocationRecorded or SessionDirectoryPage => "success",
         SessionDirectoryLookupDenied or SessionDirectoryLookupUnavailable or
             SessionCreationLocationConflict or SessionDirectoryCreationLookupDenied or
             SessionDirectoryCreationLookupUnavailable or SessionLocationConflict or
-            SessionDirectoryWriteDenied or SessionDirectoryWriteUnavailable => "failed",
+            SessionDirectoryWriteDenied or SessionDirectoryWriteUnavailable or
+            SessionDirectoryListUnavailable => "failed",
         _ => "unknown",
     };
 

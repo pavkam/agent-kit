@@ -71,6 +71,7 @@ namespace AgentKit.Observability
         public const string SessionCommit = "session.commit";
         public const string SessionCreate = "session.create";
         public const string SessionDelete = "session.delete";
+        public const string SessionDirectoryList = "session.directory.list";
         public const string SessionDirectoryOperation = "session.directory.operation";
         public const string SessionEntryCodec = "session.entry.codec";
         public const string SessionEventPublish = "session.event.publish";

@@ -249,11 +249,21 @@ public sealed class SqliteSessionDirectory: ISessionDirectory
     }
 
     /// <inheritdoc/>
-    public async ValueTask<SessionDirectoryListResult> ListAsync(
+    public ValueTask<SessionDirectoryListResult> ListAsync(
         AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest> request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        return SessionDirectoryObservability.ObserveAsync(_logger, "list", request.Request.AgentId,
+            null, token => ListCoreAsync(request, token),
+            static result => result is SessionDirectoryPage, cancellationToken);
+    }
+
+    private async ValueTask<SessionDirectoryListResult> ListCoreAsync(
+        AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest> request,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "The public list boundary validates the request.");
         var scan = request.Request;
         var resource = SessionDirectorySecurityBinding.ListResource(scan.Identity.TenantId, scan.AgentId);
         var authorization = await AuthorizeAsync(
@@ -266,6 +276,7 @@ public sealed class SqliteSessionDirectory: ISessionDirectory
             resource,
             SessionDirectorySecurityBinding.ListFingerprint(scan),
             cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         if (authorization is DirectoryAccessUnavailable unavailable)
         {
             return new SessionDirectoryListUnavailable(unavailable.SafeMessage);

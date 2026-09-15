@@ -142,6 +142,9 @@ public static class AgentKitActivityNames
     /// <summary>Gets the name for one authoritative session-directory operation.</summary>
     public const string SessionDirectoryOperation = "session.directory.operation";
 
+    /// <summary>Gets the name for one coordinated, authorized session-directory listing.</summary>
+    public const string SessionDirectoryList = "session.directory.list";
+
     /// <summary>Gets the name for acquiring process-local run ownership.</summary>
     public const string SessionLeaseAcquire = "session.lease.acquire";
 

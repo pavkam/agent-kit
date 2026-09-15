@@ -356,14 +356,60 @@ public sealed class SqliteSessionDirectoryTests
         }
     }
 
-    private static SqliteSessionDirectory CreateDirectory(RecordingAuditDispatcher audits, RecordingGrantStore grants)
+    [Fact]
+    public async Task ListAsync_WhenObserved_EmitsDirectoryActivityAndLog()
+    {
+        var logger = new RecordingLogger<SqliteSessionDirectory>();
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore(), logger);
+        var request = ListRequest();
+        using var activities = new ActivityCollector(
+            static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            activity => activity.OperationName == AgentKitActivityNames.SessionDirectoryOperation
+                && activity.GetTagItem(AgentKitTagNames.SessionOperation)?.Equals("list") == true
+                && activity.GetTagItem(AgentKitTagNames.AgentId)?.Equals(request.AgentId.ToString()) == true);
+
+        var result = await directory.ListAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest>(
+                request, Grant(request), Intent()), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionDirectoryPage>();
+        var activity = activities.Snapshot().ShouldHaveSingleItem();
+        activity.Status.ShouldBe(ActivityStatusCode.Ok);
+        activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("success");
+        var completed = logger.Snapshot().ShouldHaveSingleItem();
+        completed.EventId.Id.ShouldBe(25002);
+        completed.State["Operation"].ShouldBe("list");
+        completed.State["Outcome"].ShouldBe("success");
+    }
+
+    [Fact]
+    public async Task ListAsync_WhenCancelledAfterConsumption_ThrowsBeforeReadingRoutes()
+    {
+        var grants = new RecordingGrantStore();
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), grants);
+        var request = ListRequest();
+        using var cancellation = new CancellationTokenSource();
+        grants.AfterConsume = cancellation.Cancel;
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await directory.ListAsync(
+                new AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest>(
+                    request, Grant(request), Intent()), cancellation.Token));
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+    }
+
+    private static SqliteSessionDirectory CreateDirectory(
+        RecordingAuditDispatcher audits,
+        RecordingGrantStore grants,
+        Microsoft.Extensions.Logging.ILogger<SqliteSessionDirectory>? logger = null)
     {
         var path = Path.Combine(Path.GetTempPath(), $"agentkit-directory-{Guid.NewGuid():N}");
         _ = Directory.CreateDirectory(path);
         return new SqliteSessionDirectory(_audience, audits, grants, new SequenceAuditRecordIds(), TimeProvider.System,
             new SqliteSessionStoreTarget(Path.Combine(path, "sessions.db"), new SqliteSessionStoreInstanceId(Guid.NewGuid()),
                 SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
-            SqliteSessionStoreSettings.CreateDefault());
+            SqliteSessionStoreSettings.CreateDefault(), logger);
     }
 
     private static SessionOperationContext Context(string tenant = "tenant", SessionId? sessionId = null)
