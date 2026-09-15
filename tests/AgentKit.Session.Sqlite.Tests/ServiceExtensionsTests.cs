@@ -216,57 +216,59 @@ public sealed class ServiceExtensionsTests: IDisposable
         _ = services.AddSqliteSessionDirectory(_audience, target);
 
         services.Count(static descriptor => descriptor.ServiceType == typeof(ISessionDirectory)).ShouldBe(1);
-        services.Count(static descriptor => descriptor.ServiceType == typeof(SqliteSessionStoreSettings)).ShouldBe(1);
     }
 
     [Fact]
-    public void AddSqliteSessionDirectory_WhenNoSettingsSupplied_RegistersDefaultSettings()
+    public void AddSqliteSessionDirectory_WhenNoSettingsSupplied_PublishesNoAmbientSettings()
     {
         var services = new ServiceCollection();
 
         _ = services.AddSqliteSessionDirectory(_audience, Target());
 
-        using var provider = services.BuildServiceProvider();
-        provider.GetRequiredService<SqliteSessionStoreSettings>().ShouldBe(SqliteSessionStoreSettings.CreateDefault());
+        services.ShouldNotContain(static descriptor => descriptor.ServiceType == typeof(SqliteSessionStoreSettings));
+        services.ShouldNotContain(static descriptor => descriptor.ServiceType == typeof(SqliteSessionStoreTarget));
     }
 
     [Fact]
-    public void AddSqliteSessionDirectory_WhenConfigureSupplied_RegistersConfiguredSettingsAndResolvesDirectory()
+    public void AddSqliteSessionDirectory_WhenConfigureSupplied_RunsDelegateOnceWithDefaultsAndResolvesDirectory()
     {
         var services = WithSecurityBoundaries();
+        var invocations = 0;
+        SqliteSessionStoreOptions? seen = null;
 
         var returned = services.AddSqliteSessionDirectory(_audience, Target(), options =>
         {
+            invocations++;
+            seen = options;
             options.LockTimeout = TimeSpan.FromSeconds(3);
             options.MaximumEntryPayloadBytes = 4_096;
             options.MaximumIssuedReadSnapshots = 32;
         });
 
         returned.ShouldBeSameAs(services);
-        using var provider = services.BuildServiceProvider();
-        var settings = provider.GetRequiredService<SqliteSessionStoreSettings>();
-        settings.LockTimeout.ShouldBe(TimeSpan.FromSeconds(3));
-        settings.MaximumEntryPayloadBytes.ShouldBe(4_096);
-        settings.MaximumIssuedReadSnapshots.ShouldBe(32);
+        invocations.ShouldBe(1);
+        _ = seen.ShouldNotBeNull();
         services.ShouldNotContain(static descriptor => descriptor.ServiceType == typeof(SqliteSessionStoreOptions));
+        services.ShouldNotContain(static descriptor => descriptor.ServiceType == typeof(SqliteSessionStoreSettings));
+        using var provider = services.BuildServiceProvider();
         var directory = provider.GetRequiredService<ISessionDirectory>().ShouldBeOfType<SqliteSessionDirectory>();
         directory.SecurityAudience.ShouldBe(_audience);
         directory.Durable.ShouldBeTrue();
     }
 
     [Fact]
-    public void AddSqliteSessionDirectory_WhenCalledTwiceWithDifferentSettings_KeepsFirstSettings()
+    public void AddSqliteSessionDirectory_WhenCalledTwiceWithDifferentSettings_KeepsFirstDirectory()
     {
-        // The directory and its settings singleton use TryAdd semantics: the first registration wins.
+        // The directory uses TryAdd semantics: the first registration wins and later bounds are discarded.
         var target = Target();
-        var services = new ServiceCollection();
+        var services = WithSecurityBoundaries();
         var first = new SqliteSessionStoreSettings(TimeSpan.FromSeconds(2), 256, 4);
 
         _ = services.AddSqliteSessionDirectory(_audience, target, first);
+        var descriptor = services.Single(static descriptor => descriptor.ServiceType == typeof(ISessionDirectory));
         _ = services.AddSqliteSessionDirectory(_audience, target, static options => options.MaximumIssuedReadSnapshots = 99);
 
-        using var provider = services.BuildServiceProvider();
-        provider.GetRequiredService<SqliteSessionStoreSettings>().ShouldBeSameAs(first);
+        services.Single(static descriptor => descriptor.ServiceType == typeof(ISessionDirectory)).ShouldBeSameAs(descriptor);
     }
 
     [Fact]

@@ -133,12 +133,11 @@ public static class ServiceExtensions
         /// <remarks>
         /// <para>The registration does not create an audit dispatcher or grant store. Composition must provide those required security boundaries before resolving the directory.</para>
         /// <para>
-        /// Idempotent: uses <c>TryAdd</c> semantics for the singular <see cref="ISessionDirectory"/>
-        /// and for the <see cref="SqliteSessionStoreSettings"/> singleton, so the first
-        /// registration wins. The directory itself always receives the settings passed
-        /// to this call; the singleton is registered so composition can observe the
-        /// directory's effective bounds. It does not feed <c>AddSqliteSessionStore</c>,
-        /// which captures its own target and settings in the store factory.
+        /// Idempotent: uses <c>TryAdd</c> semantics for the singular <see cref="ISessionDirectory"/>,
+        /// so the first registration wins. The target and settings are captured in the
+        /// directory factory and are not published as ambient singletons; they do not feed
+        /// <c>AddSqliteSessionStore</c>, which captures its own target and settings in the
+        /// store factory.
         /// </para>
         /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="target"/> is null.</exception>
@@ -154,7 +153,6 @@ public static class ServiceExtensions
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IIdentifierGenerator<SecurityAuditRecordId>>(
                 _ => new GuidIdentifierGenerator<SecurityAuditRecordId>(static value => new SecurityAuditRecordId(value)));
-            services.TryAddSingleton(settings);
             services.TryAddSingleton<ISessionDirectory>(provider => new SqliteSessionDirectory(
                 securityAudience,
                 provider.GetRequiredService<ISecurityAuditDispatcher>(),

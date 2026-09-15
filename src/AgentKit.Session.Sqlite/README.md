@@ -49,12 +49,11 @@ adapter-issued paged-read snapshots one store instance keeps in process; once
 exceeded, the oldest is evicted and continuing from it fails with
 `SessionReadFailed`.
 
-Store registrations are additive and capture their target and settings in the
-store factory; they publish no ambient `SqliteSessionStoreSettings` singleton,
-and a repeated `AddSqliteSessionStore` call keeps the first captured bounds.
-The directory registration is singular and does register its effective
-`SqliteSessionStoreSettings` with `TryAdd` semantics so composition can observe
-the directory's bounds; that singleton does not feed the store.
+Store and directory registrations capture their target and settings in their
+own factories and publish no ambient `SqliteSessionStoreSettings` singleton.
+Store registration is additive, and a repeated `AddSqliteSessionStore` call
+keeps the first captured bounds; directory registration is singular with
+`TryAdd` semantics, so the first call's bounds win.
 
 The target path must be absolute and its parent directory must already exist.
 Registration and construction never create parent directories. Use
