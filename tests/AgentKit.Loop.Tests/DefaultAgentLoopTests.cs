@@ -403,6 +403,156 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenHistoryEndsWithAnUnsettledAssistantToolCall_SettlesItBeforeTheFirstTurn()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var loop = CreateLoop(out var coordinator, out var invoker, _ => TestFactory.CompletedWithText(requestId), contextAssembler: assembler);
+        var dangling = TestFactory.SeedAssistantToolCallEntry(_agentId, _sessionId, _branchId, 2, callId);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1), dangling]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        invoker.ReceivedRequests.ShouldBeEmpty();
+        result.NewMessages.Length.ShouldBe(2);
+        var settlement = result.NewMessages[0].ShouldBeOfType<ToolMessage>();
+        settlement.RunId.ShouldBe(request.RunId);
+        var settled = settlement.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolResultPart>();
+        settled.CallId.ShouldBe(callId);
+        settled.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Cancelled);
+        settled.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Interrupted);
+        settled.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
+        settled.Outcome.Retryable.ShouldBeFalse();
+        var history = assembler.Requests.ShouldHaveSingleItem().History;
+        history.Length.ShouldBe(3);
+        history[2].ShouldBeSameAs(settlement);
+        var settlementEntry = coordinator.Entries[2].ShouldBeOfType<MessageSessionEntry>();
+        settlementEntry.CausalParentId.ShouldBe(dangling.Id);
+        settlementEntry.Correlation.ShouldBeOfType<InRunOperationCorrelation>().RunId.ShouldBe(request.RunId);
+        coordinator.ReceivedAppends[0].IdempotencyKey.Value.ShouldContain(dangling.Message.Id.ToString());
+        coordinator.ReceivedAppends[0].ExpectedVersion.ShouldBe(new SessionVersion(1));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheToolMessageCommitFailsInOneRun_TheNextRunOnTheSameBranchSettlesTheCallAndSucceeds()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var calls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out var invoker,
+            _ => ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            contextAssembler: assembler,
+            options: new AgentLoopOptions { SettlementTimeout = TimeSpan.FromMilliseconds(250) });
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        coordinator.ConditionalAppendOverride = static request =>
+            request.IdempotencyKey.Value.EndsWith(":tools", StringComparison.Ordinal) ? new SessionAppendFailed("store fault") : null;
+
+        var first = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        _ = first.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        _ = first.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
+        coordinator.ConditionalAppendOverride = null;
+
+        var second = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = second.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        _ = invoker.ReceivedRequests.ShouldHaveSingleItem();
+        var secondRunHistory = assembler.Requests[^1].History;
+        secondRunHistory.Length.ShouldBe(3);
+        secondRunHistory[2].ShouldBeOfType<ToolMessage>().Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolResultPart>()
+            .CallId.ShouldBe(callId);
+        second.NewMessages.Length.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenRecoveryHasAlreadySettledTheDanglingCall_DoesNotSettleItAgain()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1),
+            TestFactory.SeedAssistantToolCallEntry(_agentId, _sessionId, _branchId, 2, callId),
+        ]);
+
+        _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        var second = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = second.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        _ = second.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
+        coordinator.Entries.OfType<MessageSessionEntry>().Select(static entry => entry.Message).OfType<ToolMessage>().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheRecoverySettlementCannotBeCommitted_ReturnsAgentRunSessionOperationFailedWithoutAModelRequest()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var modelCalls = 0;
+        var loop = CreateLoop(out var coordinator, out _, _ =>
+        {
+            modelCalls++;
+            return TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid()));
+        });
+        coordinator.Seed([
+            TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1),
+            TestFactory.SeedAssistantToolCallEntry(_agentId, _sessionId, _branchId, 2, callId),
+        ]);
+        coordinator.AppendOverride = static _ => new SessionAppendFailed("store fault");
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        result.NewMessages.ShouldBeEmpty();
+        modelCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheToolMessageCommitFailsOnce_RetriesUnderTheSameIdempotencyKeyWithinTheSettlementBound()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var clock = new FakeTimeProvider();
+        var calls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            timeProvider: clock);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var failed = false;
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            if (failed || !request.IdempotencyKey.Value.EndsWith(":tools", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            failed = true;
+            return new SessionAppendFailed("transient store fault");
+        };
+
+        var run = loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+        // The retry backoff is measured on the fake clock; advance it in small steps until the run settles so the
+        // test never depends on when the delay's timer is registered.
+        for (var i = 0; i < 100 && !run.IsCompleted; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(10));
+            await Task.Delay(1, TestContext.Current.CancellationToken);
+        }
+
+        var result = await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var toolAppends = coordinator.ReceivedAppends.Where(static request => request.IdempotencyKey.Value.EndsWith(":tools", StringComparison.Ordinal)).ToArray();
+        toolAppends.Length.ShouldBe(2);
+        toolAppends[0].IdempotencyKey.ShouldBe(toolAppends[1].IdempotencyKey);
+        result.NewMessages.Length.ShouldBe(3);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenRequestIsNull_ThrowsArgumentNullException()
     {
         var loop = CreateLoop(out _, out _, static _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())));

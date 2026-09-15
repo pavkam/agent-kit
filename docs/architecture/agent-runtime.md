@@ -69,6 +69,19 @@ call, a batch of more than one call currently continues under the canonical
 committed-tool-results rule without a policy call, and the loop logs that
 bypass.
 
+Before its first turn, after loading eligible history, the reduced loop is the
+recovery owner for tool calls a previous run left without a terminal result
+(for example, a tool-message commit that failed or a process that crashed after
+the assistant commit). It durably appends one tool message carrying an
+interrupted terminal result with unknown side-effect certainty per dangling
+call, under an idempotency key derived from the dangling assistant message and
+causally parented to that message's entry, then continues with the settlement
+in the history it assembles. The settlement never invokes a tool, and a branch
+whose recovery settlement cannot be committed fails closed instead of starting
+a model request. Required terminal commits that a store reports as failed are
+retried under their unchanged idempotency key with bounded backoff until the
+settlement timeout elapses.
+
 Every commit is guarded by the branch version the loop last observed. When a
 concurrent writer advanced the branch, the loop re-reads the interleaved range
 under one pinned snapshot before retrying. An assistant response was generated

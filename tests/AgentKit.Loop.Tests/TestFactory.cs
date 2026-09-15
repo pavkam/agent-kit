@@ -147,6 +147,45 @@ internal static class TestFactory
                 ExtensionData.Empty));
     }
 
+    /// <summary>Builds a complete assistant message entry that requested one tool call, as a crashed run leaves behind.</summary>
+    public static MessageSessionEntry SeedAssistantToolCallEntry(
+        AgentId agentId, SessionId sessionId, BranchId branchId, long sequence, ToolCallId callId, RunId? runId = null)
+    {
+        var address = new SessionAddress(agentId, sessionId);
+        var priorRunId = runId ?? new RunId(Guid.NewGuid());
+        var turnId = new TurnId(Guid.NewGuid());
+        return new MessageSessionEntry(
+            new SessionEntryId(Guid.NewGuid()),
+            address,
+            new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), priorRunId, turnId),
+            branchId,
+            new SessionSequence(sequence),
+            null,
+            DateTimeOffset.UnixEpoch,
+            new SchemaVersion("1"),
+            new AssistantMessage(
+                new MessageId(Guid.NewGuid()),
+                agentId,
+                sessionId,
+                null,
+                branchId,
+                priorRunId,
+                turnId,
+                DateTimeOffset.UnixEpoch,
+                MessageState.Complete,
+                [new ToolCallPart(callId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty)],
+                new AssistantResponseMetadata(
+                    new ModelRequestId(Guid.NewGuid()),
+                    new ProviderResponseIdentity(
+                        new ProviderId("test-provider"), null, new ApiFamilyId("test-api"), new ModelId("test-model"),
+                        new ModelId("test-model"), null, null, null),
+                    NormalizedStopReason.ToolUse,
+                    rawStopReason: null,
+                    ModelUsage.NotReported,
+                    ExtensionData.Empty),
+                ExtensionData.Empty));
+    }
+
     /// <summary>Builds a non-message fact entry as a tool committing its own session state mid-turn would.</summary>
     public static FakeToolFactSessionEntry SeedToolFactEntry(
         AgentId agentId, SessionId sessionId, BranchId branchId, long sequence) =>

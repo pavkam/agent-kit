@@ -89,6 +89,16 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private readonly bool _disableToolsOnFinalTurn;
 
     /// <summary>
+    /// The first backoff before a required terminal commit that the store reported as failed is retried under its
+    /// unchanged idempotency key. It doubles per retry up to <see cref="_settlementRetryMaxDelay"/>; the overall
+    /// bound is <see cref="AgentLoopOptions.SettlementTimeout"/>.
+    /// </summary>
+    private static readonly TimeSpan _settlementRetryBaseDelay = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>The longest single backoff between settlement retries.</summary>
+    private static readonly TimeSpan _settlementRetryMaxDelay = TimeSpan.FromSeconds(2);
+
+    /// <summary>
     /// The single immutable run-policy version of this reduced loop. Its continuation-relevant behaviour is fixed
     /// in code rather than compiled from a per-agent policy snapshot, so every evaluation names the same version.
     /// </summary>
@@ -287,22 +297,30 @@ public sealed class DefaultAgentLoop: IAgentLoop
         }
 
         var currentVersion = initialCursor.Version;
+        var committedMessages = ImmutableArray.CreateBuilder<AgentMessage>();
+
+        var (history, recoveryFailure) = await SettleDanglingToolCallsAsync(
+            request, sessionContext, runCorrelation, initialEntries, initialCursor, committedMessages, cancellationToken)
+            .ConfigureAwait(false);
+        if (recoveryFailure is not null)
+        {
+            return BuildResult(request, recoveryFailure, committedMessages.ToImmutable(), currentVersion);
+        }
+
+        currentVersion = history.SourceCursor.Version;
 
         var modelResolution = await ResolveModelAsync(request, operationId, cancellationToken)
             .ConfigureAwait(false);
 
         if (modelResolution.Outcome is { } selectionFailure)
         {
-            return BuildResult(request, selectionFailure, [], currentVersion);
+            return BuildResult(request, selectionFailure, committedMessages.ToImmutable(), currentVersion);
         }
 
         var model = modelResolution.Model!;
         var llmModel = modelResolution.Adapter!;
         _ = runActivity?.SetTag(AgentKitTagNames.RequestModel, model.ModelId.ToString());
         _ = runActivity?.SetTag(AgentKitTagNames.ProviderName, model.ProviderId.ToString());
-
-        var committedMessages = ImmutableArray.CreateBuilder<AgentMessage>();
-        var history = new HistoryView(initialCursor, ToMessages(initialEntries), []);
 
         for (var turn = 1; turn <= request.MaxTurns; turn++)
         {
@@ -1234,10 +1252,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
     {
         Debug.Assert(request is not null, "A validated append request is required for a bounded settlement commit.");
         using var settlement = new CancellationTokenSource(_settlementTimeout, _timeProvider);
+        var delay = _settlementRetryBaseDelay;
         try
         {
-            return await AppendWithDiagnosticsAsync(request, sessionProfile, allowInterleavedMessages, settlement.Token)
-                .ConfigureAwait(false);
+            for (var attempt = 1; ; attempt++)
+            {
+                var appendAttempt = await AppendWithDiagnosticsAsync(request, sessionProfile, allowInterleavedMessages, settlement.Token)
+                    .ConfigureAwait(false);
+                if (appendAttempt.Result is not SessionAppendFailed)
+                {
+                    return appendAttempt;
+                }
+
+                // The store reported the commit as failed. The request keeps its idempotency key, so a retry cannot
+                // duplicate an append that did land; the settlement token bounds how long the loop keeps trying.
+                LoopLog.SettlementCommitRetryScheduled(_logger, runId, request.Context.SessionId, attempt, delay);
+                await Task.Delay(delay, _timeProvider, settlement.Token).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, _settlementRetryMaxDelay.Ticks));
+            }
         }
         catch (OperationCanceledException) when (settlement.IsCancellationRequested)
         {
@@ -1501,6 +1533,135 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         committedMessages.Add(interruptedMessage);
         return TurnOutcome.Settled(outcome, appended.NewVersion);
+    }
+
+    /// <summary>
+    /// Settles, before the first turn, every tool call a previous run left without a terminal result, so the
+    /// branch becomes causally valid again instead of rejecting every later run.
+    /// </summary>
+    /// <param name="request">The run performing the recovery.</param>
+    /// <param name="sessionContext">The run-scoped session context that writes the settlement.</param>
+    /// <param name="runCorrelation">The run's in-run correlation recorded as the entry's writer.</param>
+    /// <param name="entries">The loaded eligible history entries in sequence order.</param>
+    /// <param name="cursor">The exact cursor of the loaded history.</param>
+    /// <param name="committedMessages">Receives the synthesized tool message when one is committed.</param>
+    /// <param name="cancellationToken">The caller's cancellation; the recovery is pre-turn work of this run.</param>
+    /// <returns>
+    /// The history view the first turn starts from (unchanged when nothing was dangling), or the typed failure
+    /// that settles the run when the settlement could not be committed.
+    /// </returns>
+    /// <remarks>
+    /// A previous run whose tool-message commit failed or crashed leaves a complete assistant message whose
+    /// <see cref="ToolCallPart"/>s have no <see cref="ToolResultPart"/>; the context assembler then rejects every
+    /// later request as broken causality. This loop is the recovery owner for that state: it appends one tool
+    /// message carrying an interrupted terminal result (<see cref="SideEffectCertainty.Unknown"/>, not retryable)
+    /// per dangling call. The append's idempotency key derives from the dangling assistant message identity, so
+    /// concurrent or repeated recoveries settle each call exactly once, and its causal parent is that message's
+    /// entry. The settlement never invokes a tool.
+    /// </remarks>
+    private async ValueTask<(HistoryView History, AgentRunOutcome? Failure)> SettleDanglingToolCallsAsync(
+        AgentRunRequest request,
+        SessionOperationContext sessionContext,
+        InRunOperationCorrelation runCorrelation,
+        ImmutableArray<SessionEntry> entries,
+        MessageCursor cursor,
+        ImmutableArray<AgentMessage>.Builder committedMessages,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "A validated run request is required for run-start recovery.");
+        Debug.Assert(!entries.IsDefault, "Loaded history is an initialized array.");
+        var messages = ToMessages(entries);
+        var pendingCalls = new Dictionary<ToolCallId, ToolCallPart>();
+        MessageSessionEntry? danglingEntry = null;
+        foreach (var entry in entries)
+        {
+            if (entry is not MessageSessionEntry { Message.State: MessageState.Complete } messageEntry)
+            {
+                continue;
+            }
+
+            foreach (var part in messageEntry.Message.Parts)
+            {
+                switch (part)
+                {
+                    case ToolCallPart call when messageEntry.Message is AssistantMessage:
+                        _ = pendingCalls.TryAdd(call.CallId, call);
+                        danglingEntry = messageEntry;
+                        break;
+                    case ToolResultPart result when messageEntry.Message is ToolMessage:
+                        _ = pendingCalls.Remove(result.CallId);
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+
+        if (pendingCalls.Count == 0 || danglingEntry is null)
+        {
+            return (new HistoryView(cursor, messages, []), null);
+        }
+
+        LoopLog.DanglingToolCallsSettled(_logger, request.RunId, pendingCalls.Count);
+        var now = _timeProvider.GetUtcNow();
+        var resultParts = pendingCalls.Values
+            .Select(static call => (ContentPart) new ToolResultPart(
+                call.CallId,
+                call.Tool,
+                new ToolCallOutcome(
+                    ToolCallOutcomeKind.Cancelled,
+                    ToolTerminalStatus.Interrupted,
+                    SideEffectCertainty.Unknown,
+                    retryable: false,
+                    "The run that requested this tool call ended before its result was committed; whether the tool ran is unknown.",
+                    ExtensionData.Empty),
+                [],
+                ExtensionData.Empty))
+            .ToImmutableArray();
+        var toolMessage = new ToolMessage(
+            _messageIds.Create(),
+            request.AgentId,
+            request.SessionId,
+            cursor.ConversationId,
+            request.BranchId,
+            request.RunId,
+            turnId: null,
+            now,
+            MessageState.Complete,
+            resultParts,
+            ExtensionData.Empty);
+        var entryToAppend = new MessageSessionEntry(
+            _entryIds.Create(),
+            sessionContext.ToAddress(),
+            runCorrelation,
+            request.BranchId,
+            new SessionSequence(cursor.Sequence.Value + 1),
+            danglingEntry.Id,
+            now,
+            new SchemaVersion("1"),
+            toolMessage);
+
+        var appendAttempt = await AppendWithDiagnosticsAsync(
+            new SessionAppendRequest(
+                sessionContext,
+                request.BranchId,
+                cursor.Version,
+                new IdempotencyKey($"recovery:dangling-tools:{danglingEntry.Message.Id}"),
+                [entryToAppend]),
+            request.SessionProfile,
+            allowInterleavedMessages: true,
+            cancellationToken).ConfigureAwait(false);
+
+        if (appendAttempt.Result is not SessionAppended appended)
+        {
+            return (new HistoryView(cursor, messages, []), new AgentRunSessionOperationFailed(
+                "A previous run left tool calls without terminal results and the recovery settlement could not be committed: " +
+                DescribeAppendFailure(appendAttempt.Result)));
+        }
+
+        committedMessages.Add(toolMessage);
+        var nextCursor = NextCursor(cursor, appended.NewVersion, appended.CommittedEntries[^1].Sequence);
+        return (new HistoryView(nextCursor, [.. messages, .. appendAttempt.InterleavedMessages, toolMessage], []), null);
     }
 
     private async Task<(ImmutableArray<SessionEntry> Entries, MessageCursor Cursor)?> LoadHistoryAsync(

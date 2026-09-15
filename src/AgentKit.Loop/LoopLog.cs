@@ -135,6 +135,15 @@ internal static partial class LoopLog
     [LoggerMessage(1043, LogLevel.Error, "Settlement commit for run {RunId} in session {SessionId} did not complete within {SettlementTimeout}; the commit outcome is unknown.")]
     internal static partial void SettlementTimedOut(ILogger logger, RunId runId, SessionId sessionId, TimeSpan settlementTimeout);
 
+    /// <summary>Logs a required terminal commit the store reported as failed being retried under its unchanged idempotency key.</summary>
+    [LoggerMessage(1044, LogLevel.Warning, "Settlement commit for run {RunId} in session {SessionId} failed on attempt {Attempt}; retrying after {Delay} under the same idempotency key.")]
+    internal static partial void SettlementCommitRetryScheduled(ILogger logger, RunId runId, SessionId sessionId, int attempt, TimeSpan delay);
+
+    /// <summary>Logs run-start recovery settling tool calls a previous run left without terminal results.</summary>
+    /// <remarks>The settlement appends interrupted results with unknown side-effect certainty and never invokes a tool.</remarks>
+    [LoggerMessage(1090, LogLevel.Warning, "Run {RunId} found {ToolCount} tool calls left without a terminal result by a previous run; settling them as interrupted before the first turn.")]
+    internal static partial void DanglingToolCallsSettled(ILogger logger, RunId runId, int toolCount);
+
     /// <summary>Logs an isolated run-observer failure without recording event content.</summary>
     [LoggerMessage(1070, LogLevel.Warning, "Run observer for run {RunId} failed while receiving {EventType}; the run continues.")]
     internal static partial void RunObserverFailed(ILogger logger, RunId runId, string eventType);
