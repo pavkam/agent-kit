@@ -116,10 +116,10 @@ coordinator, checkpoint store, and recovery policy described in
 
 ## Examples
 
-| Project                                             | Purpose                                                                                                 |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| [QuickStart](../../examples/QuickStart/README.md)   | The smallest complete agent: one OpenAI model, in-memory session and security state, no tools.          |
-| [CodingAgent](../../examples/CodingAgent/README.md) | A terminal coding assistant with SQLite sessions, an approval broker, and sandboxed file/process tools. |
+| Project                                             | Purpose                                                                                                                                                                             |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [QuickStart](../../examples/QuickStart/README.md)   | The smallest complete agent: one OpenAI model, in-memory session and security state, no tools. Guarded by [QuickStart.Tests](../../tests/QuickStart.Tests/QuickStartAgentTests.cs). |
+| [CodingAgent](../../examples/CodingAgent/README.md) | A terminal coding assistant with SQLite sessions, an approval broker, and sandboxed file/process tools.                                                                             |
 
 ## Shared tests and repository checks
 
