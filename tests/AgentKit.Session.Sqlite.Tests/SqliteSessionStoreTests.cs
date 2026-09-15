@@ -6,8 +6,6 @@ namespace AgentKit.Session.Sqlite.Tests;
 using System.Text.Json;
 
 using AgentKit.Conformance;
-using AgentKit.Session;
-using AgentKit.Session.InMemory;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
@@ -203,67 +201,166 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
     }
 
     [Fact]
-    public void AddSqliteSessionStore_WhenCalledTwice_DoesNotRegisterDuplicateStore()
+    public async Task ReadAsync_WhenIssuedSnapshotsExceedConfiguredBound_OldestContinuationBecomesUnavailable()
     {
-        // Repeating the SQLite registration is idempotent for the single "agentkit.sqlite" store key.
-        var target = new SqliteSessionStoreTarget(
-            Path.Combine(Path.GetTempPath(), $"agentkit-{Guid.NewGuid():N}", "s.db"),
-            new SqliteSessionStoreInstanceId(Guid.NewGuid()),
-            SqliteDatabaseOpenMode.CreateIfMissing,
-            SqliteSchemaMode.ApplyKnownMigrations);
-        var services = new ServiceCollection();
+        // Class remarks: at most MaximumIssuedReadSnapshots distinct snapshots are retained; eviction fails the continuation.
+        using var directory = new TempDirectory();
+        await using var harness = Harness.Open(directory.Path, new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+            new SqliteSessionStoreSettings(TimeSpan.FromSeconds(1), 1_048_576, maximumIssuedReadSnapshots: 1));
+        var descriptor = await harness.CreateSessionAsync();
+        var context = Harness.SessionContext(descriptor.Address, 20);
+        var first = await ReadFirstPageAsync(harness, descriptor, context);
+        await AppendAsync(harness, descriptor, context, descriptor.Version, "a1", Harness.MessageEntry(descriptor, 30, 1, "one"));
+        var second = await ReadFirstPageAsync(harness, descriptor, context);
 
-        _ = services.AddSqliteSessionStore(target);
-        _ = services.AddSqliteSessionStore(target);
+        var continued = await harness.Store.ReadAsync(
+            await harness.AuthorizeAsync(
+                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100, first.Snapshot!),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var latest = await harness.Store.ReadAsync(
+            await harness.AuthorizeAsync(
+                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100, second.Snapshot!),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
 
-        services.Count(static descriptor => descriptor.ServiceType == typeof(ISessionStore)).ShouldBe(1);
+        second.Snapshot.ShouldNotBe(first.Snapshot);
+        continued.ShouldBeOfType<SessionReadFailed>().SafeMessage.ShouldBe("The supplied session read snapshot is not available for this branch.");
+        _ = latest.ShouldBeOfType<SessionPage>();
     }
 
     [Fact]
-    public void AddSqliteSessionStore_WhenInMemoryStoreAlreadyRegistered_RegistersBothStores()
+    public async Task ReadAsync_WhenIssuedSnapshotsStayWithinConfiguredBound_OlderContinuationRemainsAvailable()
     {
-        // Store registrations are additive: registration order never selects a store, the directory route does.
+        // Contrast case: the same sequence with a bound of two keeps the first snapshot honoured.
         using var directory = new TempDirectory();
-        var target = new SqliteSessionStoreTarget(
-            Path.Combine(directory.Path, "sessions.db"), new SqliteSessionStoreInstanceId(Guid.NewGuid()),
-            SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations);
-        var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 9, 8, 12, 0, 0, TimeSpan.Zero));
-        var services = new ServiceCollection();
-        _ = services.AddSingleton<TimeProvider>(timeProvider);
-        _ = services.AddSingleton<ISecurityGrantStore>(new InMemorySecurityGrantStore(timeProvider));
-        _ = services.AddSingleton<ISecurityAuditDispatcher>(new AcceptingAuditDispatcher());
+        await using var harness = Harness.Open(directory.Path, new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+            new SqliteSessionStoreSettings(TimeSpan.FromSeconds(1), 1_048_576, maximumIssuedReadSnapshots: 2));
+        var descriptor = await harness.CreateSessionAsync();
+        var context = Harness.SessionContext(descriptor.Address, 20);
+        var first = await ReadFirstPageAsync(harness, descriptor, context);
+        await AppendAsync(harness, descriptor, context, descriptor.Version, "a1", Harness.MessageEntry(descriptor, 30, 1, "one"));
+        _ = await ReadFirstPageAsync(harness, descriptor, context);
 
-        _ = services.AddInMemorySessionStore();
-        _ = services.AddSqliteSessionStore(target);
-        _ = services.AddInMemorySessionStore();
-        _ = services.AddSqliteSessionStore(target);
-        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+        var continued = await harness.Store.ReadAsync(
+            await harness.AuthorizeAsync(
+                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100, first.Snapshot!),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
 
-        var stores = provider.GetServices<ISessionStore>().ToArray();
-        stores.Select(static store => store.GetType()).ShouldBe([typeof(InMemorySessionStore), typeof(SqliteSessionStore)]);
-        new DefaultSessionStoreCatalog(stores).GetDescriptors().Select(static descriptor => descriptor.Key.Value)
-            .ShouldBe(["agentkit.in-memory", "agentkit.sqlite"]);
+        // The pinned prefix is empty because the first snapshot was taken before the append.
+        continued.ShouldBeOfType<SessionPage>().Entries.ShouldBeEmpty();
     }
 
     [Fact]
-    public void AddSqliteSessionStore_WhenRegisteredBeforeInMemoryStore_RegistersBothStores()
+    public async Task AppendAsync_WhenEncodedEntryExceedsMaximumEntryPayloadBytes_RejectsWithoutPersisting()
     {
+        // Class remarks: an entry whose encoded payload exceeds MaximumEntryPayloadBytes is rejected and nothing is persisted.
         using var directory = new TempDirectory();
-        var target = new SqliteSessionStoreTarget(
-            Path.Combine(directory.Path, "sessions.db"), new SqliteSessionStoreInstanceId(Guid.NewGuid()),
-            SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations);
-        var services = new ServiceCollection();
+        var instance = new SqliteSessionStoreInstanceId(Guid.NewGuid());
+        // A minimal message entry encodes to roughly 1 KiB; the bound admits it and rejects the padded one.
+        var settings = new SqliteSessionStoreSettings(TimeSpan.FromSeconds(1), maximumEntryPayloadBytes: 2_048);
+        SessionDescriptor descriptor;
+        SessionOperationContext context;
 
-        _ = services.AddSqliteSessionStore(target);
-        _ = services.AddInMemorySessionStore();
+        await using (var harness = Harness.Open(directory.Path, instance, settings))
+        {
+            descriptor = await harness.CreateSessionAsync();
+            context = Harness.SessionContext(descriptor.Address, 20);
+            var small = Harness.MessageEntry(descriptor, 30, 1, "ok");
+            var oversized = Harness.MessageEntry(descriptor, 32, 2, new string('x', 4_096));
 
-        services.Count(static descriptor => descriptor.ServiceType == typeof(ISessionStore)).ShouldBe(2);
+            var rejected = await harness.Store.AppendAsync(
+                await harness.AuthorizeAsync(
+                    new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("big"), [small, oversized]),
+                    SecurityOperationKind.StateMutation, SecurityEffect.Append),
+                TestContext.Current.CancellationToken);
+            var loaded = await harness.Store.LoadAsync(
+                await harness.AuthorizeAsync(context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+                TestContext.Current.CancellationToken);
+
+            rejected.ShouldBeOfType<SessionAppendFailed>().SafeMessage.ShouldMatch(@"^Entry at position 1 encodes to \d+ bytes; the selected session store accepts at most 2048\.$");
+            loaded.ShouldBeOfType<SessionLoaded>().Descriptor.Version.ShouldBe(descriptor.Version);
+        }
+
+        await using var reopened = Harness.Open(directory.Path, instance, settings);
+        var page = await reopened.Store.ReadAsync(
+            await reopened.AuthorizeAsync(
+                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        page.ShouldBeOfType<SessionPage>().Entries.ShouldBeEmpty();
     }
 
-    private sealed class AcceptingAuditDispatcher: ISecurityAuditDispatcher
+    [Fact]
+    public async Task AppendAsync_WhenEncodedEntryFitsMaximumEntryPayloadBytes_Commits()
     {
-        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<SecurityAuditDispatchResult>(new SecurityAuditAccepted());
+        using var directory = new TempDirectory();
+        await using var harness = Harness.Open(directory.Path, new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+            new SqliteSessionStoreSettings(TimeSpan.FromSeconds(1), maximumEntryPayloadBytes: 4_096));
+        var descriptor = await harness.CreateSessionAsync();
+        var context = Harness.SessionContext(descriptor.Address, 20);
+
+        var appended = await harness.Store.AppendAsync(
+            await harness.AuthorizeAsync(
+                new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("fits"),
+                    [Harness.MessageEntry(descriptor, 30, 1, "small enough")]),
+                SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        appended.ShouldBeOfType<SessionAppended>().NewVersion.ShouldBe(new SessionVersion(descriptor.Version.Value + 1));
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenStoreIsRegisteredThroughConfigureDelegate_EnforcesConfiguredPayloadBound()
+    {
+        // The configure overload must bind the same effective settings as the explicit settings overload.
+        using var directory = new TempDirectory();
+        await using var harness = Harness.Open(directory.Path, new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+            static options =>
+            {
+                options.LockTimeout = TimeSpan.FromSeconds(1);
+                options.MaximumEntryPayloadBytes = 2_048;
+            });
+        var descriptor = await harness.CreateSessionAsync();
+        var context = Harness.SessionContext(descriptor.Address, 20);
+
+        var rejected = await harness.Store.AppendAsync(
+            await harness.AuthorizeAsync(
+                new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("big"),
+                    [Harness.MessageEntry(descriptor, 30, 1, new string('x', 4_096))]),
+                SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var loaded = await harness.Store.LoadAsync(
+            await harness.AuthorizeAsync(context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        rejected.ShouldBeOfType<SessionAppendFailed>().SafeMessage.ShouldMatch(@"^Entry at position 0 encodes to \d+ bytes; the selected session store accepts at most 2048\.$");
+        loaded.ShouldBeOfType<SessionLoaded>().Descriptor.Version.ShouldBe(descriptor.Version);
+    }
+
+    private static async Task<SessionPage> ReadFirstPageAsync(Harness harness, SessionDescriptor descriptor, SessionOperationContext context)
+    {
+        var result = await harness.Store.ReadAsync(
+            await harness.AuthorizeAsync(
+                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var page = result.ShouldBeOfType<SessionPage>();
+        _ = page.Snapshot.ShouldNotBeNull();
+        return page;
+    }
+
+    private static async Task AppendAsync(Harness harness, SessionDescriptor descriptor, SessionOperationContext context,
+        SessionVersion expectedVersion, string idempotencyKey, MessageSessionEntry entry)
+    {
+        var result = await harness.Store.AppendAsync(
+            await harness.AuthorizeAsync(
+                new SessionAppendRequest(context, descriptor.ActiveBranchId, expectedVersion, new IdempotencyKey(idempotencyKey), [entry]),
+                SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<SessionAppended>((result as SessionAppendFailed)?.SafeMessage);
     }
 
     /// <summary>A session entry kind that no registered codec can encode.</summary>
@@ -301,23 +398,32 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
         private readonly InMemorySecurityGrantStore _grants;
         private long _nextIdentity;
 
-        private Harness(string directory, SqliteSessionStoreInstanceId instance)
+        private Harness(string directory, SqliteSessionStoreInstanceId instance, SqliteSessionStoreSettings? settings,
+            Action<SqliteSessionStoreOptions>? configure)
         {
             var services = new ServiceCollection();
             _ = services.AddSingleton<TimeProvider>(_timeProvider);
             _grants = new InMemorySecurityGrantStore(_timeProvider);
             _ = services.AddSingleton<ISecurityGrantStore>(_grants);
             _ = services.AddSingleton<ISecurityAuditDispatcher>(this);
-            _ = services.AddSqliteSessionStore(new SqliteSessionStoreTarget(
+            var target = new SqliteSessionStoreTarget(
                 Path.Combine(directory, "sessions.db"), instance,
-                SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations));
+                SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations);
+            _ = configure is null
+                ? services.AddSqliteSessionStore(target, settings)
+                : services.AddSqliteSessionStore(target, configure);
             _services = services.BuildServiceProvider();
             Store = (SqliteSessionStore) _services.GetRequiredService<ISessionStore>();
         }
 
         public SqliteSessionStore Store { get; }
 
-        public static Harness Open(string directory, SqliteSessionStoreInstanceId instance) => new(directory, instance);
+        public static Harness Open(string directory, SqliteSessionStoreInstanceId instance, SqliteSessionStoreSettings? settings = null) =>
+            new(directory, instance, settings, configure: null);
+
+        /// <summary>Opens the store through the configure-delegate registration overload.</summary>
+        public static Harness Open(string directory, SqliteSessionStoreInstanceId instance, Action<SqliteSessionStoreOptions> configure) =>
+            new(directory, instance, settings: null, configure);
 
         public async ValueTask<SessionDescriptor> CreateSessionAsync()
         {

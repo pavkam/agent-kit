@@ -8,7 +8,9 @@ namespace AgentKit.Session.Sqlite
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSessionStore(AgentKit.Session.Sqlite.SqliteSessionStoreTarget target, AgentKit.Session.Sqlite.SqliteSessionStoreSettings? settings = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSessionStore(AgentKit.Session.Sqlite.SqliteSessionStoreTarget target, System.Action<AgentKit.Session.Sqlite.SqliteSessionStoreOptions> configure) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSessionDirectory(AgentKit.ComponentId securityAudience, AgentKit.Session.Sqlite.SqliteSessionStoreTarget target, AgentKit.Session.Sqlite.SqliteSessionStoreSettings? settings = null) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSessionDirectory(AgentKit.ComponentId securityAudience, AgentKit.Session.Sqlite.SqliteSessionStoreTarget target, System.Action<AgentKit.Session.Sqlite.SqliteSessionStoreOptions> configure) { }
         }
     }
     public enum SqliteDatabaseOpenMode
@@ -55,11 +57,19 @@ namespace AgentKit.Session.Sqlite
         public SqliteSessionStoreInstanceId(System.Guid value) { }
         public System.Guid Value { get; }
     }
+    public sealed class SqliteSessionStoreOptions
+    {
+        public SqliteSessionStoreOptions() { }
+        public System.TimeSpan LockTimeout { get; set; }
+        public int MaximumEntryPayloadBytes { get; set; }
+        public int MaximumIssuedReadSnapshots { get; set; }
+    }
     public sealed class SqliteSessionStoreSettings : System.IEquatable<AgentKit.Session.Sqlite.SqliteSessionStoreSettings>
     {
-        public SqliteSessionStoreSettings(System.TimeSpan lockTimeout, int maximumEntryPayloadBytes) { }
+        public SqliteSessionStoreSettings(System.TimeSpan lockTimeout, int maximumEntryPayloadBytes, int maximumIssuedReadSnapshots = 4096) { }
         public System.TimeSpan LockTimeout { get; }
         public int MaximumEntryPayloadBytes { get; }
+        public int MaximumIssuedReadSnapshots { get; }
         public static AgentKit.Session.Sqlite.SqliteSessionStoreSettings CreateDefault() { }
     }
     public sealed class SqliteSessionStoreTarget : System.IEquatable<AgentKit.Session.Sqlite.SqliteSessionStoreTarget>

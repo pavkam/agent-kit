@@ -22,15 +22,24 @@ namespace AgentKit.Session.Sqlite;
 /// </para>
 /// <para>
 /// Exact paged-read continuations require a snapshot previously issued by this
-/// adapter instance. At most 4,096 distinct snapshots are retained in process;
-/// eviction or adapter restart fails the continuation instead of trusting
-/// caller-authored version and sequence claims.
+/// adapter instance. At most
+/// <see cref="SqliteSessionStoreSettings.MaximumIssuedReadSnapshots"/> distinct
+/// snapshots (4,096 by default) are retained in process; eviction or adapter
+/// restart fails the continuation instead of trusting caller-authored version
+/// and sequence claims.
+/// </para>
+/// <para>
+/// Every entry an operation intends to commit, whether caller-appended or
+/// store-authored, is encoded through the captured codec catalog before the
+/// operation mutates any process or database state. An entry with no durable
+/// codec, or whose encoded payload exceeds
+/// <see cref="SqliteSessionStoreSettings.MaximumEntryPayloadBytes"/>, is
+/// rejected with that operation's typed failure (for example
+/// <see cref="SessionAppendFailed"/>) and nothing is persisted.
 /// </para>
 /// </remarks>
 public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
 {
-    /// <summary>Bounds process-local continuation evidence retained by this adapter instance.</summary>
-    private const int _maximumIssuedReadSnapshots = 4096;
     private readonly Lock _gate = new();
     private readonly HashSet<SessionReadSnapshot> _issuedReadSnapshots = [];
     private readonly Queue<SessionReadSnapshot> _issuedReadSnapshotOrder = [];
@@ -44,6 +53,7 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
     private readonly ISecurityGrantStore _grants;
     private readonly TimeProvider _timeProvider;
     private readonly ISessionEntryCodecCatalog _entryCodecs;
+    private readonly SqliteSessionStoreSettings _settings;
     private readonly ILogger<SqliteSessionStore> _logger;
     private readonly SqliteSessionDatabase _database;
     private readonly SemaphoreSlim _databaseGate = new(1, 1);
@@ -86,6 +96,7 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
         _grants = grants;
         _timeProvider = timeProvider;
         _entryCodecs = entryCodecs;
+        _settings = settings;
         _database = new SqliteSessionDatabase(target, settings, entryCodecs);
         _logger = logger ?? NullLogger<SqliteSessionStore>.Instance;
     }
@@ -431,7 +442,7 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
         }
 
         _issuedReadSnapshotOrder.Enqueue(snapshot);
-        if (_issuedReadSnapshotOrder.Count > _maximumIssuedReadSnapshots)
+        if (_issuedReadSnapshotOrder.Count > _settings.MaximumIssuedReadSnapshots)
         {
             _ = _issuedReadSnapshots.Remove(_issuedReadSnapshotOrder.Dequeue());
         }
@@ -842,14 +853,21 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
         }
     }
 
-    /// <summary>Proves every proposed entry has a durable codec before any process or database state is mutated.</summary>
+    /// <summary>
+    /// Proves every proposed entry has a durable codec and encodes within
+    /// <see cref="SqliteSessionStoreSettings.MaximumEntryPayloadBytes"/> before any process or database state is mutated.
+    /// </summary>
     /// <param name="entries">The complete ordered entries the operation intends to commit.</param>
-    /// <param name="safeReason">The content-free rejection reason when an entry cannot be encoded; otherwise null.</param>
-    /// <returns><see langword="true"/> when the captured codec catalog encodes every entry.</returns>
+    /// <param name="safeReason">
+    /// The content-free rejection reason when an entry cannot be encoded or its encoded payload exceeds the
+    /// configured bound; otherwise null.
+    /// </param>
+    /// <returns><see langword="true"/> when the captured codec catalog encodes every entry within the payload bound.</returns>
     /// <remarks>
-    /// The SQLite adapter serializes the whole record at commit. Without this preflight an unencodable entry would
-    /// surface as a serialization exception after in-process bookkeeping had already advanced, instead of the typed
-    /// failure each store operation promises.
+    /// The SQLite adapter serializes the whole record at commit. Without this preflight an unencodable or oversized
+    /// entry would surface as a serialization exception after in-process bookkeeping had already advanced, instead of
+    /// the typed failure each store operation promises. Each entry is encoded exactly once here; the reported length
+    /// is the encoded payload byte count, never its content.
     /// </remarks>
     private bool CanPersist(IReadOnlyList<SessionEntry> entries, [NotNullWhen(false)] out string? safeReason)
     {
@@ -858,6 +876,9 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
         {
             switch (_entryCodecs.Encode(entries[index]))
             {
+                case SessionEntryEncoded { Wire.Payload.Length: var length } when length > _settings.MaximumEntryPayloadBytes:
+                    safeReason = $"Entry at position {index} encodes to {length} bytes; the selected session store accepts at most {_settings.MaximumEntryPayloadBytes}.";
+                    return false;
                 case SessionEntryEncoded:
                     continue;
                 case SessionEntryEncodeRejected rejected:

@@ -22,7 +22,10 @@ public static class ServiceExtensions
         /// <see cref="SecurityAuditRecordId"/>.
         /// </summary>
         /// <param name="target">The explicit fixed database target captured for the store.</param>
-        /// <param name="settings">Optional finite database bounds; defaults to <see cref="SqliteSessionStoreSettings.CreateDefault"/>.</param>
+        /// <param name="settings">
+        /// Optional validated operational bounds captured for the store. When <see langword="null"/>,
+        /// <see cref="SqliteSessionStoreSettings.CreateDefault"/> is used.
+        /// </param>
         /// <returns>The same service collection, for chaining.</returns>
         /// <remarks>
         /// The store registration is additive alongside other store packages and
@@ -30,8 +33,9 @@ public static class ServiceExtensions
         /// <see cref="SqliteSessionStore"/> bound to the first captured target and settings,
         /// and a store registered earlier by another package is neither replaced nor hidden.
         /// Registration order never selects a store; the session directory route and store
-        /// key do. Codecs, generators, and the clock use <c>TryAdd</c> semantics so hosts may
-        /// replace them.
+        /// key do. The target and settings are captured in the store factory rather than
+        /// published as ambient singletons. Codecs, generators, and the clock use
+        /// <c>TryAdd</c> semantics so hosts may replace them.
         /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="target"/> is null.</exception>
         public IServiceCollection AddSqliteSessionStore(
@@ -72,13 +76,72 @@ public static class ServiceExtensions
             return services;
         }
 
+        /// <summary>
+        /// Adds <see cref="SqliteSessionStore"/> bound to <paramref name="target"/> to the
+        /// additive <see cref="ISessionStore"/> set using bounds supplied through a
+        /// configure delegate over <see cref="SqliteSessionStoreOptions"/>.
+        /// </summary>
+        /// <param name="target">The explicit fixed SQLite database target.</param>
+        /// <param name="configure">
+        /// The required delegate that mutates a fresh
+        /// <see cref="SqliteSessionStoreOptions"/> instance. It runs exactly
+        /// once, synchronously, before any service is registered; the options
+        /// object is discarded afterwards and is never registered in the container.
+        /// </param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <remarks>
+        /// The configured values are materialized into an immutable
+        /// <see cref="SqliteSessionStoreSettings"/> record, so every bound is
+        /// validated eagerly at registration and an invalid value leaves the
+        /// service collection unchanged. The overload then behaves exactly like
+        /// <see cref="AddSqliteSessionStore(IServiceCollection, SqliteSessionStoreTarget, SqliteSessionStoreSettings?)"/>,
+        /// including its additive, per-store idempotent registration: a second call
+        /// with different options does not rebind the already captured store, and the
+        /// options are never published as a singleton. The delegate is required
+        /// because an optional one would make the no-argument call ambiguous
+        /// with the settings overload; call that overload when no configuration
+        /// is needed.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="services"/>, <paramref name="target"/>, or <paramref name="configure"/> is null.
+        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The configured <see cref="SqliteSessionStoreOptions"/> violate a
+        /// <see cref="SqliteSessionStoreSettings"/> constraint.
+        /// </exception>
+        public IServiceCollection AddSqliteSessionStore(
+            SqliteSessionStoreTarget target,
+            Action<SqliteSessionStoreOptions> configure)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(target);
+            ArgumentNullException.ThrowIfNull(configure);
+            var options = new SqliteSessionStoreOptions();
+            configure(options);
+            return services.AddSqliteSessionStore(target, new SqliteSessionStoreSettings(
+                options.LockTimeout, options.MaximumEntryPayloadBytes, options.MaximumIssuedReadSnapshots));
+        }
+
         /// <summary>Registers the protected durable SQLite session directory with an explicit consuming component identity.</summary>
         /// <param name="securityAudience">The nonblank identity that will consume directory-specific grants.</param>
         /// <param name="target">The explicit SQLite database target shared with session storage.</param>
-        /// <param name="settings">Optional finite database bounds.</param>
+        /// <param name="settings">
+        /// Optional finite database bounds. When <see langword="null"/>,
+        /// <see cref="SqliteSessionStoreSettings.CreateDefault"/> is used.
+        /// </param>
         /// <returns>The same service collection, for chaining.</returns>
-        /// <remarks>The registration does not create an audit dispatcher or grant store. Composition must provide those required security boundaries before resolving the directory.</remarks>
-        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <remarks>
+        /// <para>The registration does not create an audit dispatcher or grant store. Composition must provide those required security boundaries before resolving the directory.</para>
+        /// <para>
+        /// Idempotent: uses <c>TryAdd</c> semantics for the singular <see cref="ISessionDirectory"/>
+        /// and for the <see cref="SqliteSessionStoreSettings"/> singleton, so the first
+        /// registration wins. The directory itself always receives the settings passed
+        /// to this call; the singleton is registered so composition can observe the
+        /// directory's effective bounds. It does not feed <c>AddSqliteSessionStore</c>,
+        /// which captures its own target and settings in the store factory.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="target"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="securityAudience"/> is blank.</exception>
         public IServiceCollection AddSqliteSessionDirectory(ComponentId securityAudience,
             SqliteSessionStoreTarget target, SqliteSessionStoreSettings? settings = null)
@@ -91,6 +154,7 @@ public static class ServiceExtensions
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<IIdentifierGenerator<SecurityAuditRecordId>>(
                 _ => new GuidIdentifierGenerator<SecurityAuditRecordId>(static value => new SecurityAuditRecordId(value)));
+            services.TryAddSingleton(settings);
             services.TryAddSingleton<ISessionDirectory>(provider => new SqliteSessionDirectory(
                 securityAudience,
                 provider.GetRequiredService<ISecurityAuditDispatcher>(),
@@ -102,6 +166,47 @@ public static class ServiceExtensions
                 provider.GetRequiredService<ILogger<SqliteSessionDirectory>>()));
 
             return services;
+        }
+
+        /// <summary>
+        /// Registers the protected durable SQLite session directory using bounds
+        /// supplied through a configure delegate over <see cref="SqliteSessionStoreOptions"/>.
+        /// </summary>
+        /// <param name="securityAudience">The nonblank identity that will consume directory-specific grants.</param>
+        /// <param name="target">The explicit SQLite database target shared with session storage.</param>
+        /// <param name="configure">
+        /// The required delegate that mutates a fresh
+        /// <see cref="SqliteSessionStoreOptions"/> instance. It runs exactly
+        /// once, synchronously, before any service is registered; the options
+        /// object is discarded afterwards and is never registered in the container.
+        /// </param>
+        /// <returns>The same service collection, for chaining.</returns>
+        /// <remarks>
+        /// The configured values are materialized into an immutable
+        /// <see cref="SqliteSessionStoreSettings"/> record, so every bound is
+        /// validated eagerly at registration and an invalid value leaves the
+        /// service collection unchanged. The overload then behaves exactly like
+        /// <see cref="AddSqliteSessionDirectory(IServiceCollection, ComponentId, SqliteSessionStoreTarget, SqliteSessionStoreSettings?)"/>.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="services"/>, <paramref name="target"/>, or <paramref name="configure"/> is null.
+        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="securityAudience"/> is blank.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The configured <see cref="SqliteSessionStoreOptions"/> violate a
+        /// <see cref="SqliteSessionStoreSettings"/> constraint.
+        /// </exception>
+        public IServiceCollection AddSqliteSessionDirectory(ComponentId securityAudience,
+            SqliteSessionStoreTarget target, Action<SqliteSessionStoreOptions> configure)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentException.ThrowIfNullOrWhiteSpace(securityAudience.Value, nameof(securityAudience));
+            ArgumentNullException.ThrowIfNull(target);
+            ArgumentNullException.ThrowIfNull(configure);
+            var options = new SqliteSessionStoreOptions();
+            configure(options);
+            return services.AddSqliteSessionDirectory(securityAudience, target, new SqliteSessionStoreSettings(
+                options.LockTimeout, options.MaximumEntryPayloadBytes, options.MaximumIssuedReadSnapshots));
         }
     }
 }

@@ -18,6 +18,44 @@ services.AddSqliteSessionDirectory(
     target);
 ```
 
+Both registrations accept either a prebuilt, validated
+`SqliteSessionStoreSettings` or a configure delegate over the mutable
+`SqliteSessionStoreOptions`. The delegate runs once at registration; its values
+are frozen into an immutable `SqliteSessionStoreSettings` and validated
+immediately, so an invalid bound throws `ArgumentOutOfRangeException` before
+anything is registered. The options object itself is never added to the
+container.
+
+```csharp
+services.AddSqliteSessionStore(target, options =>
+{
+    options.LockTimeout = TimeSpan.FromSeconds(10);      // whole seconds, >= 1s
+    options.MaximumEntryPayloadBytes = 4 * 1024 * 1024;  // per committed entry
+    options.MaximumIssuedReadSnapshots = 1_024;          // exact-continuation evidence
+});
+services.AddSqliteSessionDirectory(
+    new ComponentId("my-app.session-directory"),
+    target,
+    options => options.LockTimeout = TimeSpan.FromSeconds(10));
+```
+
+`LockTimeout` is the SQLite busy timeout for every connection.
+`MaximumEntryPayloadBytes` bounds the encoded payload of every entry the store
+commits, caller-appended or store-authored; the store encodes each entry once
+during its codec preflight and an oversized entry is rejected with that
+operation's typed failure (for example `SessionAppendFailed`) before any
+process or database state changes. `MaximumIssuedReadSnapshots` bounds how many
+adapter-issued paged-read snapshots one store instance keeps in process; once
+exceeded, the oldest is evicted and continuing from it fails with
+`SessionReadFailed`.
+
+Store registrations are additive and capture their target and settings in the
+store factory; they publish no ambient `SqliteSessionStoreSettings` singleton,
+and a repeated `AddSqliteSessionStore` call keeps the first captured bounds.
+The directory registration is singular and does register its effective
+`SqliteSessionStoreSettings` with `TryAdd` semantics so composition can observe
+the directory's bounds; that singleton does not feed the store.
+
 The target path must be absolute and its parent directory must already exist.
 Registration and construction never create parent directories. Use
 `CreateIfMissing` to permit creation of the database file or `OpenExisting` to
