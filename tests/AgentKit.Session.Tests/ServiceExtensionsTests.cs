@@ -102,6 +102,56 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddAgentSession_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(() => services.AddAgentSession());
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddSessionEventSink_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(services.AddSessionEventSink<FakeSessionEventSink>);
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void ReplaceSessionRetentionPolicy_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(services.ReplaceSessionRetentionPolicy<AlwaysDeleteRetentionPolicy>);
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddSessionStore_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(services.AddSessionStore<FakeSessionStore>);
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddSessionEntryCodec_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(services.AddSessionEntryCodec<MessageSessionEntryCodec>);
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
     public void AddAgentSession_WhenRepeated_RegistersOneReplaceableCatalog()
     {
         var services = new ServiceCollection();

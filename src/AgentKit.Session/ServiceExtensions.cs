@@ -35,8 +35,10 @@ public static class ServiceExtensions
         /// each selected store must be added explicitly through
         /// <see cref="AddSessionStore{TStore}"/> or a leaf package.
         /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         public IServiceCollection AddAgentSession(Action<AgentSessionOptions>? configure = null)
         {
+            ArgumentNullException.ThrowIfNull(services);
             _ = services.AddAgentKitObservability();
             var optionsBuilder = services.AddOptions<AgentSessionOptions>()
                 .Validate(o => o.MaximumAppendEntries > 0, "MaximumAppendEntries must be positive.")
@@ -116,9 +118,12 @@ public static class ServiceExtensions
         /// </summary>
         /// <typeparam name="TSink">The event sink implementation to add.</typeparam>
         /// <returns>The same service collection, for chaining.</returns>
+        /// <remarks>Registrations are additive and ordered; repeated registrations of the same sink type publish twice.</remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         public IServiceCollection AddSessionEventSink<TSink>()
             where TSink : class, ISessionEventSink
         {
+            ArgumentNullException.ThrowIfNull(services);
             _ = services.AddSingleton<ISessionEventSink, TSink>();
             return services;
         }
@@ -130,9 +135,12 @@ public static class ServiceExtensions
         /// </summary>
         /// <typeparam name="TPolicy">The retention policy implementation to register.</typeparam>
         /// <returns>The same service collection, for chaining.</returns>
+        /// <remarks>Every existing <see cref="ISessionRetentionPolicy"/> registration is removed first, so the policy remains singular.</remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         public IServiceCollection ReplaceSessionRetentionPolicy<TPolicy>()
             where TPolicy : class, ISessionRetentionPolicy
         {
+            ArgumentNullException.ThrowIfNull(services);
             _ = services.RemoveAll<ISessionRetentionPolicy>();
             _ = services.AddSingleton<ISessionRetentionPolicy, TPolicy>();
             return services;
