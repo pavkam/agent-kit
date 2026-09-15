@@ -37,6 +37,19 @@ public interface IAgentLoop
     /// <param name="request">The run request.</param>
     /// <param name="cancellationToken">A token used to cancel the run.</param>
     /// <returns>A task producing the complete result of the run.</returns>
+    /// <remarks>
+    /// Cancellation follows one rule: the operation may fault with
+    /// <see cref="OperationCanceledException"/> only while the run has produced
+    /// no durable effect. Once the run has committed at least one message, an
+    /// implementation must settle with a typed <see cref="AgentRunCancelled"/>
+    /// outcome whose <see cref="AgentLoopResult.NewMessages"/> and
+    /// <see cref="AgentLoopResult.FinalVersion"/> report exactly what was
+    /// committed, so a caller never loses track of durable state because its
+    /// wait was cancelled.
+    /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
+    /// <exception cref="OperationCanceledException">
+    /// <paramref name="cancellationToken"/> was cancelled before this run committed any message.
+    /// </exception>
     public Task<AgentLoopResult> RunAsync(AgentRunRequest request, CancellationToken cancellationToken = default);
 }

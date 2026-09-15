@@ -132,6 +132,14 @@ boundary, commit a truthful partial outcome, skip new side effects, and settle.
 An immediate cancellation may interrupt streaming but still MUST clean up and
 emit one terminal lifecycle result.
 
+A loop may let caller cancellation fault its invocation only while the run has
+produced no durable effect. Once the run has committed any message (an
+interrupted assistant message, an assistant tool request, or a tool-result
+message settling an interrupted batch), cancellation MUST settle as a typed
+cancelled outcome whose result reports every committed message and the exact
+branch version. Throwing after a durable commit would discard a result the
+caller needs in order to reason about the session's state.
+
 Host close is neither cancellation nor settlement. Attachment may report an open
 operation, and close may deliberately leave it recoverable after sealing new
 process-local effects. It MUST NOT synthesize a terminal assistant message or

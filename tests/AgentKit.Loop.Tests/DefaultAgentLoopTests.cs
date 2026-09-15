@@ -609,10 +609,13 @@ public sealed class DefaultAgentLoopTests
             _ => TestFactory.CompletedWithToolCall(requestId, callId));
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        _ = await Should.ThrowAsync<OperationCanceledException>(() => loop.RunAsync(
+        var result = await loop.RunAsync(
             TestFactory.RunRequest(_agentId, _sessionId, _branchId) with { Observer = observer },
-            cts.Token));
+            cts.Token);
 
+        _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
+        result.NewMessages.Length.ShouldBe(2);
+        result.FinalVersion.ShouldBe(coordinator.Version);
         invoker.ReceivedRequests.ShouldHaveSingleItem().Context.ToolCallId.ShouldBe(callId);
         observer.Events.OfType<AgentRunToolCallCompleted>().ShouldHaveSingleItem()
             .Result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
@@ -624,7 +627,7 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenAToolCallIsCancelledMidBatch_SettlesEveryRequestedCallBeforePropagatingCancellation()
+    public async Task RunAsync_WhenAToolCallIsCancelledMidBatch_SettlesEveryRequestedCallAndReturnsAgentRunCancelled()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
         var callId1 = new ToolCallId(Guid.NewGuid());
@@ -654,9 +657,12 @@ public sealed class DefaultAgentLoopTests
         });
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        _ = await Should.ThrowAsync<OperationCanceledException>(
-            () => loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token));
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
 
+        _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
+        result.NewMessages.Length.ShouldBe(2);
+        _ = result.NewMessages[1].ShouldBeOfType<ToolMessage>();
+        result.FinalVersion.ShouldBe(coordinator.Version);
         invoker.ReceivedRequests.Count.ShouldBe(2);
         var committedParts = coordinator.Entries.OfType<MessageSessionEntry>()
             .Select(static entry => entry.Message).OfType<ToolMessage>()
@@ -670,7 +676,7 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenAToolAbsorbsCancellationIntoASettledResult_StopsRemainingCallsAndStillPropagatesCancellation()
+    public async Task RunAsync_WhenAToolAbsorbsCancellationIntoASettledResult_StopsRemainingCallsAndReturnsAgentRunCancelled()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
         var callId1 = new ToolCallId(Guid.NewGuid());
@@ -695,9 +701,10 @@ public sealed class DefaultAgentLoopTests
         });
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        _ = await Should.ThrowAsync<OperationCanceledException>(
-            () => loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token));
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
 
+        _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
+        result.NewMessages.Length.ShouldBe(2);
         invoker.ReceivedRequests.Count.ShouldBe(1);
         var committedParts = coordinator.Entries.OfType<MessageSessionEntry>()
             .Select(static entry => entry.Message).OfType<ToolMessage>()
@@ -787,22 +794,62 @@ public sealed class DefaultAgentLoopTests
         coordinator.HonorCancellation = true;
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
-        try
-        {
-            _ = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            // Either a typed AgentRunCancelled or a thrown OCE is acceptable for the caller, but
-            // the partial output must have been committed either way.
-        }
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
 
+        // Once partial output is committed the run has a durable effect, so cancellation settles as a typed
+        // outcome carrying that message rather than throwing and discarding it.
+        _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
+        result.NewMessages.ShouldHaveSingleItem().State.ShouldBe(MessageState.Interrupted);
         var interrupted = coordinator.Entries.OfType<MessageSessionEntry>()
             .Select(static entry => entry.Message)
             .OfType<AssistantMessage>()
             .ToArray();
         _ = interrupted.ShouldHaveSingleItem();
         interrupted[0].State.ShouldBe(MessageState.Interrupted);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCancelledBeforeAnyCommit_ThrowsOperationCanceledException()
+    {
+        using var cts = new CancellationTokenSource();
+        var loop = CreateLoop(out var coordinator, out _, _ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        });
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token));
+
+        coordinator.Entries.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCancelledOnALaterTurnAfterAnEarlierCommit_ReturnsAgentRunCancelledWithCommittedMessages()
+    {
+        using var cts = new CancellationTokenSource();
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var calls = 0;
+        var loop = CreateLoop(out var coordinator, out _, _ =>
+        {
+            if (++calls == 1)
+            {
+                return TestFactory.CompletedWithToolCall(requestId, callId);
+            }
+
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        });
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
+        result.NewMessages.Length.ShouldBe(2);
+        result.FinalVersion.ShouldBe(coordinator.Version);
+        coordinator.Entries.Count.ShouldBe(3);
     }
 
     [Fact]

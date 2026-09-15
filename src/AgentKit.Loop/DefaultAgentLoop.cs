@@ -33,6 +33,15 @@ using Microsoft.Extensions.Options;
 /// <see cref="AssistantMessage"/> so it is never discarded, before the run
 /// settles with <see cref="AgentRunFailed"/> or <see cref="AgentRunCancelled"/>.
 /// </para>
+/// <para>
+/// Caller cancellation propagates as <see cref="OperationCanceledException"/>
+/// only while this run has committed nothing. After the first durable commit,
+/// cancellation observed anywhere (a cancelled model attempt, a cancelled or
+/// skipped tool call, or a cancelled wait between turns) settles the run with a
+/// typed <see cref="AgentRunCancelled"/> outcome. The result then carries every
+/// committed message and the exact branch version, and every requested tool
+/// call in an interrupted batch has already received its terminal result.
+/// </para>
 /// </remarks>
 public sealed class DefaultAgentLoop: IAgentLoop
 {
@@ -248,16 +257,31 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         for (var turn = 1; turn <= request.MaxTurns; turn++)
         {
-            var result = await RunTurnAsync(
-                request,
-                model,
-                llmModel,
-                operationId,
-                turn,
-                history,
-                committedMessages,
-                currentVersion,
-                cancellationToken).ConfigureAwait(false);
+            TurnOutcome result;
+            try
+            {
+                result = await RunTurnAsync(
+                    request,
+                    model,
+                    llmModel,
+                    operationId,
+                    turn,
+                    history,
+                    committedMessages,
+                    currentVersion,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && committedMessages.Count > 0)
+            {
+                // Cancellation may propagate as an exception only while this run has produced no durable effect.
+                // Once an earlier turn committed a message, the caller must still receive it: the run settles
+                // with a typed cancelled outcome carrying every committed message and the exact branch version.
+                return BuildResult(
+                    request,
+                    new AgentRunCancelled("The run was cancelled after at least one message had been committed."),
+                    committedMessages.ToImmutable(),
+                    currentVersion);
+            }
 
             if (result.Outcome is not null)
             {
@@ -863,9 +887,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         if (interrupted || cancellationToken.IsCancellationRequested)
         {
+            // The tool message is now durably committed. Cancellation observed at this point settles the run
+            // with a typed outcome rather than throwing: an exception here would discard a result whose
+            // messages already landed, and IAgentLoop promises exactly one terminal outcome for every effect.
             activity.SetFailed("cancelled", "cancellation");
             LoopLog.ToolBatchInterrupted(_logger, request.RunId, turnId);
-            cancellationToken.ThrowIfCancellationRequested();
+            return TurnOutcome.Settled(
+                new AgentRunCancelled("The run was cancelled while its tool calls were being invoked; every requested call was settled with a terminal result before the run stopped."),
+                appended.NewVersion);
         }
 
         activity.SetSuccessful("completed");
