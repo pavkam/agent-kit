@@ -20,6 +20,8 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 - [ProviderAuthorizationGrantedTests](Http/ProviderAuthorizationGrantedTests.cs)
 - [RetryAfterResolverTests](Http/RetryAfterResolverTests.cs)
 - [ProviderRequestIdReaderTests](Http/ProviderRequestIdReaderTests.cs)
+- [ServerSentEventReaderTests](Http/ServerSentEventReaderTests.cs)
+- [ServerSentEventTests](Http/ServerSentEventTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

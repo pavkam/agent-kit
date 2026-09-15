@@ -6,6 +6,7 @@ namespace AgentKit.Providers.AwsBedrock.Tests.Parsing;
 using System.Text;
 
 using AgentKit.Providers.AwsBedrock.Tests.Fakes;
+using AgentKit.TestSupport;
 
 /// <summary>Verifies AwsBedrockResponseParser behavior and contracts.</summary>
 public sealed class AwsBedrockResponseParserTests

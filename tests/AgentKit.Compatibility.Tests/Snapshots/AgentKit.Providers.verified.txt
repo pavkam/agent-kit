@@ -54,6 +54,18 @@ namespace AgentKit.Providers.Http
     {
         public static System.TimeSpan? Resolve(System.Net.Http.Headers.HttpResponseHeaders headers, System.TimeProvider timeProvider) { }
     }
+    public sealed class ServerSentEvent : System.IEquatable<AgentKit.Providers.Http.ServerSentEvent>
+    {
+        public ServerSentEvent(string? eventType, string data, string? lastEventId, int? retry) { }
+        public string Data { get; }
+        public string? Event { get; }
+        public string? Id { get; }
+        public int? Retry { get; }
+    }
+    public static class ServerSentEventReader
+    {
+        public static System.Collections.Generic.IAsyncEnumerable<AgentKit.Providers.Http.ServerSentEvent> ReadAsync(System.IO.Stream stream, System.Threading.CancellationToken cancellationToken = default) { }
+    }
 }
 namespace AgentKit.Providers
 {

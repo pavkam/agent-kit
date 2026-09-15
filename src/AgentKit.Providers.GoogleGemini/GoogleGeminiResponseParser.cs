@@ -4,6 +4,7 @@
 namespace AgentKit.Providers.GoogleGemini;
 
 using AgentKit.Providers.GoogleGemini.Wire;
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// The default <see cref="IGoogleGeminiResponseParser"/>, parsing both
@@ -174,8 +175,6 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
         await observer.OnEventAsync(new ModelResponseStarted(requestId, sequence++), cancellationToken)
             .ConfigureAwait(false);
 
-        using var reader = new StreamReader(responseBody, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
-
         var parts = new List<PartAccumulator>();
         string? resolvedModel = null;
         string? responseId = null;
@@ -185,14 +184,9 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
         string? blockReason = null;
         var sawAnyCandidate = false;
 
-        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        await foreach (var streamEvent in ServerSentEventReader.ReadAsync(responseBody, cancellationToken).ConfigureAwait(false))
         {
-            if (line.Length == 0 || !line.StartsWith("data:", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            var payload = line["data:".Length..].TrimStart();
+            var payload = streamEvent.Data;
             if (payload.Length == 0)
             {
                 continue;

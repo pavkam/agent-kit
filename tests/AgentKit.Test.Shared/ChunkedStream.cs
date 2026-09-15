@@ -1,7 +1,7 @@
 // Copyright (c) AgentKit contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-namespace AgentKit.Providers.GoogleGemini.Tests.Fakes;
+namespace AgentKit.TestSupport;
 
 /// <summary>
 /// A read-only <see cref="Stream"/> test double that serves a fixed byte
@@ -10,7 +10,7 @@ namespace AgentKit.Providers.GoogleGemini.Tests.Fakes;
 /// arbitrary, adversarial fragmentation boundaries rather than only against
 /// one convenient chunking.
 /// </summary>
-internal sealed class ChunkedStream: Stream
+public sealed class ChunkedStream: Stream
 {
     private readonly byte[] _payload;
     private readonly int _chunkSize;

@@ -4,6 +4,7 @@
 namespace AgentKit.Providers.OpenAICompatible.Tests.Parsing;
 
 using AgentKit.Providers.OpenAICompatible.Tests.Fakes;
+using AgentKit.TestSupport;
 
 /// <summary>Verifies OpenAIChatCompletionResponseParser behavior and contracts.</summary>
 public sealed class OpenAIChatCompletionResponseParserTests

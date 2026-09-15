@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.MistralAI;
 
+using AgentKit.Providers.Http;
 using AgentKit.Providers.MistralAI.Wire;
 
 /// <summary>
@@ -187,8 +188,6 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
         await observer.OnEventAsync(new ModelResponseStarted(requestId, sequence++), cancellationToken)
             .ConfigureAwait(false);
 
-        using var reader = new StreamReader(responseBody, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
-
         var state = new StreamState();
         string? resolvedModel = null;
         string? responseId = null;
@@ -197,19 +196,16 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
         string? finishReason = null;
         var sawDoneSentinel = false;
 
-        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        await foreach (var streamEvent in ServerSentEventReader.ReadAsync(responseBody, cancellationToken).ConfigureAwait(false))
         {
-            if (line.Length == 0 || !line.StartsWith("data:", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            var payload = line["data:".Length..].TrimStart();
+            var payload = streamEvent.Data;
             if (payload.Length == 0)
             {
                 continue;
             }
 
+            // The [DONE] sentinel is a Chat Completions dialect convention layered over SSE, so the shared reader
+            // leaves it in the payload and this parser recognizes it.
             if (payload == _doneSentinel)
             {
                 sawDoneSentinel = true;

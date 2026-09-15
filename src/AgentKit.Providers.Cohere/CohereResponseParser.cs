@@ -4,6 +4,7 @@
 namespace AgentKit.Providers.Cohere;
 
 using AgentKit.Providers.Cohere.Wire;
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// The default <see cref="ICohereResponseParser"/>, parsing both buffered
@@ -184,22 +185,15 @@ public sealed class CohereResponseParser: ICohereResponseParser
         await observer.OnEventAsync(new ModelResponseStarted(requestId, sequence++), cancellationToken)
             .ConfigureAwait(false);
 
-        using var reader = new StreamReader(responseBody, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
-
         var state = new StreamState();
         string? messageId = null;
         string? finishReason = null;
         CohereUsageDto? usage = null;
         var sawMessageEnd = false;
 
-        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        await foreach (var serverSentEvent in ServerSentEventReader.ReadAsync(responseBody, cancellationToken).ConfigureAwait(false))
         {
-            if (line.Length == 0 || !line.StartsWith("data:", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            var payload = line["data:".Length..].TrimStart();
+            var payload = serverSentEvent.Data;
             if (payload.Length == 0)
             {
                 continue;

@@ -6,6 +6,7 @@ namespace AgentKit.Providers.Anthropic;
 using System.Diagnostics;
 
 using AgentKit.Providers.Anthropic.Wire;
+using AgentKit.Providers.Http;
 
 /// <summary>
 /// The default <see cref="IAnthropicMessageStreamParser"/>, parsing both
@@ -142,8 +143,6 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         await observer.OnEventAsync(new ModelResponseStarted(requestId, sequence++), cancellationToken)
             .ConfigureAwait(false);
 
-        using var reader = new StreamReader(responseBody, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
-
         var blocks = new SortedDictionary<int, BlockAccumulator>();
         string? resolvedModel = null;
         string? responseId = null;
@@ -154,15 +153,11 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         string? finalStopSequence = null;
         var messageStopReceived = false;
 
-        while (!messageStopReceived
-            && await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        // Anthropic mirrors the SSE `event:` name inside each payload's `type` field; routing on the payload keeps
+        // the buffered and streaming paths on one vocabulary and tolerates a proxy that drops the event line.
+        await foreach (var serverSentEvent in ServerSentEventReader.ReadAsync(responseBody, cancellationToken).ConfigureAwait(false))
         {
-            if (line.Length == 0 || !line.StartsWith("data:", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            var payload = line["data:".Length..].TrimStart();
+            var payload = serverSentEvent.Data;
             if (payload.Length == 0)
             {
                 continue;
@@ -296,6 +291,11 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                     // "ping" and any other unrecognized top-level event kind carry no
                     // application-visible state and are safely ignored.
                     break;
+            }
+
+            if (messageStopReceived)
+            {
+                break;
             }
         }
 

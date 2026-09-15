@@ -6,6 +6,7 @@ namespace AgentKit.Providers.OpenAICompatible;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
+using AgentKit.Providers.Http;
 using AgentKit.Providers.OpenAICompatible.Wire;
 
 /// <summary>
@@ -15,6 +16,7 @@ using AgentKit.Providers.OpenAICompatible.Wire;
 /// </summary>
 public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 {
+    private const string _doneSentinel = "[DONE]";
     private const int _textPartIndex = 0;
 
     /// <summary>
@@ -239,8 +241,6 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
         await observer.OnEventAsync(new ModelResponseStarted(requestId, sequence++), cancellationToken)
             .ConfigureAwait(false);
 
-        using var reader = new StreamReader(responseBody, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
-
         var textBuilder = new StringBuilder();
         var textPartOpen = false;
         var reasoningBuilder = new StringBuilder();
@@ -252,15 +252,12 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
         OpenAIUsage? usageDto = null;
         ModelUsage? reportedUsage = null;
 
-        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        await foreach (var streamEvent in ServerSentEventReader.ReadAsync(responseBody, cancellationToken).ConfigureAwait(false))
         {
-            if (line.Length == 0 || !line.StartsWith("data:", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            var payload = line["data:".Length..].TrimStart();
-            if (payload is "[DONE]")
+            // The [DONE] sentinel is a Chat Completions dialect convention layered over SSE, so the shared reader
+            // leaves it in the payload and this parser recognizes it.
+            var payload = streamEvent.Data;
+            if (payload is _doneSentinel)
             {
                 break;
             }

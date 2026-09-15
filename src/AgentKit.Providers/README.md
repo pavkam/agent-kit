@@ -37,6 +37,14 @@ cannot drift:
   HTTP-date form into a non-negative delay against the injected `TimeProvider`.
 - `ProviderRequestIdReader` reads the first non-blank value of a provider-named
   request-id header into a `ProviderRequestId`.
+- `ServerSentEventReader` reads a `text/event-stream` body into dispatched
+  `ServerSentEvent` values per the WHATWG processing model: UTF-8 decoding that
+  survives arbitrary chunk boundaries, a tolerated BOM, CR/LF/CRLF line endings,
+  ignored comment lines, `event:`/`data:`/`id:`/`retry:` field parsing with one
+  optional leading space stripped, multi-line `data:` joined by `\n`, dispatch
+  on a blank line, and a final unterminated event dispatched at end of stream.
+  It never interprets the payload; dialect sentinels such as `[DONE]` remain the
+  consuming parser's decision.
 - `ProviderAuthorizationHeaderFactory` resolves a `ProviderCredential` into the
   closed `ProviderAuthorizationResult` hierarchy: `ProviderAuthorizationGranted`
   (one header name and value, applied to a request through `Apply`) or
@@ -54,8 +62,8 @@ cannot drift:
   `ProviderFailure.Extensions` key (`agentkit.provider.error_message`). Every
   first-party adapter reports a fixed status template in `SafeMessage`, the
   vendor's machine code in `ProviderCode`, and the vendor's prose only through
-  this evidence, because error text can echo credentials, tenants, or
-  injected instructions and is never safe for users or models by default.
+  this evidence, because error text can echo credentials, tenants, or injected
+  instructions and is never safe for users or models by default.
 
 Body-driven vocabularies (Anthropic `error.type`, Google `error.status`, Bedrock
 `x-amzn-errortype`) stay in the owning provider package.
@@ -65,11 +73,11 @@ Body-driven vocabularies (Anthropic `error.type`, Google `error.status`, Bedrock
 `ModelRequestPreflight` is the provider-neutral check every first-party adapter
 runs before credential resolution, translation, or I/O. It rejects a request
 whose `Context.Model` is not structurally equal to the adapter's configured
-descriptor, a request that exposes tools to a model without
-`SupportsToolCalls`, and a request that asserts `ParallelToolCalls` against a
-model without `SupportsParallelToolCalls`. Each rejection is an
-`InvalidRequest` failure with a fixed safe message and no status, provider
-code, or retry hint, because the provider was never contacted.
+descriptor, a request that exposes tools to a model without `SupportsToolCalls`,
+and a request that asserts `ParallelToolCalls` against a model without
+`SupportsParallelToolCalls`. Each rejection is an `InvalidRequest` failure with
+a fixed safe message and no status, provider code, or retry hint, because the
+provider was never contacted.
 
 ## Known-model catalog
 

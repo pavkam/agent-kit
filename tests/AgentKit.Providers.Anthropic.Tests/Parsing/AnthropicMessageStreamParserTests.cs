@@ -6,6 +6,7 @@ namespace AgentKit.Providers.Anthropic.Tests.Parsing;
 using System.Text;
 
 using AgentKit.Providers.Anthropic.Tests.Fakes;
+using AgentKit.TestSupport;
 
 /// <summary>Verifies AnthropicMessageStreamParser behavior and contracts.</summary>
 public sealed class AnthropicMessageStreamParserTests
@@ -136,6 +137,27 @@ public sealed class AnthropicMessageStreamParserTests
         var textDeltas = observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<TextContentDelta>().Select(d => d.Text).ToArray();
         textDeltas.ShouldBe(["Hello", "!"]);
         observer.Events.Select(e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(i => (long) i));
+    }
+
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenCrLfLineEndingsKeepaliveCommentsAndByteOrderMark_ParsesEveryEvent(int chunkSize)
+    {
+        // The shared server-sent-event reader owns line endings, comments, and the BOM; this proves the parser is
+        // wired through it rather than through a private data-line loop.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var text = Encoding.UTF8.GetString(TestResources.ReadAllBytes("responses/streaming_text.sse"));
+        var hostile = ": keepalive\n\n" + text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", "\r\n", StringComparison.Ordinal).Replace("\r\n\r\n", "\r\n: keepalive\r\n\r\n", StringComparison.Ordinal);
+        var payload = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(hostile)).ToArray();
+        await using var stream = new ChunkedStream(payload, chunkSize);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.Completed);
+        completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        var textDeltas = observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<TextContentDelta>().Select(d => d.Text).ToArray();
+        textDeltas.ShouldBe(["Hello", "!"]);
     }
 
     [Theory]
