@@ -340,6 +340,14 @@ closed on invalid state, and perform no transparent provider or tool retry. An
 agent definition may select a policy key and narrow defaults; run options may
 narrow them again. Managed ceilings cannot be widened by either layer.
 
+Authorization is captured fresh for the run and for every turn. When the
+security authority cannot capture it, the run settles with the typed
+`AgentRunAuthorizationUnavailable` outcome and attempts no protected work under
+that operation; captured evidence that contradicts the run-start evidence fails
+closed as invalid state. A result reports a branch version only when the loop
+actually observed one: a run that settles before loading history carries no
+final version rather than a fabricated zero.
+
 Composition validates each definition's loop and continuation-policy keys, scope
 graph, non-negative bounded limits, and required collaborators. Conformance
 tests verify reachable terminal states and progress; build validation cannot

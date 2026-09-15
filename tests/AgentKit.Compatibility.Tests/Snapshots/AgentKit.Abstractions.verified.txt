@@ -263,10 +263,10 @@ namespace AgentKit
     }
     public sealed class AgentLoopResult : System.IEquatable<AgentKit.AgentLoopResult>
     {
-        public AgentLoopResult(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.AgentRunOutcome outcome, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> newMessages, AgentKit.SessionVersion finalVersion) { }
+        public AgentLoopResult(AgentKit.AgentId agentId, AgentKit.SessionId sessionId, AgentKit.BranchId branchId, AgentKit.RunId runId, AgentKit.AgentRunOutcome outcome, System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> newMessages, AgentKit.SessionVersion? finalVersion) { }
         public AgentKit.AgentId AgentId { get; init; }
         public AgentKit.BranchId BranchId { get; init; }
-        public AgentKit.SessionVersion FinalVersion { get; init; }
+        public AgentKit.SessionVersion? FinalVersion { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> NewMessages { get; init; }
         public AgentKit.AgentRunOutcome Outcome { get; init; }
         public AgentKit.RunId RunId { get; init; }
@@ -289,6 +289,11 @@ namespace AgentKit
         public AgentKit.TurnId? TurnId { get; init; }
         public virtual bool Equals(AgentKit.AgentMessage? other) { }
         public override int GetHashCode() { }
+    }
+    public sealed class AgentRunAuthorizationUnavailable : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunAuthorizationUnavailable>
+    {
+        public AgentRunAuthorizationUnavailable(string safeReason) { }
+        public string SafeReason { get; init; }
     }
     public sealed class AgentRunCancelled : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunCancelled>
     {

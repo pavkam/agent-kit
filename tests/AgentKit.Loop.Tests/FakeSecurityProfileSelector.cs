@@ -6,6 +6,16 @@ namespace AgentKit.Loop.Tests;
 /// <summary>Captures matching fresh test authorization for each requested loop operation.</summary>
 internal sealed class FakeSecurityProfileSelector: ISecurityProfileSelector
 {
+    /// <summary>
+    /// Gets or sets an override consulted before the normal capture. Returning <see langword="null"/> falls
+    /// through to a matching capture, letting a test fail only a specific operation (for example, the second
+    /// turn's capture) while every other capture succeeds.
+    /// </summary>
+    public Func<SecurityAuthorizationCaptureRequest, SecurityAuthorizationCaptureResult?>? Override { get; set; }
+
+    /// <summary>Gets every capture request received, in call order.</summary>
+    public List<SecurityAuthorizationCaptureRequest> Requests { get; } = [];
+
     /// <inheritdoc/>
     public ValueTask<SecurityAuthorizationCaptureResult> SelectAsync(
         SecurityAuthorizationCaptureRequest request,
@@ -13,7 +23,8 @@ internal sealed class FakeSecurityProfileSelector: ISecurityProfileSelector
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<SecurityAuthorizationCaptureResult>(new SecurityAuthorizationCaptured(
+        Requests.Add(request);
+        return ValueTask.FromResult(Override?.Invoke(request) ?? new SecurityAuthorizationCaptured(
             TestSupport.TestSecurityEvidence.Authorization(
                 request.Scope.AgentId, request.Scope.SessionId, request.Scope.Correlation, request.Identity)));
     }

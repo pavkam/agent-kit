@@ -20,7 +20,11 @@ public sealed record AgentLoopResult
     /// <param name="runId">The run this result belongs to.</param>
     /// <param name="outcome">The closed terminal outcome of the run.</param>
     /// <param name="newMessages">Every message this run committed, in commit order.</param>
-    /// <param name="finalVersion">The branch version after every commit this run made.</param>
+    /// <param name="finalVersion">
+    /// The branch version after every commit this run made, or the version the
+    /// run observed when it committed nothing; <see langword="null"/> when the
+    /// run settled before it observed the branch at all.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="outcome"/> is null.</exception>
     /// <exception cref="ArgumentException">
     /// <paramref name="newMessages"/> is a default, uninitialized array.
@@ -32,7 +36,7 @@ public sealed record AgentLoopResult
         RunId runId,
         AgentRunOutcome outcome,
         ImmutableArray<AgentMessage> newMessages,
-        SessionVersion finalVersion)
+        SessionVersion? finalVersion)
     {
         ArgumentNullException.ThrowIfNull(outcome);
         ArgumentException.ThrowIfDefault(newMessages);
@@ -65,7 +69,15 @@ public sealed record AgentLoopResult
     public ImmutableArray<AgentMessage> NewMessages { get; init; }
 
     /// <summary>Gets the branch version after every commit this run made.</summary>
-    public SessionVersion FinalVersion { get; init; }
+    /// <value>
+    /// The exact version after the run's last commit, or the version the run
+    /// observed when loading history if it committed nothing. It is
+    /// <see langword="null"/> only when the run settled before observing the
+    /// branch (for example, authorization could not be captured at run start or
+    /// history could not be loaded); the loop never fabricates a version in
+    /// that case.
+    /// </value>
+    public SessionVersion? FinalVersion { get; init; }
 
     /// <inheritdoc/>
     public bool Equals(AgentLoopResult? other) =>

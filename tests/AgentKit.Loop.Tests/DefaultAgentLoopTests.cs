@@ -256,7 +256,7 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenHistoryCannotBeLoaded_ReturnsAgentRunSessionOperationFailed()
+    public async Task RunAsync_WhenHistoryCannotBeLoaded_ReturnsAgentRunSessionOperationFailedWithoutAVersion()
     {
         var loop = CreateLoop(out var coordinator, out _, static _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())));
         coordinator.ReadOverride = static request => new SessionReadFailed("store unavailable");
@@ -266,6 +266,90 @@ public sealed class DefaultAgentLoopTests
 
         _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
         result.NewMessages.ShouldBeEmpty();
+        result.FinalVersion.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenRunAuthorizationCannotBeCaptured_ReturnsAgentRunAuthorizationUnavailableBeforeAnyEffect()
+    {
+        var selector = new FakeSecurityProfileSelector
+        {
+            Override = static _ => new SecurityAuthorizationCaptureUnavailable("authority offline"),
+        };
+        var modelCalls = 0;
+        var loop = CreateLoop(out var coordinator, out _, _ =>
+        {
+            modelCalls++;
+            return TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid()));
+        }, securityProfileSelector: selector);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType<AgentRunAuthorizationUnavailable>().SafeReason.ShouldBe("authority offline");
+        result.NewMessages.ShouldBeEmpty();
+        result.FinalVersion.ShouldBeNull();
+        modelCalls.ShouldBe(0);
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+        _ = selector.Requests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTurnAuthorizationCannotBeCaptured_ReturnsAgentRunAuthorizationUnavailableWithEarlierCommits()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var captures = 0;
+        var selector = new FakeSecurityProfileSelector
+        {
+            // Run capture, first-turn capture, then the second turn's capture is unavailable.
+            Override = _ => ++captures == 3 ? new SecurityAuthorizationCaptureUnavailable("authority offline") : null,
+        };
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator,
+            out _,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            securityProfileSelector: selector);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunAuthorizationUnavailable>();
+        result.NewMessages.Length.ShouldBe(2);
+        result.FinalVersion.ShouldBe(coordinator.Version);
+        modelCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCapturedAuthorizationDiffersFromRunStartEvidence_ReturnsAgentRunInvalidState()
+    {
+        var selector = new FakeSecurityProfileSelector
+        {
+            Override = static request =>
+            {
+                var matching = TestSupport.TestSecurityEvidence.Authorization(
+                    request.Scope.AgentId, request.Scope.SessionId, request.Scope.Correlation, request.Identity);
+                return new SecurityAuthorizationCaptured(new SecurityAuthorizationContext(
+                    matching.ProfileKey,
+                    matching.ProfileVersion,
+                    matching.PolicySnapshot,
+                    matching.AuthorityKey,
+                    matching.AgentDefinitionRevision,
+                    new ConfigurationVersion(matching.ConfigurationVersion.Value + 1),
+                    matching.Scope,
+                    matching.Identity));
+            },
+        };
+        var loop = CreateLoop(
+            out var coordinator, out _, static _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())), securityProfileSelector: selector);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunInvalidState>();
+        result.NewMessages.ShouldBeEmpty();
+        result.FinalVersion.ShouldBeNull();
     }
 
     [Fact]
@@ -1295,7 +1379,8 @@ public sealed class DefaultAgentLoopTests
         Func<ToolCallRequest, ToolInvocationResult>? toolHandler = null,
         ModelResponseEvent? modelEvent = null,
         IContextAssembler? contextAssembler = null,
-        IRunContinuationPolicy? continuationPolicy = null)
+        IRunContinuationPolicy? continuationPolicy = null,
+        FakeSecurityProfileSelector? securityProfileSelector = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -1305,7 +1390,7 @@ public sealed class DefaultAgentLoopTests
 
         return new DefaultAgentLoop(
             coordinator,
-            new FakeSecurityProfileSelector(),
+            securityProfileSelector ?? new FakeSecurityProfileSelector(),
             contextAssembler ?? new DefaultContextAssembler(),
             toolInvoker,
             new FakeModelCatalog(TestFactory.Catalog(descriptor)),

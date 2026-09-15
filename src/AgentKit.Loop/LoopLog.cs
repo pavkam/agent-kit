@@ -96,6 +96,15 @@ internal static partial class LoopLog
         SessionVersion expectedVersion,
         SessionVersion actualVersion);
 
+    /// <summary>Logs a run or turn that settled because the security authority could not capture fresh authorization.</summary>
+    /// <remarks>No protected work was attempted under the operation; the safe reason travels in the typed outcome, not the log.</remarks>
+    [LoggerMessage(1080, LogLevel.Warning, "Authorization could not be captured for run {RunId} (turn {TurnId}); the run settles without protected work.")]
+    internal static partial void AuthorizationCaptureUnavailable(ILogger logger, RunId runId, TurnId? turnId);
+
+    /// <summary>Logs captured authorization that contradicts the run-start evidence, which fails the run closed as invalid state.</summary>
+    [LoggerMessage(1081, LogLevel.Error, "Authorization captured for run {RunId} (turn {TurnId}) differs from the run-start evidence; the run settles as invalid state.")]
+    internal static partial void AuthorizationEvidenceMismatch(ILogger logger, RunId runId, TurnId? turnId);
+
     /// <summary>Logs a run that ended because no usable model could be chosen.</summary>
     [LoggerMessage(1050, LogLevel.Warning, "Model selection for run {RunId} failed: {Reason}.")]
     internal static partial void ModelSelectionFailed(ILogger logger, RunId runId, string reason);

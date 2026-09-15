@@ -231,11 +231,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
             .ConfigureAwait(false);
         if (runAuthorization is null)
         {
-            return BuildResult(
-                request,
-                new AgentRunSessionOperationFailed(runCaptureFailure!),
-                [],
-                new SessionVersion(0));
+            // Nothing has been observed or committed: no branch version exists to report truthfully.
+            return BuildResult(request, runCaptureFailure!, [], finalVersion: null);
         }
 
         var sessionContext = new SessionOperationContext(
@@ -254,7 +251,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 request,
                 new AgentRunSessionOperationFailed("The run's eligible session history could not be loaded."),
                 [],
-                new SessionVersion(0));
+                finalVersion: null);
         }
 
         var currentVersion = initialCursor.Version;
@@ -406,8 +403,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
             .ConfigureAwait(false);
         if (turnAuthorization is null)
         {
-            return TurnOutcome.Settled(
-                new AgentRunSessionOperationFailed(turnCaptureFailure!), currentVersion);
+            return TurnOutcome.Settled(turnCaptureFailure!, currentVersion);
         }
 
         var turnSessionContext = new SessionOperationContext(
@@ -1481,7 +1477,18 @@ public sealed class DefaultAgentLoop: IAgentLoop
             : null;
     }
 
-    private async ValueTask<(SecurityAuthorizationContext? Authorization, string? SafeFailure)>
+    /// <summary>
+    /// Captures fresh authorization for one run operation and verifies it against the run-start evidence.
+    /// </summary>
+    /// <param name="request">The run whose baseline evidence the capture must match.</param>
+    /// <param name="correlation">The operation (run or turn) the authorization is captured for.</param>
+    /// <param name="cancellationToken">Cancels the capture.</param>
+    /// <returns>
+    /// The captured authorization, or the typed outcome that settles the run:
+    /// <see cref="AgentRunAuthorizationUnavailable"/> when the authority could not capture authorization, and
+    /// <see cref="AgentRunInvalidState"/> when the captured evidence contradicts the run-start evidence.
+    /// </returns>
+    private async ValueTask<(SecurityAuthorizationContext? Authorization, AgentRunOutcome? Failure)>
         CaptureAuthorizationAsync(
             AgentRunRequest request,
             InRunOperationCorrelation correlation,
@@ -1503,9 +1510,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
         if (result is not SecurityAuthorizationCaptured captured)
         {
-            return (null, result is SecurityAuthorizationCaptureUnavailable unavailable
+            LoopLog.AuthorizationCaptureUnavailable(_logger, request.RunId, correlation.TurnId);
+            return (null, new AgentRunAuthorizationUnavailable(result is SecurityAuthorizationCaptureUnavailable unavailable
                 ? unavailable.SafeReason
-                : "The security profile could not be captured for this operation.");
+                : "The security profile could not be captured for this operation."));
         }
 
         var authorization = captured.Authorization;
@@ -1518,7 +1526,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
             || authorization.AgentDefinitionRevision != baseline.AgentDefinitionRevision
             || authorization.ConfigurationVersion != baseline.ConfigurationVersion)
         {
-            return (null, "The captured security profile differs from the run-start evidence.");
+            LoopLog.AuthorizationEvidenceMismatch(_logger, request.RunId, correlation.TurnId);
+            return (null, new AgentRunInvalidState("The captured security profile differs from the run-start evidence."));
         }
 
         return (authorization, null);
@@ -1557,7 +1566,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     };
 
     private static AgentLoopResult BuildResult(
-        AgentRunRequest request, AgentRunOutcome outcome, ImmutableArray<AgentMessage> newMessages, SessionVersion finalVersion) =>
+        AgentRunRequest request, AgentRunOutcome outcome, ImmutableArray<AgentMessage> newMessages, SessionVersion? finalVersion) =>
         new(request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome, newMessages, finalVersion);
 
     /// <summary>
