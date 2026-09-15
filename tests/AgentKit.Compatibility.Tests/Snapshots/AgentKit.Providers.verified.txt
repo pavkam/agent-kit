@@ -3,6 +3,58 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Providers
 {
+    public sealed class KnownModel : System.IEquatable<AgentKit.Providers.KnownModel>
+    {
+        public KnownModel(AgentKit.ProviderId providerId, AgentKit.ModelId modelId, string displayName, AgentKit.Providers.KnownModelStatus status, bool supportsReasoning, bool supportsVisionInput, bool supportsToolCalls, AgentKit.ModelLimits limits, AgentKit.Providers.KnownModelPricing? pricing, AgentKit.ModelId? replacedBy) { }
+        public string DisplayName { get; }
+        public AgentKit.ModelLimits Limits { get; }
+        public AgentKit.ModelId ModelId { get; }
+        public AgentKit.Providers.KnownModelPricing? Pricing { get; }
+        public AgentKit.ProviderId ProviderId { get; }
+        public AgentKit.ModelId? ReplacedBy { get; }
+        public AgentKit.Providers.KnownModelStatus Status { get; }
+        public bool SupportsReasoning { get; }
+        public bool SupportsToolCalls { get; }
+        public bool SupportsVisionInput { get; }
+        public AgentKit.ModelDescriptor ToDescriptor(AgentKit.ModelAlias alias, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelCapabilities baselineCapabilities) { }
+    }
+    public sealed class KnownModelCatalog
+    {
+        public KnownModelCatalog(AgentKit.Providers.KnownModelCatalogProvenance provenance, System.Collections.Immutable.ImmutableArray<AgentKit.Providers.KnownModel> models) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Providers.KnownModel> Models { get; }
+        public AgentKit.Providers.KnownModelCatalogProvenance Provenance { get; }
+        public System.Collections.Generic.IEnumerable<AgentKit.ProviderId> Providers { get; }
+        public static AgentKit.Providers.KnownModelCatalog Default { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Providers.KnownModel> ForProvider(AgentKit.ProviderId providerId) { }
+        public bool TryFind(AgentKit.ProviderId providerId, AgentKit.ModelId modelId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.Providers.KnownModel? model) { }
+        public static AgentKit.Providers.KnownModelCatalog Parse(System.ReadOnlySpan<byte> json) { }
+    }
+    public sealed class KnownModelCatalogProvenance : System.IEquatable<AgentKit.Providers.KnownModelCatalogProvenance>
+    {
+        public KnownModelCatalogProvenance(string sourceName, System.Uri sourceUrl, string? sourceCommit, System.DateTimeOffset generatedAt, System.DateTimeOffset importedAt) { }
+        public System.DateTimeOffset GeneratedAt { get; }
+        public System.DateTimeOffset ImportedAt { get; }
+        public string? SourceCommit { get; }
+        public string SourceName { get; }
+        public System.Uri SourceUrl { get; }
+    }
+    public sealed class KnownModelPricing : System.IEquatable<AgentKit.Providers.KnownModelPricing>
+    {
+        public KnownModelPricing(string currency, decimal? inputPerMillionTokens, decimal? outputPerMillionTokens, decimal? cacheReadPerMillionTokens, decimal? cacheWritePerMillionTokens) { }
+        public decimal? CacheReadPerMillionTokens { get; }
+        public decimal? CacheWritePerMillionTokens { get; }
+        public string Currency { get; }
+        public decimal? InputPerMillionTokens { get; }
+        public decimal? OutputPerMillionTokens { get; }
+        public AgentKit.ModelPricing ToModelPricing() { }
+    }
+    public enum KnownModelStatus
+    {
+        Available = 0,
+        Preview = 1,
+        Deprecated = 2,
+        Disabled = 3,
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)

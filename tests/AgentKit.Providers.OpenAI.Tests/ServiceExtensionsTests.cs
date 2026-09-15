@@ -3,10 +3,15 @@
 
 namespace AgentKit.Providers.OpenAI.Tests;
 
+using System.Net;
+
+using AgentKit.Providers;
+using AgentKit.Providers.OpenAI.Tests.Fakes;
 using AgentKit.Providers.OpenRouter;
 using AgentKit.Providers.ZAI;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 /// <summary>Verifies ServiceExtensions behavior and contracts.</summary>
@@ -113,6 +118,60 @@ public sealed class ServiceExtensionsTests
         openAICredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("openai-key");
         openRouterCredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("openrouter-key");
         zAICredential.ShouldBeOfType<ApiKeyProviderCredential>().ApiKey.ShouldBe("zai-key");
+    }
+
+    [Fact]
+    public async Task AddOpenAIKnownLlmModel_WhenModelIsKnown_RegistersAdapterAndIdenticalCatalogDescriptor()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
+        var services = new ServiceCollection();
+        _ = services.AddAgentProviders();
+        _ = services.AddOpenAI(options => options.PreferStreaming = false);
+        _ = services.AddOpenAIApiKeyCredential("sk-test-key");
+        _ = services.AddOpenAIKnownLlmModel(new ModelAlias("fast"), new ModelId("gpt-4o-mini"));
+        _ = services.Replace(ServiceDescriptor.Singleton(new HttpClient(handler)));
+        using var provider = services.BuildServiceProvider();
+
+        var model = provider.GetRequiredService<ILlmModel>().ShouldBeOfType<OpenAILlmModel>();
+        var snapshot = await provider.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        var published = snapshot.ConversationModels.ShouldHaveSingleItem();
+        published.Alias.ShouldBe(new ModelAlias("fast"));
+        published.ModelId.ShouldBe(new ModelId("gpt-4o-mini"));
+        published.Limits.MaxContextTokens.ShouldBe(128000);
+        published.Pricing.ShouldNotBeNull().CostCurrency.ShouldBe("USD");
+
+        // The adapter rejects a request whose selected descriptor differs from its own, so a request built
+        // from the published descriptor proves both registrations carry the same value.
+        var user = new UserMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), null, new BranchId(Guid.NewGuid()), null, null, DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("Hi", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var request = new LlmModelRequest(
+            new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), published, [user], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty),
+            attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+        var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ModelAttemptCompleted>();
+    }
+
+    [Fact]
+    public void AddOpenAIKnownLlmModel_WhenModelIsUnknown_ThrowsArgumentExceptionForModelId()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOpenAI();
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddOpenAIKnownLlmModel(new ModelAlias("x"), new ModelId("no-such-model")));
+
+        exception.ParamName.ShouldBe("modelId");
+    }
+
+    [Fact]
+    public void AddOpenAILlmModel_WhenDescriptorNamesAnotherProvider_ThrowsArgumentException()
+    {
+        var services = new ServiceCollection();
+        var foreign = new ModelDescriptor(
+            new ModelAlias("x"), new ProviderId("anthropic"), OpenAIProviderDefaults.ApiFamily, new ModelId("m"), null,
+            OpenAIProviderDefaults.DefaultCapabilities, OpenAIProviderDefaults.DefaultLimits, null, ExtensionData.Empty);
+
+        Should.Throw<ArgumentException>(() => services.AddOpenAILlmModel(foreign)).ParamName.ShouldBe("descriptor");
     }
 
     [Fact]

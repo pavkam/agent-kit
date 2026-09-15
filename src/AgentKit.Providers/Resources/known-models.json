@@ -1,0 +1,2255 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "name": "openclaw/catalog",
+    "url": "https://catalog.openclaw.ai/models/v1/catalog.json",
+    "commit": "c0be265998d07c4e1e11875ed4cb461bdb020cf2",
+    "generatedAt": "2026-09-15T12:41:00.404Z",
+    "importedAt": "2026-09-15T12:43:59.360Z"
+  },
+  "providerIds": [
+    "anthropic",
+    "cohere",
+    "deepseek",
+    "google-gemini",
+    "groq",
+    "mistral-ai",
+    "moonshot-kimi",
+    "openai",
+    "xai",
+    "z-ai"
+  ],
+  "models": [
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-fable-5",
+      "displayName": "Claude Fable 5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 10,
+        "outputPerMillionTokens": 50,
+        "cacheReadPerMillionTokens": 1,
+        "cacheWritePerMillionTokens": 12.5
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-fable-5-1",
+      "displayName": "Claude Fable 5.1",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 10,
+        "outputPerMillionTokens": 50,
+        "cacheReadPerMillionTokens": 0.25,
+        "cacheWritePerMillionTokens": 12.5
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-haiku-4-5",
+      "displayName": "Claude Haiku 4.5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 200000,
+      "maxOutputTokens": 64000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1,
+        "outputPerMillionTokens": 5,
+        "cacheReadPerMillionTokens": 0.1,
+        "cacheWritePerMillionTokens": 1.25
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-haiku-4-5-20251001",
+      "displayName": "Claude Haiku 4.5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 200000,
+      "maxOutputTokens": 64000
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-mythos-5",
+      "displayName": "Claude Mythos 5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 10,
+        "outputPerMillionTokens": 50,
+        "cacheReadPerMillionTokens": 1,
+        "cacheWritePerMillionTokens": 12.5
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-opus-4-5",
+      "displayName": "Claude Opus 4.5 (latest)",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 200000,
+      "maxOutputTokens": 64000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 5,
+        "outputPerMillionTokens": 25,
+        "cacheReadPerMillionTokens": 0.5,
+        "cacheWritePerMillionTokens": 6.25
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-opus-4-5-20251101",
+      "displayName": "Claude Opus 4.5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 200000,
+      "maxOutputTokens": 64000
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-opus-4-6",
+      "displayName": "Claude Opus 4.6",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 5,
+        "outputPerMillionTokens": 25,
+        "cacheReadPerMillionTokens": 0.5,
+        "cacheWritePerMillionTokens": 6.25
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-opus-4-7",
+      "displayName": "Claude Opus 4.7",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 5,
+        "outputPerMillionTokens": 25,
+        "cacheReadPerMillionTokens": 0.5,
+        "cacheWritePerMillionTokens": 6.25
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-opus-4-8",
+      "displayName": "Claude Opus 4.8",
+      "status": "deprecated",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "replacedBy": "claude-opus-5",
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 5,
+        "outputPerMillionTokens": 25,
+        "cacheReadPerMillionTokens": 0.5,
+        "cacheWritePerMillionTokens": 6.25
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-opus-5",
+      "displayName": "Claude Opus 5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 5,
+        "outputPerMillionTokens": 25,
+        "cacheReadPerMillionTokens": 0.5,
+        "cacheWritePerMillionTokens": 6.25
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-sonnet-4-5",
+      "displayName": "Claude Sonnet 4.5 (latest)",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 64000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 3,
+        "outputPerMillionTokens": 15,
+        "cacheReadPerMillionTokens": 0.3,
+        "cacheWritePerMillionTokens": 3.75
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-sonnet-4-5-20250929",
+      "displayName": "Claude Sonnet 4.5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 64000
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-sonnet-4-6",
+      "displayName": "Claude Sonnet 4.6",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 3,
+        "outputPerMillionTokens": 15,
+        "cacheReadPerMillionTokens": 0.3,
+        "cacheWritePerMillionTokens": 3.75
+      }
+    },
+    {
+      "providerId": "anthropic",
+      "modelId": "claude-sonnet-5",
+      "displayName": "Claude Sonnet 5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2,
+        "outputPerMillionTokens": 10,
+        "cacheReadPerMillionTokens": 0.2,
+        "cacheWritePerMillionTokens": 2.5
+      }
+    },
+    {
+      "providerId": "cohere",
+      "modelId": "command-a-03-2025",
+      "displayName": "Command A",
+      "status": "deprecated",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 256000,
+      "maxOutputTokens": 8000,
+      "replacedBy": "command-a-plus-05-2026",
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2.5,
+        "outputPerMillionTokens": 10,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "cohere",
+      "modelId": "command-a-plus-05-2026",
+      "displayName": "Command A+",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 64000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0,
+        "outputPerMillionTokens": 0,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "cohere",
+      "modelId": "command-a-reasoning-08-2025",
+      "displayName": "Command A Reasoning",
+      "status": "deprecated",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 256000,
+      "maxOutputTokens": 32000,
+      "replacedBy": "command-a-plus-05-2026",
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0,
+        "outputPerMillionTokens": 0,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "cohere",
+      "modelId": "command-a-translate-08-2025",
+      "displayName": "Command A Translate",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 8000,
+      "maxOutputTokens": 8000
+    },
+    {
+      "providerId": "cohere",
+      "modelId": "command-a-vision-07-2025",
+      "displayName": "Command A Vision",
+      "status": "deprecated",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 8000,
+      "replacedBy": "command-a-plus-05-2026",
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0,
+        "outputPerMillionTokens": 0,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "cohere",
+      "modelId": "command-r-08-2024",
+      "displayName": "Command R",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 4000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.15,
+        "outputPerMillionTokens": 0.6,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "cohere",
+      "modelId": "command-r-plus-08-2024",
+      "displayName": "Command R+",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 4000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2.5,
+        "outputPerMillionTokens": 10,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "cohere",
+      "modelId": "command-r7b-12-2024",
+      "displayName": "Command R7B",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 4000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.0375,
+        "outputPerMillionTokens": 0.15,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "cohere",
+      "modelId": "command-r7b-arabic-02-2025",
+      "displayName": "Command R7B Arabic",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 4000
+    },
+    {
+      "providerId": "cohere",
+      "modelId": "north-mini-code-1-0",
+      "displayName": "North Mini Code 1.0",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 256000,
+      "maxOutputTokens": 64000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0,
+        "outputPerMillionTokens": 0,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "deepseek",
+      "modelId": "deepseek-flash",
+      "displayName": "DeepSeek V4.1 Flash",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 384000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.3,
+        "outputPerMillionTokens": 1.2,
+        "cacheReadPerMillionTokens": 0.006,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "deepseek",
+      "modelId": "deepseek-v4-flash",
+      "displayName": "DeepSeek V4 Flash",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 384000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.088606,
+        "outputPerMillionTokens": 0.177212,
+        "cacheReadPerMillionTokens": 0.017721,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "deepseek",
+      "modelId": "deepseek-v4-flash-vision-exp",
+      "displayName": "DeepSeek V4 Flash Vision (Experimental)",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 384000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.22,
+        "outputPerMillionTokens": 0.66,
+        "cacheReadPerMillionTokens": 0.007,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "deepseek",
+      "modelId": "deepseek-v4-pro",
+      "displayName": "DeepSeek V4 Pro",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 384000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.6,
+        "outputPerMillionTokens": 3.2,
+        "cacheReadPerMillionTokens": 0.135,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-2.5-flash",
+      "displayName": "Gemini 2.5 Flash",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.3,
+        "outputPerMillionTokens": 2.5,
+        "cacheReadPerMillionTokens": 0.03,
+        "cacheWritePerMillionTokens": 0.083333
+      }
+    },
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-2.5-flash-lite",
+      "displayName": "Gemini 2.5 Flash-Lite",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.1,
+        "outputPerMillionTokens": 0.4,
+        "cacheReadPerMillionTokens": 0.01,
+        "cacheWritePerMillionTokens": 0.083333
+      }
+    },
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-2.5-pro",
+      "displayName": "Gemini 2.5 Pro",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.25,
+        "outputPerMillionTokens": 10,
+        "cacheReadPerMillionTokens": 0.125,
+        "cacheWritePerMillionTokens": 0.375
+      }
+    },
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-3-flash-preview",
+      "displayName": "Gemini 3 Flash Preview",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.5,
+        "outputPerMillionTokens": 3,
+        "cacheReadPerMillionTokens": 0.05,
+        "cacheWritePerMillionTokens": 0.083333
+      }
+    },
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-3.1-flash-lite",
+      "displayName": "Gemini 3.1 Flash Lite",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.25,
+        "outputPerMillionTokens": 1.5,
+        "cacheReadPerMillionTokens": 0.025,
+        "cacheWritePerMillionTokens": 0.083333
+      }
+    },
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-3.1-pro-preview",
+      "displayName": "Gemini 3.1 Pro Preview",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2,
+        "outputPerMillionTokens": 12,
+        "cacheReadPerMillionTokens": 0.2,
+        "cacheWritePerMillionTokens": 0.375
+      }
+    },
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-3.5-flash",
+      "displayName": "Gemini 3.5 Flash",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.5,
+        "outputPerMillionTokens": 9,
+        "cacheReadPerMillionTokens": 0.15,
+        "cacheWritePerMillionTokens": 0.083333
+      }
+    },
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-3.5-flash-lite",
+      "displayName": "Gemini 3.5 Flash-Lite",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.3,
+        "outputPerMillionTokens": 2.5,
+        "cacheReadPerMillionTokens": 0.03,
+        "cacheWritePerMillionTokens": 0.083333
+      }
+    },
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-3.6-flash",
+      "displayName": "Gemini 3.6 Flash",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.75,
+        "outputPerMillionTokens": 3.75,
+        "cacheReadPerMillionTokens": 0.075,
+        "cacheWritePerMillionTokens": 0.041667
+      }
+    },
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-3.7-flash",
+      "displayName": "Gemini 3.7 Flash",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.75,
+        "outputPerMillionTokens": 3.75,
+        "cacheReadPerMillionTokens": 0.075,
+        "cacheWritePerMillionTokens": 0.041667
+      }
+    },
+    {
+      "providerId": "groq",
+      "modelId": "groq/compound",
+      "displayName": "Compound",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 8192,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0,
+        "outputPerMillionTokens": 0,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "groq",
+      "modelId": "groq/compound-mini",
+      "displayName": "Compound Mini",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 8192,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0,
+        "outputPerMillionTokens": 0,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "groq",
+      "modelId": "llama-3.1-8b-instant",
+      "displayName": "Llama 3.1 8B Instant",
+      "status": "deprecated",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 131072,
+      "replacedBy": "openai/gpt-oss-20b",
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.05,
+        "outputPerMillionTokens": 0.08,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "groq",
+      "modelId": "llama-3.3-70b-versatile",
+      "displayName": "Llama 3.3 70B Versatile",
+      "status": "deprecated",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 32768,
+      "replacedBy": "openai/gpt-oss-120b",
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.59,
+        "outputPerMillionTokens": 0.79,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "groq",
+      "modelId": "openai/gpt-oss-120b",
+      "displayName": "GPT OSS 120B",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.15,
+        "outputPerMillionTokens": 0.6,
+        "cacheReadPerMillionTokens": 0.075,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "groq",
+      "modelId": "openai/gpt-oss-20b",
+      "displayName": "GPT OSS 20B",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.075,
+        "outputPerMillionTokens": 0.3,
+        "cacheReadPerMillionTokens": 0.0375,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "groq",
+      "modelId": "openai/gpt-oss-safeguard-20b",
+      "displayName": "Safety GPT OSS 20B",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 65536,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.075,
+        "outputPerMillionTokens": 0.3,
+        "cacheReadPerMillionTokens": 0.037,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "groq",
+      "modelId": "qwen/qwen3.6-27b",
+      "displayName": "Qwen 3.6 27B",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.6,
+        "outputPerMillionTokens": 3,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "groq",
+      "modelId": "qwen/qwen3.8-27b",
+      "displayName": "Qwen3.8 27B",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131042,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.8,
+        "outputPerMillionTokens": 4,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "codestral-latest",
+      "displayName": "Codestral (latest)",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 4096,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.3,
+        "outputPerMillionTokens": 0.9,
+        "cacheReadPerMillionTokens": 0.03,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "devstral-medium-latest",
+      "displayName": "Devstral 2 (latest)",
+      "status": "deprecated",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 262144,
+      "maxOutputTokens": 32768,
+      "replacedBy": "mistral-medium-3-5",
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.4,
+        "outputPerMillionTokens": 2,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "magistral-medium-latest",
+      "displayName": "Magistral Medium (latest)",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.5,
+        "outputPerMillionTokens": 7.5,
+        "cacheReadPerMillionTokens": 0.15,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "magistral-small",
+      "displayName": "Magistral Small",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 128000
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "ministral-3b-latest",
+      "displayName": "Ministral 3B (latest)",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.1,
+        "outputPerMillionTokens": 0.1,
+        "cacheReadPerMillionTokens": 0.01,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "ministral-8b-latest",
+      "displayName": "Ministral 8B (latest)",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.15,
+        "outputPerMillionTokens": 0.15,
+        "cacheReadPerMillionTokens": 0.015,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-large-2411",
+      "displayName": "Mistral Large 2.1",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2,
+        "outputPerMillionTokens": 6,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-large-2512",
+      "displayName": "Mistral Large 3",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 262144,
+      "maxOutputTokens": 262144,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.5,
+        "outputPerMillionTokens": 1.5,
+        "cacheReadPerMillionTokens": 0.05,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-large-latest",
+      "displayName": "Mistral Large 3 (latest)",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 262144,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.5,
+        "outputPerMillionTokens": 1.5,
+        "cacheReadPerMillionTokens": 0.05,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-medium-2505",
+      "displayName": "Mistral Medium 3",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 131072,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.4,
+        "outputPerMillionTokens": 2,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-medium-2508",
+      "displayName": "Mistral Medium 3.1",
+      "status": "deprecated",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 8192,
+      "replacedBy": "mistral-medium-3-5",
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.4,
+        "outputPerMillionTokens": 2,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-medium-2604",
+      "displayName": "Mistral Medium 3.5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 262144,
+      "maxOutputTokens": 262144,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.5,
+        "outputPerMillionTokens": 7.5,
+        "cacheReadPerMillionTokens": 0.15,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-medium-3-5",
+      "displayName": "Mistral Medium 3.5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 262144,
+      "maxOutputTokens": 8192,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.5,
+        "outputPerMillionTokens": 7.5,
+        "cacheReadPerMillionTokens": 0.15,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-medium-latest",
+      "displayName": "Mistral Medium (latest)",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 262144,
+      "maxOutputTokens": 262144,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.5,
+        "outputPerMillionTokens": 7.5,
+        "cacheReadPerMillionTokens": 0.15,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-nemo",
+      "displayName": "Mistral Nemo",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 128000
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-small-2506",
+      "displayName": "Mistral Small 3.2",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 16384
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-small-2603",
+      "displayName": "Mistral Small 4 (26.03)",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 262144,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.15,
+        "outputPerMillionTokens": 0.6,
+        "cacheReadPerMillionTokens": 0.015,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "mistral-small-latest",
+      "displayName": "Mistral Small 4 (latest)",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 262144,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.15,
+        "outputPerMillionTokens": 0.6,
+        "cacheReadPerMillionTokens": 0.015,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "open-mistral-7b",
+      "displayName": "Mistral 7B",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 8000,
+      "maxOutputTokens": 8000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.25,
+        "outputPerMillionTokens": 0.25,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "open-mixtral-8x22b",
+      "displayName": "Mixtral 8x22B",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 64000,
+      "maxOutputTokens": 64000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2,
+        "outputPerMillionTokens": 6,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "open-mixtral-8x7b",
+      "displayName": "Mixtral 8x7B",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 32000,
+      "maxOutputTokens": 32000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.7,
+        "outputPerMillionTokens": 0.7,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "pixtral-12b",
+      "displayName": "Pixtral 12B",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 128000
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "pixtral-large-latest",
+      "displayName": "Pixtral Large (latest)",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2,
+        "outputPerMillionTokens": 6,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "voxtral-small-latest",
+      "displayName": "Voxtral Small (latest)",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 32000,
+      "maxOutputTokens": 32000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.1,
+        "outputPerMillionTokens": 0.4,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "mistral-ai",
+      "modelId": "zai-glm-5-2",
+      "displayName": "GLM-5.2",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 131072,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.4,
+        "outputPerMillionTokens": 4.4,
+        "cacheReadPerMillionTokens": 0.14,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "moonshot-kimi",
+      "modelId": "kimi-k2.6",
+      "displayName": "Kimi K2.6",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 262144,
+      "maxOutputTokens": 262144,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.95,
+        "outputPerMillionTokens": 4,
+        "cacheReadPerMillionTokens": 0.16,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "moonshot-kimi",
+      "modelId": "kimi-k2.7-code",
+      "displayName": "Kimi K2.7 Code",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 262144,
+      "maxOutputTokens": 262144,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.71,
+        "outputPerMillionTokens": 3.5,
+        "cacheReadPerMillionTokens": 0.15,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "moonshot-kimi",
+      "modelId": "kimi-k2.7-code-highspeed",
+      "displayName": "Kimi K2.7 Code HighSpeed",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 262144,
+      "maxOutputTokens": 262144,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.9,
+        "outputPerMillionTokens": 8,
+        "cacheReadPerMillionTokens": 0.38,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "moonshot-kimi",
+      "modelId": "kimi-k3",
+      "displayName": "Kimi K3",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 1048576,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2.648138,
+        "outputPerMillionTokens": 13.282724,
+        "cacheReadPerMillionTokens": 0.302644,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-4.1",
+      "displayName": "GPT-4.1",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1047576,
+      "maxOutputTokens": 32768,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2,
+        "outputPerMillionTokens": 8,
+        "cacheReadPerMillionTokens": 0.5,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-4.1-mini",
+      "displayName": "GPT-4.1 mini",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1047576,
+      "maxOutputTokens": 32768,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.4,
+        "outputPerMillionTokens": 1.6,
+        "cacheReadPerMillionTokens": 0.1,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-4o",
+      "displayName": "GPT-4o",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2.5,
+        "outputPerMillionTokens": 10,
+        "cacheReadPerMillionTokens": 1.25,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-4o-2024-08-06",
+      "displayName": "GPT-4o (2024-08-06)",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2.5,
+        "outputPerMillionTokens": 10,
+        "cacheReadPerMillionTokens": 1.25,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-4o-2024-11-20",
+      "displayName": "GPT-4o (2024-11-20)",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2.5,
+        "outputPerMillionTokens": 10,
+        "cacheReadPerMillionTokens": 1.25,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-4o-mini",
+      "displayName": "GPT-4o mini",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.15,
+        "outputPerMillionTokens": 0.6,
+        "cacheReadPerMillionTokens": 0.075,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5",
+      "displayName": "GPT-5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 400000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.25,
+        "outputPerMillionTokens": 10,
+        "cacheReadPerMillionTokens": 0.125,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5-mini",
+      "displayName": "GPT-5 Mini",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 400000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.25,
+        "outputPerMillionTokens": 2,
+        "cacheReadPerMillionTokens": 0.025,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5-nano",
+      "displayName": "GPT-5 Nano",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 400000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.05,
+        "outputPerMillionTokens": 0.4,
+        "cacheReadPerMillionTokens": 0.005,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5-pro",
+      "displayName": "GPT-5 Pro",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 400000,
+      "maxOutputTokens": 272000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 15,
+        "outputPerMillionTokens": 120,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.1",
+      "displayName": "GPT-5.1",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 400000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.25,
+        "outputPerMillionTokens": 10,
+        "cacheReadPerMillionTokens": 0.125,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.2",
+      "displayName": "GPT-5.2",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 400000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.75,
+        "outputPerMillionTokens": 14,
+        "cacheReadPerMillionTokens": 0.175,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.2-pro",
+      "displayName": "GPT-5.2 Pro",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 400000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 21,
+        "outputPerMillionTokens": 168,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.3-codex",
+      "displayName": "GPT-5.3 Codex",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 400000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.75,
+        "outputPerMillionTokens": 14,
+        "cacheReadPerMillionTokens": 0.175,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.3-codex-spark",
+      "displayName": "GPT-5.3 Codex Spark",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 32000
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.4",
+      "displayName": "GPT-5.4",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2.5,
+        "outputPerMillionTokens": 15,
+        "cacheReadPerMillionTokens": 0.25,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.4-mini",
+      "displayName": "GPT-5.4 Mini",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 400000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.75,
+        "outputPerMillionTokens": 4.5,
+        "cacheReadPerMillionTokens": 0.075,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.4-nano",
+      "displayName": "GPT-5.4 Nano",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 400000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.2,
+        "outputPerMillionTokens": 1.25,
+        "cacheReadPerMillionTokens": 0.02,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.4-pro",
+      "displayName": "GPT-5.4 Pro",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 30,
+        "outputPerMillionTokens": 180,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.5",
+      "displayName": "GPT-5.5",
+      "status": "deprecated",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "replacedBy": "gpt-5.6-sol",
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 5,
+        "outputPerMillionTokens": 30,
+        "cacheReadPerMillionTokens": 0.5,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.5-pro",
+      "displayName": "gpt-5.5-pro",
+      "status": "deprecated",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "replacedBy": "gpt-5.6-sol",
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 30,
+        "outputPerMillionTokens": 180,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.6",
+      "displayName": "GPT-5.6",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 4,
+        "outputPerMillionTokens": 20,
+        "cacheReadPerMillionTokens": 0.4,
+        "cacheWritePerMillionTokens": 5
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.6-luna",
+      "displayName": "GPT-5.6 Luna",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.2,
+        "outputPerMillionTokens": 1.2,
+        "cacheReadPerMillionTokens": 0.02,
+        "cacheWritePerMillionTokens": 0.25
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.6-sol",
+      "displayName": "GPT-5.6 Sol",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2,
+        "outputPerMillionTokens": 10,
+        "cacheReadPerMillionTokens": 0.2,
+        "cacheWritePerMillionTokens": 2.5
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-5.6-terra",
+      "displayName": "GPT-5.6 Terra",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2,
+        "outputPerMillionTokens": 12,
+        "cacheReadPerMillionTokens": 0.2,
+        "cacheWritePerMillionTokens": 2.5
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-6-astra",
+      "displayName": "GPT-6 Astra",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 10,
+        "outputPerMillionTokens": 50,
+        "cacheReadPerMillionTokens": 1,
+        "cacheWritePerMillionTokens": 12.5
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "gpt-realtime-2.1",
+      "displayName": "GPT-Realtime-2.1",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 32000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 4,
+        "outputPerMillionTokens": 24,
+        "cacheReadPerMillionTokens": 0.4,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "o3",
+      "displayName": "o3",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 200000,
+      "maxOutputTokens": 100000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2,
+        "outputPerMillionTokens": 8,
+        "cacheReadPerMillionTokens": 0.5,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "openai",
+      "modelId": "o3-pro",
+      "displayName": "o3-pro",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 200000,
+      "maxOutputTokens": 100000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 20,
+        "outputPerMillionTokens": 80,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "xai",
+      "modelId": "grok-4.20-0309-non-reasoning",
+      "displayName": "Grok 4.20 0309 (Non-Reasoning)",
+      "status": "available",
+      "supportsReasoning": false,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 30000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.25,
+        "outputPerMillionTokens": 2.5,
+        "cacheReadPerMillionTokens": 0.2,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "xai",
+      "modelId": "grok-4.20-0309-reasoning",
+      "displayName": "Grok 4.20 0309 (Reasoning)",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 30000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.25,
+        "outputPerMillionTokens": 2.5,
+        "cacheReadPerMillionTokens": 0.2,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "xai",
+      "modelId": "grok-4.3",
+      "displayName": "Grok 4.3",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 64000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.25,
+        "outputPerMillionTokens": 2.5,
+        "cacheReadPerMillionTokens": 0.2,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "xai",
+      "modelId": "grok-4.5",
+      "displayName": "Grok 4.5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 500000,
+      "maxOutputTokens": 64000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2,
+        "outputPerMillionTokens": 6,
+        "cacheReadPerMillionTokens": 0.3,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "xai",
+      "modelId": "grok-4.6",
+      "displayName": "Grok 4.6",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 500000,
+      "maxOutputTokens": 64000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 2,
+        "outputPerMillionTokens": 6,
+        "cacheReadPerMillionTokens": 0.5,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "xai",
+      "modelId": "grok-build-0.1",
+      "displayName": "Grok Build 0.1",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 256000,
+      "maxOutputTokens": 64000,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1,
+        "outputPerMillionTokens": 2,
+        "cacheReadPerMillionTokens": 0.2,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-4.5",
+      "displayName": "GLM-4.5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 98304,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.6,
+        "outputPerMillionTokens": 2.2,
+        "cacheReadPerMillionTokens": 0.11,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-4.5-air",
+      "displayName": "GLM-4.5-Air",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 98304,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.13,
+        "outputPerMillionTokens": 0.85,
+        "cacheReadPerMillionTokens": 0.025,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-4.5-flash",
+      "displayName": "GLM-4.5-Flash",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 131072,
+      "maxOutputTokens": 98304
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-4.5v",
+      "displayName": "GLM-4.5V",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 64000,
+      "maxOutputTokens": 16384,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.6,
+        "outputPerMillionTokens": 1.8,
+        "cacheReadPerMillionTokens": 0.11,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-4.6",
+      "displayName": "GLM-4.6",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 204800,
+      "maxOutputTokens": 131072,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.43,
+        "outputPerMillionTokens": 1.75,
+        "cacheReadPerMillionTokens": 0.08,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-4.6v",
+      "displayName": "GLM-4.6V",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 128000,
+      "maxOutputTokens": 32768,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.3,
+        "outputPerMillionTokens": 0.9,
+        "cacheReadPerMillionTokens": 0.055,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-4.7",
+      "displayName": "GLM-4.7",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 204800,
+      "maxOutputTokens": 131072,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.4,
+        "outputPerMillionTokens": 1.75,
+        "cacheReadPerMillionTokens": 0.08,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-4.7-flash",
+      "displayName": "GLM-4.7-Flash",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 200000,
+      "maxOutputTokens": 131072,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.0605,
+        "outputPerMillionTokens": 0.4,
+        "cacheReadPerMillionTokens": 0,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-4.7-flashx",
+      "displayName": "GLM-4.7-FlashX",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 200000,
+      "maxOutputTokens": 131072
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-5",
+      "displayName": "GLM-5",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 204800,
+      "maxOutputTokens": 131072,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.6,
+        "outputPerMillionTokens": 1.92,
+        "cacheReadPerMillionTokens": 0.12,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-5-turbo",
+      "displayName": "GLM-5-Turbo",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 200000,
+      "maxOutputTokens": 131072,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.2,
+        "outputPerMillionTokens": 4,
+        "cacheReadPerMillionTokens": 0.24,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-5.1",
+      "displayName": "GLM-5.1",
+      "status": "deprecated",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 200000,
+      "maxOutputTokens": 131072,
+      "replacedBy": "glm-5.2",
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.966,
+        "outputPerMillionTokens": 3.036,
+        "cacheReadPerMillionTokens": 0.1794,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-5.2",
+      "displayName": "GLM-5.2",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 131072,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.4,
+        "outputPerMillionTokens": 4.4,
+        "cacheReadPerMillionTokens": 0.14,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-5.3",
+      "displayName": "GLM-5.3",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": false,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.4,
+        "outputPerMillionTokens": 4.4,
+        "cacheReadPerMillionTokens": 0.26,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-5.3-flash",
+      "displayName": "GLM-5.3-Flash",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 0.15,
+        "outputPerMillionTokens": 0.5,
+        "cacheReadPerMillionTokens": 0.03,
+        "cacheWritePerMillionTokens": 0
+      }
+    },
+    {
+      "providerId": "z-ai",
+      "modelId": "glm-5v-turbo",
+      "displayName": "GLM-5V-Turbo",
+      "status": "available",
+      "supportsReasoning": true,
+      "supportsVisionInput": true,
+      "supportsToolCalls": true,
+      "maxContextTokens": 200000,
+      "maxOutputTokens": 131072,
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": 1.2,
+        "outputPerMillionTokens": 4,
+        "cacheReadPerMillionTokens": 0.24,
+        "cacheWritePerMillionTokens": 0
+      }
+    }
+  ]
+}

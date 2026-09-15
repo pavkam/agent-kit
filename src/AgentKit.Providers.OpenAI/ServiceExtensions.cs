@@ -3,6 +3,7 @@
 
 namespace AgentKit.Providers.OpenAI;
 
+using AgentKit.Providers;
 using AgentKit.Providers.OpenAICompatible;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -180,6 +181,94 @@ public static class ServiceExtensions
                     pricing: null,
                     ExtensionData.Empty);
 
+                return new OpenAILlmModel(
+                    descriptor,
+                    OpenAIProviderDefaults.CreateProfile(options),
+                    provider.GetRequiredService<IOpenAIRequestTranslator>(),
+                    provider.GetRequiredService<IOpenAIStreamParser>(),
+                    provider.GetRequiredKeyedService<IProviderCredentialSource>(OpenAIProviderDefaults.ProviderId),
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<TimeProvider>());
+            });
+
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one OpenAI conversational model from the bundled
+        /// <see cref="KnownModelCatalog"/>: both the <see cref="ILlmModel"/> adapter
+        /// and the matching catalog descriptor, built from the model's published
+        /// limits, capabilities, and list prices.
+        /// </summary>
+        /// <param name="alias">The application-facing selection key for this model.</param>
+        /// <param name="modelId">OpenAI's own model identifier, such as <c>"gpt-4o-mini"</c>; it must exist in <see cref="KnownModelCatalog.Default"/>.</param>
+        /// <param name="catalog">The catalog to consult, or <see langword="null"/> for <see cref="KnownModelCatalog.Default"/>.</param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="modelId"/> is not a known OpenAI model.</exception>
+        /// <remarks>
+        /// <para>
+        /// This is the one-call form of <c>AddOpenAILlmModel(ModelDescriptor)</c> followed by
+        /// <c>AddModelDescriptors</c> with an identical descriptor. Both registrations
+        /// are additive; the descriptor source is keyed <c>openai.known/{alias}</c>.
+        /// <see cref="AddOpenAI"/> must be called first and <c>AddAgentProviders</c>
+        /// must be registered for the descriptor to be published.
+        /// </para>
+        /// <para>
+        /// The catalog is reference data with stated provenance, not runtime
+        /// discovery: it records what the vendor published at import time. A model
+        /// the catalog does not know can still be registered explicitly with
+        /// <c>AddOpenAILlmModel(alias, modelId, capabilities, limits)</c>.
+        /// </para>
+        /// </remarks>
+        public IServiceCollection AddOpenAIKnownLlmModel(
+            ModelAlias alias,
+            ModelId modelId,
+            KnownModelCatalog? catalog = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentException.ThrowIfNullOrWhiteSpace(alias.Value, nameof(alias));
+            ArgumentException.ThrowIfNullOrWhiteSpace(modelId.Value, nameof(modelId));
+
+            catalog ??= KnownModelCatalog.Default;
+            if (!catalog.TryFind(OpenAIProviderDefaults.ProviderId, modelId, out var known))
+            {
+                throw new ArgumentException(
+                    $"'{modelId.Value}' is not an OpenAI model in the known-model catalog; register it explicitly with {nameof(AddOpenAILlmModel)}.",
+                    nameof(modelId));
+            }
+
+            var descriptor = known.ToDescriptor(alias, OpenAIProviderDefaults.ApiFamily, OpenAIProviderDefaults.DefaultCapabilities);
+            _ = services.AddOpenAILlmModel(descriptor);
+            _ = services.AddModelDescriptors(new ModelDescriptorSourceId($"openai.known/{alias.Value}"), [descriptor]);
+            return services;
+        }
+
+        /// <summary>
+        /// Registers one OpenAI conversational model from a complete descriptor as an
+        /// additional <see cref="ILlmModel"/> implementation.
+        /// </summary>
+        /// <param name="descriptor">The exact descriptor the adapter will serve; it must name the OpenAI provider and API family.</param>
+        /// <returns>The same <paramref name="services"/> instance, so calls can be chained.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="descriptor"/> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="descriptor"/> names another provider or API family.</exception>
+        /// <remarks>
+        /// The adapter rejects a request whose selected descriptor differs from the one it was
+        /// registered with, so publish this same instance to the catalog (for example through
+        /// <c>AddModelDescriptors</c>) rather than rebuilding an equivalent one. Additive; <see cref="AddOpenAI"/> must be called first.
+        /// </remarks>
+        public IServiceCollection AddOpenAILlmModel(ModelDescriptor descriptor)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(descriptor);
+            if (descriptor.ProviderId != OpenAIProviderDefaults.ProviderId || descriptor.ApiFamily != OpenAIProviderDefaults.ApiFamily)
+            {
+                throw new ArgumentException("The descriptor must name the OpenAI provider and chat-completions API family.", nameof(descriptor));
+            }
+
+            _ = services.AddSingleton<ILlmModel>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptions<OpenAIProviderOptions>>().Value;
                 return new OpenAILlmModel(
                     descriptor,
                     OpenAIProviderDefaults.CreateProfile(options),

@@ -105,30 +105,26 @@ services.AddAgentLoop();
 services.AddAgentTools();
 ```
 
-The model is registered in two halves: the concrete OpenAI adapter under one
-alias, and a provider-neutral descriptor that tells the catalog what that alias
-can do. The agent selects the alias, never the vendor:
+The model is registered under one alias. The agent selects the alias, never the
+vendor. `AddOpenAIKnownLlmModel` registers both the concrete OpenAI adapter and
+the provider-neutral catalog descriptor for it, taking the model's context
+window, output limit, capabilities, and list prices from the
+[known-model catalog](../src/AgentKit.Providers/README.md#known-model-catalog)
+bundled in `AgentKit.Providers`:
 
 ```csharp
 services.AddAgentProviders();
 services.AddOpenAI();
 services.AddOpenAIApiKeyCredential(apiKey);
-services.AddOpenAILlmModel(alias, modelId, OpenAIProviderDefaults.DefaultCapabilities);
-services.AddModelDescriptors(
-    new ModelDescriptorSourceId("quickstart"),
-    [
-        new ModelDescriptor(
-            alias,
-            OpenAIProviderDefaults.ProviderId,
-            OpenAIProviderDefaults.ApiFamily,
-            modelId,
-            deploymentId: null,
-            OpenAIProviderDefaults.DefaultCapabilities,
-            OpenAIProviderDefaults.DefaultLimits,
-            pricing: null,
-            ExtensionData.Empty),
-    ]);
+services.AddOpenAIKnownLlmModel(alias, modelId);
 ```
+
+A model the catalog does not know is registered explicitly instead: call
+`AddOpenAILlmModel(alias, modelId, capabilities, limits)` and publish a matching
+`ModelDescriptor` through `AddModelDescriptors`. For any other provider, look
+the model up with `KnownModelCatalog.Default.TryFind`, build the descriptor with
+`KnownModel.ToDescriptor(alias, apiFamily, baselineCapabilities)` using that
+provider package's defaults, and register it the same way.
 
 Finally, one conversation with one agent. The options carry the identities from
 above, the session profile that selects the in-memory store, the model alias,

@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+    <ProjectReference Include="../../src/AgentKit.Providers/AgentKit.Providers.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Providers.OpenAICompatible/AgentKit.Providers.OpenAICompatible.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Providers.OpenAI/AgentKit.Providers.OpenAI.csproj"/>
     <ProjectReference Include="../../src/AgentKit.Providers.OpenRouter/AgentKit.Providers.OpenRouter.csproj"/>

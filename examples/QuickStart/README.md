@@ -20,13 +20,13 @@ printed as the assistant text).
 
 [`QuickStartAgent.cs`](QuickStartAgent.cs) registers, in order:
 
-| Concern      | Registrations                                                                                             |
-| ------------ | --------------------------------------------------------------------------------------------------------- |
-| Security     | `AddInMemorySecurityGrantStore`, `AddStandaloneSecurityProfile`, `AddAllowAllSecurityPolicy`              |
-| Session      | `AddAgentSession`, `AddInMemorySessionStore`, `AddInMemorySessionDirectory`                               |
-| Turn loop    | `AddAgentContext`, `AddAgentOutput`, `AddAgentLoop`, `AddAgentTools`                                      |
-| Model        | `AddAgentProviders`, `AddOpenAI`, `AddOpenAIApiKeyCredential`, `AddOpenAILlmModel`, `AddModelDescriptors` |
-| Conversation | `AddConversationSession`                                                                                  |
+| Concern      | Registrations                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------- |
+| Security     | `AddInMemorySecurityGrantStore`, `AddStandaloneSecurityProfile`, `AddAllowAllSecurityPolicy` |
+| Session      | `AddAgentSession`, `AddInMemorySessionStore`, `AddInMemorySessionDirectory`                  |
+| Turn loop    | `AddAgentContext`, `AddAgentOutput`, `AddAgentLoop`, `AddAgentTools`                         |
+| Model        | `AddAgentProviders`, `AddOpenAI`, `AddOpenAIApiKeyCredential`, `AddOpenAIKnownLlmModel`      |
+| Conversation | `AddConversationSession`                                                                     |
 
 `IConversationSession.SendAsync` then creates the session on first use, admits
 the user message, runs the agent loop, and returns the committed events.

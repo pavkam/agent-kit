@@ -37,8 +37,7 @@ services.AddAgentTools();
 services.AddAgentProviders();                                   // model
 services.AddOpenAI();
 services.AddOpenAIApiKeyCredential(apiKey);
-services.AddOpenAILlmModel(alias, modelId, OpenAIProviderDefaults.DefaultCapabilities);
-services.AddModelDescriptors(new ModelDescriptorSourceId("app"), [descriptor]);
+services.AddOpenAIKnownLlmModel(alias, new ModelId("gpt-4o-mini"));
 
 services.AddConversationSession(options => { /* identities, profile, alias, instructions, limits */ });
 

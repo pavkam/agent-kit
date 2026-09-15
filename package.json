@@ -6,7 +6,8 @@
   "scripts": {
     "format": "prettier --write \"**/*.{md,yml,yaml,json,jsonc}\"",
     "format:check": "prettier --check \"**/*.{md,yml,yaml,json,jsonc}\"",
-    "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#artifacts\" \"#node_modules\" \"#.worktrees\" \"#docs/superpowers\""
+    "lint:markdown": "markdownlint-cli2 \"**/*.md\" \"#artifacts\" \"#node_modules\" \"#.worktrees\" \"#docs/superpowers\"",
+    "models:import": "node scripts/import-known-models.mjs"
   },
   "devDependencies": {
     "markdownlint-cli2": "0.23.2",

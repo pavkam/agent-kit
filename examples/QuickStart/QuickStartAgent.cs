@@ -51,25 +51,12 @@ internal static class QuickStartAgent
         _ = services.AddAgentLoop();
         _ = services.AddAgentTools();
 
-        // The model: OpenAI, exposed to the agent under one alias.
+        // The model: OpenAI, exposed to the agent under one alias. The bundled known-model catalog
+        // supplies the model's published limits, capabilities, and list prices.
         _ = services.AddAgentProviders();
         _ = services.AddOpenAI();
         _ = services.AddOpenAIApiKeyCredential(apiKey);
-        _ = services.AddOpenAILlmModel(alias, modelId, OpenAIProviderDefaults.DefaultCapabilities);
-        _ = services.AddModelDescriptors(
-            new ModelDescriptorSourceId("quickstart"),
-            [
-                new ModelDescriptor(
-                    alias,
-                    OpenAIProviderDefaults.ProviderId,
-                    OpenAIProviderDefaults.ApiFamily,
-                    modelId,
-                    deploymentId: null,
-                    OpenAIProviderDefaults.DefaultCapabilities,
-                    OpenAIProviderDefaults.DefaultLimits,
-                    pricing: null,
-                    ExtensionData.Empty),
-            ]);
+        _ = services.AddOpenAIKnownLlmModel(alias, modelId);
 
         // One conversation with one agent: session creation, message admission, and the
         // agent-loop run happen inside a single SendAsync call.

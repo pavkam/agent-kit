@@ -8,10 +8,25 @@ models have a separate registration.
 
 ## Use this project
 
-Start with `AddOpenAI`, `AddOpenAILlmModel`, `AddOpenAIEmbeddingModel` in
-[ServiceExtensions.cs](ServiceExtensions.cs). Read the overloads and XML
-documentation for required collaborators, lifetimes, and duplicate-registration
-behavior.
+Start with `AddOpenAI`, `AddOpenAIApiKeyCredential`, and
+`AddOpenAIKnownLlmModel` in [ServiceExtensions.cs](ServiceExtensions.cs):
+
+```csharp
+services.AddAgentProviders();
+services.AddOpenAI();
+services.AddOpenAIApiKeyCredential(apiKey);
+services.AddOpenAIKnownLlmModel(new ModelAlias("assistant"), new ModelId("gpt-4o-mini"));
+```
+
+`AddOpenAIKnownLlmModel` registers the adapter and publishes an identical
+catalog descriptor whose limits, capabilities, and list prices come from the
+[known-model catalog](../AgentKit.Providers/README.md#known-model-catalog). For
+a model the catalog does not know, or to override its facts, use
+`AddOpenAILlmModel(alias, modelId, capabilities, limits)` and publish a matching
+descriptor with `AddModelDescriptors`; the adapter rejects a request whose
+selected descriptor differs from its own. `AddOpenAIEmbeddingModel` registers
+embedding models independently. Read the overloads and XML documentation for
+required collaborators, lifetimes, and duplicate-registration behavior.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is

@@ -94,6 +94,12 @@ formatting limited to your change if a repository-wide formatter would rewrite
 unrelated files. The [testing guide](docs/testing/index.md) explains focused
 runs, conformance, coverage, and API snapshots.
 
+The bundled known-model catalog in `AgentKit.Providers` is generated, not
+hand-edited. To pick up newly released models or price changes, run
+`npm run models:import`, review the diff to
+`src/AgentKit.Providers/Resources/known-models.json`, and let
+`KnownModelCatalogTests` validate it.
+
 Public API changes require compatibility review. Follow the
 [snapshot update instructions](tests/AgentKit.Compatibility.Tests/README.md)
 only for an intentional change; describe breaking changes and migration steps in

@@ -78,12 +78,12 @@ services.AddAgentOutput();
 services.AddAgentLoop();
 services.AddAgentTools();
 
-// The model, exposed to the agent under one alias.
+// The model, exposed to the agent under one alias. Limits, capabilities, and
+// list prices come from the bundled known-model catalog.
 services.AddAgentProviders();
 services.AddOpenAI();
 services.AddOpenAIApiKeyCredential(apiKey);
-services.AddOpenAILlmModel(alias, modelId, OpenAIProviderDefaults.DefaultCapabilities);
-services.AddModelDescriptors(new ModelDescriptorSourceId("quickstart"), [descriptor]);
+services.AddOpenAIKnownLlmModel(alias, new ModelId("gpt-4o-mini"));
 
 // One conversation with one agent.
 services.AddConversationSession(options =>
