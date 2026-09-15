@@ -14,6 +14,28 @@ Start with `AddContextCompaction` in
 documentation for required collaborators, lifetimes, and duplicate-registration
 behavior.
 
+## Behavioral guarantees
+
+- `SourceThrough` is an eligibility bound: the compactor reads the branch to
+  its tip, hands collaborators only entries at or below the bound, and
+  allocates the activated entry's sequence after the real tip.
+- Source pages are pinned to one `SessionReadSnapshot`; a request whose
+  `SourceVersion` differs from the observed version returns
+  `CompactionConflict` before any strategy runs.
+- `CompactionId` is reconciled by identity: a replayed request, a racing
+  duplicate, or a lost append response resolves to the committed record
+  instead of a reused-idempotency-key failure.
+- Cancellation returns `CompactionCancelled` with a truthful
+  `CompactionCommitState`; a committed record is never rolled back.
+- The validator re-derives covered identities, range, retained suffix start,
+  and manifest claims from the source before activation.
+- The structural cut selector prefers a boundary whose retained suffix begins
+  at a user turn and never splits a recorded causal pairing.
+- `Deadline` is enforced against the injected `TimeProvider` before any
+  session I/O; `TargetInputTokens` is advisory.
+- `CompactionFailure.Retryable` is `true` only for a transient source read or a
+  drifted continuation snapshot.
+
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
 described in the [composition guide](../../docs/guides/composition.md).
