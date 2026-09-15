@@ -355,6 +355,13 @@ namespace AgentKit
     {
         protected AgentRunOutcome(AgentKit.AgentRunOutcome original) { }
     }
+    public sealed class AgentRunOutputLengthLimitReached : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunOutputLengthLimitReached>
+    {
+        public AgentRunOutputLengthLimitReached(AgentKit.ModelRequestId modelRequestId, bool hasPartialOutput, string safeMessage) { }
+        public bool HasPartialOutput { get; }
+        public AgentKit.ModelRequestId ModelRequestId { get; }
+        public string SafeMessage { get; }
+    }
     public sealed class AgentRunOutputRejected : AgentKit.AgentRunOutcome, System.IEquatable<AgentKit.AgentRunOutputRejected>
     {
         public AgentRunOutputRejected(AgentKit.OutputConfigurationRejected rejection) { }

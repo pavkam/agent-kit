@@ -989,6 +989,63 @@ public sealed class DefaultAgentLoopTests
         result.Outcome.ShouldNotBeOfType<AgentRunCompleted>();
     }
 
+    [Theory]
+    [InlineData(NormalizedStopReason.Cancelled, typeof(AgentRunCancelled))]
+    [InlineData(NormalizedStopReason.Length, typeof(AgentRunOutputLengthLimitReached))]
+    [InlineData(NormalizedStopReason.Deferred, typeof(AgentRunInvalidState))]
+    [InlineData(NormalizedStopReason.Pending, typeof(AgentRunFailed))]
+    [InlineData(NormalizedStopReason.Error, typeof(AgentRunFailed))]
+    [InlineData((NormalizedStopReason) 99, typeof(AgentRunFailed))]
+    public async Task RunAsync_WhenCompletedAttemptReportsUnacceptedStopReason_SettlesWithTheMatchingTypedOutcome(
+        NormalizedStopReason stopReason, Type expectedOutcome)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out var invoker, _ => new ModelAttemptCompleted(TestFactory.Response(
+            requestId, [new TextPart("partial", TextSemantics.Plain, ExtensionData.Empty)], stopReason)));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType(expectedOutcome);
+        var interrupted = result.NewMessages.ShouldHaveSingleItem().ShouldBeOfType<AssistantMessage>();
+        interrupted.State.ShouldBe(MessageState.Interrupted);
+        interrupted.Response.StopReason.ShouldBe(stopReason);
+        invoker.ReceivedRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCompletedAttemptReportsLength_ReportsTheRequestIdentityAndPartialOutput()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => new ModelAttemptCompleted(TestFactory.Response(
+            requestId, [new TextPart("truncated", TextSemantics.Plain, ExtensionData.Empty)], NormalizedStopReason.Length)));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        var limit = result.Outcome.ShouldBeOfType<AgentRunOutputLengthLimitReached>();
+        limit.ModelRequestId.ShouldBe(requestId);
+        limit.HasPartialOutput.ShouldBeTrue();
+        limit.SafeMessage.ShouldNotContain("truncated");
+    }
+
+    [Theory]
+    [InlineData(NormalizedStopReason.Pending)]
+    [InlineData(NormalizedStopReason.Error)]
+    public async Task RunAsync_WhenCompletedAttemptReportsNonTerminalStopReason_FailsAsProtocolViolation(NormalizedStopReason stopReason)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => new ModelAttemptCompleted(TestFactory.Response(requestId, [], stopReason)));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        var failed = result.Outcome.ShouldBeOfType<AgentRunFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.ProviderId.ShouldBe(new ProviderId("test-provider"));
+        result.NewMessages.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task RunAsync_WhenToolInvokerThrowsNonCancellationException_EveryRequestedCallStillReachesATerminalRecord()
     {

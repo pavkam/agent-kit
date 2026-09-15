@@ -28,10 +28,15 @@ using Microsoft.Extensions.Options;
 /// <see cref="ISessionCoordinator.AppendAsync"/> guarded by the branch's
 /// last-observed <see cref="SessionVersion"/>, so a concurrent writer to the
 /// same branch is detected as a conflict rather than silently lost. When a
-/// model attempt fails or is cancelled after producing partial output, that
-/// output is first committed as an <see cref="MessageState.Interrupted"/>
-/// <see cref="AssistantMessage"/> so it is never discarded, before the run
-/// settles with <see cref="AgentRunFailed"/> or <see cref="AgentRunCancelled"/>.
+/// model attempt fails or is cancelled after producing partial output, or a
+/// completed attempt reports a stop reason other than
+/// <see cref="NormalizedStopReason.Completed"/> or
+/// <see cref="NormalizedStopReason.ToolUse"/>, that output is first committed
+/// as an <see cref="MessageState.Interrupted"/> <see cref="AssistantMessage"/>
+/// so it is never discarded, before the run settles with the typed outcome
+/// naming the cause: <see cref="AgentRunFailed"/>, <see cref="AgentRunCancelled"/>,
+/// <see cref="AgentRunOutputLengthLimitReached"/>, or <see cref="AgentRunInvalidState"/>
+/// for a deferral this loop cannot resume.
 /// </para>
 /// <para>
 /// Caller cancellation propagates as <see cref="OperationCanceledException"/>
@@ -555,20 +560,16 @@ public sealed class DefaultAgentLoop: IAgentLoop
         CancellationToken cancellationToken)
     {
         // A terminal is accepted as a complete turn only when the provider reports it finished by choice
-        // (Completed) or by requesting tools (ToolUse). Length, Pending, Error, or Cancelled terminals are
-        // truthful partial output: they are preserved as an Interrupted message and settle the run as a typed
-        // failure rather than pretending the agent chose to finish.
+        // (Completed) or by requesting tools (ToolUse). Every other terminal is truthful partial output: it is
+        // preserved as an Interrupted message and the run settles with the typed outcome matching the stop reason
+        // rather than pretending the agent chose to finish or collapsing every cause into one unknown failure.
         if (response.StopReason is not (NormalizedStopReason.Completed or NormalizedStopReason.ToolUse))
         {
             LoopLog.ModelResponseNotAccepted(_logger, request.RunId, turnId, $"stop reason {response.StopReason}");
             return await SettleInterruptedAsync(
                 request, model, sourceCursor, turnSessionContext, turnCorrelation, turnId, response.RequestId,
                 response.Parts, response.Usage, response.StopReason, response.Identity.RequestId,
-                new AgentRunFailed(new ProviderFailure(
-                    ProviderFailureKind.Unknown, response.Identity.ProviderId, response.Identity.RequestId,
-                    statusCode: null, providerCode: null, retryAfter: null,
-                    $"The model stopped before completing its output (stop reason: {response.StopReason}).",
-                    diagnosticCause: null, ExtensionData.Empty)),
+                OutcomeForUnacceptedStop(response),
                 committedMessages, currentVersion).ConfigureAwait(false);
         }
 
@@ -927,6 +928,49 @@ public sealed class DefaultAgentLoop: IAgentLoop
             appended.NewVersion,
             committedSequence);
         return TurnOutcome.Continue(nextCursor, [assistantMessage, .. appendAttempt.InterleavedMessages, toolMessage]);
+    }
+
+    /// <summary>
+    /// Maps a completed attempt whose terminal stop reason is neither <see cref="NormalizedStopReason.Completed"/>
+    /// nor <see cref="NormalizedStopReason.ToolUse"/> to the typed run outcome that truthfully names its cause.
+    /// </summary>
+    /// <param name="response">The completed response carrying the unaccepted stop reason.</param>
+    /// <returns>
+    /// <see cref="AgentRunCancelled"/> for <see cref="NormalizedStopReason.Cancelled"/>;
+    /// <see cref="AgentRunOutputLengthLimitReached"/> for <see cref="NormalizedStopReason.Length"/>;
+    /// <see cref="AgentRunInvalidState"/> for <see cref="NormalizedStopReason.Deferred"/>, which this loop has no
+    /// deferred-operation handoff to honour; and <see cref="AgentRunFailed"/> with
+    /// <see cref="ProviderFailureKind.ProtocolViolation"/> for <see cref="NormalizedStopReason.Pending"/>,
+    /// <see cref="NormalizedStopReason.Error"/>, or an undefined value, none of which a completed attempt may report.
+    /// </returns>
+    private static AgentRunOutcome OutcomeForUnacceptedStop(ModelResponse response)
+    {
+        Debug.Assert(response is not null, "A completed attempt always carries a response.");
+        Debug.Assert(
+            response.StopReason is not (NormalizedStopReason.Completed or NormalizedStopReason.ToolUse),
+            "Accepted stop reasons never reach the unaccepted-stop mapping.");
+
+        return response.StopReason switch
+        {
+            NormalizedStopReason.Cancelled => new AgentRunCancelled(
+                "The model reported that its response was cancelled before it completed."),
+            NormalizedStopReason.Length => new AgentRunOutputLengthLimitReached(
+                response.RequestId,
+                hasPartialOutput: !response.Parts.IsEmpty,
+                "The model reached its output length limit before it finished its response."),
+            NormalizedStopReason.Deferred => new AgentRunInvalidState(
+                "The model reported a deferred response, but this loop has no deferred-operation handoff to resume it."),
+            NormalizedStopReason.Pending or NormalizedStopReason.Error => ProtocolViolation(
+                response, $"The provider reported a completed attempt with a non-terminal stop reason ({response.StopReason})."),
+            NormalizedStopReason.Completed or NormalizedStopReason.ToolUse => throw new InvalidOperationException(
+                "Accepted stop reasons never reach the unaccepted-stop mapping."),
+            _ => ProtocolViolation(
+                response, $"The provider reported a completed attempt with an undefined stop reason ({response.StopReason})."),
+        };
+
+        static AgentRunFailed ProtocolViolation(ModelResponse response, string safeMessage) => new(new ProviderFailure(
+            ProviderFailureKind.ProtocolViolation, response.Identity.ProviderId, response.Identity.RequestId,
+            statusCode: null, providerCode: null, retryAfter: null, safeMessage, diagnosticCause: null, ExtensionData.Empty));
     }
 
     /// <summary>Builds a settled, cancelled terminal result for a tool call that was interrupted or never attempted.</summary>

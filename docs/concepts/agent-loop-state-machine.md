@@ -176,6 +176,15 @@ The loop terminates with a typed outcome for successful output, idle completion,
 caller stop policy, cancellation, deadline, budget limit, policy halt,
 unsupported capability, invalid state, or failure.
 
+A completed attempt is accepted as a turn only for the `Completed` and `ToolUse`
+normalized stop reasons. Every other terminal stop reason preserves partial
+output as an interrupted message and settles with the outcome that names its
+cause: `Cancelled` settles as cancelled, `Length` as a typed output-length
+limit, `Deferred` as invalid state when the loop has no deferred-operation
+handoff, and `Pending` or `Error` on a completed attempt as a provider protocol
+violation. The loop MUST NOT collapse distinct stop causes into one unknown
+failure.
+
 A turn limit SHOULD allow the final model request to receive a concise “final
 response now” instruction with tools disabled when configured. It MUST not
 silently pretend the agent chose to finish.
