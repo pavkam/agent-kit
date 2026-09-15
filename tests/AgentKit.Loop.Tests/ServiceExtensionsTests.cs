@@ -77,6 +77,35 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public void AddAgentLoop_WhenCalled_ResolvesDefaultAgentLoopWithTheKeyedContinuationPolicy()
+    {
+        var services = BuildComposableServices();
+        var policy = new ScriptedRunContinuationPolicy(static _ => throw new NotSupportedException());
+        _ = services.AddKeyedSingleton<IRunContinuationPolicy>(AgentLoopDefaults.ContinuationPolicyKey.Value, policy);
+
+        _ = services.AddAgentLoop();
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IAgentLoop>().ShouldBeOfType<DefaultAgentLoop>();
+        provider.GetRequiredKeyedService<IRunContinuationPolicy>(AgentLoopDefaults.ContinuationPolicyKey.Value)
+            .ShouldBeSameAs(policy);
+    }
+
+    [Fact]
+    public void AddAgentLoop_WhenNoPolicyIsRegisteredUnderTheDefaultKey_ResolvesTheBuiltInPolicyForTheLoop()
+    {
+        var services = BuildComposableServices();
+
+        _ = services.AddAgentLoop();
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IAgentLoop>().ShouldBeOfType<DefaultAgentLoop>();
+        _ = provider.GetRequiredKeyedService<IRunContinuationPolicy>(AgentLoopDefaults.ContinuationPolicyKeyValue)
+            .ShouldBeOfType<DefaultRunContinuationPolicy>();
+        AgentLoopDefaults.ContinuationPolicyKey.Value.ShouldBe(AgentLoopDefaults.ContinuationPolicyKeyValue);
+    }
+
+    [Fact]
     public void AddAgentLoop_WhenHistoryReadPageSizeIsNotPositive_FailsValidationOnAccess()
     {
         var services = BuildComposableServices();

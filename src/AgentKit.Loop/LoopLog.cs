@@ -112,6 +112,15 @@ internal static partial class LoopLog
     [LoggerMessage(1062, LogLevel.Error, "Continuation evaluation for run {RunId} failed with error type {ErrorType}.")]
     internal static partial void ContinuationFailed(ILogger logger, RunId runId, string errorType);
 
+    /// <summary>Logs the loop applying one continuation proposal to its own transition, without proposal content.</summary>
+    [LoggerMessage(1063, LogLevel.Debug, "Run {RunId} turn {TurnId} applied continuation decision {Decision}.")]
+    internal static partial void ContinuationDecisionApplied(ILogger logger, RunId runId, TurnId turnId, string decision);
+
+    /// <summary>Logs a tool batch continuing under the canonical committed-tool-results rule because its single-entry projection cannot be described to the continuation policy.</summary>
+    /// <remarks>The reduced loop commits one tool message per batch; the continuation contract requires a distinct terminal-record identity per call, which only a single-call batch can supply.</remarks>
+    [LoggerMessage(1064, LogLevel.Information, "Run {RunId} turn {TurnId} committed {ToolCount} tool results in one projection entry; the continuation policy was not consulted and the turn continues for interpretation.")]
+    internal static partial void ContinuationPolicyBypassedForBatchProjection(ILogger logger, RunId runId, TurnId turnId, int toolCount);
+
     /// <summary>Logs an isolated run-observer failure without recording event content.</summary>
     [LoggerMessage(1070, LogLevel.Warning, "Run observer for run {RunId} failed while receiving {EventType}; the run continues.")]
     internal static partial void RunObserverFailed(ILogger logger, RunId runId, string eventType);

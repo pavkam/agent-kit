@@ -51,6 +51,24 @@ The runtime does not admit input, publish output, select history items, select a
 model, translate provider wire formats, authorize tools, or implement storage.
 It sequences the components that do.
 
+The reduced first-party loop consults the selected `IRunContinuationPolicy`
+after every committed turn: after a no-tool assistant commit with an empty
+cause set, and after the tool-result commit with a
+`CommittedToolResultsContinuationCause`. `ContinueRun` drives another turn while
+one remains and otherwise settles as the typed turn limit, because a policy
+cannot widen a hard limit; `CompleteRun` and `HaltRun` settle with the proposed
+outcome. The policy is resolved from the keyed registration named by
+`AgentLoopDefaults.ContinuationPolicyKey`, so registering a custom policy under
+that key before `AddAgentLoop` replaces the built-in decision. Until the loop
+carries an explicit lane and policy snapshot, it drives one implicit lane per
+branch (the lane identity is the branch identity), reports the turn number as
+its operation-state revision, and names a single fixed policy version. The
+reduced loop projects each tool batch into one tool-message entry; because the
+committed-turn boundary requires one distinct terminal-record identity per
+call, a batch of more than one call currently continues under the canonical
+committed-tool-results rule without a policy call, and the loop logs that
+bypass.
+
 Every commit is guarded by the branch version the loop last observed. When a
 concurrent writer advanced the branch, the loop re-reads the interleaved range
 under one pinned snapshot before retrying. An assistant response was generated

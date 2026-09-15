@@ -27,7 +27,12 @@ public static class ServiceExtensions
         /// <returns>The same service collection, for chaining.</returns>
         /// <remarks>
         /// Idempotent: every registration here uses <c>TryAdd</c> semantics,
-        /// so calling this more than once keeps the first registration.
+        /// so calling this more than once keeps the first registration. The
+        /// loop consults the <see cref="IRunContinuationPolicy"/> registered
+        /// under <see cref="AgentLoopDefaults.ContinuationPolicyKey"/> after
+        /// every committed turn; registering a custom policy under that key
+        /// before calling this method replaces the built-in
+        /// <see cref="DefaultRunContinuationPolicy"/>.
         /// </remarks>
         public IServiceCollection AddAgentLoop(Action<AgentLoopOptions>? configure = null)
         {

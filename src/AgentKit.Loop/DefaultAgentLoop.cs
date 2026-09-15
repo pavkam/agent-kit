@@ -3,6 +3,7 @@
 
 namespace AgentKit.Loop;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 /// <summary>
@@ -57,6 +58,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
     private readonly IModelCatalog _modelCatalog;
     private readonly IModelSelector _modelSelector;
     private readonly ILlmModelResolver _llmModelResolver;
+    private readonly IRunContinuationPolicy _continuationPolicy;
     private readonly IIdentifierGenerator<OperationId> _operationIds;
     private readonly IIdentifierGenerator<TurnId> _turnIds;
     private readonly IIdentifierGenerator<ModelRequestId> _modelRequestIds;
@@ -79,6 +81,12 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// </remarks>
     private const int _maxAppendConflictRetries = 5;
 
+    /// <summary>
+    /// The single immutable run-policy version of this reduced loop. Its continuation-relevant behaviour is fixed
+    /// in code rather than compiled from a per-agent policy snapshot, so every evaluation names the same version.
+    /// </summary>
+    private static readonly RunPolicyVersion _policyVersion = new(1);
+
     /// <summary>Initializes a new instance of the <see cref="DefaultAgentLoop"/> class.</summary>
     /// <param name="sessionCoordinator">Loads eligible history and commits every produced message.</param>
     /// <param name="securityProfileSelector">Captures fresh authorization for each newly identified run operation.</param>
@@ -87,6 +95,10 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <param name="modelCatalog">Supplies the engine-wide versioned view of configured models.</param>
     /// <param name="modelSelector">Chooses one configured model for each run.</param>
     /// <param name="llmModelResolver">Resolves the chosen descriptor to its provider adapter.</param>
+    /// <param name="continuationPolicy">
+    /// Decides, at every committed-turn boundary, whether the run continues, completes, or halts. Resolved from
+    /// the keyed registration named by <see cref="AgentLoopDefaults.ContinuationPolicyKeyValue"/>.
+    /// </param>
     /// <param name="operationIds">Generates the run's causal operation identity.</param>
     /// <param name="turnIds">Generates each turn's identity.</param>
     /// <param name="modelRequestIds">Generates each model request's identity.</param>
@@ -107,6 +119,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         IModelCatalog modelCatalog,
         IModelSelector modelSelector,
         ILlmModelResolver llmModelResolver,
+        [FromKeyedServices(AgentLoopDefaults.ContinuationPolicyKeyValue)] IRunContinuationPolicy continuationPolicy,
         IIdentifierGenerator<OperationId> operationIds,
         IIdentifierGenerator<TurnId> turnIds,
         IIdentifierGenerator<ModelRequestId> modelRequestIds,
@@ -123,6 +136,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         ArgumentNullException.ThrowIfNull(modelCatalog);
         ArgumentNullException.ThrowIfNull(modelSelector);
         ArgumentNullException.ThrowIfNull(llmModelResolver);
+        ArgumentNullException.ThrowIfNull(continuationPolicy);
         ArgumentNullException.ThrowIfNull(operationIds);
         ArgumentNullException.ThrowIfNull(turnIds);
         ArgumentNullException.ThrowIfNull(modelRequestIds);
@@ -138,6 +152,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _modelCatalog = modelCatalog;
         _modelSelector = modelSelector;
         _llmModelResolver = llmModelResolver;
+        _continuationPolicy = continuationPolicy;
         _operationIds = operationIds;
         _turnIds = turnIds;
         _modelRequestIds = modelRequestIds;
@@ -668,17 +683,21 @@ public sealed class DefaultAgentLoop: IAgentLoop
         committedMessages.Add(assistantMessage);
 
         var toolCalls = requestedCalls;
+        var committedSequence = appended.CommittedEntries[^1].Sequence;
 
         return toolCalls switch
         {
-            { IsEmpty: true } => TurnOutcome.Settled(new AgentRunCompleted(assistantMessage), currentVersion),
+            { IsEmpty: true } => await DecideContinuationAsync(
+                request, turnCorrelation, turn, assistantMessage, [], assistantEntryId,
+                NextCursor(sourceCursor, currentVersion, committedSequence), [assistantMessage], currentVersion, cancellationToken)
+                .ConfigureAwait(false),
             _ when turn == request.MaxTurns => await SettleRejectedAtTurnLimitAsync(
                 request, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId, toolCalls,
-                committedMessages, currentVersion, appended.CommittedEntries[^1].Sequence)
+                committedMessages, currentVersion, committedSequence)
                 .ConfigureAwait(false),
             _ => await InvokeToolsAsync(
-                request, sourceCursor, turnSessionContext, turnCorrelation, turnId, assistantEntryId, assistantMessage, toolCalls,
-                committedMessages, currentVersion, appended.CommittedEntries[^1].Sequence, cancellationToken)
+                request, sourceCursor, turnSessionContext, turnCorrelation, turnId, turn, assistantEntryId, assistantMessage, toolCalls,
+                committedMessages, currentVersion, committedSequence, cancellationToken)
                 .ConfigureAwait(false),
         };
     }
@@ -798,8 +817,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
         SessionOperationContext turnSessionContext,
         InRunOperationCorrelation turnCorrelation,
         TurnId turnId,
+        int turn,
         SessionEntryId assistantEntryId,
-        AgentMessage assistantMessage,
+        AssistantMessage assistantMessage,
         ImmutableArray<ToolCallPart> toolCalls,
         ImmutableArray<AgentMessage>.Builder committedMessages,
         SessionVersion currentVersion,
@@ -936,15 +956,142 @@ public sealed class DefaultAgentLoop: IAgentLoop
         // The next cursor covers everything through the committed tool message, so any message a concurrent
         // writer interleaved between the assistant request and its results must become visible to the next turn
         // in sequence order; otherwise the cursor would claim history the next request never saw.
-        var committedSequence = appended.CommittedEntries[^1].Sequence;
-        var nextCursor = new MessageCursor(
+        var toolEntry = appended.CommittedEntries[^1];
+        var nextCursor = NextCursor(sourceCursor, appended.NewVersion, toolEntry.Sequence);
+        var toolResultReferences = toolCalls
+            .Select(call => new CommittedToolResultReference(toolEntry.Id, call.CallId, turnId))
+            .ToImmutableArray();
+        return await DecideContinuationAsync(
+            request, turnCorrelation, turn, assistantMessage, toolResultReferences, toolEntry.Id, nextCursor,
+            [assistantMessage, .. appendAttempt.InterleavedMessages, toolMessage], appended.NewVersion, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Asks the selected <see cref="IRunContinuationPolicy"/> what happens after one committed turn and maps its
+    /// proposal onto the loop's own transition.
+    /// </summary>
+    /// <param name="request">The run being driven.</param>
+    /// <param name="turnCorrelation">The committed turn's in-run correlation.</param>
+    /// <param name="turn">The one-based number of the committed turn.</param>
+    /// <param name="assistantMessage">The complete, committed assistant response of the turn.</param>
+    /// <param name="toolResults">One reference per requested call to its committed terminal result, or empty when the turn requested no tool.</param>
+    /// <param name="lastEntryId">The identity of the last entry this turn committed.</param>
+    /// <param name="nextCursor">The exact history cursor after this turn's commits.</param>
+    /// <param name="newMessages">The messages newly visible to the next turn, in sequence order.</param>
+    /// <param name="version">The branch version after this turn's commits.</param>
+    /// <param name="cancellationToken">Cancels the policy's evaluation.</param>
+    /// <returns>A continuation to the next turn, or the settled outcome proposed by the policy.</returns>
+    /// <remarks>
+    /// <para>
+    /// <see cref="ContinueRun"/> continues while a turn remains; on the final turn it settles with
+    /// <see cref="AgentRunTurnLimitReached"/> because the policy cannot widen the hard limit.
+    /// <see cref="CompleteRun"/> and <see cref="HaltRun"/> settle with the proposed outcome. Cancellation while the
+    /// policy evaluates settles with <see cref="AgentRunCancelled"/>: the turn's messages are already committed,
+    /// so the caller must receive them. A context the abstractions reject fails closed as
+    /// <see cref="AgentRunInvalidState"/>.
+    /// </para>
+    /// <para>
+    /// This reduced loop drives one implicit execution lane per branch, so the lane identity is the branch
+    /// identity; its operation-state revision is the turn number, which advances with every committed turn; and
+    /// its policy version is <see cref="_policyVersion"/>, the single immutable snapshot of the loop's fixed
+    /// behaviour. The reduced loop projects every result of a batch into one tool message entry, so a batch of
+    /// more than one call cannot supply the distinct per-call terminal-record identities the
+    /// <see cref="CommittedTurnContinuationBoundary"/> contract requires. Such a batch continues under the
+    /// canonical committed-tool-results rule without a policy call, and the bypass is logged.
+    /// </para>
+    /// </remarks>
+    private async ValueTask<TurnOutcome> DecideContinuationAsync(
+        AgentRunRequest request,
+        InRunOperationCorrelation turnCorrelation,
+        int turn,
+        AssistantMessage assistantMessage,
+        ImmutableArray<CommittedToolResultReference> toolResults,
+        SessionEntryId lastEntryId,
+        MessageCursor nextCursor,
+        ImmutableArray<AgentMessage> newMessages,
+        SessionVersion version,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(request is not null, "A validated run request is required to decide continuation.");
+        Debug.Assert(turnCorrelation.TurnId is not null, "Continuation is decided for one committed turn.");
+        Debug.Assert(assistantMessage.State == MessageState.Complete, "Only a committed complete response reaches continuation.");
+        var turnId = turnCorrelation.TurnId.Value;
+
+        if (toolResults.Length > 1)
+        {
+            LoopLog.ContinuationPolicyBypassedForBatchProjection(_logger, request.RunId, turnId, toolResults.Length);
+            return turn < request.MaxTurns
+                ? TurnOutcome.Continue(nextCursor, newMessages)
+                : TurnOutcome.Settled(new AgentRunTurnLimitReached(request.MaxTurns), version);
+        }
+
+        RunContinuationContext context;
+        try
+        {
+            context = new RunContinuationContext(
+                request.AgentId,
+                request.SessionId,
+                new ExecutionLaneId(request.BranchId.Value),
+                turnCorrelation.OperationId,
+                request.RunId,
+                AgentRunState.Driving,
+                new OperationStateRevision(turn),
+                new SessionBranchCursor(request.BranchId, lastEntryId),
+                nextCursor.Sequence,
+                request.Authorization.ConfigurationVersion,
+                _policyVersion,
+                new CommittedTurnContinuationBoundary(assistantMessage, toolResults, outputDecision: null, requiresOutputValidation: false),
+                requiredStopOutcome: null,
+                toolResults.IsEmpty ? [] : [new CommittedToolResultsContinuationCause(toolResults)]);
+        }
+        catch (ArgumentException exception)
+        {
+            LoopLog.ContinuationFailed(_logger, request.RunId, exception.GetType().FullName ?? exception.GetType().Name);
+            return TurnOutcome.Settled(
+                new AgentRunInvalidState("The committed turn could not be described as continuation evidence."), version);
+        }
+
+        RunContinuationDecision decision;
+        try
+        {
+            decision = await _continuationPolicy.DecideAsync(context, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            LoopLog.ContinuationCancelled(_logger, request.RunId);
+            return TurnOutcome.Settled(
+                new AgentRunCancelled("The run was cancelled while its continuation was being decided; the turn's messages are committed."),
+                version);
+        }
+
+        LoopLog.ContinuationDecisionApplied(_logger, request.RunId, turnId, decision.GetType().Name);
+        return decision switch
+        {
+            ContinueRun when turn < request.MaxTurns => TurnOutcome.Continue(nextCursor, newMessages),
+            ContinueRun => TurnOutcome.Settled(new AgentRunTurnLimitReached(request.MaxTurns), version),
+            CompleteRun complete => TurnOutcome.Settled(complete.Outcome, version),
+            HaltRun halt => TurnOutcome.Settled(halt.Outcome, version),
+            _ => throw new InvalidOperationException(
+                $"Unrecognized {nameof(RunContinuationDecision)} kind '{decision.GetType()}'."),
+        };
+    }
+
+    /// <summary>Builds the exact history cursor after a commit on the same branch as <paramref name="sourceCursor"/>.</summary>
+    /// <param name="sourceCursor">The cursor the turn started from.</param>
+    /// <param name="version">The branch version after the commit.</param>
+    /// <param name="sequence">The sequence of the last committed entry.</param>
+    /// <returns>A cursor covering the branch through <paramref name="sequence"/>.</returns>
+    private static MessageCursor NextCursor(MessageCursor sourceCursor, SessionVersion version, SessionSequence sequence)
+    {
+        Debug.Assert(sourceCursor is not null, "A turn always starts from an exact history cursor.");
+        return new MessageCursor(
             sourceCursor.AgentId,
             sourceCursor.SessionId,
             sourceCursor.ConversationId,
             sourceCursor.BranchId,
-            appended.NewVersion,
-            committedSequence);
-        return TurnOutcome.Continue(nextCursor, [assistantMessage, .. appendAttempt.InterleavedMessages, toolMessage]);
+            version,
+            sequence);
     }
 
     /// <summary>

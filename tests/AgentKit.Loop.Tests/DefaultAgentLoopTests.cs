@@ -22,6 +22,7 @@ public sealed class DefaultAgentLoopTests
             new FakeLlmModelResolver(new RespondingLlmModel(
                 new ModelAlias("chat"),
                 modelRequest => TestFactory.CompletedWithText(modelRequest.Context.ModelRequestId))),
+            new DefaultRunContinuationPolicy(TimeProvider.System),
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
@@ -44,6 +45,7 @@ public sealed class DefaultAgentLoopTests
             new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
             null!,
             new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))),
+            new DefaultRunContinuationPolicy(TimeProvider.System),
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
@@ -53,6 +55,193 @@ public sealed class DefaultAgentLoopTests
             Options.Create(new AgentLoopOptions())));
 
         exception.ParamName.ShouldBe("modelSelector");
+    }
+
+    [Fact]
+    public void Constructor_WhenContinuationPolicyIsNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new DefaultAgentLoop(
+            new FakeSessionCoordinator(_branchId),
+            new FakeSecurityProfileSelector(),
+            new DefaultContextAssembler(),
+            new FakeToolInvoker(_ => TestFactory.SuccessResult()),
+            new FakeModelCatalog(TestFactory.Catalog(TestFactory.Model())),
+            FakeModelSelector.Selecting(TestFactory.Model()),
+            new FakeLlmModelResolver(new FakeLlmModel(new ModelAlias("chat"))),
+            null!,
+            IdGenerator(static v => new OperationId(v)),
+            IdGenerator(static v => new TurnId(v)),
+            IdGenerator(static v => new ModelRequestId(v)),
+            IdGenerator(static v => new MessageId(v)),
+            IdGenerator(static v => new SessionEntryId(v)),
+            TimeProvider.System,
+            Options.Create(new AgentLoopOptions())));
+
+        exception.ParamName.ShouldBe("continuationPolicy");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTurnRequestsNoTool_OffersTheCommittedTurnToTheContinuationPolicy()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var policy = new ScriptedRunContinuationPolicy(static context =>
+            new CompleteRun(new AgentRunCompleted(((CommittedTurnContinuationBoundary) context.Boundary).Response)));
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), continuationPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        var context = policy.Contexts.ShouldHaveSingleItem();
+        context.RunId.ShouldBe(request.RunId);
+        context.AgentId.ShouldBe(_agentId);
+        context.SessionId.ShouldBe(_sessionId);
+        context.State.ShouldBe(AgentRunState.Driving);
+        context.OperationStateRevision.ShouldBe(new OperationStateRevision(1));
+        context.BranchCursor.BranchId.ShouldBe(_branchId);
+        context.BranchCursor.LastEntryId.ShouldBe(coordinator.Entries[^1].Id);
+        context.ConfigurationVersion.ShouldBe(request.Authorization.ConfigurationVersion);
+        context.RequiredStopOutcome.ShouldBeNull();
+        context.Causes.ShouldBeEmpty();
+        var boundary = context.Boundary.ShouldBeOfType<CommittedTurnContinuationBoundary>();
+        boundary.Response.ShouldBeSameAs(result.NewMessages[0]);
+        boundary.ToolResults.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenContinuationPolicyHaltsAfterNoToolTurn_SettlesWithTheHaltOutcome()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var halt = new AgentRunInvalidState("policy halt");
+        var policy = new ScriptedRunContinuationPolicy(_ => new HaltRun(halt));
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), continuationPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeSameAs(halt);
+        result.NewMessages.ShouldHaveSingleItem().State.ShouldBe(MessageState.Complete);
+        result.FinalVersion.ShouldBe(coordinator.Version);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenContinuationPolicyHaltsAfterToolResults_SettlesWithoutAnotherModelRequest()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var halt = new AgentRunInvalidState("halt after tools");
+        var policy = new ScriptedRunContinuationPolicy(_ => new HaltRun(halt));
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator,
+            out var invoker,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            continuationPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeSameAs(halt);
+        modelCalls.ShouldBe(1);
+        _ = invoker.ReceivedRequests.ShouldHaveSingleItem();
+        result.NewMessages.Length.ShouldBe(2);
+        var context = policy.Contexts.ShouldHaveSingleItem();
+        var boundary = context.Boundary.ShouldBeOfType<CommittedTurnContinuationBoundary>();
+        var reference = boundary.ToolResults.ShouldHaveSingleItem();
+        reference.ToolCallId.ShouldBe(callId);
+        reference.SessionEntryId.ShouldBe(coordinator.Entries[^1].Id);
+        reference.TurnId.ShouldBe(boundary.Response.TurnId!.Value);
+        context.Causes.ShouldHaveSingleItem().ShouldBeOfType<CommittedToolResultsContinuationCause>()
+            .ToolResults.ShouldBe(boundary.ToolResults);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenContinuationPolicyCompletesAfterToolResults_SettlesWithTheProposedOutcome()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var policy = new ScriptedRunContinuationPolicy(static context =>
+            new CompleteRun(new AgentRunCompleted(((CommittedTurnContinuationBoundary) context.Boundary).Response)));
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator,
+            out _,
+            _ => ++modelCalls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            continuationPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType<AgentRunCompleted>().FinalMessage.ShouldBeSameAs(result.NewMessages[0]);
+        modelCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenContinuationPolicyContinuesAfterNoToolTurn_RunsAnotherTurn()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var evaluations = 0;
+        var policy = new ScriptedRunContinuationPolicy(context => ++evaluations == 1
+            ? new ContinueRun(new ContinuationReason(new ExplicitPolicyContinuationCause("keep-going"), []))
+            : new CompleteRun(new AgentRunCompleted(((CommittedTurnContinuationBoundary) context.Boundary).Response)));
+        var modelCalls = 0;
+        var assembler = new RecordingContextAssembler();
+        var loop = CreateLoop(
+            out var coordinator,
+            out _,
+            _ =>
+            {
+                modelCalls++;
+                return TestFactory.CompletedWithText(requestId);
+            },
+            contextAssembler: assembler,
+            continuationPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        modelCalls.ShouldBe(2);
+        result.NewMessages.Length.ShouldBe(2);
+        assembler.Requests[1].History.Length.ShouldBe(2);
+        policy.Contexts[1].OperationStateRevision.ShouldBe(new OperationStateRevision(2));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenContinuationPolicyContinuesOnTheFinalTurn_ReturnsAgentRunTurnLimitReached()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var policy = new ScriptedRunContinuationPolicy(static _ =>
+            new ContinueRun(new ContinuationReason(new ExplicitPolicyContinuationCause("keep-going"), [])));
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), continuationPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1), TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeOfType<AgentRunTurnLimitReached>().MaxTurns.ShouldBe(1);
+        _ = result.NewMessages.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenContinuationPolicyObservesCancellation_ReturnsAgentRunCancelledWithCommittedMessages()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        using var cts = new CancellationTokenSource();
+        var policy = new ScriptedRunContinuationPolicy(_ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        });
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), continuationPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), cts.Token);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCancelled>();
+        _ = result.NewMessages.ShouldHaveSingleItem();
+        result.FinalVersion.ShouldBe(coordinator.Version);
     }
 
     [Fact]
@@ -1105,7 +1294,8 @@ public sealed class DefaultAgentLoopTests
         ToolInvocationResult? toolResult = null,
         Func<ToolCallRequest, ToolInvocationResult>? toolHandler = null,
         ModelResponseEvent? modelEvent = null,
-        IContextAssembler? contextAssembler = null)
+        IContextAssembler? contextAssembler = null,
+        IRunContinuationPolicy? continuationPolicy = null)
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
@@ -1121,6 +1311,7 @@ public sealed class DefaultAgentLoopTests
             new FakeModelCatalog(TestFactory.Catalog(descriptor)),
             FakeModelSelector.Selecting(descriptor),
             new FakeLlmModelResolver(adapter),
+            continuationPolicy ?? new DefaultRunContinuationPolicy(TimeProvider.System),
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
@@ -1144,6 +1335,7 @@ public sealed class DefaultAgentLoopTests
             catalog,
             selector,
             resolver,
+            new DefaultRunContinuationPolicy(TimeProvider.System),
             IdGenerator(static v => new OperationId(v)),
             IdGenerator(static v => new TurnId(v)),
             IdGenerator(static v => new ModelRequestId(v)),
