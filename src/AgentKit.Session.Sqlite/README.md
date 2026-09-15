@@ -24,7 +24,9 @@ Registration and construction never create parent directories. Use
 require an existing file. `ApplyKnownMigrations` creates and advances schemas
 known to this package; the validate-only schema mode requires compatible schema
 objects to exist already. The configured store instance ID must match the ID
-persisted in an existing database.
+persisted in an existing database. The store and the directory apply the same
+rules: each validates its own table and the persisted instance identity, and
+neither installs or migrates schema unless `ApplyKnownMigrations` is selected.
 
 Committed descriptors, entries, branch state, execution lanes, accepted-run
 state, idempotency receipts, directory ownership, and routing survive disposal

@@ -198,6 +198,124 @@ public sealed class SqliteSessionDirectoryTests
     }
 
     [Fact]
+    public void Constructor_WhenSchemaModeIsValidateExactAndTableMissing_Throws()
+    {
+        // ValidateExact must never install schema; a database without the directory table is rejected with the store's typed failure.
+        var path = Path.Combine(Path.GetTempPath(), $"agentkit-directory-validate-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(path);
+        var databasePath = Path.Combine(path, "sessions.db");
+        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection(
+            new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = databasePath, Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate, Pooling = false }.ConnectionString))
+        {
+            connection.Open();
+        }
+
+        var target = new SqliteSessionStoreTarget(databasePath, new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+            SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact);
+
+        var exception = Should.Throw<InvalidOperationException>(() => new SqliteSessionDirectory(
+            _audience, new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore(),
+            new SequenceAuditRecordIds(), TimeProvider.System, target, SqliteSessionStoreSettings.CreateDefault()));
+
+        exception.Message.ShouldBe("The SQLite session directory schema or persistent store identity is unavailable.");
+        using var probe = new Microsoft.Data.Sqlite.SqliteConnection(
+            new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = databasePath, Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly, Pooling = false }.ConnectionString);
+        probe.Open();
+        using var command = probe.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'agentkit_session_directory';";
+        Convert.ToInt64(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture).ShouldBe(0);
+    }
+
+    [Fact]
+    public void Constructor_WhenPersistedStoreInstanceIdDiffers_Throws()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"agentkit-directory-instance-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(path);
+        var databasePath = Path.Combine(path, "sessions.db");
+        var audits = new RecordingAuditDispatcher(new SecurityAuditAccepted());
+        var grants = new RecordingGrantStore();
+        _ = new SqliteSessionDirectory(_audience, audits, grants, new SequenceAuditRecordIds(), TimeProvider.System,
+            new SqliteSessionStoreTarget(databasePath, new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+                SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
+            SqliteSessionStoreSettings.CreateDefault());
+        var foreign = new SqliteSessionStoreTarget(databasePath, new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+            SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact);
+
+        var exception = Should.Throw<InvalidOperationException>(() => new SqliteSessionDirectory(
+            _audience, audits, grants, new SequenceAuditRecordIds(), TimeProvider.System, foreign,
+            SqliteSessionStoreSettings.CreateDefault()));
+
+        exception.Message.ShouldBe("The SQLite session directory schema or persistent store identity is unavailable.");
+    }
+
+    [Fact]
+    public void Constructor_WhenLegacyIdentityLessTableExists_MigratesUnderApplyKnownMigrationsOnly()
+    {
+        // The first directory schema had no identity columns; known migration binds it to the configured instance, validation-only does not.
+        var path = Path.Combine(Path.GetTempPath(), $"agentkit-directory-legacy-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(path);
+        var databasePath = Path.Combine(path, "sessions.db");
+        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection(
+            new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = databasePath, Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate, Pooling = false }.ConnectionString))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "CREATE TABLE agentkit_session_directory(singleton INTEGER PRIMARY KEY CHECK(singleton=1),state_json BLOB NOT NULL); INSERT INTO agentkit_session_directory VALUES(1,$state);";
+            _ = command.Parameters.AddWithValue("$state", "{}"u8.ToArray());
+            _ = command.ExecuteNonQuery();
+        }
+
+        var instance = new SqliteSessionStoreInstanceId(Guid.NewGuid());
+        var audits = new RecordingAuditDispatcher(new SecurityAuditAccepted());
+        var grants = new RecordingGrantStore();
+
+        var validateOnly = Should.Throw<InvalidOperationException>(() => new SqliteSessionDirectory(
+            _audience, audits, grants, new SequenceAuditRecordIds(), TimeProvider.System,
+            new SqliteSessionStoreTarget(databasePath, instance, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact),
+            SqliteSessionStoreSettings.CreateDefault()));
+        _ = new SqliteSessionDirectory(
+            _audience, audits, grants, new SequenceAuditRecordIds(), TimeProvider.System,
+            new SqliteSessionStoreTarget(databasePath, instance, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ApplyKnownMigrations),
+            SqliteSessionStoreSettings.CreateDefault());
+        var migrated = new SqliteSessionDirectory(
+            _audience, audits, grants, new SequenceAuditRecordIds(), TimeProvider.System,
+            new SqliteSessionStoreTarget(databasePath, instance, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact),
+            SqliteSessionStoreSettings.CreateDefault());
+
+        validateOnly.Message.ShouldBe("The SQLite session directory schema or persistent store identity is unavailable.");
+        migrated.Durable.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task LocateAsync_WhenReopenedWithValidateExactAndMatchingInstance_ReturnsPersistedRoute()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"agentkit-directory-exact-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(path);
+        var databasePath = Path.Combine(path, "sessions.db");
+        var instance = new SqliteSessionStoreInstanceId(Guid.NewGuid());
+        var audits = new RecordingAuditDispatcher(new SecurityAuditAccepted());
+        var grants = new RecordingGrantStore();
+        var context = Context();
+        var location = Location(context.SessionId.ToString(), "store-a", context.Identity.TenantId);
+        var first = new SqliteSessionDirectory(_audience, audits, grants, new SequenceAuditRecordIds(), TimeProvider.System,
+            new SqliteSessionStoreTarget(databasePath, instance, SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
+            SqliteSessionStoreSettings.CreateDefault());
+        _ = await first.RecordAsync(new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+            new SessionDirectoryWriteRequest(context, location, new IdempotencyKey("record")),
+            Grant(context, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+        var reopened = new SqliteSessionDirectory(_audience, audits, grants, new SequenceAuditRecordIds(), TimeProvider.System,
+            new SqliteSessionStoreTarget(databasePath, instance, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact),
+            SqliteSessionStoreSettings.CreateDefault());
+
+        var result = await reopened.LocateAsync(new AuthorizedSessionDirectoryRequest<SessionOperationContext>(
+            context, Grant(context, SecurityOperationKind.StateRead, SecurityEffect.Observe), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionLocated(location));
+    }
+
+    [Fact]
     public async Task RecordCreateAsync_WhenConcurrentLocateHydrates_DoesNotLoseCommittedRoute()
     {
         // Every committed route must survive concurrent reads that reload the durable projection while writers commit.
