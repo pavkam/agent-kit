@@ -49,4 +49,66 @@ internal static partial class CompactionLog
     [LoggerMessage(9004, LogLevel.Warning, "Compaction {CompactionId} for session {SessionId} committed a record claiming activated version {ExpectedVersion} but the store reported version {ReportedVersion}.")]
     internal static partial void ActivatedVersionMismatch(
         ILogger logger, CompactionId compactionId, SessionId sessionId, SessionVersion expectedVersion, SessionVersion reportedVersion);
+
+    /// <summary>
+    /// Records that the model-backed strategy could not obtain an executable summary model, with the selector's
+    /// descriptive reason and no prompt, transcript, or candidate content.
+    /// </summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="compactionId">The logical checkpoint identity.</param>
+    /// <param name="sessionId">The session whose bounded source was being processed.</param>
+    /// <param name="reason">The normalized, content-free selection failure reason.</param>
+    [LoggerMessage(9005, LogLevel.Warning, "Compaction {CompactionId} for session {SessionId} could not select a summary model: {Reason}.")]
+    internal static partial void SummaryModelSelectionFailed(ILogger logger, CompactionId compactionId, SessionId sessionId, string reason);
+
+    /// <summary>
+    /// Records that one bounded summary request is about to be sent to the selected model, with the transcript's
+    /// size and whether it was truncated to the configured ceiling, but never its text.
+    /// </summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="compactionId">The logical checkpoint identity.</param>
+    /// <param name="sessionId">The session whose bounded source is being summarized.</param>
+    /// <param name="modelRequestId">The identity of the single provider attempt.</param>
+    /// <param name="modelAlias">The catalog alias of the selected summary model.</param>
+    /// <param name="inputCharacters">The number of transcript characters sent after bounding.</param>
+    /// <param name="inputTruncated">Whether the transcript was truncated to <c>MaximumSummaryInputCharacters</c>.</param>
+    [LoggerMessage(9006, LogLevel.Debug, "Compaction {CompactionId} for session {SessionId} sending summary request {ModelRequestId} to model {ModelAlias} with {InputCharacters} transcript characters (truncated: {InputTruncated}).")]
+    internal static partial void SummaryModelRequestStarted(
+        ILogger logger, CompactionId compactionId, SessionId sessionId, ModelRequestId modelRequestId, ModelAlias modelAlias, int inputCharacters, bool inputTruncated);
+
+    /// <summary>
+    /// Records that the summary model returned a usable summary, with its bounded size and whether it was truncated
+    /// to the checkpoint ceiling, but never its text.
+    /// </summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="compactionId">The logical checkpoint identity.</param>
+    /// <param name="sessionId">The session whose bounded source was summarized.</param>
+    /// <param name="modelRequestId">The identity of the single provider attempt.</param>
+    /// <param name="outputCharacters">The number of summary characters retained after bounding.</param>
+    /// <param name="outputTruncated">Whether the summary was truncated to <c>MaximumCheckpointCharacters</c>.</param>
+    [LoggerMessage(9007, LogLevel.Debug, "Compaction {CompactionId} for session {SessionId} summary request {ModelRequestId} produced {OutputCharacters} summary characters (truncated: {OutputTruncated}).")]
+    internal static partial void SummaryModelRequestCompleted(
+        ILogger logger, CompactionId compactionId, SessionId sessionId, ModelRequestId modelRequestId, int outputCharacters, bool outputTruncated);
+
+    /// <summary>
+    /// Records that the summary model attempt ended without a usable summary: a provider failure, a length-limited
+    /// or tool-calling response, or a response without text. Carries the normalized reason and no content.
+    /// </summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="compactionId">The logical checkpoint identity.</param>
+    /// <param name="sessionId">The session whose bounded source was being summarized.</param>
+    /// <param name="modelRequestId">The identity of the single provider attempt.</param>
+    /// <param name="reason">The normalized, content-free failure reason.</param>
+    [LoggerMessage(9008, LogLevel.Warning, "Compaction {CompactionId} for session {SessionId} summary request {ModelRequestId} failed: {Reason}.")]
+    internal static partial void SummaryModelRequestFailed(
+        ILogger logger, CompactionId compactionId, SessionId sessionId, ModelRequestId modelRequestId, string reason);
+
+    /// <summary>Records that the caller cancelled the summary model attempt before it produced a summary.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="compactionId">The logical checkpoint identity.</param>
+    /// <param name="sessionId">The session whose bounded source was being summarized.</param>
+    /// <param name="modelRequestId">The identity of the single provider attempt.</param>
+    [LoggerMessage(9009, LogLevel.Debug, "Compaction {CompactionId} for session {SessionId} summary request {ModelRequestId} was cancelled.")]
+    internal static partial void SummaryModelRequestCancelled(
+        ILogger logger, CompactionId compactionId, SessionId sessionId, ModelRequestId modelRequestId);
 }

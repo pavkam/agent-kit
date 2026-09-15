@@ -83,7 +83,7 @@ public sealed class ExtractiveCompactionStrategy: ICompactionStrategy
         var extract = string.Join(
             '\n', coveredEntries.Select(ContentTextExtractor.ExtractEntryText).Where(static t => t.Length > 0));
 
-        extract = Truncate(extract, _maximumCheckpointCharacters);
+        extract = CompactionTextTruncation.KeepHeadAndTail(extract, _maximumCheckpointCharacters, TruncationMarker, out _);
         if (extract.Length == 0)
         {
             extract = "(no extractable text in covered entries)";
@@ -95,36 +95,5 @@ public sealed class ExtractiveCompactionStrategy: ICompactionStrategy
         var after = _estimator.EstimateCheckpoint(checkpoint);
 
         return Task.FromResult<CompactionStrategyResult>(new CompactionCheckpointProduced(checkpoint, producer, after));
-    }
-
-    /// <summary>
-    /// Keeps a leading and trailing portion of <paramref name="text"/> around <see cref="TruncationMarker"/>, backing
-    /// each cut off by one UTF-16 unit when it would otherwise split a surrogate pair so the result is well-formed.
-    /// </summary>
-    private static string Truncate(string text, int maximumCharacters)
-    {
-        Debug.Assert(text is not null, "The caller joins extracted text before truncating.");
-
-        if (text.Length <= maximumCharacters || maximumCharacters <= TruncationMarker.Length)
-        {
-            return text;
-        }
-
-        var remaining = maximumCharacters - TruncationMarker.Length;
-        var headLength = remaining / 2;
-        var tailLength = remaining - headLength;
-
-        // A head ending on a high surrogate or a tail starting on a low surrogate would emit a lone surrogate.
-        if (headLength > 0 && char.IsHighSurrogate(text[headLength - 1]))
-        {
-            headLength--;
-        }
-
-        if (tailLength > 0 && char.IsLowSurrogate(text[^tailLength]))
-        {
-            tailLength--;
-        }
-
-        return string.Concat(text.AsSpan(0, headLength), TruncationMarker, text.AsSpan(text.Length - tailLength));
     }
 }

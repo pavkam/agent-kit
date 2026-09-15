@@ -41,7 +41,7 @@ internal static class CompactionPromptResources
         static () => LoadText(DefaultSummaryPromptResourceName));
 
     /// <summary>
-    /// Gets the default system instruction a model-backed compaction strategy sends when the application does
+    /// Gets the default system instruction <see cref="ModelCompactionStrategy"/> sends when the application does
     /// not configure <see cref="CompactionOptions.SummaryPrompt"/>.
     /// </summary>
     /// <value>Non-empty prompt text with no leading byte-order mark and no trailing whitespace.</value>

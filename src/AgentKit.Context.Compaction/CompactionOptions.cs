@@ -70,4 +70,45 @@ public sealed class CompactionOptions
     /// value.
     /// </remarks>
     public string SummaryPrompt { get; set; } = CompactionPromptResources.DefaultSummaryPrompt;
+
+    /// <summary>
+    /// Gets or sets the maximum number of transcript characters
+    /// <see cref="ModelCompactionStrategy"/> sends to the summary model in one
+    /// request.
+    /// </summary>
+    /// <value>
+    /// Defaults to 120,000 characters (roughly 30,000 tokens at the default
+    /// <see cref="CharactersPerToken"/>). A longer transcript is bounded by
+    /// keeping its head and tail around
+    /// <see cref="ModelCompactionStrategy.TruncationMarker"/>, and the
+    /// truncation is recorded in the produced provenance. Must exceed the
+    /// marker's length; registration validation rejects smaller values.
+    /// </value>
+    /// <remarks>
+    /// This is a hard engine ceiling on provider input, independent of the
+    /// selected model's context window. The extractive strategy ignores this
+    /// value.
+    /// </remarks>
+    public int MaximumSummaryInputCharacters { get; set; } = 120_000;
+
+    /// <summary>
+    /// Gets or sets the selection policy naming the catalog alias(es)
+    /// <see cref="ModelCompactionStrategy"/> may use to generate a summary.
+    /// </summary>
+    /// <value>
+    /// Defaults to <see langword="null"/>, which is valid for the extractive
+    /// pipeline but is rejected by <c>AddModelBackedContextCompaction</c>
+    /// validation, because a summary model is an external fact the
+    /// application must name explicitly rather than a default the framework
+    /// may fabricate.
+    /// </value>
+    /// <remarks>
+    /// The policy is resolved through the engine's registered
+    /// <see cref="IModelCatalog"/>, <see cref="IModelSelector"/>, and
+    /// <see cref="ILlmModelResolver"/>, exactly as the agent loop resolves a
+    /// run's model, and is scoped to the compaction operation's captured
+    /// authorization. The selected model must support system instructions so
+    /// <see cref="SummaryPrompt"/> can be delivered with instruction precedence.
+    /// </remarks>
+    public ModelSelectionPolicy? SummaryModelPolicy { get; set; }
 }

@@ -860,6 +860,103 @@ public sealed class DefaultCompactorTests
         failed.Failure.Retryable.ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task CompactAsync_WhenModelBackedStrategyProducesSummary_ActivatesModelSummaryAsCheckpoint()
+    {
+        const string summary = "User asked about alpha; assistant confirmed beta. Open question: gamma.";
+        var model = new ScriptedLlmModel(new ModelAlias("summarizer"))
+        {
+            ExecuteOverride = (llmRequest, _) => Task.FromResult<ModelAttemptResult>(
+                TestFactory.CompletedTextAttempt(llmRequest.Context.ModelRequestId, summary)),
+        };
+        var (compactor, coordinator) = CreateCompactorWithModelStrategy(model, maximumCheckpointCharacters: 200);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string((char) ('a' + (i % 26)), 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(10), minimumRetainedEntries: 2, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var succeeded = result.ShouldBeOfType<CompactionSucceeded>();
+        succeeded.Record.Status.ShouldBe(CompactionRecordStatus.Active);
+        ((TextPart) succeeded.Record.Checkpoint!.Summary.ShouldHaveSingleItem()).Text.ShouldBe(summary);
+        succeeded.Record.Manifest.Producer.StrategyKey.ShouldBe(ModelCompactionStrategy.StrategyKey);
+        succeeded.Record.Manifest.Producer.Deterministic.ShouldBeFalse();
+        succeeded.Record.Manifest.Producer.Extensions.Values.ShouldContainKey(ModelCompactionProvenanceKeys.ModelId);
+        _ = model.ReceivedRequests.ShouldHaveSingleItem();
+        var committed = coordinator.ReceivedAppends.Single().Entries.Single().ShouldBeOfType<CompactionSessionEntry>();
+        committed.Sequence.ShouldBe(new SessionSequence(11));
+
+        // The producer provenance rides in ExtensionData; the first-party codec must round-trip it.
+        var catalog = new Session.SessionEntryCodecCatalog([new Session.CompactionSessionEntryCodec()], TimeProvider.System);
+        var encoded = catalog.Encode(committed).ShouldBeOfType<SessionEntryEncoded>();
+        var decoded = catalog.Decode(encoded.Wire).ShouldBeOfType<SessionEntryDecoded>();
+        decoded.Decoded.Entry.ShouldBeOfType<CompactionSessionEntry>().Record.Manifest.Producer.ShouldBe(committed.Record.Manifest.Producer);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenModelBackedStrategyFails_ReturnsCompactionFailedWithoutAppend()
+    {
+        var model = new ScriptedLlmModel(new ModelAlias("summarizer"), TestFactory.FailedAttempt(ProviderFailureKind.Unavailable));
+        var (compactor, coordinator) = CreateCompactorWithModelStrategy(model, maximumCheckpointCharacters: 200);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('m', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(10), minimumRetainedEntries: 2, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.Kind.ShouldBe(CompactionFailureKind.StrategyFailure);
+        failed.Failure.Retryable.ShouldBeTrue();
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenCallerCancelsDuringModelBackedSummary_ReturnsCancelledNotAttempted()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var model = new ScriptedLlmModel(new ModelAlias("summarizer"))
+        {
+            ExecuteOverride = async (_, token) =>
+            {
+                await cancellation.CancelAsync();
+                token.ThrowIfCancellationRequested();
+                throw new InvalidOperationException("unreachable");
+            },
+        };
+        var (compactor, coordinator) = CreateCompactorWithModelStrategy(model, maximumCheckpointCharacters: 200);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('c', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(10), minimumRetainedEntries: 2, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, cancellation.Token);
+
+        result.ShouldBeOfType<CompactionCancelled>().CommitState.ShouldBe(CompactionCommitState.NotAttempted);
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    private (DefaultCompactor Compactor, FakeSessionCoordinator Coordinator) CreateCompactorWithModelStrategy(ScriptedLlmModel model, int maximumCheckpointCharacters)
+    {
+        var coordinator = new FakeSessionCoordinator(_branchId);
+        var options = Options.Create(new CompactionOptions
+        {
+            MaximumCheckpointCharacters = maximumCheckpointCharacters,
+            SummaryModelPolicy = new ModelSelectionPolicy([model.Alias]),
+        });
+        var estimator = new CharacterCompactionSizeEstimator(options);
+        var descriptor = TestFactory.SummaryModel(model.Alias.Value);
+        var strategy = new ModelCompactionStrategy(
+            new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [descriptor])),
+            ScriptedModelSelector.Selecting(descriptor),
+            new AliasLlmModelResolver(model),
+            estimator,
+            IdGenerator(static v => new ModelRequestId(v)),
+            IdGenerator(static v => new MessageId(v)),
+            Clock(),
+            options);
+        var compactor = new DefaultCompactor(coordinator, new StructuralCompactionCutSelector(options), strategy, new DefaultCompactionValidator(estimator, options), estimator, IdGenerator(static v => new CompactionManifestId(v)), IdGenerator(static v => new SessionEntryId(v)), Clock(), options);
+        return (compactor, coordinator);
+    }
+
     private SessionAddress Address() => new(_agentId, _sessionId);
     /// <summary>Requests from <see cref="TestFactory.Request"/> are stamped at the Unix epoch with a five-minute deadline; the clock starts inside that window.</summary>
     private static FakeTimeProvider Clock() => new(DateTimeOffset.UnixEpoch.AddMinutes(1));

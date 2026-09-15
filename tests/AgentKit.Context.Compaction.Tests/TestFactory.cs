@@ -187,4 +187,58 @@ internal static class TestFactory
 
     public static ServiceProvider BuildProvider(Action<CompactionOptions>? configure = null) =>
         new ServiceCollection().AddContextCompaction(configure).BuildServiceProvider();
+
+    /// <summary>Builds a catalog descriptor for a summary model that supports system instructions.</summary>
+    public static ModelDescriptor SummaryModel(string alias = "summarizer", bool supportsSystemInstructions = true) => new(
+        new ModelAlias(alias),
+        new ProviderId("test-provider"),
+        new ApiFamilyId("test-api"),
+        new ModelId("test-summary-model"),
+        deploymentId: null,
+        new ModelCapabilities(
+            supportsSystemInstructions,
+            supportsStreaming: true,
+            supportsToolCalls: false,
+            supportsParallelToolCalls: false,
+            supportsStructuredOutput: false,
+            supportsReasoning: false,
+            supportsVisionInput: false,
+            ExtensionData.Empty),
+        new ModelLimits(maxContextTokens: 128_000, maxOutputTokens: 8_192),
+        pricing: null,
+        ExtensionData.Empty);
+
+    /// <summary>Builds a completed model attempt whose response carries the supplied parts.</summary>
+    public static ModelAttemptCompleted CompletedAttempt(
+        ModelRequestId requestId,
+        ImmutableArray<ContentPart> parts,
+        NormalizedStopReason stopReason = NormalizedStopReason.Completed,
+        ModelUsage? usage = null,
+        string? responseId = null) => new(
+        new ModelResponse(
+            requestId,
+            new ProviderResponseIdentity(
+                new ProviderId("test-provider"),
+                null,
+                new ApiFamilyId("test-api"),
+                new ModelId("test-summary-model"),
+                new ModelId("test-summary-model-2024"),
+                null,
+                null,
+                responseId is null ? null : new ProviderResponseId(responseId)),
+            parts,
+            stopReason,
+            usage ?? ModelUsage.NotReported,
+            ExtensionData.Empty));
+
+    /// <summary>Builds a completed model attempt whose response is one plain text part.</summary>
+    public static ModelAttemptCompleted CompletedTextAttempt(
+        ModelRequestId requestId, string text, NormalizedStopReason stopReason = NormalizedStopReason.Completed) =>
+        CompletedAttempt(requestId, [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)], stopReason);
+
+    /// <summary>Builds a failed model attempt of the supplied provider failure kind.</summary>
+    public static ModelAttemptFailed FailedAttempt(ProviderFailureKind kind) => new(
+        new ProviderFailure(kind, new ProviderId("test-provider"), null, null, null, null, "test provider failure", null, ExtensionData.Empty),
+        [],
+        null);
 }

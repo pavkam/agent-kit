@@ -138,6 +138,148 @@ public sealed class ServiceExtensionsTests
         exception.Failures.ShouldContain(static failure => failure.Contains("SummaryPrompt", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void AddContextCompaction_WhenMaximumSummaryInputCharactersDoesNotExceedTruncationMarker_FailsValidationOnAccess()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddContextCompaction(o => o.MaximumSummaryInputCharacters = ModelCompactionStrategy.TruncationMarker.Length);
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<CompactionOptions>>().Value);
+
+        exception.Failures.ShouldContain(static failure => failure.Contains("MaximumSummaryInputCharacters", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AddContextCompaction_WhenSummaryModelPolicyIsNull_PassesValidation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddContextCompaction();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IOptions<CompactionOptions>>().Value.SummaryModelPolicy.ShouldBeNull();
+    }
+
+    [Fact]
+    public void AddModelBackedContextCompaction_WhenCalled_RegistersModelStrategy()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddModelBackedContextCompaction(o => o.SummaryModelPolicy = SummaryPolicy());
+        WithFakeCoordinator(services);
+        WithFakeModelRuntime(services);
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredService<ICompactionStrategy>().ShouldBeOfType<ModelCompactionStrategy>();
+        provider.GetServices<ICompactionStrategy>().Count().ShouldBe(1);
+        _ = provider.GetRequiredService<ICompactor>().ShouldBeOfType<DefaultCompactor>();
+        _ = provider.GetRequiredService<ICompactionCutSelector>().ShouldBeOfType<StructuralCompactionCutSelector>();
+        _ = provider.GetRequiredService<ICompactionValidator>().ShouldBeOfType<DefaultCompactionValidator>();
+        _ = provider.GetRequiredService<IIdentifierGenerator<ModelRequestId>>();
+        _ = provider.GetRequiredService<IIdentifierGenerator<MessageId>>();
+    }
+
+    [Fact]
+    public void AddModelBackedContextCompaction_WhenCalledAfterAddContextCompaction_ReplacesExtractiveStrategy()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddContextCompaction();
+        _ = services.AddModelBackedContextCompaction(o => o.SummaryModelPolicy = SummaryPolicy());
+        WithFakeCoordinator(services);
+        WithFakeModelRuntime(services);
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredService<ICompactionStrategy>().ShouldBeOfType<ModelCompactionStrategy>();
+        provider.GetServices<ICompactionStrategy>().Count().ShouldBe(1);
+        provider.GetServices<ICompactor>().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddModelBackedContextCompaction_WhenCalledTwiceOrFollowedByAddContextCompaction_KeepsSingleModelStrategy()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddModelBackedContextCompaction(o => o.SummaryModelPolicy = SummaryPolicy());
+        _ = services.AddModelBackedContextCompaction();
+        _ = services.AddContextCompaction();
+        WithFakeCoordinator(services);
+        WithFakeModelRuntime(services);
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredService<ICompactionStrategy>().ShouldBeOfType<ModelCompactionStrategy>();
+        provider.GetServices<ICompactionStrategy>().Count().ShouldBe(1);
+        provider.GetServices<IIdentifierGenerator<ModelRequestId>>().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddModelBackedContextCompaction_WhenSummaryModelPolicyNotConfigured_FailsValidationOnAccess()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddModelBackedContextCompaction();
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<CompactionOptions>>().Value);
+
+        exception.Failures.ShouldContain(static failure => failure.Contains("SummaryModelPolicy", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AddModelBackedContextCompaction_WhenSummaryPromptIsWhitespace_FailsValidationOnAccess()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddModelBackedContextCompaction(o =>
+        {
+            o.SummaryModelPolicy = SummaryPolicy();
+            o.SummaryPrompt = " ";
+        });
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<CompactionOptions>>().Value);
+
+        exception.Failures.ShouldContain(static failure => failure.Contains("SummaryPrompt", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AddModelBackedContextCompaction_WhenConfigured_UsesCustomSummaryPrompt()
+    {
+        const string customPrompt = "Summarize for the model-backed pipeline.";
+        var services = new ServiceCollection();
+
+        _ = services.AddModelBackedContextCompaction(o =>
+        {
+            o.SummaryModelPolicy = SummaryPolicy();
+            o.SummaryPrompt = customPrompt;
+        });
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IOptions<CompactionOptions>>().Value.SummaryPrompt.ShouldBe(customPrompt);
+    }
+
+    [Fact]
+    public void AddModelBackedContextCompaction_WhenModelRuntimeNotRegistered_FailsOnStrategyResolution()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddModelBackedContextCompaction(o => o.SummaryModelPolicy = SummaryPolicy());
+        WithFakeCoordinator(services);
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<InvalidOperationException>(provider.GetRequiredService<ICompactionStrategy>);
+    }
+
+    private static ModelSelectionPolicy SummaryPolicy() => new([new ModelAlias("summarizer")]);
+
+    private static void WithFakeModelRuntime(IServiceCollection services)
+    {
+        var descriptor = TestFactory.SummaryModel();
+        _ = services.AddSingleton<IModelCatalog>(new TestSupport.StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [descriptor])));
+        _ = services.AddSingleton<IModelSelector>(TestSupport.ScriptedModelSelector.Selecting(descriptor));
+        _ = services.AddSingleton<ILlmModelResolver>(new TestSupport.AliasLlmModelResolver(new TestSupport.ScriptedLlmModel(descriptor.Alias)));
+    }
+
     private static void WithFakeCoordinator(IServiceCollection services) =>
         services.AddSingleton<ISessionCoordinator>(new FakeSessionCoordinator(new BranchId(Guid.NewGuid())));
 }
