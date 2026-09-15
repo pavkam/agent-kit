@@ -142,7 +142,10 @@ public sealed class MistralAIToolCallIdCodecTests
         }
     }
 
-    private const string _pinnedSampleEncoding = "PINNED";
+    // SHA-256("7a4d2c0e-5b1f-4e8a-9c3d-2f6e1b0a9d8c" as 16 big-endian bytes ‖ int32 0),
+    // leading 53 bits, base-62 with the 0-9A-Za-z alphabet. Cross-checked with an
+    // independent Python implementation (hashlib.sha256 + uuid.bytes).
+    private const string _pinnedSampleEncoding = "anx4Tk3rz";
 
     private static IEnumerable<ToolCallId> SampleCallIds(int count)
     {
