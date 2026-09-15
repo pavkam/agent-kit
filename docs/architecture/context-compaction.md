@@ -659,6 +659,17 @@ service but may not invoke a protected effect without normal authorization.
 Activation rechecks the validation stamp and all immutable hashes; constructing
 a `ValidatedCompaction` object is not authority.
 
+The first-party validator re-derives the cut from the source before any other
+check: covered identities must be exactly the ordered, duplicate-free source
+prefix of their length; the covered range must span the first and last covered
+sequences; the retained suffix start must equal the first retained entry's
+sequence (or one past the last covered sequence when nothing is retained) and
+lie strictly after the range; and the manifest's branch, source version,
+operation context, context epoch, covered range, and retained suffix start
+must agree with the request, source, and cut. Each violation is an
+`InvalidStructure` issue, so neither a selector nor a strategy can persist a
+record that describes coverage other than what was validated.
+
 Authoritative checkpoint fields are copied or deterministically derived from
 identified committed source records. Validators compare those fields with the
 source manifest and reject invented grants, approvals, tool results, provider
