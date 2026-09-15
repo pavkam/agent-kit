@@ -14,13 +14,16 @@ global using SharpVision.Controls.Collections;
 global using SharpVision.Controls.Display;
 global using SharpVision.Controls.Input;
 global using SharpVision.Controls.Layout;
+global using SharpVision.Dialogs;
 global using SharpVision.Input;
 global using SharpVision.Layout;
 global using SharpVision.Menus;
 global using SharpVision.Popups;
+global using SharpVision.Scrolling;
 global using SharpVision.Styling;
 global using SharpVision.Terminal.Protocols;
 global using SharpVision.Text;
+global using SharpVision.Windows;
 
 global using Screen = SharpVision.Controls.Screen;
 global using Text = SharpVision.Controls.Display.Text;

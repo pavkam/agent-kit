@@ -141,6 +141,7 @@
     <Project Path="tests/AgentKit.Goals.Tests/AgentKit.Goals.Tests.csproj"/>
     <Project Path="tests/AgentKit.Artifacts.Tests/AgentKit.Artifacts.Tests.csproj"/>
     <Project Path="tests/AgentKit.Artifacts.InMemory.Tests/AgentKit.Artifacts.InMemory.Tests.csproj"/>
+    <Project Path="tests/CodingAgent.Tests/CodingAgent.Tests.csproj"/>
   </Folder>
   <Folder Name="/examples/">
     <Project Path="examples/CodingAgent/CodingAgent.csproj"/>

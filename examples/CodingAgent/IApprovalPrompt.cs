@@ -7,9 +7,8 @@ namespace CodingAgent;
 internal interface IApprovalPrompt
 {
     /// <summary>Requests approval for one tool call.</summary>
-    /// <param name="toolName">The tool's display name.</param>
-    /// <param name="argumentsJson">The call's raw JSON arguments.</param>
+    /// <param name="request">The exact retained security approval request.</param>
     /// <param name="cancellationToken">Cancels the pending approval, which denies the call.</param>
     /// <returns><see langword="true"/> if the call may proceed; <see langword="false"/> to deny it.</returns>
-    public Task<bool> ConfirmAsync(string toolName, string argumentsJson, CancellationToken cancellationToken);
+    public Task<bool> ConfirmAsync(ApprovalRequest request, CancellationToken cancellationToken);
 }

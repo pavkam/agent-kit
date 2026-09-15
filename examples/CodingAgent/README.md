@@ -6,12 +6,17 @@ real sandboxed file and process tools, and
 
 This example exists to prove out — and stress — both libraries end to end. It
 composes AgentKit's real production components (`DefaultAgentLoop`,
-`DefaultSessionCoordinator`, `SecurityAuthority`, the OpenAI provider, and seven
-tool packages, including `AgentKit.Tools.Plan`'s `todo` tool) directly, and
+`DefaultSessionCoordinator`, `SecurityAuthority`, the OpenAI provider, and eight
+tool packages, including `AgentKit.Tools.Plan`'s `todo` tool and
+`AgentKit.Tools.Question`'s authenticated human-question tool) directly, and
 renders the conversation with SharpVision's `Document`/Markdown control, a menu
-bar, a command palette, a context/todo sidebar, a status bar, and a spinner.
-Every tool call in this example touches your real filesystem and a real
-sandboxed subprocess — there is no mock mode.
+bar, a command palette, a context/todo sidebar, a status bar, and a spinner. The
+interactive host loads SharpVision's bundled `turbo-vision` theme once at
+startup, so its published palette and relief flow through the complete control
+tree without application-owned color copies. Native modal windows configure the
+workspace and agent and present formatted help without dumping either into the
+transcript. Every tool call in this example touches your real filesystem and a
+real sandboxed subprocess — there is no mock mode.
 
 ## Run it
 
@@ -27,21 +32,53 @@ dotnet run --project examples/CodingAgent/CodingAgent.csproj -- /path/to/a/works
 `.env.local` is loaded once at startup and never overrides a variable already
 exported in your shell, so `export OPENAI_API_KEY=sk-...` still works exactly as
 before if you prefer that. The workspace argument is optional; it defaults to
-the current directory. Set `CODING_AGENT_MODEL` (in your shell or in
-`.env.local`) to override the default `gpt-4o-mini`. Type a message and press
-Enter to send it; the agent can read, write, edit, glob, search, and run shell
-commands (sandboxed to the workspace, no network) against that exact directory.
+the current directory. The default model is `gpt-5.6-terra`; set
+`CODING_AGENT_MODEL` to `gpt-5.6-sol` or `gpt-6-astra` for the initial
+selection, or choose Terra, Sol, or Astra in Agent Configuration. Reasoning
+defaults to **Off** because OpenAI Chat Completions rejects Terra/Sol requests
+that combine function tools with another reasoning effort; the AgentKit setting
+maps explicitly to `reasoning_effort: none`. Type a message; Enter sends it,
+Shift+Enter adds a new line, and multiline paste stays in the composer. Press
+`/` or Ctrl+K to open the native TurboVision command palette. Its 19 searchable
+actions cover sessions, transcript navigation, agent control, permission modes,
+runtime information, help, and application actions. The agent can read, write,
+edit, glob, search, run shell commands (sandboxed to the workspace, no network),
+maintain a typed plan through `plan` or its `todo` compatibility alias, and ask
+a bounded multiple-choice question against that exact session.
+
+Sessions are stored durably beneath the platform-local application-data root in
+a workspace-keyed directory, outside the model-writable workspace. The same
+workspace can therefore reopen its conversation history after the process exits.
+Set `CODING_AGENT_SESSION_DB` to an absolute path to place the SQLite file
+elsewhere. CodingAgent creates the selected parent directory explicitly; the
+AgentKit SQLite adapter never creates parent directories. A stable agent
+identity is derived from the normalized workspace, so even a shared database
+override keeps discovery and reopening isolated by workspace. The path contains
+no credentials and should not point at a shared network filesystem.
+
+Sandboxed commands receive no ambient environment. Set
+`CODING_AGENT_TOOLCHAIN_ROOTS` to a platform-PATH-separated list of absolute
+read-only roots and `CODING_AGENT_COMMAND_PATH` to the exact PATH projected into
+commands. For Homebrew Python on Apple Silicon, use `/opt/homebrew` for the
+former and `/opt/homebrew/opt/python@3.14/bin:/opt/homebrew/bin:/usr/bin:/bin`
+for the latter.
 
 Type `/` for a live list of slash commands (filtered as you keep typing):
 
-| Command      | Does                                                        |
-| ------------ | ----------------------------------------------------------- |
-| `/help`      | List every command.                                         |
-| `/clear`     | Clear the transcript; the agent's session/memory continues. |
-| `/new`       | Start a brand-new session, discarding conversation history. |
-| `/model`     | Show the configured model id.                               |
-| `/workspace` | Show the workspace root this agent is scoped to.            |
-| `/quit`      | Exit CodingAgent.                                           |
+| Command                              | Does                                                        |
+| ------------------------------------ | ----------------------------------------------------------- |
+| `/help`                              | Open the formatted slash-command reference.                 |
+| `/clear`                             | Clear the transcript; the agent's session/memory continues. |
+| `/new`                               | Start a brand-new session, discarding conversation history. |
+| `/sessions`                          | List recent durable sessions for this workspace.            |
+| `/resume <id>`                       | Reopen a recent session and hydrate its stored transcript.  |
+| `/model`                             | Open Agent Configuration at the model selector.             |
+| `/workspace`                         | Open Configure Workspace for read-only toolchain roots.     |
+| `/status`                            | Open Agent Configuration with live run status.              |
+| `/tools`                             | Open the selectable tool and sandbox reference.             |
+| `/keys`                              | Open the formatted keyboard-shortcuts reference.            |
+| `/permissions [ask\|readonly\|auto]` | Show or switch the live permission mode.                    |
+| `/quit`                              | Exit CodingAgent.                                           |
 
 A headless mode skips the UI entirely, useful for scripting or diagnosing an
 AgentKit-side problem in isolation from SharpVision:
@@ -55,40 +92,63 @@ dotnet run --project examples/CodingAgent/CodingAgent.csproj -- --smoke-test /pa
 This isn't a demo that only ever reads files — it's meant to feel like sitting
 in front of Codex or Claude Code:
 
-- **A real menu bar** (`Session` / `Help`) sits above the transcript, reachable
-  by Alt+mnemonic, duplicating every slash command as a discoverable menu item —
-  New session, Clear transcript, Workspace/Model info, Quit, and a full command
-  list.
+- **A real menu bar** (`Session` / `View` / `Agent` / `Permissions` / `Help`)
+  sits above the transcript, reachable by Alt+mnemonic, duplicating every slash
+  command as a discoverable menu item — New session, Clear transcript,
+  Workspace/Model info, Quit, and a full command list.
+- **Configuration uses real dialogs.** Agent Configuration and Configure
+  Workspace derive from SharpVision's `Dialog<TResult>`, so they get the
+  framework's modal presentation, the separator above a centered `&Save` /
+  `&Cancel` action bar, typed completion, and disposal on close. Agent
+  Configuration edits the model, reasoning effort, and tool-turn limit;
+  Configure Workspace shows the required writable root, selectable host-declared
+  read-only roots, sandbox/network posture, and session store. Saving either
+  starts a fresh conversation runtime so admitted sessions retain exact
+  configuration evidence.
 - **Typing `/` opens a command palette**, not just an inline hint: a bordered
   popup lists every matching command with its description, filtered live as you
   keep typing. Ctrl+P/Ctrl+N move the highlighted row, Tab or Enter accepts it
   (or, if you've already typed the full command yourself, Enter just runs it —
   no need to accept your own typing first), and Escape closes it without
   touching your text.
-- **Every write, edit, or shell command asks first.** The transcript shows the
-  tool name and its exact arguments and waits for `y`/Enter (approve) or
-  `n`/Escape (deny) before the call runs. A denial is reported back to the model
-  as a real tool result — the agent is told the action did not happen and is
-  instructed never to claim otherwise.
+- **Permission modes live in exactly one place.** The `Permissions` menu owns
+  the three radio rows; the command palette and `/permissions` run the same
+  actions, and the status bar shows the current mode. Every label comes from one
+  `PermissionModeCatalog`, and changing the mode never restarts the session. The
+  default asks before every write, edit, or shell command. Read-only rejects all
+  three, while auto-approve workspace edits allows write/edit calls but
+  continues to ask before commands. The transcript shows a readable edit diff
+  and waits for `y`/Enter (approve) or `n`/Escape (deny) before the call runs. A
+  denial is reported back to the model as a real tool result — the agent is told
+  the action did not happen and is instructed never to claim otherwise.
+- **Human questions pause the active turn without fabricating authority.** The
+  shared question broker consumes the exact publication grant before the TUI
+  sees a grant-free prompt. Choose one of 2–10 numbered options, add free text
+  when the question permits it, and press Enter. Shift+Enter adds a line when
+  free text is permitted. Escape cancels the active turn; an expired deadline
+  cannot become an answer.
 - **Escape cancels a running turn.** While the agent is thinking or a tool is
   executing, press Escape to interrupt it immediately; the status bar reminds
   you of this (`Thinking... (Esc to cancel)`). The turn ends with a "Cancelled"
   entry in the transcript, and the session is left in a fully valid state — you
   can keep chatting (or cancel again) right away.
 - **Ctrl+P/Ctrl+N recall your last inputs**, exactly like a shell history,
-  including slash commands — see the gap below for why these and not Up/Down.
-- **Tool calls and results render as accent-bordered cards**, not plain text: a
-  colored left rule (blue for the assistant, dim for a tool call, green/red for
-  a tool result's success or failure, red for errors) makes a long transcript
-  scannable at a glance instead of a wall of undifferentiated Markdown.
-- **Tool arguments, JSON results, and file contents render through a real
-  `CodeView`**, pretty-printed and line-preserving, with genuine per-token
-  syntax color for the languages this SharpVision build's bundled catalog covers
-  (C#, TypeScript, Rust, PowerShell, JSON5 standing in for JSON, and a few more
-  — see the gap below). `read_file`'s result is highlighted by the file's own
-  extension; every other tool's JSON result is pretty-printed and colored as
-  JSON5. Markdown/`Document` is reserved for the assistant's and the user's own
-  prose, where CommonMark's formatting is actually wanted.
+  including slash commands, while arrow keys remain available for caret
+  movement.
+- **Tool calls and results render live as correlated accent-bordered cards**,
+  with an in-body spinner while each call is active. Assistant text arrives
+  incrementally, and reasoning deltas use their own temporary thinking card when
+  the provider supplies them. A generic thinking card appears immediately even
+  when the selected model emits no reasoning metadata. A colored left rule (blue
+  for the assistant, dim for a tool call, green/red for a tool result's success
+  or failure, red for errors) makes a long transcript scannable at a glance
+  instead of a wall of undifferentiated Markdown.
+- **Tool previews and results use each tool package's reusable presentation**,
+  rendered as literal text, code, or diffs instead of exposing wire JSON.
+  Formatter-bounded code and file contents use line-preserving native document
+  code blocks, so a tool card expands to its natural height and only the
+  transcript scrolls. Markdown remains reserved for assistant and user prose,
+  where CommonMark formatting is actually wanted.
 - **A right-hand sidebar tracks live session context**: a running token/cost
   total (from the real `ConversationUsageEvent` the model provider reports — see
   the gap below) and a live todo checklist (☐ pending, ◐ in progress, ☑
@@ -100,15 +160,16 @@ in front of Codex or Claude Code:
   separated from the busy/ready indicator so you never lose track of what a
   session has cost or which agent/workspace it belongs to.
 
-### One caveat: no token streaming yet
+### Remaining UI gaps
 
-Responses still appear all at once when a turn finishes, not token-by-token.
-`DefaultAgentLoop` only wires a `NoOpModelResponseObserver` today — there's no
-path from `IAgentLoop`/`AgentKit.Conversations` for a caller to supply a real
-observer and see partial output as it's produced. Adding that plumbing is a
-bigger, cross-cutting change than this pass covers, so it's called out here as
-the clearest remaining gap between this example and a production coding agent's
-UI.
+The composer supports multiline editing and safe multiline paste. The sidebar
+collapses on narrow terminals, and Page Up/Page Down plus Follow latest provide
+explicit transcript navigation. SQLite preserves conversation sessions across
+process restarts; `/sessions` discovers a bounded recent page and `/resume`
+opens one while the agent is idle and hydrates its bounded stored history. The
+application selects SharpVision's bundled Turbo Vision theme at startup; menus,
+the responsive paired-line command palette, documents, approvals, and the
+composer inherit that theme.
 
 ## What this proves
 
@@ -120,7 +181,7 @@ registration doc lists (`ISessionCoordinator`, `IContextAssembler`,
 eight distinct composition gaps, all documented below. **Every one of them has
 since been fixed at the library level**, and `AgentRuntime.cs` now composes the
 fixes directly instead of working around the gaps by hand: see
-[the git history of this file](https://github.com/pavkam/agent-framework/commits/main/examples/CodingAgent/AgentRuntime.cs)
+[the git history of this file](https://github.com/pavkam/agent-kit/commits/main/examples/CodingAgent/AgentRuntime.cs)
 for the before/after, or read `AgentKit.Conversations`, `AgentKit.Permissions`,
 and `AgentKit.Tools`'s READMEs for the new APIs themselves.
 
@@ -350,15 +411,11 @@ kind of gap that only shows up once you stop testing against a toy workspace:
   being stripped — expected, since only baseline CommonMark is documented as
   supported, but worth knowing before reaching for them in a transcript like
   this one's.
-- **A `ListView` defaults to `IsFocusable = true`/`IsTabStop = true`, so a
-  purely read-only, display-only list silently steals initial focus** away from
-  whatever `Screen.OnStarted` explicitly focused — even though that explicit
-  `Focus()` call runs first and reports success. The symptom is confusing
-  precisely because nothing throws: typed characters simply go nowhere.
-  **Fixed** by setting `IsFocusable = false; IsTabStop = false;` on every
-  `ListView` in this example that's driven entirely by external code (the
-  transcript, and the command popup's result list) rather than by ever taking
-  focus itself.
+- **A `ListView` defaults to `IsFocusable = true`/`IsTabStop = true`, so an
+  externally driven display list can silently steal initial focus.** The
+  transcript now uses retained document rows in a scrolling `Stack`, while the
+  native `CommandPalette` deliberately owns focus and result navigation only
+  while it is open.
 - **`Menu`'s own default arrow-key handling (`Menu.OnEvent`) claims Up, Down,
   Left, and Right unconditionally, for any `Menu` anywhere in the attached tree,
   regardless of focus.** Unlike `ListView.OnKeyRouted` — which checks
@@ -372,11 +429,10 @@ kind of gap that only shows up once you stop testing against a toy workspace:
   label correctly reports every arrow key on its own; adding nothing but a
   `Menu` next to them — with `IsTabStop = false` and `IsFocusable = false` on it
   — silently and permanently stops all four arrow keys from ever reaching the
-  `TextInput`'s `KeyDown` again. **Worked around** here rather than patched
-  upstream: history recall and command-popup navigation both use Ctrl+P/Ctrl+N
-  (the classic Emacs/readline history chords) instead of bare arrow keys, which
-  sidesteps `Menu`'s unconditional claim entirely and reads naturally to anyone
-  who's used a shell.
+  `TextInput`'s `KeyDown` again. **Worked around** for composer history with
+  Ctrl+P/Ctrl+N (the classic Emacs/readline chords). SharpVision's native
+  command palette owns its popup navigation session early enough for Up/Down to
+  select results correctly; that path is live-verified in the composed app.
 - Everything else not covered above worked exactly as documented on the first
   try: dispatcher threading (an `async void` event handler's `await`
   continuation correctly resumes on the UI thread with no manual
@@ -385,12 +441,9 @@ kind of gap that only shows up once you stop testing against a toy workspace:
   appearance, and docked status/prompt bars all stayed correct), and
   read-only-during-busy input blocking (a second Enter while a turn is in flight
   is silently dropped, never queued or crashed).
-- `ListView` with `RowHeight = Length.Auto` and an `ItemTemplate` returning a
-  `Stack` containing a header `Text` plus a per-item `Document` also worked
-  correctly on the first try, including auto-sized rows for multi-line markdown
-  (a fenced code block inside one row) and reliable `BringIntoView`
-  scroll-to-latest after reassigning `Items`. This is what the per-message
-  transcript below is built on.
+- Retained `Document` rows inside the transcript's scrolling `Stack` preserve
+  natural-height prose and code blocks, text selection, and one outer
+  follow-tail owner without nested scrolling.
 
 ## Files
 
@@ -399,12 +452,27 @@ kind of gap that only shows up once you stop testing against a toy workspace:
 - [`AgentRuntime.cs`](AgentRuntime.cs) — composes the agent: security, session
   store, tools, provider, and the `AgentKit.Conversations` session.
 - [`ChatScreen.cs`](ChatScreen.cs) — the SharpVision UI: a menu bar, a
-  `ListView` transcript of accent-bordered per-message cards, a command-palette
-  popup for slash commands, a context/todo sidebar, a status bar, per-call tool
-  approval prompts, Escape-to-cancel, and Ctrl+P/Ctrl+N history.
+  selectable document transcript, SharpVision native command palette, a
+  context/todo sidebar, a status bar with run, permission, usage, model/effort,
+  and workspace context, per-call tool approval prompts, direct model/reasoning
+  radio menus, role-neutral user/assistant transcript prose, Escape-to-cancel,
+  and Ctrl+P/Ctrl+N history.
+- [`CommandPaletteItem.cs`](CommandPaletteItem.cs) — searchable application
+  action metadata rendered by the native palette.
+- [`AgentConfigurationWindow.cs`](AgentConfigurationWindow.cs) and
+  [`WorkspaceConfigurationWindow.cs`](WorkspaceConfigurationWindow.cs) — the
+  native TurboVision configuration dialogs.
+- [`KeyboardShortcutsWindow.cs`](KeyboardShortcutsWindow.cs) — the selectable,
+  scrollable Markdown keyboard reference shared by Help, palette, and `/keys`.
+- [`CommandReferenceWindow.cs`](CommandReferenceWindow.cs) — the catalog-backed,
+  selectable Markdown command reference shared by Help, palette, and `/help`.
+- [`CodingAgentConfiguration.cs`](CodingAgentConfiguration.cs) — the immutable
+  model, reasoning, turn, and read-only-root choices captured by the runtime.
 - [`ChatEntry.cs`](ChatEntry.cs) — the transcript's per-message view model.
-- [`SlashCommand.cs`](SlashCommand.cs) — the recognized slash commands and their
-  prefix matching for the command popup.
+- [`SlashCommand.cs`](SlashCommand.cs) and
+  [`SlashCommands.cs`](SlashCommands.cs) — command metadata accepted by direct
+  composer submission and projected into formatted help without a second
+  documentation list.
 - [`SessionUsage.cs`](SessionUsage.cs) — accumulates the running token/cost
   totals from `ConversationUsageEvent`, for the sidebar and status bar.
 - [`TodoItem.cs`](TodoItem.cs) — parses the `todo`/`plan` tool's own result JSON
@@ -413,11 +481,17 @@ kind of gap that only shows up once you stop testing against a toy workspace:
 - [`SourceLanguage.cs`](SourceLanguage.cs) — maps a file path to a verified
   `CodeView` catalog language name, and pretty-prints JSON tool payloads for
   display.
-- [`IApprovalPrompt.cs`](IApprovalPrompt.cs) — the abstraction `ChatScreen`
-  implements to gate mutating tool calls on a live yes/no prompt.
-- [`ApprovalGatedToolInvoker.cs`](ApprovalGatedToolInvoker.cs) — an
-  `IToolInvoker` decorator that routes write/edit/command calls through an
-  `IApprovalPrompt` before invoking them for real.
+- [`CodingAgentSecurityPolicy.cs`](CodingAgentSecurityPolicy.cs) — maps the
+  selected UI mode onto normalized file and process effects at the shared
+  security authority.
+- [`IApprovalPrompt.cs`](IApprovalPrompt.cs) — the terminal interaction used by
+  the application's `IApprovalHandler` for exact retained approval requests.
+- [`CodingAgentApprovalHandler.cs`](CodingAgentApprovalHandler.cs) — returns an
+  authenticated response for the authority-owned request; the selected in-memory
+  approval store is explicitly process-local and ephemeral.
+- [`CodingAgentHumanQuestionChannel.cs`](CodingAgentHumanQuestionChannel.cs) —
+  authenticates one exact terminal selection after the shared broker authorizes
+  question publication; the displayed prompt itself carries no authority.
 - [`AutoApprovePrompt.cs`](AutoApprovePrompt.cs) — the headless
   `IApprovalPrompt` used by `--smoke-test`; approves everything and prints what
   it approved.

@@ -3,10 +3,7 @@
 
 namespace CodingAgent;
 
-using System.Text.Json;
-
-/// <summary>Maps a file path to the exact <c>CodeView</c> catalog language name for it, and pretty-prints JSON
-/// tool payloads for display.</summary>
+/// <summary>Maps file paths and provider-neutral language hints to exact <c>CodeView</c> catalog names.</summary>
 /// <remarks>The bundled syntax catalog in this SharpVision build only ships a curated ~160-language subset (no
 /// plain JSON, YAML, or Markdown grammar, for one) rather than every mainstream language; unmapped or
 /// unsupported extensions fall back to <see langword="null"/> (plain, unhighlighted, but still line-preserving
@@ -52,21 +49,18 @@ internal static class SourceLanguage
     /// <summary>The catalog language name for tool call/result JSON payloads.</summary>
     public const string Json = "JSON5";
 
-    private static readonly JsonSerializerOptions _indented = new() { WriteIndented = true };
-
-    /// <summary>Re-serializes JSON with indentation for display, or returns the original text unchanged if it
-    /// does not parse (never throws on malformed input, since this only ever formats content for a read-only
-    /// transcript).</summary>
-    public static string PrettyPrint(string json)
+    /// <summary>Maps a provider-neutral presentation language hint to a verified bundled catalog name.</summary>
+    /// <param name="language">The optional lower-case language hint supplied by a tool formatter.</param>
+    /// <returns>A supported catalog name, or <see langword="null"/> for plain fixed-width rendering.</returns>
+    public static string? ForPresentation(string? language) => language?.ToLowerInvariant() switch
     {
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            return JsonSerializer.Serialize(document, _indented);
-        }
-        catch (JsonException)
-        {
-            return json;
-        }
-    }
+        "csharp" or "cs" => "C#",
+        "json" or "json5" => Json,
+        "typescript" => "TypeScript",
+        "rust" => "Rust",
+        "shell" or "sh" or "bash" or "zsh" => "Zsh",
+        "powershell" => "PowerShell",
+        _ => null,
+    };
+
 }

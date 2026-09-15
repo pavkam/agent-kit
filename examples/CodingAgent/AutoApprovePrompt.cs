@@ -7,9 +7,11 @@ namespace CodingAgent;
 internal sealed class AutoApprovePrompt: IApprovalPrompt
 {
     /// <inheritdoc/>
-    public Task<bool> ConfirmAsync(string toolName, string argumentsJson, CancellationToken cancellationToken)
+    public Task<bool> ConfirmAsync(ApprovalRequest request, CancellationToken cancellationToken)
     {
-        Console.WriteLine($"[auto-approved] {toolName} {argumentsJson}");
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        Console.WriteLine($"[auto-approved] {request.SafePresentation}");
         return Task.FromResult(true);
     }
 }

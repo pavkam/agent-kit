@@ -12,7 +12,7 @@ internal static class OpenAiEnvironment
     /// <summary>Gets the configured OpenAI model id, defaulting to a small, fast model.</summary>
     public const string ModelVariable = "CODING_AGENT_MODEL";
 
-    private const string _defaultModelId = "gpt-4o-mini";
+    private const string _defaultModelId = "gpt-5.6-terra";
 
     /// <summary>Reads the required API key.</summary>
     /// <exception cref="InvalidOperationException"><see cref="ApiKeyVariable"/> is unset or blank.</exception>

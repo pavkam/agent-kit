@@ -10,14 +10,20 @@ internal static class CodingAgentSmokeTest
     {
         var workspaceRoot = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
         var prompt = args.Length > 1 ? args[1] : "Say hello in one short sentence.";
+        var configuration = CodingAgentConfiguration.CreateDefault();
 
         Console.WriteLine($"Workspace: {workspaceRoot}");
-        Console.WriteLine($"Model: {OpenAiEnvironment.ModelId()}");
+        Console.WriteLine($"Model: {configuration.ModelId}");
         Console.WriteLine($"Prompt: {prompt}");
         Console.WriteLine("---");
 
-        var conversation = AgentRuntime.Create(
-            workspaceRoot, OpenAiEnvironment.RequireApiKey(), OpenAiEnvironment.ModelId(), new AutoApprovePrompt());
+        using var conversation = AgentRuntime.Create(
+            workspaceRoot,
+            OpenAiEnvironment.RequireApiKey(),
+            configuration,
+            new AutoApprovePrompt(),
+            new UnavailableHumanQuestionPrompt(),
+            new PermissionModeController());
         var result = await conversation.SendAsync(prompt, CancellationToken.None);
 
         Console.WriteLine($"Succeeded: {result.Succeeded}");

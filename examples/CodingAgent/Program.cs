@@ -11,5 +11,7 @@ if (args is ["--smoke-test", .. var rest])
 }
 
 var workspaceRoot = args.Length > 0 ? Path.GetFullPath(args[0]) : Directory.GetCurrentDirectory();
-var status = await ConsoleApplication.RunAsync(new ChatScreen(workspaceRoot));
+var status = await ConsoleApplication.RunAsync(
+    new ChatScreen(workspaceRoot),
+    static builder => builder.UseTheme(ThemeCatalog.Load("turbo-vision")));
 return status == ConsoleRunStatus.Failed ? 1 : 0;
