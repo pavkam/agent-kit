@@ -11,7 +11,7 @@ libraries.
 
 ## Current status
 
-AgentKit targets .NET 10 and is currently versioned `0.1.0-alpha.1` in
+AgentKit targets .NET 10 and is currently versioned `0.1.0-alpha.2` in
 [Directory.Build.props](../Directory.Build.props). Work from a source checkout
 when evaluating these instructions. The repository's version number does not
 establish availability on a public package feed.
