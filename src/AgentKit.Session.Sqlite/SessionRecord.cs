@@ -84,10 +84,14 @@ internal sealed class SessionRecord
     /// </summary>
     public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionBranchRequest, SessionBranched>> BranchIdempotency { get; set; } = [];
 
-    /// <summary>Gets canonical admitted inputs keyed by caller idempotency identity.</summary>
-    public Dictionary<InputId, StoredAdmission> AdmissionsByInput { get; set; } = [];
+    /// <summary>Gets the index from caller input identity to the canonical admission in <see cref="AdmissionsById"/>.</summary>
+    /// <remarks>
+    /// The index stores only the <see cref="AdmissionId"/> so that durable JSON, which does not preserve object references,
+    /// never rehydrates a second detached <see cref="StoredAdmission"/> that promotion would fail to advance.
+    /// </remarks>
+    public Dictionary<InputId, AdmissionId> AdmissionsByInput { get; set; } = [];
 
-    /// <summary>Gets canonical admitted inputs keyed by runtime admission identity.</summary>
+    /// <summary>Gets the single canonical retained admission keyed by runtime admission identity.</summary>
     public Dictionary<AdmissionId, StoredAdmission> AdmissionsById { get; set; } = [];
 
     /// <summary>Gets exact input-admission commit receipts keyed by transaction idempotency identity.</summary>

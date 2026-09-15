@@ -524,7 +524,7 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
         {
             return !TryGetAuthorizedRecord(request.Context, out var record)
                 ? ValueTask.FromResult<SessionInputLookupResult>(new SessionInputNotFound())
-                : !record.AdmissionsByInput.TryGetValue(request.Input.Id, out var stored)
+                : !TryGetAdmissionByInput(record, request.Input.Id, out var stored)
                 ? ValueTask.FromResult<SessionInputLookupResult>(new SessionInputNotFound())
                 : !EquivalentAdmission(stored, request.Context, request.Input, request.OriginalFingerprint)
                 ? ValueTask.FromResult<SessionInputLookupResult>(new SessionInputLookupConflict(
@@ -557,7 +557,7 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
                             "The admission idempotency key was reused with different evidence."));
             }
 
-            if (record.AdmissionsByInput.TryGetValue(request.OriginalPayload.Id, out var stored))
+            if (TryGetAdmissionByInput(record, request.OriginalPayload.Id, out var stored))
             {
                 if (!EquivalentAdmission(stored, request.Context, request.OriginalPayload, request.Preprocessing.OriginalFingerprint))
                 {
@@ -624,8 +624,8 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
                 admitted.ExecutionLaneId, admitted.AdmittedSequence, existing: false);
             var retained = new StoredAdmission(admitted, (BeforeRunOperationCorrelation) request.Context.Correlation, request.EntryId, receipt);
             var accepted = new AcceptedInput(receipt);
-            record.AdmissionsByInput.Add(admitted.OriginalPayload.Id, retained);
             record.AdmissionsById.Add(admitted.AdmissionId, retained);
+            record.AdmissionsByInput.Add(admitted.OriginalPayload.Id, admitted.AdmissionId);
             record.AdmissionIdempotency.Add(request.IdempotencyKey,
                 new IdempotencyReceipt<SessionInputAdmissionRequest, AcceptedInput>(request, accepted));
             _ = record.EntryIds.Add(entry.Id);
@@ -824,6 +824,24 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
         Debug.Assert(context is not null, "A validated session operation context is required.");
         return _sessions.TryGetValue(context.ToAddress(), out record)
             && record.TenantId == context.Identity.TenantId;
+    }
+
+    /// <summary>Resolves the single canonical admission for one caller input identity through the durable index.</summary>
+    /// <param name="record">The loaded session record.</param>
+    /// <param name="inputId">The caller-supplied input identity.</param>
+    /// <param name="stored">The canonical admission shared with <see cref="SessionRecord.AdmissionsById"/>, when indexed.</param>
+    /// <returns><see langword="true"/> when the input was admitted and its canonical record is present.</returns>
+    private static bool TryGetAdmissionByInput(SessionRecord record, InputId inputId, [NotNullWhen(true)] out StoredAdmission? stored)
+    {
+        Debug.Assert(record is not null, "A loaded session is required.");
+        if (record.AdmissionsByInput.TryGetValue(inputId, out var admissionId)
+            && record.AdmissionsById.TryGetValue(admissionId, out stored))
+        {
+            return true;
+        }
+
+        stored = null;
+        return false;
     }
 
     private static bool EquivalentAdmission(StoredAdmission stored, SessionOperationContext context,

@@ -181,6 +181,34 @@ public abstract class SessionStoreConformanceTests<TFixture>
         replay.Receipt.Existing.ShouldBeTrue();
     }
 
+    /// <summary>Verifies promotion advances the single canonical admission so lookup by input identity observes the promoted sequence.</summary>
+    [Fact]
+    public async Task LookupInputAsync_WhenAdmissionWasPromoted_ReportsPromotedSequence()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 100, "promoted-lookup");
+        var start = StartRequest(prepared, 110);
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var lookup = new SessionInputLookupRequest(
+            prepared.Context, prepared.Admission.OriginalPayload,
+            prepared.Admission.Preprocessing.OriginalFingerprint);
+
+        var result = await store.LookupInputAsync(
+            await AuthorizeAsync(fixture, lookup, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var page = (SessionPage) await ReadAllAsync(fixture, store, prepared.Descriptor, prepared.Context);
+
+        var promotionSequence = page.Entries.OfType<InputPromotedSessionEntry>().Single().Sequence;
+        accepted.Existing.ShouldBeFalse();
+        var replay = result.ShouldBeOfType<SessionInputReplayFound>();
+        replay.AdmittedInput.AdmissionId.ShouldBe(prepared.Admission.AdmissionId);
+        replay.AdmittedInput.PromotedSequence.ShouldBe(promotionSequence);
+        replay.Receipt.AdmittedSequence.ShouldBe(prepared.Accepted.Receipt.AdmittedSequence);
+    }
+
     /// <summary>Verifies lane provisioning, admission, run acceptance, replay, and recovery retain one exact accepted state.</summary>
     [Fact]
     public async Task AcceptRunAsync_WhenPlanIsCurrent_CommitsAndRecoversCompleteAcceptedState()
