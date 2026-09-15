@@ -41,6 +41,10 @@ public sealed class CompactionSessionEntryCodec: ISessionEntryCodec
         {
             return new SessionEntryEncodeRejected("The compaction entry cannot be represented by the version-one schema.");
         }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or NotSupportedException)
+        {
+            return new SessionEntryEncodeRejected("The compaction entry carries a value that cannot be serialized.");
+        }
     }
 
     /// <inheritdoc/>
@@ -64,7 +68,7 @@ public sealed class CompactionSessionEntryCodec: ISessionEntryCodec
         {
             return new SessionEntryDecodeRejected("The compaction entry payload is malformed.");
         }
-        catch (ArgumentException)
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or NotSupportedException)
         {
             return new SessionEntryDecodeRejected("The compaction entry payload violates its invariants.");
         }

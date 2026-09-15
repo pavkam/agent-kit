@@ -9,6 +9,19 @@ through the additive default interface implementation.
 
 Coordinate session lifecycle, run ownership, branching, and store routing.
 
+## Portable entry codecs
+
+`MessageSessionEntryCodec`, `InputAdmittedSessionEntryCodec`, and
+`CompactionSessionEntryCodec` encode and decode bounded version-one JSON
+payloads. They never leak serializer or reflection exceptions to a store: a
+malformed payload (wrong shape, missing value property, unknown discriminator)
+decodes to `SessionEntryDecodeRejected` with a "malformed" reason, and a
+well-formed payload whose values violate a domain invariant (empty identity
+GUID, blank tool identifier, impossible field combination) decodes to
+`SessionEntryDecodeRejected` with a "violates its invariants" reason. Encoding a
+value the schema cannot represent (for example an uninitialized `JsonElement`)
+returns `SessionEntryEncodeRejected` instead of throwing.
+
 Use this package with an explicitly selected session store. It owns coordination
 through session contracts while the backend determines persistence and
 consistency behavior.

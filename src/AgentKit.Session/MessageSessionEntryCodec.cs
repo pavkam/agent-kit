@@ -45,6 +45,10 @@ public sealed class MessageSessionEntryCodec: ISessionEntryCodec
         {
             return new SessionEntryEncodeRejected("The message entry cannot be represented by the version-one schema.");
         }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or NotSupportedException)
+        {
+            return new SessionEntryEncodeRejected("The message entry carries a value that cannot be serialized.");
+        }
     }
 
     /// <inheritdoc/>
@@ -70,7 +74,7 @@ public sealed class MessageSessionEntryCodec: ISessionEntryCodec
         {
             return new SessionEntryDecodeRejected("The message entry payload is malformed.");
         }
-        catch (ArgumentException)
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or NotSupportedException)
         {
             return new SessionEntryDecodeRejected("The message entry payload violates its invariants.");
         }

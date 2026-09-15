@@ -41,6 +41,10 @@ public sealed class InputAdmittedSessionEntryCodec: ISessionEntryCodec
         {
             return new SessionEntryEncodeRejected("The input-admitted entry cannot be represented by the version-one schema.");
         }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or NotSupportedException)
+        {
+            return new SessionEntryEncodeRejected("The input-admitted entry carries a value that cannot be serialized.");
+        }
     }
 
     /// <inheritdoc/>
@@ -57,10 +61,15 @@ public sealed class InputAdmittedSessionEntryCodec: ISessionEntryCodec
         {
             using var document = JsonDocument.Parse(wire.Payload.AsMemory());
             var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return new SessionEntryDecodeRejected("The input-admitted entry payload is malformed.");
+            }
+
             var entry = new InputAdmittedSessionEntry(
                 Required<SessionEntryId>(root, "Id"), Required<SessionAddress>(root, "Address"),
                 Required<BeforeRunOperationCorrelation>(root, "Correlation"), Required<BranchId>(root, "BranchId"),
-                Required<SessionSequence>(root, "Sequence"), root.GetProperty("CausalParentId").Deserialize<SessionEntryId?>(_json),
+                Required<SessionSequence>(root, "Sequence"), Optional<SessionEntryId>(root, "CausalParentId"),
                 Required<DateTimeOffset>(root, "RecordedAt"), Required<SchemaVersion>(root, "SchemaVersion"),
                 Required<AdmittedInput>(root, "Input"));
             return new SessionEntryDecoded(new DecodedSessionEntry(entry, wire));
@@ -69,7 +78,7 @@ public sealed class InputAdmittedSessionEntryCodec: ISessionEntryCodec
         {
             return new SessionEntryDecodeRejected("The input-admitted entry payload is malformed.");
         }
-        catch (ArgumentException)
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or NotSupportedException)
         {
             return new SessionEntryDecodeRejected("The input-admitted entry payload violates its invariants.");
         }
@@ -80,9 +89,20 @@ public sealed class InputAdmittedSessionEntryCodec: ISessionEntryCodec
     /// <param name="element">The containing object.</param>
     /// <param name="name">The exact field name.</param>
     /// <returns>The reconstructed non-null field value.</returns>
+    /// <exception cref="JsonException">The field is absent, null, or malformed.</exception>
     private T Required<T>(JsonElement element, string name) =>
-        element.GetProperty(name).Deserialize<T>(_json)
-        ?? throw new JsonException($"The required {name} field is null.");
+        element.TryGetProperty(name, out var field)
+            ? field.Deserialize<T>(_json) ?? throw new JsonException($"The required {name} field is null.")
+            : throw new JsonException($"The required {name} field is missing.");
+
+    /// <summary>Reads one optional value-type field, treating an absent or null field as no value.</summary>
+    /// <typeparam name="T">The nonnullable field value type.</typeparam>
+    /// <param name="element">The containing object.</param>
+    /// <param name="name">The exact field name.</param>
+    /// <returns>The reconstructed value, or <see langword="null"/> when the field is absent or null.</returns>
+    /// <exception cref="JsonException">The present field is malformed.</exception>
+    private T? Optional<T>(JsonElement element, string name) where T : struct =>
+        element.TryGetProperty(name, out var field) ? field.Deserialize<T?>(_json) : null;
 
     private static JsonSerializerOptions CreateOptions()
     {

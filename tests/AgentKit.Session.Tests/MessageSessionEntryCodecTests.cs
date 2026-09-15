@@ -60,4 +60,80 @@ public sealed class MessageSessionEntryCodecTests
         result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason.ShouldBe(
             "The message entry schema does not match its wire envelope.");
     }
+
+    [Fact]
+    public void Decode_WhenIdentityIsEmptyGuid_ReturnsRejected()
+    {
+        var descriptor = TestFactory.Descriptor();
+        var codec = new MessageSessionEntryCodec();
+        var encoded = codec.Encode(TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1))
+            .ShouldBeOfType<SessionEntryEncoded>();
+        var payload = JsonNode.Parse(encoded.Wire.Payload.AsSpan()).ShouldNotBeNull();
+        payload["Id"]!["Value"] = Guid.Empty;
+
+        var result = codec.Decode(Rewire(encoded.Wire, payload));
+
+        result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason.ShouldBe(
+            "The message entry payload violates its invariants.");
+    }
+
+    [Fact]
+    public void Decode_WhenValueObjectLacksValueProperty_ReturnsRejected()
+    {
+        var descriptor = TestFactory.Descriptor();
+        var codec = new MessageSessionEntryCodec();
+        var encoded = codec.Encode(TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1))
+            .ShouldBeOfType<SessionEntryEncoded>();
+        var payload = JsonNode.Parse(encoded.Wire.Payload.AsSpan()).ShouldNotBeNull();
+        payload["Id"] = new JsonObject();
+
+        var result = codec.Decode(Rewire(encoded.Wire, payload));
+
+        result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason.ShouldBe(
+            "The message entry payload is malformed.");
+    }
+
+    [Fact]
+    public void Decode_WhenToolIdIsBlank_ReturnsRejected()
+    {
+        var descriptor = TestFactory.Descriptor();
+        var codec = new MessageSessionEntryCodec();
+        var entry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1);
+        var toolCall = new ToolCallPart(
+            new ToolCallId(Guid.NewGuid()),
+            new ToolReference(new ToolId("search"), null, "search"),
+            JsonDocument.Parse("{}").RootElement.Clone(),
+            null,
+            ExtensionData.Empty);
+        entry = entry with { Message = entry.Message with { Parts = [toolCall] } };
+        var encoded = codec.Encode(entry).ShouldBeOfType<SessionEntryEncoded>();
+        var payload = JsonNode.Parse(encoded.Wire.Payload.AsSpan()).ShouldNotBeNull();
+        payload["Message"]!["Parts"]![0]!["Tool"]!["Id"]!["Value"] = " ";
+
+        var result = codec.Decode(Rewire(encoded.Wire, payload));
+
+        result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason.ShouldBe(
+            "The message entry payload violates its invariants.");
+    }
+
+    [Fact]
+    public void Encode_WhenStructuredValueIsUninitialized_ReturnsRejected()
+    {
+        var descriptor = TestFactory.Descriptor();
+        var entry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1);
+        entry = entry with
+        {
+            Message = entry.Message with { Parts = [new StructuredDataPart(default, null, ExtensionData.Empty)] },
+        };
+
+        var result = new MessageSessionEntryCodec().Encode(entry);
+
+        result.ShouldBeOfType<SessionEntryEncodeRejected>().Reason.ShouldBe(
+            "The message entry carries a value that cannot be serialized.");
+    }
+
+    private static SessionEntryWireEnvelope Rewire(SessionEntryWireEnvelope wire, JsonNode payload) => new(
+        wire.TypeId,
+        wire.SchemaVersion,
+        [.. JsonSerializer.SerializeToUtf8Bytes(payload)]);
 }
