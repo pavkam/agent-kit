@@ -79,6 +79,28 @@ and a request that asserts `ParallelToolCalls` against a model without
 a fixed safe message and no status, provider code, or retry hint, because the
 provider was never contacted.
 
+## Shared translation helpers and parse contexts
+
+Request translators and response parsers in every first-party provider package
+share the same small set of provider-neutral mechanics rather than carrying
+private copies:
+
+- `ProviderJson.ApplyExtensions` copies `ExtensionData` passthrough entries into
+  a request body without overriding any field the translator already wrote;
+  `ProviderJson.ParseArguments` parses raw tool-call argument text, defaulting
+  only a missing value to `{}` and propagating malformed text as a
+  `JsonException`; `ProviderJson.ParseEmptyObject` yields that detached `{}`.
+- `ProviderToolCallIds.Collect` maps each `ToolCallId` in a conversation to the
+  wire identifier it must be replayed under: the provider's own call id when the
+  part carries one, otherwise the canonical `ToolCallId` text.
+- `ProviderResponseParseContext` is the conversational parse context (AgentKit
+  request id, provider, API family, requested model, deployment, provider
+  request id) and `EmbeddingResponseParseContext` its embedding counterpart.
+  Both build `ProviderResponseIdentity` through `CreateResponseIdentity`, so the
+  "requested model unless the body names one" rule is written once. A provider
+  whose embedding parser needs extra request evidence (Cohere's encoding and
+  purpose, Mistral's encoding) derives its own record from the embedding base.
+
 ## Known-model catalog
 
 `KnownModelCatalog.Default` is reference data embedded in this assembly: the

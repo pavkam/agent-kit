@@ -22,7 +22,7 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
     /// <inheritdoc/>
     public async Task<EmbeddingAttemptResult> ParseAsync(
         Stream responseBody,
-        OpenAIEmbeddingResponseParseContext context,
+        EmbeddingResponseParseContext context,
         ImmutableArray<EmbeddingInput> requestInputs,
         CancellationToken cancellationToken = default)
     {
@@ -52,7 +52,7 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
         }
 
         var items = ImmutableArray.CreateBuilder<EmbeddingItemOutcome>(data.Count);
-        var identity = BuildIdentity(context, dto.Model);
+        var identity = context.CreateResponseIdentity(dto.Model);
 
         foreach (var entry in data)
         {
@@ -147,19 +147,8 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
                 costCurrency: null,
                 ExtensionData.Empty);
 
-    private static ProviderResponseIdentity BuildIdentity(OpenAIEmbeddingResponseParseContext context, string? resolvedModel) =>
-        new(
-            context.ProviderId,
-            upstreamProviderId: null,
-            context.ApiFamily,
-            context.RequestedModelId,
-            resolvedModel is { Length: > 0 } model ? new ModelId(model) : context.RequestedModelId,
-            context.DeploymentId,
-            requestId: null,
-            responseId: null);
-
     private static ProviderFailure BuildProtocolFailure(
-        OpenAIEmbeddingResponseParseContext context, string safeMessage, Exception? diagnosticCause) =>
+        EmbeddingResponseParseContext context, string safeMessage, Exception? diagnosticCause) =>
         new(
             ProviderFailureKind.ProtocolViolation,
             context.ProviderId,

@@ -9,7 +9,7 @@ using AgentKit.TestSupport;
 /// <summary>Verifies OpenAIChatCompletionResponseParser behavior and contracts.</summary>
 public sealed class OpenAIChatCompletionResponseParserTests
 {
-    private static OpenAIResponseParseContext CreateContext(ModelRequestId requestId, ProviderRequestId? providerRequestId = null) => new(requestId, new ProviderId("openai"), new ApiFamilyId("openai-chat-completions"), new ModelId("gpt-4o"), deploymentId: null, providerRequestId);
+    private static ProviderResponseParseContext CreateContext(ModelRequestId requestId, ProviderRequestId? providerRequestId = null) => new(requestId, new ProviderId("openai"), new ApiFamilyId("openai-chat-completions"), new ModelId("gpt-4o"), deploymentId: null, providerRequestId);
     [Fact]
     public async Task ParseBufferedAsync_WhenPlainTextResponse_EmitsTextPartAndCompletes()
     {

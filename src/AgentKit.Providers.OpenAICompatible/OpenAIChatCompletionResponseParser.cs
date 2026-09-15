@@ -47,7 +47,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseBufferedAsync(
         Stream responseBody,
-        OpenAIResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -212,7 +212,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context, dto.Model, dto.Id),
+            context.CreateResponseIdentity(dto.Model, dto.Id),
             parts.ToImmutable(),
             MapStopReason(choice.FinishReason),
             usage,
@@ -227,7 +227,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseStreamingAsync(
         Stream responseBody,
-        OpenAIResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -523,7 +523,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context, resolvedModel, responseId),
+            context.CreateResponseIdentity(resolvedModel, responseId),
             parts.ToImmutable(),
             MapStopReason(finishReason),
             usage,
@@ -541,7 +541,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
     /// </summary>
     private static async Task<ModelAttemptResult> FailWithProviderErrorAsync(
         IModelResponseObserver observer,
-        OpenAIResponseParseContext context,
+        ProviderResponseParseContext context,
         long sequence,
         OpenAIErrorDetail error,
         ImmutableArray<ContentPart> partialParts,
@@ -647,7 +647,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
     private static async Task<ModelAttemptResult> FailAsync(
         IModelResponseObserver observer,
-        OpenAIResponseParseContext context,
+        ProviderResponseParseContext context,
         long sequence,
         string safeMessage,
         Exception? diagnosticCause,
@@ -674,18 +674,6 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
         return new ModelAttemptFailed(failure, normalizedPartialParts, usage);
     }
-
-    private static ProviderResponseIdentity BuildIdentity(
-        OpenAIResponseParseContext context, string? resolvedModel, string? responseId) =>
-        new(
-            context.ProviderId,
-            upstreamProviderId: null,
-            context.ApiFamily,
-            context.RequestedModelId,
-            resolvedModel is { Length: > 0 } model ? new ModelId(model) : context.RequestedModelId,
-            context.DeploymentId,
-            context.ProviderRequestId,
-            responseId is { Length: > 0 } id ? new ProviderResponseId(id) : null);
 
     private static ModelUsage MapUsage(OpenAIUsage? usage) =>
         usage is null

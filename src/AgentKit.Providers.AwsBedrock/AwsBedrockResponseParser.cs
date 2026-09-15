@@ -51,7 +51,7 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseBufferedAsync(
         Stream responseBody,
-        AwsBedrockResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -128,7 +128,7 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context),
+            context.CreateResponseIdentity(),
             parts.ToImmutable(),
             MapStopReason(dto.StopReason),
             usage,
@@ -143,7 +143,7 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseStreamingAsync(
         Stream responseBody,
-        AwsBedrockResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -374,7 +374,7 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context),
+            context.CreateResponseIdentity(),
             parts.ToImmutable(),
             MapStopReason(finalStopReason),
             usage,
@@ -494,7 +494,7 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
 
     private static async Task<ModelAttemptResult> FailAsync(
         IModelResponseObserver observer,
-        AwsBedrockResponseParseContext context,
+        ProviderResponseParseContext context,
         long sequence,
         string safeMessage,
         Exception? diagnosticCause,
@@ -520,7 +520,7 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
     }
 
     private static ProviderFailure BuildFailure(
-        AwsBedrockResponseParseContext context,
+        ProviderResponseParseContext context,
         ProviderFailureKind kind,
         int? statusCode,
         string? providerCode,
@@ -554,7 +554,7 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
         IIdentifierGenerator<ToolCallId> toolCallIdGenerator)
     {
         var callId = toolCallIdGenerator.Create();
-        var argumentsElement = toolUse.Input ?? ParseEmptyObject();
+        var argumentsElement = toolUse.Input ?? ProviderJson.ParseEmptyObject();
         var name = toolUse.Name ?? "unknown";
 
         var delta = new ToolArgumentsContentDelta(callId, argumentsElement.GetRawText());
@@ -573,23 +573,6 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
         var payload = JsonSerializer.SerializeToElement(block, _serializerOptions);
         return new UnknownContentPart("unknown", payload, ExtensionData.Empty);
     }
-
-    private static JsonElement ParseEmptyObject()
-    {
-        using var document = JsonDocument.Parse("{}");
-        return document.RootElement.Clone();
-    }
-
-    private static ProviderResponseIdentity BuildIdentity(AwsBedrockResponseParseContext context) =>
-        new(
-            context.ProviderId,
-            upstreamProviderId: null,
-            context.ApiFamily,
-            context.RequestedModelId,
-            context.RequestedModelId,
-            context.DeploymentId,
-            context.ProviderRequestId,
-            responseId: null);
 
     private static ModelUsage BuildUsage(AwsBedrockTokenUsageDto? usage)
     {
@@ -686,7 +669,7 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                 BlockKind.ToolUse => new ToolCallPart(
                     ToolCallId!.Value,
                     new ToolReference(new ToolId(ToolName ?? "unknown"), null, ToolName ?? "unknown"),
-                    ParseArguments(Json.Length > 0 ? Json.ToString() : "{}"),
+                    ProviderJson.ParseArguments(Json.ToString()),
                     ProviderCallId is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
                     ExtensionData.Empty),
 
@@ -695,11 +678,6 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                 _ => throw new UnreachableException($"Unrecognized {nameof(BlockKind)} value '{Kind}'."),
             };
 
-        private static JsonElement ParseArguments(string json)
-        {
-            using var document = JsonDocument.Parse(json);
-            return document.RootElement.Clone();
-        }
     }
 
     /// <summary>The discriminated kind of an in-progress streaming content block.</summary>

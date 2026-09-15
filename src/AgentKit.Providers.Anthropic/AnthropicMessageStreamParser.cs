@@ -37,7 +37,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseBufferedAsync(
         Stream responseBody,
-        AnthropicResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -114,7 +114,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context, dto.Model, dto.Id),
+            context.CreateResponseIdentity(dto.Model, dto.Id),
             parts.ToImmutable(),
             MapStopReason(dto.StopReason),
             usage,
@@ -129,7 +129,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseStreamingAsync(
         Stream responseBody,
-        AnthropicResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -380,7 +380,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context, resolvedModel, responseId),
+            context.CreateResponseIdentity(resolvedModel, responseId),
             parts.ToImmutable(),
             MapStopReason(finalStopReason),
             usage,
@@ -456,7 +456,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
     private static async Task HandleContentBlockDeltaAsync(
         IModelResponseObserver observer,
         ModelRequestId requestId,
-        AnthropicResponseParseContext context,
+        ProviderResponseParseContext context,
         int index,
         AnthropicStreamDeltaDto delta,
         BlockAccumulator accumulator,
@@ -590,7 +590,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
 
     private static async Task<ModelAttemptResult> FailAsync(
         IModelResponseObserver observer,
-        AnthropicResponseParseContext context,
+        ProviderResponseParseContext context,
         long sequence,
         string safeMessage,
         Exception? diagnosticCause,
@@ -616,7 +616,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
     }
 
     private static ProviderFailure BuildFailure(
-        AnthropicResponseParseContext context,
+        ProviderResponseParseContext context,
         ProviderFailureKind kind,
         int? statusCode,
         string? providerCode,
@@ -664,7 +664,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         IIdentifierGenerator<ToolCallId> toolCallIdGenerator)
     {
         var callId = toolCallIdGenerator.Create();
-        var argumentsElement = block.Input ?? ParseEmptyObject();
+        var argumentsElement = block.Input ?? ProviderJson.ParseEmptyObject();
         var name = block.Name ?? "unknown";
 
         var delta = new ToolArgumentsContentDelta(callId, argumentsElement.GetRawText());
@@ -703,24 +703,6 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                 ImmutableDictionary<string, ExtensionValue>.Empty.Add(
                     "stop_sequence",
                     new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(stopSequence)])));
-
-    private static JsonElement ParseEmptyObject()
-    {
-        using var document = JsonDocument.Parse("{}");
-        return document.RootElement.Clone();
-    }
-
-    private static ProviderResponseIdentity BuildIdentity(
-        AnthropicResponseParseContext context, string? resolvedModel, string? responseId) =>
-        new(
-            context.ProviderId,
-            upstreamProviderId: null,
-            context.ApiFamily,
-            context.RequestedModelId,
-            resolvedModel is { Length: > 0 } model ? new ModelId(model) : context.RequestedModelId,
-            context.DeploymentId,
-            context.ProviderRequestId,
-            responseId is { Length: > 0 } id ? new ProviderResponseId(id) : null);
 
     private static ModelUsage BuildUsage(AnthropicUsageDto? usage) => BuildUsage(
         usage,
@@ -832,7 +814,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                 "tool_use" => new ToolCallPart(
                     ToolCallId!.Value,
                     new ToolReference(new ToolId(ToolName ?? "unknown"), null, ToolName ?? "unknown"),
-                    ParseArguments(Json.Length > 0 ? Json.ToString() : "{}"),
+                    ProviderJson.ParseArguments(Json.ToString()),
                     ProviderCallId is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
                     ExtensionData.Empty),
 
@@ -850,10 +832,5 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                     ExtensionData.Empty),
             };
 
-        private static JsonElement ParseArguments(string json)
-        {
-            using var document = JsonDocument.Parse(json);
-            return document.RootElement.Clone();
-        }
     }
 }

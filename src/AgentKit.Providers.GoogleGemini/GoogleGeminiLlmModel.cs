@@ -250,7 +250,7 @@ public sealed class GoogleGeminiLlmModel: ILlmModel
                 return await FailAsync(failure).ConfigureAwait(false);
             }
 
-            var parseContext = new GoogleGeminiResponseParseContext(
+            var parseContext = new ProviderResponseParseContext(
                 requestId,
                 _descriptor.ProviderId,
                 _descriptor.ApiFamily,

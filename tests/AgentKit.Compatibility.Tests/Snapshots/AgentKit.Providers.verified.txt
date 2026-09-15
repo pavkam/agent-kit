@@ -1,6 +1,114 @@
 ﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/pavkam/agent-framework.git")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("AgentKit.Providers.Tests")]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace AgentKit.Providers
+{
+    public class EmbeddingResponseParseContext : System.IEquatable<AgentKit.Providers.EmbeddingResponseParseContext>
+    {
+        public EmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
+        public AgentKit.EmbeddingRequestId RequestId { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+        public AgentKit.ProviderResponseIdentity CreateResponseIdentity(string? resolvedModel = null) { }
+    }
+    public sealed class KnownModel : System.IEquatable<AgentKit.Providers.KnownModel>
+    {
+        public KnownModel(AgentKit.ProviderId providerId, AgentKit.ModelId modelId, string displayName, AgentKit.Providers.KnownModelStatus status, bool supportsReasoning, bool supportsVisionInput, bool supportsToolCalls, AgentKit.ModelLimits limits, AgentKit.Providers.KnownModelPricing? pricing, AgentKit.ModelId? replacedBy) { }
+        public string DisplayName { get; }
+        public AgentKit.ModelLimits Limits { get; }
+        public AgentKit.ModelId ModelId { get; }
+        public AgentKit.Providers.KnownModelPricing? Pricing { get; }
+        public AgentKit.ProviderId ProviderId { get; }
+        public AgentKit.ModelId? ReplacedBy { get; }
+        public AgentKit.Providers.KnownModelStatus Status { get; }
+        public bool SupportsReasoning { get; }
+        public bool SupportsToolCalls { get; }
+        public bool SupportsVisionInput { get; }
+        public AgentKit.ModelDescriptor ToDescriptor(AgentKit.ModelAlias alias, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelCapabilities baselineCapabilities) { }
+    }
+    public sealed class KnownModelCatalog
+    {
+        public KnownModelCatalog(AgentKit.Providers.KnownModelCatalogProvenance provenance, System.Collections.Immutable.ImmutableArray<AgentKit.Providers.KnownModel> models) { }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Providers.KnownModel> Models { get; }
+        public AgentKit.Providers.KnownModelCatalogProvenance Provenance { get; }
+        public System.Collections.Generic.IEnumerable<AgentKit.ProviderId> Providers { get; }
+        public static AgentKit.Providers.KnownModelCatalog Default { get; }
+        public System.Collections.Immutable.ImmutableArray<AgentKit.Providers.KnownModel> ForProvider(AgentKit.ProviderId providerId) { }
+        public bool TryFind(AgentKit.ProviderId providerId, AgentKit.ModelId modelId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.Providers.KnownModel? model) { }
+        public static AgentKit.Providers.KnownModelCatalog Parse(System.ReadOnlySpan<byte> json) { }
+    }
+    public sealed class KnownModelCatalogProvenance : System.IEquatable<AgentKit.Providers.KnownModelCatalogProvenance>
+    {
+        public KnownModelCatalogProvenance(string sourceName, System.Uri sourceUrl, string? sourceCommit, System.DateTimeOffset generatedAt, System.DateTimeOffset importedAt) { }
+        public System.DateTimeOffset GeneratedAt { get; }
+        public System.DateTimeOffset ImportedAt { get; }
+        public string? SourceCommit { get; }
+        public string SourceName { get; }
+        public System.Uri SourceUrl { get; }
+    }
+    public sealed class KnownModelPricing : System.IEquatable<AgentKit.Providers.KnownModelPricing>
+    {
+        public KnownModelPricing(string currency, decimal? inputPerMillionTokens, decimal? outputPerMillionTokens, decimal? cacheReadPerMillionTokens, decimal? cacheWritePerMillionTokens) { }
+        public decimal? CacheReadPerMillionTokens { get; }
+        public decimal? CacheWritePerMillionTokens { get; }
+        public string Currency { get; }
+        public decimal? InputPerMillionTokens { get; }
+        public decimal? OutputPerMillionTokens { get; }
+        public AgentKit.ModelPricing ToModelPricing() { }
+    }
+    public enum KnownModelStatus
+    {
+        Available = 0,
+        Preview = 1,
+        Deprecated = 2,
+        Disabled = 3,
+    }
+    public static class ModelRequestPreflight
+    {
+        public static AgentKit.ProviderFailure? Validate(AgentKit.EmbeddingModelRequest request, AgentKit.EmbeddingModelDescriptor descriptor) { }
+        public static AgentKit.ProviderFailure? Validate(AgentKit.LlmModelRequest request, AgentKit.ModelDescriptor descriptor) { }
+    }
+    public static class ProviderJson
+    {
+        public static void ApplyExtensions(System.Text.Json.Nodes.JsonObject body, AgentKit.ExtensionData extensions) { }
+        public static System.Text.Json.JsonElement ParseArguments(string? json) { }
+        public static System.Text.Json.JsonElement ParseEmptyObject() { }
+    }
+    public sealed class ProviderResponseParseContext : System.IEquatable<AgentKit.Providers.ProviderResponseParseContext>
+    {
+        public ProviderResponseParseContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
+        public AgentKit.ApiFamilyId ApiFamily { get; init; }
+        public AgentKit.DeploymentId? DeploymentId { get; init; }
+        public AgentKit.ModelRequestId ModelRequestId { get; init; }
+        public AgentKit.ProviderId ProviderId { get; init; }
+        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
+        public AgentKit.ModelId RequestedModelId { get; init; }
+        public AgentKit.ProviderResponseIdentity CreateResponseIdentity(string? resolvedModel = null, string? responseId = null) { }
+    }
+    public static class ProviderToolCallIds
+    {
+        public static System.Collections.Generic.Dictionary<AgentKit.ToolCallId, string> Collect(System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> messages) { }
+    }
+    public static class ServiceExtensions
+    {
+        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentProviders() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelDescriptors(AgentKit.ModelDescriptorSourceId sourceId, System.Collections.Immutable.ImmutableArray<AgentKit.ModelDescriptor> conversationModels) { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelDescriptorSource<TSource>()
+                where TSource :  class, AgentKit.IModelDescriptorSource { }
+        }
+    }
+    public sealed class StaticModelDescriptorSource : AgentKit.IModelDescriptorSource
+    {
+        public StaticModelDescriptorSource(AgentKit.ModelDescriptorSourceId sourceId, System.Collections.Immutable.ImmutableArray<AgentKit.ModelDescriptor> conversationModels) { }
+        public AgentKit.ModelDescriptorSourceId SourceId { get; }
+        public System.Threading.Tasks.ValueTask<AgentKit.ModelDescriptorSourceSnapshot> ReadAsync(System.Threading.CancellationToken cancellationToken = default) { }
+    }
+}
 namespace AgentKit.Providers.Http
 {
     public static class HttpStatusFailureKindMapper
@@ -65,81 +173,5 @@ namespace AgentKit.Providers.Http
     public static class ServerSentEventReader
     {
         public static System.Collections.Generic.IAsyncEnumerable<AgentKit.Providers.Http.ServerSentEvent> ReadAsync(System.IO.Stream stream, System.Threading.CancellationToken cancellationToken = default) { }
-    }
-}
-namespace AgentKit.Providers
-{
-    public sealed class KnownModel : System.IEquatable<AgentKit.Providers.KnownModel>
-    {
-        public KnownModel(AgentKit.ProviderId providerId, AgentKit.ModelId modelId, string displayName, AgentKit.Providers.KnownModelStatus status, bool supportsReasoning, bool supportsVisionInput, bool supportsToolCalls, AgentKit.ModelLimits limits, AgentKit.Providers.KnownModelPricing? pricing, AgentKit.ModelId? replacedBy) { }
-        public string DisplayName { get; }
-        public AgentKit.ModelLimits Limits { get; }
-        public AgentKit.ModelId ModelId { get; }
-        public AgentKit.Providers.KnownModelPricing? Pricing { get; }
-        public AgentKit.ProviderId ProviderId { get; }
-        public AgentKit.ModelId? ReplacedBy { get; }
-        public AgentKit.Providers.KnownModelStatus Status { get; }
-        public bool SupportsReasoning { get; }
-        public bool SupportsToolCalls { get; }
-        public bool SupportsVisionInput { get; }
-        public AgentKit.ModelDescriptor ToDescriptor(AgentKit.ModelAlias alias, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelCapabilities baselineCapabilities) { }
-    }
-    public sealed class KnownModelCatalog
-    {
-        public KnownModelCatalog(AgentKit.Providers.KnownModelCatalogProvenance provenance, System.Collections.Immutable.ImmutableArray<AgentKit.Providers.KnownModel> models) { }
-        public System.Collections.Immutable.ImmutableArray<AgentKit.Providers.KnownModel> Models { get; }
-        public AgentKit.Providers.KnownModelCatalogProvenance Provenance { get; }
-        public System.Collections.Generic.IEnumerable<AgentKit.ProviderId> Providers { get; }
-        public static AgentKit.Providers.KnownModelCatalog Default { get; }
-        public System.Collections.Immutable.ImmutableArray<AgentKit.Providers.KnownModel> ForProvider(AgentKit.ProviderId providerId) { }
-        public bool TryFind(AgentKit.ProviderId providerId, AgentKit.ModelId modelId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AgentKit.Providers.KnownModel? model) { }
-        public static AgentKit.Providers.KnownModelCatalog Parse(System.ReadOnlySpan<byte> json) { }
-    }
-    public sealed class KnownModelCatalogProvenance : System.IEquatable<AgentKit.Providers.KnownModelCatalogProvenance>
-    {
-        public KnownModelCatalogProvenance(string sourceName, System.Uri sourceUrl, string? sourceCommit, System.DateTimeOffset generatedAt, System.DateTimeOffset importedAt) { }
-        public System.DateTimeOffset GeneratedAt { get; }
-        public System.DateTimeOffset ImportedAt { get; }
-        public string? SourceCommit { get; }
-        public string SourceName { get; }
-        public System.Uri SourceUrl { get; }
-    }
-    public sealed class KnownModelPricing : System.IEquatable<AgentKit.Providers.KnownModelPricing>
-    {
-        public KnownModelPricing(string currency, decimal? inputPerMillionTokens, decimal? outputPerMillionTokens, decimal? cacheReadPerMillionTokens, decimal? cacheWritePerMillionTokens) { }
-        public decimal? CacheReadPerMillionTokens { get; }
-        public decimal? CacheWritePerMillionTokens { get; }
-        public string Currency { get; }
-        public decimal? InputPerMillionTokens { get; }
-        public decimal? OutputPerMillionTokens { get; }
-        public AgentKit.ModelPricing ToModelPricing() { }
-    }
-    public enum KnownModelStatus
-    {
-        Available = 0,
-        Preview = 1,
-        Deprecated = 2,
-        Disabled = 3,
-    }
-    public static class ModelRequestPreflight
-    {
-        public static AgentKit.ProviderFailure? Validate(AgentKit.EmbeddingModelRequest request, AgentKit.EmbeddingModelDescriptor descriptor) { }
-        public static AgentKit.ProviderFailure? Validate(AgentKit.LlmModelRequest request, AgentKit.ModelDescriptor descriptor) { }
-    }
-    public static class ServiceExtensions
-    {
-        extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
-        {
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentProviders() { }
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelDescriptors(AgentKit.ModelDescriptorSourceId sourceId, System.Collections.Immutable.ImmutableArray<AgentKit.ModelDescriptor> conversationModels) { }
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddModelDescriptorSource<TSource>()
-                where TSource :  class, AgentKit.IModelDescriptorSource { }
-        }
-    }
-    public sealed class StaticModelDescriptorSource : AgentKit.IModelDescriptorSource
-    {
-        public StaticModelDescriptorSource(AgentKit.ModelDescriptorSourceId sourceId, System.Collections.Immutable.ImmutableArray<AgentKit.ModelDescriptor> conversationModels) { }
-        public AgentKit.ModelDescriptorSourceId SourceId { get; }
-        public System.Threading.Tasks.ValueTask<AgentKit.ModelDescriptorSourceSnapshot> ReadAsync(System.Threading.CancellationToken cancellationToken = default) { }
     }
 }

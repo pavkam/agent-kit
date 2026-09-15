@@ -50,7 +50,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseBufferedAsync(
         Stream responseBody,
-        GoogleGeminiResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -146,7 +146,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context, dto.ModelVersion, dto.ResponseId),
+            context.CreateResponseIdentity(dto.ModelVersion, dto.ResponseId),
             parts.ToImmutable(),
             MapStopReason(candidate.FinishReason, parts.Any(p => p is ToolCallPart)),
             usage,
@@ -161,7 +161,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseStreamingAsync(
         Stream responseBody,
-        GoogleGeminiResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -295,7 +295,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context, resolvedModel, responseId),
+            context.CreateResponseIdentity(resolvedModel, responseId),
             finalParts.ToImmutable(),
             MapStopReason(finishReason, finalParts.Any(p => p is ToolCallPart)),
             usageResult,
@@ -338,7 +338,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
                 .ConfigureAwait(false);
 
             var callId = _toolCallIdGenerator.Create();
-            var arguments = functionCall.Args ?? ParseEmptyObject();
+            var arguments = functionCall.Args ?? ProviderJson.ParseEmptyObject();
             var toolCallPart = CreateToolCallPart(callId, functionCall, arguments, partDto.ThoughtSignature);
 
             await observer.OnEventAsync(
@@ -493,7 +493,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
 
     private static async Task<ModelAttemptResult> FailAsync(
         IModelResponseObserver observer,
-        GoogleGeminiResponseParseContext context,
+        ProviderResponseParseContext context,
         long sequence,
         ProviderFailureKind kind,
         string safeMessage,
@@ -529,7 +529,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
         if (part.FunctionCall is { } functionCall)
         {
             var callId = toolCallIdGenerator.Create();
-            var arguments = functionCall.Args ?? ParseEmptyObject();
+            var arguments = functionCall.Args ?? ProviderJson.ParseEmptyObject();
             var delta = new ToolArgumentsContentDelta(callId, arguments.GetRawText());
             var toolCallPart = CreateToolCallPart(callId, functionCall, arguments, part.ThoughtSignature);
 
@@ -581,24 +581,6 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             functionCall.Id is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
             GoogleGeminiThoughtSignature.Create(thoughtSignature));
     }
-
-    private static JsonElement ParseEmptyObject()
-    {
-        using var document = JsonDocument.Parse("{}");
-        return document.RootElement.Clone();
-    }
-
-    private static ProviderResponseIdentity BuildIdentity(
-        GoogleGeminiResponseParseContext context, string? resolvedModel, string? responseId) =>
-        new(
-            context.ProviderId,
-            upstreamProviderId: null,
-            context.ApiFamily,
-            context.RequestedModelId,
-            resolvedModel is { Length: > 0 } model ? new ModelId(model) : context.RequestedModelId,
-            context.DeploymentId,
-            context.ProviderRequestId,
-            responseId is { Length: > 0 } id ? new ProviderResponseId(id) : null);
 
     private static ModelUsage BuildUsage(
         GoogleGeminiUsageMetadataDto? usage,

@@ -17,7 +17,7 @@ public sealed class AnthropicMessageTranslator: IAnthropicMessageTranslator
         ArgumentNullException.ThrowIfNull(options);
 
         var context = request.Context;
-        var providerCallIds = CollectProviderCallIds(context.Messages);
+        var providerCallIds = ProviderToolCallIds.Collect(context.Messages);
         var system = new StringBuilder();
 
         var body = new JsonObject
@@ -66,8 +66,8 @@ public sealed class AnthropicMessageTranslator: IAnthropicMessageTranslator
                 "The Anthropic Messages API does not support a deterministic sampling seed.");
         }
 
-        ApplyExtensions(body, context.Settings.Extensions);
-        ApplyExtensions(body, request.Options.Extensions);
+        ProviderJson.ApplyExtensions(body, context.Settings.Extensions);
+        ProviderJson.ApplyExtensions(body, request.Options.Extensions);
 
         return body;
     }
@@ -76,40 +76,6 @@ public sealed class AnthropicMessageTranslator: IAnthropicMessageTranslator
         context.Settings.MaxOutputTokens
         ?? context.Model.Limits.MaxOutputTokens
         ?? options.DefaultMaxOutputTokens;
-
-    private static void ApplyExtensions(JsonObject body, ExtensionData extensions)
-    {
-        foreach (var (key, value) in extensions.Values)
-        {
-            // Extension data never overrides a field the translator itself
-            // owns; a protected core field cannot be reshaped by a
-            // passthrough option.
-            if (body.ContainsKey(key))
-            {
-                continue;
-            }
-
-            body[key] = JsonNode.Parse(value.CanonicalJson.AsSpan());
-        }
-    }
-
-    private static Dictionary<ToolCallId, string> CollectProviderCallIds(ImmutableArray<AgentMessage> messages)
-    {
-        var map = new Dictionary<ToolCallId, string>();
-
-        foreach (var message in messages)
-        {
-            foreach (var part in message.Parts)
-            {
-                if (part is ToolCallPart toolCall)
-                {
-                    map[toolCall.CallId] = toolCall.ProviderCallId?.Value ?? toolCall.CallId.ToString();
-                }
-            }
-        }
-
-        return map;
-    }
 
     private static JsonArray TranslateMessages(
         ImmutableArray<AgentMessage> messages,

@@ -26,7 +26,7 @@ public interface IOpenAIEmbeddingResponseParser
     /// <returns>The terminal outcome of the attempt.</returns>
     public Task<EmbeddingAttemptResult> ParseAsync(
         Stream responseBody,
-        OpenAIEmbeddingResponseParseContext context,
+        EmbeddingResponseParseContext context,
         ImmutableArray<EmbeddingInput> requestInputs,
         CancellationToken cancellationToken = default);
 }

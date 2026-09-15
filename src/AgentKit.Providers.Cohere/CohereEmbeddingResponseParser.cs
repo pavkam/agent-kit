@@ -79,7 +79,7 @@ public sealed class CohereEmbeddingResponseParser: ICohereEmbeddingResponseParse
                 diagnosticCause: null));
         }
 
-        var identity = BuildIdentity(context);
+        var identity = context.CreateResponseIdentity();
         var elementType = ElementTypeOf(context.RequestedEncoding);
         var items = ImmutableArray.CreateBuilder<EmbeddingItemOutcome>(vectorElements.Length);
 
@@ -207,17 +207,6 @@ public sealed class CohereEmbeddingResponseParser: ICohereEmbeddingResponseParse
         ArgumentOutOfRangeException.ThrowIfNegative(value);
         return (long) value;
     }
-
-    private static ProviderResponseIdentity BuildIdentity(CohereEmbeddingResponseParseContext context) =>
-        new(
-            context.ProviderId,
-            upstreamProviderId: null,
-            context.ApiFamily,
-            context.RequestedModelId,
-            context.RequestedModelId,
-            deploymentId: null,
-            requestId: null,
-            responseId: null);
 
     private static ProviderFailure BuildFailure(
         CohereEmbeddingResponseParseContext context, string safeMessage, Exception? diagnosticCause) =>

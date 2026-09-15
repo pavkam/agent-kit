@@ -11,7 +11,7 @@ using AgentKit.TestSupport;
 /// <summary>Verifies GoogleGeminiResponseParser behavior and contracts.</summary>
 public sealed class GoogleGeminiResponseParserTests
 {
-    private static GoogleGeminiResponseParseContext CreateContext(ModelRequestId requestId) => new(requestId, GoogleGeminiProviderDefaults.ProviderId, GoogleGeminiProviderDefaults.ApiFamily, new ModelId("gemini-2.5-flash"), deploymentId: null, providerRequestId: null);
+    private static ProviderResponseParseContext CreateContext(ModelRequestId requestId) => new(requestId, GoogleGeminiProviderDefaults.ProviderId, GoogleGeminiProviderDefaults.ApiFamily, new ModelId("gemini-2.5-flash"), deploymentId: null, providerRequestId: null);
     [Fact]
     public async Task ParseBufferedAsync_WhenPlainTextResponse_EmitsTextPartAndCompletes()
     {

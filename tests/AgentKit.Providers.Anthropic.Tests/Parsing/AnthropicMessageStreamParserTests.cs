@@ -11,7 +11,7 @@ using AgentKit.TestSupport;
 /// <summary>Verifies AnthropicMessageStreamParser behavior and contracts.</summary>
 public sealed class AnthropicMessageStreamParserTests
 {
-    private static AnthropicResponseParseContext CreateContext(ModelRequestId requestId) => new(requestId, new ProviderId("anthropic"), new ApiFamilyId("anthropic-messages"), new ModelId("claude-sonnet-4-5"), deploymentId: null, providerRequestId: null);
+    private static ProviderResponseParseContext CreateContext(ModelRequestId requestId) => new(requestId, new ProviderId("anthropic"), new ApiFamilyId("anthropic-messages"), new ModelId("claude-sonnet-4-5"), deploymentId: null, providerRequestId: null);
     [Fact]
     public async Task ParseBufferedAsync_WhenPlainTextResponse_EmitsTextPartAndCompletes()
     {

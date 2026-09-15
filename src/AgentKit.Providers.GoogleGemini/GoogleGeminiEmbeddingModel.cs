@@ -201,11 +201,13 @@ public sealed class GoogleGeminiEmbeddingModel: IEmbeddingModel
                 }
             }
 
-            var parseContext = new GoogleGeminiEmbeddingResponseParseContext(
+            var parseContext = new EmbeddingResponseParseContext(
                 request.Context.RequestId,
                 _descriptor.ProviderId,
                 _descriptor.ApiFamily,
-                _descriptor.ModelId);
+                _descriptor.ModelId,
+                deploymentId: null,
+                providerRequestId: null);
 
             try
             {

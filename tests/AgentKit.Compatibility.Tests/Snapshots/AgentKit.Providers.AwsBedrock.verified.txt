@@ -36,21 +36,11 @@ namespace AgentKit.Providers.AwsBedrock
         public AwsBedrockRequestTranslator() { }
         public System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request) { }
     }
-    public sealed class AwsBedrockResponseParseContext : System.IEquatable<AgentKit.Providers.AwsBedrock.AwsBedrockResponseParseContext>
-    {
-        public AwsBedrockResponseParseContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
-        public AgentKit.ApiFamilyId ApiFamily { get; init; }
-        public AgentKit.DeploymentId? DeploymentId { get; init; }
-        public AgentKit.ModelRequestId ModelRequestId { get; init; }
-        public AgentKit.ProviderId ProviderId { get; init; }
-        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
-        public AgentKit.ModelId RequestedModelId { get; init; }
-    }
     public sealed class AwsBedrockResponseParser : AgentKit.Providers.AwsBedrock.IAwsBedrockResponseParser
     {
         public AwsBedrockResponseParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }
-        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.AwsBedrock.AwsBedrockResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.AwsBedrock.AwsBedrockResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class AwsSigV4Credential : System.IEquatable<AgentKit.Providers.AwsBedrock.AwsSigV4Credential>
     {
@@ -67,8 +57,8 @@ namespace AgentKit.Providers.AwsBedrock
     }
     public interface IAwsBedrockResponseParser
     {
-        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.AwsBedrock.AwsBedrockResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
-        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.AwsBedrock.AwsBedrockResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IAwsCredentialSource
     {

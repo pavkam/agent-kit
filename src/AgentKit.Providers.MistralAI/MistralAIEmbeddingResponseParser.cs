@@ -50,7 +50,7 @@ public sealed class MistralAIEmbeddingResponseParser: IMistralAIEmbeddingRespons
                 context, "The provider returned an embeddings response with no data items.", diagnosticCause: null));
         }
 
-        var identity = BuildIdentity(context, dto.Model);
+        var identity = context.CreateResponseIdentity(dto.Model);
         var elementType = ElementTypeOf(context.RequestedEncoding);
         var items = ImmutableArray.CreateBuilder<EmbeddingItemOutcome>(data.Count);
 
@@ -152,17 +152,6 @@ public sealed class MistralAIEmbeddingResponseParser: IMistralAIEmbeddingRespons
                 estimatedCost: null,
                 costCurrency: null,
                 ExtensionData.Empty);
-
-    private static ProviderResponseIdentity BuildIdentity(MistralAIEmbeddingResponseParseContext context, string? resolvedModel) =>
-        new(
-            context.ProviderId,
-            upstreamProviderId: null,
-            context.ApiFamily,
-            context.RequestedModelId,
-            resolvedModel is { Length: > 0 } model ? new ModelId(model) : context.RequestedModelId,
-            deploymentId: null,
-            requestId: null,
-            responseId: null);
 
     private static ProviderFailure BuildFailure(
         MistralAIEmbeddingResponseParseContext context, string safeMessage, Exception? diagnosticCause) =>

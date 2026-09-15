@@ -11,7 +11,7 @@ using AgentKit.TestSupport;
 /// <summary>Verifies CohereResponseParser behavior and contracts.</summary>
 public sealed class CohereResponseParserTests
 {
-    private static CohereResponseParseContext CreateContext(ModelRequestId requestId) => new(requestId, CohereProviderDefaults.ProviderId, CohereProviderDefaults.ApiFamily, new ModelId("command-a-plus-05-2026"), deploymentId: null, providerRequestId: null);
+    private static ProviderResponseParseContext CreateContext(ModelRequestId requestId) => new(requestId, CohereProviderDefaults.ProviderId, CohereProviderDefaults.ApiFamily, new ModelId("command-a-plus-05-2026"), deploymentId: null, providerRequestId: null);
     [Fact]
     public async Task ParseBufferedAsync_WhenPlainTextResponse_EmitsTextPartAndCompletes()
     {

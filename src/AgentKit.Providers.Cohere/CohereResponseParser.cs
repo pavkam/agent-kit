@@ -49,7 +49,7 @@ public sealed class CohereResponseParser: ICohereResponseParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseBufferedAsync(
         Stream responseBody,
-        CohereResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -156,7 +156,7 @@ public sealed class CohereResponseParser: ICohereResponseParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context, dto.Id),
+            context.CreateResponseIdentity(responseId: dto.Id),
             parts.ToImmutable(),
             MapFinishReason(dto.FinishReason),
             usage,
@@ -171,7 +171,7 @@ public sealed class CohereResponseParser: ICohereResponseParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseStreamingAsync(
         Stream responseBody,
-        CohereResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -381,7 +381,7 @@ public sealed class CohereResponseParser: ICohereResponseParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context, messageId),
+            context.CreateResponseIdentity(responseId: messageId),
             finalParts.ToImmutable(),
             MapFinishReason(finishReason),
             usageResult,
@@ -670,7 +670,7 @@ public sealed class CohereResponseParser: ICohereResponseParser
             SlotKind.ToolCall => new ToolCallPart(
                 slot.AssignedCallId,
                 new ToolReference(new ToolId(slot.ToolCallName!), null, slot.ToolCallName!),
-                ParseArguments(slot.ToolCallArguments.ToString()),
+                ProviderJson.ParseArguments(slot.ToolCallArguments.ToString()),
                 slot.ToolCallId is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
                 ExtensionData.Empty),
             _ => throw new UnreachableException($"Unrecognized {nameof(SlotKind)} value '{slot.Kind}'."),
@@ -721,7 +721,7 @@ public sealed class CohereResponseParser: ICohereResponseParser
 
     private static async Task<ModelAttemptResult> FailAsync(
         IModelResponseObserver observer,
-        CohereResponseParseContext context,
+        ProviderResponseParseContext context,
         long sequence,
         ProviderFailureKind kind,
         string safeMessage,
@@ -798,7 +798,7 @@ public sealed class CohereResponseParser: ICohereResponseParser
                 }
 
                 var callId = toolCallIdGenerator.Create();
-                var arguments = ParseArguments(function.Arguments);
+                var arguments = ProviderJson.ParseArguments(function.Arguments);
                 var toolCallPart = new ToolCallPart(
                     callId,
                     new ToolReference(new ToolId(name), null, name),
@@ -812,35 +812,6 @@ public sealed class CohereResponseParser: ICohereResponseParser
 
         return results;
     }
-
-    /// <summary>Parses tool-call argument JSON; an absent value is an empty object, malformed JSON propagates as <see cref="JsonException"/>.</summary>
-    private static JsonElement ParseArguments(string? json)
-    {
-        if (string.IsNullOrEmpty(json))
-        {
-            return ParseEmptyObject();
-        }
-
-        using var document = JsonDocument.Parse(json);
-        return document.RootElement.Clone();
-    }
-
-    private static JsonElement ParseEmptyObject()
-    {
-        using var document = JsonDocument.Parse("{}");
-        return document.RootElement.Clone();
-    }
-
-    private static ProviderResponseIdentity BuildIdentity(CohereResponseParseContext context, string? responseId) =>
-        new(
-            context.ProviderId,
-            upstreamProviderId: null,
-            context.ApiFamily,
-            context.RequestedModelId,
-            context.RequestedModelId,
-            context.DeploymentId,
-            context.ProviderRequestId,
-            responseId is { Length: > 0 } id ? new ProviderResponseId(id) : null);
 
     /// <summary>
     /// Builds final usage evidence from a complete Cohere message response.

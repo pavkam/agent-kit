@@ -28,7 +28,7 @@ public interface IAnthropicMessageStreamParser
     /// <returns>The terminal outcome of the attempt.</returns>
     public Task<ModelAttemptResult> ParseBufferedAsync(
         Stream responseBody,
-        AnthropicResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default);
 
@@ -44,7 +44,7 @@ public interface IAnthropicMessageStreamParser
     /// <returns>The terminal outcome of the attempt.</returns>
     public Task<ModelAttemptResult> ParseStreamingAsync(
         Stream responseBody,
-        AnthropicResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default);
 }

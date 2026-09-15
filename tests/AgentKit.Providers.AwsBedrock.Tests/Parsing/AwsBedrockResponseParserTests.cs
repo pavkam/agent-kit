@@ -11,7 +11,7 @@ using AgentKit.TestSupport;
 /// <summary>Verifies AwsBedrockResponseParser behavior and contracts.</summary>
 public sealed class AwsBedrockResponseParserTests
 {
-    private static AwsBedrockResponseParseContext CreateContext(ModelRequestId requestId) => new(requestId, AwsBedrockProviderDefaults.ProviderId, AwsBedrockProviderDefaults.ApiFamily, new ModelId("anthropic.claude-3-sonnet-20240229-v1:0"), deploymentId: null, providerRequestId: null);
+    private static ProviderResponseParseContext CreateContext(ModelRequestId requestId) => new(requestId, AwsBedrockProviderDefaults.ProviderId, AwsBedrockProviderDefaults.ApiFamily, new ModelId("anthropic.claude-3-sonnet-20240229-v1:0"), deploymentId: null, providerRequestId: null);
     [Fact]
     public async Task ParseBufferedAsync_WhenPlainTextResponse_EmitsTextPartAndCompletes()
     {

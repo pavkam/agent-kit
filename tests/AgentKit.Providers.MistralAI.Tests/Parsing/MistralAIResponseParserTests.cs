@@ -13,7 +13,7 @@ public sealed class MistralAIResponseParserTests
 {
     public static TheoryData<int> ChunkSizes => [1, 2, 3, 7, 64, 4096];
 
-    private static MistralAIResponseParseContext CreateContext(ModelRequestId requestId) => new(requestId, MistralAIProviderDefaults.ProviderId, MistralAIProviderDefaults.ApiFamily, new ModelId("mistral-large-latest"), deploymentId: null, providerRequestId: null);
+    private static ProviderResponseParseContext CreateContext(ModelRequestId requestId) => new(requestId, MistralAIProviderDefaults.ProviderId, MistralAIProviderDefaults.ApiFamily, new ModelId("mistral-large-latest"), deploymentId: null, providerRequestId: null);
     [Theory]
     [MemberData(nameof(ChunkSizes))]
     public async Task ParseStreamingAsync_WhenPlainTextStream_EmitsTextDeltasRegardlessOfFragmentation(int chunkSize)

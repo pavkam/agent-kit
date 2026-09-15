@@ -340,7 +340,7 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                 return await FailAsync(failure).ConfigureAwait(false);
             }
 
-            var parseContext = new OpenAIResponseParseContext(
+            var parseContext = new ProviderResponseParseContext(
                 requestId,
                 Descriptor.ProviderId,
                 Descriptor.ApiFamily,

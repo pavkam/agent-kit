@@ -16,7 +16,7 @@ public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
         ArgumentNullException.ThrowIfNull(request);
 
         var context = request.Context;
-        var providerCallIds = CollectProviderCallIds(context.Messages);
+        var providerCallIds = ProviderToolCallIds.Collect(context.Messages);
         var system = new JsonArray();
 
         var body = new JsonObject
@@ -46,26 +46,10 @@ public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
                 "The Bedrock Converse API does not support a deterministic sampling seed.");
         }
 
-        ApplyExtensions(body, context.Settings.Extensions);
-        ApplyExtensions(body, request.Options.Extensions);
+        ProviderJson.ApplyExtensions(body, context.Settings.Extensions);
+        ProviderJson.ApplyExtensions(body, request.Options.Extensions);
 
         return body;
-    }
-
-    private static void ApplyExtensions(JsonObject body, ExtensionData extensions)
-    {
-        foreach (var (key, value) in extensions.Values)
-        {
-            // Extension data never overrides a field the translator itself
-            // owns; a protected core field cannot be reshaped by a
-            // passthrough option.
-            if (body.ContainsKey(key))
-            {
-                continue;
-            }
-
-            body[key] = JsonNode.Parse(value.CanonicalJson.AsSpan());
-        }
     }
 
     private static JsonObject TranslateInferenceConfig(LlmRequestSettings settings)
@@ -99,24 +83,6 @@ public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
         }
 
         return inferenceConfig;
-    }
-
-    private static Dictionary<ToolCallId, string> CollectProviderCallIds(ImmutableArray<AgentMessage> messages)
-    {
-        var map = new Dictionary<ToolCallId, string>();
-
-        foreach (var message in messages)
-        {
-            foreach (var part in message.Parts)
-            {
-                if (part is ToolCallPart toolCall)
-                {
-                    map[toolCall.CallId] = toolCall.ProviderCallId?.Value ?? toolCall.CallId.ToString();
-                }
-            }
-        }
-
-        return map;
     }
 
     private static JsonArray TranslateMessages(

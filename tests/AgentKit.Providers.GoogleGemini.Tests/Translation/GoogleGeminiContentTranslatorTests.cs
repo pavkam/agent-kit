@@ -292,7 +292,7 @@ public sealed class GoogleGeminiContentTranslatorTests
     public async Task Translate_WhenAssistantPartsComeFromParsedResponses_RoundTripsEveryThoughtSignatureInPlace()
     {
         var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
-        var parseContext = new GoogleGeminiResponseParseContext(
+        var parseContext = new ProviderResponseParseContext(
             new ModelRequestId(Guid.NewGuid()),
             GoogleGeminiProviderDefaults.ProviderId,
             GoogleGeminiProviderDefaults.ApiFamily,

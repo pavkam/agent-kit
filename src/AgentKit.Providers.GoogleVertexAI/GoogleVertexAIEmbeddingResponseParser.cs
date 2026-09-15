@@ -20,7 +20,7 @@ public sealed class GoogleVertexAIEmbeddingResponseParser: IGoogleVertexAIEmbedd
     /// <inheritdoc/>
     public async Task<EmbeddingAttemptResult> ParseAsync(
         Stream responseBody,
-        GoogleVertexAIEmbeddingResponseParseContext context,
+        EmbeddingResponseParseContext context,
         ImmutableArray<EmbeddingInput> requestInputs,
         CancellationToken cancellationToken = default)
     {
@@ -59,7 +59,7 @@ public sealed class GoogleVertexAIEmbeddingResponseParser: IGoogleVertexAIEmbedd
                 diagnosticCause: null));
         }
 
-        var identity = BuildIdentity(context);
+        var identity = context.CreateResponseIdentity();
         var items = ImmutableArray.CreateBuilder<EmbeddingItemOutcome>(predictions.Count);
         long? totalTokenCount = null;
 
@@ -130,19 +130,8 @@ public sealed class GoogleVertexAIEmbeddingResponseParser: IGoogleVertexAIEmbedd
         return new EmbeddingAttemptCompleted(response);
     }
 
-    private static ProviderResponseIdentity BuildIdentity(GoogleVertexAIEmbeddingResponseParseContext context) =>
-        new(
-            context.ProviderId,
-            upstreamProviderId: null,
-            context.ApiFamily,
-            context.RequestedModelId,
-            context.RequestedModelId,
-            context.DeploymentId,
-            requestId: null,
-            responseId: null);
-
     private static ProviderFailure BuildFailure(
-        GoogleVertexAIEmbeddingResponseParseContext context, string safeMessage, Exception? diagnosticCause) =>
+        EmbeddingResponseParseContext context, string safeMessage, Exception? diagnosticCause) =>
         new(
             ProviderFailureKind.ProtocolViolation,
             context.ProviderId,

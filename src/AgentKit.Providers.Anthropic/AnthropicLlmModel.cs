@@ -256,7 +256,7 @@ public sealed class AnthropicLlmModel: ILlmModel
                 return await FailAsync(failure).ConfigureAwait(false);
             }
 
-            var parseContext = new AnthropicResponseParseContext(
+            var parseContext = new ProviderResponseParseContext(
                 requestId,
                 _descriptor.ProviderId,
                 _descriptor.ApiFamily,

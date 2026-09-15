@@ -22,7 +22,7 @@ public interface IGoogleGeminiEmbeddingResponseParser
     /// <returns>The terminal outcome of the attempt.</returns>
     public Task<EmbeddingAttemptResult> ParseAsync(
         Stream responseBody,
-        GoogleGeminiEmbeddingResponseParseContext context,
+        EmbeddingResponseParseContext context,
         ImmutableArray<EmbeddingInput> requestInputs,
         CancellationToken cancellationToken = default);
 }

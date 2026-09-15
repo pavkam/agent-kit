@@ -9,7 +9,7 @@ namespace AgentKit.Providers.OpenAICompatible
     }
     public interface IOpenAIEmbeddingResponseParser
     {
-        System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.EmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IOpenAIRequestTranslator
     {
@@ -17,8 +17,8 @@ namespace AgentKit.Providers.OpenAICompatible
     }
     public interface IOpenAIStreamParser
     {
-        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
-        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
     }
     public enum OpenAIAssistantReasoningReplay
     {
@@ -28,8 +28,8 @@ namespace AgentKit.Providers.OpenAICompatible
     public sealed class OpenAIChatCompletionResponseParser : AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser
     {
         public OpenAIChatCompletionResponseParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }
-        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class OpenAICompatibilityProfile : System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile>
     {
@@ -77,35 +77,15 @@ namespace AgentKit.Providers.OpenAICompatible
         public OpenAIEmbeddingRequestTranslator() { }
         public System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile) { }
     }
-    public sealed class OpenAIEmbeddingResponseParseContext : System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAIEmbeddingResponseParseContext>
-    {
-        public OpenAIEmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
-        public AgentKit.ApiFamilyId ApiFamily { get; init; }
-        public AgentKit.DeploymentId? DeploymentId { get; init; }
-        public AgentKit.ProviderId ProviderId { get; init; }
-        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
-        public AgentKit.EmbeddingRequestId RequestId { get; init; }
-        public AgentKit.ModelId RequestedModelId { get; init; }
-    }
     public sealed class OpenAIEmbeddingResponseParser : AgentKit.Providers.OpenAICompatible.IOpenAIEmbeddingResponseParser
     {
         public OpenAIEmbeddingResponseParser() { }
-        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.EmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class OpenAIRequestTranslator : AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator
     {
         public OpenAIRequestTranslator() { }
         public System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, bool useStreaming) { }
-    }
-    public sealed class OpenAIResponseParseContext : System.IEquatable<AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext>
-    {
-        public OpenAIResponseParseContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
-        public AgentKit.ApiFamilyId ApiFamily { get; init; }
-        public AgentKit.DeploymentId? DeploymentId { get; init; }
-        public AgentKit.ModelRequestId ModelRequestId { get; init; }
-        public AgentKit.ProviderId ProviderId { get; init; }
-        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
-        public AgentKit.ModelId RequestedModelId { get; init; }
     }
     public static class ServiceExtensions
     {

@@ -33,8 +33,8 @@ public sealed class GoogleGeminiEmbeddingRequestTranslator: IGoogleGeminiEmbeddi
 
         var body = new JsonObject { ["requests"] = requests };
 
-        ApplyExtensions(body, embeddingRequest.Extensions);
-        ApplyExtensions(body, request.Options.Extensions);
+        ProviderJson.ApplyExtensions(body, embeddingRequest.Extensions);
+        ProviderJson.ApplyExtensions(body, request.Options.Extensions);
 
         return body;
     }
@@ -113,19 +113,4 @@ public sealed class GoogleGeminiEmbeddingRequestTranslator: IGoogleGeminiEmbeddi
                 $"Embedding purpose '{purpose}' is not supported by the Gemini embeddings request translator."),
         };
 
-    private static void ApplyExtensions(JsonObject body, ExtensionData extensions)
-    {
-        foreach (var (key, value) in extensions.Values)
-        {
-            // Extension data never overrides a field the translator itself
-            // owns; a protected core field cannot be reshaped by a
-            // passthrough option.
-            if (body.ContainsKey(key))
-            {
-                continue;
-            }
-
-            body[key] = JsonNode.Parse(value.CanonicalJson.AsSpan());
-        }
-    }
 }

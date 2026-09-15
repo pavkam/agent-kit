@@ -14,19 +14,10 @@ namespace AgentKit.Providers.GoogleVertexAI
         public GoogleVertexAIEmbeddingRequestTranslator() { }
         public System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request) { }
     }
-    public sealed class GoogleVertexAIEmbeddingResponseParseContext : System.IEquatable<AgentKit.Providers.GoogleVertexAI.GoogleVertexAIEmbeddingResponseParseContext>
-    {
-        public GoogleVertexAIEmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId) { }
-        public AgentKit.ApiFamilyId ApiFamily { get; init; }
-        public AgentKit.DeploymentId? DeploymentId { get; init; }
-        public AgentKit.ProviderId ProviderId { get; init; }
-        public AgentKit.EmbeddingRequestId RequestId { get; init; }
-        public AgentKit.ModelId RequestedModelId { get; init; }
-    }
     public sealed class GoogleVertexAIEmbeddingResponseParser : AgentKit.Providers.GoogleVertexAI.IGoogleVertexAIEmbeddingResponseParser
     {
         public GoogleVertexAIEmbeddingResponseParser() { }
-        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.EmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class GoogleVertexAILlmModel : AgentKit.ILlmModel
     {
@@ -75,7 +66,7 @@ namespace AgentKit.Providers.GoogleVertexAI
     }
     public interface IGoogleVertexAIEmbeddingResponseParser
     {
-        System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleVertexAI.GoogleVertexAIEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.EmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default);
     }
     public static class ServiceExtensions
     {

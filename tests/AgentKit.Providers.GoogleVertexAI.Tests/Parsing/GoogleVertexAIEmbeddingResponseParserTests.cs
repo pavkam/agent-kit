@@ -11,13 +11,14 @@ using System.Text;
 /// </summary>
 public sealed class GoogleVertexAIEmbeddingResponseParserTests
 {
-    private static GoogleVertexAIEmbeddingResponseParseContext CreateContext() =>
+    private static EmbeddingResponseParseContext CreateContext() =>
         new(
             new EmbeddingRequestId(Guid.NewGuid()),
             GoogleVertexAIProviderDefaults.ProviderId,
             GoogleVertexAIProviderDefaults.EmbeddingApiFamily,
             new ModelId("text-embedding-005"),
-            deploymentId: null);
+            deploymentId: null,
+            providerRequestId: null);
 
     [Fact]
     public async Task ParseAsync_WhenSinglePrediction_DecodesVectorAndUsage()

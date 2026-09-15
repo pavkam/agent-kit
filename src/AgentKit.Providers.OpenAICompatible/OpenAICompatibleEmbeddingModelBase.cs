@@ -302,7 +302,7 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
                 }
             }
 
-            var parseContext = new OpenAIEmbeddingResponseParseContext(
+            var parseContext = new EmbeddingResponseParseContext(
                 request.Context.RequestId,
                 Descriptor.ProviderId,
                 Descriptor.ApiFamily,

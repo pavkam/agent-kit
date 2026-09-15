@@ -202,12 +202,13 @@ public sealed class GoogleVertexAIEmbeddingModel: IEmbeddingModel
                 }
             }
 
-            var parseContext = new GoogleVertexAIEmbeddingResponseParseContext(
+            var parseContext = new EmbeddingResponseParseContext(
                 request.Context.RequestId,
                 _descriptor.ProviderId,
                 _descriptor.ApiFamily,
                 _descriptor.ModelId,
-                _descriptor.DeploymentId);
+                _descriptor.DeploymentId,
+                providerRequestId: null);
 
             try
             {

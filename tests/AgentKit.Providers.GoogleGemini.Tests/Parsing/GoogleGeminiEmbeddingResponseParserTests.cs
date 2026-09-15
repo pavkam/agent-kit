@@ -9,12 +9,14 @@ namespace AgentKit.Providers.GoogleGemini.Tests.Parsing;
 /// </summary>
 public sealed class GoogleGeminiEmbeddingResponseParserTests
 {
-    private static GoogleGeminiEmbeddingResponseParseContext CreateContext(EmbeddingRequestId requestId) =>
+    private static EmbeddingResponseParseContext CreateContext(EmbeddingRequestId requestId) =>
         new(
             requestId,
             GoogleGeminiProviderDefaults.ProviderId,
             GoogleGeminiProviderDefaults.EmbeddingApiFamily,
-            new ModelId("text-embedding-004"));
+            new ModelId("text-embedding-004"),
+            deploymentId: null,
+            providerRequestId: null);
 
     [Fact]
     public async Task ParseAsync_WhenSingleEmbedding_DecodesDenseFloatVector()

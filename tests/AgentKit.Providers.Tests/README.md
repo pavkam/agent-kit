@@ -22,6 +22,10 @@ a non-packable .NET 10 test project using xUnit v3 and Shouldly.
 - [ProviderRequestIdReaderTests](Http/ProviderRequestIdReaderTests.cs)
 - [ServerSentEventReaderTests](Http/ServerSentEventReaderTests.cs)
 - [ServerSentEventTests](Http/ServerSentEventTests.cs)
+- [ProviderJsonTests](ProviderJsonTests.cs)
+- [ProviderToolCallIdsTests](ProviderToolCallIdsTests.cs)
+- [ProviderResponseParseContextTests](ProviderResponseParseContextTests.cs)
+- [EmbeddingResponseParseContextTests](EmbeddingResponseParseContextTests.cs)
 
 These are entry points into the suite, not a claim of complete architectural
 conformance.

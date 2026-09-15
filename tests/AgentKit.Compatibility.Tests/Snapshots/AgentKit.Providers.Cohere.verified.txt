@@ -14,14 +14,10 @@ namespace AgentKit.Providers.Cohere
         public CohereEmbeddingRequestTranslator() { }
         public System.Text.Json.Nodes.JsonObject Translate(AgentKit.EmbeddingModelRequest request) { }
     }
-    public sealed class CohereEmbeddingResponseParseContext : System.IEquatable<AgentKit.Providers.Cohere.CohereEmbeddingResponseParseContext>
+    public sealed class CohereEmbeddingResponseParseContext : AgentKit.Providers.EmbeddingResponseParseContext, System.IEquatable<AgentKit.Providers.Cohere.CohereEmbeddingResponseParseContext>
     {
         public CohereEmbeddingResponseParseContext(AgentKit.EmbeddingRequestId requestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.EmbeddingEncoding requestedEncoding, AgentKit.EmbeddingPurpose requestedPurpose) { }
-        public AgentKit.ApiFamilyId ApiFamily { get; init; }
-        public AgentKit.ProviderId ProviderId { get; init; }
-        public AgentKit.EmbeddingRequestId RequestId { get; init; }
         public AgentKit.EmbeddingEncoding RequestedEncoding { get; init; }
-        public AgentKit.ModelId RequestedModelId { get; init; }
         public AgentKit.EmbeddingPurpose RequestedPurpose { get; init; }
     }
     public sealed class CohereEmbeddingResponseParser : AgentKit.Providers.Cohere.ICohereEmbeddingResponseParser
@@ -70,21 +66,11 @@ namespace AgentKit.Providers.Cohere
         public CohereRequestTranslator() { }
         public System.Text.Json.Nodes.JsonObject Translate(AgentKit.LlmModelRequest request, bool useStreaming) { }
     }
-    public sealed class CohereResponseParseContext : System.IEquatable<AgentKit.Providers.Cohere.CohereResponseParseContext>
-    {
-        public CohereResponseParseContext(AgentKit.ModelRequestId modelRequestId, AgentKit.ProviderId providerId, AgentKit.ApiFamilyId apiFamily, AgentKit.ModelId requestedModelId, AgentKit.DeploymentId? deploymentId, AgentKit.ProviderRequestId? providerRequestId) { }
-        public AgentKit.ApiFamilyId ApiFamily { get; init; }
-        public AgentKit.DeploymentId? DeploymentId { get; init; }
-        public AgentKit.ModelRequestId ModelRequestId { get; init; }
-        public AgentKit.ProviderId ProviderId { get; init; }
-        public AgentKit.ProviderRequestId? ProviderRequestId { get; init; }
-        public AgentKit.ModelId RequestedModelId { get; init; }
-    }
     public sealed class CohereResponseParser : AgentKit.Providers.Cohere.ICohereResponseParser
     {
         public CohereResponseParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }
-        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
-        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public interface ICohereEmbeddingRequestTranslator
     {
@@ -100,8 +86,8 @@ namespace AgentKit.Providers.Cohere
     }
     public interface ICohereResponseParser
     {
-        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
-        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.Cohere.CohereResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.ProviderResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
     }
     public static class ServiceExtensions
     {

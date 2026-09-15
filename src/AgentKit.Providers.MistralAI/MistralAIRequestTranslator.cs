@@ -53,8 +53,8 @@ public sealed class MistralAIRequestTranslator: IMistralAIRequestTranslator
         }
 
         ApplySettings(body, context.Settings);
-        ApplyExtensions(body, context.Settings.Extensions);
-        ApplyExtensions(body, request.Options.Extensions);
+        ProviderJson.ApplyExtensions(body, context.Settings.Extensions);
+        ProviderJson.ApplyExtensions(body, request.Options.Extensions);
 
         return body;
     }
@@ -90,22 +90,6 @@ public sealed class MistralAIRequestTranslator: IMistralAIRequestTranslator
         if (settings.Seed is { } seed)
         {
             body["random_seed"] = seed;
-        }
-    }
-
-    private static void ApplyExtensions(JsonObject body, ExtensionData extensions)
-    {
-        foreach (var (key, value) in extensions.Values)
-        {
-            // Extension data never overrides a field the translator itself
-            // owns; a protected core field cannot be reshaped by a
-            // passthrough option.
-            if (body.ContainsKey(key))
-            {
-                continue;
-            }
-
-            body[key] = JsonNode.Parse(value.CanonicalJson.AsSpan());
         }
     }
 

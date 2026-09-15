@@ -9,7 +9,7 @@ namespace AgentKit.Providers.OpenAICompatible.Tests.Parsing;
 /// </summary>
 public sealed class OpenAIEmbeddingResponseParserTests
 {
-    private static OpenAIEmbeddingResponseParseContext CreateContext(EmbeddingRequestId requestId) =>
+    private static EmbeddingResponseParseContext CreateContext(EmbeddingRequestId requestId) =>
         new(
             requestId,
             new ProviderId("openai"),

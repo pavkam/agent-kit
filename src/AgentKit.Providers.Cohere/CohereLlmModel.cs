@@ -251,7 +251,7 @@ public sealed class CohereLlmModel: ILlmModel
                 return await FailAsync(failure).ConfigureAwait(false);
             }
 
-            var parseContext = new CohereResponseParseContext(
+            var parseContext = new ProviderResponseParseContext(
                 requestId,
                 _descriptor.ProviderId,
                 _descriptor.ApiFamily,

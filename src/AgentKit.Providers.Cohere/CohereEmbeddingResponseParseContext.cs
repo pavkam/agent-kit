@@ -10,11 +10,17 @@ namespace AgentKit.Providers.Cohere;
 /// <see cref="EmbeddingAttemptResult"/>.
 /// </summary>
 /// <remarks>
-/// This type is an immutable value object with structural equality over its
-/// fields. It carries no mutable state and is safe to share across threads
-/// without synchronization.
+/// This record extends the shared <see cref="EmbeddingResponseParseContext"/>
+/// with the encoding and purpose the request declared, which the parser
+/// needs to select the <c>embeddings</c> map key and to stamp each vector's
+/// embedding space. Cohere's embed endpoint exposes no deployment concept and
+/// the adapter reads no request-correlation header for embeddings, so the
+/// inherited <see cref="EmbeddingResponseParseContext.DeploymentId"/> and
+/// <see cref="EmbeddingResponseParseContext.ProviderRequestId"/> are always
+/// <see langword="null"/>. It remains an immutable value object with
+/// structural equality over its fields and is safe to share across threads.
 /// </remarks>
-public sealed record CohereEmbeddingResponseParseContext
+public sealed record CohereEmbeddingResponseParseContext: EmbeddingResponseParseContext
 {
     /// <summary>Initializes a new instance of the <see cref="CohereEmbeddingResponseParseContext"/> record.</summary>
     /// <param name="requestId">The identity of the request this response answers.</param>
@@ -38,26 +44,11 @@ public sealed record CohereEmbeddingResponseParseContext
         ModelId requestedModelId,
         EmbeddingEncoding requestedEncoding,
         EmbeddingPurpose requestedPurpose)
+        : base(requestId, providerId, apiFamily, requestedModelId, deploymentId: null, providerRequestId: null)
     {
-        RequestId = requestId;
-        ProviderId = providerId;
-        ApiFamily = apiFamily;
-        RequestedModelId = requestedModelId;
         RequestedEncoding = requestedEncoding;
         RequestedPurpose = requestedPurpose;
     }
-
-    /// <summary>Gets the identity of the request this response answers.</summary>
-    public EmbeddingRequestId RequestId { get; init; }
-
-    /// <summary>Gets the provider that produced the response.</summary>
-    public ProviderId ProviderId { get; init; }
-
-    /// <summary>Gets the wire/API family used for the request.</summary>
-    public ApiFamilyId ApiFamily { get; init; }
-
-    /// <summary>Gets the model identity that was requested.</summary>
-    public ModelId RequestedModelId { get; init; }
 
     /// <summary>
     /// Gets the single encoding requested for returned vectors, used both

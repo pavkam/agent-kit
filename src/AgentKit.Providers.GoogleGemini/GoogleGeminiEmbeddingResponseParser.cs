@@ -19,7 +19,7 @@ public sealed class GoogleGeminiEmbeddingResponseParser: IGoogleGeminiEmbeddingR
     /// <inheritdoc/>
     public async Task<EmbeddingAttemptResult> ParseAsync(
         Stream responseBody,
-        GoogleGeminiEmbeddingResponseParseContext context,
+        EmbeddingResponseParseContext context,
         ImmutableArray<EmbeddingInput> requestInputs,
         CancellationToken cancellationToken = default)
     {
@@ -58,7 +58,7 @@ public sealed class GoogleGeminiEmbeddingResponseParser: IGoogleGeminiEmbeddingR
                 diagnosticCause: null));
         }
 
-        var identity = BuildIdentity(context);
+        var identity = context.CreateResponseIdentity();
         var items = ImmutableArray.CreateBuilder<EmbeddingItemOutcome>(embeddings.Count);
 
         for (var index = 0; index < embeddings.Count; index++)
@@ -87,19 +87,8 @@ public sealed class GoogleGeminiEmbeddingResponseParser: IGoogleGeminiEmbeddingR
         return new EmbeddingAttemptCompleted(response);
     }
 
-    private static ProviderResponseIdentity BuildIdentity(GoogleGeminiEmbeddingResponseParseContext context) =>
-        new(
-            context.ProviderId,
-            upstreamProviderId: null,
-            context.ApiFamily,
-            context.RequestedModelId,
-            context.RequestedModelId,
-            deploymentId: null,
-            requestId: null,
-            responseId: null);
-
     private static ProviderFailure BuildFailure(
-        GoogleGeminiEmbeddingResponseParseContext context, string safeMessage, Exception? diagnosticCause) =>
+        EmbeddingResponseParseContext context, string safeMessage, Exception? diagnosticCause) =>
         new(
             ProviderFailureKind.ProtocolViolation,
             context.ProviderId,

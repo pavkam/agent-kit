@@ -25,7 +25,7 @@ public interface ICohereResponseParser
     /// <returns>The terminal outcome of the attempt.</returns>
     public Task<ModelAttemptResult> ParseBufferedAsync(
         Stream responseBody,
-        CohereResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default);
 
@@ -44,7 +44,7 @@ public interface ICohereResponseParser
     /// <returns>The terminal outcome of the attempt.</returns>
     public Task<ModelAttemptResult> ParseStreamingAsync(
         Stream responseBody,
-        CohereResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default);
 }

@@ -49,7 +49,7 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseBufferedAsync(
         Stream responseBody,
-        MistralAIResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -159,7 +159,7 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context, dto.Model, dto.Id),
+            context.CreateResponseIdentity(dto.Model, dto.Id),
             parts.ToImmutable(),
             MapFinishReason(choice.FinishReason),
             usage,
@@ -174,7 +174,7 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
     /// <inheritdoc/>
     public async Task<ModelAttemptResult> ParseStreamingAsync(
         Stream responseBody,
-        MistralAIResponseParseContext context,
+        ProviderResponseParseContext context,
         IModelResponseObserver observer,
         CancellationToken cancellationToken = default)
     {
@@ -344,7 +344,7 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
 
         var response = new ModelResponse(
             requestId,
-            BuildIdentity(context, resolvedModel, responseId),
+            context.CreateResponseIdentity(resolvedModel, responseId),
             finalParts.ToImmutable(),
             MapFinishReason(finishReason),
             usageResult,
@@ -546,7 +546,7 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
             SlotKind.ToolCall => new ToolCallPart(
                 slot.AssignedCallId,
                 new ToolReference(new ToolId(slot.ToolCallName!), null, slot.ToolCallName!),
-                ParseArguments(slot.ToolCallArguments.ToString()),
+                ProviderJson.ParseArguments(slot.ToolCallArguments.ToString()),
                 slot.ToolCallId is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
                 ExtensionData.Empty),
             SlotKind.Unknown => throw new UnreachableException("An unknown-kind slot is always closed at creation."),
@@ -623,7 +623,7 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
 
     private static async Task<ModelAttemptResult> FailAsync(
         IModelResponseObserver observer,
-        MistralAIResponseParseContext context,
+        ProviderResponseParseContext context,
         long sequence,
         ProviderFailureKind kind,
         string safeMessage,
@@ -728,40 +728,10 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
     private static JsonElement ParseArgumentsElement(JsonElement? argumentsElement) =>
         argumentsElement switch
         {
-            { ValueKind: JsonValueKind.String } element => ParseArguments(element.GetString()),
+            { ValueKind: JsonValueKind.String } element => ProviderJson.ParseArguments(element.GetString()),
             { ValueKind: JsonValueKind.Object } element => element,
-            _ => ParseArguments(null),
+            _ => ProviderJson.ParseArguments(null),
         };
-
-    /// <summary>Parses tool-call argument JSON; an absent value is an empty object, malformed JSON propagates as <see cref="JsonException"/>.</summary>
-    private static JsonElement ParseArguments(string? json)
-    {
-        if (string.IsNullOrEmpty(json))
-        {
-            return ParseEmptyObject();
-        }
-
-        using var document = JsonDocument.Parse(json);
-        return document.RootElement.Clone();
-    }
-
-    private static JsonElement ParseEmptyObject()
-    {
-        using var document = JsonDocument.Parse("{}");
-        return document.RootElement.Clone();
-    }
-
-    private static ProviderResponseIdentity BuildIdentity(
-        MistralAIResponseParseContext context, string? resolvedModel, string? responseId) =>
-        new(
-            context.ProviderId,
-            upstreamProviderId: null,
-            context.ApiFamily,
-            context.RequestedModelId,
-            resolvedModel is { Length: > 0 } model ? new ModelId(model) : context.RequestedModelId,
-            context.DeploymentId,
-            context.ProviderRequestId,
-            responseId is { Length: > 0 } id ? new ProviderResponseId(id) : null);
 
     private static ModelUsage BuildUsage(
         MistralAIUsageDto? usage,
