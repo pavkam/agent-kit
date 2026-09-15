@@ -5,6 +5,18 @@ namespace AgentKit.Hooks.Tests;
 
 public sealed class ServiceExtensionsTests
 {
+    private static readonly HookPointId _point = new("test.point");
+
+    [Fact]
+    public void AddAgentHooks_WhenServicesNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(() => services.AddAgentHooks());
+
+        exception.ParamName.ShouldBe("services");
+    }
+
     [Fact]
     public void AddAgentHooks_WhenCalled_RegistersDefaultDispatcher()
     {
@@ -27,4 +39,100 @@ public sealed class ServiceExtensionsTests
 
         provider.GetServices<IHookDispatcher>().Count().ShouldBe(1);
     }
+
+    [Fact]
+    public void AddAgentHooks_WhenConfigureOmitted_UsesDocumentedDefaults()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddAgentHooks();
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<AgentHookOptions>>().Value;
+        options.MaximumInvocationDepth.ShouldBe(8);
+        options.MinimumFailureMode.ShouldBe(HookFailureMode.Isolate);
+    }
+
+    [Fact]
+    public void AddAgentHooks_WhenConfigureSupplied_AppliesConfiguration()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddAgentHooks(static options =>
+        {
+            options.MaximumInvocationDepth = 3;
+            options.MinimumFailureMode = HookFailureMode.FailOperation;
+        });
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<AgentHookOptions>>().Value;
+        options.MaximumInvocationDepth.ShouldBe(3);
+        options.MinimumFailureMode.ShouldBe(HookFailureMode.FailOperation);
+    }
+
+    [Fact]
+    public void AddAgentHooks_WhenMaximumInvocationDepthIsZero_FailsOptionsValidation()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddAgentHooks(static options => options.MaximumInvocationDepth = 0);
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<AgentHookOptions>>().Value);
+        _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IHookDispatcher>);
+    }
+
+    [Fact]
+    public void AddAgentHooks_WhenMinimumFailureModeUndefined_FailsOptionsValidation()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddAgentHooks(static options => options.MinimumFailureMode = (HookFailureMode) 42);
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<AgentHookOptions>>().Value);
+        _ = Should.Throw<OptionsValidationException>(provider.GetRequiredService<IHookDispatcher>);
+    }
+
+    [Fact]
+    public async Task AddAgentHooks_WhenDepthCeilingConfigured_ResolvedDispatcherHonorsCeiling()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentHooks(static options => options.MaximumInvocationDepth = 1);
+        using var provider = services.BuildServiceProvider();
+        var dispatcher = provider.GetRequiredService<IHookDispatcher>();
+        var innerHooks = new[] { new TestHook { Id = new HookId("inner") } };
+        var outerHooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("outer"),
+                OnInvoke = async (args, scope, ct) => await dispatcher.DispatchAsync(_point, innerHooks, args, Invoker, scope, maxReentrantDepth: 3, cancellationToken: ct)
+            }
+        };
+
+        // The caller asks for depth 3 on both levels; the host ceiling of 1 rejects the nested dispatch.
+        _ = await Should.ThrowAsync<HookReentrancyException>(() => dispatcher.DispatchAsync(_point, outerHooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, maxReentrantDepth: 3, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task AddAgentHooks_WhenMinimumFailureModeConfigured_ResolvedDispatcherEscalatesIsolation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentHooks(static options => options.MinimumFailureMode = HookFailureMode.FailOperation);
+        using var provider = services.BuildServiceProvider();
+        var dispatcher = provider.GetRequiredService<IHookDispatcher>();
+        var hooks = new[]
+        {
+            new TestHook { Id = new HookId("a"), OnInvoke = static (_, _, _) => throw new InvalidOperationException("boom") },
+            new TestHook { Id = new HookId("b") }
+        };
+        var args = new TestHookEventArgs();
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken));
+
+        args.InvocationOrder.ShouldBe([new HookId("a")]);
+    }
+
+    private static Func<TestHook, TestHookEventArgs, HookDispatchScope, CancellationToken, Task> Invoker => static (hook, args, scope, ct) => hook.InvokeAsync(args, scope, ct);
 }

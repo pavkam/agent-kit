@@ -11,17 +11,72 @@ namespace AgentKit.Hooks;
 /// bound.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This class holds no mutable state and no per-hook-point cache: every
 /// call to <see cref="DispatchAsync{THook,TArgs}"/> resolves ordering fresh
 /// from the <c>hooks</c> sequence it is given, so it is safe to register as
 /// a singleton and share across every run and hook point in a process.
+/// </para>
+/// <para>
+/// The host ceilings from <see cref="AgentHookOptions"/> are captured once at
+/// construction and compose monotonically with each call's arguments: the
+/// effective reentrancy limit is the smaller of the caller's
+/// <c>maxReentrantDepth</c> and <see cref="AgentHookOptions.MaximumInvocationDepth"/>,
+/// and the effective failure mode is the stricter of the caller's
+/// <c>failureMode</c> and <see cref="AgentHookOptions.MinimumFailureMode"/>.
+/// </para>
 /// </remarks>
-/// <param name="logger">The optional structured logger; a null value disables log publication.</param>
-public sealed class DefaultHookDispatcher(ILogger<DefaultHookDispatcher>? logger = null): IHookDispatcher
+public sealed class DefaultHookDispatcher: IHookDispatcher
 {
-    private readonly ILogger<DefaultHookDispatcher> _logger = logger ?? NullLogger<DefaultHookDispatcher>.Instance;
+    private readonly ILogger<DefaultHookDispatcher> _logger;
+    private readonly int _maximumInvocationDepth;
+    private readonly HookFailureMode _minimumFailureMode;
+
+    /// <summary>
+    /// Initializes a dispatcher with the default <see cref="AgentHookOptions"/> ceilings, which leave every
+    /// caller's requested depth and failure mode unchanged.
+    /// </summary>
+    /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
+    public DefaultHookDispatcher(ILogger<DefaultHookDispatcher>? logger = null)
+        : this(Options.Create(new AgentHookOptions()), logger)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a dispatcher that enforces the supplied host ceilings on every dispatch.
+    /// </summary>
+    /// <param name="options">
+    /// The host ceilings. <see cref="IOptions{TOptions}.Value"/> is read once here; later changes to the options
+    /// instance do not affect this dispatcher.
+    /// </param>
+    /// <param name="logger">The optional structured logger; a null value disables log publication.</param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="options"/> or its <see cref="IOptions{TOptions}.Value"/> is null.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <see cref="AgentHookOptions.MaximumInvocationDepth"/> is less than 1, or
+    /// <see cref="AgentHookOptions.MinimumFailureMode"/> is not a defined <see cref="HookFailureMode"/>. The
+    /// exception names <paramref name="options"/>.
+    /// </exception>
+    public DefaultHookDispatcher(IOptions<AgentHookOptions> options, ILogger<DefaultHookDispatcher>? logger = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(options.Value, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.Value.MaximumInvocationDepth, 1, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfUndefined(options.Value.MinimumFailureMode, nameof(options));
+
+        _logger = logger ?? NullLogger<DefaultHookDispatcher>.Instance;
+        _maximumInvocationDepth = options.Value.MaximumInvocationDepth;
+        _minimumFailureMode = options.Value.MinimumFailureMode;
+    }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Before any hook runs, <paramref name="maxReentrantDepth"/> is clamped to the host's
+    /// <see cref="AgentHookOptions.MaximumInvocationDepth"/> and <paramref name="failureMode"/> is escalated to the
+    /// host's <see cref="AgentHookOptions.MinimumFailureMode"/> when that is stricter. Either adjustment is recorded
+    /// as a content-free debug log event; neither can relax what the caller requested.
+    /// </remarks>
     public async Task DispatchAsync<THook, TArgs>(
         HookPointId point,
         IEnumerable<THook> hooks,
@@ -46,10 +101,22 @@ public sealed class DefaultHookDispatcher(ILogger<DefaultHookDispatcher>? logger
         _ = activity?.SetTag(AgentKitTagNames.SessionId, args.SessionId?.ToString());
         _ = activity?.SetTag(AgentKitTagNames.OperationId, args.Correlation.OperationId.ToString());
 
+        var effectiveDepth = Math.Min(maxReentrantDepth, _maximumInvocationDepth);
+        if (effectiveDepth != maxReentrantDepth)
+        {
+            HookLog.ReentrantDepthClamped(_logger, point, args.InvocationId, maxReentrantDepth, effectiveDepth);
+        }
+
+        var effectiveFailureMode = Strictest(failureMode, _minimumFailureMode);
+        if (effectiveFailureMode != failureMode)
+        {
+            HookLog.FailureModeEscalated(_logger, point, args.InvocationId, failureMode, effectiveFailureMode);
+        }
+
         try
         {
             await DispatchCoreAsync(
-                point, hooks, args, invoke, scope, failureMode, maxReentrantDepth, activity, cancellationToken)
+                point, hooks, args, invoke, scope, effectiveFailureMode, effectiveDepth, activity, cancellationToken)
                 .ConfigureAwait(false);
             activity.SetSuccessful(args is IShortCircuitingHookArgs { IsShortCircuited: true } ? "short_circuited" : "completed");
             HookLog.DispatchCompleted(_logger, point, args.InvocationId);
@@ -74,6 +141,19 @@ public sealed class DefaultHookDispatcher(ILogger<DefaultHookDispatcher>? logger
             throw;
         }
     }
+
+    /// <summary>
+    /// Composes two failure modes under the strictness order <see cref="HookFailureMode.Isolate"/> &lt;
+    /// <see cref="HookFailureMode.FailOperation"/>. Only two isolating inputs yield isolation; any other input,
+    /// including an undefined caller value, fails closed to <see cref="HookFailureMode.FailOperation"/>.
+    /// </summary>
+    /// <param name="requested">The mode requested by the caller of this dispatch.</param>
+    /// <param name="minimum">The host's minimum mode captured at construction.</param>
+    /// <returns>The stricter of the two modes.</returns>
+    private static HookFailureMode Strictest(HookFailureMode requested, HookFailureMode minimum) =>
+        requested == HookFailureMode.Isolate && minimum == HookFailureMode.Isolate
+            ? HookFailureMode.Isolate
+            : HookFailureMode.FailOperation;
 
     private async Task DispatchCoreAsync<THook, TArgs>(
         HookPointId point,

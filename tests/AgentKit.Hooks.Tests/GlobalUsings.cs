@@ -7,8 +7,11 @@ global using System.Diagnostics;
 global using AgentKit;
 global using AgentKit.Hooks;
 global using AgentKit.Observability;
+global using AgentKit.TestSupport;
 
 global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Logging;
+global using Microsoft.Extensions.Options;
 
 global using Shouldly;
 

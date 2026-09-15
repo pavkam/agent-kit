@@ -508,10 +508,248 @@ public sealed class DefaultHookDispatcherTests
         args.InvocationOrder.ShouldBeEmpty();
     }
 
+    [Fact]
+    public void Constructor_WhenOptionsNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new DefaultHookDispatcher((IOptions<AgentHookOptions>) null!));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenOptionsValueNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new DefaultHookDispatcher(new NullValueOptions()));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenMaximumInvocationDepthIsZero_ThrowsArgumentOutOfRangeException()
+    {
+        var options = Options.Create(new AgentHookOptions { MaximumInvocationDepth = 0 });
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new DefaultHookDispatcher(options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenMaximumInvocationDepthIsOne_DoesNotThrow()
+    {
+        var options = Options.Create(new AgentHookOptions { MaximumInvocationDepth = 1 });
+
+        _ = Should.NotThrow(() => new DefaultHookDispatcher(options));
+    }
+
+    [Fact]
+    public void Constructor_WhenMinimumFailureModeUndefined_ThrowsArgumentOutOfRangeException()
+    {
+        var options = Options.Create(new AgentHookOptions { MinimumFailureMode = (HookFailureMode) 42 });
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new DefaultHookDispatcher(options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenCallerDepthExceedsHostCeiling_UsesHostCeiling()
+    {
+        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MaximumInvocationDepth = 1 }));
+        var innerHooks = new[]
+        {
+            Hook("inner")
+        };
+        var outerHooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("outer"),
+                OnInvoke = async (args, scope, ct) => await dispatcher.DispatchAsync(_point, innerHooks, args, Invoker, scope, maxReentrantDepth: 3, cancellationToken: ct)
+            }
+        };
+        var args = new TestHookEventArgs();
+
+        _ = await Should.ThrowAsync<HookReentrancyException>(() => dispatcher.DispatchAsync(_point, outerHooks, args, Invoker, HookDispatchScope.Root, maxReentrantDepth: 3, cancellationToken: TestContext.Current.CancellationToken));
+
+        args.InvocationOrder.ShouldBe([new HookId("outer")]);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenHostCeilingAboveCallerDepth_UsesCallerDepth()
+    {
+        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MaximumInvocationDepth = 8 }));
+        var innerHooks = new[]
+        {
+            Hook("inner")
+        };
+        var outerHooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("outer"),
+                OnInvoke = async (args, scope, ct) => await dispatcher.DispatchAsync(_point, innerHooks, args, Invoker, scope, maxReentrantDepth: 1, cancellationToken: ct)
+            }
+        };
+
+        // The host would allow depth 8, but the caller's own limit of 1 still forbids the nested dispatch.
+        _ = await Should.ThrowAsync<HookReentrancyException>(() => dispatcher.DispatchAsync(_point, outerHooks, new TestHookEventArgs(), Invoker, HookDispatchScope.Root, maxReentrantDepth: 1, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenHostCeilingPermitsCallerDepth_Succeeds()
+    {
+        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MaximumInvocationDepth = 2 }));
+        var innerHooks = new[]
+        {
+            Hook("inner")
+        };
+        var outerHooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("outer"),
+                OnInvoke = async (args, scope, ct) => await dispatcher.DispatchAsync(_point, innerHooks, args, Invoker, scope, maxReentrantDepth: 2, cancellationToken: ct)
+            }
+        };
+        var args = new TestHookEventArgs();
+
+        await dispatcher.DispatchAsync(_point, outerHooks, args, Invoker, HookDispatchScope.Root, maxReentrantDepth: 2, cancellationToken: TestContext.Current.CancellationToken);
+
+        args.InvocationOrder.ShouldBe([new HookId("outer"), new HookId("inner")]);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenHostMinimumFailureModeIsStricter_EscalatesIsolation()
+    {
+        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MinimumFailureMode = HookFailureMode.FailOperation }));
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (_, _, _) => throw new InvalidOperationException("boom")
+            },
+            Hook("b")
+        };
+        var args = new TestHookEventArgs();
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken));
+
+        args.InvocationOrder.ShouldBe([new HookId("a")]);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenCallerModeIsStricter_KeepsCallerMode()
+    {
+        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MinimumFailureMode = HookFailureMode.Isolate }));
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (_, _, _) => throw new InvalidOperationException("boom")
+            },
+            Hook("b")
+        };
+        var args = new TestHookEventArgs();
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.FailOperation, cancellationToken: TestContext.Current.CancellationToken));
+
+        args.InvocationOrder.ShouldBe([new HookId("a")]);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenHostMinimumMatchesCallerIsolation_StillIsolates()
+    {
+        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MinimumFailureMode = HookFailureMode.Isolate }));
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (_, _, _) => throw new InvalidOperationException("boom")
+            },
+            Hook("b")
+        };
+        var args = new TestHookEventArgs();
+
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+
+        args.InvocationOrder.ShouldBe([new HookId("a"), new HookId("b")]);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenHostEscalatesFailureMode_LogsEscalationWithoutPayload()
+    {
+        const string payload = "secret-hook-payload-must-not-be-logged";
+        var logger = new RecordingLogger<DefaultHookDispatcher>();
+        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MinimumFailureMode = HookFailureMode.FailOperation }), logger);
+        var args = new TestHookEventArgs { Payload = payload };
+
+        await dispatcher.DispatchAsync(_point, [Hook("a")], args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+
+        var logs = logger.Snapshot();
+        var escalation = logs.Single(static log => log.EventId.Id == 8005);
+        escalation.Level.ShouldBe(LogLevel.Debug);
+        escalation.Category.ShouldBe(typeof(DefaultHookDispatcher).FullName);
+        escalation.State["HookPoint"].ShouldBe(_point);
+        escalation.State["HookInvocationId"].ShouldBe(args.InvocationId);
+        escalation.State["RequestedFailureMode"].ShouldBe(HookFailureMode.Isolate);
+        escalation.State["EffectiveFailureMode"].ShouldBe(HookFailureMode.FailOperation);
+        foreach (var log in logs)
+        {
+            log.Message.ShouldNotContain(payload);
+            log.State.Values.ShouldAllBe(value => value == null || !value.ToString()!.Contains(payload, StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenHostClampsDepth_LogsClampWithoutPayload()
+    {
+        const string payload = "secret-hook-payload-must-not-be-logged";
+        var logger = new RecordingLogger<DefaultHookDispatcher>();
+        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions { MaximumInvocationDepth = 2 }), logger);
+        var args = new TestHookEventArgs { Payload = payload };
+
+        await dispatcher.DispatchAsync(_point, [Hook("a")], args, Invoker, HookDispatchScope.Root, maxReentrantDepth: 5, cancellationToken: TestContext.Current.CancellationToken);
+
+        var logs = logger.Snapshot();
+        var clamp = logs.Single(static log => log.EventId.Id == 8004);
+        clamp.Level.ShouldBe(LogLevel.Debug);
+        clamp.State["HookPoint"].ShouldBe(_point);
+        clamp.State["HookInvocationId"].ShouldBe(args.InvocationId);
+        clamp.State["RequestedDepth"].ShouldBe(5);
+        clamp.State["EffectiveDepth"].ShouldBe(2);
+        foreach (var log in logs)
+        {
+            log.Message.ShouldNotContain(payload);
+            log.State.Values.ShouldAllBe(value => value == null || !value.ToString()!.Contains(payload, StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenHostCeilingsLeaveCallerUnchanged_DoesNotLogAdjustment()
+    {
+        var logger = new RecordingLogger<DefaultHookDispatcher>();
+        var dispatcher = new DefaultHookDispatcher(Options.Create(new AgentHookOptions()), logger);
+
+        await dispatcher.DispatchAsync(_point, [Hook("a")], new TestHookEventArgs(), Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+
+        logger.Snapshot().Where(static log => log.EventId.Id is 8004 or 8005).ShouldBeEmpty();
+    }
+
     private static TestHook Hook(string id) => new()
     {
         Id = new HookId(id)
     };
+
+    /// <summary>An <see cref="IOptions{TOptions}"/> whose value is null, to exercise the dispatcher's value guard.</summary>
+    private sealed class NullValueOptions: IOptions<AgentHookOptions>
+    {
+        public AgentHookOptions Value => null!;
+    }
+
     [Fact]
     public async Task DispatchAsync_WhenObserved_EmitsCorrelatedTerminalActivity()
     {

@@ -3,9 +3,16 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Hooks
 {
+    public sealed class AgentHookOptions
+    {
+        public AgentHookOptions() { }
+        public int MaximumInvocationDepth { get; set; }
+        public AgentKit.HookFailureMode MinimumFailureMode { get; set; }
+    }
     public sealed class DefaultHookDispatcher : AgentKit.IHookDispatcher
     {
         public DefaultHookDispatcher(Microsoft.Extensions.Logging.ILogger<AgentKit.Hooks.DefaultHookDispatcher>? logger = null) { }
+        public DefaultHookDispatcher(Microsoft.Extensions.Options.IOptions<AgentKit.Hooks.AgentHookOptions> options, Microsoft.Extensions.Logging.ILogger<AgentKit.Hooks.DefaultHookDispatcher>? logger = null) { }
         public System.Threading.Tasks.Task DispatchAsync<THook, TArgs>(AgentKit.HookPointId point, System.Collections.Generic.IEnumerable<THook> hooks, TArgs args, System.Func<THook, TArgs, AgentKit.HookDispatchScope, System.Threading.CancellationToken, System.Threading.Tasks.Task> invoke, AgentKit.HookDispatchScope scope, AgentKit.HookFailureMode failureMode = 0, int maxReentrantDepth = 1, System.Threading.CancellationToken cancellationToken = default)
             where THook : AgentKit.IHook
             where TArgs : AgentKit.AgentHookEventArgs { }
@@ -14,7 +21,7 @@ namespace AgentKit.Hooks
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
-            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentHooks() { }
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddAgentHooks(System.Action<AgentKit.Hooks.AgentHookOptions>? configure = null) { }
         }
     }
 }

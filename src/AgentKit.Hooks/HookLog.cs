@@ -38,4 +38,24 @@ internal static partial class HookLog
     [LoggerMessage(8003, LogLevel.Warning, "Hook {HookId} error type {ErrorType} was isolated in point {HookPoint} dispatch {HookInvocationId}.")]
     internal static partial void InvocationIsolated(
         ILogger logger, HookPointId hookPoint, HookId hookId, HookInvocationId hookInvocationId, string errorType);
+
+    /// <summary>Records that a caller's reentrancy limit was reduced to the host's <see cref="AgentHookOptions.MaximumInvocationDepth"/>.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="hookPoint">The stable typed lifecycle point.</param>
+    /// <param name="hookInvocationId">The dispatch identity supplied by the hook arguments.</param>
+    /// <param name="requestedDepth">The reentrancy limit the caller asked for.</param>
+    /// <param name="effectiveDepth">The host ceiling that bounds this dispatch instead.</param>
+    [LoggerMessage(8004, LogLevel.Debug, "Hook point {HookPoint} dispatch {HookInvocationId} requested reentrant depth {RequestedDepth}; host ceiling clamps it to {EffectiveDepth}.")]
+    internal static partial void ReentrantDepthClamped(
+        ILogger logger, HookPointId hookPoint, HookInvocationId hookInvocationId, int requestedDepth, int effectiveDepth);
+
+    /// <summary>Records that a caller's failure mode was escalated to satisfy the host's <see cref="AgentHookOptions.MinimumFailureMode"/>.</summary>
+    /// <param name="logger">The logger receiving the structured event.</param>
+    /// <param name="hookPoint">The stable typed lifecycle point.</param>
+    /// <param name="hookInvocationId">The dispatch identity supplied by the hook arguments.</param>
+    /// <param name="requestedFailureMode">The failure mode the caller asked for.</param>
+    /// <param name="effectiveFailureMode">The stricter mode applied to this dispatch.</param>
+    [LoggerMessage(8005, LogLevel.Debug, "Hook point {HookPoint} dispatch {HookInvocationId} requested failure mode {RequestedFailureMode}; host minimum escalates it to {EffectiveFailureMode}.")]
+    internal static partial void FailureModeEscalated(
+        ILogger logger, HookPointId hookPoint, HookInvocationId hookInvocationId, HookFailureMode requestedFailureMode, HookFailureMode effectiveFailureMode);
 }
