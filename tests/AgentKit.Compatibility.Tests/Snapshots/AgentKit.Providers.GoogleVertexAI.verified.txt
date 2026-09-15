@@ -38,6 +38,7 @@ namespace AgentKit.Providers.GoogleVertexAI
     {
         public const string DefaultApiVersion = "v1";
         public const string DefaultPublisher = "google";
+        public const string GlobalLocation = "global";
         public static AgentKit.ApiFamilyId ApiFamily { get; }
         public static AgentKit.Providers.Http.ProviderAuthorizationScheme AuthorizationScheme { get; }
         public static AgentKit.ModelCapabilities DefaultCapabilities { get; }
@@ -45,15 +46,19 @@ namespace AgentKit.Providers.GoogleVertexAI
         public static AgentKit.EmbeddingLimits DefaultEmbeddingLimits { get; }
         public static AgentKit.ModelLimits DefaultLimits { get; }
         public static AgentKit.ApiFamilyId EmbeddingApiFamily { get; }
+        public static System.Uri GlobalBaseAddress { get; }
         public static AgentKit.ProviderId ProviderId { get; }
+        public static System.Uri BuildDefaultBaseAddress(string location) { }
         public static System.Uri BuildGenerateContentUri(AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId, bool useStreaming) { }
         public static System.Uri BuildPredictUri(AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options, AgentKit.ModelId modelId, AgentKit.DeploymentId? deploymentId) { }
         public static System.Uri BuildRegionalBaseAddress(string location) { }
+        public static System.Uri ResolveBaseAddress(AgentKit.Providers.GoogleVertexAI.GoogleVertexAIProviderOptions options) { }
     }
     public sealed class GoogleVertexAIProviderOptions
     {
         public GoogleVertexAIProviderOptions() { }
         public string ApiVersion { get; set; }
+        public System.Uri? BaseAddress { get; set; }
         public string? Location { get; set; }
         public bool PreferStreaming { get; set; }
         public string? ProjectId { get; set; }

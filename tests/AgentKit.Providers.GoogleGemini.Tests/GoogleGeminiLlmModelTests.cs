@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 
 using AgentKit.Providers.GoogleGemini.Tests.Fakes;
+using AgentKit.Providers.Http;
 using AgentKit.TestSupport;
 
 /// <summary>Verifies GoogleGeminiLlmModel behavior and contracts.</summary>
@@ -113,7 +114,7 @@ public sealed class GoogleGeminiLlmModelTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
         failed.Failure.StatusCode.ShouldBe(401);
-        failed.Failure.SafeMessage.ShouldBe("The Google Gemini request failed with HTTP status 401.");
+        failed.Failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
         failed.Failure.ProviderCode.ShouldBe("UNAUTHENTICATED");
     }
 
@@ -271,7 +272,7 @@ public sealed class GoogleGeminiLlmModelTests
         failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
         failure.StatusCode.ShouldBe(500);
         failure.ProviderCode.ShouldBeNull();
-        failure.SafeMessage.ShouldBe("The Google Gemini request failed with HTTP status 500.");
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 500.");
         _ = failure.DiagnosticCause.ShouldBeOfType<IOException>();
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
     }
@@ -317,7 +318,7 @@ public sealed class GoogleGeminiLlmModelTests
         var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")));
         var failure = (await model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1)), new RecordingModelResponseObserver(), TestContext.Current.CancellationToken)).ShouldBeOfType<ModelAttemptFailed>().Failure;
         failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
-        failure.SafeMessage.ShouldBe("The Google Gemini request failed with HTTP status 409.");
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 409.");
     }
 
     /// <summary>Verifies unknown Google status text retains its code while HTTP classifies it and body text remains unsafe.</summary>
@@ -331,6 +332,7 @@ public sealed class GoogleGeminiLlmModelTests
         failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
         failure.ProviderCode.ShouldBe("FUTURE_STATUS");
         failure.SafeMessage.ShouldNotContain(secret);
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBe(secret);
     }
 
     [Fact]

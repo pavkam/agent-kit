@@ -3,6 +3,11 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
 namespace AgentKit.Providers.GoogleGemini
 {
+    public static class GoogleApiErrorFailureFactory
+    {
+        public static System.Threading.Tasks.Task<AgentKit.ProviderFailure> CreateAsync(System.Net.Http.HttpResponseMessage response, AgentKit.ProviderId providerId, System.TimeProvider timeProvider, System.Threading.CancellationToken cancellationToken) { }
+        public static AgentKit.ProviderFailure CreateInterrupted(System.Net.Http.HttpResponseMessage response, AgentKit.ProviderId providerId, AgentKit.ProviderFailureKind kind, string safeMessage, System.Exception? diagnosticCause, System.TimeProvider timeProvider) { }
+    }
     public sealed class GoogleGeminiContentTranslator : AgentKit.Providers.GoogleGemini.IGoogleGeminiContentTranslator
     {
         public GoogleGeminiContentTranslator() { }
@@ -31,6 +36,10 @@ namespace AgentKit.Providers.GoogleGemini
     {
         public GoogleGeminiEmbeddingResponseParser() { }
         public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> ParseAsync(System.IO.Stream responseBody, AgentKit.Providers.GoogleGemini.GoogleGeminiEmbeddingResponseParseContext context, System.Collections.Immutable.ImmutableArray<AgentKit.EmbeddingInput> requestInputs, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class GoogleGeminiErrorMapping
+    {
+        public static AgentKit.ProviderFailureKind MapStatus(string? status) { }
     }
     public static class GoogleGeminiExtensionKeys
     {
@@ -119,5 +128,24 @@ namespace AgentKit.Providers.GoogleGemini
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleGeminiLlmModel(AgentKit.ModelAlias alias, AgentKit.ModelId modelId, AgentKit.ModelCapabilities? capabilities = null, AgentKit.ModelLimits? limits = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddGoogleGeminiEmbeddingModel(AgentKit.EmbeddingModelAlias alias, AgentKit.ModelId modelId, AgentKit.EmbeddingCapabilities? capabilities = null, AgentKit.EmbeddingLimits? limits = null) { }
         }
+    }
+}
+namespace AgentKit.Providers.GoogleGemini.Wire
+{
+    public sealed class GoogleGeminiErrorDetailDto
+    {
+        public GoogleGeminiErrorDetailDto() { }
+        [System.Text.Json.Serialization.JsonPropertyName("code")]
+        public int? Code { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("message")]
+        public string? Message { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("status")]
+        public string? Status { get; set; }
+    }
+    public sealed class GoogleGeminiErrorEnvelopeDto
+    {
+        public GoogleGeminiErrorEnvelopeDto() { }
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        public AgentKit.Providers.GoogleGemini.Wire.GoogleGeminiErrorDetailDto? Error { get; set; }
     }
 }

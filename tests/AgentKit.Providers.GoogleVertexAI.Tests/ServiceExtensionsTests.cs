@@ -57,6 +57,67 @@ public sealed class ServiceExtensionsTests
         _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<GoogleVertexAIProviderOptions>>().Value);
     }
 
+    /// <summary>Verifies a relative BaseAddress fails options validation at startup rather than at first request.</summary>
+    [Fact]
+    public void AddGoogleVertexAI_WhenBaseAddressIsNotAbsolute_FailsValidationOnAccess()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddGoogleVertexAI(options =>
+        {
+            ConfigureOptions(options);
+            options.BaseAddress = new Uri("not-absolute", UriKind.Relative);
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<GoogleVertexAIProviderOptions>>().Value);
+        exception.Message.ShouldContain(nameof(GoogleVertexAIProviderOptions.BaseAddress));
+    }
+
+    [Fact]
+    public void AddGoogleVertexAI_WhenBaseAddressIsAbsolute_RegistersOptionsWithBaseAddress()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddGoogleVertexAI(options =>
+        {
+            ConfigureOptions(options);
+            options.BaseAddress = new Uri("https://vertex.psc.internal.example/");
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<GoogleVertexAIProviderOptions>>().Value;
+
+        options.BaseAddress.ShouldBe(new Uri("https://vertex.psc.internal.example/"));
+    }
+
+    [Fact]
+    public void AddGoogleVertexAI_WhenBaseAddressNotConfigured_LeavesItNullSoLocationSelectsHost()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddGoogleVertexAI(ConfigureOptions);
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<GoogleVertexAIProviderOptions>>().Value;
+
+        options.BaseAddress.ShouldBeNull();
+    }
+
+    [Fact]
+    public void AddGoogleVertexAI_WhenLocationIsGlobal_PassesValidation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddGoogleVertexAI(options =>
+        {
+            options.ProjectId = "my-project";
+            options.Location = "global";
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<GoogleVertexAIProviderOptions>>().Value;
+
+        options.Location.ShouldBe(GoogleVertexAIProviderDefaults.GlobalLocation);
+    }
+
     [Fact]
     public void AddGoogleVertexAIOAuthCredential_WhenRegistered_ResolvesDelegatingOAuthSource()
     {

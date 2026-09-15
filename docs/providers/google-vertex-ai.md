@@ -3,6 +3,8 @@
 **Contract snapshot:** 2026-09-06  
 **Regional base URL:**
 <code>https://{location}-aiplatform.googleapis.com</code>  
+**Global base URL:** <code>https://aiplatform.googleapis.com</code> (for
+<code>locations/global</code>)  
 **Preferred primitive:** native <code>generateContent</code>  
 **Transport:** REST JSON/SSE, gRPC server/bidirectional streams
 
@@ -18,8 +20,17 @@ Use OAuth 2.0/Google Application Default Credentials:
 <code>Authorization: Bearer ACCESS_TOKEN</code>
 
 The principal needs the relevant <code>aiplatform.\*</code> IAM permissions.
-Requests are regional unless a documented global endpoint is used. A publisher
-model resource is:
+Requests are regional unless a documented global endpoint is used. The global
+endpoint is not a region: <code>locations/global</code> is served from
+<code>https://aiplatform.googleapis.com</code>, never from a
+<code>global-aiplatform.googleapis.com</code> host. Multi-region endpoints such
+as <code>https://aiplatform.us.rep.googleapis.com</code>, Private Service
+Connect endpoints, and proxies are separate hostnames. The adapter derives the
+host from <code>GoogleVertexAIProviderOptions.Location</code> (special-casing
+<code>global</code>) unless an explicit absolute
+<code>GoogleVertexAIProviderOptions.BaseAddress</code> is configured; the
+location always remains part of the resource path. A publisher model resource
+is:
 
 <code>projects/{project}/locations/{location}/publishers/{publisher}/models/{model}</code>
 
@@ -225,7 +236,11 @@ REST and gRPC failures map through the
 discarding Google status details or operation identity.
 
 REST errors use <code>google.rpc.Status</code>; gRPC uses canonical status codes
-and typed details. Retry <code>RESOURCE_EXHAUSTED</code>/429 only after the
+and typed details. The envelope and canonical status vocabulary are identical to
+the Gemini Developer API's, so the adapter reuses the Gemini package's public
+error mapping and failure factory rather than a Vertex-specific copy: the body
+<code>status</code> classifies first, and only an absent or unmapped status
+falls back to the HTTP status table. Retry <code>RESOURCE_EXHAUSTED</code>/429 only after the
 documented delay, plus <code>UNAVAILABLE</code>, selected <code>ABORTED</code>,
 and transport failures when idempotent. Never retry an LRO creation without
 deduplication.
@@ -276,6 +291,8 @@ below.
 
 ## First-party sources
 
+- [Locations and endpoints](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/locations)
+- [Thought signatures](https://cloud.google.com/vertex-ai/generative-ai/docs/thought-signatures)
 - [Vertex publisher model REST resource](https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1beta1/projects.locations.publishers.models)
 - [GenerateContent response schema](https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/GenerateContentResponse)
 - [Generic Predict method](https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/projects.locations.endpoints/predict)

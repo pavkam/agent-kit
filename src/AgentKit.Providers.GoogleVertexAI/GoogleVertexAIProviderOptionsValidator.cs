@@ -7,8 +7,9 @@ using Microsoft.Extensions.Options;
 
 /// <summary>
 /// Validates <see cref="GoogleVertexAIProviderOptions"/> at the point they
-/// are first resolved, so a missing project, region, or invalid setting
-/// fails composition rather than the middle of an agent run.
+/// are first resolved, so a missing project, location, relative endpoint,
+/// or invalid setting fails composition rather than the middle of an agent
+/// run.
 /// </summary>
 public sealed class GoogleVertexAIProviderOptionsValidator: IValidateOptions<GoogleVertexAIProviderOptions>
 {
@@ -24,7 +25,10 @@ public sealed class GoogleVertexAIProviderOptionsValidator: IValidateOptions<Goo
             : string.IsNullOrWhiteSpace(options.Location)
             ? ValidateOptionsResult.Fail(
                 $"{nameof(GoogleVertexAIProviderOptions.Location)} must be configured with the Google Cloud " +
-                "region hosting the request, such as \"us-central1\".")
+                "location hosting the request, such as \"us-central1\" or \"global\".")
+            : options.BaseAddress is { IsAbsoluteUri: false }
+            ? ValidateOptionsResult.Fail(
+                $"{nameof(GoogleVertexAIProviderOptions.BaseAddress)} must be an absolute URI when set.")
             : string.IsNullOrWhiteSpace(options.Publisher)
             ? ValidateOptionsResult.Fail(
                 $"{nameof(GoogleVertexAIProviderOptions.Publisher)} must not be null, empty, or whitespace.")

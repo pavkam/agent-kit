@@ -3,10 +3,8 @@
 
 namespace AgentKit.Providers.GoogleVertexAI;
 
-using System.Diagnostics;
 using System.Net.Http;
 
-using AgentKit.Providers.GoogleVertexAI.Wire;
 using AgentKit.Providers.Http;
 
 /// <summary>
@@ -20,14 +18,16 @@ using AgentKit.Providers.Http;
 /// </summary>
 /// <remarks>
 /// This class does not derive from <see cref="GoogleGeminiLlmModel"/>
-/// because Vertex AI differs in every dimension that class hardcodes:
-/// authentication (OAuth-only, no API-key mode), the request URL (a
+/// because Vertex AI differs in the dimensions that class hardcodes:
+/// authentication (OAuth-only, no API-key mode) and the request URL (a
 /// project/location/publisher-qualified resource, or a deployed-endpoint
-/// resource, rather than the Developer API's flat model path), and error
-/// detail shape. The <c>GenerateContentRequest</c>/<c>GenerateContentResponse</c>
-/// wire body itself is unchanged, which is exactly what
-/// <see cref="IGoogleGeminiContentTranslator"/> and
-/// <see cref="IGoogleGeminiResponseParser"/> were designed to let a second
+/// resource, on a regional, global, or caller-supplied host rather than
+/// the Developer API's flat model path). The
+/// <c>GenerateContentRequest</c>/<c>GenerateContentResponse</c> wire body
+/// and the <c>google.rpc.Status</c> error envelope are unchanged, which is
+/// exactly what <see cref="IGoogleGeminiContentTranslator"/>,
+/// <see cref="IGoogleGeminiResponseParser"/>, and
+/// <see cref="GoogleApiErrorFailureFactory"/> were designed to let a second
 /// host reuse without depending on <see cref="GoogleGeminiLlmModel"/>'s
 /// direct-HTTP transport.
 /// </remarks>
@@ -245,19 +245,19 @@ public sealed class GoogleVertexAILlmModel: ILlmModel
                 ProviderFailure failure;
                 try
                 {
-                    failure = await BuildHttpFailureAsync(response, linkedSource.Token).ConfigureAwait(false);
+                    failure = await GoogleApiErrorFailureFactory.CreateAsync(response, _descriptor.ProviderId, _timeProvider, linkedSource.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
                 {
-                    return await CancelAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Cancellation, "The attempt was cancelled while receiving the provider error response.", exception)).ConfigureAwait(false);
+                    return await CancelAsync(GoogleApiErrorFailureFactory.CreateInterrupted(response, _descriptor.ProviderId, ProviderFailureKind.Cancellation, "The attempt was cancelled while receiving the provider error response.", exception, _timeProvider)).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
                 {
-                    return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The provider error response was not received before the request deadline.", exception)).ConfigureAwait(false);
+                    return await FailAsync(GoogleApiErrorFailureFactory.CreateInterrupted(response, _descriptor.ProviderId, ProviderFailureKind.Timeout, "The provider error response was not received before the request deadline.", exception, _timeProvider)).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException exception)
                 {
-                    return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The transport timed out while the provider error response was being received.", exception)).ConfigureAwait(false);
+                    return await FailAsync(GoogleApiErrorFailureFactory.CreateInterrupted(response, _descriptor.ProviderId, ProviderFailureKind.Timeout, "The transport timed out while the provider error response was being received.", exception, _timeProvider)).ConfigureAwait(false);
                 }
 
                 return await FailAsync(failure).ConfigureAwait(false);
@@ -325,70 +325,5 @@ public sealed class GoogleVertexAILlmModel: ILlmModel
         authorization.Apply(httpRequest.Headers);
 
         return httpRequest;
-    }
-
-    private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
-    {
-        string? providerMessage = null;
-        string? status = null;
-        Exception? diagnosticCause = null;
-
-        try
-        {
-            var body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            await using (body.ConfigureAwait(false))
-            {
-                var envelope = await JsonSerializer
-                    .DeserializeAsync<GoogleVertexAIErrorEnvelopeDto>(body, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-                providerMessage = envelope?.Error?.Message;
-                status = envelope?.Error?.Status;
-            }
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            // The error body was malformed, truncated, or the connection failed while reading it. The HTTP status
-            // is still authoritative evidence, so fall back to a status-only failure and keep the cause for diagnostics.
-            diagnosticCause = exception;
-        }
-
-        var kind = status is not null
-            ? GoogleVertexAIErrorMapping.MapStatus(status)
-            : HttpStatusFailureKindMapper.Map(response.StatusCode);
-
-        return new ProviderFailure(
-            kind,
-            _descriptor.ProviderId,
-            requestId: null,
-            (int) response.StatusCode,
-            status,
-            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
-            $"The provider returned HTTP status {(int) response.StatusCode}.",
-            diagnosticCause,
-            ProviderErrorMessageEvidence.Create(providerMessage));
-    }
-
-    /// <summary>Builds an interrupted error-body failure while preserving response evidence already received.</summary>
-    /// <param name="response">The response whose headers were received before interruption.</param>
-    /// <param name="kind">The normalized interruption classification.</param>
-    /// <param name="safeMessage">The bounded message safe for ordinary application handling.</param>
-    /// <param name="diagnosticCause">The classified exception that interrupted response-body processing.</param>
-    /// <returns>A failure retaining the raw HTTP status and Retry-After guidance received from Vertex AI.</returns>
-    private ProviderFailure BuildInterruptedHttpFailure(HttpResponseMessage response, ProviderFailureKind kind, string safeMessage, Exception? diagnosticCause)
-    {
-        Debug.Assert(response is not null, "The error response must have been received before its body read can be interrupted.");
-        Debug.Assert(Enum.IsDefined(kind), "The interruption kind must be a defined provider failure kind.");
-        Debug.Assert(!string.IsNullOrWhiteSpace(safeMessage), "The interrupted failure must have a bounded safe message.");
-
-        return new ProviderFailure(
-            kind,
-            _descriptor.ProviderId,
-            requestId: null,
-            (int) response.StatusCode,
-            providerCode: null,
-            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
-            safeMessage,
-            diagnosticCause,
-            ExtensionData.Empty);
     }
 }

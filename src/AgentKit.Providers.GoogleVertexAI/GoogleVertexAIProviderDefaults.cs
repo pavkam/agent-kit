@@ -97,15 +97,86 @@ public static class GoogleVertexAIProviderDefaults
     public static EmbeddingLimits DefaultEmbeddingLimits { get; } =
         new(maxInputsPerRequest: null, maxInputTokensPerInput: null, defaultDimensions: null, maxDimensions: null);
 
-    /// <summary>Gets the regional base address for the given location, such as <c>us-central1</c>.</summary>
-    /// <param name="location">The Google Cloud region hosting the request.</param>
-    /// <returns>The regional Vertex AI REST base address.</returns>
+    /// <summary>
+    /// Gets the location value that selects Vertex AI's global endpoint,
+    /// <c>global</c>, which Google recommends for current Gemini models
+    /// because it offers higher availability than a single region.
+    /// </summary>
+    public const string GlobalLocation = "global";
+
+    /// <summary>
+    /// Gets the service base address of Vertex AI's global endpoint. Google
+    /// documents that requests for <c>locations/global</c> are sent to
+    /// <c>https://aiplatform.googleapis.com/</c> rather than to a
+    /// <c>{location}-aiplatform.googleapis.com</c> host, so the regional
+    /// host pattern must not be applied to <see cref="GlobalLocation"/>.
+    /// </summary>
+    public static Uri GlobalBaseAddress { get; } = new("https://aiplatform.googleapis.com/");
+
+    /// <summary>Gets the regional base address for the given region, such as <c>us-central1</c>.</summary>
+    /// <param name="location">
+    /// The Google Cloud region hosting the request. Passing
+    /// <see cref="GlobalLocation"/> here produces a host that does not exist;
+    /// use <see cref="BuildDefaultBaseAddress"/> to resolve any location.
+    /// </param>
+    /// <returns>The regional Vertex AI REST base address, <c>https://{location}-aiplatform.googleapis.com/</c>.</returns>
     /// <exception cref="ArgumentException"><paramref name="location"/> is null, empty, or consists only of whitespace.</exception>
     public static Uri BuildRegionalBaseAddress(string location)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(location);
 
         return new Uri($"https://{location}-aiplatform.googleapis.com/");
+    }
+
+    /// <summary>
+    /// Builds the service base address Google documents for the given
+    /// location: <see cref="GlobalBaseAddress"/> for
+    /// <see cref="GlobalLocation"/>, otherwise the regional host from
+    /// <see cref="BuildRegionalBaseAddress"/>.
+    /// </summary>
+    /// <param name="location">
+    /// The Google Cloud location hosting the request. The <c>global</c>
+    /// comparison is ordinal and case-insensitive, matching how the value
+    /// is typically configured.
+    /// </param>
+    /// <returns>The default Vertex AI REST base address for <paramref name="location"/>.</returns>
+    /// <exception cref="ArgumentException"><paramref name="location"/> is null, empty, or consists only of whitespace.</exception>
+    public static Uri BuildDefaultBaseAddress(string location)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(location);
+
+        return string.Equals(location, GlobalLocation, StringComparison.OrdinalIgnoreCase)
+            ? GlobalBaseAddress
+            : BuildRegionalBaseAddress(location);
+    }
+
+    /// <summary>
+    /// Resolves the base address a request should use: the caller's
+    /// explicit <see cref="GoogleVertexAIProviderOptions.BaseAddress"/> when
+    /// set, otherwise the documented default for
+    /// <see cref="GoogleVertexAIProviderOptions.Location"/>.
+    /// </summary>
+    /// <param name="options">The validated Vertex AI provider options.</param>
+    /// <returns>The absolute base address to build operation URIs against.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="ArgumentException">
+    /// <see cref="GoogleVertexAIProviderOptions.BaseAddress"/> is set but not
+    /// absolute, or it is unset and
+    /// <see cref="GoogleVertexAIProviderOptions.Location"/> is null, empty, or
+    /// whitespace.
+    /// </exception>
+    public static Uri ResolveBaseAddress(GoogleVertexAIProviderOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (options.BaseAddress is { } explicitBaseAddress)
+        {
+            ArgumentException.ThrowIfNotAbsoluteUri(explicitBaseAddress, $"{nameof(options)}.{nameof(options.BaseAddress)}");
+            return explicitBaseAddress;
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Location, $"{nameof(options)}.{nameof(options.Location)}");
+        return BuildDefaultBaseAddress(options.Location);
     }
 
     /// <summary>
@@ -121,8 +192,15 @@ public static class GoogleVertexAIProviderDefaults
     /// instead of the shared publisher-model resource.
     /// </param>
     /// <param name="useStreaming">Whether to build the streaming operation URI.</param>
-    /// <returns>The absolute URI of the requested operation.</returns>
+    /// <returns>
+    /// The absolute URI of the requested operation, rooted at
+    /// <see cref="ResolveBaseAddress"/>.
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="options"/> has no project or location, or its
+    /// <see cref="GoogleVertexAIProviderOptions.BaseAddress"/> is not absolute.
+    /// </exception>
     public static Uri BuildGenerateContentUri(
         GoogleVertexAIProviderOptions options,
         ModelId modelId,
@@ -138,7 +216,7 @@ public static class GoogleVertexAIProviderDefaults
             : $"projects/{options.ProjectId}/locations/{options.Location}/publishers/{options.Publisher}/models/{modelId.Value}";
 
         var operation = useStreaming ? "streamGenerateContent" : "generateContent";
-        var baseAddress = BuildRegionalBaseAddress(options.Location);
+        var baseAddress = ResolveBaseAddress(options);
         var uri = new Uri(baseAddress, $"{options.ApiVersion}/{resource}:{operation}");
 
         return useStreaming ? new Uri($"{uri}?alt=sse") : uri;
@@ -154,8 +232,15 @@ public static class GoogleVertexAIProviderDefaults
     /// When set, the ID of a deployed/custom Vertex AI endpoint to call
     /// instead of the shared publisher-model resource.
     /// </param>
-    /// <returns>The absolute URI of the predict operation.</returns>
+    /// <returns>
+    /// The absolute URI of the predict operation, rooted at
+    /// <see cref="ResolveBaseAddress"/>.
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="options"/> has no project or location, or its
+    /// <see cref="GoogleVertexAIProviderOptions.BaseAddress"/> is not absolute.
+    /// </exception>
     public static Uri BuildPredictUri(GoogleVertexAIProviderOptions options, ModelId modelId, DeploymentId? deploymentId)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -166,7 +251,7 @@ public static class GoogleVertexAIProviderDefaults
             ? $"projects/{options.ProjectId}/locations/{options.Location}/endpoints/{deployment.Value}"
             : $"projects/{options.ProjectId}/locations/{options.Location}/publishers/{options.Publisher}/models/{modelId.Value}";
 
-        var baseAddress = BuildRegionalBaseAddress(options.Location);
+        var baseAddress = ResolveBaseAddress(options);
         return new Uri(baseAddress, $"{options.ApiVersion}/{resource}:predict");
     }
 }

@@ -38,7 +38,11 @@ public static class ServiceExtensions
         /// Configures the options, most importantly
         /// <see cref="GoogleVertexAIProviderOptions.ProjectId"/> and
         /// <see cref="GoogleVertexAIProviderOptions.Location"/>, which have
-        /// no default and must be set here.
+        /// no default and must be set here. Set
+        /// <see cref="GoogleVertexAIProviderOptions.BaseAddress"/> only to
+        /// target a host other than the one Google documents for the
+        /// location (regional, or <c>https://aiplatform.googleapis.com/</c>
+        /// for <c>global</c>).
         /// </param>
         /// <returns>
         /// The same <paramref name="services"/> instance, so calls can be

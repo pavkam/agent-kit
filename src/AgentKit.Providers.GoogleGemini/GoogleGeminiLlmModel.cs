@@ -3,10 +3,8 @@
 
 namespace AgentKit.Providers.GoogleGemini;
 
-using System.Diagnostics;
 using System.Net.Http;
 
-using AgentKit.Providers.GoogleGemini.Wire;
 using AgentKit.Providers.Http;
 
 /// <summary>
@@ -234,19 +232,19 @@ public sealed class GoogleGeminiLlmModel: ILlmModel
                 ProviderFailure failure;
                 try
                 {
-                    failure = await BuildHttpFailureAsync(response, linkedSource.Token).ConfigureAwait(false);
+                    failure = await GoogleApiErrorFailureFactory.CreateAsync(response, _descriptor.ProviderId, _timeProvider, linkedSource.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
                 {
-                    return await CancelAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Cancellation, "The attempt was cancelled while receiving the provider error response.", exception)).ConfigureAwait(false);
+                    return await CancelAsync(GoogleApiErrorFailureFactory.CreateInterrupted(response, _descriptor.ProviderId, ProviderFailureKind.Cancellation, "The attempt was cancelled while receiving the provider error response.", exception, _timeProvider)).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException exception) when (deadlineSource.IsCancellationRequested)
                 {
-                    return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The provider error response was not received before the request deadline.", exception)).ConfigureAwait(false);
+                    return await FailAsync(GoogleApiErrorFailureFactory.CreateInterrupted(response, _descriptor.ProviderId, ProviderFailureKind.Timeout, "The provider error response was not received before the request deadline.", exception, _timeProvider)).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException exception)
                 {
-                    return await FailAsync(BuildInterruptedHttpFailure(response, ProviderFailureKind.Timeout, "The transport timed out while the provider error response was being received.", exception)).ConfigureAwait(false);
+                    return await FailAsync(GoogleApiErrorFailureFactory.CreateInterrupted(response, _descriptor.ProviderId, ProviderFailureKind.Timeout, "The transport timed out while the provider error response was being received.", exception, _timeProvider)).ConfigureAwait(false);
                 }
 
                 return await FailAsync(failure).ConfigureAwait(false);
@@ -314,69 +312,5 @@ public sealed class GoogleGeminiLlmModel: ILlmModel
         authorization.Apply(httpRequest.Headers);
 
         return httpRequest;
-    }
-
-    private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
-    {
-        string? status = null;
-        Exception? diagnosticCause = null;
-
-        try
-        {
-            var body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            await using (body.ConfigureAwait(false))
-            {
-                var envelope = await JsonSerializer
-                    .DeserializeAsync<GoogleGeminiErrorEnvelopeDto>(body, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-                status = envelope?.Error?.Status;
-            }
-        }
-        catch (JsonException exception)
-        {
-            diagnosticCause = exception;
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            diagnosticCause = exception;
-        }
-
-        var mappedBodyKind = GoogleGeminiErrorMapping.MapStatus(status);
-        var kind = mappedBodyKind == ProviderFailureKind.Unknown ? HttpStatusFailureKindMapper.Map(response.StatusCode) : mappedBodyKind;
-
-        return new ProviderFailure(
-            kind,
-            _descriptor.ProviderId,
-            requestId: null,
-            (int) response.StatusCode,
-            status,
-            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
-            $"The Google Gemini request failed with HTTP status {(int) response.StatusCode}.",
-            diagnosticCause,
-            ExtensionData.Empty);
-    }
-
-    /// <summary>Builds an interrupted error-body failure while preserving response evidence already received.</summary>
-    /// <param name="response">The response whose headers were received before interruption.</param>
-    /// <param name="kind">The normalized interruption classification.</param>
-    /// <param name="safeMessage">The bounded message safe for ordinary application handling.</param>
-    /// <param name="diagnosticCause">The classified exception that interrupted response-body processing.</param>
-    /// <returns>A failure retaining the raw HTTP status received from Google Gemini.</returns>
-    private ProviderFailure BuildInterruptedHttpFailure(HttpResponseMessage response, ProviderFailureKind kind, string safeMessage, Exception? diagnosticCause)
-    {
-        Debug.Assert(response is not null, "The error response must have been received before its body read can be interrupted.");
-        Debug.Assert(Enum.IsDefined(kind), "The interruption kind must be a defined provider failure kind.");
-        Debug.Assert(!string.IsNullOrWhiteSpace(safeMessage), "The interrupted failure must have a bounded safe message.");
-
-        return new ProviderFailure(
-            kind,
-            _descriptor.ProviderId,
-            requestId: null,
-            (int) response.StatusCode,
-            providerCode: null,
-            RetryAfterResolver.Resolve(response.Headers, _timeProvider),
-            safeMessage,
-            diagnosticCause,
-            ExtensionData.Empty);
     }
 }
