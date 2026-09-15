@@ -239,8 +239,8 @@ prefers a boundary before a user turn: it walks down from the largest boundary
 that respects the retention minimum and returns the first causally safe one
 whose retained suffix begins with a `UserMessage`, falling back to the largest
 causally safe boundary only when no user-turn boundary qualifies. It cannot
-split an assistant part, tool call and terminal result, approval and
-resolution, deferred operation and settlement, admitted input and promotion, or
+split an assistant part, tool call and terminal result, approval and resolution,
+deferred operation and settlement, admitted input and promotion, or
 goal/delegation transition.
 
 The covered IDs must exactly match the contiguous range and hash. The retained
@@ -517,6 +517,58 @@ translation, and transport stay behind the generator implementation or a still
 narrower provider-neutral operation; compaction contracts do not expose the
 general `IModelRequestExecutor` to strategies.
 
+### Current first-party model-backed strategy
+
+The `ICompactionSummaryGenerator` and `ICompactionSummaryGeneratorResolver` seam
+above is not yet implemented. The reduced first-party `ModelCompactionStrategy`
+in `AgentKit.Context.Compaction` performs the bounded summary operation itself,
+directly against the same provider abstractions the agent loop uses, and is the
+only component in the package that touches them:
+
+- It reads one `IModelCatalog` snapshot, asks the engine's `IModelSelector` to
+  apply `CompactionOptions.SummaryModelPolicy` with a system-instruction
+  requirement inside the compaction operation's captured
+  `SecurityAuthorizationContext.Scope`, and resolves the decision through
+  `ILlmModelResolver`. It never selects a provider by registration order or
+  fabricates a default model; a missing or incompatible policy is a typed
+  `CompactionStrategyUnsupported` before any provider I/O.
+- It renders the covered entries into one role-labelled plain-text transcript,
+  omitting system and developer messages because stored history never carries
+  instruction authority, and bounds it to
+  `CompactionOptions.MaximumSummaryInputCharacters` by keeping head and tail
+  around a marker.
+- It sends exactly one non-streaming `LlmModelRequest`: the configured
+  `CompactionOptions.SummaryPrompt` as a `SystemMessage`, the transcript as a
+  single `UserMessage`, no tools, `LlmToolChoice.None`, the compaction request's
+  `Deadline`, and the caller's cancellation token. The default prompt is the
+  embedded resource `Resources/DefaultCompactionSummaryPrompt.txt`; both
+  `AddContextCompaction` and `AddModelBackedContextCompaction` accept an
+  override and reject a blank value at composition.
+- A provider failure maps to `CompactionStrategyFailed` (retryable only for
+  throttling, unavailability, or timeout); a length-limited stop, a tool
+  request, or a response without text is a non-retryable failure rather than a
+  partial summary; caller cancellation propagates so the compactor reports a
+  `NotAttempted` commit state.
+- The returned text is bounded to `MaximumCheckpointCharacters` with the same
+  marker and becomes a plain `TextPart` checkpoint. It is untrusted model output
+  and is never given system or developer precedence. Because the reduced
+  `CompactionProducer` has no model slots, the strategy records the alias,
+  provider, resolved model, request and response identities, reported usage, and
+  both truncation flags in `CompactionProducer.Extensions` under
+  `ModelCompactionProvenanceKeys`, and reports `Deterministic = false`.
+- It emits a `chat` client activity from the shared AgentKit source, correlated
+  by compaction, session, operation, and model-request identities, and
+  structured `CompactionLog` events carrying only sizes, truncation flags, and
+  normalized outcomes. Prompt, transcript, and summary text never enter any
+  signal.
+
+Introducing the generator seam is future work: when it lands,
+`ModelCompactionStrategy` becomes the strategy that prepares the bounded
+`CompactionSummaryRequest`, and its current provider interaction moves behind a
+first-party `ICompactionSummaryGenerator` resolved per compactor key. The budget
+capability threading described in this document is likewise not yet wired; the
+strategy does not reserve budget today.
+
 ## Strategy contract
 
 Strategies produce candidates; they do not choose source ranges, authorize
@@ -682,10 +734,10 @@ prefix of their length; the covered range must span the first and last covered
 sequences; the retained suffix start must equal the first retained entry's
 sequence (or one past the last covered sequence when nothing is retained) and
 lie strictly after the range; and the manifest's branch, source version,
-operation context, context epoch, covered range, and retained suffix start
-must agree with the request, source, and cut. Each violation is an
-`InvalidStructure` issue, so neither a selector nor a strategy can persist a
-record that describes coverage other than what was validated.
+operation context, context epoch, covered range, and retained suffix start must
+agree with the request, source, and cut. Each violation is an `InvalidStructure`
+issue, so neither a selector nor a strategy can persist a record that describes
+coverage other than what was validated.
 
 Authoritative checkpoint fields are copied or deterministically derived from
 identified committed source records. Validators compare those fields with the
@@ -778,11 +830,11 @@ a stable answer for a replayed request. The first-party compactor appends under
 the idempotency key `compaction:{CompactionId}`, but the appended entry carries
 fresh manifest, entry, and timestamp evidence, so a store never replays the
 original receipt for a retry; the store rejects the reused key with different
-evidence. The compactor therefore reconciles by identity rather than by
-receipt: when the source read observes a version newer than the request, when
-the append conflicts, or when the append fails, it scans the branch after the
-relevant tip for an active `CompactionSessionEntry` whose record carries the
-same `CompactionId` and returns `CompactionSucceeded` with that committed record.
+evidence. The compactor therefore reconciles by identity rather than by receipt:
+when the source read observes a version newer than the request, when the append
+conflicts, or when the append fails, it scans the branch after the relevant tip
+for an active `CompactionSessionEntry` whose record carries the same
+`CompactionId` and returns `CompactionSucceeded` with that committed record.
 Only when reconciliation proves no record exists does an append failure surface
 as a non-retryable `ActivationFailure`; a reconciliation read that itself fails
 reports the commit state as unreconciled in the failure message. A retry must
@@ -1044,6 +1096,27 @@ internal sealed class ModelBackedCompactionStrategy(
 }
 ```
 
+Until the generator seam exists, the shipped `ModelCompactionStrategy` takes the
+provider abstractions directly and shows the complete dependency direction of
+the reduced implementation:
+
+```csharp
+namespace AgentKit.Context.Compaction;
+
+public sealed class ModelCompactionStrategy(
+    IModelCatalog modelCatalog,
+    IModelSelector modelSelector,
+    ILlmModelResolver llmModelResolver,
+    ICompactionSizeEstimator estimator,
+    IIdentifierGenerator<ModelRequestId> modelRequestIds,
+    IIdentifierGenerator<MessageId> messageIds,
+    TimeProvider timeProvider,
+    IOptions<CompactionOptions> options,
+    ILogger<ModelCompactionStrategy>? logger = null) : ICompactionStrategy
+{
+}
+```
+
 `DefaultCompactor` selects a strategy only from the request's ordered typed keys
 through the resolver bound to its immutable options snapshot. It never resolves
 `IServiceProvider`, injects an unkeyed session coordinator, chooses a session
@@ -1265,6 +1338,19 @@ public static class ServiceExtensions
     }
 }
 ```
+
+The reduced implementation currently exposes two unkeyed entry points instead of
+the keyed surface above. `AddContextCompaction(Action<CompactionOptions>?)`
+registers the extractive pipeline with `TryAdd` semantics.
+`AddModelBackedContextCompaction(Action<CompactionOptions>?)` applies the same
+registration, replaces the single `ICompactionStrategy` with
+`ModelCompactionStrategy`, adds the `ModelRequestId` and `MessageId` identifier
+generators the strategy needs, and additionally requires
+`CompactionOptions.SummaryModelPolicy` to be non-null. Both validate
+`SummaryPrompt` as non-blank and `MaximumSummaryInputCharacters` and
+`MaximumCheckpointCharacters` as exceeding the truncation marker. Neither
+registers a session coordinator, model catalog, selector, or adapter resolver;
+the application selects those explicitly.
 
 `AddAgentContextCompaction` is idempotent for the same component key, options,
 and implementation. It validates the mutable binding options once, copies them
