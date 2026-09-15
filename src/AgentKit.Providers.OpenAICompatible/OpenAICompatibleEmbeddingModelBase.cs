@@ -123,6 +123,11 @@ public abstract class OpenAICompatibleEmbeddingModelBase: IEmbeddingModel
                 diagnosticCause: null,
                 ExtensionData.Empty));
 
+        if (ModelRequestPreflight.Validate(request, _descriptor) is { } preflightFailure)
+        {
+            return Fail(preflightFailure);
+        }
+
         if (_profile.EmbeddingsUri is null)
         {
             return FailWithKind(

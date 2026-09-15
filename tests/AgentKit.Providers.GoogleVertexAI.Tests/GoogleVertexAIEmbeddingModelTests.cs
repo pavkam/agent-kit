@@ -33,6 +33,22 @@ public sealed class GoogleVertexAIEmbeddingModelTests
     }
 
     [Fact]
+    public async Task GenerateAsync_WhenRequestModelIdentityDiffersFromAdapter_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response.json");
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("gcp-access-token", null)), descriptor);
+        var requestDescriptor = descriptor with { ModelId = new ModelId("different-embedding-model") };
+
+        var result = await model.GenerateAsync(CreateRequest(requestDescriptor, Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.SafeMessage.ShouldBe("The request model descriptor does not match the configured adapter descriptor.");
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GenerateAsync_WhenApiKeyCredentialSupplied_FailsWithAuthenticationFailure()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response.json");

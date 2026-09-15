@@ -52,6 +52,17 @@ cannot drift:
 Body-driven vocabularies (Anthropic `error.type`, Google `error.status`, Bedrock
 `x-amzn-errortype`) stay in the owning provider package.
 
+## Shared request preflight
+
+`ModelRequestPreflight` is the provider-neutral check every first-party adapter
+runs before credential resolution, translation, or I/O. It rejects a request
+whose `Context.Model` is not structurally equal to the adapter's configured
+descriptor, a request that exposes tools to a model without
+`SupportsToolCalls`, and a request that asserts `ParallelToolCalls` against a
+model without `SupportsParallelToolCalls`. Each rejection is an
+`InvalidRequest` failure with a fixed safe message and no status, provider
+code, or retry hint, because the provider was never contacted.
+
 ## Known-model catalog
 
 `KnownModelCatalog.Default` is reference data embedded in this assembly: the

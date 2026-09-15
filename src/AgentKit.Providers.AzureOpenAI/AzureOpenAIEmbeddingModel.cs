@@ -125,6 +125,11 @@ public sealed class AzureOpenAIEmbeddingModel: IEmbeddingModel
                 diagnosticCause: null,
                 ExtensionData.Empty));
 
+        if (ModelRequestPreflight.Validate(request, _descriptor) is { } preflightFailure)
+        {
+            return new EmbeddingAttemptFailed(preflightFailure);
+        }
+
         if (_profile.EmbeddingsUri is null)
         {
             return FailWithKind(

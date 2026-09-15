@@ -94,6 +94,22 @@ public sealed class OpenAICompatibleEmbeddingModelBaseTests
     }
 
     [Fact]
+    public async Task GenerateAsync_WhenRequestModelIdentityDiffersFromAdapter_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var model = CreateModel(handler, Profile, new StaticProviderCredentialSource(new ApiKeyProviderCredential("sk-test")));
+        var requestDescriptor = TestModels.TextEmbedding3Small with { ModelId = new ModelId("different-embedding-model") };
+        var request = CreateRequest(requestDescriptor, Now.AddMinutes(1));
+
+        var result = await model.GenerateAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.SafeMessage.ShouldBe("The request model descriptor does not match the configured adapter descriptor.");
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GenerateAsync_WhenProfileHasNoEmbeddingsPath_FailsWithoutSendingHttpRequest()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");

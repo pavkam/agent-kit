@@ -94,6 +94,11 @@ public sealed class MistralAIEmbeddingModel: IEmbeddingModel
                 diagnosticCause: null,
                 ExtensionData.Empty));
 
+        if (ModelRequestPreflight.Validate(request, _descriptor) is { } preflightFailure)
+        {
+            return new EmbeddingAttemptFailed(preflightFailure);
+        }
+
         var remaining = request.Deadline - _timeProvider.GetUtcNow();
         if (remaining <= TimeSpan.Zero)
         {

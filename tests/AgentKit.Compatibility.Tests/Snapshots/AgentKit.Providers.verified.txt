@@ -102,6 +102,11 @@ namespace AgentKit.Providers
         Deprecated = 2,
         Disabled = 3,
     }
+    public static class ModelRequestPreflight
+    {
+        public static AgentKit.ProviderFailure? Validate(AgentKit.EmbeddingModelRequest request, AgentKit.EmbeddingModelDescriptor descriptor) { }
+        public static AgentKit.ProviderFailure? Validate(AgentKit.LlmModelRequest request, AgentKit.ModelDescriptor descriptor) { }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)

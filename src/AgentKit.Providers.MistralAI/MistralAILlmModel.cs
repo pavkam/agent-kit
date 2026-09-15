@@ -140,11 +140,9 @@ public sealed class MistralAILlmModel: ILlmModel
 
         await sequencing.OnEventAsync(new ModelResponseStarted(requestId, sequencing.NextSequence), cancellationToken).ConfigureAwait(false);
 
-        if (request.Context.Tools.Length > 0 && !_descriptor.Capabilities.SupportsToolCalls)
+        if (ModelRequestPreflight.Validate(request, _descriptor) is { } preflightFailure)
         {
-            return await FailWithKindAsync(
-                ProviderFailureKind.InvalidRequest,
-                "The selected model does not support tool calls.").ConfigureAwait(false);
+            return await FailAsync(preflightFailure).ConfigureAwait(false);
         }
 
         var remaining = request.Deadline - _timeProvider.GetUtcNow();

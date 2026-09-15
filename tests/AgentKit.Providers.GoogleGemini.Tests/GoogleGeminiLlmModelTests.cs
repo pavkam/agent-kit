@@ -14,9 +14,9 @@ using AgentKit.TestSupport;
 public sealed class GoogleGeminiLlmModelTests
 {
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
-    private static LlmModelRequest CreateRequest(ModelDescriptor descriptor, DateTimeOffset deadline, ImmutableArray<LlmToolDefinition> tools = default, ProviderRequestOptions? options = null)
+    private static LlmModelRequest CreateRequest(ModelDescriptor descriptor, DateTimeOffset deadline, ImmutableArray<LlmToolDefinition> tools = default, ProviderRequestOptions? options = null, LlmRequestSettings? settings = null)
     {
-        var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [TestMessages.User("Hello!")], tools.IsDefault ? [] : tools, LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
+        var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [TestMessages.User("Hello!")], tools.IsDefault ? [] : tools, LlmToolChoice.Auto, settings ?? LlmRequestSettings.Default, ExtensionData.Empty);
         return new LlmModelRequest(context, attempt: 1, deadline, options ?? ProviderRequestOptions.Empty);
     }
 
@@ -368,6 +368,63 @@ public sealed class GoogleGeminiLlmModelTests
         var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenRequestModelIdentityDiffersFromAdapter_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")), options: new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/"), PreferStreaming = false });
+        var requestDescriptor = TestModels.GeminiFlash with { ModelId = new ModelId("different-model") };
+        var request = CreateRequest(requestDescriptor, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.SafeMessage.ShouldBe("The request model descriptor does not match the configured adapter descriptor.");
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenRequestCapabilitiesDifferFromAdapter_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")), options: new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/"), PreferStreaming = false });
+        var requestDescriptor = TestModels.GeminiFlash with
+        {
+            Capabilities = TestModels.GeminiFlash.Capabilities with { SupportsStructuredOutput = !TestModels.GeminiFlash.Capabilities.SupportsStructuredOutput },
+        };
+        var request = CreateRequest(requestDescriptor, Now.AddMinutes(1));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenParallelToolCallsAreUnsupported_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
+        var descriptor = TestModels.GeminiFlash with
+        {
+            Capabilities = TestModels.GeminiFlash.Capabilities with { SupportsParallelToolCalls = false },
+        };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")), descriptor: descriptor, options: new GoogleGeminiProviderOptions { BaseAddress = new Uri("https://generativelanguage.test/"), PreferStreaming = false });
+        var tools = ImmutableArray.Create(new LlmToolDefinition(new ToolId("get_weather"), "get_weather", null, JsonDocument.Parse("{}").RootElement));
+        var settings = LlmRequestSettings.Default with { ParallelToolCalls = true };
+        var request = CreateRequest(descriptor, Now.AddMinutes(1), tools, settings: settings);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.SafeMessage.ShouldBe("The selected model does not support parallel tool calls.");
         handler.Requests.ShouldBeEmpty();
     }
 

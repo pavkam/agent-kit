@@ -163,27 +163,9 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                 ? ValueTask.CompletedTask
                 : sequencing.OnEventAsync(new ModelResponseStarted(requestId, sequencing.NextSequence), deliveryToken);
 
-        if (request.Context.Model != _descriptor)
+        if (ModelRequestPreflight.Validate(request, _descriptor) is { } preflightFailure)
         {
-            return await FailWithKindAsync(
-                ProviderFailureKind.InvalidRequest,
-                "The request model descriptor does not match the configured adapter descriptor.").ConfigureAwait(false);
-        }
-
-        if (request.Context.Tools.Length > 0 && !_descriptor.Capabilities.SupportsToolCalls)
-        {
-            return await FailWithKindAsync(
-                ProviderFailureKind.InvalidRequest,
-                "The selected model does not support tool calls.").ConfigureAwait(false);
-        }
-
-        if (request.Context.Tools.Length > 0 &&
-            request.Context.Settings.ParallelToolCalls is true &&
-            !_descriptor.Capabilities.SupportsParallelToolCalls)
-        {
-            return await FailWithKindAsync(
-                ProviderFailureKind.InvalidRequest,
-                "The selected model does not support parallel tool calls.").ConfigureAwait(false);
+            return await FailAsync(preflightFailure).ConfigureAwait(false);
         }
 
         var remaining = request.Deadline - _timeProvider.GetUtcNow();

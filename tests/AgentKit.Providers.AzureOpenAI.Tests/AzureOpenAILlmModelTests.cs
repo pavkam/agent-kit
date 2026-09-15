@@ -146,6 +146,63 @@ public sealed class AzureOpenAILlmModelTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenRequestModelIdentityDiffersFromAdapter_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var requestDescriptor = descriptor with { ModelId = new ModelId("different-model") };
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(requestDescriptor), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.SafeMessage.ShouldBe("The request model descriptor does not match the configured adapter descriptor.");
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenRequestCapabilitiesDifferFromAdapter_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var requestDescriptor = descriptor with
+        {
+            Capabilities = descriptor.Capabilities with { SupportsStructuredOutput = !descriptor.Capabilities.SupportsStructuredOutput },
+        };
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(requestDescriptor), observer, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ModelAttemptFailed>().Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenParallelToolCallsAreUnsupported_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
+        var descriptor = CreateDescriptor() with
+        {
+            Capabilities = AzureOpenAIProviderDefaults.DefaultCapabilities with { SupportsParallelToolCalls = false },
+        };
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var settings = LlmRequestSettings.Default with { ParallelToolCalls = true };
+        var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [], [new LlmToolDefinition(new ToolId("get_weather"), "get_weather", null, JsonDocument.Parse("{}").RootElement)], LlmToolChoice.Auto, settings, ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.SafeMessage.ShouldBe("The selected model does not support parallel tool calls.");
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenDeadlineAlreadyElapsed_FailsWithTimeoutWithoutSendingHttpRequest()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
