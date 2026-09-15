@@ -28,4 +28,15 @@ public sealed class ServiceExtensionsTests
         _ = provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>();
         _ = provider.GetRequiredService<TimeProvider>();
     }
+
+    [Fact]
+    public void AddInMemorySessionStore_WhenCalledTwice_RegistersOneStore()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddInMemorySessionStore();
+        _ = services.AddInMemorySessionStore();
+
+        services.Count(static descriptor => descriptor.ServiceType == typeof(ISessionStore)).ShouldBe(1);
+    }
 }

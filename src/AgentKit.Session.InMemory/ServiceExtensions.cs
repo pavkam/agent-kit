@@ -15,17 +15,20 @@ public static class ServiceExtensions
     extension(IServiceCollection services)
     {
         /// <summary>
-        /// Registers <see cref="InMemorySessionStore"/> as the singular
-        /// <see cref="ISessionStore"/>, along with default GUID-based
-        /// generators for <see cref="BranchId"/> and <see cref="SecurityAuditRecordId"/>.
+        /// Adds <see cref="InMemorySessionStore"/> to the additive <see cref="ISessionStore"/>
+        /// set, along with default GUID-based generators for <see cref="BranchId"/> and
+        /// <see cref="SecurityAuditRecordId"/>.
         /// </summary>
         /// <returns>The same service collection, for chaining.</returns>
         /// <remarks>
-        /// Idempotent: uses <c>TryAdd</c> semantics, so calling this more
-        /// than once, or alongside another store registration that already
-        /// claimed <see cref="ISessionStore"/>, keeps whichever registration
-        /// happened first.
+        /// The store registration is additive alongside other store packages and
+        /// idempotent for this store: calling it more than once registers a single
+        /// <see cref="InMemorySessionStore"/>, and a store registered earlier by another
+        /// package is neither replaced nor hidden. Registration order never selects a
+        /// store; the session directory route and store key do. Supporting generators
+        /// and the clock use <c>TryAdd</c> semantics so hosts may replace them.
         /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> is null.</exception>
         public IServiceCollection AddInMemorySessionStore()
         {
             ArgumentNullException.ThrowIfNull(services);
@@ -35,7 +38,7 @@ public static class ServiceExtensions
                 _ => new GuidIdentifierGenerator<BranchId>(static value => new BranchId(value)));
             services.TryAddSingleton<IIdentifierGenerator<SecurityAuditRecordId>>(
                 _ => new GuidIdentifierGenerator<SecurityAuditRecordId>(static value => new SecurityAuditRecordId(value)));
-            services.TryAddSingleton<ISessionStore, InMemorySessionStore>();
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<ISessionStore, InMemorySessionStore>());
 
             return services;
         }

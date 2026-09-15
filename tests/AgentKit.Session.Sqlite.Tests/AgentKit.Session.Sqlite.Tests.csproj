@@ -13,6 +13,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Permissions.InMemory/AgentKit.Permissions.InMemory.csproj" />
+    <ProjectReference Include="../../src/AgentKit.Session.InMemory/AgentKit.Session.InMemory.csproj" />
     <ProjectReference Include="../../src/AgentKit.Session.Sqlite/AgentKit.Session.Sqlite.csproj" />
     <ProjectReference Include="../AgentKit.Conformance/AgentKit.Conformance.csproj" />
     <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj" />

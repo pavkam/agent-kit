@@ -6,6 +6,8 @@ namespace AgentKit.Session.Sqlite.Tests;
 using System.Text.Json;
 
 using AgentKit.Conformance;
+using AgentKit.Session;
+using AgentKit.Session.InMemory;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
@@ -168,7 +170,7 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
     [Fact]
     public void AddSqliteSessionStore_WhenCalledTwice_DoesNotRegisterDuplicateStore()
     {
-        // XML doc on AddSqliteSessionStore: "Idempotent: uses TryAdd semantics".
+        // Repeating the SQLite registration is idempotent for the single "agentkit.sqlite" store key.
         var target = new SqliteSessionStoreTarget(
             Path.Combine(Path.GetTempPath(), $"agentkit-{Guid.NewGuid():N}", "s.db"),
             new SqliteSessionStoreInstanceId(Guid.NewGuid()),
@@ -180,6 +182,53 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
         _ = services.AddSqliteSessionStore(target);
 
         services.Count(static descriptor => descriptor.ServiceType == typeof(ISessionStore)).ShouldBe(1);
+    }
+
+    [Fact]
+    public void AddSqliteSessionStore_WhenInMemoryStoreAlreadyRegistered_RegistersBothStores()
+    {
+        // Store registrations are additive: registration order never selects a store, the directory route does.
+        using var directory = new TempDirectory();
+        var target = new SqliteSessionStoreTarget(
+            Path.Combine(directory.Path, "sessions.db"), new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+            SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations);
+        var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 9, 8, 12, 0, 0, TimeSpan.Zero));
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<TimeProvider>(timeProvider);
+        _ = services.AddSingleton<ISecurityGrantStore>(new InMemorySecurityGrantStore(timeProvider));
+        _ = services.AddSingleton<ISecurityAuditDispatcher>(new AcceptingAuditDispatcher());
+
+        _ = services.AddInMemorySessionStore();
+        _ = services.AddSqliteSessionStore(target);
+        _ = services.AddInMemorySessionStore();
+        _ = services.AddSqliteSessionStore(target);
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+
+        var stores = provider.GetServices<ISessionStore>().ToArray();
+        stores.Select(static store => store.GetType()).ShouldBe([typeof(InMemorySessionStore), typeof(SqliteSessionStore)]);
+        new DefaultSessionStoreCatalog(stores).GetDescriptors().Select(static descriptor => descriptor.Key.Value)
+            .ShouldBe(["agentkit.in-memory", "agentkit.sqlite"]);
+    }
+
+    [Fact]
+    public void AddSqliteSessionStore_WhenRegisteredBeforeInMemoryStore_RegistersBothStores()
+    {
+        using var directory = new TempDirectory();
+        var target = new SqliteSessionStoreTarget(
+            Path.Combine(directory.Path, "sessions.db"), new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+            SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations);
+        var services = new ServiceCollection();
+
+        _ = services.AddSqliteSessionStore(target);
+        _ = services.AddInMemorySessionStore();
+
+        services.Count(static descriptor => descriptor.ServiceType == typeof(ISessionStore)).ShouldBe(2);
+    }
+
+    private sealed class AcceptingAuditDispatcher: ISecurityAuditDispatcher
+    {
+        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<SecurityAuditDispatchResult>(new SecurityAuditAccepted());
     }
 
     /// <summary>A session entry kind that no registered codec can encode.</summary>

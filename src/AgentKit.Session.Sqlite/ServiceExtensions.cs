@@ -16,17 +16,24 @@ public static class ServiceExtensions
     extension(IServiceCollection services)
     {
         /// <summary>
-        /// Registers <see cref="SqliteSessionStore"/> as the singular
-        /// <see cref="ISessionStore"/>, along with default GUID-based
-        /// generators for <see cref="BranchId"/> and <see cref="SecurityAuditRecordId"/>.
+        /// Adds <see cref="SqliteSessionStore"/> bound to <paramref name="target"/> to the
+        /// additive <see cref="ISessionStore"/> set, along with the first-party portable entry
+        /// codecs and default GUID-based generators for <see cref="BranchId"/> and
+        /// <see cref="SecurityAuditRecordId"/>.
         /// </summary>
+        /// <param name="target">The explicit fixed database target captured for the store.</param>
+        /// <param name="settings">Optional finite database bounds; defaults to <see cref="SqliteSessionStoreSettings.CreateDefault"/>.</param>
         /// <returns>The same service collection, for chaining.</returns>
         /// <remarks>
-        /// Idempotent: uses <c>TryAdd</c> semantics, so calling this more
-        /// than once, or alongside another store registration that already
-        /// claimed <see cref="ISessionStore"/>, keeps whichever registration
-        /// happened first.
+        /// The store registration is additive alongside other store packages and
+        /// idempotent for this store: repeated calls register a single
+        /// <see cref="SqliteSessionStore"/> bound to the first captured target and settings,
+        /// and a store registered earlier by another package is neither replaced nor hidden.
+        /// Registration order never selects a store; the session directory route and store
+        /// key do. Codecs, generators, and the clock use <c>TryAdd</c> semantics so hosts may
+        /// replace them.
         /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="target"/> is null.</exception>
         public IServiceCollection AddSqliteSessionStore(
             SqliteSessionStoreTarget target,
             SqliteSessionStoreSettings? settings = null)
@@ -49,9 +56,18 @@ public static class ServiceExtensions
                 _ => new GuidIdentifierGenerator<BranchId>(static value => new BranchId(value)));
             services.TryAddSingleton<IIdentifierGenerator<SecurityAuditRecordId>>(
                 _ => new GuidIdentifierGenerator<SecurityAuditRecordId>(static value => new SecurityAuditRecordId(value)));
-            services.TryAddSingleton(target);
-            services.TryAddSingleton(settings);
-            services.TryAddSingleton<ISessionStore, SqliteSessionStore>();
+            var boundSettings = settings;
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<ISessionStore, SqliteSessionStore>(provider =>
+                new SqliteSessionStore(
+                    provider.GetRequiredService<IIdentifierGenerator<BranchId>>(),
+                    provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>(),
+                    provider.GetRequiredService<ISecurityAuditDispatcher>(),
+                    provider.GetRequiredService<ISecurityGrantStore>(),
+                    provider.GetRequiredService<TimeProvider>(),
+                    provider.GetRequiredService<ISessionEntryCodecCatalog>(),
+                    target,
+                    boundSettings,
+                    provider.GetRequiredService<ILogger<SqliteSessionStore>>())));
 
             return services;
         }

@@ -662,13 +662,16 @@ profile must explicitly configure `DefaultStoreKey`; credentials, remote
 endpoints, durable directories, and storage targets have no synthetic default.
 
 `AddInMemorySessionStore(key)` and `AddSqliteSessionStore(key, configure)` are
-explicit leaf registrations. The in-memory leaf may `TryAdd` its process-local
-directory for explicitly ephemeral profiles; a durable store package may
-`TryAdd` a compatible durable directory. Multiple-store or externally managed
-topologies register or replace one directory explicitly. `AddAgentSession` never
-chooses or hides a store or fabricates durable routing. Runtime code receives
-`ISessionDirectory` and `ISessionStoreSelector`, not `IServiceProvider` or a
-keyed-service locator.
+explicit leaf registrations. Each adds its store to the additive `ISessionStore`
+set: repeating the same leaf registration contributes one store, and a store
+registered earlier by another leaf is neither replaced nor hidden, so
+registration order never decides which store exists. The in-memory leaf may
+`TryAdd` its process-local directory for explicitly ephemeral profiles; a
+durable store package may `TryAdd` a compatible durable directory.
+Multiple-store or externally managed topologies register or replace one
+directory explicitly. `AddAgentSession` never chooses or hides a store or
+fabricates durable routing. Runtime code receives `ISessionDirectory` and
+`ISessionStoreSelector`, not `IServiceProvider` or a keyed-service locator.
 
 The directory, store catalog, and selector are thread-safe singletons over
 immutable routing snapshots; coordinators and thread-safe stores may also be
