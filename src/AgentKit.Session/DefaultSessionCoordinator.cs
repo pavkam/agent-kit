@@ -322,6 +322,25 @@ internal sealed class DefaultSessionCoordinator: ISessionCoordinator
                     static reason => new SessionRunStateUnavailable(reason), cancellationToken), cancellationToken);
     }
 
+    /// <inheritdoc/>
+    public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(SessionRunReleaseRequest request,
+        SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        return ObserveAsync(AgentKitActivityNames.SessionRunRelease, request.Context,
+            () => !ReferenceEquals(session.Coordinator, this)
+                ? ValueTask.FromResult<SessionRunReleaseResult>(new SessionRunReleaseRejected(
+                    SessionRunReleaseRejectionKind.Unsupported,
+                    "The compiled capability selected a different session coordinator."))
+                : ExecuteExistingAsync(request, request.Context, session.Profile,
+                    SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
+                    SessionStoreSecurityBinding.Fingerprint(request),
+                    static (store, wrapper, token) => store.ReleaseRunAsync(wrapper, token),
+                    static reason => new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported, reason),
+                    cancellationToken), cancellationToken);
+    }
+
     private async ValueTask<SessionCreateResult> CreateCoreAsync(SessionCreateRequest request,
         SessionProfileSnapshot profile, CancellationToken cancellationToken)
     {

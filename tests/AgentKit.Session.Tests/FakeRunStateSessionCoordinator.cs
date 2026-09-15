@@ -11,8 +11,21 @@ internal sealed class FakeRunStateSessionCoordinator: ISessionCoordinator
         ValueTask<SessionRunStateResult>>? OnLoadRunState
     { get; set; }
 
+    /// <summary>Gets or sets the session-descriptor load handler used to observe an explicit durable lane release.</summary>
+    internal Func<SessionOperationContext, SessionProfileSnapshot, CancellationToken,
+        ValueTask<SessionLoadResult>>? OnLoad
+    { get; set; }
+
+    /// <summary>Gets or sets the durable lane-release handler.</summary>
+    internal Func<SessionRunReleaseRequest, SessionProfileSnapshot, CancellationToken,
+        ValueTask<SessionRunReleaseResult>>? OnReleaseRun
+    { get; set; }
+
     /// <summary>Gets the number of run-state loads.</summary>
     internal int LoadCount { get; private set; }
+
+    /// <summary>Gets every durable lane-release request this coordinator observed.</summary>
+    internal List<SessionRunReleaseRequest> ReleaseCalls { get; } = [];
 
     /// <inheritdoc/>
     public ValueTask<SessionRunStateResult> LoadRunStateAsync(SessionRunStateRequest request,
@@ -25,11 +38,22 @@ internal sealed class FakeRunStateSessionCoordinator: ISessionCoordinator
     }
 
     /// <inheritdoc/>
+    public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(SessionRunReleaseRequest request,
+        SessionExecutionCapability session, CancellationToken cancellationToken = default)
+    {
+        ReleaseCalls.Add(request);
+        return OnReleaseRun?.Invoke(request, session.Profile, cancellationToken)
+            ?? ValueTask.FromResult<SessionRunReleaseResult>(new SessionRunReleased(request.ExpectedVersion, existing: false));
+    }
+
+    /// <inheritdoc/>
     public ValueTask<SessionCreateResult> CreateAsync(SessionCreateRequest request, SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default) => throw new NotSupportedException();
     /// <inheritdoc/>
     public ValueTask<SessionLoadResult> LoadAsync(SessionOperationContext context, SessionProfileSnapshot profile,
-        CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        CancellationToken cancellationToken = default) =>
+        OnLoad?.Invoke(context, profile, cancellationToken)
+            ?? throw new NotSupportedException();
     /// <inheritdoc/>
     public ValueTask<SessionAppendResult> AppendAsync(SessionAppendRequest request, SessionProfileSnapshot profile,
         CancellationToken cancellationToken = default) => throw new NotSupportedException();

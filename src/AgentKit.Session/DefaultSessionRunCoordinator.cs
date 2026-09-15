@@ -138,7 +138,7 @@ internal sealed class DefaultSessionRunCoordinator: ISessionRunCoordinator
                 var leaseId = _leaseIds.Create();
                 var owner = new SessionRunSlotOwner(leaseId, request.OperationId, request.RunId,
                     request.ExpectedStateRevision);
-                var lease = new SessionRunLease(this, request, leaseId);
+                var lease = new SessionRunLease(this, session, request, leaseId);
                 lock (slot.SyncRoot)
                 {
                     Debug.Assert(slot.Owner is null, "Canonical validation completes before the exact owner is published.");
@@ -196,6 +196,92 @@ internal sealed class DefaultSessionRunCoordinator: ISessionRunCoordinator
             slot.Owner = null;
             _ = slot.Gate.Release();
         }
+    }
+
+    /// <summary>Attempts one durable release of the lane's installed accepted run state through the protected session coordinator.</summary>
+    /// <param name="session">The exact compiled capability the disposing lease was acquired through.</param>
+    /// <param name="context">The lane-bound in-run context of the accepted operation being released.</param>
+    /// <param name="expectedStateRevision">The accepted state's positive total-state revision.</param>
+    /// <param name="leaseId">The disposing lease's identity, used only for diagnostics.</param>
+    /// <param name="cancellationToken">Bounds the durable release attempt; failures and cancellation are logged, never thrown.</param>
+    /// <remarks>
+    /// This is a best-effort background cleanup, not a request the caller is waiting on: every failure mode —
+    /// a stale session version, a store outage, cancellation, or an unexpected exception — is logged and
+    /// swallowed. A failed attempt leaves the lane busy until a later successful release or store-level recovery;
+    /// it never surfaces as an exception from lease disposal.
+    /// </remarks>
+    internal async ValueTask ReleaseDurableStateAsync(SessionExecutionCapability session,
+        SessionOperationContext context, OperationStateRevision expectedStateRevision, SessionLeaseId leaseId,
+        CancellationToken cancellationToken)
+    {
+        Debug.Assert(session is not null, "A compiled session capability is required.");
+        Debug.Assert(context is not null, "A lane-bound in-run context is required.");
+        var correlation = (InRunOperationCorrelation) context.Correlation;
+        try
+        {
+            var loaded = await session.Coordinator.LoadAsync(context, session.Profile, cancellationToken)
+                .ConfigureAwait(false);
+            if (loaded is not SessionLoaded sessionLoaded)
+            {
+                ObserveReleaseOutcome(context, leaseId, "load_failed");
+                return;
+            }
+
+            var idempotencyKey = new IdempotencyKey(
+                $"agentkit.session.lane-release:{context.ExecutionLaneId}:{correlation.OperationId}:{correlation.RunId}");
+            var release = new SessionRunReleaseRequest(
+                context, expectedStateRevision, sessionLoaded.Descriptor.Version, idempotencyKey);
+            var result = await session.Coordinator.ReleaseRunAsync(release, session, cancellationToken)
+                .ConfigureAwait(false);
+            var outcome = result switch
+            {
+                SessionRunReleased => "released",
+                SessionRunReleaseRejected rejected => $"rejected:{rejected.Kind}",
+                _ => "unsupported",
+            };
+            ObserveReleaseOutcome(context, leaseId, outcome);
+        }
+        catch (OperationCanceledException)
+        {
+            ObserveReleaseCancelled(context, leaseId);
+        }
+        catch (Exception exception)
+        {
+            var errorType = exception.GetType().FullName ?? exception.GetType().Name;
+            ObserveReleaseFaulted(context, leaseId, errorType);
+        }
+    }
+
+    private void ObserveReleaseOutcome(SessionOperationContext context, SessionLeaseId leaseId, string outcome)
+    {
+        Debug.Assert(context is not null, "A lane-bound in-run context is required.");
+        Debug.Assert(!string.IsNullOrWhiteSpace(outcome), "A bounded outcome is required.");
+        var correlation = (InRunOperationCorrelation) context.Correlation;
+        TryObserve(() => SessionLog.CorrelatedOperationCompleted(_logger,
+            AgentKitActivityNames.SessionRunRelease, context.Identity.TenantId, context.AgentId, context.SessionId,
+            context.ExecutionLaneId, correlation.OperationId, correlation.RunId, correlation.TurnId,
+            $"{outcome} (lease {leaseId})"));
+    }
+
+    private void ObserveReleaseCancelled(SessionOperationContext context, SessionLeaseId leaseId)
+    {
+        Debug.Assert(context is not null, "A lane-bound in-run context is required.");
+        Debug.Assert(leaseId != default, "A non-default disposing lease identity is required.");
+        var correlation = (InRunOperationCorrelation) context.Correlation;
+        TryObserve(() => SessionLog.CorrelatedOperationCancelled(_logger,
+            AgentKitActivityNames.SessionRunRelease, context.Identity.TenantId, context.AgentId, context.SessionId,
+            context.ExecutionLaneId, correlation.OperationId, correlation.RunId, correlation.TurnId));
+    }
+
+    private void ObserveReleaseFaulted(SessionOperationContext context, SessionLeaseId leaseId, string errorType)
+    {
+        Debug.Assert(context is not null, "A lane-bound in-run context is required.");
+        Debug.Assert(leaseId != default, "A non-default disposing lease identity is required.");
+        Debug.Assert(!string.IsNullOrWhiteSpace(errorType), "A bounded error type is required.");
+        var correlation = (InRunOperationCorrelation) context.Correlation;
+        TryObserve(() => SessionLog.CorrelatedOperationFaulted(_logger,
+            AgentKitActivityNames.SessionRunRelease, context.Identity.TenantId, context.AgentId, context.SessionId,
+            context.ExecutionLaneId, correlation.OperationId, correlation.RunId, correlation.TurnId, errorType));
     }
 
     private async ValueTask<bool> EnterAsync(SessionRunSlot slot, SessionBusyBehavior behavior,

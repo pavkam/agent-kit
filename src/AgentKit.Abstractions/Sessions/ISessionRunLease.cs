@@ -51,4 +51,28 @@ public interface ISessionRunLease: IAsyncDisposable
 
     /// <summary>Gets an optional distributed fence supplied by a replacing coordinator.</summary><value><see langword="null"/> for the process-local implementation.</value>
     public FencingToken? Fence { get; }
+
+    /// <summary>
+    /// Durably releases the owning lane's installed accepted run state through the protected session store, then
+    /// releases this lease's local ownership exactly as <see cref="IAsyncDisposable.DisposeAsync"/> does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Call this once the accepted run this lease drives has completely finished and no later crash- or
+    /// handoff-driven reacquisition of the same accepted state is expected. Plain
+    /// <see cref="IAsyncDisposable.DisposeAsync"/> intentionally does not clear durable accepted state, so that a
+    /// process crash or an explicit handoff can still recover and reacquire the identical accepted operation;
+    /// this member is the explicit alternative for final settlement, after which the lane accepts a new run.
+    /// </para>
+    /// <para>
+    /// A failure releasing the durable store state — a stale expected version, a store outage, or cancellation —
+    /// is logged and swallowed rather than thrown, matching the no-throw contract expected of a disposal-adjacent
+    /// operation; it never surfaces as an exception to the caller. A failed durable release leaves the lane busy
+    /// until a later successful <see cref="ReleaseAsync"/> call or store-level recovery clears it. Local
+    /// ownership is always released before this method returns, even when the durable release fails.
+    /// </para>
+    /// </remarks>
+    /// <param name="cancellationToken">Bounds the durable release attempt; cancellation is logged, never thrown.</param>
+    /// <returns>A task that completes once both the durable release attempt and local ownership release have finished.</returns>
+    public ValueTask ReleaseAsync(CancellationToken cancellationToken = default);
 }

@@ -106,4 +106,10 @@ internal sealed class FakeSessionStore: ISessionStore
         AuthorizedSessionStoreRequest<SessionRunStateRequest> request,
         CancellationToken cancellationToken = default) =>
         ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateUnavailable("not configured"));
+
+    public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(
+        AuthorizedSessionStoreRequest<SessionRunReleaseRequest> request,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<SessionRunReleaseResult>(
+            new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported, "not configured"));
 }

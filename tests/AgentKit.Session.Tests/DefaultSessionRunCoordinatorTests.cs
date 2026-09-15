@@ -451,6 +451,84 @@ public sealed class DefaultSessionRunCoordinatorTests
         await replacement.Lease.DisposeAsync();
     }
 
+    [Fact]
+    public async Task ReleaseAsync_WhenDurableReleaseSucceeds_CallsReleaseRunWithExactEvidenceAndFreesTheLane()
+    {
+        var scenario = Scenario.Create();
+        var acquired = (SessionRunLeaseAcquired) await scenario.Coordinator.AcquireAsync(
+            scenario.Request, scenario.Capability, TestContext.Current.CancellationToken);
+        var descriptor = TestFactory.Descriptor(scenario.Request.Context.ToAddress(), version: 7);
+        scenario.SessionCoordinator.OnLoad = (_, _, _) =>
+            ValueTask.FromResult<SessionLoadResult>(new SessionLoaded(descriptor));
+
+        await acquired.Lease.ReleaseAsync(TestContext.Current.CancellationToken);
+        var reacquired = await scenario.Coordinator.AcquireAsync(scenario.Request, scenario.Capability,
+            TestContext.Current.CancellationToken);
+
+        var release = scenario.SessionCoordinator.ReleaseCalls.ShouldHaveSingleItem();
+        release.Context.ShouldBe(scenario.Request.Context);
+        release.ExpectedStateRevision.ShouldBe(scenario.Request.ExpectedStateRevision);
+        release.ExpectedVersion.ShouldBe(descriptor.Version);
+        _ = reacquired.ShouldBeOfType<SessionRunLeaseAcquired>();
+        await ((SessionRunLeaseAcquired) reacquired).Lease.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_WhenLoadFails_DoesNotThrowAndStillFreesTheLaneLocally()
+    {
+        var scenario = Scenario.Create();
+        var acquired = (SessionRunLeaseAcquired) await scenario.Coordinator.AcquireAsync(
+            scenario.Request, scenario.Capability, TestContext.Current.CancellationToken);
+        scenario.SessionCoordinator.OnLoad = (_, _, _) =>
+            ValueTask.FromResult<SessionLoadResult>(new SessionNotFound(scenario.Request.Context.ToAddress()));
+
+        await acquired.Lease.ReleaseAsync(TestContext.Current.CancellationToken);
+        var reacquired = await scenario.Coordinator.AcquireAsync(scenario.Request, scenario.Capability,
+            TestContext.Current.CancellationToken);
+
+        scenario.SessionCoordinator.ReleaseCalls.ShouldBeEmpty();
+        _ = reacquired.ShouldBeOfType<SessionRunLeaseAcquired>();
+        await ((SessionRunLeaseAcquired) reacquired).Lease.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_WhenStoreRejectsRelease_DoesNotThrowAndStillFreesTheLaneLocally()
+    {
+        var scenario = Scenario.Create();
+        var acquired = (SessionRunLeaseAcquired) await scenario.Coordinator.AcquireAsync(
+            scenario.Request, scenario.Capability, TestContext.Current.CancellationToken);
+        var descriptor = TestFactory.Descriptor(scenario.Request.Context.ToAddress(), version: 3);
+        scenario.SessionCoordinator.OnLoad = (_, _, _) =>
+            ValueTask.FromResult<SessionLoadResult>(new SessionLoaded(descriptor));
+        scenario.SessionCoordinator.OnReleaseRun = (_, _, _) =>
+            ValueTask.FromResult<SessionRunReleaseResult>(
+                new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.SessionVersion, "stale"));
+
+        await acquired.Lease.ReleaseAsync(TestContext.Current.CancellationToken);
+        var reacquired = await scenario.Coordinator.AcquireAsync(scenario.Request, scenario.Capability,
+            TestContext.Current.CancellationToken);
+
+        _ = scenario.SessionCoordinator.ReleaseCalls.ShouldHaveSingleItem();
+        _ = reacquired.ShouldBeOfType<SessionRunLeaseAcquired>();
+        await ((SessionRunLeaseAcquired) reacquired).Lease.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_WhenCoordinatorThrows_DoesNotThrowAndStillFreesTheLaneLocally()
+    {
+        var scenario = Scenario.Create();
+        var acquired = (SessionRunLeaseAcquired) await scenario.Coordinator.AcquireAsync(
+            scenario.Request, scenario.Capability, TestContext.Current.CancellationToken);
+        scenario.SessionCoordinator.OnLoad = (_, _, _) => throw new InvalidOperationException("store unavailable");
+
+        await acquired.Lease.ReleaseAsync(TestContext.Current.CancellationToken);
+        var reacquired = await scenario.Coordinator.AcquireAsync(scenario.Request, scenario.Capability,
+            TestContext.Current.CancellationToken);
+
+        _ = reacquired.ShouldBeOfType<SessionRunLeaseAcquired>();
+        await ((SessionRunLeaseAcquired) reacquired).Lease.DisposeAsync();
+    }
+
     [Theory]
     [InlineData(true, false)]
     [InlineData(false, true)]

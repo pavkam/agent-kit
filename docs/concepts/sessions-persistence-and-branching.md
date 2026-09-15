@@ -216,6 +216,21 @@ Invocation cancellation releases or stops one caller observation. Durable abort
 names the expected operation and is a separate session mutation. Neither may be
 implemented as an ambient cancellation token stored on the session object.
 
+An execution lane accepts at most one run at a time. The store MUST expose an
+explicit release transaction that clears a lane's installed accepted state once
+its owning operation and run have completely settled, so a later start on the
+same lane no longer observes a busy result. Release MUST name the exact
+operation, run, and total-state revision it owns and MUST clear the lane only
+when that evidence matches the lane's actual installed occupant; a stale caller
+MUST NOT be able to clear a different, newer occupant. Release MUST carry an
+idempotency key so a retried release after a lost response returns the original
+receipt rather than a second commit, and MUST be masked as not-found for a
+missing or cross-tenant session exactly like every other protected session
+operation. A caller's disposal of local process ownership and a caller's
+explicit durable release are distinct: local disposal alone MUST NOT clear
+durable accepted state, since a crash or handoff may still need to recover and
+reacquire the identical accepted operation.
+
 ## Acceptance scenarios
 
 - Concurrent append with the same expected version yields one success and one
@@ -227,6 +242,10 @@ implemented as an ambient cancellation token stored on the session object.
 - Cross-tenant session IDs fail authorization without revealing existence.
 - Two lanes sharing ancestry can overlap effects without losing either branch
   append.
+- Releasing a lane's accepted run allows a later start on that lane to succeed
+  instead of observing a busy result.
+- A release naming a different run than the lane's actual occupant is rejected
+  as fenced rather than clearing the real owner.
 - Recovery resumes from total current operation state rather than folding a
   partial write journal.
 - A malformed interior record fails open without rewriting the source.

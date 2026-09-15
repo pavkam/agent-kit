@@ -51,6 +51,7 @@ namespace AgentKit.Session.Sqlite
         public System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputLookupRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionExecutionLaneProvisionRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
         public System.Threading.Tasks.ValueTask<AgentKit.SessionPageResult> ReadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionReadRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask<AgentKit.SessionRunReleaseResult> ReleaseRunAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunReleaseRequest> request, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public readonly struct SqliteSessionStoreInstanceId : System.IEquatable<AgentKit.Session.Sqlite.SqliteSessionStoreInstanceId>
     {

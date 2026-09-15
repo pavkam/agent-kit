@@ -109,6 +109,7 @@ public sealed class InMemorySessionStoreConformanceFixture:
             SessionInputAdmissionRequest value => value.Context,
             SessionRunStartRequest value => value.Context,
             SessionRunStateRequest value => value.Context,
+            SessionRunReleaseRequest value => value.Context,
             _ => throw new InvalidOperationException($"Unsupported conformance request {typeof(TRequest).FullName}."),
         };
 
@@ -126,6 +127,7 @@ public sealed class InMemorySessionStoreConformanceFixture:
             SessionInputAdmissionRequest value => SessionStoreSecurityBinding.Fingerprint(value),
             SessionRunStartRequest value => SessionStoreSecurityBinding.Fingerprint(value),
             SessionRunStateRequest value => SessionStoreSecurityBinding.Fingerprint(value),
+            SessionRunReleaseRequest value => SessionStoreSecurityBinding.Fingerprint(value),
             _ => throw new InvalidOperationException($"Unsupported conformance request {typeof(TRequest).FullName}."),
         };
 }

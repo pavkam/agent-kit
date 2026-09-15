@@ -29,6 +29,7 @@ public sealed class SessionRunLeaseAcquiredTests
         public FencingToken? Fence => null;
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask ReleaseAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
     [Fact]

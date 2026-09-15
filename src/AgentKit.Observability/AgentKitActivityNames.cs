@@ -160,6 +160,9 @@ public static class AgentKitActivityNames
     /// <summary>Names atomic accepted-run installation.</summary>
     public const string SessionRunAccept = "session.run.accept";
 
+    /// <summary>Names atomic release of a lane's installed accepted-run state.</summary>
+    public const string SessionRunRelease = "session.run.release";
+
     /// <summary>Names protected accepted-run-state loading.</summary>
     public const string SessionRunStateLoad = "session.run.state.load";
 

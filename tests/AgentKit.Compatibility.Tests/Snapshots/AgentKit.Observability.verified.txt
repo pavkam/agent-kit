@@ -82,6 +82,7 @@ namespace AgentKit.Observability
         public const string SessionLoad = "session.load";
         public const string SessionRead = "session.read";
         public const string SessionRunAccept = "session.run.accept";
+        public const string SessionRunRelease = "session.run.release";
         public const string SessionRunStateLoad = "session.run.state.load";
         public const string SessionStoreOperation = "session.store.operation";
         public const string TaskDelegationDispatch = "task.delegation.dispatch";

@@ -852,6 +852,76 @@ public sealed partial class InMemorySessionStore: ISessionStore
         }
     }
 
+    /// <summary>Atomically clears one lane's installed accepted run state, or reconciles a repeated identical release.</summary>
+    /// <param name="request">The exact protected release request naming the lane and the accepted run it owns.</param>
+    /// <param name="cancellationToken">Cancels before the atomic mutation begins.</param>
+    /// <returns>The released receipt or a typed rejection.</returns>
+    /// <remarks>
+    /// A missing session, missing lane, and cross-tenant caller are all masked as
+    /// <see cref="SessionRunReleaseRejectionKind.LaneNotFound"/> so an unauthorized caller cannot distinguish
+    /// absence from denial. A lane whose installed accepted run does not match this request's exact operation,
+    /// run, and state revision is <see cref="SessionRunReleaseRejectionKind.Fenced"/>: a stale caller — for
+    /// example a lease left over from a superseded attempt — can never clear a different, newer occupant.
+    /// </remarks>
+    private ValueTask<SessionRunReleaseResult> ReleaseRunCoreAsync(
+        SessionRunReleaseRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.EnterScope())
+        {
+            if (!TryGetAuthorizedRecord(request.Context, out var record))
+            {
+                return ValueTask.FromResult<SessionRunReleaseResult>(new SessionRunReleaseRejected(
+                    SessionRunReleaseRejectionKind.LaneNotFound, "The session is unavailable."));
+            }
+
+            if (record.RunReleaseIdempotency.TryGetValue(request.IdempotencyKey, out var replay))
+            {
+                return ValueTask.FromResult<SessionRunReleaseResult>(replay.Request.Equals(request)
+                    ? new SessionRunReleased(replay.Result.NewVersion, existing: true)
+                    : new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Idempotency,
+                        "The release idempotency key was reused with different evidence."));
+            }
+
+            if (!record.Lanes.TryGetValue(request.ExecutionLaneId, out var lane))
+            {
+                return ValueTask.FromResult<SessionRunReleaseResult>(new SessionRunReleaseRejected(
+                    SessionRunReleaseRejectionKind.LaneNotFound, "The selected lane does not exist."));
+            }
+
+            if (lane.AcceptedState is not { } active)
+            {
+                return ValueTask.FromResult<SessionRunReleaseResult>(new SessionRunReleaseRejected(
+                    SessionRunReleaseRejectionKind.NoAcceptedRun, "The selected lane holds no accepted run."));
+            }
+
+            if (active.Correlation.OperationId != request.OperationId
+                || active.Correlation.RunId != request.RunId
+                || active.OperationStateRevision != request.ExpectedStateRevision)
+            {
+                return ValueTask.FromResult<SessionRunReleaseResult>(new SessionRunReleaseRejected(
+                    SessionRunReleaseRejectionKind.Fenced,
+                    "The lane's installed accepted run does not match the requested operation, run, and state revision."));
+            }
+
+            if (record.Version != request.ExpectedVersion.Value)
+            {
+                return ValueTask.FromResult<SessionRunReleaseResult>(new SessionRunReleaseRejected(
+                    SessionRunReleaseRejectionKind.SessionVersion, "The expected session version is stale."));
+            }
+
+            lane.AcceptedState = null;
+            record.Version++;
+            record.UpdatedAt = _timeProvider.GetUtcNow();
+            var released = new SessionRunReleased(new SessionVersion(record.Version), existing: false);
+            record.RunReleaseIdempotency[request.IdempotencyKey] =
+                new IdempotencyReceipt<SessionRunReleaseRequest, SessionRunReleased>(request, released);
+            return ValueTask.FromResult<SessionRunReleaseResult>(released);
+        }
+    }
+
     private bool TryGetAuthorizedRecord(SessionOperationContext context, [NotNullWhen(true)] out SessionRecord? record)
     {
         Debug.Assert(context is not null, "A validated session operation context is required.");

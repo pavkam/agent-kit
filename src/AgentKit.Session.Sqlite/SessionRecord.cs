@@ -108,4 +108,7 @@ internal sealed class SessionRecord
 
     /// <summary>Gets successful run-start receipts keyed by start idempotency identity.</summary>
     public Dictionary<IdempotencyKey, RunStartReceipt> RunStartIdempotency { get; set; } = [];
+
+    /// <summary>Gets successful lane-release receipts keyed by release idempotency identity.</summary>
+    public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionRunReleaseRequest, SessionRunReleased>> RunReleaseIdempotency { get; set; } = [];
 }

@@ -74,6 +74,12 @@ public sealed partial class InMemorySessionStore
             token => LoadRunStateCoreAsync(request.Request, token), static result => result is SessionRunStateLoaded,
             static reason => new SessionRunStateUnavailable(reason), cancellationToken);
 
+    /// <inheritdoc/>
+    public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(AuthorizedSessionStoreRequest<SessionRunReleaseRequest> request, CancellationToken cancellationToken = default) =>
+        ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
+            token => ReleaseRunCoreAsync(request.Request, token), static result => result is SessionRunReleased,
+            static reason => new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported, reason), cancellationToken);
+
     private ValueTask<TResult> ObserveAuthorizedAsync<TRequest, TResult>(
         AuthorizedSessionStoreRequest<TRequest> request, SecurityOperationKind kind, SecurityEffect effect,
         Func<CancellationToken, ValueTask<TResult>> action, Func<TResult, bool> succeeded,
@@ -234,6 +240,7 @@ public sealed partial class InMemorySessionStore
         SessionInputAdmissionRequest => "input_admit",
         SessionRunStartRequest => "run_accept",
         SessionRunStateRequest => "run_state_load",
+        SessionRunReleaseRequest => "run_release",
         _ => "unknown",
     };
 
@@ -255,6 +262,7 @@ public sealed partial class InMemorySessionStore
         SessionInputAdmissionRequest value => value.Context,
         SessionRunStartRequest value => value.Context,
         SessionRunStateRequest value => value.Context,
+        SessionRunReleaseRequest value => value.Context,
         _ => throw new InvalidOperationException($"Unsupported session request type {typeof(TRequest).FullName}."),
     };
 
@@ -270,6 +278,7 @@ public sealed partial class InMemorySessionStore
         SessionInputAdmissionRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionRunStartRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         SessionRunStateRequest value => SessionStoreSecurityBinding.Fingerprint(value),
+        SessionRunReleaseRequest value => SessionStoreSecurityBinding.Fingerprint(value),
         _ => throw new InvalidOperationException($"Unsupported session request type {typeof(TRequest).FullName}."),
     };
 }

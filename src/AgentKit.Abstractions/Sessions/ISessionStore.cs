@@ -120,4 +120,10 @@ public interface ISessionStore
     public ValueTask<SessionRunStateResult> LoadRunStateAsync(
         AuthorizedSessionStoreRequest<SessionRunStateRequest> request,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Atomically clears one lane's installed accepted run state, freeing it for a later start.</summary>
+    /// <param name="request">The exact protected release request naming the lane and the accepted run it owns.</param><param name="cancellationToken">Cancels before the atomic mutation begins.</param><returns>The released receipt or a typed no-mutation outcome.</returns>
+    public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(
+        AuthorizedSessionStoreRequest<SessionRunReleaseRequest> request,
+        CancellationToken cancellationToken = default);
 }

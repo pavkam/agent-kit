@@ -5,11 +5,11 @@ namespace AgentKit;
 
 /// <summary>Reports newly committed or idempotently replayed complete accepted run state.</summary>
 /// <remarks>
-/// Acceptance installs the accepted state as the lane's single active operation. The store contract currently exposes
-/// no operation to settle or release that state, so acceptance is single-shot per lane: every later
+/// Acceptance installs the accepted state as the lane's single active operation. Every later
 /// <see cref="ISessionStore.AcceptRunAsync"/> for the same lane returns <see cref="SessionRunStartBusy"/> naming the
-/// installed operation and run, while an exact replay of the original request returns this result with
-/// <see cref="Existing"/> set to <see langword="true"/>.
+/// installed operation and run until an explicit <see cref="ISessionStore.ReleaseRunAsync"/> clears it, while an
+/// exact replay of the original request returns this result with <see cref="Existing"/> set to
+/// <see langword="true"/>.
 /// </remarks>
 public sealed record SessionRunAccepted: SessionRunStartResult
 {

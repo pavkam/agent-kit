@@ -194,4 +194,24 @@ public interface ISessionCoordinator
         return ValueTask.FromResult<SessionRunStateResult>(
             new SessionRunStateUnavailable("The coordinator does not support protected run-state loading."));
     }
+
+    /// <summary>Atomically clears one lane's installed accepted run state, freeing it for a later start.</summary>
+    /// <param name="request">The complete lane-release transaction.</param>
+    /// <param name="session">The compiled invocation capability selecting this coordinator and immutable profile.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A task producing the released receipt or a typed rejection.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="session"/> is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> is already cancelled.</exception>
+    public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(
+        SessionRunReleaseRequest request,
+        SessionExecutionCapability session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(session);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<SessionRunReleaseResult>(
+            new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported,
+                "The coordinator does not support protected run release."));
+    }
 }

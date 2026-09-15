@@ -4038,6 +4038,7 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.SessionInputLookupRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.SessionExecutionLaneProvisionRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionPageResult> ReadAsync(AgentKit.SessionReadRequest request, AgentKit.SessionProfileSnapshot profile, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.SessionRunReleaseResult> ReleaseRunAsync(AgentKit.SessionRunReleaseRequest request, AgentKit.SessionExecutionCapability session, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface ISessionDirectory
     {
@@ -4083,6 +4084,7 @@ namespace AgentKit
         AgentKit.SessionId SessionId { get; }
         AgentKit.OperationStateRevision StateRevision { get; }
         AgentKit.TenantId TenantId { get; }
+        System.Threading.Tasks.ValueTask ReleaseAsync(System.Threading.CancellationToken cancellationToken = default);
     }
     public interface ISessionStore
     {
@@ -4099,6 +4101,7 @@ namespace AgentKit
         System.Threading.Tasks.ValueTask<AgentKit.SessionInputLookupResult> LookupInputAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionInputLookupRequest> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionExecutionLaneProvisionRequest> request, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.ValueTask<AgentKit.SessionPageResult> ReadAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionReadRequest> request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.ValueTask<AgentKit.SessionRunReleaseResult> ReleaseRunAsync(AgentKit.AuthorizedSessionStoreRequest<AgentKit.SessionRunReleaseRequest> request, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface ISessionStoreCatalog
     {
@@ -7651,6 +7654,41 @@ namespace AgentKit
         public SessionRunLeaseUnavailable(string safeReason) { }
         public string SafeReason { get; }
     }
+    public sealed class SessionRunReleaseRejected : AgentKit.SessionRunReleaseResult, System.IEquatable<AgentKit.SessionRunReleaseRejected>
+    {
+        public SessionRunReleaseRejected(AgentKit.SessionRunReleaseRejectionKind kind, string safeReason) { }
+        public AgentKit.SessionRunReleaseRejectionKind Kind { get; }
+        public string SafeReason { get; }
+    }
+    public enum SessionRunReleaseRejectionKind
+    {
+        Unsupported = 0,
+        LaneNotFound = 1,
+        NoAcceptedRun = 2,
+        Fenced = 3,
+        SessionVersion = 4,
+        Idempotency = 5,
+    }
+    public sealed class SessionRunReleaseRequest : System.IEquatable<AgentKit.SessionRunReleaseRequest>
+    {
+        public SessionRunReleaseRequest(AgentKit.SessionOperationContext context, AgentKit.OperationStateRevision expectedStateRevision, AgentKit.SessionVersion expectedVersion, AgentKit.IdempotencyKey idempotencyKey) { }
+        public AgentKit.AgentId AgentId { get; }
+        public AgentKit.SessionOperationContext Context { get; }
+        public AgentKit.ExecutionLaneId ExecutionLaneId { get; }
+        public AgentKit.OperationStateRevision ExpectedStateRevision { get; }
+        public AgentKit.SessionVersion ExpectedVersion { get; }
+        public AgentKit.IdempotencyKey IdempotencyKey { get; }
+        public AgentKit.OperationId OperationId { get; }
+        public AgentKit.RunId RunId { get; }
+        public AgentKit.SessionId SessionId { get; }
+    }
+    public abstract class SessionRunReleaseResult : System.IEquatable<AgentKit.SessionRunReleaseResult> { }
+    public sealed class SessionRunReleased : AgentKit.SessionRunReleaseResult, System.IEquatable<AgentKit.SessionRunReleased>
+    {
+        public SessionRunReleased(AgentKit.SessionVersion newVersion, bool existing) { }
+        public bool Existing { get; }
+        public AgentKit.SessionVersion NewVersion { get; }
+    }
     public sealed class SessionRunStartBusy : AgentKit.SessionRunStartResult, System.IEquatable<AgentKit.SessionRunStartBusy>
     {
         public SessionRunStartBusy(AgentKit.OperationId operationId, AgentKit.RunId runId) { }
@@ -7798,6 +7836,7 @@ namespace AgentKit
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionInputLookupRequest request) { }
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionOperationContext request) { }
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionReadRequest request) { }
+        public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionRunReleaseRequest request) { }
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionRunStartRequest request) { }
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionRunStateRequest request) { }
         public static AgentKit.InputFingerprint Fingerprint(AgentKit.SessionStoreCreateRequest request) { }

@@ -569,6 +569,8 @@ public sealed class DefaultSessionCoordinatorTests
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<SessionRunStateResult> LoadRunStateAsync(AuthorizedSessionStoreRequest<SessionRunStateRequest> request,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(AuthorizedSessionStoreRequest<SessionRunReleaseRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class ThrowingLogger: ILogger<DefaultSessionCoordinator>

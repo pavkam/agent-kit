@@ -851,10 +851,40 @@ binds a lane cursor to one branch, admission and acceptance move it as they
 append, and an ordinary append whose context names that lane and targets the
 lane's branch advances the cursor to the last appended entry without changing
 the lane revision. Session-wide appends without a lane do not move any lane
-cursor. Acceptance is currently single-shot per lane: the store contract exposes
-no settle or release operation for the installed accepted state, so an occupied
-lane answers every later start with `SessionRunStartBusy` naming the installed
-operation and run until a future contract addition releases it explicitly.
+cursor. An occupied lane answers every later start with `SessionRunStartBusy`
+naming the installed operation and run until `ISessionStore.ReleaseRunAsync`
+explicitly clears it.
+
+`ReleaseRunAsync` atomically clears a lane's installed accepted run state so a
+later `AcceptRunAsync` for the same lane no longer observes `SessionRunStartBusy`.
+The release request names the exact operation, run, and total-state revision it
+owns; a store clears the lane only when its installed accepted state's
+correlation and revision match that evidence, so a stale caller — for example a
+lease left over from a superseded attempt — can never clear a different, newer
+occupant (`SessionRunReleaseRejected` with kind `Fenced`). A missing session or
+lane, and a cross-tenant caller, are all masked as kind `LaneNotFound`, the same
+masking every other protected session operation uses. A lane holding no accepted
+run is kind `NoAcceptedRun`, and a stale expected whole-session version is kind
+`SessionVersion`. Release appends no session entry and does not move any branch
+tip; it only clears the lane's durable ownership marker and advances the
+canonical whole-session version by one. It carries an idempotency key so a
+retried release after a lost response returns the original `SessionRunReleased`
+receipt rather than a second commit.
+
+`ISessionRunLease` exposes this as an explicit `ReleaseAsync` member distinct
+from ordinary `DisposeAsync`. Plain disposal intentionally releases only the
+process-local lease so that a crash or handoff can still recover and reacquire
+the identical accepted operation (`DefaultSessionRunCoordinator` revalidates
+canonical accepted state before granting reacquisition); it never touches
+durable store state. `ReleaseAsync` is the explicit alternative for final
+settlement: it durably releases the lane through the protected session
+coordinator, using the lease's own retained context and total-state revision
+plus a freshly loaded session version, and then performs the same local release
+as `DisposeAsync`. A failure releasing durable state — a stale version, a store
+outage, or cancellation — is logged and swallowed rather than thrown, matching
+the no-throw contract expected of a disposal-adjacent operation; local
+ownership is always released regardless. A failed durable release leaves the
+lane busy until a later successful `ReleaseAsync` call or store-level recovery.
 
 Conversation history belongs here. Durable memory across sessions belongs to the
 memory component. The working provider context belongs to the context component.

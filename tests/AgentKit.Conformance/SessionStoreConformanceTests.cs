@@ -541,6 +541,179 @@ public abstract class SessionStoreConformanceTests<TFixture>
         result.ShouldBe(new SessionRunStartBusy(accepted.State.Correlation.OperationId, accepted.State.Correlation.RunId));
     }
 
+    /// <summary>Verifies releasing a lane's accepted run frees it so a later start on the same lane succeeds instead of observing <see cref="SessionRunStartBusy"/>.</summary>
+    [Fact]
+    public async Task ReleaseRunAsync_AfterAcceptedRun_AllowsANewStartOnTheLane()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 400, "release-start");
+        var start = StartRequest(prepared, 410);
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var releaseContext = LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            accepted.State.Correlation);
+        var release = new SessionRunReleaseRequest(
+            releaseContext, accepted.State.OperationStateRevision, accepted.SessionVersion,
+            new IdempotencyKey("release-1"));
+
+        var released = await store.ReleaseRunAsync(
+            await AuthorizeAsync(fixture, release, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var releasedResult = released.ShouldBeOfType<SessionRunReleased>();
+        releasedResult.Existing.ShouldBeFalse();
+
+        var secondContext = LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            new BeforeRunOperationCorrelation(Identifier<OperationId>(420), null));
+        var secondAdmission = AdmissionRequest(
+            secondContext, Identifier<AdmissionId>(421), Identifier<InputId>(422), Identifier<SessionEntryId>(423),
+            releasedResult.NewVersion, accepted.State.LaneRevision, accepted.State.CommittedCursor, "second");
+        var secondAccepted = (AcceptedInput) await store.AdmitInputAsync(
+            await AuthorizeAsync(fixture, secondAdmission, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var second = new SessionRunStartRequest(
+            secondContext, secondAdmission.AdmissionId, [secondAdmission.AdmissionId],
+            secondAccepted.Receipt.AdmittedSequence, new SessionLaneRevision(accepted.State.LaneRevision.Value + 1),
+            new SessionVersion(releasedResult.NewVersion.Value + 1),
+            new SessionBranchCursor(prepared.Descriptor.ActiveBranchId, secondAdmission.EntryId),
+            null, Identifier<RunId>(430), Identifier<TurnId>(431), Identifier<SessionEntryId>(432),
+            [Identifier<SessionEntryId>(433)], [Identifier<MessageId>(434)], Identifier<SessionEntryId>(435),
+            new OperationStateRevision(1), Profile(), Configuration(),
+            Authorization(prepared.Descriptor.Address.AgentId, prepared.Descriptor.Address.SessionId,
+                new InRunOperationCorrelation(secondContext.Correlation.OperationId, Identifier<RunId>(430), Identifier<TurnId>(431)),
+                prepared.Context.Identity),
+            Timestamp(430), new IdempotencyKey("second-accept"));
+
+        var result = await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, second, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionRunAccepted>();
+    }
+
+    /// <summary>Verifies a release naming a different run than the lane's actual installed occupant is fenced rather than clearing the real owner.</summary>
+    [Fact]
+    public async Task ReleaseRunAsync_WhenCorrelationDoesNotMatchOccupant_ReturnsFenced()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 450, "release-fenced");
+        var start = StartRequest(prepared, 460);
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var staleCorrelation = new InRunOperationCorrelation(
+            accepted.State.Correlation.OperationId, Identifier<RunId>(999), null);
+        var releaseContext = LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            staleCorrelation);
+        var release = new SessionRunReleaseRequest(
+            releaseContext, accepted.State.OperationStateRevision, accepted.SessionVersion,
+            new IdempotencyKey("release-stale"));
+
+        var result = await store.ReleaseRunAsync(
+            await AuthorizeAsync(fixture, release, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var loaded = (SessionRunStateLoaded) await store.LoadRunStateAsync(
+            await AuthorizeAsync(fixture,
+                new SessionRunStateRequest(LaneContext(
+                    prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+                    accepted.State.Correlation)),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<SessionRunReleaseRejected>();
+        rejected.Kind.ShouldBe(SessionRunReleaseRejectionKind.Fenced);
+        loaded.State.ShouldBeEquivalentTo(accepted.State);
+    }
+
+    /// <summary>Verifies releasing a lane that currently holds no accepted run is a typed rejection rather than a silent no-op success.</summary>
+    [Fact]
+    public async Task ReleaseRunAsync_WhenLaneHasNoAcceptedRun_ReturnsTypedRejection()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (Descriptor, Context, Provisioned, Admission, Accepted) = await ProvisionAndAdmitAsync(fixture, store, 470, "release-none");
+        var releaseContext = LaneContext(
+            Descriptor.Address, Context.ExecutionLaneId!.Value, Context.Identity,
+            new InRunOperationCorrelation(Context.Correlation.OperationId, Identifier<RunId>(471), null));
+        var release = new SessionRunReleaseRequest(
+            releaseContext, new OperationStateRevision(1),
+            new SessionVersion(Provisioned.SessionVersion.Value + 1), new IdempotencyKey("release-none"));
+
+        var result = await store.ReleaseRunAsync(
+            await AuthorizeAsync(fixture, release, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunReleaseRejected>().Kind.ShouldBe(SessionRunReleaseRejectionKind.NoAcceptedRun);
+    }
+
+    /// <summary>Verifies a retried release with the same idempotency key returns the original result instead of a second commit.</summary>
+    [Fact]
+    public async Task ReleaseRunAsync_WhenRetriedWithSameIdempotencyKey_ReturnsSameResult()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 480, "release-retry");
+        var start = StartRequest(prepared, 490);
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var releaseContext = LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            accepted.State.Correlation);
+        var release = new SessionRunReleaseRequest(
+            releaseContext, accepted.State.OperationStateRevision, accepted.SessionVersion,
+            new IdempotencyKey("release-retry-key"));
+
+        var first = await store.ReleaseRunAsync(
+            await AuthorizeAsync(fixture, release, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var second = await store.ReleaseRunAsync(
+            await AuthorizeAsync(fixture, release, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var firstReleased = first.ShouldBeOfType<SessionRunReleased>();
+        var secondReleased = second.ShouldBeOfType<SessionRunReleased>();
+        firstReleased.Existing.ShouldBeFalse();
+        secondReleased.Existing.ShouldBeTrue();
+        secondReleased.NewVersion.ShouldBe(firstReleased.NewVersion);
+    }
+
+    /// <summary>Verifies a release presenting a stale expected session version is a typed conflict without clearing the lane.</summary>
+    [Fact]
+    public async Task ReleaseRunAsync_WhenExpectedVersionIsStale_ReturnsConflict()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await ProvisionAndAdmitAsync(fixture, store, 500, "release-stale-version");
+        var start = StartRequest(prepared, 510);
+        var accepted = (SessionRunAccepted) await store.AcceptRunAsync(
+            await AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var releaseContext = LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            accepted.State.Correlation);
+        var release = new SessionRunReleaseRequest(
+            releaseContext, accepted.State.OperationStateRevision,
+            new SessionVersion(accepted.SessionVersion.Value + 41), new IdempotencyKey("release-stale-version"));
+
+        var result = await store.ReleaseRunAsync(
+            await AuthorizeAsync(fixture, release, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var loaded = (SessionRunStateLoaded) await store.LoadRunStateAsync(
+            await AuthorizeAsync(fixture, new SessionRunStateRequest(releaseContext),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunReleaseRejected>().Kind.ShouldBe(SessionRunReleaseRejectionKind.SessionVersion);
+        loaded.State.ShouldBeEquivalentTo(accepted.State);
+    }
+
     /// <summary>Verifies an admission identity collision leaves version, lane cursor, and sequence available to the next valid commit.</summary>
     [Fact]
     public async Task AdmitInputAsync_WhenAdmissionIdentityCollides_DoesNotAdvanceState()
