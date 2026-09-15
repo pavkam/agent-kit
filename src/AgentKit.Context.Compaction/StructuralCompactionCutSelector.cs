@@ -9,16 +9,28 @@ using Microsoft.Extensions.Options;
 /// The built-in <see cref="ICompactionCutSelector"/>: chooses the largest
 /// prefix of the eligible source snapshot that can be covered without
 /// splitting a causal pairing and without leaving fewer than the requested
-/// minimum number of retained entries.
+/// minimum number of retained entries, preferring a boundary immediately
+/// before a user turn.
 /// </summary>
 /// <remarks>
-/// This selector reasons purely over each entry's recorded
-/// <see cref="SessionEntry.Sequence"/> and <see cref="SessionEntry.CausalParentId"/>;
-/// it never inspects message content. A candidate boundary after the first
-/// <c>k</c> loaded entries is safe only if no entry among the remaining,
-/// retained entries has a <see cref="SessionEntry.CausalParentId"/> pointing
-/// into the covered prefix — that would otherwise separate, for example, a
-/// tool call from its terminal result.
+/// <para>
+/// A candidate boundary after the first <c>k</c> loaded entries is safe
+/// only if no entry among the remaining, retained entries has a
+/// <see cref="SessionEntry.CausalParentId"/> pointing into the covered
+/// prefix — that would otherwise separate, for example, a tool call from
+/// its terminal result. Safety is decided purely from
+/// <see cref="SessionEntry.CausalParentId"/>; message content is never
+/// inspected.
+/// </para>
+/// <para>
+/// Among the safe boundaries, the selector walks down from the largest and
+/// returns the first whose retained suffix begins with a
+/// <see cref="MessageSessionEntry"/> carrying a <see cref="UserMessage"/>,
+/// so the retained history starts at a complete turn rather than at an
+/// assistant reply or tool result. Only when no user-turn boundary satisfies
+/// the retention minimum does it fall back to the largest causally safe
+/// boundary. The role check reads the message type, not its content.
+/// </para>
 /// </remarks>
 public sealed class StructuralCompactionCutSelector: ICompactionCutSelector
 {
@@ -67,28 +79,58 @@ public sealed class StructuralCompactionCutSelector: ICompactionCutSelector
             idPositions[entries[i].Id] = i;
         }
 
-        for (var covered = entries.Length - minimumRetained; covered >= 1; covered--)
+        var maximumCovered = entries.Length - minimumRetained;
+        var causalBoundary = 0;
+        for (var covered = maximumCovered; covered >= 1; covered--)
         {
-            if (IsSafeBoundary(entries, idPositions, covered))
+            if (!IsSafeBoundary(entries, idPositions, covered))
             {
-                var coveredIds = entries.Take(covered).Select(static e => e.Id).ToImmutableArray();
-                var retainedSuffixStart = covered < entries.Length
-                    ? entries[covered].Sequence
-                    : new SessionSequence(entries[covered - 1].Sequence.Value + 1);
-                var cut = new CompactionCut(
-                    new CompactionSourceRange(entries[0].Sequence, entries[covered - 1].Sequence),
-                    retainedSuffixStart,
-                    coveredIds);
+                continue;
+            }
 
-                return ValueTask.FromResult<CompactionCutSelectionResult>(new CompactionCutSelected(cut));
+            // Prefer the largest safe boundary whose retained suffix begins at a user turn; remember the largest safe
+            // boundary of any kind as the fallback when no user-turn boundary satisfies the retention minimum.
+            if (BeginsUserTurn(entries, covered))
+            {
+                return ValueTask.FromResult<CompactionCutSelectionResult>(new CompactionCutSelected(BuildCut(entries, covered)));
+            }
+
+            if (causalBoundary == 0)
+            {
+                causalBoundary = covered;
             }
         }
 
-        return ValueTask.FromResult<CompactionCutSelectionResult>(new NoSafeCompactionCut(
+        return causalBoundary > 0
+            ? ValueTask.FromResult<CompactionCutSelectionResult>(new CompactionCutSelected(BuildCut(entries, causalBoundary)))
+            : ValueTask.FromResult<CompactionCutSelectionResult>(new NoSafeCompactionCut(
             new CompactionRejection(
                 CompactionRejectionKind.NoSafeCut,
                 "No boundary was found that does not split a causal pairing.",
                 ExtensionData.Empty)));
+    }
+
+    private static CompactionCut BuildCut(ImmutableArray<SessionEntry> entries, int covered)
+    {
+        Debug.Assert(covered >= 1 && covered <= entries.Length, "A boundary covers at least one loaded entry.");
+
+        var coveredIds = entries.Take(covered).Select(static e => e.Id).ToImmutableArray();
+        var retainedSuffixStart = covered < entries.Length
+            ? entries[covered].Sequence
+            : new SessionSequence(entries[covered - 1].Sequence.Value + 1);
+
+        return new CompactionCut(
+            new CompactionSourceRange(entries[0].Sequence, entries[covered - 1].Sequence),
+            retainedSuffixStart,
+            coveredIds);
+    }
+
+    private static bool BeginsUserTurn(ImmutableArray<SessionEntry> entries, int covered)
+    {
+        Debug.Assert(covered >= 1 && covered <= entries.Length, "A boundary covers at least one loaded entry.");
+
+        return covered < entries.Length
+            && entries[covered] is MessageSessionEntry { Message: UserMessage };
     }
 
     private static bool IsSafeBoundary(

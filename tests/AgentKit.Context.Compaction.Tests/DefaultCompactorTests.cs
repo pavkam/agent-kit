@@ -143,9 +143,10 @@ public sealed class DefaultCompactorTests
     public async Task CompactAsync_WhenIneligibleTailDependsOnCoveredEntry_ReturnsNoSafeCutWithoutAppend()
     {
         // A tool call at 6 is eligible but its result at 7 is beyond SourceThrough; covering the call would split the pair.
+        // The head is assistant-only so no user-turn boundary lets the selector avoid the call on its own.
         var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
         var address = Address();
-        var head = Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('q', 200)));
+        var head = Enumerable.Range(1, 5).Select(i => TestFactory.AssistantEntry(address, _branchId, i, new string('q', 200)));
         var (call, toolResult) = TestFactory.ToolCallPair(address, _branchId, callSequence: 6, resultSequence: 7);
         coordinator.Seed([.. head, call, toolResult]);
         var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(6), minimumRetainedEntries: 0, minimumReductionRatio: 0.1);

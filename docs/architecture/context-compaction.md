@@ -222,9 +222,13 @@ public interface ICompactionCutSelector
 
 `ICompactionCutSelector` is a pure policy boundary over a stable snapshot and
 normally completes synchronously, hence `ValueTask`. The default selector
-prefers a boundary before a user turn. It cannot split an assistant part, tool
-call and terminal result, approval and resolution, deferred operation and
-settlement, admitted input and promotion, or goal/delegation transition.
+prefers a boundary before a user turn: it walks down from the largest boundary
+that respects the retention minimum and returns the first causally safe one
+whose retained suffix begins with a `UserMessage`, falling back to the largest
+causally safe boundary only when no user-turn boundary qualifies. It cannot
+split an assistant part, tool call and terminal result, approval and
+resolution, deferred operation and settlement, admitted input and promotion, or
+goal/delegation transition.
 
 The covered IDs must exactly match the contiguous range and hash. The retained
 suffix begins after the covered range and remains byte-for-byte represented by

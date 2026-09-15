@@ -12,9 +12,13 @@ namespace AgentKit;
 /// This type is an immutable value object with structural equality over its
 /// fields. It carries no mutable state and is safe to share across threads
 /// without synchronization. A cut can never split an assistant part, a tool
-/// call from its terminal result, or an admitted input from its promotion;
-/// the default selector enforces this by only choosing a boundary before a
-/// complete turn.
+/// call from its terminal result, or an admitted input from its promotion.
+/// The first-party selector enforces this through recorded causal parents and
+/// prefers a boundary whose retained suffix begins at a user turn, falling
+/// back to the largest causally safe boundary only when no user-turn boundary
+/// satisfies the retention minimum; the validator independently re-derives
+/// <see cref="CoveredEntryIds"/>, <see cref="CoveredRange"/>, and
+/// <see cref="RetainedSuffixStart"/> from the source before activation.
 /// </remarks>
 public sealed record CompactionCut
 {

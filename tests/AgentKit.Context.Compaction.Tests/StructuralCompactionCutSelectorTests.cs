@@ -72,8 +72,30 @@ public sealed class StructuralCompactionCutSelectorTests
 
         var selected = selection.ShouldBeOfType<CompactionCutSelected>();
 
-        // Covering 3 (through the tool call) would split the call from its result at position 4,
-        // so the safe boundary backs off to covering only the first 2 plain entries.
+        // Covering 3 (through the tool call) would split the call from its result at position 4. Covering 2 is
+        // causally safe but would start the retained suffix at the assistant tool call; the selector prefers the
+        // safe boundary that starts the suffix at the second user turn.
+        selected.Cut.CoveredEntryIds.Length.ShouldBe(1);
+        selected.Cut.RetainedSuffixStart.ShouldBe(entries[1].Sequence);
+    }
+
+    [Fact]
+    public async Task SelectAsync_WhenCausalPairWouldBeSplitAndNoUserTurnFollows_SelectsLargestSafeBoundary()
+    {
+        var selector = CreateSelector();
+        var address = Address();
+        var (call, result) = TestFactory.ToolCallPair(address, _branchId, callSequence: 3, resultSequence: 4);
+        var entries = ImmutableArray.Create<SessionEntry>(
+            TestFactory.MessageEntry(address, _branchId, 1),
+            TestFactory.AssistantEntry(address, _branchId, 2),
+            call,
+            result);
+
+        var selection = await selector.SelectAsync(
+            SelectionRequest(entries, minimumRetainedEntries: 1), TestContext.Current.CancellationToken);
+
+        // No boundary starts the suffix at a user turn, so the largest causally safe boundary (covering 2) wins.
+        var selected = selection.ShouldBeOfType<CompactionCutSelected>();
         selected.Cut.CoveredEntryIds.Length.ShouldBe(2);
     }
 
@@ -90,6 +112,75 @@ public sealed class StructuralCompactionCutSelectorTests
 
         var noCut = selection.ShouldBeOfType<NoSafeCompactionCut>();
         noCut.Rejection.Kind.ShouldBe(CompactionRejectionKind.NoSafeCut);
+    }
+
+    [Fact]
+    public async Task SelectAsync_WhenHistoryAlternatesUserAndAssistant_CutsBeforeAUserTurn()
+    {
+        var selector = CreateSelector();
+        var address = Address();
+        var entries = ImmutableArray.Create<SessionEntry>(
+            TestFactory.MessageEntry(address, _branchId, 1, "u1"),
+            TestFactory.AssistantEntry(address, _branchId, 2, "a2"),
+            TestFactory.MessageEntry(address, _branchId, 3, "u3"),
+            TestFactory.AssistantEntry(address, _branchId, 4, "a4"),
+            TestFactory.MessageEntry(address, _branchId, 5, "u5"),
+            TestFactory.AssistantEntry(address, _branchId, 6, "a6"));
+
+        var result = await selector.SelectAsync(
+            SelectionRequest(entries, minimumRetainedEntries: 1), TestContext.Current.CancellationToken);
+
+        // The largest causally safe boundary (covering 5) would begin the retained suffix mid-turn at the assistant
+        // reply; the selector backs off to the largest boundary that starts the suffix at a user turn.
+        var selected = result.ShouldBeOfType<CompactionCutSelected>();
+        selected.Cut.CoveredEntryIds.Length.ShouldBe(4);
+        selected.Cut.RetainedSuffixStart.ShouldBe(entries[4].Sequence);
+        selected.Cut.CoveredRange.EndInclusive.ShouldBe(entries[3].Sequence);
+    }
+
+    [Fact]
+    public async Task SelectAsync_WhenNoUserTurnBoundarySatisfiesMinimumRetained_FallsBackToCausalBoundary()
+    {
+        var selector = CreateSelector();
+        var address = Address();
+        // Only the first entry is a user turn, so no boundary before a user turn can leave one entry retained.
+        var entries = ImmutableArray.Create<SessionEntry>(
+            TestFactory.MessageEntry(address, _branchId, 1, "u1"),
+            TestFactory.AssistantEntry(address, _branchId, 2, "a2"),
+            TestFactory.AssistantEntry(address, _branchId, 3, "a3"),
+            TestFactory.AssistantEntry(address, _branchId, 4, "a4"));
+
+        var result = await selector.SelectAsync(
+            SelectionRequest(entries, minimumRetainedEntries: 1), TestContext.Current.CancellationToken);
+
+        var selected = result.ShouldBeOfType<CompactionCutSelected>();
+        selected.Cut.CoveredEntryIds.Length.ShouldBe(3);
+        selected.Cut.RetainedSuffixStart.ShouldBe(entries[3].Sequence);
+    }
+
+    [Fact]
+    public async Task SelectAsync_WhenUserTurnBoundaryWouldSplitCausalPair_PrefersEarlierSafeUserTurnBoundary()
+    {
+        var selector = CreateSelector();
+        var address = Address();
+        var (call, toolResult) = TestFactory.ToolCallPair(address, _branchId, callSequence: 4, resultSequence: 6);
+        var entries = ImmutableArray.Create<SessionEntry>(
+            TestFactory.MessageEntry(address, _branchId, 1, "u1"),
+            TestFactory.AssistantEntry(address, _branchId, 2, "a2"),
+            TestFactory.MessageEntry(address, _branchId, 3, "u3"),
+            call,
+            TestFactory.MessageEntry(address, _branchId, 5, "u5-steering"),
+            toolResult,
+            TestFactory.MessageEntry(address, _branchId, 7, "u7"));
+
+        var result = await selector.SelectAsync(
+            SelectionRequest(entries, minimumRetainedEntries: 2), TestContext.Current.CancellationToken);
+
+        // Covering 4 (through the call) would start the suffix at the steering user turn but split the call from
+        // its result; the largest safe user-turn boundary is covering 2 (suffix starts at u3).
+        var selected = result.ShouldBeOfType<CompactionCutSelected>();
+        selected.Cut.CoveredEntryIds.Length.ShouldBe(2);
+        selected.Cut.RetainedSuffixStart.ShouldBe(entries[2].Sequence);
     }
 
     [Fact]

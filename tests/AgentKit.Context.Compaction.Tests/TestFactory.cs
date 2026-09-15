@@ -55,6 +55,36 @@ internal static class TestFactory
                 [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
                 ExtensionData.Empty));
 
+    /// <summary>Builds a complete assistant text turn with no tool calls.</summary>
+    public static MessageSessionEntry AssistantEntry(
+        SessionAddress address,
+        BranchId branchId,
+        long sequence,
+        string text = "sure",
+        SessionEntryId? causalParentId = null) =>
+        new(
+            new SessionEntryId(Guid.NewGuid()),
+            address,
+            Correlation(),
+            branchId,
+            new SessionSequence(sequence),
+            causalParentId,
+            DateTimeOffset.UnixEpoch,
+            new SchemaVersion("1"),
+            new AssistantMessage(
+                new MessageId(Guid.NewGuid()),
+                address.AgentId,
+                address.SessionId,
+                null,
+                branchId,
+                null,
+                null,
+                DateTimeOffset.UnixEpoch,
+                MessageState.Complete,
+                [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
+                ResponseMetadata() with { StopReason = NormalizedStopReason.Completed },
+                ExtensionData.Empty));
+
     private static AssistantResponseMetadata ResponseMetadata() => new(
         new ModelRequestId(Guid.NewGuid()),
         new ProviderResponseIdentity(
