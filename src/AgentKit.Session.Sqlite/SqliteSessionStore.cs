@@ -43,6 +43,7 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
     private readonly ISecurityAuditDispatcher _auditDispatcher;
     private readonly ISecurityGrantStore _grants;
     private readonly TimeProvider _timeProvider;
+    private readonly ISessionEntryCodecCatalog _entryCodecs;
     private readonly ILogger<SqliteSessionStore> _logger;
     private readonly SqliteSessionDatabase _database;
     private readonly SemaphoreSlim _databaseGate = new(1, 1);
@@ -84,6 +85,7 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
         _auditDispatcher = auditDispatcher;
         _grants = grants;
         _timeProvider = timeProvider;
+        _entryCodecs = entryCodecs;
         _database = new SqliteSessionDatabase(target, settings, entryCodecs);
         _logger = logger ?? NullLogger<SqliteSessionStore>.Instance;
     }
@@ -244,6 +246,11 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
             var sessionVersion = new SessionVersion(record.Version + 1);
             var result = new SessionExecutionLaneProvisioned(
                 laneId, committedCursor, laneRevision, sessionVersion, existing: false);
+            if (!CanPersist([entry], out var codecRejection))
+            {
+                return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(
+                    new SessionExecutionLaneProvisionRejected(codecRejection));
+            }
 
             branch.Entries.Add(entry);
             _ = record.EntryIds.Add(entry.Id);
@@ -325,6 +332,11 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
             {
                 return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(
                     "An appended message identity is already reserved."));
+            }
+
+            if (!CanPersist(request.Entries, out var codecRejection))
+            {
+                return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(codecRejection));
             }
 
             branch.Entries.AddRange(request.Entries);
@@ -624,6 +636,12 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
                 admitted.ExecutionLaneId, admitted.AdmittedSequence, existing: false);
             var retained = new StoredAdmission(admitted, (BeforeRunOperationCorrelation) request.Context.Correlation, request.EntryId, receipt);
             var accepted = new AcceptedInput(receipt);
+            if (!CanPersist([entry], out var codecRejection))
+            {
+                return ValueTask.FromResult<InputAdmissionResult>(new RejectedInput(
+                    new InputRejection(InputRejectionKind.InvalidInput, codecRejection)));
+            }
+
             record.AdmissionsById.Add(admitted.AdmissionId, retained);
             record.AdmissionsByInput.Add(admitted.OriginalPayload.Id, admitted.AdmissionId);
             record.AdmissionIdempotency.Add(request.IdempotencyKey,
@@ -776,6 +794,10 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
             appended.Add(new OperationAcceptedSessionEntry(
                 request.AcceptedEntryId, request.Context.ToAddress(), correlation, lane.BranchCursor.BranchId,
                 acceptedSequence, parent, request.AcceptedAt, new SchemaVersion("1"), state));
+            if (!CanPersist(appended, out var codecRejection))
+            {
+                return ValueTask.FromResult<SessionRunStartResult>(new SessionRunStartRejected(codecRejection));
+            }
 
             branch.Entries.AddRange(appended);
             record.EntryIds.UnionWith(reservedEntryIds);
@@ -817,6 +839,37 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
                     "The requested operation state is unavailable."))
                 : ValueTask.FromResult<SessionRunStateResult>(new SessionRunStateLoaded(state));
         }
+    }
+
+    /// <summary>Proves every proposed entry has a durable codec before any process or database state is mutated.</summary>
+    /// <param name="entries">The complete ordered entries the operation intends to commit.</param>
+    /// <param name="safeReason">The content-free rejection reason when an entry cannot be encoded; otherwise null.</param>
+    /// <returns><see langword="true"/> when the captured codec catalog encodes every entry.</returns>
+    /// <remarks>
+    /// The SQLite adapter serializes the whole record at commit. Without this preflight an unencodable entry would
+    /// surface as a serialization exception after in-process bookkeeping had already advanced, instead of the typed
+    /// failure each store operation promises.
+    /// </remarks>
+    private bool CanPersist(IReadOnlyList<SessionEntry> entries, [NotNullWhen(false)] out string? safeReason)
+    {
+        Debug.Assert(entries is not null, "Operations preflight a materialized entry collection.");
+        for (var index = 0; index < entries.Count; index++)
+        {
+            switch (_entryCodecs.Encode(entries[index]))
+            {
+                case SessionEntryEncoded:
+                    continue;
+                case SessionEntryEncodeRejected rejected:
+                    safeReason = $"Entry at position {index} has no durable codec in the selected session store: {rejected.Reason}";
+                    return false;
+                default:
+                    safeReason = $"Entry at position {index} has no durable codec in the selected session store.";
+                    return false;
+            }
+        }
+
+        safeReason = null;
+        return true;
     }
 
     private bool TryGetAuthorizedRecord(SessionOperationContext context, [NotNullWhen(true)] out SessionRecord? record)

@@ -751,6 +751,12 @@ and schema version. Appends use an expected version and idempotency identity so
 concurrent writers cannot silently overwrite one another and retries cannot
 duplicate facts.
 
+A durable store proves every proposed entry has a registered codec before it
+mutates any state. An entry the captured codec catalog cannot encode is reported
+through the operation's typed failure result (for example `SessionAppendFailed`
+or `SessionRunStartRejected`) with the session version and branch unchanged; it
+never surfaces as a serialization exception after bookkeeping has advanced.
+
 ## Branching and compaction
 
 Branches name a committed parent and create a new leaf without changing the

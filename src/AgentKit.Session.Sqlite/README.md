@@ -31,7 +31,8 @@ state, idempotency receipts, directory ownership, and routing survive disposal
 and process restart. Reopening uses the same absolute target and store instance
 ID. Portable, versioned session-entry codecs reconstruct framework entries;
 unknown or invalid durable payloads are rejected instead of activated through
-CLR type names.
+CLR type names. Appending an entry kind with no registered codec returns the
+operation's typed failure before any session state changes.
 
 SQLite transactions provide strong local consistency and serialize competing
 writers across processes using the same file. This package does not claim

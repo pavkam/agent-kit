@@ -135,6 +135,37 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
     }
 
     [Fact]
+    public async Task AppendAsync_WhenEntryHasNoCodec_ReturnsTypedFailureWithoutMutation()
+    {
+        // An entry without a durable codec must be rejected as a typed store outcome before any state changes.
+        using var directory = new TempDirectory();
+        await using var harness = Harness.Open(directory.Path, new SqliteSessionStoreInstanceId(Guid.NewGuid()));
+        var descriptor = await harness.CreateSessionAsync();
+        var context = Harness.SessionContext(descriptor.Address, 20);
+        var uncoded = new UncodedSessionEntry(
+            new SessionEntryId(new Guid(99, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1)), descriptor.Address,
+            new InRunOperationCorrelation(new OperationId(new Guid(98, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1)), new RunId(new Guid(97, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1)), null),
+            descriptor.ActiveBranchId, new SessionSequence(1), null, DateTimeOffset.UnixEpoch, new SchemaVersion("1"));
+        var request = new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("uncoded"), [uncoded]);
+
+        var result = await harness.Store.AppendAsync(
+            await harness.AuthorizeAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var loaded = await harness.Store.LoadAsync(
+            await harness.AuthorizeAsync(context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+        var page = await harness.Store.ReadAsync(
+            await harness.AuthorizeAsync(
+                new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 100),
+                SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionAppendFailed>().SafeMessage.ShouldContain("durable codec");
+        loaded.ShouldBeOfType<SessionLoaded>().Descriptor.Version.ShouldBe(descriptor.Version);
+        page.ShouldBeOfType<SessionPage>().Entries.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void AddSqliteSessionStore_WhenCalledTwice_DoesNotRegisterDuplicateStore()
     {
         // XML doc on AddSqliteSessionStore: "Idempotent: uses TryAdd semantics".
@@ -150,6 +181,12 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
 
         services.Count(static descriptor => descriptor.ServiceType == typeof(ISessionStore)).ShouldBe(1);
     }
+
+    /// <summary>A session entry kind that no registered codec can encode.</summary>
+    private sealed record UncodedSessionEntry(
+        SessionEntryId Id, SessionAddress Address, OperationCorrelation Correlation, BranchId BranchId,
+        SessionSequence Sequence, SessionEntryId? CausalParentId, DateTimeOffset RecordedAt, SchemaVersion SchemaVersion)
+        : SessionEntry(Id, Address, Correlation, BranchId, Sequence, CausalParentId, RecordedAt, SchemaVersion);
 
     private sealed class TempDirectory: IDisposable
     {
