@@ -117,7 +117,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
             parts.ToImmutable(),
             MapStopReason(dto.StopReason),
             usage,
-            ExtensionData.Empty);
+            BuildResponseExtensions(dto.StopSequence));
 
         await observer.OnEventAsync(new ModelResponseCompleted(requestId, sequence++, response), cancellationToken)
             .ConfigureAwait(false);
@@ -151,6 +151,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         AnthropicUsageDto? finalUsage = null;
         var finalUsageIsFinal = false;
         string? finalStopReason = null;
+        string? finalStopSequence = null;
         var messageStopReceived = false;
 
         while (!messageStopReceived
@@ -199,14 +200,40 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                         .ConfigureAwait(false);
                     break;
 
-                case "content_block_delta" when streamEvent is { Index: { } deltaIndex, Delta: { } delta }
-                    && blocks.TryGetValue(deltaIndex, out var deltaAccumulator):
+                case "content_block_delta" when streamEvent is { Index: { } deltaIndex, Delta: { } delta }:
+                    if (!blocks.TryGetValue(deltaIndex, out var deltaAccumulator))
+                    {
+                        // A delta for a block that never started cannot be attributed to any part; dropping it would
+                        // silently lose content, so it is a protocol failure that retains what was received.
+                        return await FailAsync(
+                            observer,
+                            context,
+                            sequence,
+                            $"The provider sent a content_block_delta for content block {deltaIndex} before its content_block_start.",
+                            diagnosticCause: null,
+                            cancellationToken,
+                            BuildPartialParts(blocks),
+                            TryBuildRetainedUsage(initialUsage, finalUsage, finalUsageIsFinal)).ConfigureAwait(false);
+                    }
+
                     await HandleContentBlockDeltaAsync(observer, requestId, context, deltaIndex, delta, deltaAccumulator, () => sequence++, cancellationToken)
                         .ConfigureAwait(false);
                     break;
 
-                case "content_block_stop" when streamEvent is { Index: { } stopIndex }
-                    && blocks.TryGetValue(stopIndex, out var stopAccumulator):
+                case "content_block_stop" when streamEvent is { Index: { } stopIndex }:
+                    if (!blocks.TryGetValue(stopIndex, out var stopAccumulator))
+                    {
+                        return await FailAsync(
+                            observer,
+                            context,
+                            sequence,
+                            $"The provider sent a content_block_stop for content block {stopIndex} before its content_block_start.",
+                            diagnosticCause: null,
+                            cancellationToken,
+                            BuildPartialParts(blocks),
+                            TryBuildRetainedUsage(initialUsage, finalUsage, finalUsageIsFinal)).ConfigureAwait(false);
+                    }
+
                     try
                     {
                         stopAccumulator.Close();
@@ -234,6 +261,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
 
                 case "message_delta":
                     finalStopReason = streamEvent.Delta?.StopReason ?? finalStopReason;
+                    finalStopSequence = streamEvent.Delta?.StopSequence ?? finalStopSequence;
                     if (streamEvent.Usage is not null)
                     {
                         finalUsage = streamEvent.Usage;
@@ -356,7 +384,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
             parts.ToImmutable(),
             MapStopReason(finalStopReason),
             usage,
-            ExtensionData.Empty);
+            BuildResponseExtensions(finalStopSequence));
 
         await observer.OnEventAsync(new ModelResponseCompleted(requestId, sequence++, response), cancellationToken)
             .ConfigureAwait(false);
@@ -435,45 +463,66 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         Func<long> nextSequence,
         CancellationToken cancellationToken)
     {
+        // Route on the delta kind first. Anthropic documents empty fragments for known kinds (a tool_use block
+        // opens with {"type":"input_json_delta","partial_json":""}; a thinking block with display omitted sends an
+        // empty thinking_delta), so an empty known fragment is a no-op rather than an unknown provider delta.
         switch (delta.Type)
         {
-            case "text_delta" when delta.Text is { Length: > 0 } textFragment:
-                _ = accumulator.Text.Append(textFragment);
-                await observer.OnEventAsync(
-                        new ModelPartDelta(requestId, nextSequence(), index, new TextContentDelta(textFragment)),
-                        cancellationToken)
-                    .ConfigureAwait(false);
+            case "text_delta":
+                if (delta.Text is { Length: > 0 } textFragment)
+                {
+                    _ = accumulator.Text.Append(textFragment);
+                    await observer.OnEventAsync(
+                            new ModelPartDelta(requestId, nextSequence(), index, new TextContentDelta(textFragment)),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
                 break;
 
-            case "input_json_delta" when delta.PartialJson is { Length: > 0 } jsonFragment:
-                _ = accumulator.Json.Append(jsonFragment);
-                await observer.OnEventAsync(
-                        new ModelPartDelta(
-                            requestId,
-                            nextSequence(),
-                            index,
-                            new ToolArgumentsContentDelta(accumulator.ToolCallId!.Value, jsonFragment)),
-                        cancellationToken)
-                    .ConfigureAwait(false);
+            case "input_json_delta":
+                if (delta.PartialJson is { Length: > 0 } jsonFragment)
+                {
+                    _ = accumulator.Json.Append(jsonFragment);
+                    await observer.OnEventAsync(
+                            new ModelPartDelta(
+                                requestId,
+                                nextSequence(),
+                                index,
+                                new ToolArgumentsContentDelta(accumulator.ToolCallId!.Value, jsonFragment)),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
                 break;
 
-            case "thinking_delta" when delta.Thinking is { Length: > 0 } thinkingFragment:
-                _ = accumulator.Text.Append(thinkingFragment);
-                await observer.OnEventAsync(
-                        new ModelPartDelta(
-                            requestId,
-                            nextSequence(),
-                            index,
-                            new ReasoningContentDelta(thinkingFragment, ExtensionData.Empty)),
-                        cancellationToken)
-                    .ConfigureAwait(false);
+            case "thinking_delta":
+                if (delta.Thinking is { Length: > 0 } thinkingFragment)
+                {
+                    _ = accumulator.Text.Append(thinkingFragment);
+                    await observer.OnEventAsync(
+                            new ModelPartDelta(
+                                requestId,
+                                nextSequence(),
+                                index,
+                                new ReasoningContentDelta(thinkingFragment, ExtensionData.Empty)),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
                 break;
 
-            case "signature_delta" when delta.Signature is { Length: > 0 } signatureFragment:
-                accumulator.Signature = (accumulator.Signature ?? string.Empty) + signatureFragment;
+            case "signature_delta":
+                if (delta.Signature is { Length: > 0 } signatureFragment)
+                {
+                    accumulator.Signature = (accumulator.Signature ?? string.Empty) + signatureFragment;
+                }
+
                 break;
 
             default:
+                // A genuinely unrecognized delta kind (for example, a citation delta) is preserved verbatim as a
+                // provider delta so a future or unmodeled kind is never silently dropped.
                 await observer.OnEventAsync(
                         new ModelPartDelta(
                             requestId,
@@ -640,6 +689,20 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         var raw = JsonSerializer.SerializeToUtf8Bytes(delta, _serializerOptions);
         return new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("raw", new ExtensionValue([.. raw])));
     }
+
+    /// <summary>
+    /// Builds the provider-specific response metadata: the custom <c>stop_sequence</c> that ended generation,
+    /// under the <c>stop_sequence</c> key, when the provider reported one.
+    /// </summary>
+    /// <param name="stopSequence">The <c>stop_sequence</c> from the buffered message or the last <c>message_delta</c>.</param>
+    /// <returns>Empty extension data when no stop sequence was reported; otherwise the single <c>stop_sequence</c> entry.</returns>
+    private static ExtensionData BuildResponseExtensions(string? stopSequence) =>
+        stopSequence is null
+            ? ExtensionData.Empty
+            : new ExtensionData(
+                ImmutableDictionary<string, ExtensionValue>.Empty.Add(
+                    "stop_sequence",
+                    new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(stopSequence)])));
 
     private static JsonElement ParseEmptyObject()
     {

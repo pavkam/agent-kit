@@ -261,4 +261,197 @@ public sealed class AnthropicMessageStreamParserTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
     }
+
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenToolUseStreamOpensWithEmptyInputJsonDelta_IgnoresItAndParsesIdentically(int chunkSize)
+    {
+        // Anthropic's documented tool-use stream begins every tool_use block with
+        // {"type":"input_json_delta","partial_json":""} (https://docs.anthropic.com/en/docs/build-with-claude/streaming).
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var referenceObserver = new RecordingModelResponseObserver();
+        await using var referenceStream = new MemoryStream(TestResources.ReadAllBytes("responses/streaming_tool_use.sse"));
+        var reference = (await new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator())
+            .ParseStreamingAsync(referenceStream, CreateContext(requestId), referenceObserver, TestContext.Current.CancellationToken))
+            .ShouldBeOfType<ModelAttemptCompleted>();
+
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_tool_use_leading_empty_delta.sse"), chunkSize);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).ShouldNotContain(d => d is ProviderContentDelta);
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        var referenceToolCall = reference.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.CallId.ShouldBe(referenceToolCall.CallId);
+        toolCall.Tool.ShouldBe(referenceToolCall.Tool);
+        toolCall.ProviderCallId.ShouldBe(referenceToolCall.ProviderCallId);
+        toolCall.Arguments.GetRawText().ShouldBe(referenceToolCall.Arguments.GetRawText());
+        completed.Response.StopReason.ShouldBe(reference.Response.StopReason);
+        completed.Response.Usage.ShouldBe(reference.Response.Usage);
+        observer.Events.Select(e => e.GetType()).ShouldBe(referenceObserver.Events.Select(e => e.GetType()));
+        var argumentFragments = observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<ToolArgumentsContentDelta>().Select(d => d.JsonFragment).ToArray();
+        argumentFragments.ShouldBe(referenceObserver.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<ToolArgumentsContentDelta>().Select(d => d.JsonFragment));
+        argumentFragments.ShouldNotContain(string.Empty);
+        observer.Events.Select(e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(i => (long) i));
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenThinkingDeltaIsEmpty_EmitsNoDeltaAndKeepsSignature()
+    {
+        // With display omitted, Anthropic opens the thinking block, sends an empty thinking_delta, then a signature_delta.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}
+
+            event: content_block_delta
+            data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}}
+
+            event: content_block_delta
+            data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig_omitted"}}
+
+            event: content_block_stop
+            data: {"type":"content_block_stop","index":0}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        observer.Events.ShouldNotContain(e => e is ModelPartDelta);
+        var reasoning = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ReasoningPart>();
+        reasoning.Content.Text.ShouldBe(string.Empty);
+        reasoning.Content.SignatureToken.ShouldBe("sig_omitted");
+    }
+
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenDeltaTypeIsUnknown_EmitsProviderContentDeltaAndKeepsBlockContent(int chunkSize)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_unknown_delta.sse"), chunkSize);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        var deltas = observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).ToArray();
+        deltas.Length.ShouldBe(3);
+        deltas[0].ShouldBeOfType<TextContentDelta>().Text.ShouldBe("Hello");
+        var providerDelta = deltas[1].ShouldBeOfType<ProviderContentDelta>();
+        providerDelta.ProviderId.ShouldBe(new ProviderId("anthropic"));
+        var raw = JsonDocument.Parse(providerDelta.Extensions.Values["raw"].CanonicalJson.AsMemory()).RootElement;
+        raw.GetProperty("type").GetString().ShouldBe("citations_delta");
+        raw.GetProperty("citation").GetProperty("cited_text").GetString().ShouldBe("Hello");
+        deltas[2].ShouldBeOfType<TextContentDelta>().Text.ShouldBe("!");
+    }
+
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenDeltaArrivesForUnopenedBlock_FailsWithProtocolViolationRetainingPartialParts(int chunkSize)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        await using var stream = new ChunkedStream(TestResources.ReadAllBytes("responses/streaming_delta_before_start.sse"), chunkSize);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldContain("content block 1");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Partial");
+        failed.Usage.ShouldNotBeNull().ReportState.ShouldBe(ModelUsageReportState.Interim);
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<TextContentDelta>().Select(d => d.Text).ShouldNotContain("orphaned");
+        observer.Events[^1].ShouldBeOfType<ModelResponseFailed>().PartialParts.ShouldBe(failed.PartialParts);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenStopArrivesForUnopenedBlock_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: content_block_stop
+            data: {"type":"content_block_stop","index":0}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldContain("content_block_stop");
+        failed.PartialParts.ShouldBeEmpty();
+        observer.Events.ShouldNotContain(e => e is ModelPartCompleted);
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenMessageDeltaCarriesStopSequence_PreservesItInResponseExtensions()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"END"},"usage":{"output_tokens":1}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.Completed);
+        JsonDocument.Parse(completed.Response.Extensions.Values["stop_sequence"].CanonicalJson.AsMemory()).RootElement.GetString().ShouldBe("END");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenStopSequenceIsNull_LeavesResponseExtensionsEmpty()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        await using var stream = new MemoryStream(TestResources.ReadAllBytes("responses/streaming_text.sse"));
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<ModelAttemptCompleted>().Response.Extensions.ShouldBe(ExtensionData.Empty);
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenResponseCarriesStopSequence_PreservesItInResponseExtensions()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_text.json").Replace("\"stop_sequence\": null", "\"stop_sequence\": \"END\"", StringComparison.Ordinal);
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        JsonDocument.Parse(completed.Response.Extensions.Values["stop_sequence"].CanonicalJson.AsMemory()).RootElement.GetString().ShouldBe("END");
+    }
 }

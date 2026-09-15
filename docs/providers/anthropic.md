@@ -167,6 +167,20 @@ deltas.
 Tool input JSON is streamed as string fragments. Buffer per content-block index,
 then parse only after its block stops.
 
+The parser routes on the delta <code>type</code> first. Anthropic documents
+empty fragments for known kinds — every <code>tool_use</code> block opens with
+<code>{"type":"input_json_delta","partial_json":""}</code>, and a thinking block
+with display omitted sends an empty <code>thinking_delta</code> — so an empty
+fragment of a known kind is a no-op that emits no event. Only a genuinely
+unrecognized delta <code>type</code> is surfaced as a
+<code>ProviderContentDelta</code> carrying the raw delta. A
+<code>content_block_delta</code> or <code>content_block_stop</code> whose
+<code>index</code> was never opened by <code>content_block_start</code> is a
+<code>ProtocolViolation</code> that retains the parts and usage received so far;
+it is never silently dropped. A non-null <code>stop_sequence</code> from the
+buffered message or the final <code>message_delta</code> is preserved in the
+response's extension data under <code>stop_sequence</code>.
+
 ```mermaid
 sequenceDiagram
     participant C as Client
