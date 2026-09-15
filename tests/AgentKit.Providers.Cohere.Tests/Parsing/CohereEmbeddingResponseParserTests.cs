@@ -23,6 +23,9 @@ public sealed class CohereEmbeddingResponseParserTests
             requestedEncoding,
             requestedPurpose);
 
+    private static CohereEmbeddingResponseParseContext CreateContext(EmbeddingEncoding requestedEncoding, ProviderRequestId providerRequestId) =>
+        CreateContext(requestedEncoding) with { ProviderRequestId = providerRequestId };
+
     [Fact]
     public async Task ParseAsync_WhenFloatEncoding_DecodesDenseFloatVectorsPositionally()
     {
@@ -163,5 +166,38 @@ public sealed class CohereEmbeddingResponseParserTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenSucceeding_ReportsProviderRequestIdOnResponseAndIdentity()
+    {
+        var providerRequestId = new ProviderRequestId("req_cohere_123");
+        var parser = new CohereEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(
+            new TextEmbeddingInput("hello", null), new TextEmbeddingInput("world", null));
+
+        await using var body = File.OpenRead(TestResources.GetPath("responses/embedding_response_float.json"));
+        var result = await parser.ParseAsync(
+            body, CreateContext(EmbeddingEncoding.Float, providerRequestId), inputs, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        completed.Response.ProviderRequestId.ShouldBe(providerRequestId);
+
+        var succeeded = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>();
+        succeeded.Space.Provider.RequestId.ShouldBe(providerRequestId);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenFailing_ReportsProviderRequestIdOnFailure()
+    {
+        var providerRequestId = new ProviderRequestId("req_cohere_failure");
+        var parser = new CohereEmbeddingResponseParser();
+
+        await using var body = new MemoryStream("not json"u8.ToArray());
+        var result = await parser.ParseAsync(
+            body, CreateContext(EmbeddingEncoding.Float, providerRequestId), [], TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.RequestId.ShouldBe(providerRequestId);
     }
 }

@@ -114,7 +114,7 @@ public sealed class CohereEmbeddingResponseParser: ICohereEmbeddingResponseParse
                 "The provider returned invalid usage evidence.",
                 exception));
         }
-        var response = new EmbeddingResponse(items.ToImmutable(), usage, providerRequestId: null, ExtensionData.Empty);
+        var response = new EmbeddingResponse(items.ToImmutable(), usage, context.ProviderRequestId, ExtensionData.Empty);
 
         return new EmbeddingAttemptCompleted(response);
     }
@@ -213,7 +213,7 @@ public sealed class CohereEmbeddingResponseParser: ICohereEmbeddingResponseParse
         new(
             ProviderFailureKind.ProtocolViolation,
             context.ProviderId,
-            requestId: null,
+            context.ProviderRequestId,
             statusCode: null,
             providerCode: null,
             retryAfter: null,

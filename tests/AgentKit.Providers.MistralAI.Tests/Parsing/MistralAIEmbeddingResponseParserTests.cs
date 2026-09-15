@@ -18,6 +18,9 @@ public sealed class MistralAIEmbeddingResponseParserTests
             new ModelId("mistral-embed"),
             requestedEncoding);
 
+    private static MistralAIEmbeddingResponseParseContext CreateContext(EmbeddingEncoding? requestedEncoding, ProviderRequestId providerRequestId) =>
+        CreateContext(requestedEncoding) with { ProviderRequestId = providerRequestId };
+
     [Fact]
     public async Task ParseAsync_WhenFloatEncoding_DecodesDenseFloatVector()
     {
@@ -107,5 +110,123 @@ public sealed class MistralAIEmbeddingResponseParserTests
 
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task ParseAsync_WhenItemCountDoesNotMatchInputCount_ReturnsProtocolFailure(int itemCount)
+    {
+        var parser = new MistralAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(
+            new TextEmbeddingInput("first", null),
+            new TextEmbeddingInput("second", null));
+
+        var items = string.Join(
+            ",",
+            Enumerable.Range(0, itemCount).Select(index => $$"""{"object":"embedding","index":{{index}},"embedding":[0.1,0.2]}"""));
+        await using var body = new MemoryStream(
+            Encoding.UTF8.GetBytes($$"""{"object":"list","data":[{{items}}],"model":"mistral-embed"}"""));
+
+        var result = await parser.ParseAsync(body, CreateContext(null), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenAnItemIndexIsOutOfRange_ReturnsProtocolFailure()
+    {
+        var parser = new MistralAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("only", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"object":"list","data":[{"object":"embedding","index":5,"embedding":[0.1,0.2]}],"model":"mistral-embed"}"""u8.ToArray());
+
+        var result = await parser.ParseAsync(body, CreateContext(null), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenTwoItemsShareTheSameIndex_ReturnsProtocolFailure()
+    {
+        var parser = new MistralAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(
+            new TextEmbeddingInput("first", null),
+            new TextEmbeddingInput("second", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """
+            {
+              "object": "list",
+              "data": [
+                { "object": "embedding", "index": 0, "embedding": [0.1, 0.2] },
+                { "object": "embedding", "index": 0, "embedding": [0.3, 0.4] }
+              ],
+              "model": "mistral-embed"
+            }
+            """u8.ToArray());
+
+        var result = await parser.ParseAsync(body, CreateContext(null), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenSucceeding_ReportsProviderRequestIdOnResponseAndIdentity()
+    {
+        var providerRequestId = new ProviderRequestId("req_mistral_123");
+        var parser = new MistralAIEmbeddingResponseParser();
+        var firstId = new EmbeddingInputId(Guid.NewGuid());
+        var secondId = new EmbeddingInputId(Guid.NewGuid());
+        var inputs = ImmutableArray.Create<EmbeddingInput>(
+            new TextEmbeddingInput("first", firstId),
+            new TextEmbeddingInput("second", secondId));
+
+        // The wire returns index 1 before index 0; items must still be reported in input order.
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """
+            {
+              "object": "list",
+              "data": [
+                { "object": "embedding", "index": 1, "embedding": [0.4, 0.5] },
+                { "object": "embedding", "index": 0, "embedding": [0.1, 0.2] }
+              ],
+              "model": "mistral-embed",
+              "usage": { "prompt_tokens": 8, "total_tokens": 8 }
+            }
+            """u8.ToArray());
+
+        var result = await parser.ParseAsync(
+            body, CreateContext(EmbeddingEncoding.Float, providerRequestId), inputs, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        completed.Response.ProviderRequestId.ShouldBe(providerRequestId);
+
+        completed.Response.Items.Length.ShouldBe(2);
+        completed.Response.Items[0].InputIndex.ShouldBe(0);
+        completed.Response.Items[0].CorrelationId.ShouldBe(firstId);
+        completed.Response.Items[1].InputIndex.ShouldBe(1);
+        completed.Response.Items[1].CorrelationId.ShouldBe(secondId);
+
+        var succeeded = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>();
+        succeeded.Space.Provider.RequestId.ShouldBe(providerRequestId);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenFailing_ReportsProviderRequestIdOnFailure()
+    {
+        var providerRequestId = new ProviderRequestId("req_mistral_failure");
+        var parser = new MistralAIEmbeddingResponseParser();
+
+        await using var body = new MemoryStream("not json"u8.ToArray());
+        var result = await parser.ParseAsync(
+            body, CreateContext(null, providerRequestId), [], TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.RequestId.ShouldBe(providerRequestId);
     }
 }

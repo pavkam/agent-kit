@@ -125,7 +125,7 @@ public sealed class GoogleVertexAIEmbeddingResponseParser: IGoogleVertexAIEmbedd
                 exception));
         }
 
-        var response = new EmbeddingResponse(items.ToImmutable(), usage, providerRequestId: null, ExtensionData.Empty);
+        var response = new EmbeddingResponse(items.ToImmutable(), usage, context.ProviderRequestId, ExtensionData.Empty);
 
         return new EmbeddingAttemptCompleted(response);
     }
@@ -135,7 +135,7 @@ public sealed class GoogleVertexAIEmbeddingResponseParser: IGoogleVertexAIEmbedd
         new(
             ProviderFailureKind.ProtocolViolation,
             context.ProviderId,
-            requestId: null,
+            context.ProviderRequestId,
             statusCode: null,
             providerCode: null,
             retryAfter: null,

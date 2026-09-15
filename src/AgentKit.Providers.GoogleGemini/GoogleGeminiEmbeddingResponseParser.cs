@@ -82,7 +82,7 @@ public sealed class GoogleGeminiEmbeddingResponseParser: IGoogleGeminiEmbeddingR
             items.Add(new EmbeddingItemSucceeded(index, correlationId, vector, space, ExtensionData.Empty));
         }
 
-        var response = new EmbeddingResponse(items.ToImmutable(), ModelUsage.NotReported, providerRequestId: null, ExtensionData.Empty);
+        var response = new EmbeddingResponse(items.ToImmutable(), ModelUsage.NotReported, context.ProviderRequestId, ExtensionData.Empty);
 
         return new EmbeddingAttemptCompleted(response);
     }
@@ -92,7 +92,7 @@ public sealed class GoogleGeminiEmbeddingResponseParser: IGoogleGeminiEmbeddingR
         new(
             ProviderFailureKind.ProtocolViolation,
             context.ProviderId,
-            requestId: null,
+            context.ProviderRequestId,
             statusCode: null,
             providerCode: null,
             retryAfter: null,

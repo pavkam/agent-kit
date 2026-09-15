@@ -12,6 +12,33 @@ using AgentKit.Providers.OpenAICompatible.Wire;
 /// The default <see cref="IOpenAIEmbeddingResponseParser"/>, parsing a
 /// buffered OpenAI-compatible embeddings response body.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The OpenAI embeddings contract returns exactly one <c>data</c> item per
+/// request input, each carrying the zero-based <c>index</c> of the input it
+/// answers. This parser reconciles the body against the request before it
+/// reports success: the number of items must equal the number of inputs,
+/// every <c>index</c> must lie within <c>[0, inputs.Length)</c>, and no
+/// index may repeat. Any violation, including a batch that omits one or
+/// more inputs, yields an <see cref="EmbeddingAttemptFailed"/> with
+/// <see cref="ProviderFailureKind.ProtocolViolation"/> rather than a
+/// partial <see cref="EmbeddingAttemptCompleted"/>, because the wire
+/// contract has no notion of a per-item failure and a missing item cannot
+/// be attributed to the provider having rejected that input. Items are
+/// emitted in input order regardless of the order in which they arrived.
+/// </para>
+/// <para>
+/// A base64-encoded <c>embedding</c> is a little-endian sequence of IEEE
+/// 754 single-precision values; a payload that is not valid base64 or whose
+/// decoded length is not a multiple of four bytes is rejected as a protocol
+/// violation rather than truncated.
+/// </para>
+/// <para>
+/// The provider request identifier captured in the parse context, when
+/// present, is retained on the response identity, on the
+/// <see cref="EmbeddingResponse"/>, and on every protocol failure.
+/// </para>
+/// </remarks>
 public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParser
 {
     private static readonly JsonSerializerOptions _serializerOptions = new()
@@ -51,11 +78,37 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
                 context, "The provider returned an embeddings response with no data items.", diagnosticCause: null));
         }
 
-        var items = ImmutableArray.CreateBuilder<EmbeddingItemOutcome>(data.Count);
+        if (data.Count != requestInputs.Length)
+        {
+            return new EmbeddingAttemptFailed(BuildProtocolFailure(
+                context,
+                $"The provider returned {data.Count} embedding item(s) for a request with {requestInputs.Length} " +
+                "input(s); every input must receive exactly one item.",
+                diagnosticCause: null));
+        }
+
+        var items = new EmbeddingItemOutcome?[requestInputs.Length];
         var identity = context.CreateResponseIdentity(dto.Model);
 
         foreach (var entry in data)
         {
+            if (entry.Index < 0 || entry.Index >= requestInputs.Length)
+            {
+                return new EmbeddingAttemptFailed(BuildProtocolFailure(
+                    context,
+                    $"The provider returned an embedding item with index {entry.Index}, which is outside the " +
+                    $"request's input range [0, {requestInputs.Length}).",
+                    diagnosticCause: null));
+            }
+
+            if (items[entry.Index] is not null)
+            {
+                return new EmbeddingAttemptFailed(BuildProtocolFailure(
+                    context,
+                    $"The provider returned more than one embedding item with index {entry.Index}.",
+                    diagnosticCause: null));
+            }
+
             EmbeddingVector vector;
             try
             {
@@ -67,10 +120,7 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
                     context, "The provider returned an embedding vector that could not be decoded.", exception));
             }
 
-            var correlationId = entry.Index >= 0 && entry.Index < requestInputs.Length
-                ? (requestInputs[entry.Index] as TextEmbeddingInput)?.CorrelationId
-                : null;
-
+            var correlationId = (requestInputs[entry.Index] as TextEmbeddingInput)?.CorrelationId;
             var space = new EmbeddingSpaceIdentity(
                 identity,
                 DimensionsOf(vector),
@@ -78,7 +128,7 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
                 EmbeddingPurpose.Unspecified,
                 ExtensionData.Empty);
 
-            items.Add(new EmbeddingItemSucceeded(entry.Index, correlationId, vector, space, ExtensionData.Empty));
+            items[entry.Index] = new EmbeddingItemSucceeded(entry.Index, correlationId, vector, space, ExtensionData.Empty);
         }
 
         ModelUsage usage;
@@ -93,11 +143,44 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
                 "The provider returned invalid usage evidence.",
                 exception));
         }
-        var response = new EmbeddingResponse(items.ToImmutable(), usage, context.ProviderRequestId, ExtensionData.Empty);
+
+        var response = new EmbeddingResponse(ToInputOrder(items), usage, context.ProviderRequestId, ExtensionData.Empty);
 
         return new EmbeddingAttemptCompleted(response);
     }
 
+    /// <summary>
+    /// Materializes the per-input slots, which the count, range, and
+    /// uniqueness checks in <see cref="ParseAsync"/> have already filled
+    /// completely, as an immutable array in input order.
+    /// </summary>
+    /// <param name="slots">One slot per request input, each holding exactly one outcome.</param>
+    /// <returns>The outcomes in input order.</returns>
+    private static ImmutableArray<EmbeddingItemOutcome> ToInputOrder(EmbeddingItemOutcome?[] slots)
+    {
+        Debug.Assert(Array.TrueForAll(slots, static slot => slot is not null), "Every input slot must hold exactly one outcome.");
+
+        var outcomes = ImmutableArray.CreateBuilder<EmbeddingItemOutcome>(slots.Length);
+        foreach (var slot in slots)
+        {
+            outcomes.Add(slot ?? throw new UnreachableException("An input slot was left unfilled after reconciliation."));
+        }
+
+        return outcomes.MoveToImmutable();
+    }
+
+    /// <summary>
+    /// Decodes one <c>embedding</c> field into a dense float vector.
+    /// </summary>
+    /// <param name="embedding">The raw <c>embedding</c> JSON value: a number array or a base64 string.</param>
+    /// <returns>The decoded vector.</returns>
+    /// <exception cref="JsonException">
+    /// The value is neither an array nor a string, or an array element is not a number.
+    /// </exception>
+    /// <exception cref="FormatException">
+    /// The string is not valid base64, or its decoded length is not a whole
+    /// number of little-endian single-precision values.
+    /// </exception>
     private static DenseFloatVector DecodeVector(JsonElement embedding)
     {
         if (embedding.ValueKind == JsonValueKind.Array)
@@ -114,10 +197,17 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
         if (embedding.ValueKind == JsonValueKind.String)
         {
             var bytes = Convert.FromBase64String(embedding.GetString() ?? string.Empty);
-            var values = ImmutableArray.CreateBuilder<float>(bytes.Length / 4);
-            for (var offset = 0; offset + 4 <= bytes.Length; offset += 4)
+            if (bytes.Length % sizeof(float) != 0)
             {
-                values.Add(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(offset, 4)));
+                throw new FormatException(
+                    $"The base64 embedding payload decoded to {bytes.Length} byte(s), which is not a whole number " +
+                    $"of {sizeof(float)}-byte single-precision values.");
+            }
+
+            var values = ImmutableArray.CreateBuilder<float>(bytes.Length / sizeof(float));
+            for (var offset = 0; offset < bytes.Length; offset += sizeof(float))
+            {
+                values.Add(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(offset, sizeof(float))));
             }
 
             return new DenseFloatVector(values.ToImmutable());
@@ -152,7 +242,7 @@ public sealed class OpenAIEmbeddingResponseParser: IOpenAIEmbeddingResponseParse
         new(
             ProviderFailureKind.ProtocolViolation,
             context.ProviderId,
-            requestId: null,
+            context.ProviderRequestId,
             statusCode: null,
             providerCode: null,
             retryAfter: null,

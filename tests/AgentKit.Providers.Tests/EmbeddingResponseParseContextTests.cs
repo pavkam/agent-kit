@@ -48,7 +48,7 @@ public sealed class EmbeddingResponseParseContextTests
     }
 
     [Fact]
-    public void CreateResponseIdentity_WhenBodyReportsModel_UsesItAndOmitsRequestAndResponseIds()
+    public void CreateResponseIdentity_WhenBodyReportsModel_UsesItAndRetainsProviderRequestIdWhileOmittingResponseId()
     {
         var identity = CreateContext(Deployment, ProviderRequest).CreateResponseIdentity("resolved-embedding-model");
 
@@ -58,8 +58,16 @@ public sealed class EmbeddingResponseParseContextTests
         identity.RequestedModelId.ShouldBe(RequestedModel);
         identity.ResolvedModelId.ShouldBe(new ModelId("resolved-embedding-model"));
         identity.DeploymentId.ShouldBe(Deployment);
-        identity.RequestId.ShouldBeNull();
+        identity.RequestId.ShouldBe(ProviderRequest);
         identity.ResponseId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void CreateResponseIdentity_WhenNoProviderRequestIdSupplied_LeavesIdentityRequestIdNull()
+    {
+        var identity = CreateContext(Deployment, providerRequestId: null).CreateResponseIdentity("resolved-embedding-model");
+
+        identity.RequestId.ShouldBeNull();
     }
 
     [Theory]

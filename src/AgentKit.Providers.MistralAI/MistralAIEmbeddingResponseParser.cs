@@ -11,6 +11,27 @@ using AgentKit.Providers.MistralAI.Wire;
 /// The default <see cref="IMistralAIEmbeddingResponseParser"/>, parsing a
 /// buffered Mistral AI embeddings response body.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Mistral's embeddings contract returns exactly one <c>data</c> item per
+/// request input, each carrying the zero-based <c>index</c> of the input it
+/// answers. This parser reconciles the body against the request before it
+/// reports success: the number of items must equal the number of inputs,
+/// every <c>index</c> must lie within <c>[0, inputs.Length)</c>, and no
+/// index may repeat. Any violation, including a batch that omits one or
+/// more inputs, yields an <see cref="EmbeddingAttemptFailed"/> with
+/// <see cref="ProviderFailureKind.ProtocolViolation"/> rather than a
+/// partial <see cref="EmbeddingAttemptCompleted"/>, because the wire
+/// contract has no notion of a per-item failure and a missing item cannot
+/// be attributed to the provider having rejected that input. Items are
+/// emitted in input order regardless of the order in which they arrived.
+/// </para>
+/// <para>
+/// The provider request identifier captured in the parse context, when
+/// present, is retained on the response identity, on the
+/// <see cref="EmbeddingResponse"/>, and on every protocol failure.
+/// </para>
+/// </remarks>
 public sealed class MistralAIEmbeddingResponseParser: IMistralAIEmbeddingResponseParser
 {
     private static readonly JsonSerializerOptions _serializerOptions = new()
@@ -50,12 +71,38 @@ public sealed class MistralAIEmbeddingResponseParser: IMistralAIEmbeddingRespons
                 context, "The provider returned an embeddings response with no data items.", diagnosticCause: null));
         }
 
+        if (data.Count != requestInputs.Length)
+        {
+            return new EmbeddingAttemptFailed(BuildFailure(
+                context,
+                $"The provider returned {data.Count} embedding item(s) for a request with {requestInputs.Length} " +
+                "input(s); every input must receive exactly one item.",
+                diagnosticCause: null));
+        }
+
         var identity = context.CreateResponseIdentity(dto.Model);
         var elementType = ElementTypeOf(context.RequestedEncoding);
-        var items = ImmutableArray.CreateBuilder<EmbeddingItemOutcome>(data.Count);
+        var items = new EmbeddingItemOutcome?[requestInputs.Length];
 
         foreach (var entry in data)
         {
+            if (entry.Index < 0 || entry.Index >= requestInputs.Length)
+            {
+                return new EmbeddingAttemptFailed(BuildFailure(
+                    context,
+                    $"The provider returned an embedding item with index {entry.Index}, which is outside the " +
+                    $"request's input range [0, {requestInputs.Length}).",
+                    diagnosticCause: null));
+            }
+
+            if (items[entry.Index] is not null)
+            {
+                return new EmbeddingAttemptFailed(BuildFailure(
+                    context,
+                    $"The provider returned more than one embedding item with index {entry.Index}.",
+                    diagnosticCause: null));
+            }
+
             EmbeddingVector vector;
             try
             {
@@ -67,13 +114,10 @@ public sealed class MistralAIEmbeddingResponseParser: IMistralAIEmbeddingRespons
                     context, "The provider returned an embedding vector that could not be decoded.", exception));
             }
 
-            var correlationId = entry.Index >= 0 && entry.Index < requestInputs.Length
-                ? (requestInputs[entry.Index] as TextEmbeddingInput)?.CorrelationId
-                : null;
-
+            var correlationId = (requestInputs[entry.Index] as TextEmbeddingInput)?.CorrelationId;
             var space = new EmbeddingSpaceIdentity(identity, DimensionsOf(vector), elementType, EmbeddingPurpose.Unspecified, ExtensionData.Empty);
 
-            items.Add(new EmbeddingItemSucceeded(entry.Index, correlationId, vector, space, ExtensionData.Empty));
+            items[entry.Index] = new EmbeddingItemSucceeded(entry.Index, correlationId, vector, space, ExtensionData.Empty);
         }
 
         ModelUsage usage;
@@ -88,9 +132,29 @@ public sealed class MistralAIEmbeddingResponseParser: IMistralAIEmbeddingRespons
                 "The provider returned invalid usage evidence.",
                 exception));
         }
-        var response = new EmbeddingResponse(items.ToImmutable(), usage, providerRequestId: null, ExtensionData.Empty);
+        var response = new EmbeddingResponse(ToInputOrder(items), usage, context.ProviderRequestId, ExtensionData.Empty);
 
         return new EmbeddingAttemptCompleted(response);
+    }
+
+    /// <summary>
+    /// Materializes the per-input slots, which the count, range, and
+    /// uniqueness checks in <see cref="ParseAsync"/> have already filled
+    /// completely, as an immutable array in input order.
+    /// </summary>
+    /// <param name="slots">One slot per request input, each holding exactly one outcome.</param>
+    /// <returns>The outcomes in input order.</returns>
+    private static ImmutableArray<EmbeddingItemOutcome> ToInputOrder(EmbeddingItemOutcome?[] slots)
+    {
+        Debug.Assert(Array.TrueForAll(slots, static slot => slot is not null), "Every input slot must hold exactly one outcome.");
+
+        var outcomes = ImmutableArray.CreateBuilder<EmbeddingItemOutcome>(slots.Length);
+        foreach (var slot in slots)
+        {
+            outcomes.Add(slot ?? throw new UnreachableException("An input slot was left unfilled after reconciliation."));
+        }
+
+        return outcomes.MoveToImmutable();
     }
 
     private static EmbeddingVector DecodeVector(JsonElement embedding, EmbeddingEncoding? requestedEncoding) =>
@@ -158,7 +222,7 @@ public sealed class MistralAIEmbeddingResponseParser: IMistralAIEmbeddingRespons
         new(
             ProviderFailureKind.ProtocolViolation,
             context.ProviderId,
-            requestId: null,
+            context.ProviderRequestId,
             statusCode: null,
             providerCode: null,
             retryAfter: null,

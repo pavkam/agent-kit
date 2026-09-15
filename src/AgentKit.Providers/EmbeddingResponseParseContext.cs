@@ -87,11 +87,15 @@ public record EmbeddingResponseParseContext
     /// </param>
     /// <returns>
     /// An identity with no upstream provider, this context's provider, API
-    /// family, requested model, and deployment, and the resolved model as
-    /// described. Embedding responses carry no response identifier, and the
-    /// provider request identifier is reported on
-    /// <see cref="EmbeddingResponse.ProviderRequestId"/> rather than on the
-    /// identity, so both identity members are <see langword="null"/>.
+    /// family, requested model, deployment, and provider request identifier,
+    /// and the resolved model as described. Embedding responses carry no
+    /// response identifier, so <see cref="ProviderResponseIdentity.ResponseId"/>
+    /// is <see langword="null"/>. The provider request identifier is the same
+    /// value a parser reports on <see cref="EmbeddingResponse.ProviderRequestId"/>
+    /// and on any <see cref="ProviderFailure"/> it builds, so the identity
+    /// stamped onto each <see cref="EmbeddingSpaceIdentity"/> retains the
+    /// correlation evidence by the same rule as
+    /// <see cref="ProviderResponseParseContext.CreateResponseIdentity"/>.
     /// </returns>
     public ProviderResponseIdentity CreateResponseIdentity(string? resolvedModel = null) =>
         new(
@@ -101,6 +105,6 @@ public record EmbeddingResponseParseContext
             RequestedModelId,
             resolvedModel is { Length: > 0 } model ? new ModelId(model) : RequestedModelId,
             DeploymentId,
-            requestId: null,
+            ProviderRequestId,
             responseId: null);
 }
