@@ -140,8 +140,29 @@ internal static class AwsSigV4Signer
         return result;
     }
 
+    /// <summary>
+    /// Builds the canonical URI for a non-S3 service: every path segment of the
+    /// already percent-encoded wire path is URI-encoded once more, so a wire
+    /// segment such as <c>anthropic.claude-3-sonnet-20240229-v1%3A0</c> becomes
+    /// <c>anthropic.claude-3-sonnet-20240229-v1%253A0</c> in the canonical
+    /// request.
+    /// </summary>
+    /// <remarks>
+    /// AWS SigV4 verifies non-S3 requests against a double-encoded path: the
+    /// request path is assumed to be encoded once for transmission and the
+    /// canonical form encodes it again (the AWS SDKs' default
+    /// <c>doubleEncode</c>/<c>use_double_uri_encode</c> behavior; only Amazon
+    /// S3 canonicalizes the wire path as-is). Decoding the segment first and
+    /// encoding it once produces a signature that services such as Bedrock
+    /// Runtime reject for any model ID containing a colon. Dot-segment
+    /// normalization is already applied by <see cref="Uri.AbsolutePath"/>.
+    /// </remarks>
+    /// <param name="uri">The absolute request URI whose wire path is canonicalized.</param>
+    /// <returns>The canonical URI, or <c>/</c> when the path is empty.</returns>
     private static string BuildCanonicalUri(Uri uri)
     {
+        Debug.Assert(uri.IsAbsoluteUri, "The caller validates the URI is absolute before canonicalization.");
+
         var absolutePath = uri.AbsolutePath;
         if (absolutePath.Length == 0)
         {
@@ -151,7 +172,7 @@ internal static class AwsSigV4Signer
         var segments = absolutePath.Split('/');
         for (var i = 0; i < segments.Length; i++)
         {
-            segments[i] = UriEncode(Uri.UnescapeDataString(segments[i]), encodeSlash: true);
+            segments[i] = UriEncode(segments[i], encodeSlash: true);
         }
 
         return string.Join('/', segments);

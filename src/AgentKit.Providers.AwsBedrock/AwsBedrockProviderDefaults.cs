@@ -123,10 +123,11 @@ public static class AwsBedrockProviderDefaults
     /// versioned model IDs such as <c>anthropic.claude-3-sonnet-20240229-v1:0</c>
     /// and ARNs both use as a literal separator. A forward slash, which an
     /// ARN-shaped model ID may also contain, is left unescaped to match the
-    /// wire format shown in AWS's own Converse documentation and to remain
-    /// self-consistent with <see cref="AwsSigV4Signer"/>'s canonical-URI
-    /// construction, which independently re-derives the same escaped form
-    /// from the request URI it signs.
+    /// wire format shown in AWS's own Converse documentation.
+    /// <see cref="AwsSigV4Signer"/> canonicalizes whatever wire path this
+    /// method produces by encoding each already-escaped segment a second
+    /// time, as SigV4 requires for non-S3 services, so the escaped form
+    /// chosen here and the signed form stay consistent by construction.
     /// </remarks>
     private static string EscapeModelId(string modelId) => modelId.Replace(":", "%3A", StringComparison.Ordinal);
 }
