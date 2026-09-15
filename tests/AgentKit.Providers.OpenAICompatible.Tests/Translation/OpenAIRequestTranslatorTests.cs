@@ -333,6 +333,31 @@ public sealed class OpenAIRequestTranslatorTests
     }
 
     [Fact]
+    public void Translate_WhenNoExtensionsSupplied_PinsCandidateCountToOne()
+    {
+        var body = Translate([TestMessages.User("hi")]);
+        body["n"]!.GetValue<int>().ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Translate_WhenExtensionsRequestMultipleCandidates_KeepsCandidateCountPinnedToOne(bool viaProviderOptions)
+    {
+        // Arrange: `n` is translator-owned like `model`; a passthrough extension cannot request extra candidates
+        // the single-candidate response contract would silently drop.
+        var extensions = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("n", new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(3)])));
+        var settings = viaProviderOptions ? null : LlmRequestSettings.Default with { Extensions = extensions };
+        var options = viaProviderOptions ? new ProviderRequestOptions(extensions) : null;
+
+        // Act
+        var body = Translate([TestMessages.User("hi")], settings: settings, options: options);
+
+        // Assert
+        body["n"]!.GetValue<int>().ShouldBe(1);
+    }
+
+    [Fact]
     public void Translate_WhenParallelToolCallsSettingIsFalse_SerializesFalse()
     {
         var settings = LlmRequestSettings.Default with

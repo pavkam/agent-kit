@@ -17,7 +17,10 @@ internal sealed class OpenAIChatCompletionResponse
     [JsonPropertyName("model")]
     public string? Model { get; set; }
 
-    /// <summary>Gets or sets the ordered response choices. Only the first is used.</summary>
+    /// <summary>
+    /// Gets or sets the ordered response choices. Requests pin <c>n</c> to 1,
+    /// so the parser requires exactly one choice and fails closed on more.
+    /// </summary>
     [JsonPropertyName("choices")]
     public required IReadOnlyList<OpenAIChatCompletionChoice> Choices { get; set; }
 

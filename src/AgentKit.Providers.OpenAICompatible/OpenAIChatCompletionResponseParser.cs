@@ -105,6 +105,19 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                 cancellationToken).ConfigureAwait(false);
         }
 
+        if (dto.Choices.Count > 1)
+        {
+            // The request pins `n` to 1 and the response contract carries exactly one candidate. Silently keeping
+            // the first choice would discard model output the caller never sees, so extra choices fail closed.
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                "The provider returned more than one choice for a single-candidate request.",
+                diagnosticCause: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         var choice = dto.Choices[0];
         var parts = ImmutableArray.CreateBuilder<ContentPart>();
 
@@ -310,12 +323,27 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                     .ConfigureAwait(false);
             }
 
-            if (chunk.Choices is not { Count: > 0 })
+            if (chunk.Choices is not { Count: > 0 } choices)
             {
                 continue;
             }
 
-            var choice = chunk.Choices[0];
+            if (choices.Count > 1 || choices[0].Index != 0)
+            {
+                // A streamed chunk for choice index 1+ belongs to a second candidate; merging its deltas into
+                // choice 0 would corrupt the only candidate this operation represents.
+                return await FailAsync(
+                    observer,
+                    context,
+                    sequence,
+                    "The provider streamed a choice other than the single requested candidate.",
+                    diagnosticCause: null,
+                    cancellationToken,
+                    BuildOpenPartialParts(reasoningPartOpen, reasoningBuilder, textPartOpen, textBuilder, toolCallSlots),
+                    reportedUsage).ConfigureAwait(false);
+            }
+
+            var choice = choices[0];
             if (choice.FinishReason is not null)
             {
                 finishReason = choice.FinishReason;

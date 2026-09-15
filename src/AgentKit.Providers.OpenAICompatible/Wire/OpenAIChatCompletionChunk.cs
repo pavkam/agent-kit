@@ -19,8 +19,10 @@ internal sealed class OpenAIChatCompletionChunk
 
     /// <summary>
     /// Gets or sets the ordered response choice fragments carried by this
-    /// chunk. Only the first is used. This is empty on the final usage-only
-    /// chunk some deployments send when usage reporting is requested.
+    /// chunk. Requests pin <c>n</c> to 1, so the parser accepts only a single
+    /// fragment for choice index 0 and fails closed on any other candidate.
+    /// This is empty on the final usage-only chunk some deployments send when
+    /// usage reporting is requested.
     /// </summary>
     [JsonPropertyName("choices")]
     public IReadOnlyList<OpenAIChatCompletionChunkChoice>? Choices { get; set; }

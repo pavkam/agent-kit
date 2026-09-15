@@ -145,6 +145,26 @@ public sealed class OpenAIChatCompletionResponseParserTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenResponseHasMultipleChoices_FailsWithProtocolViolationInsteadOfDroppingCandidates()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        const string json = /*lang=json,strict*/ """
+            {"id":"chatcmpl-n2","model":"gpt-4o","choices":[{"index":0,"message":{"role":"assistant","content":"first"},"finish_reason":"stop"},{"index":1,"message":{"role":"assistant","content":"second"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":4,"total_tokens":9}}
+            """;
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(json));
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned more than one choice for a single-candidate request.");
+        failed.PartialParts.ShouldBeEmpty();
+        observer.Events.OfType<ModelPartStarted>().ShouldBeEmpty();
+        observer.Events.OfType<ModelResponseCompleted>().ShouldBeEmpty();
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
     public async Task ParseBufferedAsync_WhenBodyIsNotJson_FailsWithProtocolViolation()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
@@ -485,6 +505,55 @@ public sealed class OpenAIChatCompletionResponseParserTests
         toolCall.Tool.Name.ShouldBe("get_weather");
         toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_a"));
         toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenChunkCarriesSecondChoiceIndex_FailsWithProtocolViolationRetainingFirstCandidateText()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = """
+            data: {"id":"chatcmpl-n3","object":"chat.completion.chunk","created":1700000150,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"role":"assistant","content":"first"},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl-n3","object":"chat.completion.chunk","created":1700000150,"model":"gpt-4o-2024-08-06","choices":[{"index":1,"delta":{"role":"assistant","content":"second"},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl-n3","object":"chat.completion.chunk","created":1700000150,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+            data: [DONE]
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider streamed a choice other than the single requested candidate.");
+        // The second candidate's text is never merged into choice 0's part.
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("first");
+        observer.Events.OfType<ModelPartDelta>().Select(static e => e.Delta).OfType<TextContentDelta>().Select(static d => d.Text).ShouldBe(["first"]);
+        observer.Events.OfType<ModelResponseCompleted>().ShouldBeEmpty();
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenChunkCarriesMultipleChoices_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = """
+            data: {"id":"chatcmpl-n4","object":"chat.completion.chunk","created":1700000160,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"role":"assistant","content":"a"},"finish_reason":null},{"index":1,"delta":{"role":"assistant","content":"b"},"finish_reason":null}]}
+
+            data: [DONE]
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider streamed a choice other than the single requested candidate.");
+        failed.PartialParts.ShouldBeEmpty();
+        observer.Events.OfType<ModelPartStarted>().ShouldBeEmpty();
     }
 
     [Fact]

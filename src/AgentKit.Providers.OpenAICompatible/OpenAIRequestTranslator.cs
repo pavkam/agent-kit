@@ -25,6 +25,10 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
         {
             ["model"] = context.Model.ModelId.Value,
             ["messages"] = TranslateMessages(context.Messages, profile, providerCallIds),
+            // This adapter is a single-candidate operation: the parser reads exactly one choice and rejects extra
+            // ones. Pinning `n` here makes it a translator-owned field, so an extension value cannot request more
+            // candidates than the response contract can represent.
+            ["n"] = 1,
         };
 
         if (useStreaming)

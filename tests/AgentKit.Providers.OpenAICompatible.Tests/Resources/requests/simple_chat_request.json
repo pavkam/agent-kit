@@ -4,6 +4,7 @@
     { "role": "system", "content": "You are a helpful assistant." },
     { "role": "user", "content": "Hello!" }
   ],
+  "n": 1,
   "stream": false,
   "temperature": 0.2,
   "max_completion_tokens": 100
