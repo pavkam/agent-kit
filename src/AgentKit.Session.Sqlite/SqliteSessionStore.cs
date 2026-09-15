@@ -463,7 +463,7 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
                         : new SessionBranchFailed("The idempotency key was previously used with different request evidence."));
             }
 
-            if (request.AtSequence.Value > record.NextSequence)
+            if (!IsCommittedForkPoint(parentBranch, request.AtSequence))
             {
                 return ValueTask.FromResult<SessionBranchResult>(
                     new SessionBranchParentNotFound(request.ParentBranchId, request.AtSequence));
@@ -920,6 +920,21 @@ public sealed partial class SqliteSessionStore: ISessionStore, IDisposable
         Debug.Assert(receipt is not null, "A retained admission receipt is required.");
         return new AdmissionReceipt(receipt.AdmissionId, receipt.InputId, receipt.AgentId, receipt.SessionId,
             receipt.ExecutionLaneId, receipt.AdmittedSequence, existing: true);
+    }
+
+    /// <summary>Determines whether a fork point names the empty prefix or an entry actually committed on the parent branch.</summary>
+    /// <param name="parent">The loaded parent branch.</param>
+    /// <param name="atSequence">The requested fork sequence.</param>
+    /// <returns><see langword="true"/> when <paramref name="atSequence"/> is zero or equals a committed parent-branch sequence.</returns>
+    /// <remarks>
+    /// Sequences are allocated across the whole session, so a sequence below the session tip may belong to a sibling
+    /// branch. Forking at such a sequence would not identify a committed parent on the named branch.
+    /// </remarks>
+    private static bool IsCommittedForkPoint(BranchRecord parent, SessionSequence atSequence)
+    {
+        Debug.Assert(parent is not null, "A loaded parent branch is required.");
+        return atSequence.Value == 0
+            || parent.Entries.Any(entry => entry.Sequence.Value == atSequence.Value);
     }
 
     private static SessionBranchCursor BranchCursor(BranchId branchId, BranchRecord branch)

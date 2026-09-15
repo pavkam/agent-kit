@@ -765,6 +765,13 @@ creates branch state rather than rewriting history. Tool effects remain causal
 to their original calls; moving the conversation pointer backward does not undo
 the outside world.
 
+A fork point is validated against the named parent branch, not the session-wide
+sequence allocator. `SessionBranchRequest.AtSequence` is zero for an empty fork
+or the sequence of an entry committed on the parent branch; a sequence that
+belongs to a sibling branch or lies beyond the parent tip returns
+`SessionBranchParentNotFound` without allocating a branch or advancing the
+session version.
+
 [Compaction](../concepts/context-compaction.md) appends a versioned summary and
 structured checkpoint over a complete semantic range while preserving the
 covered entries. The active request view uses the applicable summary plus the

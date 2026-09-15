@@ -710,13 +710,18 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
     [Fact]
     public async Task CreateBranchAsync_LeavesOriginalBranchUnchanged()
     {
+        // Four seeded appends leave version 4 and sequence 4; branching advances the version to 5.
         var (store, descriptor, context) = await SeedAsync(4);
         var branched = (SessionBranched) await store.CreateBranchAsync(new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(2), new IdempotencyKey("b1")), TestContext.Current.CancellationToken);
-        // Append to the new branch only.
-        var newEntry = TestFactory.MessageEntry(descriptor.Address, branched.NewBranchId, 3, "new-branch-only");
-        _ = await store.AppendAsync(new SessionAppendRequest(context, branched.NewBranchId, new SessionVersion(2), new IdempotencyKey("nb1"), [newEntry]), TestContext.Current.CancellationToken);
+        var newEntry = TestFactory.MessageEntry(descriptor.Address, branched.NewBranchId, 5, "new-branch-only");
+
+        var appended = await store.AppendAsync(new SessionAppendRequest(context, branched.NewBranchId, new SessionVersion(5), new IdempotencyKey("nb1"), [newEntry]), TestContext.Current.CancellationToken);
         var originalPage = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10), TestContext.Current.CancellationToken);
-        originalPage.Entries.Length.ShouldBe(4);
+        var branchPage = (SessionPage) await store.ReadAsync(new SessionReadRequest(context, branched.NewBranchId, new SessionSequence(0), 10), TestContext.Current.CancellationToken);
+
+        appended.ShouldBeOfType<SessionAppended>().NewVersion.ShouldBe(new SessionVersion(6));
+        originalPage.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2, 3, 4]);
+        branchPage.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2, 5]);
     }
 
     [Fact]

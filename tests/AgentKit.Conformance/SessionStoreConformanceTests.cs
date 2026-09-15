@@ -95,6 +95,46 @@ public abstract class SessionStoreConformanceTests<TFixture>
         page.Entries.ShouldBe([firstEntry]);
     }
 
+    /// <summary>Verifies a fork point must be a committed sequence of the named parent branch, not merely any allocated session sequence.</summary>
+    [Fact]
+    public async Task CreateBranchAsync_WhenSequenceBelongsToAnotherBranch_ReturnsParentNotFound()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(120));
+        var mainAppend = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("main-1"),
+            [MessageEntry(descriptor, 121, 1, "main")]);
+        var mainAppended = (SessionAppended) await store.AppendAsync(
+            await AuthorizeAsync(fixture, mainAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var emptyFork = new SessionBranchRequest(
+            context, descriptor.ActiveBranchId, new SessionSequence(0), new IdempotencyKey("fork-empty"));
+        var forked = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, emptyFork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var sideAppend = new SessionAppendRequest(
+            context, forked.NewBranchId, new SessionVersion(mainAppended.NewVersion.Value + 1),
+            new IdempotencyKey("side-2"), [MessageEntry(descriptor, 123, 2, "side", forked.NewBranchId)]);
+        var sideAppended = await store.AppendAsync(
+            await AuthorizeAsync(fixture, sideAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var foreignFork = new SessionBranchRequest(
+            context, descriptor.ActiveBranchId, new SessionSequence(2), new IdempotencyKey("fork-foreign"));
+
+        var result = await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, foreignFork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var loaded = (SessionLoaded) await store.LoadAsync(
+            await AuthorizeAsync(fixture, context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        _ = sideAppended.ShouldBeOfType<SessionAppended>();
+        result.ShouldBe(new SessionBranchParentNotFound(descriptor.ActiveBranchId, new SessionSequence(2)));
+        loaded.Descriptor.Version.ShouldBe(new SessionVersion(mainAppended.NewVersion.Value + 2));
+    }
+
     /// <summary>Verifies a caller cannot combine an issued old version with a later branch tip and present it as captured evidence.</summary>
     [Fact]
     public async Task ReadAsync_WhenSnapshotVersionAndUpperSequencePairWasNeverIssued_ReturnsTypedFailure()
@@ -403,17 +443,18 @@ public abstract class SessionStoreConformanceTests<TFixture>
     }
 
     private static MessageSessionEntry MessageEntry(
-        SessionDescriptor descriptor, int offset, long sequence, string text)
+        SessionDescriptor descriptor, int offset, long sequence, string text, BranchId? branchId = null)
     {
         var correlation = Correlation(offset);
+        var branch = branchId ?? descriptor.ActiveBranchId;
         var message = new UserMessage(
             Identifier<MessageId>(offset + 1), descriptor.Address.AgentId,
-            descriptor.Address.SessionId, descriptor.ConversationId, descriptor.ActiveBranchId,
+            descriptor.Address.SessionId, descriptor.ConversationId, branch,
             correlation.RunId, null, Timestamp(offset), MessageState.Complete,
             [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         return new MessageSessionEntry(
             Identifier<SessionEntryId>(offset + 2), descriptor.Address, correlation,
-            descriptor.ActiveBranchId, new SessionSequence(sequence), null, Timestamp(offset),
+            branch, new SessionSequence(sequence), null, Timestamp(offset),
             new SchemaVersion("1"), message);
     }
 

@@ -22,7 +22,10 @@ public sealed record SessionBranchRequest
     /// <param name="atSequence">
     /// The exact sequence in <paramref name="parentBranchId"/> the new
     /// branch forks from; entries after this sequence are not visible on
-    /// the new branch.
+    /// the new branch. Zero forks an empty branch. Any other value must be
+    /// the sequence of an entry committed on the parent branch itself;
+    /// session sequences allocated to sibling branches or beyond the parent
+    /// tip are rejected with <see cref="SessionBranchParentNotFound"/>.
     /// </param>
     /// <param name="idempotencyKey">
     /// The key that makes repeating this exact request safe: a retry with
@@ -53,6 +56,7 @@ public sealed record SessionBranchRequest
     /// Gets the exact sequence in <see cref="ParentBranchId"/> the new
     /// branch forks from.
     /// </summary>
+    /// <value>Zero for an empty fork; otherwise a sequence committed on the parent branch.</value>
     public SessionSequence AtSequence { get; }
 
     /// <summary>
