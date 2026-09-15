@@ -146,6 +146,32 @@ public sealed class MistralAIResponseParserTests
     }
 
     [Fact]
+    public async Task ParseStreamingAsync_WhenToolCallChunksNeverCarryFunctionName_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"id": "cmpl-noname", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [{"index": 0, "id": "call_noname", "type": "function", "function": {"arguments": "{\"location\":"}}]}, "finish_reason": null}]}
+
+            data: {"id": "cmpl-noname", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "\"Paris\"}"}}]}, "finish_reason": "tool_calls"}]}
+
+            data: [DONE]
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.OfType<ToolCallPart>().ShouldBeEmpty();
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
     public async Task ParseStreamingAsync_WhenChunkIsMalformedJson_FailsWithProtocolViolation()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());

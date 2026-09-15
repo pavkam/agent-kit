@@ -170,6 +170,61 @@ public sealed class CohereResponseParserTests
         string.Concat(argumentFragments).ShouldBe( /*lang=json,strict*/"""{"location":"Paris"}""");
     }
 
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolCallEventsNeverCarryFunctionName_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-noname", "delta": {"message": {"role": "assistant"}}}
+
+            data: {"type": "tool-call-start", "index": 0, "delta": {"message": {"tool_calls": {"id": "call_noname", "type": "function", "function": {"arguments": ""}}}}}
+
+            data: {"type": "tool-call-delta", "index": 0, "delta": {"message": {"tool_calls": {"function": {"arguments": "{\"location\":\"Paris\"}"}}}}}
+
+            data: {"type": "tool-call-end", "index": 0}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "TOOL_CALL", "usage": {"tokens": {"input_tokens": 8, "output_tokens": 5}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.OfType<ToolCallPart>().ShouldBeEmpty();
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenNamelessToolCallIsStillOpenAtMessageEnd_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-noname-open", "delta": {"message": {"role": "assistant"}}}
+
+            data: {"type": "tool-call-start", "index": 0, "delta": {"message": {"tool_calls": {"id": "call_noname", "type": "function", "function": {"arguments": "{}"}}}}}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "TOOL_CALL", "usage": {"tokens": {"input_tokens": 8, "output_tokens": 5}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.OfType<ToolCallPart>().ShouldBeEmpty();
+    }
+
     [Theory]
     [MemberData(nameof(ChunkSizes))]
     public async Task ParseStreamingAsync_WhenParallelToolCallsStream_CorrelatesFragmentsByWireIndex(int chunkSize)

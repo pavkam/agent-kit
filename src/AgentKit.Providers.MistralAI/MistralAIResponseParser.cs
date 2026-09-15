@@ -278,6 +278,20 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
         {
             if (!slot.Closed)
             {
+                if (!HasMaterializableToolName(slot))
+                {
+                    return await FailAsync(
+                        observer,
+                        context,
+                        sequence,
+                        ProviderFailureKind.ProtocolViolation,
+                        "The provider streamed a tool call without a function name.",
+                        diagnosticCause: null,
+                        cancellationToken,
+                        BuildPartialParts(state),
+                        TryBuildRetainedUsage(usage, usageIsFinal)).ConfigureAwait(false);
+                }
+
                 try
                 {
                     slot.FinalPart = MaterializeSlot(slot);
@@ -508,6 +522,18 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
             _ => null,
         };
 
+    /// <summary>
+    /// Determines whether a slot can be materialized as far as its tool name is concerned: text and unknown slots
+    /// always can, and a tool-call slot can only once at least one chunk carried a nonblank function name.
+    /// </summary>
+    /// <param name="slot">The slot to inspect.</param>
+    /// <returns><see langword="false"/> only for a tool-call slot whose name never arrived.</returns>
+    private static bool HasMaterializableToolName(Slot slot)
+    {
+        Debug.Assert(slot is not null, "Callers inspect an existing slot.");
+        return slot.Kind != SlotKind.ToolCall || !string.IsNullOrWhiteSpace(slot.ToolCallName);
+    }
+
     /// <summary>Builds the content part an open slot currently represents.</summary>
     /// <param name="slot">A slot that has not been closed; unknown-kind slots close at creation and never reach this method open.</param>
     /// <returns>The part built from the accumulated state.</returns>
@@ -516,13 +542,14 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
     {
         Debug.Assert(slot is not null, "Callers materialize an existing slot.");
         Debug.Assert(!slot.Closed, "Closed slots already carry their final part.");
+        Debug.Assert(HasMaterializableToolName(slot), "Callers reject or omit a tool-call slot whose name never arrived.");
 
         return slot.Kind switch
         {
             SlotKind.Text => new TextPart(slot.Text.ToString(), TextSemantics.Plain, ExtensionData.Empty),
             SlotKind.ToolCall => new ToolCallPart(
                 slot.AssignedCallId,
-                new ToolReference(new ToolId(slot.ToolCallName ?? string.Empty), null, slot.ToolCallName ?? string.Empty),
+                new ToolReference(new ToolId(slot.ToolCallName!), null, slot.ToolCallName!),
                 ParseArguments(slot.ToolCallArguments.ToString()),
                 slot.ToolCallId is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
                 ExtensionData.Empty),
@@ -537,8 +564,9 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
     /// </summary>
     /// <param name="state">The streaming state owning the slots.</param>
     /// <returns>
-    /// The parts in part order. An open tool-call slot whose accumulated arguments are not yet complete JSON
-    /// cannot be represented truthfully as a <see cref="ToolCallPart"/> and is omitted.
+    /// The parts in part order. An open tool-call slot whose accumulated arguments are not yet complete JSON, or
+    /// whose function name never arrived, cannot be represented truthfully as a <see cref="ToolCallPart"/> and is
+    /// omitted.
     /// </returns>
     private static ImmutableArray<ContentPart> BuildPartialParts(StreamState state)
     {
@@ -550,6 +578,12 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
             if (slot.Closed)
             {
                 partial.Add(slot.FinalPart!);
+                continue;
+            }
+
+            if (!HasMaterializableToolName(slot))
+            {
+                // A tool call that never received its name has no truthful identity; it is omitted rather than fabricated.
                 continue;
             }
 

@@ -258,6 +258,19 @@ public sealed class CohereResponseParser: ICohereResponseParser
                     break;
 
                 case "tool-call-end":
+                    if (TryGetOpenNamelessToolCall(state, streamEvent.Index ?? 0))
+                    {
+                        return await FailAsync(
+                            observer,
+                            context,
+                            sequence,
+                            ProviderFailureKind.ProtocolViolation,
+                            "The provider streamed a tool call without a function name.",
+                            diagnosticCause: null,
+                            cancellationToken,
+                            BuildPartialParts(state)).ConfigureAwait(false);
+                    }
+
                     try
                     {
                         sequence = await HandleToolCallEndAsync(observer, requestId, sequence, streamEvent, state, cancellationToken)
@@ -315,6 +328,19 @@ public sealed class CohereResponseParser: ICohereResponseParser
         {
             if (!slot.Closed)
             {
+                if (!HasMaterializableToolName(slot))
+                {
+                    return await FailAsync(
+                        observer,
+                        context,
+                        sequence,
+                        ProviderFailureKind.ProtocolViolation,
+                        "The provider streamed a tool call without a function name.",
+                        diagnosticCause: null,
+                        cancellationToken,
+                        BuildPartialParts(state)).ConfigureAwait(false);
+                }
+
                 try
                 {
                     sequence = await FinalizeSlotAsync(observer, requestId, sequence, slot, cancellationToken).ConfigureAwait(false);
@@ -599,14 +625,43 @@ public sealed class CohereResponseParser: ICohereResponseParser
         return sequence;
     }
 
+    /// <summary>
+    /// Determines whether the open tool-call slot at <paramref name="wireIndex"/>, if any, still lacks a function
+    /// name when the provider signals its end.
+    /// </summary>
+    /// <param name="state">The streaming state owning the slots.</param>
+    /// <param name="wireIndex">The provider's tool-call index.</param>
+    /// <returns><see langword="true"/> when an open tool-call slot exists at that index and its name never arrived.</returns>
+    private static bool TryGetOpenNamelessToolCall(StreamState state, int wireIndex)
+    {
+        Debug.Assert(state is not null, "The streaming state machine always owns its state.");
+        return state.ToolCallSlotsByWireIndex.TryGetValue(wireIndex, out var slot)
+            && !slot.Closed
+            && !HasMaterializableToolName(slot);
+    }
+
+    /// <summary>
+    /// Determines whether a slot can be materialized as far as its tool name is concerned: text, reasoning, and
+    /// unknown slots always can, and a tool-call slot can only once at least one event carried a nonblank
+    /// function name.
+    /// </summary>
+    /// <param name="slot">The slot to inspect.</param>
+    /// <returns><see langword="false"/> only for a tool-call slot whose name never arrived.</returns>
+    private static bool HasMaterializableToolName(Slot slot)
+    {
+        Debug.Assert(slot is not null, "Callers inspect an existing slot.");
+        return slot.Kind != SlotKind.ToolCall || !string.IsNullOrWhiteSpace(slot.ToolCallName);
+    }
+
     /// <summary>Builds the content part an open slot currently represents.</summary>
-    /// <param name="slot">A slot that has not been closed.</param>
+    /// <param name="slot">A slot that has not been closed and, for a tool call, already carries its function name.</param>
     /// <returns>The part built from the accumulated state.</returns>
     /// <exception cref="JsonException">A tool-call slot's accumulated arguments are not valid JSON.</exception>
     private static ContentPart MaterializeSlot(Slot slot)
     {
         Debug.Assert(slot is not null, "Callers materialize an existing slot.");
         Debug.Assert(!slot.Closed, "Closed slots already carry their final part.");
+        Debug.Assert(HasMaterializableToolName(slot), "Callers reject or omit a tool-call slot whose name never arrived.");
 
         return slot.Kind switch
         {
@@ -620,7 +675,7 @@ public sealed class CohereResponseParser: ICohereResponseParser
                 ExtensionData.Empty),
             SlotKind.ToolCall => new ToolCallPart(
                 slot.AssignedCallId,
-                new ToolReference(new ToolId(slot.ToolCallName ?? string.Empty), null, slot.ToolCallName ?? string.Empty),
+                new ToolReference(new ToolId(slot.ToolCallName!), null, slot.ToolCallName!),
                 ParseArguments(slot.ToolCallArguments.ToString()),
                 slot.ToolCallId is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
                 ExtensionData.Empty),
@@ -634,8 +689,9 @@ public sealed class CohereResponseParser: ICohereResponseParser
     /// </summary>
     /// <param name="state">The streaming state owning the slots.</param>
     /// <returns>
-    /// The parts in part order. An open tool-call slot whose accumulated arguments are not yet complete JSON
-    /// cannot be represented truthfully as a <see cref="ToolCallPart"/> and is omitted.
+    /// The parts in part order. An open tool-call slot whose accumulated arguments are not yet complete JSON, or
+    /// whose function name never arrived, cannot be represented truthfully as a <see cref="ToolCallPart"/> and is
+    /// omitted.
     /// </returns>
     private static ImmutableArray<ContentPart> BuildPartialParts(StreamState state)
     {
@@ -647,6 +703,12 @@ public sealed class CohereResponseParser: ICohereResponseParser
             if (slot.Closed)
             {
                 partial.Add(slot.FinalPart!);
+                continue;
+            }
+
+            if (!HasMaterializableToolName(slot))
+            {
+                // A tool call that never received its name has no truthful identity; it is omitted rather than fabricated.
                 continue;
             }
 
