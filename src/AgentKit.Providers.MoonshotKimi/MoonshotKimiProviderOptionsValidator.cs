@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.MoonshotKimi;
 
+using AgentKit.Providers.OpenAICompatible;
+
 using Microsoft.Extensions.Options;
 
 /// <summary>
@@ -17,12 +19,12 @@ public sealed class MoonshotKimiProviderOptionsValidator: IValidateOptions<Moons
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return options.BaseAddress is null || !options.BaseAddress.IsAbsoluteUri
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(MoonshotKimiProviderOptions.BaseAddress)} must be an absolute URI.")
-            : string.IsNullOrWhiteSpace(options.ChatCompletionsPath)
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(MoonshotKimiProviderOptions.ChatCompletionsPath)} must not be null, empty, or whitespace.")
-            : ValidateOptionsResult.Success;
+        var failures = OpenAICompatibleEndpointOptionsValidation.Validate(
+            options.BaseAddress,
+            options.ChatCompletionsPath,
+            nameof(MoonshotKimiProviderOptions.BaseAddress),
+            nameof(MoonshotKimiProviderOptions.ChatCompletionsPath));
+
+        return failures.IsEmpty ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }

@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.Ollama;
 
+using AgentKit.Providers.OpenAICompatible;
+
 using Microsoft.Extensions.Options;
 
 /// <summary>
@@ -17,15 +19,14 @@ public sealed class OllamaProviderOptionsValidator: IValidateOptions<OllamaProvi
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return options.BaseAddress is null || !options.BaseAddress.IsAbsoluteUri
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(OllamaProviderOptions.BaseAddress)} must be an absolute URI.")
-            : string.IsNullOrWhiteSpace(options.ChatCompletionsPath)
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(OllamaProviderOptions.ChatCompletionsPath)} must not be null, empty, or whitespace.")
-            : string.IsNullOrWhiteSpace(options.EmbeddingsPath)
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(OllamaProviderOptions.EmbeddingsPath)} must not be null, empty, or whitespace.")
-            : ValidateOptionsResult.Success;
+        var failures = OpenAICompatibleEndpointOptionsValidation.Validate(
+            options.BaseAddress,
+            options.ChatCompletionsPath,
+            options.EmbeddingsPath,
+            nameof(OllamaProviderOptions.BaseAddress),
+            nameof(OllamaProviderOptions.ChatCompletionsPath),
+            nameof(OllamaProviderOptions.EmbeddingsPath));
+
+        return failures.IsEmpty ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }

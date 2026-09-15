@@ -38,6 +38,29 @@ public sealed class ServiceExtensionsTests
             () => provider.GetRequiredService<IStartupValidator>().Validate());
     }
 
+    [Theory]
+    [InlineData("https://evil.example.test/chat")]
+    [InlineData("//evil.example.test/chat")]
+    [InlineData("/chat/completions")]
+    public void AddXAI_WhenChatPathCanReplaceConfiguredEndpoint_FailsStartupValidation(string path)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddXAI(options => options.ChatCompletionsPath = path);
+        using var provider = services.BuildServiceProvider();
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
+    [Theory]
+    [InlineData("https://evil.example.test/embeddings")]
+    [InlineData("/embeddings")]
+    public void AddXAI_WhenEmbeddingsPathCanReplaceConfiguredEndpoint_FailsStartupValidation(string path)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddXAI(options => options.EmbeddingsPath = path);
+        using var provider = services.BuildServiceProvider();
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
     [Fact]
     public void AddXAIApiKeyCredential_WhenRegistered_ResolvesApiKeyCredential()
     {

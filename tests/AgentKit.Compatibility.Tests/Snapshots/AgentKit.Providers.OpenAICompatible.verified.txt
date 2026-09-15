@@ -58,6 +58,11 @@ namespace AgentKit.Providers.OpenAICompatible
         protected virtual void AdjustRequestPayload(System.Text.Json.Nodes.JsonObject payload, AgentKit.EmbeddingModelRequest request) { }
         public System.Threading.Tasks.Task<AgentKit.EmbeddingAttemptResult> GenerateAsync(AgentKit.EmbeddingModelRequest request, System.Threading.CancellationToken cancellationToken = default) { }
     }
+    public static class OpenAICompatibleEndpointOptionsValidation
+    {
+        public static System.Collections.Immutable.ImmutableArray<string> Validate(System.Uri? baseAddress, string? chatCompletionsPath, string baseAddressName, string chatCompletionsPathName) { }
+        public static System.Collections.Immutable.ImmutableArray<string> Validate(System.Uri? baseAddress, string? chatCompletionsPath, string? embeddingsPath, string baseAddressName, string chatCompletionsPathName, string embeddingsPathName) { }
+    }
     public abstract class OpenAICompatibleLlmModelBase : AgentKit.ILlmModel
     {
         protected OpenAICompatibleLlmModelBase(AgentKit.ModelDescriptor descriptor, AgentKit.Providers.OpenAICompatible.OpenAICompatibilityProfile profile, AgentKit.Providers.OpenAICompatible.IOpenAIRequestTranslator translator, AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser streamParser, AgentKit.IProviderCredentialSource credentials, System.Net.Http.HttpClient httpClient, System.TimeProvider timeProvider) { }

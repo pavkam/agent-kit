@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.XAI;
 
+using AgentKit.Providers.OpenAICompatible;
+
 using Microsoft.Extensions.Options;
 
 /// <summary>
@@ -17,15 +19,14 @@ public sealed class XAIProviderOptionsValidator: IValidateOptions<XAIProviderOpt
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return options.BaseAddress is null || !options.BaseAddress.IsAbsoluteUri
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(XAIProviderOptions.BaseAddress)} must be an absolute URI.")
-            : string.IsNullOrWhiteSpace(options.ChatCompletionsPath)
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(XAIProviderOptions.ChatCompletionsPath)} must not be null, empty, or whitespace.")
-            : string.IsNullOrWhiteSpace(options.EmbeddingsPath)
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(XAIProviderOptions.EmbeddingsPath)} must not be null, empty, or whitespace.")
-            : ValidateOptionsResult.Success;
+        var failures = OpenAICompatibleEndpointOptionsValidation.Validate(
+            options.BaseAddress,
+            options.ChatCompletionsPath,
+            options.EmbeddingsPath,
+            nameof(XAIProviderOptions.BaseAddress),
+            nameof(XAIProviderOptions.ChatCompletionsPath),
+            nameof(XAIProviderOptions.EmbeddingsPath));
+
+        return failures.IsEmpty ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }

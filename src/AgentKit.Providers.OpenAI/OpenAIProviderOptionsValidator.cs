@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.OpenAI;
 
+using AgentKit.Providers.OpenAICompatible;
+
 using Microsoft.Extensions.Options;
 
 /// <summary>
@@ -17,19 +19,14 @@ public sealed class OpenAIProviderOptionsValidator: IValidateOptions<OpenAIProvi
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return options.BaseAddress is null || !options.BaseAddress.IsAbsoluteUri
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(OpenAIProviderOptions.BaseAddress)} must be an absolute URI.")
-            : string.IsNullOrWhiteSpace(options.ChatCompletionsPath) ||
-                !Uri.TryCreate(options.ChatCompletionsPath, UriKind.Relative, out _) ||
-                options.ChatCompletionsPath[0] is '/' or '\\'
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(OpenAIProviderOptions.ChatCompletionsPath)} must be a non-rooted relative URI path.")
-            : string.IsNullOrWhiteSpace(options.EmbeddingsPath) ||
-                !Uri.TryCreate(options.EmbeddingsPath, UriKind.Relative, out _) ||
-                options.EmbeddingsPath[0] is '/' or '\\'
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(OpenAIProviderOptions.EmbeddingsPath)} must be a non-rooted relative URI path.")
-            : ValidateOptionsResult.Success;
+        var failures = OpenAICompatibleEndpointOptionsValidation.Validate(
+            options.BaseAddress,
+            options.ChatCompletionsPath,
+            options.EmbeddingsPath,
+            nameof(OpenAIProviderOptions.BaseAddress),
+            nameof(OpenAIProviderOptions.ChatCompletionsPath),
+            nameof(OpenAIProviderOptions.EmbeddingsPath));
+
+        return failures.IsEmpty ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }

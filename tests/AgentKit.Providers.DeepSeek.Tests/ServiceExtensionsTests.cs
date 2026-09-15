@@ -33,6 +33,18 @@ public sealed class ServiceExtensionsTests
         _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
     }
 
+    [Theory]
+    [InlineData("https://evil.example.test/chat")]
+    [InlineData("//evil.example.test/chat")]
+    [InlineData("/chat/completions")]
+    public void AddDeepSeek_WhenChatPathCanReplaceConfiguredEndpoint_FailsStartupValidation(string path)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddDeepSeek(options => options.ChatCompletionsPath = path);
+        using var provider = services.BuildServiceProvider();
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
     [Fact]
     public void AddDeepSeekApiKeyCredential_WhenRegistered_ResolvesApiKeyCredential()
     {

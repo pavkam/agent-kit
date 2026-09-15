@@ -38,6 +38,29 @@ public sealed class ServiceExtensionsTests
             () => provider.GetRequiredService<IStartupValidator>().Validate());
     }
 
+    [Theory]
+    [InlineData("https://evil.example.test/chat")]
+    [InlineData("//evil.example.test/chat")]
+    [InlineData("/chat/completions")]
+    public void AddOllama_WhenChatPathCanReplaceConfiguredEndpoint_FailsStartupValidation(string path)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOllama(options => options.ChatCompletionsPath = path);
+        using var provider = services.BuildServiceProvider();
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
+    [Theory]
+    [InlineData("https://evil.example.test/embeddings")]
+    [InlineData("/embeddings")]
+    public void AddOllama_WhenEmbeddingsPathCanReplaceConfiguredEndpoint_FailsStartupValidation(string path)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOllama(options => options.EmbeddingsPath = path);
+        using var provider = services.BuildServiceProvider();
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
     [Fact]
     public void AddOllamaApiKeyCredential_WhenRegistered_ResolvesApiKeyCredential()
     {

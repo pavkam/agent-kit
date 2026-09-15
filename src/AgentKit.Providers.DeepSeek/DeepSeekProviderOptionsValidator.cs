@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.DeepSeek;
 
+using AgentKit.Providers.OpenAICompatible;
+
 using Microsoft.Extensions.Options;
 
 /// <summary>
@@ -17,12 +19,12 @@ public sealed class DeepSeekProviderOptionsValidator: IValidateOptions<DeepSeekP
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return options.BaseAddress is null || !options.BaseAddress.IsAbsoluteUri
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(DeepSeekProviderOptions.BaseAddress)} must be an absolute URI.")
-            : string.IsNullOrWhiteSpace(options.ChatCompletionsPath)
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(DeepSeekProviderOptions.ChatCompletionsPath)} must not be null, empty, or whitespace.")
-            : ValidateOptionsResult.Success;
+        var failures = OpenAICompatibleEndpointOptionsValidation.Validate(
+            options.BaseAddress,
+            options.ChatCompletionsPath,
+            nameof(DeepSeekProviderOptions.BaseAddress),
+            nameof(DeepSeekProviderOptions.ChatCompletionsPath));
+
+        return failures.IsEmpty ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }

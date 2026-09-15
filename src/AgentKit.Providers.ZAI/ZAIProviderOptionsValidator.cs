@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.ZAI;
 
+using AgentKit.Providers.OpenAICompatible;
+
 using Microsoft.Extensions.Options;
 
 /// <summary>
@@ -17,14 +19,12 @@ public sealed class ZAIProviderOptionsValidator: IValidateOptions<ZAIProviderOpt
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return options.BaseAddress is null || !options.BaseAddress.IsAbsoluteUri
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(ZAIProviderOptions.BaseAddress)} must be an absolute URI.")
-            : string.IsNullOrWhiteSpace(options.ChatCompletionsPath) ||
-                !Uri.TryCreate(options.ChatCompletionsPath, UriKind.Relative, out _) ||
-                options.ChatCompletionsPath[0] is '/' or '\\'
-            ? ValidateOptionsResult.Fail(
-                $"{nameof(ZAIProviderOptions.ChatCompletionsPath)} must be a non-rooted relative URI path.")
-            : ValidateOptionsResult.Success;
+        var failures = OpenAICompatibleEndpointOptionsValidation.Validate(
+            options.BaseAddress,
+            options.ChatCompletionsPath,
+            nameof(ZAIProviderOptions.BaseAddress),
+            nameof(ZAIProviderOptions.ChatCompletionsPath));
+
+        return failures.IsEmpty ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }

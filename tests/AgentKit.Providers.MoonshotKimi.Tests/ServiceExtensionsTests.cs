@@ -38,6 +38,18 @@ public sealed class ServiceExtensionsTests
             () => provider.GetRequiredService<IStartupValidator>().Validate());
     }
 
+    [Theory]
+    [InlineData("https://evil.example.test/chat")]
+    [InlineData("//evil.example.test/chat")]
+    [InlineData("/chat/completions")]
+    public void AddMoonshotKimi_WhenChatPathCanReplaceConfiguredEndpoint_FailsStartupValidation(string path)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddMoonshotKimi(options => options.ChatCompletionsPath = path);
+        using var provider = services.BuildServiceProvider();
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
     [Fact]
     public void AddMoonshotKimiApiKeyCredential_WhenRegistered_ResolvesApiKeyCredential()
     {
