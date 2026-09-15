@@ -5,8 +5,10 @@ namespace AgentKit.Providers.AzureOpenAI.Tests;
 
 using System.Net;
 using System.Net.Http;
+using System.Text;
 
 using AgentKit.Providers.AzureOpenAI.Tests.Fakes;
+using AgentKit.Providers.Http;
 using AgentKit.TestSupport;
 
 /// <summary>Verifies AzureOpenAIEmbeddingModel behavior and contracts.</summary>
@@ -50,6 +52,49 @@ public sealed class AzureOpenAIEmbeddingModelTests
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
         failed.Failure.SafeMessage.ShouldBe("The request model descriptor does not match the configured adapter descriptor.");
         handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
+    {
+        const string hostileBody = """{ "error": { "code": "401", "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test.", "type": "invalid_request_error" } }""";
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+
+        var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<EmbeddingAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
+        failure.SafeMessage.ShouldNotContain("sk-live-super-secret");
+        failure.SafeMessage.ShouldNotContain("alice@example.test");
+        failure.ProviderCode.ShouldBe("401");
+        failure.DiagnosticCause.ShouldBeNull();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBe("Authorization failed for sk-live-super-secret; internal tenant alice@example.test.");
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenErrorBodyIsNotJson_FallsBackToGenericSafeMessage()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent("<html>Bad Gateway</html>", Encoding.UTF8, "text/html"),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+
+        var result = await model.GenerateAsync(CreateRequest(descriptor), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<EmbeddingAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.StatusCode.ShouldBe(502);
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 502.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<JsonException>();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBeNull();
     }
 
     [Fact]

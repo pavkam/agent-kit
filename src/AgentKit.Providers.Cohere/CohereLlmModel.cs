@@ -321,7 +321,7 @@ public sealed class CohereLlmModel: ILlmModel
 
     private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        string? safeMessage = null;
+        string? providerMessage = null;
         Exception? diagnosticCause = null;
 
         try
@@ -332,7 +332,7 @@ public sealed class CohereLlmModel: ILlmModel
                 var envelope = await JsonSerializer
                     .DeserializeAsync<CohereErrorEnvelopeDto>(body, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
-                safeMessage = envelope?.Message;
+                providerMessage = envelope?.Message;
             }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -349,9 +349,9 @@ public sealed class CohereLlmModel: ILlmModel
             (int) response.StatusCode,
             providerCode: null,
             RetryAfterResolver.Resolve(response.Headers, _timeProvider),
-            safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
+            $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause,
-            ExtensionData.Empty);
+            ProviderErrorMessageEvidence.Create(providerMessage));
     }
 
     /// <summary>Builds an interrupted error-body failure while preserving response evidence already received.</summary>

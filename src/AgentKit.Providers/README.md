@@ -49,6 +49,14 @@ cannot drift:
   redacts its header value from `ToString()` so a granted result can never print
   a key or token.
 
+- `ProviderErrorMessageEvidence` retains the human-readable message from a
+  provider's error body as bounded diagnostic evidence under one stable
+  `ProviderFailure.Extensions` key (`agentkit.provider.error_message`). Every
+  first-party adapter reports a fixed status template in `SafeMessage`, the
+  vendor's machine code in `ProviderCode`, and the vendor's prose only through
+  this evidence, because error text can echo credentials, tenants, or
+  injected instructions and is never safe for users or models by default.
+
 Body-driven vocabularies (Anthropic `error.type`, Google `error.status`, Bedrock
 `x-amzn-errortype`) stay in the owning provider package.
 

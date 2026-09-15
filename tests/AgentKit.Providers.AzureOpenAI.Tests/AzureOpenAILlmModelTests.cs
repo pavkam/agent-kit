@@ -9,6 +9,7 @@ using System.Net.Http.Headers;
 using System.Text;
 
 using AgentKit.Providers.AzureOpenAI.Tests.Fakes;
+using AgentKit.Providers.Http;
 using AgentKit.TestSupport;
 
 /// <summary>Verifies AzureOpenAILlmModel behavior and contracts.</summary>
@@ -86,7 +87,8 @@ public sealed class AzureOpenAILlmModelTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
         failed.Failure.StatusCode.ShouldBe(401);
-        failed.Failure.SafeMessage.ShouldBe("Access denied due to invalid subscription key or wrong API endpoint.");
+        failed.Failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
+        ProviderErrorMessageEvidence.TryRead(failed.Failure.Extensions).ShouldBe("Access denied due to invalid subscription key or wrong API endpoint.");
     }
 
     [Fact]
@@ -143,6 +145,51 @@ public sealed class AzureOpenAILlmModelTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
         handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
+    {
+        const string hostileBody = """{ "error": { "code": "401", "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test.", "type": "invalid_request_error" } }""";
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
+        failure.SafeMessage.ShouldNotContain("sk-live-super-secret");
+        failure.SafeMessage.ShouldNotContain("alice@example.test");
+        failure.ProviderCode.ShouldBe("401");
+        failure.DiagnosticCause.ShouldBeNull();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBe("Authorization failed for sk-live-super-secret; internal tenant alice@example.test.");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyIsNotJson_FallsBackToGenericSafeMessage()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent("<html>Bad Gateway</html>", Encoding.UTF8, "text/html"),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticApiKeyCredentialSource("azure-resource-key"), descriptor);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.StatusCode.ShouldBe(502);
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 502.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<JsonException>();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBeNull();
     }
 
     [Fact]

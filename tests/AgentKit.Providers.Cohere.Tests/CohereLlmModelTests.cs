@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 
 using AgentKit.Providers.Cohere.Tests.Fakes;
+using AgentKit.Providers.Http;
 using AgentKit.TestSupport;
 
 /// <summary>Verifies CohereLlmModel behavior and contracts.</summary>
@@ -100,7 +101,8 @@ public sealed class CohereLlmModelTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
         failed.Failure.StatusCode.ShouldBe(401);
-        failed.Failure.SafeMessage.ShouldBe("invalid api token");
+        failed.Failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
+        ProviderErrorMessageEvidence.TryRead(failed.Failure.Extensions).ShouldBe("invalid api token");
     }
 
     [Fact]
@@ -246,6 +248,49 @@ public sealed class CohereLlmModelTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
         handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
+    {
+        const string hostileBody = """{ "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test." }""";
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")), options: new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/"), PreferStreaming = false });
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.CommandAPlus, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
+        failure.SafeMessage.ShouldNotContain("sk-live-super-secret");
+        failure.SafeMessage.ShouldNotContain("alice@example.test");
+        failure.ProviderCode.ShouldBeNull();
+        failure.DiagnosticCause.ShouldBeNull();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBe("Authorization failed for sk-live-super-secret; internal tenant alice@example.test.");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyIsNotJson_FallsBackToGenericSafeMessage()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent("<html>Bad Gateway</html>", Encoding.UTF8, "text/html"),
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")), options: new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/"), PreferStreaming = false });
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.CommandAPlus, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.StatusCode.ShouldBe(502);
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 502.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<JsonException>();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBeNull();
     }
 
     [Fact]

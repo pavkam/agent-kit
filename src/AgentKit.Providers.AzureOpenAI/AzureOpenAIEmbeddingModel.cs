@@ -312,7 +312,7 @@ public sealed class AzureOpenAIEmbeddingModel: IEmbeddingModel
 
     private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        string? safeMessage = null;
+        string? providerMessage = null;
         string? providerCode = null;
         Exception? diagnosticCause = null;
 
@@ -324,7 +324,7 @@ public sealed class AzureOpenAIEmbeddingModel: IEmbeddingModel
                 var envelope = await JsonSerializer
                     .DeserializeAsync<AzureOpenAIErrorEnvelopeDto>(body, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
-                safeMessage = envelope?.Error?.Message;
+                providerMessage = envelope?.Error?.Message;
                 providerCode = envelope?.Error?.Code ?? envelope?.Error?.Type;
             }
         }
@@ -342,9 +342,9 @@ public sealed class AzureOpenAIEmbeddingModel: IEmbeddingModel
             (int) response.StatusCode,
             providerCode,
             RetryAfterResolver.Resolve(response.Headers, _timeProvider),
-            safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
+            $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause,
-            ExtensionData.Empty);
+            ProviderErrorMessageEvidence.Create(providerMessage));
     }
 
     /// <summary>Builds an interrupted error-body failure while preserving response evidence already received.</summary>

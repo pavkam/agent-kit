@@ -319,7 +319,7 @@ public sealed class MistralAILlmModel: ILlmModel
 
     private async Task<ProviderFailure> BuildHttpFailureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        string? safeMessage = null;
+        string? providerMessage = null;
         Exception? diagnosticCause = null;
 
         try
@@ -330,7 +330,7 @@ public sealed class MistralAILlmModel: ILlmModel
                 var envelope = await JsonSerializer
                     .DeserializeAsync<MistralAIErrorEnvelopeDto>(body, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
-                safeMessage = ExtractDetailMessage(envelope?.Detail);
+                providerMessage = ExtractDetailMessage(envelope?.Detail);
             }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -347,9 +347,9 @@ public sealed class MistralAILlmModel: ILlmModel
             (int) response.StatusCode,
             providerCode: null,
             RetryAfterResolver.Resolve(response.Headers, _timeProvider),
-            safeMessage ?? $"The provider returned HTTP status {(int) response.StatusCode}.",
+            $"The provider returned HTTP status {(int) response.StatusCode}.",
             diagnosticCause,
-            ExtensionData.Empty);
+            ProviderErrorMessageEvidence.Create(providerMessage));
     }
 
     /// <summary>Builds an interrupted error-body failure while preserving response evidence already received.</summary>

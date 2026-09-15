@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 
+using AgentKit.Providers.Http;
 using AgentKit.Providers.MistralAI.Tests.Fakes;
 using AgentKit.TestSupport;
 
@@ -82,7 +83,8 @@ public sealed class MistralAILlmModelTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
         failed.Failure.StatusCode.ShouldBe(401);
-        failed.Failure.SafeMessage.ShouldBe("Unauthorized");
+        failed.Failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
+        ProviderErrorMessageEvidence.TryRead(failed.Failure.Extensions).ShouldBe("Unauthorized");
     }
 
     [Fact]
@@ -154,7 +156,7 @@ public sealed class MistralAILlmModelTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_WhenValidationErrorArray_JoinsFieldMessagesIntoSafeMessage()
+    public async Task ExecuteAsync_WhenValidationErrorArray_JoinsFieldMessagesIntoDiagnosticEvidenceOnly()
     {
         var handler = StubHttpMessageHandler.FromFixture((HttpStatusCode) 422, "responses/error_422_validation.json");
         var options = new MistralAIProviderOptions
@@ -168,7 +170,8 @@ public sealed class MistralAILlmModelTests
         var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
-        failed.Failure.SafeMessage.ShouldBe("Input should be 'system', 'user', 'assistant' or 'tool' Input should be less than or equal to 1.5");
+        failed.Failure.SafeMessage.ShouldBe("The provider returned HTTP status 422.");
+        ProviderErrorMessageEvidence.TryRead(failed.Failure.Extensions).ShouldBe("Input should be 'system', 'user', 'assistant' or 'tool' Input should be less than or equal to 1.5");
     }
 
     [Fact]
@@ -225,6 +228,49 @@ public sealed class MistralAILlmModelTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
         handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
+    {
+        const string hostileBody = """{ "detail": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test." }""";
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), options: new MistralAIProviderOptions { BaseAddress = new Uri("https://api.mistral.test/v1/"), PreferStreaming = false });
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
+        failure.SafeMessage.ShouldNotContain("sk-live-super-secret");
+        failure.SafeMessage.ShouldNotContain("alice@example.test");
+        failure.ProviderCode.ShouldBeNull();
+        failure.DiagnosticCause.ShouldBeNull();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBe("Authorization failed for sk-live-super-secret; internal tenant alice@example.test.");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyIsNotJson_FallsBackToGenericSafeMessage()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent("<html>Bad Gateway</html>", Encoding.UTF8, "text/html"),
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), options: new MistralAIProviderOptions { BaseAddress = new Uri("https://api.mistral.test/v1/"), PreferStreaming = false });
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.StatusCode.ShouldBe(502);
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 502.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<JsonException>();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBeNull();
     }
 
     [Fact]

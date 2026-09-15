@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 
 using AgentKit.Providers.AwsBedrock.Tests.Fakes;
+using AgentKit.Providers.Http;
 using AgentKit.TestSupport;
 
 /// <summary>Verifies AwsBedrockLlmModel behavior and contracts.</summary>
@@ -100,7 +101,8 @@ public sealed class AwsBedrockLlmModelTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authorization);
         failed.Failure.StatusCode.ShouldBe(403);
-        failed.Failure.SafeMessage.ShouldBe("User is not authorized to perform: bedrock:InvokeModel");
+        failed.Failure.SafeMessage.ShouldBe("The provider returned HTTP status 403.");
+        ProviderErrorMessageEvidence.TryRead(failed.Failure.Extensions).ShouldBe("User is not authorized to perform: bedrock:InvokeModel");
         failed.Failure.ProviderCode.ShouldBe("AccessDeniedException");
     }
 
@@ -206,6 +208,49 @@ public sealed class AwsBedrockLlmModelTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
         handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
+    {
+        const string hostileBody = """{ "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test." }""";
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
+        });
+        var model = CreateModel(handler, CreateCredentials(), options: new AwsBedrockProviderOptions { Region = "us-east-1", PreferStreaming = false });
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 401.");
+        failure.SafeMessage.ShouldNotContain("sk-live-super-secret");
+        failure.SafeMessage.ShouldNotContain("alice@example.test");
+        failure.ProviderCode.ShouldBeNull();
+        failure.DiagnosticCause.ShouldBeNull();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBe("Authorization failed for sk-live-super-secret; internal tenant alice@example.test.");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyIsNotJson_FallsBackToGenericSafeMessage()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent("<html>Bad Gateway</html>", Encoding.UTF8, "text/html"),
+        });
+        var model = CreateModel(handler, CreateCredentials(), options: new AwsBedrockProviderOptions { Region = "us-east-1", PreferStreaming = false });
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failure.StatusCode.ShouldBe(502);
+        failure.SafeMessage.ShouldBe("The provider returned HTTP status 502.");
+        _ = failure.DiagnosticCause.ShouldBeOfType<JsonException>();
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBeNull();
     }
 
     [Fact]

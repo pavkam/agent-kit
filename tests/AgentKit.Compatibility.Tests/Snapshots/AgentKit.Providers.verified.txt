@@ -38,6 +38,13 @@ namespace AgentKit.Providers.Http
         public static AgentKit.Providers.Http.ProviderAuthorizationScheme OAuthTokenOnly { get; }
         public static AgentKit.Providers.Http.ProviderAuthorizationScheme ForApiKeyHeader(string headerName) { }
     }
+    public static class ProviderErrorMessageEvidence
+    {
+        public const string Key = "agentkit.provider.error_message";
+        public const int MaxLength = 2048;
+        public static AgentKit.ExtensionData Create(string? providerMessage) { }
+        public static string? TryRead(AgentKit.ExtensionData extensions) { }
+    }
     public static class ProviderRequestIdReader
     {
         public static AgentKit.ProviderRequestId? TryRead(System.Net.Http.Headers.HttpResponseHeaders headers, [System.Runtime.CompilerServices.ParamCollection] [System.Runtime.CompilerServices.ScopedRef] System.ReadOnlySpan<string> headerNames) { }
