@@ -4,14 +4,12 @@
 namespace AgentKit.Session.Sqlite;
 
 /// <summary>Provides a durable host-local, tenant-masking, protected SQLite session directory.</summary>
-/// <remarks>Every lookup and mutation requires required-audit acceptance followed by exact grant consumption before directory state is read or changed. It never probes stores or rebinds a pinned location.</remarks>
+/// <remarks>
+/// <para>Every lookup and mutation requires required-audit acceptance followed by exact grant consumption before directory state is read or changed. It never probes stores or rebinds a pinned location.</para>
+/// <para>The directory keeps no process-local projection between operations. Each read indexes the committed state it loaded, and each mutation indexes, changes, and captures state inside one SQLite immediate transaction, so concurrent reads can never overwrite a writer's in-flight changes and concurrent writers are serialized by the database.</para>
+/// </remarks>
 public sealed class SqliteSessionDirectory: ISessionDirectory
 {
-    private readonly Lock _gate = new();
-    private readonly Dictionary<SessionAddress, SessionLocation> _locations = [];
-    private readonly Dictionary<SessionAddress, PrincipalId> _owners = [];
-    private readonly Dictionary<CreationRouteKey, CreationRoute> _creationRoutes = [];
-    private readonly Dictionary<DirectoryWriteKey, DirectoryWriteRoute> _writeRoutes = [];
     private readonly ISecurityAuditDispatcher _auditDispatcher;
     private readonly ISecurityGrantStore _grantStore;
     private readonly IIdentifierGenerator<SecurityAuditRecordId> _auditRecordIds;
@@ -101,14 +99,11 @@ public sealed class SqliteSessionDirectory: ISessionDirectory
             return new SessionDirectoryLookupDenied(denied.SafeMessage);
         }
 
-        Hydrate(await _database.LoadAsync(cancellationToken).ConfigureAwait(false));
-        using (_gate.EnterScope())
-        {
-            return !_locations.TryGetValue(context.ToAddress(), out var location)
-                || location.TenantId != context.Identity.TenantId
-                ? new SessionLocationNotFound(context.ToAddress())
-                : new SessionLocated(location);
-        }
+        var projection = await LoadAsync(cancellationToken).ConfigureAwait(false);
+        return !projection.Locations.TryGetValue(context.ToAddress(), out var location)
+            || location.TenantId != context.Identity.TenantId
+            ? new SessionLocationNotFound(context.ToAddress())
+            : new SessionLocated(location);
     }
 
     /// <inheritdoc/>
@@ -154,16 +149,13 @@ public sealed class SqliteSessionDirectory: ISessionDirectory
             return new SessionDirectoryCreationLookupDenied(denied.SafeMessage);
         }
 
-        Hydrate(await _database.LoadAsync(cancellationToken).ConfigureAwait(false));
-        using (_gate.EnterScope())
-        {
-            var key = new CreationRouteKey(create.Identity.TenantId, create.AgentId, create.IdempotencyKey);
-            return _creationRoutes.TryGetValue(key, out var route)
-                ? route.Request.Equals(create)
-                    ? new SessionCreationLocationLocated(route.Location)
-                    : new SessionCreationLocationConflict("The creation retry key was already used with different request evidence.")
-                : new SessionCreationLocationNotFound();
-        }
+        var projection = await LoadAsync(cancellationToken).ConfigureAwait(false);
+        var key = new CreationRouteKey(create.Identity.TenantId, create.AgentId, create.IdempotencyKey);
+        return projection.CreationRoutes.TryGetValue(key, out var route)
+            ? route.Request.Equals(create)
+                ? new SessionCreationLocationLocated(route.Location)
+                : new SessionCreationLocationConflict("The creation retry key was already used with different request evidence.")
+            : new SessionCreationLocationNotFound();
     }
 
     /// <inheritdoc/>
@@ -205,25 +197,24 @@ public sealed class SqliteSessionDirectory: ISessionDirectory
         }
 #pragma warning restore IDE0010, IDE0066
 
-        return await MutateAsync<SessionDirectoryWriteResult>(() =>
+        return await MutateAsync<SessionDirectoryWriteResult>(projection =>
         {
-            using var scope = _gate.EnterScope();
             var routeKey = new DirectoryWriteKey(
                 write.Context.Identity.TenantId,
                 write.Context.ToAddress(),
                 write.IdempotencyKey);
-            if (_writeRoutes.TryGetValue(routeKey, out var previousWrite))
+            if (projection.WriteRoutes.TryGetValue(routeKey, out var previousWrite))
             {
                 return previousWrite.Request.Equals(write)
                     ? new SessionLocationRecorded(previousWrite.Location, existing: true)
                     : new SessionLocationConflict(previousWrite.Location, write.Location.StoreKey);
             }
 
-            if (!_locations.TryGetValue(write.Location.Address, out var existing))
+            if (!projection.Locations.TryGetValue(write.Location.Address, out var existing))
             {
-                _locations.Add(write.Location.Address, write.Location);
-                _owners.Add(write.Location.Address, write.Context.Identity.PrincipalId);
-                _writeRoutes.Add(routeKey, new DirectoryWriteRoute(write, write.Location));
+                projection.Locations.Add(write.Location.Address, write.Location);
+                projection.Owners.Add(write.Location.Address, write.Context.Identity.PrincipalId);
+                projection.WriteRoutes.Add(routeKey, new DirectoryWriteRoute(write, write.Location));
                 return new SessionLocationRecorded(write.Location, existing: false);
             }
 
@@ -231,7 +222,7 @@ public sealed class SqliteSessionDirectory: ISessionDirectory
             {
                 return new SessionDirectoryWriteDenied("The directory route cannot be recorded.");
             }
-            if (!_owners.TryGetValue(existing.Address, out var owner)
+            if (!projection.Owners.TryGetValue(existing.Address, out var owner)
                 || owner != write.Context.Identity.PrincipalId)
             {
                 return new SessionDirectoryWriteDenied("The directory route cannot be recorded.");
@@ -241,7 +232,7 @@ public sealed class SqliteSessionDirectory: ISessionDirectory
                 return new SessionLocationConflict(existing, write.Location.StoreKey);
             }
 
-            _writeRoutes.Add(routeKey, new DirectoryWriteRoute(write, existing));
+            projection.WriteRoutes.Add(routeKey, new DirectoryWriteRoute(write, existing));
             return new SessionLocationRecorded(existing, existing: true);
         }, cancellationToken).ConfigureAwait(false);
     }
@@ -285,24 +276,21 @@ public sealed class SqliteSessionDirectory: ISessionDirectory
             return new SessionDirectoryListUnavailable(denied.SafeMessage);
         }
 
-        Hydrate(await _database.LoadAsync(cancellationToken).ConfigureAwait(false));
-        using (_gate.EnterScope())
-        {
-            var ordered = _locations.Values
-                .Where(location => location.TenantId == scan.Identity.TenantId
-                    && location.Address.AgentId == scan.AgentId
-                    && _owners.TryGetValue(location.Address, out var owner)
-                    && owner == scan.Identity.PrincipalId
-                    && (scan.AfterSessionId is null
-                        || location.Address.SessionId.Value.CompareTo(scan.AfterSessionId.Value.Value) > 0))
-                .OrderBy(static location => location.Address.SessionId.Value)
-                .Take(scan.MaximumResults + 1)
-                .ToArray();
-            var hasMore = ordered.Length > scan.MaximumResults;
-            var page = ordered.Take(scan.MaximumResults).ToImmutableArray();
-            var next = hasMore ? page[^1].Address.SessionId : (SessionId?) null;
-            return new SessionDirectoryPage(page, next);
-        }
+        var projection = await LoadAsync(cancellationToken).ConfigureAwait(false);
+        var ordered = projection.Locations.Values
+            .Where(location => location.TenantId == scan.Identity.TenantId
+                && location.Address.AgentId == scan.AgentId
+                && projection.Owners.TryGetValue(location.Address, out var owner)
+                && owner == scan.Identity.PrincipalId
+                && (scan.AfterSessionId is null
+                    || location.Address.SessionId.Value.CompareTo(scan.AfterSessionId.Value.Value) > 0))
+            .OrderBy(static location => location.Address.SessionId.Value)
+            .Take(scan.MaximumResults + 1)
+            .ToArray();
+        var hasMore = ordered.Length > scan.MaximumResults;
+        var page = ordered.Take(scan.MaximumResults).ToImmutableArray();
+        var next = hasMore ? page[^1].Address.SessionId : (SessionId?) null;
+        return new SessionDirectoryPage(page, next);
     }
 
     private async ValueTask<SessionDirectoryWriteResult> RecordCreateCoreAsync(
@@ -337,58 +325,51 @@ public sealed class SqliteSessionDirectory: ISessionDirectory
         }
 #pragma warning restore IDE0010, IDE0066
 
-        return await MutateAsync<SessionDirectoryWriteResult>(() =>
+        return await MutateAsync<SessionDirectoryWriteResult>(projection =>
         {
-            using var scope = _gate.EnterScope();
             var routeKey = new CreationRouteKey(create.Identity.TenantId, create.AgentId, create.IdempotencyKey);
-            if (_creationRoutes.TryGetValue(routeKey, out var existingRoute))
+            if (projection.CreationRoutes.TryGetValue(routeKey, out var existingRoute))
             {
                 return existingRoute.Request.Equals(create)
                     ? new SessionLocationRecorded(existingRoute.Location, existing: true)
                     : new SessionLocationConflict(existingRoute.Location, record.Location.StoreKey);
             }
 
-            if (_locations.TryGetValue(record.Location.Address, out var existingLocation))
+            if (projection.Locations.TryGetValue(record.Location.Address, out var existingLocation))
             {
                 return existingLocation.TenantId != create.Identity.TenantId
                     ? new SessionDirectoryWriteDenied("The directory route cannot be recorded.")
                     : new SessionLocationConflict(existingLocation, record.Location.StoreKey);
             }
 
-            _locations.Add(record.Location.Address, record.Location);
-            _owners.Add(record.Location.Address, create.Identity.PrincipalId);
-            _creationRoutes.Add(routeKey, new CreationRoute(create, record.Location));
+            projection.Locations.Add(record.Location.Address, record.Location);
+            projection.Owners.Add(record.Location.Address, create.Identity.PrincipalId);
+            projection.CreationRoutes.Add(routeKey, new CreationRoute(create, record.Location));
             return new SessionLocationRecorded(record.Location, existing: false);
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask<T> MutateAsync<T>(Func<T> action, CancellationToken cancellationToken)
+    /// <summary>Loads the latest committed state into a projection owned by the calling read operation.</summary>
+    /// <param name="cancellationToken">Cancels the database read.</param>
+    /// <returns>A private indexed view of the committed directory state.</returns>
+    private async ValueTask<SqliteSessionDirectoryProjection> LoadAsync(CancellationToken cancellationToken) =>
+        new(await _database.LoadAsync(cancellationToken).ConfigureAwait(false));
+
+    /// <summary>Runs one semantic mutation over a transaction-private projection and commits its captured state atomically.</summary>
+    /// <typeparam name="T">The typed semantic outcome.</typeparam>
+    /// <param name="action">The synchronous mutation applied to the projection built from the transaction snapshot.</param>
+    /// <param name="cancellationToken">Cancels before commit.</param>
+    /// <returns>The outcome committed together with the resulting state.</returns>
+    private async ValueTask<T> MutateAsync<T>(Func<SqliteSessionDirectoryProjection, T> action, CancellationToken cancellationToken)
     {
+        Debug.Assert(action is not null, "Directory mutations supply a projection action.");
         return await _database.MutateAsync(state =>
         {
-            Hydrate(state);
-            var result = action();
-            Capture(state);
+            var projection = new SqliteSessionDirectoryProjection(state);
+            var result = action(projection);
+            projection.CaptureInto(state);
             return result;
         }, cancellationToken).ConfigureAwait(false);
-    }
-
-    private void Hydrate(SqliteSessionDirectoryState state)
-    {
-        using var scope = _gate.EnterScope();
-        _locations.Clear(); foreach (var value in state.Locations) { _locations.Add(value.Address, value); }
-        _owners.Clear(); foreach (var value in state.Owners) { _owners.Add(value.Address, value.PrincipalId); }
-        _creationRoutes.Clear(); foreach (var value in state.CreationRoutes) { _creationRoutes.Add(new(value.Location.TenantId, value.Request.AgentId, value.Request.IdempotencyKey), value); }
-        _writeRoutes.Clear(); foreach (var value in state.WriteRoutes) { _writeRoutes.Add(new(value.Request.Context.Identity.TenantId, value.Location.Address, value.Request.IdempotencyKey), value); }
-    }
-
-    private void Capture(SqliteSessionDirectoryState state)
-    {
-        using var scope = _gate.EnterScope();
-        state.Locations = [.. _locations.Values];
-        state.Owners = [.. _owners.Select(static pair => new SqliteSessionDirectoryOwner(pair.Key, pair.Value))];
-        state.CreationRoutes = [.. _creationRoutes.Values];
-        state.WriteRoutes = [.. _writeRoutes.Values];
     }
 
     private async ValueTask<DirectoryAccessResult> AuthorizeAsync(

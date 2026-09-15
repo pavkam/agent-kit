@@ -197,6 +197,47 @@ public sealed class SqliteSessionDirectoryTests
         page.NextCursor.ShouldBe(firstLocation.Address.SessionId);
     }
 
+    [Fact]
+    public async Task RecordCreateAsync_WhenConcurrentLocateHydrates_DoesNotLoseCommittedRoute()
+    {
+        // Every committed route must survive concurrent reads that reload the durable projection while writers commit.
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore());
+        const int routeCount = 32;
+        var requests = Enumerable.Range(0, routeCount)
+            .Select(index => (Request: CreateRequest($"concurrent-{index}"), Location: Location(new Guid(index + 1, 0, 0, [0, 0, 0, 0, 0, 0, 0, 9]).ToString("D"), "store-a")))
+            .ToArray();
+        var reader = Context(sessionId: requests[0].Location.Address.SessionId);
+
+        var operations = new List<Task>(routeCount * 4);
+        foreach (var (request, location) in requests)
+        {
+            operations.Add(directory.RecordCreateAsync(
+                new AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>(
+                    new SessionDirectoryCreateRecordRequest(request, location),
+                    Grant(request, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+                TestContext.Current.CancellationToken).AsTask());
+            for (var probe = 0; probe < 4; probe++)
+            {
+                operations.Add(directory.LocateAsync(
+                    new AuthorizedSessionDirectoryRequest<SessionOperationContext>(
+                        reader, Grant(reader, SecurityOperationKind.StateRead, SecurityEffect.Observe), Intent()),
+                    TestContext.Current.CancellationToken).AsTask());
+            }
+        }
+
+        await Task.WhenAll(operations);
+
+        foreach (var (_, location) in requests)
+        {
+            var context = Context(sessionId: location.Address.SessionId);
+            var located = await directory.LocateAsync(
+                new AuthorizedSessionDirectoryRequest<SessionOperationContext>(
+                    context, Grant(context, SecurityOperationKind.StateRead, SecurityEffect.Observe), Intent()),
+                TestContext.Current.CancellationToken);
+            located.ShouldBe(new SessionLocated(location), location.Address.SessionId.ToString());
+        }
+    }
+
     private static SqliteSessionDirectory CreateDirectory(RecordingAuditDispatcher audits, RecordingGrantStore grants)
     {
         var path = Path.Combine(Path.GetTempPath(), $"agentkit-directory-{Guid.NewGuid():N}");
@@ -209,7 +250,7 @@ public sealed class SqliteSessionDirectoryTests
 
     private static SessionOperationContext Context(string tenant = "tenant", SessionId? sessionId = null)
     {
-        var identity = TestSupport.TestExecutionIdentity.Create(new TenantId(tenant), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+        var identity = TestExecutionIdentity.Create(new TenantId(tenant), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var agentId = new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
         var id = sessionId ?? new SessionId(Guid.Parse("22222222-2222-2222-2222-222222222222"));
         var correlation = new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("33333333-3333-3333-3333-333333333333")), null);
@@ -221,7 +262,7 @@ public sealed class SqliteSessionDirectoryTests
         ConversationId? conversationId = null,
         ExtensionData? extensions = null)
     {
-        var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+        var identity = TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var agentId = new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
         var correlation = new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("33333333-3333-3333-3333-333333333333")), null);
         return new SessionCreateRequest(agentId, identity, Authorization(agentId, null, correlation, identity), conversationId,
@@ -230,7 +271,7 @@ public sealed class SqliteSessionDirectoryTests
 
     private static SessionDirectoryListRequest ListRequest()
     {
-        var identity = TestSupport.TestExecutionIdentity.Create(
+        var identity = TestExecutionIdentity.Create(
             new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
         var agentId = new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
         var correlation = new BeforeRunOperationCorrelation(GuidOperation(), null);
@@ -296,18 +337,47 @@ public sealed class SqliteSessionDirectoryTests
 
     private sealed class RecordingAuditDispatcher(SecurityAuditDispatchResult result): ISecurityAuditDispatcher
     {
-        public List<SecurityAuditRecord> Records { get; } = [];
+        private readonly Lock _gate = new();
+        private readonly List<SecurityAuditRecord> _records = [];
+
+        public IReadOnlyList<SecurityAuditRecord> Records
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _records];
+                }
+            }
+        }
 
         public ValueTask<SecurityAuditDispatchResult> DispatchAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default)
         {
-            Records.Add(record);
+            lock (_gate)
+            {
+                _records.Add(record);
+            }
+
             return ValueTask.FromResult(result);
         }
     }
 
     private sealed class RecordingGrantStore: ISecurityGrantStore
     {
-        public List<SecurityEnforcementRequest> Enforcements { get; } = [];
+        private readonly Lock _gate = new();
+        private readonly List<SecurityEnforcementRequest> _enforcements = [];
+
+        public IReadOnlyList<SecurityEnforcementRequest> Enforcements
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _enforcements];
+                }
+            }
+        }
+
         public bool ReturnWrongReceipt { get; set; }
         public Action? AfterConsume { get; set; }
 
@@ -318,7 +388,7 @@ public sealed class SqliteSessionDirectoryTests
             SecurityEnforcementRequest enforcement,
             CancellationToken cancellationToken = default)
         {
-            Enforcements.Add(enforcement);
+            Record(enforcement);
             return ValueTask.FromResult(new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed."));
         }
 
@@ -328,7 +398,7 @@ public sealed class SqliteSessionDirectoryTests
             SecurityEnforcementIntent intent,
             CancellationToken cancellationToken = default)
         {
-            Enforcements.Add(enforcement);
+            Record(enforcement);
             var receipt = new SecurityEnforcementIntentReceipt(intent.Id, grant.Id, grant.RequestId, enforcement,
                 intent.RequiredFence, ReturnWrongReceipt
                     ? new ContentHash("sha256:wrong")
@@ -340,12 +410,20 @@ public sealed class SqliteSessionDirectoryTests
         }
 
         public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+
+        private void Record(SecurityEnforcementRequest enforcement)
+        {
+            lock (_gate)
+            {
+                _enforcements.Add(enforcement);
+            }
+        }
     }
 
     private sealed class SequenceAuditRecordIds: IIdentifierGenerator<SecurityAuditRecordId>
     {
         private int _next;
 
-        public SecurityAuditRecordId Create() => new(new Guid(++_next, 0, 0, [0, 0, 0, 0, 0, 0, 0, 0]));
+        public SecurityAuditRecordId Create() => new(new Guid(Interlocked.Increment(ref _next), 0, 0, [0, 0, 0, 0, 0, 0, 0, 0]));
     }
 }
