@@ -204,4 +204,26 @@ public sealed record OpenAICompatibilityProfile
             field = value;
         }
     } = 262_144;
+
+    /// <summary>Gets how a prior assistant turn's <see cref="ReasoningPart"/> content is replayed to the endpoint.</summary>
+    /// <value>
+    /// Defaults to <see cref="OpenAIAssistantReasoningReplay.Omit"/>, which drops reasoning from the provider-facing
+    /// projection so endpoints that reject an assistant-side <c>reasoning_content</c> member keep working unchanged.
+    /// Branded packages whose dialect expects the field back select
+    /// <see cref="OpenAIAssistantReasoningReplay.ReasoningContentField"/>.
+    /// </value>
+    /// <remarks>
+    /// The mode only shapes the wire projection of history. AgentKit's own <see cref="ReasoningPart"/> records are never
+    /// altered, and parsing of inbound <c>reasoning_content</c> is unaffected by this setting.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The assigned value is not a defined <see cref="OpenAIAssistantReasoningReplay"/>.</exception>
+    public OpenAIAssistantReasoningReplay AssistantReasoningReplay
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfUndefined(value);
+            field = value;
+        }
+    } = OpenAIAssistantReasoningReplay.Omit;
 }

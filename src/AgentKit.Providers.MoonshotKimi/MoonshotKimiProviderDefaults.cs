@@ -38,10 +38,14 @@ public static class MoonshotKimiProviderDefaults
     /// <remarks>
     /// Kimi is stateless: history is always resent in full. Thinking
     /// models return reasoning on a separate <c>reasoning_content</c>
-    /// field this package's shared translator and parser do not yet
-    /// round-trip. A caller registering a model with materially
-    /// different capabilities supplies its own
-    /// <see cref="ModelCapabilities"/> rather than relying on this
+    /// field; the shared parser records it as a <see cref="ReasoningPart"/>
+    /// and <see cref="CreateProfile"/> replays it on later assistant
+    /// messages so multi-step tool-call loops keep their chain of thought,
+    /// as Moonshot requires. This default still does not claim
+    /// <see cref="ModelCapabilities.SupportsReasoning"/> because that flag
+    /// describes the registered model, not the wire mechanics. A caller
+    /// registering a model with materially different capabilities supplies
+    /// its own <see cref="ModelCapabilities"/> rather than relying on this
     /// shared default.
     /// </remarks>
     public static ModelCapabilities DefaultCapabilities { get; } = new(
@@ -65,7 +69,13 @@ public static class MoonshotKimiProviderDefaults
     /// <paramref name="options"/>.
     /// </summary>
     /// <param name="options">The validated Moonshot Kimi provider options.</param>
-    /// <returns>A compatibility profile configured for Moonshot Kimi's Chat Completions endpoint.</returns>
+    /// <returns>
+    /// A compatibility profile configured for Moonshot Kimi's Chat Completions endpoint. It selects
+    /// <see cref="OpenAIAssistantReasoningReplay.ReasoningContentField"/> because Moonshot's thinking-model
+    /// guide requires the complete assistant message, including <c>reasoning_content</c>, to be passed back
+    /// within a tool-call loop and across turns for models with Preserved Thinking; models that do not keep
+    /// historical reasoning ignore the field rather than rejecting it.
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
     public static OpenAICompatibilityProfile CreateProfile(MoonshotKimiProviderOptions options)
     {
@@ -78,6 +88,9 @@ public static class MoonshotKimiProviderDefaults
             preferStreaming: options.PreferStreaming,
             includeStreamUsage: options.IncludeStreamUsage,
             useMaxCompletionTokensField: false,
-            []);
+            [])
+        {
+            AssistantReasoningReplay = OpenAIAssistantReasoningReplay.ReasoningContentField,
+        };
     }
 }

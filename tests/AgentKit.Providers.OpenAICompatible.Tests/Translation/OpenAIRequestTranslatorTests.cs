@@ -90,11 +90,60 @@ public sealed class OpenAIRequestTranslatorTests
     }
 
     [Fact]
-    public void Translate_WhenAssistantMessageContainsReasoningPart_ThrowsNotSupportedException()
+    public void Translate_WhenAssistantMessageContainsReasoningPartAndReplayIsOmit_DropsReasoningAndKeepsRemainingParts()
     {
+        // Arrange
         var reasoning = new ReasoningPart(new ReasoningContent("internal thoughts", ReasoningVisibility.Visible, signatureToken: null, ExtensionData.Empty), ExtensionData.Empty);
-        var assistant = TestMessages.Assistant(reasoning);
-        _ = Should.Throw<NotSupportedException>(() => Translate([assistant]));
+        var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000011"));
+        var toolCall = new ToolCallPart(callId, new ToolReference(new ToolId("noop"), null, "noop"), JsonDocument.Parse("{}").RootElement, new ProviderToolCallId("call_omit"), ExtensionData.Empty);
+        var assistant = TestMessages.Assistant(reasoning, new TextPart("visible", TextSemantics.Plain, ExtensionData.Empty), toolCall);
+        NonStreamingProfile.AssistantReasoningReplay.ShouldBe(OpenAIAssistantReasoningReplay.Omit);
+
+        // Act
+        var message = Translate([assistant])["messages"]![0]!.AsObject();
+
+        // Assert
+        message.ContainsKey("reasoning_content").ShouldBeFalse();
+        message["role"]!.GetValue<string>().ShouldBe("assistant");
+        message["content"]!.GetValue<string>().ShouldBe("visible");
+        message["tool_calls"]!.AsArray().Single()!["id"]!.GetValue<string>().ShouldBe("call_omit");
+    }
+
+    [Fact]
+    public void Translate_WhenAssistantMessageContainsReasoningPartAndReplayIsReasoningContentField_EmitsReasoningContent()
+    {
+        // Arrange
+        var first = new ReasoningPart(new ReasoningContent("step one; ", ReasoningVisibility.Visible, signatureToken: null, ExtensionData.Empty), ExtensionData.Empty);
+        var redacted = new ReasoningPart(new ReasoningContent(null, ReasoningVisibility.Redacted, signatureToken: null, ExtensionData.Empty), ExtensionData.Empty);
+        var second = new ReasoningPart(new ReasoningContent("step two", ReasoningVisibility.Visible, signatureToken: null, ExtensionData.Empty), ExtensionData.Empty);
+        var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000012"));
+        var toolCall = new ToolCallPart(callId, new ToolReference(new ToolId("noop"), null, "noop"), JsonDocument.Parse("{}").RootElement, new ProviderToolCallId("call_replay"), ExtensionData.Empty);
+        var assistant = TestMessages.Assistant(first, redacted, second, toolCall);
+        var profile = NonStreamingProfile with { AssistantReasoningReplay = OpenAIAssistantReasoningReplay.ReasoningContentField };
+
+        // Act
+        var message = Translate([assistant], profile: profile)["messages"]![0]!.AsObject();
+
+        // Assert
+        message["reasoning_content"]!.GetValue<string>().ShouldBe("step one; step two");
+        message["content"].ShouldBeNull();
+        message["tool_calls"]!.AsArray().Single()!["id"]!.GetValue<string>().ShouldBe("call_replay");
+    }
+
+    [Fact]
+    public void Translate_WhenReplayIsReasoningContentFieldAndAssistantHasNoVisibleReasoning_OmitsReasoningContentMember()
+    {
+        // Arrange
+        var redacted = new ReasoningPart(new ReasoningContent(null, ReasoningVisibility.Redacted, signatureToken: null, ExtensionData.Empty), ExtensionData.Empty);
+        var assistant = TestMessages.Assistant(redacted, new TextPart("answer", TextSemantics.Plain, ExtensionData.Empty));
+        var profile = NonStreamingProfile with { AssistantReasoningReplay = OpenAIAssistantReasoningReplay.ReasoningContentField };
+
+        // Act
+        var message = Translate([assistant], profile: profile)["messages"]![0]!.AsObject();
+
+        // Assert
+        message.ContainsKey("reasoning_content").ShouldBeFalse();
+        message["content"]!.GetValue<string>().ShouldBe("answer");
     }
 
     [Fact]

@@ -26,5 +26,6 @@ public sealed class MoonshotKimiProviderDefaultsTests
         profile.UseMaxCompletionTokensField.ShouldBeFalse();
         profile.SendDeveloperRoleAsSystem.ShouldBeTrue();
         profile.ChatCompletionsUri.ShouldBe(new Uri("https://example.test/v2/chat"));
+        profile.AssistantReasoningReplay.ShouldBe(OpenAIAssistantReasoningReplay.ReasoningContentField);
     }
 }

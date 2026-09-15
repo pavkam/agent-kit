@@ -20,6 +20,11 @@ namespace AgentKit.Providers.OpenAICompatible
         System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseBufferedAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
         System.Threading.Tasks.Task<AgentKit.ModelAttemptResult> ParseStreamingAsync(System.IO.Stream responseBody, AgentKit.Providers.OpenAICompatible.OpenAIResponseParseContext context, AgentKit.IModelResponseObserver observer, System.Threading.CancellationToken cancellationToken = default);
     }
+    public enum OpenAIAssistantReasoningReplay
+    {
+        Omit = 0,
+        ReasoningContentField = 1,
+    }
     public sealed class OpenAIChatCompletionResponseParser : AgentKit.Providers.OpenAICompatible.IOpenAIStreamParser
     {
         public OpenAIChatCompletionResponseParser(AgentKit.IIdentifierGenerator<AgentKit.ToolCallId> toolCallIdGenerator) { }
@@ -30,6 +35,7 @@ namespace AgentKit.Providers.OpenAICompatible
     {
         public OpenAICompatibilityProfile(System.Uri baseAddress, string chatCompletionsPath, bool sendDeveloperRoleAsSystem, bool preferStreaming, bool includeStreamUsage, bool useMaxCompletionTokensField, System.Collections.Immutable.ImmutableDictionary<string, string> defaultRequestHeaders, string? embeddingsPath = null) { }
         public OpenAICompatibilityProfile(System.Uri baseAddress, string chatCompletionsPath, bool sendDeveloperRoleAsSystem, bool preferStreaming, bool includeStreamUsage, bool useMaxCompletionTokensField, System.Collections.Immutable.ImmutableDictionary<string, string> defaultRequestHeaders, string? embeddingsPath, bool supportsEmbeddingPurpose) { }
+        public AgentKit.Providers.OpenAICompatible.OpenAIAssistantReasoningReplay AssistantReasoningReplay { get; init; }
         public System.Uri BaseAddress { get; }
         public string ChatCompletionsPath { get; }
         public System.Uri ChatCompletionsUri { get; }

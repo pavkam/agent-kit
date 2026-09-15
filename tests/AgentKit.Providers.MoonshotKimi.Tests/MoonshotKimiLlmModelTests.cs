@@ -42,6 +42,61 @@ public sealed class MoonshotKimiLlmModelTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenHistoryReplaysReasoningAndToolCallTurn_SendsReasoningContentOnAssistantMessage()
+    {
+        // Arrange: turn 1 produced reasoning plus a tool call; turn 2 must replay both with the tool result.
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");
+        var options = new MoonshotKimiProviderOptions
+        {
+            PreferStreaming = false
+        };
+        var descriptor = CreateDescriptor();
+        var model = new MoonshotKimiLlmModel(descriptor, MoonshotKimiProviderDefaults.CreateProfile(options), new OpenAIRequestTranslator(), new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator()), new StaticApiKeyCredentialSource("real-looking-key"), new HttpClient(handler), new FakeTimeProvider(Now));
+        var agentId = new AgentId(Guid.NewGuid());
+        var sessionId = new SessionId(Guid.NewGuid());
+        var branchId = new BranchId(Guid.NewGuid());
+        var runId = new RunId(Guid.NewGuid());
+        var turnId = new TurnId(Guid.NewGuid());
+        var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000001"));
+        var toolReference = new ToolReference(new ToolId("web_search"), null, "web_search");
+        var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), agentId, sessionId, conversationId: null, branchId, runId, turnId, Now, MessageState.Complete, [new TextPart("Summarize today's news.", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var assistantMessage = new AssistantMessage(new MessageId(Guid.NewGuid()), agentId, sessionId, conversationId: null, branchId, runId, turnId, Now, MessageState.Complete,
+            [
+                new ReasoningPart(new ReasoningContent("I should search first.", ReasoningVisibility.Visible, signatureToken: null, ExtensionData.Empty), ExtensionData.Empty),
+                new ToolCallPart(callId, toolReference, JsonDocument.Parse("""{"query":"news"}""").RootElement, new ProviderToolCallId("web_search:0"), ExtensionData.Empty),
+            ],
+            new AssistantResponseMetadata(
+                new ModelRequestId(Guid.NewGuid()),
+                new ProviderResponseIdentity(MoonshotKimiProviderDefaults.ProviderId, upstreamProviderId: null, MoonshotKimiProviderDefaults.ApiFamily, new ModelId("kimi-k2-0711-preview"), new ModelId("kimi-k2-0711-preview"), deploymentId: null, requestId: null, responseId: null),
+                NormalizedStopReason.ToolUse,
+                rawStopReason: "tool_calls",
+                ModelUsage.NotReported,
+                ExtensionData.Empty),
+            ExtensionData.Empty);
+        var toolMessage = new ToolMessage(new MessageId(Guid.NewGuid()), agentId, sessionId, conversationId: null, branchId, runId, turnId, Now, MessageState.Complete,
+            [new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("headline one", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty)],
+            ExtensionData.Empty);
+        var tools = ImmutableArray.Create(new LlmToolDefinition(new ToolId("web_search"), "web_search", "Searches the web.", JsonDocument.Parse("""{"type":"object","properties":{"query":{"type":"string"}}}""").RootElement));
+        var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [userMessage, assistantMessage, toolMessage], tools, LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        // Act
+        var result = await model.ExecuteAsync(request, new RecordingModelResponseObserver(), TestContext.Current.CancellationToken);
+
+        // Assert
+        _ = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var sentBody = JsonNode.Parse(handler.RequestBodies.ShouldHaveSingleItem()!)!;
+        var messages = sentBody["messages"]!.AsArray();
+        messages.Count.ShouldBe(3);
+        var assistant = messages[1]!.AsObject();
+        assistant["role"]!.GetValue<string>().ShouldBe("assistant");
+        assistant["reasoning_content"]!.GetValue<string>().ShouldBe("I should search first.");
+        assistant["tool_calls"]!.AsArray().Single()!["id"]!.GetValue<string>().ShouldBe("web_search:0");
+        messages[2]!["role"]!.GetValue<string>().ShouldBe("tool");
+        messages[2]!["tool_call_id"]!.GetValue<string>().ShouldBe("web_search:0");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenUsingExpiredOAuthCredential_FailsAuthenticationWithoutSendingHttpRequest()
     {
         var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/success.json");

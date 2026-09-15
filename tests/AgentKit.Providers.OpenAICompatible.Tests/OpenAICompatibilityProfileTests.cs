@@ -26,6 +26,39 @@ public sealed class OpenAICompatibilityProfileTests
     }
 
     [Fact]
+    public void AssistantReasoningReplay_WhenNotAssigned_DefaultsToOmit() =>
+        CreateProfile("chat/completions").AssistantReasoningReplay.ShouldBe(OpenAIAssistantReasoningReplay.Omit);
+
+    [Fact]
+    public void AssistantReasoningReplay_WhenAssignedDefinedValue_RetainsIt()
+    {
+        // Arrange
+        var profile = CreateProfile("chat/completions");
+
+        // Act
+        var replayed = profile with { AssistantReasoningReplay = OpenAIAssistantReasoningReplay.ReasoningContentField };
+
+        // Assert
+        replayed.AssistantReasoningReplay.ShouldBe(OpenAIAssistantReasoningReplay.ReasoningContentField);
+        profile.AssistantReasoningReplay.ShouldBe(OpenAIAssistantReasoningReplay.Omit);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(2)]
+    public void AssistantReasoningReplay_WhenUndefined_RejectsBeforeAssignment(int value)
+    {
+        // Arrange
+        var profile = CreateProfile("chat/completions");
+
+        // Act / Assert
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() =>
+            profile with { AssistantReasoningReplay = (OpenAIAssistantReasoningReplay) value });
+        exception.ParamName.ShouldBe("value");
+        profile.AssistantReasoningReplay.ShouldBe(OpenAIAssistantReasoningReplay.Omit);
+    }
+
+    [Fact]
     public void Constructor_WhenExistingEightParameterSignatureIsInspected_RemainsAvailableWithItsDefault()
     {
         var constructor = typeof(OpenAICompatibilityProfile).GetConstructor([

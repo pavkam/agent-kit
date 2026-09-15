@@ -175,7 +175,7 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
                     break;
 
                 case AssistantMessage:
-                    result.Add(TranslateAssistantMessage(message.Parts, providerCallIds));
+                    result.Add(TranslateAssistantMessage(message.Parts, providerCallIds, profile.AssistantReasoningReplay));
                     break;
 
                 case ToolMessage:
@@ -242,11 +242,20 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
         return builder.ToString();
     }
 
+    /// <summary>Projects one complete assistant turn onto the wire, replaying reasoning per the profile's dialect.</summary>
+    /// <param name="parts">The assistant message's ordered content parts.</param>
+    /// <param name="providerCallIds">The provider call identifiers collected for every tool call in the history.</param>
+    /// <param name="reasoningReplay">The defined replay mode selected by the compatibility profile.</param>
+    /// <returns>The assistant wire message carrying <c>content</c>, optional <c>tool_calls</c>, and optional <c>reasoning_content</c>.</returns>
     private static JsonObject TranslateAssistantMessage(
         ImmutableArray<ContentPart> parts,
-        Dictionary<ToolCallId, string> providerCallIds)
+        Dictionary<ToolCallId, string> providerCallIds,
+        OpenAIAssistantReasoningReplay reasoningReplay)
     {
+        Debug.Assert(providerCallIds is not null, "The caller collects provider call identifiers before translating messages.");
+        Debug.Assert(Enum.IsDefined(reasoningReplay), "The compatibility profile validates its replay mode on assignment.");
         var text = new StringBuilder();
+        StringBuilder? reasoning = null;
         JsonArray? toolCalls = null;
 
         foreach (var part in parts)
@@ -255,6 +264,19 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
             {
                 case TextPart textPart:
                     _ = text.Append(textPart.Text);
+                    break;
+
+                case ReasoningPart reasoningPart:
+                    // Reasoning is operational evidence the model produced, never instruction authority. Whether it
+                    // returns to the provider is a per-dialect fact: DeepSeek and Kimi thinking models expect
+                    // `reasoning_content` echoed within a tool-call loop, while OpenAI rejects unknown members.
+                    if (reasoningReplay is OpenAIAssistantReasoningReplay.ReasoningContentField
+                        && reasoningPart.Content.Text is { Length: > 0 } reasoningText)
+                    {
+                        reasoning ??= new StringBuilder();
+                        _ = reasoning.Append(reasoningText);
+                    }
+
                     break;
 
                 case ToolCallPart toolCall:
@@ -283,6 +305,11 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
         message["content"] = text.Length > 0 || toolCalls is null
             ? text.ToString()
             : null;
+
+        if (reasoning is not null)
+        {
+            message["reasoning_content"] = reasoning.ToString();
+        }
 
         if (toolCalls is not null)
         {

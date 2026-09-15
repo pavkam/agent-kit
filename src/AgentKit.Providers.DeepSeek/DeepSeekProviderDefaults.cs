@@ -37,12 +37,16 @@ public static class DeepSeekProviderDefaults
     /// </summary>
     /// <remarks>
     /// DeepSeek's compatibility policy silently ignores some unsupported
-    /// fields rather than rejecting them, and reasoning content is returned
-    /// on a separate <c>reasoning_content</c> field this package's shared
-    /// translator and parser do not yet round-trip. A caller registering a
-    /// model with materially different capabilities supplies its own
-    /// <see cref="ModelCapabilities"/> rather than relying on this shared
-    /// default.
+    /// fields rather than rejecting them. Thinking-mode reasoning is returned
+    /// on a separate <c>reasoning_content</c> field; the shared parser records
+    /// it as a <see cref="ReasoningPart"/> and <see cref="CreateProfile"/>
+    /// replays it on later assistant messages, as DeepSeek requires for
+    /// requests that carry <c>tools</c>. This default still does not claim
+    /// <see cref="ModelCapabilities.SupportsReasoning"/> because that flag
+    /// describes the registered model, not the wire mechanics. A caller
+    /// registering a model with materially different capabilities supplies
+    /// its own <see cref="ModelCapabilities"/> rather than relying on this
+    /// shared default.
     /// </remarks>
     public static ModelCapabilities DefaultCapabilities { get; } = new(
         supportsSystemInstructions: true,
@@ -65,7 +69,12 @@ public static class DeepSeekProviderDefaults
     /// <paramref name="options"/>.
     /// </summary>
     /// <param name="options">The validated DeepSeek provider options.</param>
-    /// <returns>A compatibility profile configured for DeepSeek's Chat Completions endpoint.</returns>
+    /// <returns>
+    /// A compatibility profile configured for DeepSeek's Chat Completions endpoint. It selects
+    /// <see cref="OpenAIAssistantReasoningReplay.ReasoningContentField"/> because DeepSeek's thinking-mode
+    /// guide states that requests carrying <c>tools</c> must pass back every prior turn's
+    /// <c>reasoning_content</c> or receive a 400, while requests without <c>tools</c> simply ignore it.
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
     public static OpenAICompatibilityProfile CreateProfile(DeepSeekProviderOptions options)
     {
@@ -78,6 +87,9 @@ public static class DeepSeekProviderDefaults
             preferStreaming: options.PreferStreaming,
             includeStreamUsage: options.IncludeStreamUsage,
             useMaxCompletionTokensField: false,
-            []);
+            [])
+        {
+            AssistantReasoningReplay = OpenAIAssistantReasoningReplay.ReasoningContentField,
+        };
     }
 }
