@@ -48,13 +48,13 @@ stops before composing anything.
 ## The whole agent
 
 ```csharp
-using var agent = SimpleAgentBuilder.Create()
+await using var engine = AgentEngine.CreateBuilder()
     .UseLocalDevelopmentDefaults()
     .UseOpenAI(apiKey, "gpt-4o-mini")
     .WithInstructions("You are a concise assistant.")
     .Build();
 
-Console.WriteLine(await agent.AskAsync("In one sentence, what is AgentKit?"));
+Console.WriteLine(await engine.AskAsync("In one sentence, what is AgentKit?"));
 ```
 
 `AskAsync` sends one user message, runs the agent loop until it produces a final
@@ -65,15 +65,17 @@ events; it never carries provider diagnostics or your key.
 
 ## What each line composes
 
-There is no second runtime behind the builder. Each call is sugar over the
-public registrations you could write by hand on `builder.Services`:
+This is the real `AgentEngineBuilder` and the real `AgentEngine`; the
+`AgentKit.Simple` package adds the `Use*`/`With*` calls and `AskAsync` as
+extensions. There is no second runtime: each call is sugar over the public
+registrations you could write by hand on `builder.Services`:
 
-| Call                            | Registers                                                                                                                                                                                                                                                         |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UseLocalDevelopmentDefaults()` | In-memory session store and directory, in-memory grant store, a standalone security profile with best-effort audit, an allow-all policy, every registered tool allowed, and a basic-assurance identity for the process user                                       |
-| `UseOpenAI(apiKey, modelId)`    | The provider catalog, the OpenAI adapter, the API-key credential, and a catalog descriptor whose context window, output limit, capabilities, and list prices come from the bundled [known-model catalog](../src/AgentKit.Providers/README.md#known-model-catalog) |
-| `WithInstructions(text)`        | One system message, in call order                                                                                                                                                                                                                                 |
-| `Build()`                       | Session coordination, context assembly, output processing, the turn loop, the tool runtime, and the conversation; then a service provider built with `ValidateOnBuild` and `ValidateScopes`                                                                       |
+| Call                            | Registers                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UseLocalDevelopmentDefaults()` | In-memory session store and directory, in-memory grant store, a standalone security profile with best-effort audit, an allow-all policy, every registered tool allowed, and a basic-assurance identity for the process user                                                                                                 |
+| `UseOpenAI(apiKey, modelId)`    | The provider catalog, the OpenAI adapter, the API-key credential, and a catalog descriptor whose context window, output limit, capabilities, and list prices come from the bundled [known-model catalog](../src/AgentKit.Providers/README.md#known-model-catalog)                                                           |
+| `WithInstructions(text)`        | One system message, in call order                                                                                                                                                                                                                                                                                           |
+| `Build()`                       | The engine, with one published `AgentDefinition` and its run-profile publication; the first sugar call had already registered session coordination, context assembly, output processing, the turn loop, the tool runtime, security, and the conversation. The provider is built with `ValidateOnBuild` and `ValidateScopes` |
 
 `UseLocalDevelopmentDefaults` is named for what it is. Nothing survives the
 process, every request is permitted, and the identity is the process user. It is
@@ -99,7 +101,7 @@ so everything beyond the sugar is ordinary AgentKit composition.
   composes eight tools this way with a real approval flow.
 
 - **Stream the answer.** Pass an `IConversationEventObserver` to
-  `agent.SendAsync(text, observer)` to receive text and reasoning deltas, tool
+  `engine.SendAsync(text, observer)` to receive text and reasoning deltas, tool
   starts and results, and usage before the call returns.
 
 - **Use another provider or an unknown model.** Register that provider's
@@ -117,7 +119,7 @@ so everything beyond the sugar is ordinary AgentKit composition.
 - **Keep conversations across restarts.** Skip `UseLocalDevelopmentDefaults`,
   register `AddSqliteSessionStore` and `AddSqliteSessionDirectory` together with
   your security services, and call `WithIdentity`.
-  `agent.Conversation.OpenAsync(sessionId)` then resumes a persisted
+  `engine.Conversation.OpenAsync(sessionId)` then resumes a persisted
   conversation.
 
 - **Host several agents.** The [composition guide](guides/composition.md)

@@ -7,6 +7,6 @@ var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
     ?? throw new InvalidOperationException("Set OPENAI_API_KEY before running the quick start.");
 var prompt = args.Length > 0 ? string.Join(' ', args) : "In one sentence, what is AgentKit?";
 
-using var agent = QuickStartAgent.Create(apiKey);
+await using var engine = QuickStartAgent.CreateBuilder(apiKey).Build();
 
-Console.WriteLine(await agent.AskAsync(prompt));
+Console.WriteLine(await engine.AskAsync(prompt));

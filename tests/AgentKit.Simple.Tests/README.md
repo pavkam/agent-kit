@@ -1,12 +1,14 @@
 # AgentKit.Simple.Tests
 
-Verifies `SimpleAgentBuilder` and `SimpleAgent`: every argument guard with its
-exact `ParamName`, the named diagnostics `Build()` raises when a model,
-identity, or storage/security registration is missing, single-use builder
-semantics, tool advertising from `Services`, instruction ordering and request
-settings, `UseModel` over a provider registered directly, and complete turns
-against a loopback OpenAI stub including turn-limit and transport failures that
-must not leak the API key.
+Verifies the `AgentEngineBuilder` extensions and the `AgentEngine` conversation
+extensions: every argument guard with its exact `ParamName`, the diagnostics
+`Build()` raises when a model or identity is missing (and the engine's own
+composition diagnostic when storage and security are), chaining in any order,
+tool advertising from `Services` into both the model request and the published
+`AgentDefinition`, instruction ordering and request settings, `UseModel` over a
+provider registered directly, a pinned `AgentId`, and complete turns against a
+loopback OpenAI stub including turn-limit and transport failures that must not
+leak the API key.
 
 Run: `dotnet test --project tests/AgentKit.Simple.Tests --configuration Release`
 

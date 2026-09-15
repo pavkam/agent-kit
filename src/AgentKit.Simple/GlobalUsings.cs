@@ -4,6 +4,7 @@
 global using System.Collections.Immutable;
 global using System.Diagnostics;
 
+global using AgentKit;
 global using AgentKit.Context;
 global using AgentKit.Conversations;
 global using AgentKit.Loop;

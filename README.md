@@ -56,23 +56,25 @@ dotnet run --project examples/QuickStart -- "In one sentence, what is AgentKit?"
 The whole agent is a handful of lines:
 
 ```csharp
-using var agent = SimpleAgentBuilder.Create()
+await using var engine = AgentEngine.CreateBuilder()
     .UseLocalDevelopmentDefaults()          // in-memory state, allow-all policy, local identity: named, never implicit
     .UseOpenAI(apiKey, "gpt-4o-mini")       // adapter, credential, and catalog descriptor in one call
     .WithInstructions("You are a concise assistant.")
     .Build();
 
-Console.WriteLine(await agent.AskAsync("In one sentence, what is AgentKit?"));
+Console.WriteLine(await engine.AskAsync("In one sentence, what is AgentKit?"));
 ```
 
-There is no second runtime behind that builder. Each call is sugar over the
-public DI registrations of the loop, session, security, and provider packages,
-and `builder.Services` is the same `IServiceCollection` they land on, so tools,
-other providers, durable storage, and your own security policies are ordinary
-registrations away. The [getting-started guide](docs/getting-started.md)
-explains each line and the escape hatches; the
-[CodingAgent](examples/CodingAgent/README.md) example is the long form of the
-same composition with SQLite sessions, an approval broker, and eight tools.
+That is the real `AgentEngineBuilder` and `AgentEngine`; `AgentKit.Simple` adds
+the `Use*`/`With*` calls and `AskAsync` as extensions. There is no second
+runtime: each call is sugar over the public DI registrations of the loop,
+session, security, and provider packages, and `builder.Services` is the same
+`IServiceCollection` they land on, so tools, other providers, durable storage,
+and your own security policies are ordinary registrations away. The
+[getting-started guide](docs/getting-started.md) explains each line and the
+escape hatches; the [CodingAgent](examples/CodingAgent/README.md) example is the
+long form of the same composition with SQLite sessions, an approval broker, and
+eight tools.
 
 ## Choose your components
 

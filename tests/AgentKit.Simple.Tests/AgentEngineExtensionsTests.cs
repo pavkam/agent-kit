@@ -3,18 +3,26 @@
 
 namespace AgentKit.Simple.Tests;
 
-/// <summary>Verifies SimpleAgent behavior and contracts.</summary>
-public sealed class SimpleAgentTests
+/// <summary>Verifies AgentEngineExtensions behavior and contracts.</summary>
+public sealed class AgentEngineExtensionsTests
 {
+    [Fact]
+    public async Task AskAsync_WhenEngineIsNull_ThrowsArgumentNullException()
+    {
+        var exception = await Should.ThrowAsync<ArgumentNullException>(() => ((AgentEngine) null!).AskAsync("hi", TestContext.Current.CancellationToken));
+
+        exception.ParamName.ShouldBe("engine");
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData(" ")]
     public async Task AskAsync_WhenTextIsBlank_ThrowsArgumentException(string? text)
     {
-        using var agent = Agent(new StubOpenAIHandler("unused"));
+        await using var engine = Engine(new StubOpenAIHandler("unused"));
 
-        var exception = await Should.ThrowAsync<ArgumentException>(() => agent.AskAsync(text!, TestContext.Current.CancellationToken));
+        var exception = await Should.ThrowAsync<ArgumentException>(() => engine.AskAsync(text!, TestContext.Current.CancellationToken));
 
         exception.ParamName.ShouldBe("text");
     }
@@ -22,9 +30,9 @@ public sealed class SimpleAgentTests
     [Fact]
     public async Task SendAsync_WhenObserverIsNull_ThrowsArgumentNullException()
     {
-        using var agent = Agent(new StubOpenAIHandler("unused"));
+        await using var engine = Engine(new StubOpenAIHandler("unused"));
 
-        var exception = await Should.ThrowAsync<ArgumentNullException>(() => agent.SendAsync("hi", null!, TestContext.Current.CancellationToken));
+        var exception = await Should.ThrowAsync<ArgumentNullException>(() => engine.SendAsync("hi", null!, TestContext.Current.CancellationToken));
 
         exception.ParamName.ShouldBe("observer");
     }
@@ -32,9 +40,9 @@ public sealed class SimpleAgentTests
     [Fact]
     public async Task AskAsync_WhenTheModelAnswers_ReturnsTheAssistantText()
     {
-        using var agent = Agent(new StubOpenAIHandler("Hello there."));
+        await using var engine = Engine(new StubOpenAIHandler("Hello there."));
 
-        var reply = await agent.AskAsync("hi", TestContext.Current.CancellationToken);
+        var reply = await engine.AskAsync("hi", TestContext.Current.CancellationToken);
 
         reply.ShouldBe("Hello there.");
     }
@@ -43,10 +51,10 @@ public sealed class SimpleAgentTests
     public async Task AskAsync_WhenCalledTwice_ContinuesOneConversation()
     {
         var handler = new StubOpenAIHandler("one", "two");
-        using var agent = Agent(handler);
+        await using var engine = Engine(handler);
 
-        var first = await agent.AskAsync("first question", TestContext.Current.CancellationToken);
-        var second = await agent.AskAsync("second question", TestContext.Current.CancellationToken);
+        var first = await engine.AskAsync("first question", TestContext.Current.CancellationToken);
+        var second = await engine.AskAsync("second question", TestContext.Current.CancellationToken);
 
         first.ShouldBe("one");
         second.ShouldBe("two");
@@ -59,9 +67,9 @@ public sealed class SimpleAgentTests
     public async Task AskAsync_WhenTheRunHitsItsTurnLimit_ThrowsSimpleAgentExceptionWithTheSafeReason()
     {
         // The model keeps requesting an unknown tool; with MaxTurns = 1 the run stops at the limit.
-        using var agent = Agent(new StubOpenAIHandler("""tool:nope:{"a":1}"""), maxTurns: 1);
+        await using var engine = Engine(new StubOpenAIHandler("""tool:nope:{"a":1}"""), maxTurns: 1);
 
-        var exception = await Should.ThrowAsync<SimpleAgentException>(() => agent.AskAsync("do it", TestContext.Current.CancellationToken));
+        var exception = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync("do it", TestContext.Current.CancellationToken));
 
         exception.Message.ShouldContain("turn limit");
         exception.Result.Succeeded.ShouldBeFalse();
@@ -70,9 +78,9 @@ public sealed class SimpleAgentTests
     [Fact]
     public async Task AskAsync_WhenTheProviderIsUnreachable_ThrowsSimpleAgentExceptionWithoutTheKey()
     {
-        using var agent = Agent(new ThrowingHandler(), apiKey: "sk-super-secret");
+        await using var engine = Engine(new ThrowingHandler(), apiKey: "sk-super-secret");
 
-        var exception = await Should.ThrowAsync<SimpleAgentException>(() => agent.AskAsync("hi", TestContext.Current.CancellationToken));
+        var exception = await Should.ThrowAsync<SimpleAgentException>(() => engine.AskAsync("hi", TestContext.Current.CancellationToken));
 
         exception.Message.ShouldNotBeNullOrWhiteSpace();
         exception.Message.ShouldNotContain("sk-super-secret");
@@ -83,9 +91,9 @@ public sealed class SimpleAgentTests
     [Fact]
     public async Task SendAsync_WhenCalled_ReturnsTheFullTurnIncludingUsage()
     {
-        using var agent = Agent(new StubOpenAIHandler("ok"));
+        await using var engine = Engine(new StubOpenAIHandler("ok"));
 
-        var result = await agent.SendAsync("hi", TestContext.Current.CancellationToken);
+        var result = await engine.SendAsync("hi", TestContext.Current.CancellationToken);
 
         result.Succeeded.ShouldBeTrue();
         result.Events.OfType<ConversationUsageEvent>().ShouldHaveSingleItem().Usage.InputTokens.ShouldBe(10);
@@ -94,29 +102,31 @@ public sealed class SimpleAgentTests
     [Fact]
     public async Task SendAsync_WhenAnObserverIsSupplied_StreamsTextBeforeCompletion()
     {
-        using var agent = Agent(new StubOpenAIHandler("streamed"));
+        await using var engine = Engine(new StubOpenAIHandler("streamed"));
         var observer = new RecordingObserver();
 
-        _ = await agent.SendAsync("hi", observer, TestContext.Current.CancellationToken);
+        _ = await engine.SendAsync("hi", observer, TestContext.Current.CancellationToken);
 
         observer.Events.OfType<ConversationAssistantTextDeltaEvent>().Select(static e => e.Text).ShouldContain("streamed");
         _ = observer.Events.Last().ShouldBeOfType<ConversationTurnCompletedEvent>();
     }
 
     [Fact]
-    public async Task Dispose_WhenCalled_RejectsFurtherCallsAndIsIdempotent()
+    public async Task Conversation_WhenEngineHostsNoConversation_ThrowsInvalidOperationExceptionNamingTheFix()
     {
-        var agent = Agent(new StubOpenAIHandler("ok"));
+        // An engine without a conversation is still a valid engine; only the AskAsync surface is absent.
+        var builder = AgentEngine.CreateBuilder().UseLocalDevelopmentDefaults().UseOpenAI("sk-test", "gpt-4o-mini");
+        _ = builder.Services.RemoveAll<IConversationSession>();
+        await using var engine = builder.Build();
 
-        agent.Dispose();
-        agent.Dispose();
+        var exception = Should.Throw<InvalidOperationException>(() => engine.Conversation);
 
-        _ = await Should.ThrowAsync<ObjectDisposedException>(() => agent.AskAsync("hi", TestContext.Current.CancellationToken));
+        exception.Message.ShouldContain("UseLocalDevelopmentDefaults");
     }
 
-    private static SimpleAgent Agent(HttpMessageHandler handler, int maxTurns = 4, string apiKey = "sk-test")
+    private static AgentEngine Engine(HttpMessageHandler handler, int maxTurns = 4, string apiKey = "sk-test")
     {
-        var builder = SimpleAgentBuilder.Create()
+        var builder = AgentEngine.CreateBuilder()
             .UseLocalDevelopmentDefaults()
             .UseOpenAI(apiKey, "gpt-4o-mini")
             .WithInstructions("Be brief.")

@@ -12,18 +12,19 @@ composition you can run today.
 
 ## Start from the working shape
 
-The direct, in-process path is one conversation with one agent. With
-[`AgentKit.Simple`](../../src/AgentKit.Simple/README.md) it is a builder:
+The direct, in-process path is one conversation with one agent. With the
+[`AgentKit.Simple`](../../src/AgentKit.Simple/README.md) extensions on
+`AgentEngineBuilder` it is:
 
 ```csharp
-using var agent = SimpleAgentBuilder.Create()
+await using var engine = AgentEngine.CreateBuilder()
     .UseLocalDevelopmentDefaults()
     .UseOpenAI(apiKey, "gpt-4o-mini")
     .Build();
-var reply = await agent.AskAsync("Hello");
+var reply = await engine.AskAsync("Hello");
 ```
 
-That builder is sugar over ordinary registrations. Written out, the same
+Those calls are sugar over ordinary registrations. Written out, the same
 composition is the following, and this is the shape a host that owns its own
 `IServiceCollection` writes directly. Every concern is a separate registration,
 and each one is replaceable:

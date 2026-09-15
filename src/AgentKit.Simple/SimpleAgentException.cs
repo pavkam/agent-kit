@@ -4,7 +4,7 @@
 namespace AgentKit.Simple;
 
 /// <summary>
-/// Thrown by <see cref="SimpleAgent.AskAsync"/> when a turn ends without a final assistant message: a turn
+/// Thrown by <see cref="AgentEngineExtensions.AskAsync"/> when a turn ends without a final assistant message: a turn
 /// limit, a provider failure, a rejected output, a cancelled run, or a session problem.
 /// </summary>
 /// <remarks>

@@ -16,13 +16,13 @@ dotnet run --project examples/QuickStart -- "In one sentence, what is AgentKit?"
 ## The whole agent
 
 ```csharp
-using var agent = SimpleAgentBuilder.Create()
+await using var engine = AgentEngine.CreateBuilder()
     .UseLocalDevelopmentDefaults()
     .UseOpenAI(apiKey, "gpt-4o-mini")
     .WithInstructions("You are a concise assistant.")
     .Build();
 
-Console.WriteLine(await agent.AskAsync(prompt));
+Console.WriteLine(await engine.AskAsync(prompt));
 ```
 
 [`AgentKit.Simple`](../../src/AgentKit.Simple/README.md) explains what each call

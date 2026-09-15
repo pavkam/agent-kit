@@ -29,7 +29,6 @@ namespace AgentKit;
 public sealed class AgentEngine: IAsyncDisposable
 {
     private readonly Lock _disposeLock = new();
-    private readonly IServiceProvider _services;
     private readonly IAsyncDisposable? _ownedProvider;
     private readonly IAgentDefinitionCatalog _catalog;
     private readonly IIdentifierGenerator<RunId> _runIds;
@@ -70,7 +69,7 @@ public sealed class AgentEngine: IAsyncDisposable
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(validatedComposition);
 
-        _services = services;
+        Services = services;
         _ownedProvider = ownedProvider;
         TimeProvider = services.GetRequiredService<TimeProvider>();
         _catalog = services.GetRequiredService<IAgentDefinitionCatalog>();
@@ -94,6 +93,18 @@ public sealed class AgentEngine: IAsyncDisposable
     /// standalone builder or external host. The reference never changes for
     /// this engine.
     /// </value>
+    /// <summary>
+    /// Gets the composed service provider so the application that built this engine can reach the
+    /// services it registered, in the same way an <c>IHost</c> exposes its services.
+    /// </summary>
+    /// <remarks>
+    /// This is a composition-root surface for the application only. Runtime components never receive
+    /// it: every framework collaborator is injected through its constructor. The provider's lifetime is
+    /// the engine's; for a standalone engine it is disposed with the engine, and for a host-managed engine
+    /// it is the host's provider.
+    /// </remarks>
+    public IServiceProvider Services { get; }
+
     internal TimeProvider TimeProvider { get; }
 
     /// <summary>Gets the exact partial component-registration evidence validated for this engine.</summary>
@@ -275,7 +286,7 @@ public sealed class AgentEngine: IAsyncDisposable
                     "Fresh run-start authorization did not match the pinned security publication.");
             }
 
-            await using var scope = _services.CreateAsyncScope();
+            await using var scope = Services.CreateAsyncScope();
             var loop = scope.ServiceProvider.GetRequiredService<IAgentLoop>();
 
             var request = pinnedPublication.Configuration is { } configuration

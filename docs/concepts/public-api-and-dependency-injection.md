@@ -136,8 +136,8 @@ policy, execution, state, and observation remain separate.
 ## Registration surface
 
 The registrations a complete single-agent composition uses today. This is what
-`SimpleAgentBuilder` in `AgentKit.Simple` performs; a host that owns its own
-collection writes them directly:
+the `AgentKit.Simple` extensions on `AgentEngineBuilder` perform; a host that
+owns its own collection writes them directly:
 
 ```csharp
 services.AddInMemorySecurityGrantStore();

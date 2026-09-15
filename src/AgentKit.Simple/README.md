@@ -1,38 +1,45 @@
 # AgentKit.Simple
 
-The shortest path to a working agent. A fluent builder composes the real
-AgentKit loop, context, output, session, security, tool, and provider packages
-on an ordinary `IServiceCollection` and returns an agent you can talk to.
+The shortest path to a working agent: fluent `Use*`/`With*` extensions on the
+real `AgentEngineBuilder` that compose the loop, context, output, session,
+security, tool, and provider packages through their ordinary registrations,
+publish one agent definition to the engine, and add one conversation the built
+`AgentEngine` answers through `AskAsync`.
 
 ```csharp
-using var agent = SimpleAgentBuilder.Create()
+await using var engine = AgentEngine.CreateBuilder()
     .UseLocalDevelopmentDefaults()
     .UseOpenAI(apiKey, "gpt-4o-mini")
     .WithInstructions("You are a concise assistant.")
     .Build();
 
-Console.WriteLine(await agent.AskAsync("In one sentence, what is AgentKit?"));
+Console.WriteLine(await engine.AskAsync("In one sentence, what is AgentKit?"));
 ```
 
-`AskAsync` returns the assistant's text and throws `SimpleAgentException` (with
-the safe reason and the committed events) when a turn ends without a final
-answer. `SendAsync` returns the full `ConversationTurnResult`; the observing
-overload streams text, tool, and usage events; `agent.Conversation` is the
-underlying `IConversationSession` for history and session resume.
+`engine.AskAsync` returns the assistant's text and throws `SimpleAgentException`
+(with the safe reason and the committed events) when a turn ends without a final
+answer. `engine.SendAsync` returns the full `ConversationTurnResult`; the
+observing overload streams text, tool, and usage events; `engine.Conversation`
+is the underlying `IConversationSession` for history and session resume. The
+engine is still the real engine: `GetAgentsAsync` lists the one published
+`AgentDefinition`, and every other engine API works.
 
 ## What each call registers
 
-| Call                            | Registers                                                                                                                                                                                                                                                     |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UseLocalDevelopmentDefaults()` | `AddInMemorySecurityGrantStore`, `AddStandaloneSecurityProfile` with best-effort audit, `AddAllowAllSecurityPolicy`, `AddInMemorySessionStore`, `AddInMemorySessionDirectory`, `AddAgentTools(AllowAllRegisteredTools)`, and a basic-assurance local identity |
-| `UseOpenAI(apiKey, modelId)`    | `AddAgentProviders`, `AddOpenAI`, `AddOpenAIApiKeyCredential`, `AddOpenAIKnownLlmModel` under the alias `assistant`, with limits and prices from the bundled known-model catalog                                                                              |
-| `Build()`                       | `AddAgentSession`, `AddAgentContext`, `AddAgentOutput`, `AddAgentLoop`, `AddAgentTools`, `AddConversationSession`, then builds the provider with `ValidateOnBuild` and `ValidateScopes`                                                                       |
+| Call                            | Registers                                                                                                                                                                                                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UseLocalDevelopmentDefaults()` | `AddInMemorySecurityGrantStore`, `AddStandaloneSecurityProfile` with best-effort audit, `AddAllowAllSecurityPolicy`, `AddInMemorySessionStore`, `AddInMemorySessionDirectory`, `AddAgentTools(AllowAllRegisteredTools)`, and a basic-assurance local identity          |
+| `UseOpenAI(apiKey, modelId)`    | `AddAgentProviders`, `AddOpenAI`, `AddOpenAIApiKeyCredential`, `AddOpenAIKnownLlmModel` under the alias `assistant`, with limits and prices from the bundled known-model catalog                                                                                       |
+| Any first sugar call            | `AddAgentProviders`, `AddAgentSession`, `AddAgentContext`, `AddAgentOutput`, `AddAgentLoop`, `AddAgentTools`, `AddAgentPermissions` + `AddSecurityAuthority`, one lazily built `AgentDefinition` source with its run-profile publication, and `AddConversationSession` |
 
-Every `ITool` registered on `builder.Services` is advertised to the model with
-its exact captured descriptor. Nothing is chosen silently: storage, authority,
-and identity are external facts, so `UseLocalDevelopmentDefaults` is an
-explicit, named opt-in and `Build()` fails with a diagnostic that names the
-missing registration when it is absent.
+Calls chain in any order before `Build()`; the plan is read lazily when the
+provider is built. Every `ITool` registered on `builder.Services` is advertised
+to the model, and appears in the published `AgentDefinition`, with its exact
+captured descriptor. Nothing is chosen silently: storage, authority, and
+identity are external facts, so `UseLocalDevelopmentDefaults` is an explicit,
+named opt-in, and `Build()` fails with a diagnostic naming what is missing (the
+engine's own composition diagnostic for storage and security, a plan diagnostic
+for the model or identity).
 
 ## When the sugar runs out
 
@@ -55,11 +62,13 @@ multi-tenant host, or anything handling untrusted input does not call it.
 
 ## Where this sits
 
-This is an application-tier composition leaf: it references the runtime and
-provider packages it composes and is itself referenced only by applications. It
-is not a second runtime and adds no `AddSimpleAgent` registration; a host that
-already owns an `IServiceCollection` registers the individual packages and
-`AddConversationSession`, exactly as `Build()` does.
+This is an application-tier composition leaf: it references the facade and the
+runtime and provider packages it composes, and is itself referenced only by
+applications. It is not a second runtime and adds no `AddSimpleAgent`
+registration; a host that already owns an `IServiceCollection` registers the
+individual packages and `AddConversationSession`, exactly as these extensions
+do. `AgentEngine.Services` (mirroring `IHost.Services`) is how the application
+reaches what it registered; runtime components never receive it.
 
 Target: **.NET 10**.
 [`examples/QuickStart`](../../examples/QuickStart/README.md) is this README as a

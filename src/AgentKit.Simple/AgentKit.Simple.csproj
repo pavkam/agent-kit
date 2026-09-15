@@ -4,7 +4,7 @@
     <DebugType>portable</DebugType>
     <PackageId>AgentKit.Simple</PackageId>
     <Title>AgentKit.Simple</Title>
-    <Description>The shortest path to a working AgentKit agent: a fluent builder that composes the real loop, session, security, and provider packages with explicit, named local-development defaults.</Description>
+    <Description>The shortest path to a working AgentKit agent: fluent Use*/With* extensions on AgentEngineBuilder that compose the real loop, session, security, and provider packages with explicit, named local-development defaults, plus AskAsync on the built engine.</Description>
     <PackageTags>agents;ai;llm;quickstart;dependency-injection</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../AgentKit.Abstractions/AgentKit.Abstractions.csproj"/>
+    <ProjectReference Include="../AgentKit/AgentKit.csproj"/>
     <ProjectReference Include="../AgentKit.Context/AgentKit.Context.csproj"/>
     <ProjectReference Include="../AgentKit.Conversations/AgentKit.Conversations.csproj"/>
     <ProjectReference Include="../AgentKit.Loop/AgentKit.Loop.csproj"/>
