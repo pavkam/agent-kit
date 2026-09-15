@@ -113,7 +113,26 @@ public sealed class GoogleGeminiContentTranslatorTests
     }
 
     [Fact]
-    public void Translate_WhenParallelToolCallsIsSpecified_ThrowsNotSupportedException()
+    public void Translate_WhenParallelToolCallsIsTrue_DoesNotThrowAndOmitsParallelControl()
+    {
+        var settings = LlmRequestSettings.Default with { ParallelToolCalls = true };
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [TestMessages.User("hi")],
+            [],
+            LlmToolChoice.Auto,
+            settings,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new GoogleGeminiContentTranslator().Translate(request);
+
+        body.AsObject().ContainsKey("generationConfig").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Translate_WhenParallelToolCallsIsFalse_ThrowsNotSupportedException()
     {
         var settings = LlmRequestSettings.Default with { ParallelToolCalls = false };
         var context = new LlmRequestContext(

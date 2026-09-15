@@ -168,9 +168,28 @@ public sealed class CohereRequestTranslatorTests
     }
 
     [Fact]
-    public void Translate_WhenParallelToolCallsIsSpecified_ThrowsNotSupportedException()
+    public void Translate_WhenParallelToolCallsIsTrue_DoesNotThrowAndOmitsParallelControl()
     {
         var settings = LlmRequestSettings.Default with { ParallelToolCalls = true };
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.CommandAPlus,
+            [TestMessages.User("hi")],
+            [],
+            LlmToolChoice.Auto,
+            settings,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new CohereRequestTranslator().Translate(request, useStreaming: false);
+
+        body.AsObject().ContainsKey("parallel_tool_calls").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Translate_WhenParallelToolCallsIsFalse_ThrowsNotSupportedException()
+    {
+        var settings = LlmRequestSettings.Default with { ParallelToolCalls = false };
         var context = new LlmRequestContext(
             new ModelRequestId(Guid.NewGuid()),
             TestModels.CommandAPlus,

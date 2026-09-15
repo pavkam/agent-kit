@@ -89,7 +89,7 @@ public sealed class AwsBedrockRequestTranslatorTests
             topP: null,
             maxOutputTokens: 200,
             stopSequences: ["STOP"],
-            parallelToolCalls: false,
+            parallelToolCalls: null,
             seed: null,
             ExtensionData.Empty);
 
@@ -108,6 +108,44 @@ public sealed class AwsBedrockRequestTranslatorTests
         var expected = JsonNode.Parse(TestResources.ReadAllText("requests/request_with_tools.json"));
 
         JsonNode.DeepEquals(actual, expected).ShouldBeTrue(actual.ToJsonString());
+    }
+
+    [Fact]
+    public void Translate_WhenParallelToolCallsIsTrue_DoesNotThrowAndOmitsParallelControl()
+    {
+        var tool = new LlmToolDefinition(new ToolId("noop"), "noop", null, JsonDocument.Parse("{}").RootElement);
+        var settings = LlmRequestSettings.Default with { ParallelToolCalls = true };
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.User("hi")],
+            [tool],
+            LlmToolChoice.Auto,
+            settings,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new AwsBedrockRequestTranslator().Translate(request);
+
+        body["toolConfig"]!.AsObject().ContainsKey("parallelToolCalls").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Translate_WhenParallelToolCallsIsFalse_ThrowsNotSupportedException()
+    {
+        var settings = LlmRequestSettings.Default with { ParallelToolCalls = false };
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.User("hi")],
+            [],
+            LlmToolChoice.Auto,
+            settings,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AwsBedrockRequestTranslator().Translate(request));
     }
 
     [Fact]
@@ -216,7 +254,7 @@ public sealed class AwsBedrockRequestTranslatorTests
     }
 
     [Fact]
-    public void Translate_WhenToolChoiceIsNone_OmitsToolChoiceField()
+    public void Translate_WhenToolChoiceIsNoneAndToolsArePresent_ThrowsNotSupportedException()
     {
         var tool = new LlmToolDefinition(new ToolId("noop"), "noop", null, JsonDocument.Parse("{}").RootElement);
 
@@ -230,9 +268,7 @@ public sealed class AwsBedrockRequestTranslatorTests
             ExtensionData.Empty);
         var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
 
-        var body = new AwsBedrockRequestTranslator().Translate(request);
-
-        body["toolConfig"]!.AsObject().ContainsKey("toolChoice").ShouldBeFalse();
+        _ = Should.Throw<NotSupportedException>(() => new AwsBedrockRequestTranslator().Translate(request));
     }
 
     [Fact]

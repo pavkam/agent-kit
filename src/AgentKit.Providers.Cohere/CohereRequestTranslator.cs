@@ -8,6 +8,18 @@ namespace AgentKit.Providers.Cohere;
 /// content roles, parts, tool declarations, tool configuration, and
 /// generation settings supported by the Cohere v2 Chat wire format.
 /// </summary>
+/// <remarks>
+/// The Cohere v2 Chat request body exposes no parallel-tool-calls
+/// parameter: parallel tool calling is always available whenever
+/// <c>tools</c> are provided, with no request-side toggle to disable it. A
+/// request that leaves <see cref="LlmRequestSettings.ParallelToolCalls"/>
+/// unset or sets it to <see langword="true"/> is therefore translated with
+/// no wire-format change: Cohere already behaves that way by default. A
+/// request that sets it to <see langword="false"/> cannot be honored, since
+/// there is no way to forbid parallel calls, so translation throws
+/// <see cref="NotSupportedException"/> rather than silently ignoring the
+/// caller's requirement.
+/// </remarks>
 public sealed class CohereRequestTranslator: ICohereRequestTranslator
 {
     /// <inheritdoc/>
@@ -36,10 +48,11 @@ public sealed class CohereRequestTranslator: ICohereRequestTranslator
             body["tool_choice"] = toolChoice;
         }
 
-        if (context.Settings.ParallelToolCalls is not null)
+        if (context.Settings.ParallelToolCalls is false)
         {
             throw new NotSupportedException(
-                "The Cohere v2 Chat API does not expose a parallel-tool-call control.");
+                "Settings.ParallelToolCalls=false is not supported by the Cohere v2 Chat API: the endpoint " +
+                "exposes no parameter to forbid parallel tool calls.");
         }
 
         ApplySettings(body, context.Settings);

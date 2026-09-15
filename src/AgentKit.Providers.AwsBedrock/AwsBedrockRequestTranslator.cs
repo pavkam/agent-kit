@@ -8,6 +8,35 @@ namespace AgentKit.Providers.AwsBedrock;
 /// message roles, content blocks, tool definitions, tool choice, and
 /// sampling settings supported by the Bedrock Converse wire format.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Bedrock's <c>ToolConfiguration</c> exposes only <c>tools</c> and
+/// <c>toolChoice</c>; there is no field, and no documented
+/// <c>additionalModelRequestFields</c> convention, that toggles parallel
+/// tool calling. A request that leaves
+/// <see cref="LlmRequestSettings.ParallelToolCalls"/> unset or
+/// sets it to <see langword="true"/> is therefore translated with no
+/// wire-format change. A request that sets it to <see langword="false"/>
+/// cannot be honored, so translation throws
+/// <see cref="NotSupportedException"/> rather than silently ignoring the
+/// caller's requirement.
+/// </para>
+/// <para>
+/// Bedrock's <c>ToolChoice</c> is a union of <c>auto</c>, <c>any</c>, and
+/// <c>tool</c>; it has no member meaning "the model must not call any
+/// tool". Because this translator always keeps <c>tools</c> declared when
+/// the caller supplied any (a prior turn's <c>toolUse</c>/<c>toolResult</c>
+/// content blocks may still need to be represented, and Bedrock's
+/// <c>Converse</c> validation is not guaranteed to accept those blocks
+/// without a matching <c>toolConfig</c>), a request for
+/// <see cref="LlmToolChoiceMode.None"/> while tools are present cannot be
+/// honestly represented: omitting <c>toolChoice</c> falls back to
+/// Bedrock's implicit <c>auto</c> default, leaving the model free to call
+/// the still-declared tools. Translation therefore throws
+/// <see cref="NotSupportedException"/> for <see cref="LlmToolChoiceMode.None"/>
+/// instead of silently downgrading it to <c>auto</c>.
+/// </para>
+/// </remarks>
 public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
 {
     /// <inheritdoc/>
@@ -44,6 +73,14 @@ public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
         {
             throw new NotSupportedException(
                 "The Bedrock Converse API does not support a deterministic sampling seed.");
+        }
+
+        if (context.Settings.ParallelToolCalls is false)
+        {
+            throw new NotSupportedException(
+                "Settings.ParallelToolCalls=false is not supported by the Bedrock Converse API: " +
+                "ToolConfiguration exposes only 'tools' and 'toolChoice', with no control to forbid " +
+                "parallel tool use.");
         }
 
         ProviderJson.ApplyExtensions(body, context.Settings.Extensions);
@@ -276,20 +313,17 @@ public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
         return blocks;
     }
 
-    private static JsonObject TranslateToolConfig(ImmutableArray<LlmToolDefinition> tools, LlmToolChoice toolChoice)
-    {
-        var toolConfig = new JsonObject
-        {
-            ["tools"] = TranslateTools(tools),
-        };
-
-        if (toolChoice.Mode != LlmToolChoiceMode.None)
-        {
-            toolConfig["toolChoice"] = TranslateToolChoice(toolChoice);
-        }
-
-        return toolConfig;
-    }
+    private static JsonObject TranslateToolConfig(ImmutableArray<LlmToolDefinition> tools, LlmToolChoice toolChoice) =>
+        toolChoice.Mode == LlmToolChoiceMode.None
+            ? throw new NotSupportedException(
+                "Tool choice 'None' is not supported by the Bedrock Converse API while tools are declared: " +
+                "ToolChoice is a union of 'auto', 'any', and 'tool' with no member meaning the model must " +
+                "not call any tool, so a request that declares 'tools' cannot honestly forbid their use.")
+            : new JsonObject
+            {
+                ["tools"] = TranslateTools(tools),
+                ["toolChoice"] = TranslateToolChoice(toolChoice),
+            };
 
     private static JsonArray TranslateTools(ImmutableArray<LlmToolDefinition> tools)
     {
@@ -327,8 +361,7 @@ public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
                 ["tool"] = new JsonObject { ["name"] = toolChoice.ForcedToolName },
             },
             LlmToolChoiceMode.None => throw new NotSupportedException(
-                "Tool choice mode 'None' is handled by the caller and never reaches the Bedrock Converse " +
-                "request translator's tool-choice translation."),
+                "Tool choice 'None' is handled by TranslateToolConfig and never reaches this method."),
             _ => throw new NotSupportedException(
                 $"Tool choice mode '{toolChoice.Mode}' is not supported by the Bedrock Converse request " +
                 "translator."),

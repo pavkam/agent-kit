@@ -8,6 +8,21 @@ namespace AgentKit.Providers.GoogleGemini;
 /// content roles, parts, tool declarations, tool configuration, and
 /// generation settings supported by the Gemini GenerateContent wire format.
 /// </summary>
+/// <remarks>
+/// Gemini's <c>functionCallingConfig</c> exposes only a <c>mode</c>
+/// (<c>AUTO</c>/<c>ANY</c>/<c>NONE</c>/<c>VALIDATED</c>) and
+/// <c>allowedFunctionNames</c>; it has no field that toggles parallel
+/// function calling, and the API already permits multiple
+/// <c>functionCall</c> parts in a single response with no request-side
+/// control. A request that leaves
+/// <see cref="LlmRequestSettings.ParallelToolCalls"/> unset or
+/// sets it to <see langword="true"/> is therefore translated with no
+/// wire-format change: Gemini already behaves that way by default. A
+/// request that sets it to <see langword="false"/> cannot be honored, since
+/// there is no way to forbid parallel calls, so translation throws
+/// <see cref="NotSupportedException"/> rather than silently ignoring the
+/// caller's requirement.
+/// </remarks>
 public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslator
 {
     /// <inheritdoc/>
@@ -38,10 +53,11 @@ public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslato
             body["toolConfig"] = TranslateToolChoice(context.ToolChoice);
         }
 
-        if (context.Settings.ParallelToolCalls is not null)
+        if (context.Settings.ParallelToolCalls is false)
         {
             throw new NotSupportedException(
-                "The Gemini GenerateContent API does not expose a parallel-tool-call control.");
+                "Settings.ParallelToolCalls=false is not supported by the Gemini GenerateContent API: " +
+                "functionCallingConfig exposes no control to forbid parallel function calls.");
         }
 
         var generationConfig = TranslateGenerationConfig(context.Settings);
