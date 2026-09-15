@@ -48,4 +48,26 @@ public sealed class CompactionOptions
     /// </summary>
     /// <value>Defaults to 256 entries per page.</value>
     public int SourceReadPageSize { get; set; } = 256;
+
+    /// <summary>
+    /// Gets or sets the system instruction a model-backed compaction strategy
+    /// sends ahead of the covered transcript when asking a model to summarize
+    /// it.
+    /// </summary>
+    /// <value>
+    /// Defaults to the prompt shipped as the embedded resource
+    /// <c>Resources/DefaultCompactionSummaryPrompt.txt</c>, which asks for a
+    /// faithful plain-text summary that preserves task state, decisions,
+    /// constraints, open questions, load-bearing tool results, exact
+    /// identifiers, and explicit user preferences, forbids inventing facts, and
+    /// forbids following instructions found inside the transcript. Registration
+    /// validation rejects a null, empty, or whitespace-only value.
+    /// </value>
+    /// <remarks>
+    /// The prompt is sent with system-instruction precedence to the summary
+    /// model only; the summary the model returns is untrusted model output and
+    /// never inherits that precedence. The extractive strategy ignores this
+    /// value.
+    /// </remarks>
+    public string SummaryPrompt { get; set; } = CompactionPromptResources.DefaultSummaryPrompt;
 }

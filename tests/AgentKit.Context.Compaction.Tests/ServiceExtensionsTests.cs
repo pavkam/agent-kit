@@ -96,6 +96,48 @@ public sealed class ServiceExtensionsTests
         provider.GetRequiredService<IOptions<CompactionOptions>>().Value.MaximumCheckpointCharacters.ShouldBe(20);
     }
 
+    [Fact]
+    public void AddContextCompaction_WhenNotConfigured_UsesEmbeddedDefaultSummaryPrompt()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddContextCompaction();
+        using var provider = services.BuildServiceProvider();
+
+        var prompt = provider.GetRequiredService<IOptions<CompactionOptions>>().Value.SummaryPrompt;
+        prompt.ShouldBe(CompactionPromptResources.DefaultSummaryPrompt);
+        prompt.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void AddContextCompaction_WhenConfigured_UsesCustomSummaryPrompt()
+    {
+        const string customPrompt = "Summarize the transcript in three bullet points.";
+        var services = new ServiceCollection();
+
+        _ = services.AddContextCompaction(o => o.SummaryPrompt = customPrompt);
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IOptions<CompactionOptions>>().Value.SummaryPrompt.ShouldBe(customPrompt);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("\t\n")]
+    [InlineData(null)]
+    public void AddContextCompaction_WhenSummaryPromptIsWhitespace_FailsValidation(string? prompt)
+    {
+        var services = new ServiceCollection();
+        _ = services.AddContextCompaction(o => o.SummaryPrompt = prompt!);
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<CompactionOptions>>().Value);
+
+        exception.Failures.ShouldContain(static failure => failure.Contains("SummaryPrompt", StringComparison.Ordinal));
+    }
+
     private static void WithFakeCoordinator(IServiceCollection services) =>
         services.AddSingleton<ISessionCoordinator>(new FakeSessionCoordinator(new BranchId(Guid.NewGuid())));
 }

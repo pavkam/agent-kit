@@ -10,6 +10,7 @@ namespace AgentKit.Context.Compaction
         public int MaximumCheckpointCharacters { get; set; }
         public int MaximumSourceEntries { get; set; }
         public int SourceReadPageSize { get; set; }
+        public string SummaryPrompt { get; set; }
     }
     public sealed class DefaultCompactionValidator : AgentKit.ICompactionValidator
     {

@@ -33,11 +33,14 @@ public static class ServiceExtensions
         /// Idempotent: every registration here uses <c>TryAdd</c> semantics,
         /// so calling this more than once keeps the first registration.
         /// Options are validated on first access: every numeric bound must be
-        /// positive and <see cref="CompactionOptions.MaximumCheckpointCharacters"/>
+        /// positive, <see cref="CompactionOptions.MaximumCheckpointCharacters"/>
         /// must exceed the length of
         /// <see cref="ExtractiveCompactionStrategy.TruncationMarker"/>, because a
         /// smaller ceiling leaves no room for extracted text and would fail
-        /// every attempt deterministically.
+        /// every attempt deterministically, and
+        /// <see cref="CompactionOptions.SummaryPrompt"/> must not be null,
+        /// empty, or whitespace so a model-backed strategy registered later
+        /// against the same options never sends an empty instruction.
         /// </remarks>
         public IServiceCollection AddContextCompaction(Action<CompactionOptions>? configure = null)
         {
@@ -48,7 +51,8 @@ public static class ServiceExtensions
                 .Validate(
                     static o => o.MaximumCheckpointCharacters > ExtractiveCompactionStrategy.TruncationMarker.Length,
                     $"MaximumCheckpointCharacters must exceed the {ExtractiveCompactionStrategy.TruncationMarker.Length}-character truncation marker.")
-                .Validate(o => o.SourceReadPageSize > 0, "SourceReadPageSize must be positive.");
+                .Validate(o => o.SourceReadPageSize > 0, "SourceReadPageSize must be positive.")
+                .Validate(static o => !string.IsNullOrWhiteSpace(o.SummaryPrompt), "SummaryPrompt must not be null, empty, or whitespace.");
 
             if (configure is not null)
             {
