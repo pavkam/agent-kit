@@ -293,6 +293,83 @@ public sealed class AwsBedrockResponseParserTests
     }
 
     [Fact]
+    public async Task ParseStreamingAsync_WhenToolArgumentsAreMalformed_ReturnsProtocolFailure()
+    {
+        // The completed text block is retained; the tool block whose input never became valid JSON is not
+        // fabricated as {} and is omitted from the truthful partial parts.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"text":"Checking."}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStop", /*lang=json,strict*/ """{"contentBlockIndex":0}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStart", /*lang=json,strict*/ """{"contentBlockIndex":1,"start":{"toolUse":{"toolUseId":"tooluse_bad","name":"get_weather"}}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":1,"delta":{"toolUse":{"input":"{\"location\":"}}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":1,"delta":{"toolUse":{"input":"\"Paris\",}"}}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStop", /*lang=json,strict*/ """{"contentBlockIndex":1}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("messageStop", /*lang=json,strict*/ """{"stopReason":"tool_use"}"""));
+        await using var stream = new ChunkedStream(payload, 7);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned malformed tool-call arguments.");
+        _ = failed.Failure.DiagnosticCause.ShouldBeAssignableTo<JsonException>();
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Checking.");
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        observer.Events.OfType<ModelPartCompleted>().ShouldHaveSingleItem().PartIndex.ShouldBe(0);
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        observer.Events.Select(e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(i => (long) i));
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenFrameDeclaresOversizeLength_FailsWithProtocolViolationWithoutAllocating()
+    {
+        // A hostile prelude after a valid text block: the decoder's bound is surfaced as a typed failure with
+        // the already-received text retained, never as an out-of-memory condition or an escaping exception.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"text":"Hello"}}"""),
+            AwsEventStreamTestEncoder.EncodeRawFrame([], "{}"u8, totalLength: 0xFFFF_FFF0));
+        await using var stream = new MemoryStream(payload);
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        (GC.GetAllocatedBytesForCurrentThread() - allocatedBefore).ShouldBeLessThan(1024 * 1024);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned a malformed event-stream frame.");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenHeaderValueOverrunsHeadersBlock_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        byte[] malformedHeaders = [3, (byte) ':', (byte) 'a', (byte) 'b', 7, 0x00, 0x10, (byte) 'x'];
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeRawFrame(malformedHeaders, "{}"u8));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned a malformed event-stream frame.");
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
     public async Task ParseStreamingAsync_WhenFrameIsCorrupted_FailsWithProtocolViolation()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());

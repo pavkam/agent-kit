@@ -531,6 +531,29 @@ public sealed class AwsBedrockLlmModelTests
         terminal.Usage.ShouldBeNull();
     }
 
+    /// <summary>Verifies a hostile event-stream frame is a typed protocol failure at the model boundary and never an escaping exception.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenStreamFrameViolatesEventStreamBounds_ReturnsProtocolViolationFailure()
+    {
+        var body = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"text":"Hello"}}"""),
+            AwsEventStreamTestEncoder.EncodeRawFrame([], "{}"u8, totalLength: uint.MaxValue));
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new MemoryStream(body)) });
+        var options = new AwsBedrockProviderOptions { Region = "us-east-1", PreferStreaming = true };
+        var model = CreateModel(handler, CreateCredentials(), options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned a malformed event-stream frame.");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
+    }
+
     /// <summary>Verifies a transport fault after a completed block reports the parts the observer already saw completed.</summary>
     [Fact]
     public async Task ExecuteAsync_WhenBodyStreamFaultsAfterCompletedPart_RetainsCompletedPartsInFailure()

@@ -269,7 +269,25 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
 
                 case "contentBlockStop" when payload.ContentBlockIndex is { } stopIndex
                     && blocks.TryGetValue(stopIndex, out var stopAccumulator):
-                    stopAccumulator.Close();
+                    try
+                    {
+                        stopAccumulator.Close();
+                    }
+                    catch (JsonException exception)
+                    {
+                        // Accumulated toolUse input that is not valid JSON is a typed protocol failure; it is never
+                        // replaced by {} and the still-open block is omitted from the truthful partial parts.
+                        return await FailAsync(
+                            observer,
+                            context,
+                            sequence,
+                            "The provider returned malformed tool-call arguments.",
+                            exception,
+                            cancellationToken,
+                            BuildPartialParts(blocks),
+                            TryBuildRetainedUsage(usageDto)).ConfigureAwait(false);
+                    }
+
                     await observer.OnEventAsync(
                             new ModelPartCompleted(requestId, sequence++, stopIndex, stopAccumulator.Part!),
                             cancellationToken)
@@ -633,6 +651,12 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
 
         public ContentPart? Part { get; private set; }
 
+        /// <summary>
+        /// Materializes the final part and marks the block closed. When the accumulated tool-use input is
+        /// not valid JSON the block stays open and no part is recorded, so the caller can fail typed while
+        /// still reporting truthful partial output.
+        /// </summary>
+        /// <exception cref="JsonException">A tool-use block's accumulated input is not valid JSON.</exception>
         public void Close()
         {
             Part = BuildPart();
