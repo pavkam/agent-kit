@@ -12,16 +12,33 @@ using Microsoft.Extensions.Options;
 /// version-checked append.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This class composes exactly one <see cref="ICompactionCutSelector"/>,
 /// one <see cref="ICompactionStrategy"/>, and one
 /// <see cref="ICompactionValidator"/>; it never re-implements their
-/// responsibilities inline. Activation reuses the documented invariant that
+/// responsibilities inline.
+/// </para>
+/// <para>
+/// Source loading reads the whole branch and then restricts the snapshot
+/// handed to collaborators to entries whose sequence does not exceed
+/// <see cref="CompactionRequest.SourceThrough"/>. The branch tip is kept
+/// separately because it, not the eligible bound, decides the sequence of
+/// the appended <see cref="CompactionSessionEntry"/>. A request whose
+/// eligible bound lies beyond the tip fails with a non-retryable
+/// <see cref="CompactionFailureKind.SourceUnavailable"/>, and a cut whose
+/// covered entries are causal parents of ineligible later entries is
+/// rejected with <see cref="CompactionRejectionKind.NoSafeCut"/> because the
+/// selector cannot see that dependency.
+/// </para>
+/// <para>
+/// Activation reuses the documented invariant that
 /// a branch's <see cref="SessionVersion"/> equals its committed entry
 /// count: appending exactly one <see cref="CompactionSessionEntry"/> against
 /// an expected version of <c>V</c> deterministically advances the branch to
 /// <c>V + 1</c>, so this compactor computes the activated version before
 /// calling <see cref="ISessionCoordinator.AppendAsync"/> rather than relying
 /// on a value it does not yet have.
+/// </para>
 /// </remarks>
 public sealed class DefaultCompactor: ICompactor
 {
@@ -155,18 +172,14 @@ public sealed class DefaultCompactor: ICompactor
             context.Identity,
             context.Authorization);
 
-        var loadResult = await LoadSourceAsync(sessionContext, request, cancellationToken).ConfigureAwait(false);
-        if (loadResult is not { } source)
+        var (loaded, loadFailure) = await LoadSourceAsync(sessionContext, request, cancellationToken).ConfigureAwait(false);
+        if (loaded is null)
         {
-            return new CompactionFailed(
-                context,
-                new CompactionFailure(
-                    CompactionFailureKind.SourceUnavailable,
-                    "The eligible source range could not be loaded.",
-                    retryable: true,
-                    ExtensionData.Empty));
+            Debug.Assert(loadFailure is not null, "A load that yields no source must yield a typed failure.");
+            return loadFailure;
         }
 
+        var source = loaded.Snapshot;
         var cutResult = await _cutSelector.SelectAsync(
             new CompactionCutSelectionRequest(request, source), cancellationToken).ConfigureAwait(false);
 
@@ -182,6 +195,18 @@ public sealed class DefaultCompactor: ICompactor
         }
 
         var cut = ((CompactionCutSelected) cutResult).Cut;
+
+        // The selector only sees eligible entries. An ineligible retained entry beyond SourceThrough may still depend on
+        // a covered parent (a tool result whose call is the last eligible entry); such a cut is unsafe and fails closed.
+        if (!loaded.IneligibleTailParents.IsEmpty && cut.CoveredEntryIds.Any(loaded.IneligibleTailParents.Contains))
+        {
+            return new CompactionRejected(
+                context,
+                new CompactionRejection(
+                    CompactionRejectionKind.NoSafeCut,
+                    "The selected cut would separate an entry beyond the eligible range from its covered causal parent.",
+                    ExtensionData.Empty));
+        }
 
         var strategyResult = await _strategy.ProduceAsync(
             new CompactionStrategyRequest(request, source, cut), cancellationToken).ConfigureAwait(false);
@@ -245,17 +270,30 @@ public sealed class DefaultCompactor: ICompactor
                 break;
         }
 
-        return await ActivateAsync(sessionContext, context, request, source, cut, manifest, candidate, cancellationToken)
+        return await ActivateAsync(sessionContext, context, request, loaded.BranchTip, cut, manifest, candidate, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    private async Task<CompactionSourceSnapshot?> LoadSourceAsync(
+    /// <summary>
+    /// Reads the whole branch, splits it at <see cref="CompactionRequest.SourceThrough"/>, and returns either the
+    /// eligible snapshot with the observed branch tip or the typed result that ends the attempt.
+    /// </summary>
+    /// <remarks>
+    /// The read always continues to the branch tip rather than stopping at the eligible bound: the tip decides the
+    /// sequence a newly appended entry must carry, and the ineligible tail decides whether a cut inside the eligible
+    /// range would orphan a later causal dependent. A request whose eligible bound lies beyond the tip names a range
+    /// this branch does not have and fails as a non-retryable <see cref="CompactionFailureKind.SourceUnavailable"/>.
+    /// </remarks>
+    private async Task<(LoadedCompactionSource? Source, CompactionResult? Failure)> LoadSourceAsync(
         SessionOperationContext sessionContext, CompactionRequest request, CancellationToken cancellationToken)
     {
+        Debug.Assert(sessionContext is not null, "The caller builds the session context before loading.");
+        Debug.Assert(request is not null, "The caller validates the request before loading.");
+
         var entries = ImmutableArray.CreateBuilder<SessionEntry>();
         var cursor = new SessionSequence(0);
 
-        while (cursor.Value < request.SourceThrough.Value)
+        while (true)
         {
             var pageResult = await _coordinator.ReadAsync(
                 new SessionReadRequest(sessionContext, request.BranchId, cursor, _sourceReadPageSize),
@@ -264,7 +302,13 @@ public sealed class DefaultCompactor: ICompactor
 
             if (pageResult is not SessionPage page)
             {
-                return null;
+                return (null, new CompactionFailed(
+                    request.Context,
+                    new CompactionFailure(
+                        CompactionFailureKind.SourceUnavailable,
+                        "The eligible source range could not be loaded.",
+                        retryable: true,
+                        ExtensionData.Empty)));
             }
 
             entries.AddRange(page.Entries);
@@ -276,23 +320,52 @@ public sealed class DefaultCompactor: ICompactor
             }
         }
 
-        return new CompactionSourceSnapshot(request.Context, request.BranchId, request.SourceVersion, cursor, entries.ToImmutable());
+        var branchTip = cursor;
+        if (request.SourceThrough.Value > branchTip.Value)
+        {
+            return (null, new CompactionFailed(
+                request.Context,
+                new CompactionFailure(
+                    CompactionFailureKind.SourceUnavailable,
+                    "The requested eligible range extends beyond the branch tip.",
+                    retryable: false,
+                    ExtensionData.Empty)));
+        }
+
+        var eligible = ImmutableArray.CreateBuilder<SessionEntry>(entries.Count);
+        var tailParents = ImmutableHashSet.CreateBuilder<SessionEntryId>();
+        foreach (var entry in entries)
+        {
+            if (entry.Sequence.Value <= request.SourceThrough.Value)
+            {
+                eligible.Add(entry);
+            }
+            else if (entry.CausalParentId is { } parentId)
+            {
+                _ = tailParents.Add(parentId);
+            }
+        }
+
+        var snapshot = new CompactionSourceSnapshot(
+            request.Context, request.BranchId, request.SourceVersion, request.SourceThrough, eligible.ToImmutable());
+
+        return (new LoadedCompactionSource(snapshot, branchTip, tailParents.ToImmutable()), null);
     }
 
     private async Task<CompactionResult> ActivateAsync(
         SessionOperationContext sessionContext,
         CompactionOperationContext context,
         CompactionRequest request,
-        CompactionSourceSnapshot source,
+        SessionSequence branchTip,
         CompactionCut cut,
         CompactionManifest manifest,
         CompactionCandidate candidate,
         CancellationToken cancellationToken)
     {
         // Version and sequence advance independently (one version per append, one sequence per entry), so the
-        // new entry's sequence follows the last sequence actually read from the branch, never "version + 1".
+        // new entry's sequence follows the branch tip actually read, never "version + 1" or "SourceThrough + 1".
         var activatedVersion = new SessionVersion(request.SourceVersion.Value + 1);
-        var nextSequence = new SessionSequence(source.ThroughSequence.Value + 1);
+        var nextSequence = new SessionSequence(branchTip.Value + 1);
         var lastCoveredId = cut.CoveredEntryIds[^1];
 
         var record = new CompactionRecord(

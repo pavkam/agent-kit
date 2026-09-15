@@ -231,6 +231,15 @@ suffix begins after the covered range and remains byte-for-byte represented by
 the original entries. Oversized-turn repair is disabled by default; when
 enabled, explicit repair markers and complete tool causality are mandatory.
 
+`SourceThrough` is an eligibility bound, not the branch tip. The first-party
+compactor reads the branch to its tip, hands collaborators only entries whose
+sequence does not exceed `SourceThrough`, and keeps the tip for sequence
+allocation of the activated entry. A bound beyond the tip names a range the
+branch does not have and fails as a non-retryable `SourceUnavailable`. Because
+the selector cannot see the ineligible tail, the compactor rejects a cut with
+`NoSafeCut` when any covered entry is the causal parent of an entry beyond the
+bound.
+
 ## Manifest, checkpoint, and durable record
 
 The manifest proves what a candidate represents without pretending that a

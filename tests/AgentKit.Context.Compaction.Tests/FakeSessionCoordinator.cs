@@ -32,6 +32,12 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     /// <summary>Gets the branch's current version.</summary>
     public SessionVersion Version { get; private set; }
 
+    /// <summary>Gets the sequence of the last committed entry, or zero for an empty branch.</summary>
+    public SessionSequence TipSequence => _entries.Count == 0 ? new SessionSequence(0) : _entries[^1].Sequence;
+
+    /// <summary>Gets every entry currently committed to the branch, in sequence order.</summary>
+    public IReadOnlyList<SessionEntry> Entries => _entries;
+
     /// <summary>Gets every append request this fake has received, in call order.</summary>
     public IReadOnlyList<SessionAppendRequest> ReceivedAppends => _receivedAppends;
 
@@ -87,6 +93,18 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         {
             return ValueTask.FromResult<SessionAppendResult>(
                 new SessionAppendConflict(request.ExpectedVersion, Version));
+        }
+
+        // Mirror InMemorySessionStore: every appended entry must carry the next contiguous sequence after the tip.
+        var tip = TipSequence.Value;
+        for (var i = 0; i < request.Entries.Length; i++)
+        {
+            var expectedSequence = tip + i + 1;
+            if (request.Entries[i].Sequence.Value != expectedSequence)
+            {
+                return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(
+                    $"Entry at position {i} has sequence {request.Entries[i].Sequence.Value}; expected {expectedSequence}."));
+            }
         }
 
         _entries.AddRange(request.Entries);

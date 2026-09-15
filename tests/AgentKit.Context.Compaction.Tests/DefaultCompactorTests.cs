@@ -104,6 +104,60 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
+    public async Task CompactAsync_WhenSourceThroughPrecedesBranchTip_CoversOnlyEligibleEntriesAndAppendsAfterTip()
+    {
+        // The branch has 10 entries but only sequences 1..6 are eligible. Coverage must stop at 6, and the new entry
+        // must still be allocated after the real branch tip (11), not after the eligible bound (7).
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30, sourceReadPageSize: 4);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 10).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('q', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(6), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var succeeded = result.ShouldBeOfType<CompactionSucceeded>();
+        succeeded.Record.Manifest.CoveredRange.EndInclusive.Value.ShouldBeLessThanOrEqualTo(6);
+        succeeded.Record.Manifest.RetainedSuffixStart.Value.ShouldBeLessThanOrEqualTo(6);
+        var committed = coordinator.ReceivedAppends.Single().Entries.Single().ShouldBeOfType<CompactionSessionEntry>();
+        committed.Sequence.ShouldBe(new SessionSequence(11));
+        coordinator.Entries.Count.ShouldBe(11);
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenSourceThroughExceedsBranchTip_ReturnsNonRetryableFailedWithoutAppend()
+    {
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        coordinator.Seed(Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('q', 200))));
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(9), minimumRetainedEntries: 1, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionFailed>();
+        failed.Failure.Kind.ShouldBe(CompactionFailureKind.SourceUnavailable);
+        failed.Failure.Retryable.ShouldBeFalse();
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CompactAsync_WhenIneligibleTailDependsOnCoveredEntry_ReturnsNoSafeCutWithoutAppend()
+    {
+        // A tool call at 6 is eligible but its result at 7 is beyond SourceThrough; covering the call would split the pair.
+        var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
+        var address = Address();
+        var head = Enumerable.Range(1, 5).Select(i => TestFactory.MessageEntry(address, _branchId, i, new string('q', 200)));
+        var (call, toolResult) = TestFactory.ToolCallPair(address, _branchId, callSequence: 6, resultSequence: 7);
+        coordinator.Seed([.. head, call, toolResult]);
+        var request = TestFactory.Request(TestFactory.CompactionContext(_agentId, _sessionId), _branchId, coordinator.Version, new SessionSequence(6), minimumRetainedEntries: 0, minimumReductionRatio: 0.1);
+
+        var result = await compactor.CompactAsync(request, TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<CompactionRejected>();
+        rejected.Rejection.Kind.ShouldBe(CompactionRejectionKind.NoSafeCut);
+        coordinator.ReceivedAppends.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task CompactAsync_WhenBranchVersionAdvancedSinceComputed_ReturnsCompactionConflict()
     {
         var (compactor, coordinator) = CreateCompactor(maximumCheckpointCharacters: 30);
