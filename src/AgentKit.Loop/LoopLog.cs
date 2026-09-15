@@ -147,6 +147,10 @@ internal static partial class LoopLog
     [LoggerMessage(1035, LogLevel.Information, "Turn limit reached for run {RunId} at turn {TurnId}; {ToolCount} requested tool calls were settled as rejected without invocation.")]
     internal static partial void ToolBatchRejectedAtTurnLimit(ILogger logger, RunId runId, TurnId turnId, int toolCount);
 
+    /// <summary>Logs that the final permitted turn was requested without tools so the model produces its final response.</summary>
+    [LoggerMessage(1036, LogLevel.Debug, "Turn {TurnId} of run {RunId} is the final permitted turn ({MaxTurns}); tools are disabled for this request.")]
+    internal static partial void FinalTurnToolsDisabled(ILogger logger, RunId runId, TurnId turnId, int maxTurns);
+
     /// <summary>Logs a model response that could not be accepted as a complete turn because its stop reason or tool-call identities were invalid.</summary>
     [LoggerMessage(1024, LogLevel.Warning, "Model response for run {RunId} turn {TurnId} was not accepted as complete: {Reason}.")]
     internal static partial void ModelResponseNotAccepted(ILogger logger, RunId runId, TurnId turnId, string reason);

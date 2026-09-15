@@ -12,6 +12,7 @@ namespace AgentKit.Loop
     {
         public AgentLoopOptions() { }
         public int AppendConflictRetryLimit { get; set; }
+        public bool DisableToolsOnFinalTurn { get; set; }
         public int HistoryReadPageSize { get; set; }
         public System.TimeSpan ObserverDeliveryTimeout { get; set; }
         public System.TimeSpan SettlementTimeout { get; set; }

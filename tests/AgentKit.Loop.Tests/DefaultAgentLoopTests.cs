@@ -755,8 +755,11 @@ public sealed class DefaultAgentLoopTests
         var callId = new ToolCallId(Guid.NewGuid());
         var requestId = new ModelRequestId(Guid.NewGuid());
 
+        // Tools are deliberately offered on the final turn here so the model's pending calls exercise the
+        // reject-all settlement path; the default (DisableToolsOnFinalTurn) is covered separately.
         var loop = CreateLoop(
-            out var coordinator, out var toolInvoker, _ => TestFactory.CompletedWithToolCall(requestId, callId), maxTurns: 1);
+            out var coordinator, out var toolInvoker, _ => TestFactory.CompletedWithToolCall(requestId, callId), maxTurns: 1,
+            options: new AgentLoopOptions { DisableToolsOnFinalTurn = false });
         coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
 
         var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1);
@@ -773,6 +776,75 @@ public sealed class DefaultAgentLoopTests
         rejected.CallId.ShouldBe(callId);
         rejected.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
         rejected.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOnTheFinalPermittedTurn_RequestsTheFinalResponseWithoutTools()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var calls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out var invoker,
+            _ => ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            contextAssembler: assembler);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var tool = new LlmToolDefinition(new ToolId("search"), "search", null, default);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 2) with { Tools = [tool] };
+
+        var result = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        _ = invoker.ReceivedRequests.ShouldHaveSingleItem();
+        assembler.Requests.Count.ShouldBe(2);
+        assembler.Requests[0].Tools.ShouldBe([tool]);
+        assembler.Requests[0].ToolChoice.ShouldBe(LlmToolChoice.Auto);
+        assembler.Requests[1].Tools.ShouldBeEmpty();
+        assembler.Requests[1].ToolChoice.ShouldBe(LlmToolChoice.None);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenFinalTurnToolsAreNotDisabled_OffersTheRunToolsOnEveryTurn()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var calls = 0;
+        var loop = CreateLoop(
+            out var coordinator, out _,
+            _ => ++calls == 1 ? TestFactory.CompletedWithToolCall(requestId, callId) : TestFactory.CompletedWithText(requestId),
+            contextAssembler: assembler,
+            options: new AgentLoopOptions { DisableToolsOnFinalTurn = false });
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var tool = new LlmToolDefinition(new ToolId("search"), "search", null, default);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 2) with { Tools = [tool] };
+
+        _ = await loop.RunAsync(request, TestContext.Current.CancellationToken);
+
+        assembler.Requests.Count.ShouldBe(2);
+        assembler.Requests[1].Tools.ShouldBe([tool]);
+        assembler.Requests[1].ToolChoice.ShouldBe(LlmToolChoice.Auto);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenModelRequestsToolsDespiteFinalTurnToolsBeingDisabled_StillSettlesEveryCallAsRejected()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var assembler = new RecordingContextAssembler();
+        var loop = CreateLoop(
+            out var coordinator, out var invoker, _ => TestFactory.CompletedWithToolCall(requestId, callId), contextAssembler: assembler);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId, maxTurns: 1), TestContext.Current.CancellationToken);
+
+        assembler.Requests.ShouldHaveSingleItem().ToolChoice.ShouldBe(LlmToolChoice.None);
+        _ = result.Outcome.ShouldBeOfType<AgentRunTurnLimitReached>();
+        invoker.ReceivedRequests.ShouldBeEmpty();
+        result.NewMessages[1].ShouldBeOfType<ToolMessage>().Parts.ShouldHaveSingleItem()
+            .ShouldBeOfType<ToolResultPart>().Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
     }
 
     [Fact]

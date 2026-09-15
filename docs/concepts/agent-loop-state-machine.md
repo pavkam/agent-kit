@@ -189,7 +189,13 @@ settles it as a completed turn.
 
 A turn limit SHOULD allow the final model request to receive a concise “final
 response now” instruction with tools disabled when configured. It MUST not
-silently pretend the agent chose to finish.
+silently pretend the agent chose to finish. The first-party loop disables tools
+on the final permitted turn by default (`DisableToolsOnFinalTurn`), requesting
+that turn with no tools and an explicit `None` tool choice; it does not inject a
+synthetic instruction, because the reduced loop never adds instruction content
+of its own. Every turn-limit exit is produced inside the final turn: calls the
+model still requests are settled as rejected terminal results, and a
+continuation proposal on the final turn settles as the typed turn limit.
 
 ## Replacement contract
 

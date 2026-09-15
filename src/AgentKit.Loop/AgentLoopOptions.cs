@@ -31,6 +31,19 @@ public sealed class AgentLoopOptions
     public int AppendConflictRetryLimit { get; set; } = 5;
 
     /// <summary>
+    /// Gets or sets whether the final permitted turn of a run is requested with no tools and
+    /// <see cref="LlmToolChoice.None"/>, so the model produces its final response instead of requesting calls
+    /// the loop can no longer invoke. Defaults to <see langword="true"/>.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to disable tools on the turn numbered <c>MaxTurns</c>; <see langword="false"/> to
+    /// offer the run's tools on every turn, in which case calls requested on the final turn are settled with
+    /// rejected terminal results and the run reports the typed turn limit. A model that requests calls despite
+    /// tools being disabled is settled the same way.
+    /// </value>
+    public bool DisableToolsOnFinalTurn { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the bound on each required terminal commit that must land regardless of the caller's
     /// cancellation: the tool message settling an already-committed assistant request, and the interrupted
     /// message preserving partial model output. Defaults to 30 seconds.

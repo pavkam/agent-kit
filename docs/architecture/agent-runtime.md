@@ -342,7 +342,10 @@ narrow them again. Managed ceilings cannot be widened by either layer.
 
 The first-party `AgentLoopOptions` currently exposes the history read page size,
 the append-conflict retry limit (rebases after a concurrent writer advanced the
-branch; zero disables rebasing), the settlement timeout that bounds each
+branch; zero disables rebasing), whether the final permitted turn is requested
+without tools and with an explicit `None` tool choice so the model produces its
+final response (the default; a model that requests calls anyway has them settled
+as rejected and the run reports the typed turn limit), the settlement timeout that bounds each
 required terminal commit made independently of the caller's cancellation (the
 tool message settling a committed assistant request and the interrupted message
 preserving partial output), and the observer-delivery timeout that bounds each

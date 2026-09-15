@@ -85,6 +85,9 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// <summary>The bound on each detached observer delivery; see <see cref="AgentLoopOptions.ObserverDeliveryTimeout"/>.</summary>
     private readonly TimeSpan _observerDeliveryTimeout;
 
+    /// <summary>Whether the final permitted turn is requested without tools; see <see cref="AgentLoopOptions.DisableToolsOnFinalTurn"/>.</summary>
+    private readonly bool _disableToolsOnFinalTurn;
+
     /// <summary>
     /// The single immutable run-policy version of this reduced loop. Its continuation-relevant behaviour is fixed
     /// in code rather than compiled from a per-agent policy snapshot, so every evaluation names the same version.
@@ -178,6 +181,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
         _appendConflictRetryLimit = loopOptions.AppendConflictRetryLimit;
         _settlementTimeout = loopOptions.SettlementTimeout;
         _observerDeliveryTimeout = loopOptions.ObserverDeliveryTimeout;
+        _disableToolsOnFinalTurn = loopOptions.DisableToolsOnFinalTurn;
     }
 
     /// <inheritdoc/>
@@ -324,10 +328,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
 
             currentVersion = result.Version;
             Debug.Assert(result.Cursor is not null, "A continuing turn retains an exact updated history cursor.");
+            Debug.Assert(turn < request.MaxTurns, "The final permitted turn always settles; it never continues.");
             history = new HistoryView(result.Cursor, history.Messages.AddRange(result.NewMessages), []);
         }
 
-        return BuildResult(request, new AgentRunTurnLimitReached(request.MaxTurns), committedMessages.ToImmutable(), currentVersion);
+        // Every turn-limit exit is produced inside the final turn itself: pending tool calls are settled as
+        // rejected and a continuation proposal on the final turn settles as the typed turn limit. Reaching this
+        // point would mean a turn continued past the limit, which is an invariant violation rather than a limit.
+        throw new UnreachableException("The final permitted turn continued instead of settling the run.");
     }
 
     /// <summary>
@@ -447,6 +455,15 @@ public sealed class DefaultAgentLoop: IAgentLoop
             });
         LoopLog.TurnStarted(_logger, request.RunId, turnId, turn);
 
+        // On the final permitted turn the loop can no longer invoke anything the model requests, so when
+        // configured it asks for the final response outright: no tools and an explicit ToolChoice.None. A model
+        // that requests calls anyway is still settled truthfully by SettleRejectedAtTurnLimitAsync.
+        var finalTurnWithoutTools = _disableToolsOnFinalTurn && turn == request.MaxTurns;
+        if (finalTurnWithoutTools)
+        {
+            LoopLog.FinalTurnToolsDisabled(_logger, request.RunId, turnId, request.MaxTurns);
+        }
+
         var assembleRequest = request is { Agent: { } agent, Configuration: { } configuration }
             ? new ContextAssemblyRequest(
                 request.AgentId,
@@ -458,8 +475,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 model,
                 agent.Instructions,
                 new ContextAssemblyEvidence(agent, request.Identity, history, turnAuthorization, configuration),
-                agent.Tools,
-                agent.ToolChoice,
+                finalTurnWithoutTools ? [] : agent.Tools,
+                finalTurnWithoutTools ? LlmToolChoice.None : agent.ToolChoice,
                 agent.Settings,
                 ExtensionData.Empty)
             : new ContextAssemblyRequest(
@@ -472,8 +489,8 @@ public sealed class DefaultAgentLoop: IAgentLoop
                 model,
                 request.Instructions,
                 history.Messages,
-                request.Tools,
-                request.ToolChoice,
+                finalTurnWithoutTools ? [] : request.Tools,
+                finalTurnWithoutTools ? LlmToolChoice.None : request.ToolChoice,
                 request.Settings,
                 ExtensionData.Empty);
 
