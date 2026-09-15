@@ -137,6 +137,7 @@ public sealed class SessionPlanStateStore: IPlanStateStore
             request.ToolCallId,
             loaded.Descriptor!,
             loaded.LastEntryId,
+            loaded.LastSequence,
             plan,
             request.Grant.InputFingerprint,
             cancellationToken).ConfigureAwait(false);
@@ -208,6 +209,7 @@ public sealed class SessionPlanStateStore: IPlanStateStore
                 request.ToolCallId,
                 loaded.Descriptor!,
                 loaded.LastEntryId,
+                loaded.LastSequence,
                 plan,
                 request.Grant.InputFingerprint,
                 cancellationToken).ConfigureAwait(false);
@@ -290,7 +292,7 @@ public sealed class SessionPlanStateStore: IPlanStateStore
             && actual.Resources.SequenceEqual(expected.Resources);
     }
 
-    private async ValueTask<(SessionDescriptor? Descriptor, WorkPlan? Plan, SessionEntryId? LastEntryId, string? Error)>
+    private async ValueTask<(SessionDescriptor? Descriptor, WorkPlan? Plan, SessionEntryId? LastEntryId, SessionSequence LastSequence, string? Error)>
         LoadCurrentAsync(
             SessionOperationContext context,
             SessionProfileSnapshot sessionProfile,
@@ -299,7 +301,7 @@ public sealed class SessionPlanStateStore: IPlanStateStore
         var load = await _sessions.LoadAsync(context, sessionProfile, cancellationToken).ConfigureAwait(false);
         if (load is not SessionLoaded loaded)
         {
-            return (null, null, null, load switch
+            return (null, null, null, new SessionSequence(0), load switch
             {
                 SessionNotFound => "The target session does not exist.",
                 SessionLoadFailed failed => failed.SafeMessage,
@@ -318,7 +320,7 @@ public sealed class SessionPlanStateStore: IPlanStateStore
                 cancellationToken).ConfigureAwait(false);
             if (pageResult is not SessionPage page)
             {
-                return (loaded.Descriptor, null, null, pageResult is SessionReadFailed failed
+                return (loaded.Descriptor, null, null, sequence, pageResult is SessionReadFailed failed
                     ? failed.SafeMessage
                     : "The session plan history could not be read.");
             }
@@ -332,7 +334,7 @@ public sealed class SessionPlanStateStore: IPlanStateStore
             sequence = page.ThroughSequence;
             if (!page.HasMore)
             {
-                return (loaded.Descriptor, current, lastEntryId, null);
+                return (loaded.Descriptor, current, lastEntryId, sequence, null);
             }
         }
     }
@@ -343,6 +345,7 @@ public sealed class SessionPlanStateStore: IPlanStateStore
         ToolCallId toolCallId,
         SessionDescriptor descriptor,
         SessionEntryId? causalParentId,
+        SessionSequence lastSequence,
         WorkPlan plan,
         InputFingerprint fingerprint,
         CancellationToken cancellationToken)
@@ -352,7 +355,7 @@ public sealed class SessionPlanStateStore: IPlanStateStore
             descriptor.Address,
             context.Correlation,
             descriptor.ActiveBranchId,
-            new SessionSequence(descriptor.Version.Value + 1),
+            new SessionSequence(lastSequence.Value + 1),
             causalParentId,
             _timeProvider.GetUtcNow(),
             new SchemaVersion("1"),

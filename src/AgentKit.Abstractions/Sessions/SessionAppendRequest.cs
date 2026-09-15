@@ -13,7 +13,11 @@ namespace AgentKit;
 /// without synchronization. All entries in one request commit atomically
 /// against <see cref="ExpectedVersion"/>: either every entry is appended and
 /// the canonical session advances to one new version, or none are appended and the
-/// caller observes a conflict. When <see cref="SessionOperationContext.ExecutionLaneId"/>
+/// caller observes a conflict. Each entry's <see cref="SessionEntry.Sequence"/> is its
+/// 1-based position within <see cref="BranchId"/> alone; the store accepts the request only
+/// when the batch's sequences are contiguous starting at that branch's current tip plus one,
+/// regardless of how many entries other branches of the same session have committed. When
+/// <see cref="SessionOperationContext.ExecutionLaneId"/>
 /// names a provisioned lane whose branch cursor is bound to <see cref="BranchId"/>, a
 /// committed append also advances that lane's cursor to the last appended entry so the
 /// lane's next admission or run acceptance can name the real branch tip; the lane

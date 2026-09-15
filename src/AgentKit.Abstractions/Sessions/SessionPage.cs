@@ -4,6 +4,11 @@
 namespace AgentKit;
 
 /// <summary>One forward page of session entries, in sequence order.</summary>
+/// <remarks>
+/// Every sequence in this page, including <see cref="ThroughSequence"/> and any
+/// <see cref="Snapshot"/>'s <see cref="SessionReadSnapshot.UpperSequence"/>, is a coordinate within the
+/// requested branch alone and is independent of any sibling branch's own sequence numbering.
+/// </remarks>
 public sealed record SessionPage: SessionPageResult
 {
     /// <summary>Initializes a new instance of the <see cref="SessionPage"/> record.</summary>

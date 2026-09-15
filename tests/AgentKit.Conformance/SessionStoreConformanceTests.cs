@@ -95,7 +95,7 @@ public abstract class SessionStoreConformanceTests<TFixture>
         page.Entries.ShouldBe([firstEntry]);
     }
 
-    /// <summary>Verifies a fork point must be a committed sequence of the named parent branch, not merely any allocated session sequence.</summary>
+    /// <summary>Verifies a fork point must be a committed sequence of the named parent branch, even when a sibling branch has independently committed an entry at the identical numeric sequence.</summary>
     [Fact]
     public async Task CreateBranchAsync_WhenSequenceBelongsToAnotherBranch_ReturnsParentNotFound()
     {
@@ -114,9 +114,12 @@ public abstract class SessionStoreConformanceTests<TFixture>
         var forked = (SessionBranched) await store.CreateBranchAsync(
             await AuthorizeAsync(fixture, emptyFork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
             TestContext.Current.CancellationToken);
+        // The forked branch is empty, so its own sequence coordinates start at 1, independent of the
+        // main branch's own tip. This intentionally allocates the numeric sequence 1 on both branches
+        // to prove branch-local sequences do not collide or leak into a sibling's fork validation.
         var sideAppend = new SessionAppendRequest(
             context, forked.NewBranchId, new SessionVersion(mainAppended.NewVersion.Value + 1),
-            new IdempotencyKey("side-2"), [MessageEntry(descriptor, 123, 2, "side", forked.NewBranchId)]);
+            new IdempotencyKey("side-1"), [MessageEntry(descriptor, 123, 1, "side", forked.NewBranchId)]);
         var sideAppended = await store.AppendAsync(
             await AuthorizeAsync(fixture, sideAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
             TestContext.Current.CancellationToken);
@@ -133,6 +136,179 @@ public abstract class SessionStoreConformanceTests<TFixture>
         _ = sideAppended.ShouldBeOfType<SessionAppended>();
         result.ShouldBe(new SessionBranchParentNotFound(descriptor.ActiveBranchId, new SessionSequence(2)));
         loaded.Descriptor.Version.ShouldBe(new SessionVersion(mainAppended.NewVersion.Value + 2));
+    }
+
+    /// <summary>
+    /// Verifies an append to a branch succeeds using that branch's own tip plus one even after a sibling
+    /// branch has independently committed more entries than this branch has ever seen. A store that instead
+    /// allocated sequences per session would reject this branch's append with a stale-sequence failure.
+    /// </summary>
+    [Fact]
+    public async Task AppendAsync_WhenSiblingBranchAdvanced_AcceptsBranchTipPlusOne()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(300));
+        var fork = new SessionBranchRequest(
+            context, descriptor.ActiveBranchId, new SessionSequence(0), new IdempotencyKey("fork-empty"));
+        var forked = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+
+        // Advance the sibling (main) branch well past the forked branch's own (empty) tip.
+        SessionVersion mainVersion = new(1);
+        for (var index = 0; index < 3; index++)
+        {
+            var mainAppend = new SessionAppendRequest(
+                context, descriptor.ActiveBranchId, mainVersion, new IdempotencyKey($"main-{index}"),
+                [MessageEntry(descriptor, 301 + index, index + 1, $"main-{index}")]);
+            var mainAppended = (SessionAppended) await store.AppendAsync(
+                await AuthorizeAsync(fixture, mainAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+                TestContext.Current.CancellationToken);
+            mainVersion = mainAppended.NewVersion;
+        }
+
+        // The forked branch is still empty, so its correct next sequence is 1, not 4.
+        var forkAppend = new SessionAppendRequest(
+            context, forked.NewBranchId, mainVersion, new IdempotencyKey("fork-append"),
+            [MessageEntry(descriptor, 310, 1, "fork-first", forked.NewBranchId)]);
+
+        var result = await store.AppendAsync(
+            await AuthorizeAsync(fixture, forkAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var branchRead = new SessionReadRequest(context, forked.NewBranchId, new SessionSequence(0), 10);
+        var branchPage = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, branchRead, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionAppended>();
+        branchPage.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1]);
+    }
+
+    /// <summary>
+    /// Verifies two branches that share ancestry allocate their own independent sequence coordinates: appending
+    /// to each branch a different number of times leaves each branch's own sequences contiguous from one,
+    /// unaffected by how many entries its sibling has committed.
+    /// </summary>
+    [Fact]
+    public async Task CreateBranchAsync_ThenAppendOnBothBranches_KeepsIndependentSequences()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 2);
+        var fork = new SessionBranchRequest(
+            context, descriptor.ActiveBranchId, new SessionSequence(1), new IdempotencyKey("fork"));
+        var forked = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+
+        // Main branch already has entries [1, 2]; append a third entry, sequence 3.
+        var mainAppend = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, new SessionVersion(3), new IdempotencyKey("main-3"),
+            [MessageEntry(descriptor, 320, 3, "main-3")]);
+        var mainAppended = (SessionAppended) await store.AppendAsync(
+            await AuthorizeAsync(fixture, mainAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        // The forked branch retained only entry [1]; its own next two appends are sequence 2 then 3,
+        // independent of the main branch's own sequence 3 entry above.
+        var forkAppendOne = new SessionAppendRequest(
+            context, forked.NewBranchId, mainAppended.NewVersion, new IdempotencyKey("fork-2"),
+            [MessageEntry(descriptor, 330, 2, "fork-2", forked.NewBranchId)]);
+        var forkAppendedOne = (SessionAppended) await store.AppendAsync(
+            await AuthorizeAsync(fixture, forkAppendOne, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        var forkAppendTwo = new SessionAppendRequest(
+            context, forked.NewBranchId, forkAppendedOne.NewVersion, new IdempotencyKey("fork-3"),
+            [MessageEntry(descriptor, 340, 3, "fork-3", forked.NewBranchId)]);
+        var forkAppendedTwo = (SessionAppended) await store.AppendAsync(
+            await AuthorizeAsync(fixture, forkAppendTwo, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        var mainPage = (SessionPage) await ReadAllAsync(fixture, store, descriptor, context);
+        var forkRead = new SessionReadRequest(context, forked.NewBranchId, new SessionSequence(0), 10);
+        var forkPage = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, forkRead, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        _ = forkAppendedTwo;
+        mainPage.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2, 3]);
+        forkPage.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2, 3]);
+        mainPage.Entries[^1].Id.ShouldNotBe(forkPage.Entries[^1].Id);
+    }
+
+    /// <summary>
+    /// Verifies a paged read of one branch reports that branch's own tip as its upper sequence, unaffected by
+    /// how many additional entries a sibling branch has independently committed.
+    /// </summary>
+    [Fact]
+    public async Task ReadAsync_AfterSiblingAppends_ReportsBranchLocalUpperSequence()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var (descriptor, context) = await SeedAsync(fixture, store, 1);
+        var fork = new SessionBranchRequest(
+            context, descriptor.ActiveBranchId, new SessionSequence(1), new IdempotencyKey("fork"));
+        var forked = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+
+        // Advance only the main branch, well beyond the forked branch's own single entry.
+        var mainVersion = new SessionVersion(2);
+        for (var index = 0; index < 3; index++)
+        {
+            var mainAppend = new SessionAppendRequest(
+                context, descriptor.ActiveBranchId, mainVersion, new IdempotencyKey($"main-{index}"),
+                [MessageEntry(descriptor, 350 + index, index + 2, $"main-{index}")]);
+            var mainAppended = (SessionAppended) await store.AppendAsync(
+                await AuthorizeAsync(fixture, mainAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+                TestContext.Current.CancellationToken);
+            mainVersion = mainAppended.NewVersion;
+        }
+
+        var forkRead = new SessionReadRequest(context, forked.NewBranchId, new SessionSequence(0), 10);
+        var forkPage = (SessionPage) await store.ReadAsync(
+            await AuthorizeAsync(fixture, forkRead, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        forkPage.Snapshot.ShouldNotBeNull().UpperSequence.ShouldBe(new SessionSequence(1));
+        forkPage.ThroughSequence.ShouldBe(new SessionSequence(1));
+        forkPage.HasMore.ShouldBeFalse();
+    }
+
+    /// <summary>Verifies an append batch whose first sequence skips the branch's own tip is a typed failure, even when that sequence matches the whole session's total entry count.</summary>
+    [Fact]
+    public async Task AppendAsync_WhenSequenceSkipsBranchTip_ReturnsTypedFailure()
+    {
+        await using var fixture = CreateFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await CreateSessionAsync(fixture, store);
+        var context = SessionContext(descriptor.Address, Identity(), Correlation(360));
+        var fork = new SessionBranchRequest(
+            context, descriptor.ActiveBranchId, new SessionSequence(0), new IdempotencyKey("fork-empty"));
+        var forked = (SessionBranched) await store.CreateBranchAsync(
+            await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var mainAppend = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, new SessionVersion(1), new IdempotencyKey("main-1"),
+            [MessageEntry(descriptor, 361, 1, "main-1")]);
+        var mainAppended = (SessionAppended) await store.AppendAsync(
+            await AuthorizeAsync(fixture, mainAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        // The forked branch is empty (tip 0), so its correct next sequence is 1. Presenting 2 here — the
+        // whole session's total committed entry count, which a session-wide allocator would have produced —
+        // must be rejected as a typed failure rather than silently accepted or misattributed as a conflict.
+        var wrongAppend = new SessionAppendRequest(
+            context, forked.NewBranchId, mainAppended.NewVersion, new IdempotencyKey("fork-skip"),
+            [MessageEntry(descriptor, 362, 2, "fork-skip", forked.NewBranchId)]);
+
+        var result = await store.AppendAsync(
+            await AuthorizeAsync(fixture, wrongAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionAppendFailed>();
     }
 
     /// <summary>Verifies a caller cannot combine an issued old version with a later branch tip and present it as captured evidence.</summary>
@@ -669,7 +845,7 @@ public abstract class SessionStoreConformanceTests<TFixture>
         page.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2]);
     }
 
-    /// <summary>Verifies appending to a fork never changes the original branch, and the fork continues from the session sequence.</summary>
+    /// <summary>Verifies appending to a fork never changes the original branch, and the fork continues from its own branch-local tip rather than the whole-session entry count.</summary>
     [Fact]
     public async Task CreateBranchAsync_WhenForkIsAppended_LeavesOriginalBranchUnchanged()
     {
@@ -680,9 +856,12 @@ public abstract class SessionStoreConformanceTests<TFixture>
         var branched = (SessionBranched) await store.CreateBranchAsync(
             await AuthorizeAsync(fixture, fork, SecurityOperationKind.StateMutation, SecurityEffect.Create),
             TestContext.Current.CancellationToken);
+        // The forked branch copied only entries 1 and 2, so its own branch-local tip is 2 even though the
+        // main branch (still untouched) has 4 entries and the session version has since advanced past that.
+        // The next append on the fork must be sequence 3, not a value derived from the main branch or version.
         var append = new SessionAppendRequest(
             context, branched.NewBranchId, new SessionVersion(5), new IdempotencyKey("nb1"),
-            [MessageEntry(descriptor, 200, 5, "new-branch-only", branched.NewBranchId)]);
+            [MessageEntry(descriptor, 200, 3, "new-branch-only", branched.NewBranchId)]);
 
         var appended = await store.AppendAsync(
             await AuthorizeAsync(fixture, append, SecurityOperationKind.StateMutation, SecurityEffect.Append),
@@ -695,7 +874,7 @@ public abstract class SessionStoreConformanceTests<TFixture>
 
         appended.ShouldBeOfType<SessionAppended>().NewVersion.ShouldBe(new SessionVersion(6));
         originalPage.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2, 3, 4]);
-        branchPage.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2, 5]);
+        branchPage.Entries.Select(static entry => entry.Sequence.Value).ShouldBe([1, 2, 3]);
     }
 
     /// <summary>Verifies an exact retried fork returns the originally created branch.</summary>

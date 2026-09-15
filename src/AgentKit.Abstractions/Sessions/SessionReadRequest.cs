@@ -18,9 +18,9 @@ public sealed record SessionReadRequest
     /// <param name="context">The operation context for this read.</param>
     /// <param name="branchId">The branch to read from.</param>
     /// <param name="fromSequenceExclusive">
-    /// Read entries strictly after this whole-session sequence. Sequences are
-    /// positive when allocated, so <c>new SessionSequence(0)</c> reads from the very beginning
-    /// without requiring a negative "before all" sentinel.
+    /// Read entries strictly after this sequence within <paramref name="branchId"/>. Sequences are
+    /// positive when allocated and are independent per branch, so <c>new SessionSequence(0)</c> reads from the
+    /// very beginning without requiring a negative "before all" sentinel.
     /// </param>
     /// <param name="pageSize">The maximum number of entries to return.</param>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is null.</exception>

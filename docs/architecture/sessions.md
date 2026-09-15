@@ -160,6 +160,18 @@ security, goals, checkpoints, and lifecycle facts. The common base exists to
 preserve ordering and causality; it is not an `object` payload escape hatch.
 Unknown compatible serialized fields are retained in typed extension data.
 
+`SessionSequence` is a per-branch coordinate: it is an entry's 1-based commit
+position within its own `BranchId` alone. A store accepts an append only when
+its batch's sequences are contiguous starting at that branch's own current tip
+plus one; how many entries a sibling branch of the same session has committed
+is irrelevant. `SessionVersion` remains the one whole-session
+optimistic-concurrency token and advances by exactly one per committed
+mutation regardless of which branch it targets, so two branches' own sequence
+numbering is independent and may coincide numerically without naming related
+entries. `SessionEntryId`, not the pair of branch and sequence, is an entry's
+stable cross-branch identity; a fork carries an entry's original ID and
+sequence forward unchanged into the new branch's own sequence space.
+
 Coding-harness planning uses the same rule. `PlanSessionEntry` carries a
 complete immutable `WorkPlan` revision with stable plan/item identities and an
 authenticated author. Replacement and status change append a later revision

@@ -12,7 +12,11 @@ namespace AgentKit;
 /// fields. It carries no mutable state and is safe to share across threads
 /// without synchronization. Editing an earlier message, changing direction,
 /// or reverting is always represented as a new branch through this request,
-/// never as an in-place rewrite of <see cref="ParentBranchId"/>.
+/// never as an in-place rewrite of <see cref="ParentBranchId"/>. A successful fork copies
+/// the parent's entries whose sequence is at most <see cref="AtSequence"/> into the new
+/// branch's own sequence space, unchanged; the new branch's next append must start at
+/// <see cref="AtSequence"/> plus one, and its later sequences are independent of the
+/// parent's and of any other sibling branch's.
 /// </remarks>
 public sealed record SessionBranchRequest
 {

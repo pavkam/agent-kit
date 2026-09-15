@@ -295,6 +295,43 @@ public sealed class SessionPlanStateStoreTests
         _ = sessions.Appends.ShouldHaveSingleItem();
     }
 
+    /// <summary>
+    /// Verifies the appended plan entry's sequence tracks the branch's own last observed position rather than
+    /// the whole-session version. A session whose version has advanced beyond this branch's own tip — for
+    /// example because a sibling branch or an unrelated entry type committed in between — must not leak that
+    /// higher version number into the plan entry's branch-local sequence.
+    /// </summary>
+    [Fact]
+    public async Task ReplaceAsync_WhenSessionVersionExceedsBranchTip_AppendsAtBranchTipPlusOne()
+    {
+        var entry = TestData.Entry(sequence: 1);
+        var sessions = new RecordingSessionCoordinator
+        {
+            // The whole-session version has advanced well beyond this branch's own tip of 1.
+            LoadResult = new SessionLoaded(TestData.Descriptor(new SessionVersion(5))),
+        };
+        sessions.Pages.Enqueue(new SessionPage([entry], new SessionSequence(1), false));
+        var store = Store(sessions, new RecordingGrantStore());
+        var expected = new PlanRevision(1);
+        var fingerprint = PlanSecurityBinding.ReplaceFingerprint(
+            TestData.Context.ToAddress(), "Changed", TestData.Items(), expected);
+
+        var result = await store.ReplaceAsync(
+            new PlanReplaceRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                "Changed",
+                TestData.Items(),
+                expected,
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, fingerprint)),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<PlanStateFound>();
+        var appended = sessions.Appends.ShouldHaveSingleItem().Entries.ShouldHaveSingleItem();
+        appended.Sequence.ShouldBe(new SessionSequence(2));
+    }
+
     [Fact]
     public async Task SetStatusAsync_WhenItWouldCreateTwoActiveItems_FailsWithoutAppend()
     {

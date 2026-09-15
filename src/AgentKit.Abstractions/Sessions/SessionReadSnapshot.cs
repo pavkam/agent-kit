@@ -4,7 +4,7 @@
 namespace AgentKit;
 
 /// <summary>Identifies the exact immutable session-branch prefix captured for a paged read.</summary>
-/// <remarks>Continuation reads retain this value and exclude later appends beyond <see cref="UpperSequence"/>. Construction alone is not provenance: a store accepts a continuation only when it previously issued the equal snapshot from its serialized read boundary. Adapter-specific bounded retention may expire old continuation evidence, which then fails as unavailable rather than being reinterpreted.</remarks>
+/// <remarks>Continuation reads retain this value and exclude later appends beyond <see cref="UpperSequence"/>. Construction alone is not provenance: a store accepts a continuation only when it previously issued the equal snapshot from its serialized read boundary. Adapter-specific bounded retention may expire old continuation evidence, which then fails as unavailable rather than being reinterpreted. <see cref="UpperSequence"/> is a coordinate within <see cref="BranchId"/> alone; it is independent of any sibling branch's own tip and of <see cref="Version"/>, which is the canonical whole-session optimistic-concurrency token rather than a branch-local value.</remarks>
 public sealed record SessionReadSnapshot
 {
     /// <summary>Creates one exact session read boundary.</summary>

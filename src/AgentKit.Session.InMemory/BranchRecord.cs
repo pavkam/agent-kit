@@ -15,10 +15,11 @@ namespace AgentKit.Session.InMemory;
 internal sealed class BranchRecord
 {
     /// <summary>
-    /// Gets the branch's committed entries in append order. The branch's
-    /// <see cref="SessionVersion"/> is always this list's count, and each
-    /// entry's 1-indexed <see cref="SessionSequence"/> is its position plus
-    /// one.
+    /// Gets the branch's committed entries in append order. This list's
+    /// count is always the branch tip's <see cref="SessionSequence"/>, and
+    /// each entry's 1-indexed sequence is its position plus one. This count
+    /// is independent of any sibling branch's own entry count or sequence
+    /// coordinates.
     /// </summary>
     public List<SessionEntry> Entries { get; } = [];
 

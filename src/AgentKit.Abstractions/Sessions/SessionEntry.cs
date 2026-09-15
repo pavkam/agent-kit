@@ -25,7 +25,13 @@ namespace AgentKit;
 /// Every entry carries stable identity, monotonic sequence, optional causal
 /// parent, and a timestamp from the injected <see cref="TimeProvider"/>, so
 /// ordering and causality survive storage, branching, and replay without
-/// relying on array position.
+/// relying on array position. <see cref="Sequence"/> is monotonic only within
+/// <see cref="BranchId"/>: it is that branch's 1-based commit position, and
+/// sibling branches allocate their own independent sequence coordinates that may
+/// coincide numerically with an unrelated entry elsewhere in the same session.
+/// <see cref="Id"/>, not the pair of branch and sequence, is an entry's stable
+/// identity across every branch that retains a copy of it (for example after a
+/// fork).
 /// </para>
 /// </remarks>
 public abstract record SessionEntry
@@ -37,7 +43,10 @@ public abstract record SessionEntry
     /// <param name="address">The session this entry belongs to.</param>
     /// <param name="correlation">The causal operation that produced this entry.</param>
     /// <param name="branchId">The branch this entry belongs to.</param>
-    /// <param name="sequence">This entry's position within its branch.</param>
+    /// <param name="sequence">
+    /// This entry's 1-based commit position within <paramref name="branchId"/> alone. Sequences on
+    /// different branches of the same session are independent coordinates.
+    /// </param>
     /// <param name="causalParentId">
     /// The entry this one causally follows, when applicable (for example, a
     /// tool result's causal parent is its tool call).
@@ -84,7 +93,11 @@ public abstract record SessionEntry
     /// <summary>Gets the branch this entry belongs to.</summary>
     public BranchId BranchId { get; init; }
 
-    /// <summary>Gets this entry's position within its branch.</summary>
+    /// <summary>Gets this entry's 1-based commit position within its branch.</summary>
+    /// <value>
+    /// A branch-local coordinate: sequences on different branches of the same session are independent and may
+    /// coincide numerically without naming related entries.
+    /// </value>
     public SessionSequence Sequence { get; init; }
 
     /// <summary>

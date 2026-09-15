@@ -66,9 +66,6 @@ internal sealed class SessionRecord
     /// <summary>Gets or sets the canonical whole-session compare-and-swap version.</summary>
     public long Version { get; set; }
 
-    /// <summary>Gets or sets the last allocated whole-session entry sequence.</summary>
-    public long NextSequence { get; set; }
-
     /// <summary>Gets every branch this session has ever forked, keyed by branch identity.</summary>
     public Dictionary<BranchId, BranchRecord> Branches { get; } = [];
 

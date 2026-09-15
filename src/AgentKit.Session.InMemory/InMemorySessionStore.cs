@@ -17,12 +17,18 @@ namespace AgentKit.Session.InMemory;
 /// <see cref="Descriptor"/> reports <c>Durable: false</c> accordingly.
 /// </para>
 /// <para>
-/// Session sequences and optimistic-concurrency versions are allocated across
-/// the whole record. A branch cursor remains separate from that canonical
-/// session version. Branching copies the referenced entries (by value; the
-/// copied <see cref="SessionEntry"/> instances keep their original identity
-/// and branch provenance) into the new branch's own list, so appends to either
-/// branch afterward never affect the other.
+/// Each <see cref="SessionEntry.Sequence"/> is the entry's 1-based position
+/// within its own branch: it is simply that branch's entry-list count at
+/// commit time. <see cref="SessionVersion"/> remains the canonical
+/// whole-session optimistic-concurrency token and advances once per
+/// committed mutation regardless of which branch it targets. Branching
+/// copies the referenced entries (by value; the copied
+/// <see cref="SessionEntry"/> instances keep their original identity and
+/// branch provenance) into the new branch's own list, so appends to either
+/// branch afterward never affect the other and each branch's sequence
+/// coordinates are independent of its siblings'. A <see cref="SessionEntryId"/>,
+/// not the pair of branch and sequence, is the cross-branch identity of an
+/// entry.
 /// </para>
 /// <para>
 /// Exact paged-read continuations require a snapshot previously issued by this
@@ -265,7 +271,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
             }
 
             var laneRevision = new SessionLaneRevision(1);
-            var sequence = new SessionSequence(record.NextSequence + 1);
+            var sequence = new SessionSequence(branch.Entries.Count + 1);
             var entry = new ExecutionLaneProvisionedSessionEntry(
                 request.EntryId, request.Context.ToAddress(), (BeforeRunOperationCorrelation) request.Context.Correlation,
                 request.BranchCursor.BranchId, sequence, request.BranchCursor.LastEntryId, request.ProvisionedAt,
@@ -280,7 +286,6 @@ public sealed partial class InMemorySessionStore: ISessionStore
             record.Lanes.Add(laneId, new LaneRecord(committedCursor, laneRevision));
             record.LaneProvisionIdempotency.Add(request.IdempotencyKey,
                 new IdempotencyReceipt<SessionExecutionLaneProvisionRequest, SessionExecutionLaneProvisioned>(request, result));
-            record.NextSequence = sequence.Value;
             record.Version = sessionVersion.Value;
             record.UpdatedAt = request.ProvisionedAt;
             return ValueTask.FromResult<SessionExecutionLaneProvisionResult>(result);
@@ -330,7 +335,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
 
             for (var i = 0; i < request.Entries.Length; i++)
             {
-                var expectedSequence = record.NextSequence + i + 1;
+                var expectedSequence = branch.Entries.Count + i + 1;
                 if (request.Entries[i].Sequence.Value != expectedSequence)
                 {
                     return ValueTask.FromResult<SessionAppendResult>(new SessionAppendFailed(
@@ -360,7 +365,6 @@ public sealed partial class InMemorySessionStore: ISessionStore
             branch.Entries.AddRange(request.Entries);
             record.EntryIds.UnionWith(proposedEntryIds);
             record.MessageIds.UnionWith(proposedMessageIds);
-            record.NextSequence += request.Entries.Length;
             record.Version++;
             record.UpdatedAt = _timeProvider.GetUtcNow();
             AdvanceOwningLaneCursor(record, request);
@@ -641,7 +645,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
             }
 
             var branch = record.Branches[lane.BranchCursor.BranchId];
-            var sequence = new SessionSequence(record.NextSequence + 1);
+            var sequence = new SessionSequence(branch.Entries.Count + 1);
             var admitted = new AdmittedInput(
                 request.AdmissionId, request.Context.AgentId, request.Context.SessionId, laneId,
                 request.Context.Identity, sequence, request.OriginalPayload, request.EffectivePayload,
@@ -663,7 +667,6 @@ public sealed partial class InMemorySessionStore: ISessionStore
             branch.Entries.Add(entry);
             lane.BranchCursor = new SessionBranchCursor(lane.BranchCursor.BranchId, entry.Id);
             lane.Revision = new SessionLaneRevision(lane.Revision.Value + 1);
-            record.NextSequence = sequence.Value;
             record.Version++;
             record.UpdatedAt = request.AdmittedAt;
             return ValueTask.FromResult<InputAdmissionResult>(accepted);
@@ -771,7 +774,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
 
             var correlation = new InRunOperationCorrelation(
                 request.Context.Correlation.OperationId, request.RunId, request.InitialTurnId);
-            var promotionSequence = new SessionSequence(record.NextSequence + 1);
+            var promotionSequence = new SessionSequence(branch.Entries.Count + 1);
             SessionEntryId? priorTip = branch.Entries.Count == 0 ? null : branch.Entries[^1].Id;
             var promotionEntry = new InputPromotedSessionEntry(
                 request.PromotionEntryId, request.Context.ToAddress(), correlation, lane.BranchCursor.BranchId,
@@ -782,7 +785,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
             for (var index = 0; index < selected.Length; index++)
             {
                 var stored = selected[index];
-                var entrySequence = new SessionSequence(record.NextSequence + index + 2);
+                var entrySequence = new SessionSequence(branch.Entries.Count + index + 2);
                 var message = new UserMessage(
                     request.MessageIds[index], request.Context.AgentId, request.Context.SessionId,
                     record.ConversationId, lane.BranchCursor.BranchId, request.RunId, request.InitialTurnId,
@@ -795,7 +798,7 @@ public sealed partial class InMemorySessionStore: ISessionStore
                 parent = entry.Id;
             }
 
-            var acceptedSequence = new SessionSequence(record.NextSequence + selected.Length + 2);
+            var acceptedSequence = new SessionSequence(branch.Entries.Count + selected.Length + 2);
             var committedCursor = new SessionBranchCursor(lane.BranchCursor.BranchId, request.AcceptedEntryId);
             var installedLaneRevision = new SessionLaneRevision(lane.Revision.Value + 1);
             var state = new SessionAcceptedRunState(
@@ -819,7 +822,6 @@ public sealed partial class InMemorySessionStore: ISessionStore
                     stored.Input.OriginalPayload, stored.Input.EffectivePayload, stored.Input.Preprocessing,
                     stored.Input.AdmittedAt, promotionSequence);
             }
-            record.NextSequence += appended.Count;
             record.Version++;
             record.UpdatedAt = request.AcceptedAt;
             lane.Revision = installedLaneRevision;
@@ -909,8 +911,9 @@ public sealed partial class InMemorySessionStore: ISessionStore
     /// <param name="atSequence">The requested fork sequence.</param>
     /// <returns><see langword="true"/> when <paramref name="atSequence"/> is zero or equals a committed parent-branch sequence.</returns>
     /// <remarks>
-    /// Sequences are allocated across the whole session, so a sequence below the session tip may belong to a sibling
-    /// branch. Forking at such a sequence would not identify a committed parent on the named branch.
+    /// Sequences are per-branch coordinates, so an identical numeric sequence on a sibling branch names a different
+    /// entry, if any. Forking at such a value would not identify a committed parent on the named branch, and this
+    /// check accepts only a sequence actually present in <paramref name="parent"/>'s own entry list.
     /// </remarks>
     private static bool IsCommittedForkPoint(BranchRecord parent, SessionSequence atSequence)
     {
