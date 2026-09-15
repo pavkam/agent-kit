@@ -11,6 +11,22 @@ using AgentKit.Providers.AwsBedrock.Wire;
 /// buffered JSON and binary AWS event-stream framed Bedrock Converse
 /// responses as a typed state machine.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Streaming content blocks follow the <c>ConverseStream</c> lifecycle as
+/// AWS actually emits it: <c>contentBlockStart</c> is sent only for
+/// <c>toolUse</c> blocks, so a text block is opened by its first
+/// <c>contentBlockDelta</c> and a <see cref="ModelPartStarted"/> is raised
+/// at that point. A <c>toolUse</c> delta for a block that was never started
+/// is a protocol violation, because the tool name and provider call ID are
+/// carried only by the start event and cannot be fabricated.
+/// </para>
+/// <para>
+/// A block whose deltas this package does not translate (for example
+/// <c>reasoningContent</c>) opens no accumulator; its deltas and its
+/// <c>contentBlockStop</c> are ignored rather than failing the stream.
+/// </para>
+/// </remarks>
 public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
 {
     private static readonly JsonSerializerOptions _serializerOptions = new()
@@ -216,8 +232,37 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                         .ConfigureAwait(false);
                     break;
 
-                case "contentBlockDelta" when payload.ContentBlockIndex is { } deltaIndex
-                    && blocks.TryGetValue(deltaIndex, out var deltaAccumulator):
+                case "contentBlockDelta" when payload.ContentBlockIndex is { } deltaIndex:
+                    if (!blocks.TryGetValue(deltaIndex, out var deltaAccumulator))
+                    {
+                        // Converse emits contentBlockStart only for toolUse blocks; a text block begins
+                        // directly with its first contentBlockDelta, so the accumulator is opened here.
+                        if (payload.Delta?.ToolUse is not null)
+                        {
+                            return await FailAsync(
+                                observer,
+                                context,
+                                sequence,
+                                "The provider streamed tool-call arguments for a content block that was never started.",
+                                diagnosticCause: null,
+                                cancellationToken,
+                                BuildPartialParts(blocks),
+                                TryBuildRetainedUsage(usageDto)).ConfigureAwait(false);
+                        }
+
+                        if (payload.Delta?.Text is null)
+                        {
+                            // A delta member this package does not translate (for example
+                            // reasoningContent) opens no accumulator and is ignored.
+                            break;
+                        }
+
+                        deltaAccumulator = new BlockAccumulator();
+                        blocks[deltaIndex] = deltaAccumulator;
+                        await observer.OnEventAsync(new ModelPartStarted(requestId, sequence++, deltaIndex), cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
                     await HandleContentBlockDeltaAsync(observer, requestId, deltaIndex, payload.Delta, deltaAccumulator, () => sequence++, cancellationToken)
                         .ConfigureAwait(false);
                     break;
@@ -229,6 +274,13 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                             new ModelPartCompleted(requestId, sequence++, stopIndex, stopAccumulator.Part!),
                             cancellationToken)
                         .ConfigureAwait(false);
+                    break;
+
+                case "contentBlockStop":
+                    // A stop for an index that never opened an accumulator closes a block whose content
+                    // this package does not translate (for example a reasoningContent-only block). It is
+                    // ignored rather than treated as a protocol violation so unsupported block kinds
+                    // never fail an otherwise valid stream.
                     break;
 
                 case "messageStop":

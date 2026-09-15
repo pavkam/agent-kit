@@ -213,7 +213,7 @@ public sealed class AwsBedrockLlmModelTests
     [Fact]
     public async Task ExecuteAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
     {
-        const string hostileBody = """{ "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test." }""";
+        const string hostileBody = /*lang=json,strict*/ """{ "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test." }""";
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
         {
             Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
@@ -512,8 +512,8 @@ public sealed class AwsBedrockLlmModelTests
     [Fact]
     public async Task ExecuteAsync_WhenStreamFailsAfterPartialText_RetainsPartialPartsAndUsage()
     {
-        // messageStart, contentBlockStart, two deltas, contentBlockStop: the block is complete but no messageStop or metadata follows.
-        var truncated = TakeLeadingFrames(TestResources.ReadAllBytes("responses/streaming_text.bin"), frameCount: 5);
+        // messageStart, two text deltas, contentBlockStop: the block is complete but no messageStop or metadata follows.
+        var truncated = TakeLeadingFrames(TestResources.ReadAllBytes("responses/streaming_text.bin"), frameCount: 4);
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new MemoryStream(truncated)) });
         var options = new AwsBedrockProviderOptions { Region = "us-east-1", PreferStreaming = true };
         var model = CreateModel(handler, CreateCredentials(), options: options);
@@ -535,7 +535,7 @@ public sealed class AwsBedrockLlmModelTests
     [Fact]
     public async Task ExecuteAsync_WhenBodyStreamFaultsAfterCompletedPart_RetainsCompletedPartsInFailure()
     {
-        var prefix = TakeLeadingFrames(TestResources.ReadAllBytes("responses/streaming_text.bin"), frameCount: 5);
+        var prefix = TakeLeadingFrames(TestResources.ReadAllBytes("responses/streaming_text.bin"), frameCount: 4);
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(FaultingReadStream.ConnectionReset(prefix)) });
         var options = new AwsBedrockProviderOptions { Region = "us-east-1", PreferStreaming = true };
         var model = CreateModel(handler, CreateCredentials(), options: options);

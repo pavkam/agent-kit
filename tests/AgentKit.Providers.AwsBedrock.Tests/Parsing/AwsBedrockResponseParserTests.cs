@@ -119,6 +119,107 @@ public sealed class AwsBedrockResponseParserTests
         observer.Events.Select(e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(i => (long) i));
     }
 
+    [Fact]
+    public async Task ParseStreamingAsync_WhenTextBlockHasNoStartEvent_EmitsTextPart()
+    {
+        // Converse never sends contentBlockStart for a text block: the block begins with its first delta.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"text":"Hello"}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"text":" world"}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStop", /*lang=json,strict*/ """{"contentBlockIndex":0}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("messageStop", /*lang=json,strict*/ """{"stopReason":"end_turn"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("metadata", /*lang=json,strict*/ """{"usage":{"inputTokens":10,"outputTokens":5,"totalTokens":15}}"""));
+        await using var stream = new ChunkedStream(payload, 5);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.Completed);
+        completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello world");
+        var started = observer.Events.OfType<ModelPartStarted>().ShouldHaveSingleItem();
+        started.PartIndex.ShouldBe(0);
+        var firstDelta = observer.Events.OfType<ModelPartDelta>().First();
+        started.Sequence.ShouldBeLessThan(firstDelta.Sequence);
+        observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<TextContentDelta>().Select(d => d.Text).ShouldBe(["Hello", " world"]);
+        observer.Events.OfType<ModelPartCompleted>().ShouldHaveSingleItem().PartIndex.ShouldBe(0);
+        observer.Events.Select(e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(i => (long) i));
+    }
+
+    [Theory]
+    [MemberData(nameof(ChunkSizes))]
+    public async Task ParseStreamingAsync_WhenTextBlockHasExplicitStartEvent_EmitsTextPartWithoutDuplicateStart(int chunkSize)
+    {
+        // A contentBlockStart with an empty start payload is not what Converse emits for text, but a stream
+        // that does carry one must still parse to the same single part and single ModelPartStarted.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllBytes("responses/streaming_text_with_synthetic_start.bin");
+        await using var stream = new ChunkedStream(payload, chunkSize);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello world");
+        observer.Events.OfType<ModelPartStarted>().ShouldHaveSingleItem().PartIndex.ShouldBe(0);
+        _ = observer.Events.OfType<ModelPartCompleted>().ShouldHaveSingleItem();
+        observer.Events.Select(e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(i => (long) i));
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolUseDeltaArrivesWithoutStart_FailsWithProtocolViolation()
+    {
+        // The tool name and provider call ID travel only on contentBlockStart; without it the arguments
+        // cannot be attributed to a tool, and a fabricated identity is never produced.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"text":"Let me check."}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStop", /*lang=json,strict*/ """{"contentBlockIndex":0}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":1,"delta":{"toolUse":{"input":"{}"}}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStop", /*lang=json,strict*/ """{"contentBlockIndex":1}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("messageStop", /*lang=json,strict*/ """{"stopReason":"tool_use"}"""));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Let me check.");
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenUntranslatedBlockIsStoppedWithoutAccumulator_IgnoresItAndCompletes()
+    {
+        // A reasoningContent block opens no accumulator; its deltas and stop must not fail the stream.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"reasoningContent":{"text":"thinking"}}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStop", /*lang=json,strict*/ """{"contentBlockIndex":0}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":1,"delta":{"text":"Answer"}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStop", /*lang=json,strict*/ """{"contentBlockIndex":1}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("messageStop", /*lang=json,strict*/ """{"stopReason":"end_turn"}"""));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Answer");
+        observer.Events.OfType<ModelPartStarted>().ShouldHaveSingleItem().PartIndex.ShouldBe(1);
+        observer.Events.OfType<ModelPartCompleted>().ShouldHaveSingleItem().PartIndex.ShouldBe(1);
+    }
+
     [Theory]
     [MemberData(nameof(ChunkSizes))]
     public async Task ParseStreamingAsync_WhenToolUseStream_AccumulatesFragmentedArgumentsRegardlessOfFragmentation(int chunkSize)

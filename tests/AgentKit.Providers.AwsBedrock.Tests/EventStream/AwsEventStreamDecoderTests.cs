@@ -4,6 +4,7 @@
 namespace AgentKit.Providers.AwsBedrock.Tests.EventStream;
 
 using AgentKit.Providers.AwsBedrock.EventStream;
+using AgentKit.Providers.AwsBedrock.Tests.Fakes;
 
 /// <summary>
 /// Verifies <see cref="AwsEventStreamDecoder"/> against binary fixtures
@@ -72,6 +73,16 @@ public sealed class AwsEventStreamDecoderTests
         message.MessageType.ShouldBe("exception");
         message.ExceptionType.ShouldBe("throttlingException");
         Encoding.UTF8.GetString(message.Payload).ShouldBe(/*lang=json,strict*/ """{"message":"Too many requests"}""");
+    }
+
+    [Fact]
+    public void EncodeEvent_WhenTestEncoderFramesMessageStart_ReproducesIndependentReferenceBytes()
+    {
+        // Pins the in-test encoder to the independently generated reference framing so scenarios built
+        // from it exercise the decoder against real wire bytes rather than a self-consistent loop.
+        var encoded = AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}""");
+
+        Convert.ToHexStringLower(encoded).ShouldBe(_messageStartHex);
     }
 
     [Fact]
