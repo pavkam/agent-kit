@@ -66,7 +66,7 @@ public sealed class ServiceExtensionsTests
         var nullTarget = Should.Throw<ArgumentNullException>(() =>
             services.AddSqliteSecurityGrantStore(null!, settings));
         var nullSettings = Should.Throw<ArgumentNullException>(() =>
-            services.AddSqliteSecurityGrantStore(target, null!));
+            services.AddSqliteSecurityGrantStore(target, (SqliteSecurityGrantStoreSettings) null!));
 
         nullServices.ParamName.ShouldBe("services");
         nullTarget.ParamName.ShouldBe("target");
@@ -170,6 +170,180 @@ public sealed class ServiceExtensionsTests
             descriptor.ServiceType == typeof(SqliteSecurityGrantStoreTarget)).ShouldBe(1);
         services.Count(static descriptor =>
             descriptor.ServiceType == typeof(SqliteSecurityGrantStoreSettings)).ShouldBe(1);
+    }
+
+    /// <summary>Verifies the configure delegate's mutations become the captured immutable settings singleton.</summary>
+    [Fact]
+    public void AddSqliteSecurityGrantStore_WhenConfigureIsProvided_CapturesConfiguredSettings()
+    {
+        var target = CreateTarget(Path.Combine(Path.GetTempPath(), "grants.db"));
+        var services = new ServiceCollection();
+
+        _ = services.AddSqliteSecurityGrantStore(target, static options =>
+        {
+            options.LockTimeout = TimeSpan.FromSeconds(9);
+            options.MaximumClaims = 7;
+        });
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        var settings = provider.GetRequiredService<SqliteSecurityGrantStoreSettings>();
+
+        settings.LockTimeout.ShouldBe(TimeSpan.FromSeconds(9));
+        settings.MaximumClaims.ShouldBe(7);
+        settings.MaximumGrantBytes.ShouldBe(1_048_576);
+        settings.MaximumEnforcementBytes.ShouldBe(1_048_576);
+        settings.MaximumResources.ShouldBe(256);
+        settings.MaximumDelegationLinks.ShouldBe(32);
+        provider.GetRequiredService<SqliteSecurityGrantStoreTarget>().ShouldBe(target);
+        _ = provider.GetRequiredService<ISecurityGrantStore>().ShouldBeOfType<SqliteSecurityGrantStore>();
+        File.Exists(target.DatabasePath).ShouldBeFalse();
+    }
+
+    /// <summary>Verifies omitting the delegate binds to the configure overload and captures the documented defaults.</summary>
+    [Fact]
+    public void AddSqliteSecurityGrantStore_WhenConfigureIsOmitted_CapturesDefaultSettings()
+    {
+        var target = CreateTarget(Path.Combine(Path.GetTempPath(), "grants.db"));
+        var services = new ServiceCollection();
+
+        _ = services.AddSqliteSecurityGrantStore(target);
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+
+        provider.GetRequiredService<SqliteSecurityGrantStoreSettings>()
+            .ShouldBe(SqliteSecurityGrantStoreSettings.CreateDefault());
+        _ = provider.GetRequiredService<ISecurityGrantStore>().ShouldBeOfType<SqliteSecurityGrantStore>();
+    }
+
+    /// <summary>Verifies invalid configured bounds fail eagerly at registration before any descriptor is added.</summary>
+    [Theory]
+    [InlineData("lockTimeout")]
+    [InlineData("maximumGrantBytes")]
+    [InlineData("maximumEnforcementBytes")]
+    [InlineData("maximumResources")]
+    [InlineData("maximumClaims")]
+    [InlineData("maximumDelegationLinks")]
+    public void AddSqliteSecurityGrantStore_WhenConfiguredValueIsInvalid_ThrowsBeforeMutation(string paramName)
+    {
+        var target = CreateTarget(Path.Combine(Path.GetTempPath(), "grants.db"));
+        var services = new ServiceCollection();
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() =>
+            services.AddSqliteSecurityGrantStore(target, options =>
+            {
+                switch (paramName)
+                {
+                    case "lockTimeout":
+                        options.LockTimeout = TimeSpan.FromMilliseconds(1500);
+                        break;
+                    case "maximumGrantBytes":
+                        options.MaximumGrantBytes = 0;
+                        break;
+                    case "maximumEnforcementBytes":
+                        options.MaximumEnforcementBytes = -1;
+                        break;
+                    case "maximumResources":
+                        options.MaximumResources = 0;
+                        break;
+                    case "maximumClaims":
+                        options.MaximumClaims = 0;
+                        break;
+                    default:
+                        options.MaximumDelegationLinks = 0;
+                        break;
+                }
+            }));
+
+        exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
+        exception.ParamName.ShouldBe(paramName);
+        services.ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies the configure overload rejects missing inputs with the exact parameter and never runs the delegate.</summary>
+    [Fact]
+    public void AddSqliteSecurityGrantStore_WhenConfigureOverloadArgumentIsNull_ThrowsExactArgumentWithoutInvokingDelegate()
+    {
+        var target = CreateTarget(Path.Combine(Path.GetTempPath(), "grants.db"));
+        var services = new ServiceCollection();
+        var invoked = false;
+        void Configure(SqliteSecurityGrantStoreOptions options) => invoked = true;
+
+        var nullServices = Should.Throw<ArgumentNullException>(() =>
+            ServiceExtensions.AddSqliteSecurityGrantStore(null!, target, Configure));
+        var nullTarget = Should.Throw<ArgumentNullException>(() =>
+            services.AddSqliteSecurityGrantStore(null!, Configure));
+
+        nullServices.ParamName.ShouldBe("services");
+        nullTarget.ParamName.ShouldBe("target");
+        invoked.ShouldBeFalse();
+        services.ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies repeating the same configure delegate captures one settings singleton and one store selection.</summary>
+    [Fact]
+    public void AddSqliteSecurityGrantStore_WhenSameConfigureRepeats_IsIdempotent()
+    {
+        var target = CreateTarget(Path.Combine(Path.GetTempPath(), "grants.db"));
+        var services = new ServiceCollection();
+        static void Configure(SqliteSecurityGrantStoreOptions options) => options.MaximumResources = 11;
+
+        _ = services.AddSqliteSecurityGrantStore(target, Configure);
+        var count = services.Count;
+        _ = services.AddSqliteSecurityGrantStore(target, Configure);
+
+        services.Count.ShouldBe(count);
+        services.Count(static descriptor =>
+            descriptor.ServiceType == typeof(SqliteSecurityGrantStoreSettings)).ShouldBe(1);
+        services.Count(static descriptor => descriptor.ServiceType == typeof(ISecurityGrantStore)).ShouldBe(1);
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        provider.GetRequiredService<SqliteSecurityGrantStoreSettings>().MaximumResources.ShouldBe(11);
+    }
+
+    /// <summary>Verifies a repeat with different effective configured settings is rejected before collection mutation.</summary>
+    [Fact]
+    public void AddSqliteSecurityGrantStore_WhenDifferentConfigureRepeats_RejectsBeforeMutation()
+    {
+        var target = CreateTarget(Path.Combine(Path.GetTempPath(), "grants.db"));
+        var services = new ServiceCollection();
+        _ = services.AddSqliteSecurityGrantStore(target, static options => options.MaximumClaims = 7);
+        var count = services.Count;
+
+        _ = Should.Throw<InvalidOperationException>(() =>
+            services.AddSqliteSecurityGrantStore(target, static options => options.MaximumClaims = 8));
+
+        services.Count.ShouldBe(count);
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        provider.GetRequiredService<SqliteSecurityGrantStoreSettings>().MaximumClaims.ShouldBe(7);
+    }
+
+    /// <summary>Verifies equal effective settings are idempotent across the settings and configure overloads in either order.</summary>
+    [Fact]
+    public void AddSqliteSecurityGrantStore_WhenOverloadsProduceEqualSettings_IsIdempotentAcrossOverloads()
+    {
+        var target = CreateTarget(Path.Combine(Path.GetTempPath(), "grants.db"));
+        var settings = new SqliteSecurityGrantStoreSettings(TimeSpan.FromSeconds(3), 100, 200, 10, 20, 5);
+        static void Configure(SqliteSecurityGrantStoreOptions options)
+        {
+            options.LockTimeout = TimeSpan.FromSeconds(3);
+            options.MaximumGrantBytes = 100;
+            options.MaximumEnforcementBytes = 200;
+            options.MaximumResources = 10;
+            options.MaximumClaims = 20;
+            options.MaximumDelegationLinks = 5;
+        }
+
+        var settingsFirst = new ServiceCollection();
+        _ = settingsFirst.AddSqliteSecurityGrantStore(target, settings);
+        var settingsFirstCount = settingsFirst.Count;
+        _ = Should.NotThrow(() => settingsFirst.AddSqliteSecurityGrantStore(target, Configure));
+
+        var configureFirst = new ServiceCollection();
+        _ = configureFirst.AddSqliteSecurityGrantStore(target, Configure);
+        var configureFirstCount = configureFirst.Count;
+        _ = Should.NotThrow(() => configureFirst.AddSqliteSecurityGrantStore(target, settings));
+
+        settingsFirst.Count.ShouldBe(settingsFirstCount);
+        configureFirst.Count.ShouldBe(configureFirstCount);
+        using var provider = configureFirst.BuildServiceProvider(validateScopes: true);
+        provider.GetRequiredService<SqliteSecurityGrantStoreSettings>().ShouldBe(settings);
     }
 
     private static SqliteSecurityGrantStoreTarget CreateTarget(string path) => new(

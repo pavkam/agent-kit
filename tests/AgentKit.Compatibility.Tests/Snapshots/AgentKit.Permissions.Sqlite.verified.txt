@@ -7,6 +7,7 @@ namespace AgentKit.Permissions.Sqlite
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
         {
+            public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSecurityGrantStore(AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreTarget target, System.Action<AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreOptions>? configure = null) { }
             public Microsoft.Extensions.DependencyInjection.IServiceCollection AddSqliteSecurityGrantStore(AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreTarget target, AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreSettings settings) { }
         }
     }
@@ -34,6 +35,16 @@ namespace AgentKit.Permissions.Sqlite
         public SqliteSecurityGrantStoreInstanceId(System.Guid value) { }
         public System.Guid Value { get; }
         public override string ToString() { }
+    }
+    public sealed class SqliteSecurityGrantStoreOptions
+    {
+        public SqliteSecurityGrantStoreOptions() { }
+        public System.TimeSpan LockTimeout { get; set; }
+        public int MaximumClaims { get; set; }
+        public int MaximumDelegationLinks { get; set; }
+        public int MaximumEnforcementBytes { get; set; }
+        public int MaximumGrantBytes { get; set; }
+        public int MaximumResources { get; set; }
     }
     public sealed class SqliteSecurityGrantStoreSettings : System.IEquatable<AgentKit.Permissions.Sqlite.SqliteSecurityGrantStoreSettings>
     {

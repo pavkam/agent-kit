@@ -8,6 +8,53 @@ public static class ServiceExtensions
 {
     extension(IServiceCollection services)
     {
+        /// <summary>Adds one SQLite grant-store adapter whose bounds come from an optional configure delegate.</summary>
+        /// <param name="target">The immutable fixed target and bootstrap effect policy.</param>
+        /// <param name="configure">
+        /// An optional delegate that mutates a fresh <see cref="SqliteSecurityGrantStoreOptions"/> before its values are
+        /// materialized into immutable <see cref="SqliteSecurityGrantStoreSettings"/>. When null, the registration uses
+        /// <see cref="SqliteSecurityGrantStoreSettings.CreateDefault"/>-equivalent bounds.
+        /// </param>
+        /// <returns>The same collection for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="target"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The configured options contain a bound that is not positive or a lock timeout that is not a positive
+        /// whole-second duration representable by the SQLite provider.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">The same leaf was already configured with different target or effective settings evidence.</exception>
+        /// <remarks>
+        /// <para>
+        /// The target is a required external persistence fact and is never defaulted. The configure delegate is
+        /// optional; it runs exactly once, synchronously, during registration, and the options instance it receives is
+        /// never registered in dependency injection. This is a security control-plane store, so validation stays eager:
+        /// invalid values throw <see cref="ArgumentOutOfRangeException"/> at registration before any service is added.
+        /// </para>
+        /// <para>
+        /// The effective settings are compared by value with any previously captured registration. Repeating the
+        /// registration with equal effective settings, through either overload, is idempotent; repeating it with
+        /// different effective settings throws <see cref="InvalidOperationException"/> without mutating the collection.
+        /// See <see cref="AddSqliteSecurityGrantStore(IServiceCollection, SqliteSecurityGrantStoreTarget, SqliteSecurityGrantStoreSettings)"/>
+        /// for the shared selection semantics.
+        /// </para>
+        /// </remarks>
+        public IServiceCollection AddSqliteSecurityGrantStore(
+            SqliteSecurityGrantStoreTarget target,
+            Action<SqliteSecurityGrantStoreOptions>? configure = null)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(target);
+            var options = new SqliteSecurityGrantStoreOptions();
+            configure?.Invoke(options);
+            var settings = new SqliteSecurityGrantStoreSettings(
+                options.LockTimeout,
+                options.MaximumGrantBytes,
+                options.MaximumEnforcementBytes,
+                options.MaximumResources,
+                options.MaximumClaims,
+                options.MaximumDelegationLinks);
+            return services.AddSqliteSecurityGrantStore(target, settings);
+        }
+
         /// <summary>Adds one explicitly configured SQLite grant-store adapter without opening its target.</summary>
         /// <param name="target">The immutable fixed target and bootstrap effect policy.</param>
         /// <param name="settings">The immutable operational and codec bounds.</param>
