@@ -3,6 +3,9 @@
 
 namespace AgentKit.Loop;
 
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -1035,8 +1038,14 @@ public sealed class DefaultAgentLoop: IAgentLoop
         // in sequence order; otherwise the cursor would claim history the next request never saw.
         var toolEntry = appended.CommittedEntries[^1];
         var nextCursor = NextCursor(sourceCursor, appended.NewVersion, toolEntry.Sequence);
+        // Every call's terminal result was committed as one ContentPart of the single batched ToolMessage entry,
+        // so there is exactly one real SessionEntryId for the whole batch. CommittedToolResultReference requires
+        // a distinct SessionEntryId per call so the continuation policy sees one syntactically distinct
+        // identity for each; DerivePerCallEntryId supplies that without changing what was actually committed.
+        // See its own remarks for exactly what these derived identities do and do not mean.
         var toolResultReferences = toolCalls
-            .Select(call => new CommittedToolResultReference(toolEntry.Id, call.CallId, turnId))
+            .Select((call, index) => new CommittedToolResultReference(
+                DerivePerCallEntryId(toolEntry.Id, index), call.CallId, turnId))
             .ToImmutableArray();
         return await DecideContinuationAsync(
             request, services, turnCorrelation, turn, assistantMessage, toolResultReferences, toolEntry.Id, nextCursor,
@@ -1073,10 +1082,15 @@ public sealed class DefaultAgentLoop: IAgentLoop
     /// This reduced loop drives one implicit execution lane per branch, so the lane identity is the branch
     /// identity; its operation-state revision is the turn number, which advances with every committed turn; and
     /// its policy version is <see cref="_policyVersion"/>, the single immutable snapshot of the loop's fixed
-    /// behaviour. The reduced loop projects every result of a batch into one tool message entry, so a batch of
-    /// more than one call cannot supply the distinct per-call terminal-record identities the
-    /// <see cref="CommittedTurnContinuationBoundary"/> contract requires. Such a batch continues under the
-    /// canonical committed-tool-results rule without a policy call, and the bypass is logged.
+    /// behaviour. The reduced loop projects every result of a batch into one tool message entry, so there is
+    /// exactly one real <see cref="SessionEntryId"/> for a batch of any size. Because
+    /// <see cref="CommittedTurnContinuationBoundary"/> requires a distinct <see cref="SessionEntryId"/> per
+    /// reference, every entry in <paramref name="toolResults"/> for a batch of more than one call already
+    /// carries a <em>derived</em> per-call identity built by <see cref="DerivePerCallEntryId"/> — a stable
+    /// value computed from the real batch entry identity and the call's position, documented there as
+    /// policy-facing only and never a real session entry. This lets the policy be consulted uniformly for
+    /// every committed-tool-results turn, whether it requested one call or many, instead of a single-call
+    /// special case that silently skipped every parallel tool-use turn.
     /// </para>
     /// </remarks>
     private async ValueTask<TurnOutcome> DecideContinuationAsync(
@@ -1096,14 +1110,6 @@ public sealed class DefaultAgentLoop: IAgentLoop
         Debug.Assert(turnCorrelation.TurnId is not null, "Continuation is decided for one committed turn.");
         Debug.Assert(assistantMessage.State == MessageState.Complete, "Only a committed complete response reaches continuation.");
         var turnId = turnCorrelation.TurnId.Value;
-
-        if (toolResults.Length > 1)
-        {
-            LoopLog.ContinuationPolicyBypassedForBatchProjection(_logger, request.RunId, turnId, toolResults.Length);
-            return turn < request.MaxTurns
-                ? TurnOutcome.Continue(nextCursor, newMessages)
-                : TurnOutcome.Settled(new AgentRunTurnLimitReached(request.MaxTurns), version);
-        }
 
         RunContinuationContext context;
         try
@@ -1171,6 +1177,62 @@ public sealed class DefaultAgentLoop: IAgentLoop
             sourceCursor.BranchId,
             version,
             sequence);
+    }
+
+    /// <summary>
+    /// Derives a deterministic, policy-facing-only per-call <see cref="SessionEntryId"/> for
+    /// <see cref="CommittedToolResultReference"/> when a batch of tool results was committed as one real
+    /// <see cref="MessageSessionEntry"/> covering every call.
+    /// </summary>
+    /// <param name="batchEntryId">The real <see cref="SessionEntryId"/> of the committed batched tool message.</param>
+    /// <param name="callIndex">The zero-based position of this call within the batch, in the order the model requested it.</param>
+    /// <returns>A stable, non-empty identity distinct for every <paramref name="callIndex"/> of the same batch.</returns>
+    /// <remarks>
+    /// <para>
+    /// The reduced loop commits an entire tool-call batch as one session entry: one real
+    /// <see cref="SessionEntryId"/> covers every <see cref="ToolResultPart"/> the batch produced. The
+    /// committed-turn continuation boundary, however, requires <see cref="CommittedToolResultReference"/> to
+    /// carry a distinct <see cref="SessionEntryId"/> per call (see
+    /// <c>ArgumentExceptionExtensions.ThrowIfInvalidCommittedToolReferences</c>), so that every reference can be
+    /// told apart. Rather than skip the continuation policy for any batch of more than one call — which silently
+    /// exempted parallel tool use, the case most likely to need the policy — this method derives one distinct
+    /// value per call from the real batch entry identity and the call's position.
+    /// </para>
+    /// <para>
+    /// The derived value is <em>never</em> a real session entry. It is not appended, read, or otherwise treated
+    /// as addressing session storage; it exists solely so <see cref="CommittedToolResultReference"/> and the
+    /// continuation policy that consumes it can distinguish one call's reference from another's within the same
+    /// turn. If a future revision commits one real session entry per tool result instead of one per batch, this
+    /// derivation is removed and every reference's <see cref="CommittedToolResultReference.SessionEntryId"/>
+    /// becomes the call's own real entry identity.
+    /// </para>
+    /// <para>
+    /// The derivation is deterministic: the same batch entry identity and call index always produce the same
+    /// derived value, so repeated evaluation of an unchanged committed turn (for example, after a stale
+    /// continuation proposal is discarded and recomputed) yields identical evidence. It combines the batch
+    /// entry's raw <see cref="Guid"/> bytes with the call's index through SHA-256 and forces the RFC 4122
+    /// version/variant bits so the result is always a well-formed, non-<see cref="Guid.Empty"/> value regardless
+    /// of index.
+    /// </para>
+    /// </remarks>
+    private static SessionEntryId DerivePerCallEntryId(SessionEntryId batchEntryId, int callIndex)
+    {
+        Debug.Assert(callIndex >= 0, "A call's position within its batch is never negative.");
+
+        Span<byte> seed = stackalloc byte[20];
+        var wrote = batchEntryId.Value.TryWriteBytes(seed);
+        Debug.Assert(wrote, "A GUID always writes its canonical 16 bytes.");
+        BinaryPrimitives.WriteInt32LittleEndian(seed[16..], callIndex);
+
+        Span<byte> hash = stackalloc byte[32];
+        var hashed = SHA256.TryHashData(seed, hash, out var bytesWritten);
+        Debug.Assert(hashed && bytesWritten == hash.Length, "SHA-256 always fills its fixed-size destination.");
+
+        // Force the RFC 4122 version (4) and variant bits so the derived value is always a well-formed,
+        // guaranteed non-empty GUID, independent of the hash's raw bit pattern.
+        hash[7] = (byte) ((hash[7] & 0x0F) | 0x40);
+        hash[8] = (byte) ((hash[8] & 0x3F) | 0x80);
+        return new SessionEntryId(new Guid(hash[..16]));
     }
 
     /// <summary>

@@ -125,11 +125,6 @@ internal static partial class LoopLog
     [LoggerMessage(1063, LogLevel.Debug, "Run {RunId} turn {TurnId} applied continuation decision {Decision}.")]
     internal static partial void ContinuationDecisionApplied(ILogger logger, RunId runId, TurnId turnId, string decision);
 
-    /// <summary>Logs a tool batch continuing under the canonical committed-tool-results rule because its single-entry projection cannot be described to the continuation policy.</summary>
-    /// <remarks>The reduced loop commits one tool message per batch; the continuation contract requires a distinct terminal-record identity per call, which only a single-call batch can supply.</remarks>
-    [LoggerMessage(1064, LogLevel.Information, "Run {RunId} turn {TurnId} committed {ToolCount} tool results in one projection entry; the continuation policy was not consulted and the turn continues for interpretation.")]
-    internal static partial void ContinuationPolicyBypassedForBatchProjection(ILogger logger, RunId runId, TurnId turnId, int toolCount);
-
     /// <summary>Logs a required terminal commit that did not complete within the configured settlement bound.</summary>
     /// <remarks>Whether the commit landed is unknown; the run settles as a session operation failure saying so rather than hanging.</remarks>
     [LoggerMessage(1043, LogLevel.Error, "Settlement commit for run {RunId} in session {SessionId} did not complete within {SettlementTimeout}; the commit outcome is unknown.")]

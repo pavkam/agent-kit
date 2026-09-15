@@ -130,10 +130,88 @@ public sealed class DefaultAgentLoopTests
         var boundary = context.Boundary.ShouldBeOfType<CommittedTurnContinuationBoundary>();
         var reference = boundary.ToolResults.ShouldHaveSingleItem();
         reference.ToolCallId.ShouldBe(callId);
-        reference.SessionEntryId.ShouldBe(coordinator.Entries[^1].Id);
+        // The batch's real terminal-record identity is coordinator.Entries[^1].Id, but CommittedToolResultReference
+        // requires a distinct SessionEntryId per call in the batch (every call's result is one ContentPart of that
+        // single real entry), so the loop derives a policy-facing-only identity from it instead of reusing the real
+        // entry id verbatim. See DefaultAgentLoop.DerivePerCallEntryId for exactly what this value does and does not mean.
+        reference.SessionEntryId.ShouldNotBe(default);
         reference.TurnId.ShouldBe(boundary.Response.TurnId!.Value);
         context.Causes.ShouldHaveSingleItem().ShouldBeOfType<CommittedToolResultsContinuationCause>()
             .ToolResults.ShouldBe(boundary.ToolResults);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTurnRequestsMultipleToolCalls_OffersEveryCallsCommittedResultToTheContinuationPolicy()
+    {
+        var firstCallId = new ToolCallId(Guid.NewGuid());
+        var secondCallId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var policy = new ScriptedRunContinuationPolicy(static context =>
+            new CompleteRun(new AgentRunCompleted(((CommittedTurnContinuationBoundary) context.Boundary).Response)));
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator,
+            out var invoker,
+            _ => ++modelCalls == 1
+                ? new ModelAttemptCompleted(TestFactory.Response(
+                    requestId,
+                    [
+                        new ToolCallPart(firstCallId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                        new ToolCallPart(secondCallId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                    ],
+                    NormalizedStopReason.ToolUse))
+                : TestFactory.CompletedWithText(requestId),
+            continuationPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        modelCalls.ShouldBe(1);
+        invoker.ReceivedRequests.Count.ShouldBe(2);
+        var context = policy.Contexts.ShouldHaveSingleItem();
+        var boundary = context.Boundary.ShouldBeOfType<CommittedTurnContinuationBoundary>();
+        boundary.ToolResults.Length.ShouldBe(2);
+        boundary.ToolResults[0].ToolCallId.ShouldBe(firstCallId);
+        boundary.ToolResults[1].ToolCallId.ShouldBe(secondCallId);
+        // Every call in the batch gets its own distinct policy-facing identity, even though both results are
+        // ContentParts of the same single real ToolMessage session entry.
+        boundary.ToolResults[0].SessionEntryId.ShouldNotBe(boundary.ToolResults[1].SessionEntryId);
+        boundary.ToolResults.All(reference => reference.TurnId == boundary.Response.TurnId!.Value).ShouldBeTrue();
+        context.Causes.ShouldHaveSingleItem().ShouldBeOfType<CommittedToolResultsContinuationCause>()
+            .ToolResults.ShouldBe(boundary.ToolResults);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenContinuationPolicyHaltsAfterMultipleToolResults_SettlesWithoutAnotherModelRequest()
+    {
+        var firstCallId = new ToolCallId(Guid.NewGuid());
+        var secondCallId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var halt = new AgentRunInvalidState("halt after multi-call tools");
+        var policy = new ScriptedRunContinuationPolicy(_ => new HaltRun(halt));
+        var modelCalls = 0;
+        var loop = CreateLoop(
+            out var coordinator,
+            out var invoker,
+            _ => ++modelCalls == 1
+                ? new ModelAttemptCompleted(TestFactory.Response(
+                    requestId,
+                    [
+                        new ToolCallPart(firstCallId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                        new ToolCallPart(secondCallId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                    ],
+                    NormalizedStopReason.ToolUse))
+                : TestFactory.CompletedWithText(requestId),
+            continuationPolicy: policy);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        result.Outcome.ShouldBeSameAs(halt);
+        modelCalls.ShouldBe(1);
+        invoker.ReceivedRequests.Count.ShouldBe(2);
+        result.NewMessages.Length.ShouldBe(2);
     }
 
     [Fact]

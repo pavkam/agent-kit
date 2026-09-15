@@ -69,11 +69,16 @@ that key before `AddAgentLoop` replaces the built-in decision. Until the loop
 carries an explicit lane and policy snapshot, it drives one implicit lane per
 branch (the lane identity is the branch identity), reports the turn number as
 its operation-state revision, and names a single fixed policy version. The
-reduced loop projects each tool batch into one tool-message entry; because the
-committed-turn boundary requires one distinct terminal-record identity per call,
-a batch of more than one call currently continues under the canonical
-committed-tool-results rule without a policy call, and the loop logs that
-bypass.
+reduced loop projects each tool batch into one tool-message entry, so a batch
+of any size has exactly one real committed `SessionEntryId`. Because the
+committed-turn boundary requires `CommittedToolResultReference` to carry a
+distinct `SessionEntryId` per call, the loop derives one deterministic,
+policy-facing-only identity per call from that real batch entry identity and
+the call's position, documented on `DefaultAgentLoop.DerivePerCallEntryId`. This
+lets every committed-tool-results turn — one call or many — reach the
+continuation policy uniformly; there is no longer a batch-size bypass. A future
+revision that commits one real session entry per tool result removes this
+derivation and uses each call's own real entry identity instead.
 
 The reduced loop loads the branch under one pinned `SessionReadSnapshot` and
 consumes the newest active compaction checkpoint while doing so. When a
