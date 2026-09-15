@@ -190,8 +190,10 @@ public sealed class AnthropicMessageStreamParserTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
         failed.Usage.ShouldNotBeNull().ReportState.ShouldBe(ModelUsageReportState.Interim);
+        // The open text block is materialized as far as it was received, never dropped.
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Partial");
         observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
-        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        observer.Events[^1].ShouldBeOfType<ModelResponseFailed>().PartialParts.ShouldBe(failed.PartialParts);
     }
 
     [Fact]

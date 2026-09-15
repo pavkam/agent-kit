@@ -435,4 +435,68 @@ public sealed class CohereLlmModelTests
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
         _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
     }
+
+    /// <summary>Verifies a stream that ends after a completed text block settles with that text rather than an empty terminal.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenStreamFailsAfterPartialText_RetainsPartialPartsAndUsage()
+    {
+        var truncated = ResponseBodyFixture.TruncateAfterLineContaining(TestResources.ReadAllBytes("responses/streaming_text.sse"), "\"content-end\"");
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new MemoryStream(truncated)) });
+        var options = new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/"), PreferStreaming = true };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")), options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.CommandAPlus, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        // Cohere reports usage only on message-end, so an interrupted stream truthfully has none.
+        failed.Usage.ShouldBeNull();
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        terminal.Usage.ShouldBeNull();
+    }
+
+    /// <summary>Verifies a transport fault after a completed block reports the parts the observer already saw completed.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenBodyStreamFaultsAfterCompletedPart_RetainsCompletedPartsInFailure()
+    {
+        var prefix = ResponseBodyFixture.TruncateAfterLineContaining(TestResources.ReadAllBytes("responses/streaming_text.sse"), "\"content-end\"");
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(FaultingReadStream.ConnectionReset(prefix)) });
+        var options = new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/"), PreferStreaming = true };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")), options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.CommandAPlus, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
+    }
+
+    /// <summary>Verifies the terminal cancellation event is delivered even to an observer that rejects the caller's cancelled token.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenCancelledMidStream_DeliversTerminalEventWithCancellationTokenNone()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/streaming_text.sse", "text/event-stream");
+        var options = new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/"), PreferStreaming = true };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")), options: options);
+        using var cts = new CancellationTokenSource();
+        // Started, PartStarted, two deltas, PartCompleted: cancel once the text block has been completed.
+        var observer = new TokenHonouringModelResponseObserver(cts, cancelAfterEventCount: 5);
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.CommandAPlus, Now.AddMinutes(1)), observer, cts.Token);
+
+        var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseCancelled>();
+        cancelled.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        terminal.PartialParts.ShouldBe(cancelled.PartialParts);
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
+    }
 }

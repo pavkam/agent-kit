@@ -3,6 +3,8 @@
 
 namespace AgentKit.Providers.OpenAICompatible;
 
+using System.Diagnostics;
+
 using AgentKit.Providers.OpenAICompatible.Wire;
 
 /// <summary>
@@ -264,7 +266,8 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                     "The provider returned a malformed streaming chunk.",
                     exception,
                     cancellationToken,
-                    usage: reportedUsage).ConfigureAwait(false);
+                    BuildOpenPartialParts(reasoningPartOpen, reasoningBuilder, textPartOpen, textBuilder, toolCallSlots),
+                    reportedUsage).ConfigureAwait(false);
             }
 
             resolvedModel ??= chunk.Model;
@@ -285,7 +288,9 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                         sequence,
                         "The provider returned invalid usage evidence.",
                         exception,
-                        cancellationToken).ConfigureAwait(false);
+                        cancellationToken,
+                        BuildOpenPartialParts(reasoningPartOpen, reasoningBuilder, textPartOpen, textBuilder, toolCallSlots),
+                        reportedUsage).ConfigureAwait(false);
                 }
             }
 
@@ -293,21 +298,14 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             {
                 // An in-stream error frame is the provider's own failure report; it must surface with its
                 // external code rather than being mistaken for a stream that merely ended early.
-                var partial = ImmutableArray.CreateBuilder<ContentPart>();
-                if (reasoningPartOpen)
-                {
-                    partial.Add(new ReasoningPart(
-                        new ReasoningContent(reasoningBuilder.ToString(), ReasoningVisibility.Visible, signatureToken: null, ExtensionData.Empty),
-                        ExtensionData.Empty));
-                }
-
-                if (textPartOpen)
-                {
-                    partial.Add(new TextPart(textBuilder.ToString(), TextSemantics.Plain, ExtensionData.Empty));
-                }
-
                 return await FailWithProviderErrorAsync(
-                    observer, context, sequence, errorFrame, partial.ToImmutable(), reportedUsage, cancellationToken)
+                        observer,
+                        context,
+                        sequence,
+                        errorFrame,
+                        BuildOpenPartialParts(reasoningPartOpen, reasoningBuilder, textPartOpen, textBuilder, toolCallSlots),
+                        reportedUsage,
+                        cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -410,7 +408,9 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
                 sequence,
                 "The provider's streaming response ended before a finish reason was received.",
                 diagnosticCause: null,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                BuildOpenPartialParts(reasoningPartOpen, reasoningBuilder, textPartOpen, textBuilder, toolCallSlots),
+                reportedUsage).ConfigureAwait(false);
         }
 
         var parts = ImmutableArray.CreateBuilder<ContentPart>();
@@ -530,6 +530,70 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
             .ConfigureAwait(false);
 
         return new ModelAttemptFailed(failure, partialParts, usage);
+    }
+
+    /// <summary>
+    /// Materializes the streaming accumulators that are still open when a stream fails so the terminal
+    /// failure carries the content the model had actually produced. Chat Completions streams complete
+    /// reasoning, text, and tool calls only once a finish reason arrives, so at any mid-stream failure no
+    /// <see cref="ModelPartCompleted"/> has been delivered for them and they exist only in these builders.
+    /// </summary>
+    /// <param name="reasoningPartOpen">Whether a reasoning part has been started.</param>
+    /// <param name="reasoningBuilder">The accumulated reasoning text.</param>
+    /// <param name="textPartOpen">Whether a text part has been started.</param>
+    /// <param name="textBuilder">The accumulated visible text.</param>
+    /// <param name="toolCallSlots">The in-progress tool-call slots keyed by wire index.</param>
+    /// <returns>
+    /// Reasoning, then text, then tool calls in wire order, matching the order the completed response would
+    /// have used. A tool-call slot whose accumulated arguments are not yet complete JSON cannot be represented
+    /// truthfully as a <see cref="ToolCallPart"/> and is omitted rather than fabricated.
+    /// </returns>
+    private static ImmutableArray<ContentPart> BuildOpenPartialParts(
+        bool reasoningPartOpen,
+        StringBuilder reasoningBuilder,
+        bool textPartOpen,
+        StringBuilder textBuilder,
+        SortedDictionary<int, ToolCallAccumulator> toolCallSlots)
+    {
+        Debug.Assert(reasoningBuilder is not null, "The streaming state machine always owns a reasoning builder.");
+        Debug.Assert(textBuilder is not null, "The streaming state machine always owns a text builder.");
+        Debug.Assert(toolCallSlots is not null, "The streaming state machine always owns the tool-call slot map.");
+
+        var partial = ImmutableArray.CreateBuilder<ContentPart>();
+        if (reasoningPartOpen)
+        {
+            partial.Add(new ReasoningPart(
+                new ReasoningContent(reasoningBuilder.ToString(), ReasoningVisibility.Visible, signatureToken: null, ExtensionData.Empty),
+                ExtensionData.Empty));
+        }
+
+        if (textPartOpen)
+        {
+            partial.Add(new TextPart(textBuilder.ToString(), TextSemantics.Plain, ExtensionData.Empty));
+        }
+
+        foreach (var slot in toolCallSlots.Values)
+        {
+            JsonElement arguments;
+            try
+            {
+                arguments = ParseArgumentsOrEmpty(slot.Arguments.Length > 0 ? slot.Arguments.ToString() : "{}");
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            var toolName = slot.ToolName ?? slot.ProviderCallId ?? "unknown";
+            partial.Add(new ToolCallPart(
+                slot.CallId,
+                new ToolReference(new ToolId(toolName), null, toolName),
+                arguments,
+                slot.ProviderCallId is { } providerCallId ? new ProviderToolCallId(providerCallId) : null,
+                ExtensionData.Empty));
+        }
+
+        return partial.ToImmutable();
     }
 
     private static async Task<ModelAttemptResult> FailAsync(

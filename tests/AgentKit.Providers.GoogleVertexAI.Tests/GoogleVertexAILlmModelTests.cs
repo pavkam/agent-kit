@@ -315,6 +315,91 @@ public sealed class GoogleVertexAILlmModelTests
         _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
     }
 
+    /// <summary>Verifies a stream that ends after streamed text settles with that text and the interim usage rather than an empty terminal.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenStreamFailsAfterPartialText_RetainsPartialPartsAndUsage()
+    {
+        const string truncatedBody = """
+            data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "Hello"}]}, "index": 0}], "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 1, "totalTokenCount": 11}}
+
+
+            """;
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(truncatedBody, Encoding.UTF8, "text/event-stream") });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, preferStreaming: true);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+        var usage = failed.Usage.ShouldNotBeNull();
+        usage.ReportState.ShouldBe(ModelUsageReportState.Interim);
+        usage.InputTokens.ShouldBe(10);
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        terminal.Usage.ShouldBe(failed.Usage);
+    }
+
+    /// <summary>Verifies a transport fault after completed parts reports the parts the observer already saw completed.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenBodyStreamFaultsAfterCompletedPart_RetainsCompletedPartsInFailure()
+    {
+        // The function call closes the open text part and completes itself, so both are completed before the fault.
+        const string prefix = """
+            data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "Checking."}]}, "index": 0}]}
+
+            data: {"candidates": [{"content": {"role": "model", "parts": [{"functionCall": {"id": "call_1", "name": "get_weather", "args": {"location":"Paris"}}}]}, "index": 0}]}
+
+
+            """;
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(FaultingReadStream.ConnectionReset(Encoding.UTF8.GetBytes(prefix))) });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, preferStreaming: true);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failed.PartialParts.Length.ShouldBe(2);
+        failed.PartialParts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Checking.");
+        failed.PartialParts[1].ShouldBeOfType<ToolCallPart>().Tool.Name.ShouldBe("get_weather");
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
+    }
+
+    /// <summary>Verifies the terminal cancellation event is delivered even to an observer that rejects the caller's cancelled token.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenCancelledMidStream_DeliversTerminalEventWithCancellationTokenNone()
+    {
+        const string body = """
+            data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "Hello"}]}, "index": 0}]}
+
+            data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "!"}]}, "finishReason": "STOP", "index": 0}], "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 2, "totalTokenCount": 12}}
+
+
+            """;
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "text/event-stream") });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, preferStreaming: true);
+        using var cts = new CancellationTokenSource();
+        // Started, PartStarted, two deltas, PartCompleted: cancel once the text part has been completed.
+        var observer = new TokenHonouringModelResponseObserver(cts, cancelAfterEventCount: 5);
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, cts.Token);
+
+        var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseCancelled>();
+        cancelled.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        terminal.PartialParts.ShouldBe(cancelled.PartialParts);
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
+    }
+
     private sealed class StaticOAuthCredentialSource: IProviderCredentialSource
     {
         private readonly string _accessToken;

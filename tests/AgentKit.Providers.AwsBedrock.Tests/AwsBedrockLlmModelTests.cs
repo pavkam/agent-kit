@@ -405,4 +405,81 @@ public sealed class AwsBedrockLlmModelTests
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
         _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
     }
+
+    /// <summary>Verifies an event stream that ends after a completed text block settles with that text rather than an empty terminal.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenStreamFailsAfterPartialText_RetainsPartialPartsAndUsage()
+    {
+        // messageStart, contentBlockStart, two deltas, contentBlockStop: the block is complete but no messageStop or metadata follows.
+        var truncated = TakeLeadingFrames(TestResources.ReadAllBytes("responses/streaming_text.bin"), frameCount: 5);
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new MemoryStream(truncated)) });
+        var options = new AwsBedrockProviderOptions { Region = "us-east-1", PreferStreaming = true };
+        var model = CreateModel(handler, CreateCredentials(), options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello world");
+        // Converse reports usage only in the trailing metadata event, so an interrupted stream truthfully has none.
+        failed.Usage.ShouldBeNull();
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        terminal.Usage.ShouldBeNull();
+    }
+
+    /// <summary>Verifies a transport fault after a completed block reports the parts the observer already saw completed.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenBodyStreamFaultsAfterCompletedPart_RetainsCompletedPartsInFailure()
+    {
+        var prefix = TakeLeadingFrames(TestResources.ReadAllBytes("responses/streaming_text.bin"), frameCount: 5);
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(FaultingReadStream.ConnectionReset(prefix)) });
+        var options = new AwsBedrockProviderOptions { Region = "us-east-1", PreferStreaming = true };
+        var model = CreateModel(handler, CreateCredentials(), options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello world");
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
+    }
+
+    /// <summary>Verifies the terminal cancellation event is delivered even to an observer that rejects the caller's cancelled token.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenCancelledMidStream_DeliversTerminalEventWithCancellationTokenNone()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/streaming_text.bin", "application/vnd.amazon.eventstream");
+        var options = new AwsBedrockProviderOptions { Region = "us-east-1", PreferStreaming = true };
+        var model = CreateModel(handler, CreateCredentials(), options: options);
+        using var cts = new CancellationTokenSource();
+        // Started, PartStarted, two deltas, PartCompleted: cancel once the text block has been completed.
+        var observer = new TokenHonouringModelResponseObserver(cts, cancelAfterEventCount: 5);
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, cts.Token);
+
+        var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseCancelled>();
+        cancelled.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello world");
+        terminal.PartialParts.ShouldBe(cancelled.PartialParts);
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
+    }
+
+    /// <summary>Returns the first <paramref name="frameCount"/> complete AWS event-stream frames of a recorded body, using each frame's big-endian total-length prelude.</summary>
+    private static byte[] TakeLeadingFrames(byte[] payload, int frameCount)
+    {
+        var end = 0;
+        for (var frame = 0; frame < frameCount; frame++)
+        {
+            end += System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(payload.AsSpan(end, 4));
+        }
+
+        return payload[..end];
+    }
 }

@@ -414,4 +414,78 @@ public sealed class MistralAILlmModelTests
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
         _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
     }
+
+    /// <summary>Verifies a stream that ends after streamed text settles with that text and the interim usage rather than an empty terminal.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenStreamFailsAfterPartialText_RetainsPartialPartsAndUsage()
+    {
+        const string truncatedBody = """
+            data: {"id": "cmpl-s01", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hello"}, "finish_reason": null}], "usage": {"prompt_tokens": 10, "completion_tokens": 1, "total_tokens": 11}}
+
+
+            """;
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(truncatedBody, Encoding.UTF8, "text/event-stream") });
+        var options = new MistralAIProviderOptions { BaseAddress = new Uri("https://api.mistral.test/v1/"), PreferStreaming = true };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+        var usage = failed.Usage.ShouldNotBeNull();
+        usage.ReportState.ShouldBe(ModelUsageReportState.Interim);
+        usage.InputTokens.ShouldBe(10);
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        terminal.Usage.ShouldBe(failed.Usage);
+    }
+
+    /// <summary>Verifies a transport fault after a completed part reports the parts the observer already saw completed.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenBodyStreamFaultsAfterCompletedPart_RetainsCompletedPartsInFailure()
+    {
+        // A non-text content chunk is opened and completed in one step, so it is a completed part before the fault.
+        const string prefix = """
+            data: {"id": "cmpl-s03", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "content": [{"type": "image_url", "image_url": "https://example.com/generated.png"}]}, "finish_reason": null}]}
+
+
+            """;
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(FaultingReadStream.ConnectionReset(Encoding.UTF8.GetBytes(prefix))) });
+        var options = new MistralAIProviderOptions { BaseAddress = new Uri("https://api.mistral.test/v1/"), PreferStreaming = true };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<UnknownContentPart>().TypeName.ShouldBe("image_url");
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
+    }
+
+    /// <summary>Verifies the terminal cancellation event is delivered even to an observer that rejects the caller's cancelled token.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenCancelledMidStream_DeliversTerminalEventWithCancellationTokenNone()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/streaming_text.sse", "text/event-stream");
+        var options = new MistralAIProviderOptions { BaseAddress = new Uri("https://api.mistral.test/v1/"), PreferStreaming = true };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), options: options);
+        using var cts = new CancellationTokenSource();
+        // Started, PartStarted, two deltas, PartCompleted: cancel once the text part has been completed.
+        var observer = new TokenHonouringModelResponseObserver(cts, cancelAfterEventCount: 5);
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1)), observer, cts.Token);
+
+        var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseCancelled>();
+        cancelled.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        terminal.PartialParts.ShouldBe(cancelled.PartialParts);
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+        observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
+    }
 }

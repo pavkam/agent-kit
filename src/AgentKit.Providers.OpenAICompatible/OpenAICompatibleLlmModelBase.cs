@@ -98,21 +98,26 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
         ArgumentNullException.ThrowIfNull(observer);
 
         var requestId = request.Context.ModelRequestId;
-        var trackingObserver = new TrackingModelResponseObserver(observer);
+
+        // This adapter and its wire parser both emit events; the sequencing wrapper guarantees the observer
+        // sees exactly one ModelResponseStarted, contiguous sequences, and nothing after a terminal event. It
+        // also retains the parts already completed and the latest usage, so an attempt interrupted outside the
+        // parser (transport fault, deadline, caller cancellation) still settles with truthful partial output.
+        var sequencing = new SequencingModelResponseObserver(observer);
 
         async Task<ModelAttemptResult> FailAsync(ProviderFailure failure)
         {
             await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
-            await trackingObserver.OnEventAsync(
+            await sequencing.OnEventAsync(
                     new ModelResponseFailed(
                         requestId,
-                        trackingObserver.NextSequence,
+                        sequencing.NextSequence,
                         failure,
-                        trackingObserver.CompletedParts,
-                        trackingObserver.Usage),
+                        sequencing.CompletedParts,
+                        sequencing.Usage),
                     cancellationToken)
                 .ConfigureAwait(false);
-            return new ModelAttemptFailed(failure, trackingObserver.CompletedParts, trackingObserver.Usage);
+            return new ModelAttemptFailed(failure, sequencing.CompletedParts, sequencing.Usage);
         }
 
         Task<ModelAttemptResult> FailWithKindAsync(ProviderFailureKind kind, string safeMessage, Exception? cause = null) =>
@@ -141,22 +146,22 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                 ExtensionData.Empty);
 
             await EnsureStartedAsync(CancellationToken.None).ConfigureAwait(false);
-            await trackingObserver.OnEventAsync(
+            await sequencing.OnEventAsync(
                     new ModelResponseCancelled(
                         requestId,
-                        trackingObserver.NextSequence,
+                        sequencing.NextSequence,
                         cancellation,
-                        trackingObserver.CompletedParts,
-                        trackingObserver.Usage),
+                        sequencing.CompletedParts,
+                        sequencing.Usage),
                     CancellationToken.None)
                 .ConfigureAwait(false);
-            return new ModelAttemptCancelled(cancellation, trackingObserver.CompletedParts, trackingObserver.Usage);
+            return new ModelAttemptCancelled(cancellation, sequencing.CompletedParts, sequencing.Usage);
         }
 
         ValueTask EnsureStartedAsync(CancellationToken deliveryToken) =>
-            trackingObserver.NextSequence == 0
-                ? trackingObserver.OnEventAsync(new ModelResponseStarted(requestId, 0), deliveryToken)
-                : ValueTask.CompletedTask;
+            sequencing.HasStarted
+                ? ValueTask.CompletedTask
+                : sequencing.OnEventAsync(new ModelResponseStarted(requestId, sequencing.NextSequence), deliveryToken);
 
         if (request.Context.Model != _descriptor)
         {
@@ -305,10 +310,10 @@ public abstract class OpenAICompatibleLlmModelBase: ILlmModel
                 {
                     return useStreaming
                         ? await _streamParser
-                            .ParseStreamingAsync(body, parseContext, trackingObserver, linkedSource.Token)
+                            .ParseStreamingAsync(body, parseContext, sequencing, linkedSource.Token)
                             .ConfigureAwait(false)
                         : await _streamParser
-                            .ParseBufferedAsync(body, parseContext, trackingObserver, linkedSource.Token)
+                            .ParseBufferedAsync(body, parseContext, sequencing, linkedSource.Token)
                             .ConfigureAwait(false);
                 }
             }

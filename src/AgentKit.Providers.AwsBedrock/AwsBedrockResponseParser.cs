@@ -95,8 +95,14 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
         }
         catch (ArgumentException exception)
         {
-            return await FailAsync(observer, context, sequence, "The provider returned invalid usage evidence.", exception, cancellationToken)
-                .ConfigureAwait(false);
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                "The provider returned invalid usage evidence.",
+                exception,
+                cancellationToken,
+                parts.ToImmutable()).ConfigureAwait(false);
         }
         if (dto.Usage is not null)
         {
@@ -155,7 +161,9 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                     sequence,
                     "The provider returned a malformed event-stream frame.",
                     exception,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    BuildPartialParts(blocks),
+                    TryBuildRetainedUsage(usageDto)).ConfigureAwait(false);
             }
 
             if (message is null)
@@ -177,7 +185,9 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                     sequence,
                     "The provider returned a malformed streaming event.",
                     exception,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    BuildPartialParts(blocks),
+                    TryBuildRetainedUsage(usageDto)).ConfigureAwait(false);
             }
 
             if (message.MessageType == "exception")
@@ -190,11 +200,13 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                     payload.Message ?? "The provider reported a streaming error.",
                     diagnosticCause: null);
 
+                var partialParts = BuildPartialParts(blocks);
+                var retainedUsage = TryBuildRetainedUsage(usageDto);
                 await observer.OnEventAsync(
-                        new ModelResponseFailed(requestId, sequence++, failure, [], usage: null),
+                        new ModelResponseFailed(requestId, sequence++, failure, partialParts, retainedUsage),
                         cancellationToken)
                     .ConfigureAwait(false);
-                return new ModelAttemptFailed(failure, [], usage: null);
+                return new ModelAttemptFailed(failure, partialParts, retainedUsage);
             }
 
             switch (message.EventType)
@@ -244,7 +256,9 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                 sequence,
                 "The provider's streaming response ended before a messageStop event was received.",
                 diagnosticCause: null,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                BuildPartialParts(blocks),
+                TryBuildRetainedUsage(usageDto)).ConfigureAwait(false);
         }
 
         var parts = ImmutableArray.CreateBuilder<ContentPart>();
@@ -258,7 +272,9 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
                     sequence,
                     $"The provider's streaming response ended before content block {index} was closed.",
                     diagnosticCause: null,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    BuildPartialParts(blocks),
+                    TryBuildRetainedUsage(usageDto)).ConfigureAwait(false);
             }
 
             parts.Add(accumulator.Part!);
@@ -271,8 +287,14 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
         }
         catch (ArgumentException exception)
         {
-            return await FailAsync(observer, context, sequence, "The provider returned invalid usage evidence.", exception, cancellationToken)
-                .ConfigureAwait(false);
+            return await FailAsync(
+                observer,
+                context,
+                sequence,
+                "The provider returned invalid usage evidence.",
+                exception,
+                cancellationToken,
+                parts.ToImmutable()).ConfigureAwait(false);
         }
         if (usageDto is not null)
         {
@@ -349,14 +371,68 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
         }
     }
 
+    /// <summary>
+    /// Collects the truthful partial output of an interrupted stream: every content block in index order,
+    /// using the closed block's final part when it has one and otherwise materializing the block's open
+    /// accumulator as far as it was received.
+    /// </summary>
+    /// <param name="blocks">The streaming block accumulators keyed by Converse content-block index.</param>
+    /// <returns>
+    /// The parts in block-index order. An open tool-use block whose accumulated input is not yet complete JSON
+    /// cannot be represented truthfully as a <see cref="ToolCallPart"/> and is omitted.
+    /// </returns>
+    private static ImmutableArray<ContentPart> BuildPartialParts(SortedDictionary<int, BlockAccumulator> blocks)
+    {
+        Debug.Assert(blocks is not null, "The streaming state machine always owns the block map.");
+
+        var partial = ImmutableArray.CreateBuilder<ContentPart>();
+        foreach (var accumulator in blocks.Values)
+        {
+            var part = accumulator.IsClosed ? accumulator.Part : accumulator.TryBuildPartialPart();
+            if (part is not null)
+            {
+                partial.Add(part);
+            }
+        }
+
+        return partial.ToImmutable();
+    }
+
+    /// <summary>
+    /// Builds the usage retained so far for an interrupted stream, or null when the provider has not reported any
+    /// usage or the reported values are not valid evidence; a failure exit never masks its own cause with a
+    /// secondary usage-validation failure.
+    /// </summary>
+    /// <param name="usage">The latest <c>metadata</c> usage received, when any.</param>
+    /// <returns>The retained usage evidence, or null when none can be truthfully reported.</returns>
+    private static ModelUsage? TryBuildRetainedUsage(AwsBedrockTokenUsageDto? usage)
+    {
+        if (usage is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return BuildUsage(usage);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
     private static async Task<ModelAttemptResult> FailAsync(
         IModelResponseObserver observer,
         AwsBedrockResponseParseContext context,
         long sequence,
         string safeMessage,
         Exception? diagnosticCause,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ImmutableArray<ContentPart> partialParts = default,
+        ModelUsage? usage = null)
     {
+        var normalizedPartialParts = partialParts.IsDefault ? [] : partialParts;
         var failure = BuildFailure(
             context,
             ProviderFailureKind.ProtocolViolation,
@@ -366,11 +442,11 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
             diagnosticCause);
 
         await observer.OnEventAsync(
-                new ModelResponseFailed(context.ModelRequestId, sequence, failure, [], usage: null),
+                new ModelResponseFailed(context.ModelRequestId, sequence, failure, normalizedPartialParts, usage),
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new ModelAttemptFailed(failure, [], usage: null);
+        return new ModelAttemptFailed(failure, normalizedPartialParts, usage);
     }
 
     private static ProviderFailure BuildFailure(
@@ -507,7 +583,29 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
 
         public void Close()
         {
-            Part = Kind switch
+            Part = BuildPart();
+            IsClosed = true;
+        }
+
+        /// <summary>
+        /// Materializes the block as received so far without closing it, for reporting the partial output of an
+        /// interrupted stream.
+        /// </summary>
+        /// <returns>The part built from the accumulated state, or null when a tool-use block's accumulated input is not yet complete JSON.</returns>
+        public ContentPart? TryBuildPartialPart()
+        {
+            try
+            {
+                return BuildPart();
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        private ContentPart BuildPart() =>
+            Kind switch
             {
                 BlockKind.ToolUse => new ToolCallPart(
                     ToolCallId!.Value,
@@ -520,9 +618,6 @@ public sealed class AwsBedrockResponseParser: IAwsBedrockResponseParser
 
                 _ => throw new UnreachableException($"Unrecognized {nameof(BlockKind)} value '{Kind}'."),
             };
-
-            IsClosed = true;
-        }
 
         private static JsonElement ParseArguments(string json)
         {

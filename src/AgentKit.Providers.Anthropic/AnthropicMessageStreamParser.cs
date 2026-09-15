@@ -102,7 +102,8 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                 sequence,
                 "The provider returned invalid usage evidence.",
                 exception,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                parts.ToImmutable()).ConfigureAwait(false);
         }
         if (dto.Usage is not null)
         {
@@ -180,7 +181,9 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                     sequence,
                     "The provider returned a malformed streaming event.",
                     exception,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    BuildPartialParts(blocks),
+                    TryBuildRetainedUsage(initialUsage, finalUsage, finalUsageIsFinal)).ConfigureAwait(false);
             }
 
             switch (streamEvent.Type)
@@ -218,7 +221,9 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                             sequence,
                             "The provider returned malformed tool-call arguments.",
                             exception,
-                            cancellationToken).ConfigureAwait(false);
+                            cancellationToken,
+                            BuildPartialParts(blocks),
+                            TryBuildRetainedUsage(initialUsage, finalUsage, finalUsageIsFinal)).ConfigureAwait(false);
                     }
 
                     await observer.OnEventAsync(
@@ -250,11 +255,13 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                             streamEvent.Error?.Message ?? "The provider reported a streaming error.",
                             diagnosticCause: null);
 
+                        var partialParts = BuildPartialParts(blocks);
+                        var retainedUsage = TryBuildRetainedUsage(initialUsage, finalUsage, finalUsageIsFinal);
                         await observer.OnEventAsync(
-                                new ModelResponseFailed(requestId, sequence++, failure, [], usage: null),
+                                new ModelResponseFailed(requestId, sequence++, failure, partialParts, retainedUsage),
                                 cancellationToken)
                             .ConfigureAwait(false);
-                        return new ModelAttemptFailed(failure, [], usage: null);
+                        return new ModelAttemptFailed(failure, partialParts, retainedUsage);
                     }
 
                 default:
@@ -284,7 +291,8 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                     sequence,
                     "The provider returned invalid usage evidence.",
                     exception,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    BuildPartialParts(blocks)).ConfigureAwait(false);
             }
 
             return await FailAsync(
@@ -294,6 +302,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                 "The provider's streaming response ended before a message_stop event was received.",
                 diagnosticCause: null,
                 cancellationToken,
+                BuildPartialParts(blocks),
                 retainedUsage).ConfigureAwait(false);
         }
 
@@ -308,7 +317,9 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                     sequence,
                     $"The provider's streaming response ended before content block {index} was closed.",
                     diagnosticCause: null,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    BuildPartialParts(blocks),
+                    TryBuildRetainedUsage(initialUsage, finalUsage, finalUsageIsFinal)).ConfigureAwait(false);
             }
 
             parts.Add(accumulator.Part!);
@@ -330,7 +341,8 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                 sequence,
                 "The provider returned invalid usage evidence.",
                 exception,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                parts.ToImmutable()).ConfigureAwait(false);
         }
         if (initialUsage is not null || finalUsage is not null)
         {
@@ -474,6 +486,59 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         }
     }
 
+    /// <summary>
+    /// Collects the truthful partial output of an interrupted stream: every content block in index order,
+    /// using the closed block's final part when it has one and otherwise materializing the block's open
+    /// accumulator as far as it was received.
+    /// </summary>
+    /// <param name="blocks">The streaming block accumulators keyed by Anthropic content-block index.</param>
+    /// <returns>
+    /// The parts in block-index order. An open <c>tool_use</c> block whose accumulated <c>partial_json</c> is
+    /// not yet complete JSON cannot be represented truthfully as a <see cref="ToolCallPart"/> and is omitted.
+    /// </returns>
+    private static ImmutableArray<ContentPart> BuildPartialParts(SortedDictionary<int, BlockAccumulator> blocks)
+    {
+        Debug.Assert(blocks is not null, "The streaming state machine always owns the block map.");
+
+        var partial = ImmutableArray.CreateBuilder<ContentPart>();
+        foreach (var accumulator in blocks.Values)
+        {
+            var part = accumulator.IsClosed ? accumulator.Part : accumulator.TryBuildPartialPart();
+            if (part is not null)
+            {
+                partial.Add(part);
+            }
+        }
+
+        return partial.ToImmutable();
+    }
+
+    /// <summary>
+    /// Builds the usage retained so far for an interrupted stream, or null when the provider has not reported
+    /// any usage or the reported values are not valid evidence; a failure exit never masks its own cause with
+    /// a secondary usage-validation failure.
+    /// </summary>
+    /// <param name="initialUsage">The usage carried by <c>message_start</c>, when received.</param>
+    /// <param name="finalUsage">The latest usage carried by <c>message_delta</c>, when received.</param>
+    /// <param name="finalUsageIsFinal">Whether <paramref name="finalUsage"/> accompanied a stop reason.</param>
+    /// <returns>The retained usage evidence, or null when none can be truthfully reported.</returns>
+    private static ModelUsage? TryBuildRetainedUsage(AnthropicUsageDto? initialUsage, AnthropicUsageDto? finalUsage, bool finalUsageIsFinal)
+    {
+        if (initialUsage is null && finalUsage is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return BuildUsage(initialUsage, finalUsage, finalUsageIsFinal ? ModelUsageReportState.Final : ModelUsageReportState.Interim);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
     private static async Task<ModelAttemptResult> FailAsync(
         IModelResponseObserver observer,
         AnthropicResponseParseContext context,
@@ -481,8 +546,10 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         string safeMessage,
         Exception? diagnosticCause,
         CancellationToken cancellationToken,
+        ImmutableArray<ContentPart> partialParts = default,
         ModelUsage? usage = null)
     {
+        var normalizedPartialParts = partialParts.IsDefault ? [] : partialParts;
         var failure = BuildFailure(
             context,
             ProviderFailureKind.ProtocolViolation,
@@ -492,11 +559,11 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
             diagnosticCause);
 
         await observer.OnEventAsync(
-                new ModelResponseFailed(context.ModelRequestId, sequence, failure, [], usage),
+                new ModelResponseFailed(context.ModelRequestId, sequence, failure, normalizedPartialParts, usage),
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new ModelAttemptFailed(failure, [], usage);
+        return new ModelAttemptFailed(failure, normalizedPartialParts, usage);
     }
 
     private static ProviderFailure BuildFailure(
@@ -673,7 +740,29 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
 
         public void Close()
         {
-            Part = Type switch
+            Part = BuildPart();
+            IsClosed = true;
+        }
+
+        /// <summary>
+        /// Materializes the block as received so far without closing it, for reporting the partial output of an
+        /// interrupted stream.
+        /// </summary>
+        /// <returns>The part built from the accumulated state, or null when a <c>tool_use</c> block's accumulated arguments are not yet complete JSON.</returns>
+        public ContentPart? TryBuildPartialPart()
+        {
+            try
+            {
+                return BuildPart();
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        private ContentPart BuildPart() =>
+            Type switch
             {
                 "text" => new TextPart(Text.ToString(), TextSemantics.Plain, ExtensionData.Empty),
 
@@ -697,9 +786,6 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
                     JsonSerializer.SerializeToElement(UnknownBlock, _serializerOptions),
                     ExtensionData.Empty),
             };
-
-            IsClosed = true;
-        }
 
         private static JsonElement ParseArguments(string json)
         {

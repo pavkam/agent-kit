@@ -144,8 +144,8 @@ public sealed class CohereResponseParser: ICohereResponseParser
                 ProviderFailureKind.ProtocolViolation,
                 "The provider returned invalid usage evidence.",
                 exception,
-                cancellationToken)
-                .ConfigureAwait(false);
+                cancellationToken,
+                parts.ToImmutable()).ConfigureAwait(false);
         }
         if (dto.Usage is not null)
         {
@@ -220,7 +220,8 @@ public sealed class CohereResponseParser: ICohereResponseParser
                     ProviderFailureKind.ProtocolViolation,
                     "The provider returned a malformed streaming event.",
                     exception,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    BuildPartialParts(state)).ConfigureAwait(false);
             }
 
             switch (streamEvent.Type)
@@ -266,13 +267,14 @@ public sealed class CohereResponseParser: ICohereResponseParser
                     {
                         // Malformed accumulated arguments are a typed protocol failure; they are never replaced by {}.
                         return await FailAsync(
-                        observer,
-                        context,
-                        sequence,
-                        ProviderFailureKind.ProtocolViolation,
-                        "The provider returned malformed tool-call arguments.",
-                        exception,
-                        cancellationToken).ConfigureAwait(false);
+                            observer,
+                            context,
+                            sequence,
+                            ProviderFailureKind.ProtocolViolation,
+                            "The provider returned malformed tool-call arguments.",
+                            exception,
+                            cancellationToken,
+                            BuildPartialParts(state)).ConfigureAwait(false);
                     }
 
                     break;
@@ -304,7 +306,8 @@ public sealed class CohereResponseParser: ICohereResponseParser
                 ProviderFailureKind.ProtocolViolation,
                 "The provider's streaming response ended before a message-end event was received.",
                 diagnosticCause: null,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                BuildPartialParts(state)).ConfigureAwait(false);
         }
 
         var finalParts = ImmutableArray.CreateBuilder<ContentPart>();
@@ -319,13 +322,14 @@ public sealed class CohereResponseParser: ICohereResponseParser
                 catch (JsonException exception)
                 {
                     return await FailAsync(
-                    observer,
-                    context,
-                    sequence,
-                    ProviderFailureKind.ProtocolViolation,
-                    "The provider returned malformed tool-call arguments.",
-                    exception,
-                    cancellationToken).ConfigureAwait(false);
+                        observer,
+                        context,
+                        sequence,
+                        ProviderFailureKind.ProtocolViolation,
+                        "The provider returned malformed tool-call arguments.",
+                        exception,
+                        cancellationToken,
+                        BuildPartialParts(state)).ConfigureAwait(false);
                 }
             }
 
@@ -346,8 +350,8 @@ public sealed class CohereResponseParser: ICohereResponseParser
                 ProviderFailureKind.ProtocolViolation,
                 "The provider returned invalid usage evidence.",
                 exception,
-                cancellationToken)
-                .ConfigureAwait(false);
+                cancellationToken,
+                finalParts.ToImmutable()).ConfigureAwait(false);
         }
         if (usage is not null)
         {
@@ -586,7 +590,25 @@ public sealed class CohereResponseParser: ICohereResponseParser
         Slot slot,
         CancellationToken cancellationToken)
     {
-        slot.FinalPart = slot.Kind switch
+        slot.FinalPart = MaterializeSlot(slot);
+        slot.Closed = true;
+
+        await observer.OnEventAsync(new ModelPartCompleted(requestId, sequence++, slot.PartIndex, slot.FinalPart), cancellationToken)
+            .ConfigureAwait(false);
+
+        return sequence;
+    }
+
+    /// <summary>Builds the content part an open slot currently represents.</summary>
+    /// <param name="slot">A slot that has not been closed.</param>
+    /// <returns>The part built from the accumulated state.</returns>
+    /// <exception cref="JsonException">A tool-call slot's accumulated arguments are not valid JSON.</exception>
+    private static ContentPart MaterializeSlot(Slot slot)
+    {
+        Debug.Assert(slot is not null, "Callers materialize an existing slot.");
+        Debug.Assert(!slot.Closed, "Closed slots already carry their final part.");
+
+        return slot.Kind switch
         {
             SlotKind.Text => new TextPart(slot.Text.ToString(), TextSemantics.Plain, ExtensionData.Empty),
             SlotKind.Reasoning => new ReasoningPart(
@@ -604,12 +626,41 @@ public sealed class CohereResponseParser: ICohereResponseParser
                 ExtensionData.Empty),
             _ => throw new UnreachableException($"Unrecognized {nameof(SlotKind)} value '{slot.Kind}'."),
         };
-        slot.Closed = true;
+    }
 
-        await observer.OnEventAsync(new ModelPartCompleted(requestId, sequence++, slot.PartIndex, slot.FinalPart), cancellationToken)
-            .ConfigureAwait(false);
+    /// <summary>
+    /// Collects the truthful partial output of an interrupted stream: every slot in part order, using the
+    /// closed slot's final part when it has one and otherwise materializing the slot as far as it was received.
+    /// </summary>
+    /// <param name="state">The streaming state owning the slots.</param>
+    /// <returns>
+    /// The parts in part order. An open tool-call slot whose accumulated arguments are not yet complete JSON
+    /// cannot be represented truthfully as a <see cref="ToolCallPart"/> and is omitted.
+    /// </returns>
+    private static ImmutableArray<ContentPart> BuildPartialParts(StreamState state)
+    {
+        Debug.Assert(state is not null, "The streaming state machine always owns its state.");
 
-        return sequence;
+        var partial = ImmutableArray.CreateBuilder<ContentPart>(state.Slots.Count);
+        foreach (var slot in state.Slots)
+        {
+            if (slot.Closed)
+            {
+                partial.Add(slot.FinalPart!);
+                continue;
+            }
+
+            try
+            {
+                partial.Add(MaterializeSlot(slot));
+            }
+            catch (JsonException)
+            {
+                // An unfinished tool call has no truthful argument object yet; it is omitted rather than fabricated.
+            }
+        }
+
+        return partial.ToImmutable();
     }
 
     private static async Task<ModelAttemptResult> FailAsync(
@@ -619,8 +670,11 @@ public sealed class CohereResponseParser: ICohereResponseParser
         ProviderFailureKind kind,
         string safeMessage,
         Exception? diagnosticCause,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ImmutableArray<ContentPart> partialParts = default,
+        ModelUsage? usage = null)
     {
+        var normalizedPartialParts = partialParts.IsDefault ? [] : partialParts;
         var failure = new ProviderFailure(
             kind,
             context.ProviderId,
@@ -633,11 +687,11 @@ public sealed class CohereResponseParser: ICohereResponseParser
             ExtensionData.Empty);
 
         await observer.OnEventAsync(
-                new ModelResponseFailed(context.ModelRequestId, sequence, failure, [], usage: null),
+                new ModelResponseFailed(context.ModelRequestId, sequence, failure, normalizedPartialParts, usage),
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new ModelAttemptFailed(failure, [], usage: null);
+        return new ModelAttemptFailed(failure, normalizedPartialParts, usage);
     }
 
     private static List<(ContentDelta? Delta, ContentPart Part)> BuildParts(

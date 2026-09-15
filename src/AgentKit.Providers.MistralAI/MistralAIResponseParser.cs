@@ -147,8 +147,8 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
                 ProviderFailureKind.ProtocolViolation,
                 "The provider returned invalid usage evidence.",
                 exception,
-                cancellationToken)
-                .ConfigureAwait(false);
+                cancellationToken,
+                parts.ToImmutable()).ConfigureAwait(false);
         }
         if (dto.Usage is not null)
         {
@@ -231,7 +231,9 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
                     ProviderFailureKind.ProtocolViolation,
                     "The provider returned a malformed streaming chunk.",
                     exception,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    BuildPartialParts(state),
+                    TryBuildRetainedUsage(usage, usageIsFinal)).ConfigureAwait(false);
             }
 
             resolvedModel ??= chunk.Model;
@@ -266,7 +268,9 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
                 "The provider's streaming response ended before the terminal [DONE] sentinel and a finish " +
                 "reason were both received.",
                 diagnosticCause: null,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                BuildPartialParts(state),
+                TryBuildRetainedUsage(usage, usageIsFinal)).ConfigureAwait(false);
         }
 
         var finalParts = ImmutableArray.CreateBuilder<ContentPart>();
@@ -274,38 +278,24 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
         {
             if (!slot.Closed)
             {
-                JsonElement toolArguments = default;
-                if (slot.Kind == SlotKind.ToolCall)
+                try
                 {
-                    try
-                    {
-                        toolArguments = ParseArguments(slot.ToolCallArguments.ToString());
-                    }
-                    catch (JsonException exception)
-                    {
-                        return await FailAsync(
-                            observer,
-                            context,
-                            sequence,
-                            ProviderFailureKind.ProtocolViolation,
-                            "The provider returned malformed tool-call arguments.",
-                            exception,
-                            cancellationToken).ConfigureAwait(false);
-                    }
+                    slot.FinalPart = MaterializeSlot(slot);
+                }
+                catch (JsonException exception)
+                {
+                    return await FailAsync(
+                        observer,
+                        context,
+                        sequence,
+                        ProviderFailureKind.ProtocolViolation,
+                        "The provider returned malformed tool-call arguments.",
+                        exception,
+                        cancellationToken,
+                        BuildPartialParts(state),
+                        TryBuildRetainedUsage(usage, usageIsFinal)).ConfigureAwait(false);
                 }
 
-                slot.FinalPart = slot.Kind switch
-                {
-                    SlotKind.Text => new TextPart(slot.Text.ToString(), TextSemantics.Plain, ExtensionData.Empty),
-                    SlotKind.ToolCall => new ToolCallPart(
-                        slot.AssignedCallId,
-                        new ToolReference(new ToolId(slot.ToolCallName ?? string.Empty), null, slot.ToolCallName ?? string.Empty),
-                        toolArguments,
-                        slot.ToolCallId is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
-                        ExtensionData.Empty),
-                    SlotKind.Unknown => throw new UnreachableException("An unknown-kind slot is always closed at creation."),
-                    _ => throw new UnreachableException($"Unrecognized {nameof(SlotKind)} value '{slot.Kind}'."),
-                };
                 slot.Closed = true;
 
                 await observer.OnEventAsync(
@@ -333,8 +323,8 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
                 ProviderFailureKind.ProtocolViolation,
                 "The provider returned invalid usage evidence.",
                 exception,
-                cancellationToken)
-                .ConfigureAwait(false);
+                cancellationToken,
+                finalParts.ToImmutable()).ConfigureAwait(false);
         }
         if (usage is not null)
         {
@@ -518,6 +508,89 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
             _ => null,
         };
 
+    /// <summary>Builds the content part an open slot currently represents.</summary>
+    /// <param name="slot">A slot that has not been closed; unknown-kind slots close at creation and never reach this method open.</param>
+    /// <returns>The part built from the accumulated state.</returns>
+    /// <exception cref="JsonException">A tool-call slot's accumulated arguments are not valid JSON.</exception>
+    private static ContentPart MaterializeSlot(Slot slot)
+    {
+        Debug.Assert(slot is not null, "Callers materialize an existing slot.");
+        Debug.Assert(!slot.Closed, "Closed slots already carry their final part.");
+
+        return slot.Kind switch
+        {
+            SlotKind.Text => new TextPart(slot.Text.ToString(), TextSemantics.Plain, ExtensionData.Empty),
+            SlotKind.ToolCall => new ToolCallPart(
+                slot.AssignedCallId,
+                new ToolReference(new ToolId(slot.ToolCallName ?? string.Empty), null, slot.ToolCallName ?? string.Empty),
+                ParseArguments(slot.ToolCallArguments.ToString()),
+                slot.ToolCallId is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
+                ExtensionData.Empty),
+            SlotKind.Unknown => throw new UnreachableException("An unknown-kind slot is always closed at creation."),
+            _ => throw new UnreachableException($"Unrecognized {nameof(SlotKind)} value '{slot.Kind}'."),
+        };
+    }
+
+    /// <summary>
+    /// Collects the truthful partial output of an interrupted stream: every slot in part order, using the
+    /// closed slot's final part when it has one and otherwise materializing the slot as far as it was received.
+    /// </summary>
+    /// <param name="state">The streaming state owning the slots.</param>
+    /// <returns>
+    /// The parts in part order. An open tool-call slot whose accumulated arguments are not yet complete JSON
+    /// cannot be represented truthfully as a <see cref="ToolCallPart"/> and is omitted.
+    /// </returns>
+    private static ImmutableArray<ContentPart> BuildPartialParts(StreamState state)
+    {
+        Debug.Assert(state is not null, "The streaming state machine always owns its state.");
+
+        var partial = ImmutableArray.CreateBuilder<ContentPart>(state.Slots.Count);
+        foreach (var slot in state.Slots)
+        {
+            if (slot.Closed)
+            {
+                partial.Add(slot.FinalPart!);
+                continue;
+            }
+
+            try
+            {
+                partial.Add(MaterializeSlot(slot));
+            }
+            catch (JsonException)
+            {
+                // An unfinished tool call has no truthful argument object yet; it is omitted rather than fabricated.
+            }
+        }
+
+        return partial.ToImmutable();
+    }
+
+    /// <summary>
+    /// Builds the usage retained so far for an interrupted stream, or null when the provider has not reported any
+    /// usage or the reported values are not valid evidence; a failure exit never masks its own cause with a
+    /// secondary usage-validation failure.
+    /// </summary>
+    /// <param name="usage">The latest chunk usage received, when any.</param>
+    /// <param name="usageIsFinal">Whether that usage accompanied a finish reason.</param>
+    /// <returns>The retained usage evidence, or null when none can be truthfully reported.</returns>
+    private static ModelUsage? TryBuildRetainedUsage(MistralAIUsageDto? usage, bool usageIsFinal)
+    {
+        if (usage is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return BuildUsage(usage, usageIsFinal ? ModelUsageReportState.Final : ModelUsageReportState.Interim);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
     private static async Task<ModelAttemptResult> FailAsync(
         IModelResponseObserver observer,
         MistralAIResponseParseContext context,
@@ -525,8 +598,11 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
         ProviderFailureKind kind,
         string safeMessage,
         Exception? diagnosticCause,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ImmutableArray<ContentPart> partialParts = default,
+        ModelUsage? usage = null)
     {
+        var normalizedPartialParts = partialParts.IsDefault ? [] : partialParts;
         var failure = new ProviderFailure(
             kind,
             context.ProviderId,
@@ -539,11 +615,11 @@ public sealed class MistralAIResponseParser: IMistralAIResponseParser
             ExtensionData.Empty);
 
         await observer.OnEventAsync(
-                new ModelResponseFailed(context.ModelRequestId, sequence, failure, [], usage: null),
+                new ModelResponseFailed(context.ModelRequestId, sequence, failure, normalizedPartialParts, usage),
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new ModelAttemptFailed(failure, [], usage: null);
+        return new ModelAttemptFailed(failure, normalizedPartialParts, usage);
     }
 
     private static List<(ContentDelta? Delta, ContentPart Part)> BuildParts(

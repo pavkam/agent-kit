@@ -40,6 +40,13 @@ no standalone test run or production registration API.
 - [GatedReadStream](GatedReadStream.cs) — a response-body stream that blocks
   its first read behind entry/release signals, for deterministic cancellation
   and deadline tests during body reads.
+- [ResponseBodyFixture](ResponseBodyFixture.cs) — cuts a recorded
+  server-sent-events body after a marked line so a test can serve a complete,
+  truthful prefix of a streaming fixture.
+- [TokenHonouringModelResponseObserver](TokenHonouringModelResponseObserver.cs)
+  — a recording model-response observer that rejects deliveries made with an
+  already-cancelled token and can cancel the caller after N events, for
+  proving adapters land their terminal event with `CancellationToken.None`.
 
 Add a helper when multiple test projects need it. Reusable contract assertions
 belong in AgentKit.Conformance; production packages must not depend on either

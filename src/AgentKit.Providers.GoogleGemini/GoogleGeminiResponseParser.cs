@@ -134,7 +134,8 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
                 ProviderFailureKind.ProtocolViolation,
                 "The provider returned invalid usage evidence.",
                 exception,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                parts.ToImmutable()).ConfigureAwait(false);
         }
         if (dto.UsageMetadata is not null)
         {
@@ -212,7 +213,9 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
                     ProviderFailureKind.ProtocolViolation,
                     "The provider returned a malformed streaming chunk.",
                     exception,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    BuildPartialParts(parts),
+                    TryBuildRetainedUsage(usage, usageIsFinal)).ConfigureAwait(false);
             }
 
             resolvedModel ??= chunk.ModelVersion;
@@ -259,7 +262,8 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
                 ProviderFailureKind.ProtocolViolation,
                 "The provider returned invalid usage evidence.",
                 exception,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                BuildPartialParts(parts)).ConfigureAwait(false);
         }
 
         if (!sawAnyCandidate || finishReason is null)
@@ -276,6 +280,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
                     : "The provider's streaming response ended before a finish reason was received.",
                 diagnosticCause: null,
                 cancellationToken,
+                BuildPartialParts(parts),
                 usage is null ? null : usageResult).ConfigureAwait(false);
         }
 
@@ -402,7 +407,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
     }
 
     /// <summary>Materializes an open accumulator into its final part and emits its completion exactly once.</summary>
-    private async Task<long> CloseAccumulatorAsync(
+    private static async Task<long> CloseAccumulatorAsync(
         IModelResponseObserver observer,
         ModelRequestId requestId,
         long sequence,
@@ -415,7 +420,23 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             return sequence;
         }
 
-        accumulator.Part = accumulator.Kind switch
+        accumulator.Part = MaterializePart(accumulator);
+        accumulator.Closed = true;
+
+        await observer.OnEventAsync(new ModelPartCompleted(requestId, sequence++, index, accumulator.Part), cancellationToken)
+            .ConfigureAwait(false);
+        return sequence;
+    }
+
+    /// <summary>Builds the content part an open text, reasoning, or unknown accumulator currently represents.</summary>
+    /// <param name="accumulator">An accumulator that has not been closed; function-call accumulators close at creation and never reach this method open.</param>
+    /// <returns>The part built from the accumulated state.</returns>
+    private static ContentPart MaterializePart(PartAccumulator accumulator)
+    {
+        Debug.Assert(accumulator is not null, "Callers materialize an existing accumulator.");
+        Debug.Assert(!accumulator.Closed, "Closed accumulators already carry their final part.");
+
+        return accumulator.Kind switch
         {
             PartKind.Text => new TextPart(accumulator.Text.ToString(), TextSemantics.Plain, ExtensionData.Empty),
             PartKind.Reasoning => new ReasoningPart(
@@ -427,11 +448,50 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
                 ExtensionData.Empty),
             _ => throw new UnreachableException($"Unrecognized {nameof(PartKind)} value '{accumulator.Kind}'."),
         };
-        accumulator.Closed = true;
+    }
 
-        await observer.OnEventAsync(new ModelPartCompleted(requestId, sequence++, index, accumulator.Part), cancellationToken)
-            .ConfigureAwait(false);
-        return sequence;
+    /// <summary>
+    /// Collects the truthful partial output of an interrupted stream: every accumulator in ordinal order, using
+    /// the closed accumulator's final part when it has one and otherwise materializing the text received so far.
+    /// </summary>
+    /// <param name="parts">The streaming accumulators in the order they were opened.</param>
+    /// <returns>The parts in ordinal order.</returns>
+    private static ImmutableArray<ContentPart> BuildPartialParts(List<PartAccumulator> parts)
+    {
+        Debug.Assert(parts is not null, "The streaming state machine always owns the accumulator list.");
+
+        var partial = ImmutableArray.CreateBuilder<ContentPart>(parts.Count);
+        foreach (var accumulator in parts)
+        {
+            partial.Add(accumulator.Closed ? accumulator.Part! : MaterializePart(accumulator));
+        }
+
+        return partial.ToImmutable();
+    }
+
+    /// <summary>
+    /// Builds the usage retained so far for an interrupted stream, or null when the provider has not reported any
+    /// usage or the reported values are not valid evidence; a failure exit never masks its own cause with a
+    /// secondary usage-validation failure.
+    /// </summary>
+    /// <param name="usage">The latest <c>usageMetadata</c> received, when any.</param>
+    /// <param name="usageIsFinal">Whether that usage accompanied a finish reason.</param>
+    /// <returns>The retained usage evidence, or null when none can be truthfully reported.</returns>
+    private static ModelUsage? TryBuildRetainedUsage(GoogleGeminiUsageMetadataDto? usage, bool usageIsFinal)
+    {
+        if (usage is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return BuildUsage(usage, usageIsFinal ? ModelUsageReportState.Final : ModelUsageReportState.Interim);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     private static async Task<ModelAttemptResult> FailAsync(
@@ -442,8 +502,10 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
         string safeMessage,
         Exception? diagnosticCause,
         CancellationToken cancellationToken,
+        ImmutableArray<ContentPart> partialParts = default,
         ModelUsage? usage = null)
     {
+        var normalizedPartialParts = partialParts.IsDefault ? [] : partialParts;
         var failure = new ProviderFailure(
             kind,
             context.ProviderId,
@@ -456,11 +518,11 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
             ExtensionData.Empty);
 
         await observer.OnEventAsync(
-                new ModelResponseFailed(context.ModelRequestId, sequence, failure, [], usage),
+                new ModelResponseFailed(context.ModelRequestId, sequence, failure, normalizedPartialParts, usage),
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new ModelAttemptFailed(failure, [], usage);
+        return new ModelAttemptFailed(failure, normalizedPartialParts, usage);
     }
 
     private static (ContentDelta? Delta, ContentPart Part) BuildPart(

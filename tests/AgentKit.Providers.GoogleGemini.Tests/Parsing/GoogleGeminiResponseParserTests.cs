@@ -259,7 +259,9 @@ public sealed class GoogleGeminiResponseParserTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
         observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
-        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        // The open text part is materialized as far as it was received, never dropped.
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+        observer.Events[^1].ShouldBeOfType<ModelResponseFailed>().PartialParts.ShouldBe(failed.PartialParts);
     }
 
     [Fact]

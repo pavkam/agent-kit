@@ -242,6 +242,7 @@ public sealed class OpenAIChatCompletionResponseParserTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldNotBe(ProviderFailureKind.ProtocolViolation);
         failed.Failure.ProviderCode.ShouldBe("rate_limit_exceeded");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hel");
     }
 
     [Fact]
@@ -316,7 +317,87 @@ public sealed class OpenAIChatCompletionResponseParserTests
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
         // A truncated stream must never present itself as a successful completion.
         observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
-        _ = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        // The text was streamed but never completed; the failure must still carry it as truthful partial output.
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Partial");
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenStreamTruncatedAfterUsage_RetainsReportedUsageWithPartialParts()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = """
+            data: {"id":"chatcmpl-4","object":"chat.completion.chunk","created":1700000040,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"role":"assistant","content":"Partial"},"finish_reason":null}],"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11}}
+
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Partial");
+        failed.Usage.ShouldNotBeNull().InputTokens.ShouldBe(10);
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.Usage.ShouldBe(failed.Usage);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenUsageIsInvalidMidStream_FailsWithPartialPartsRetained()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = """
+            data: {"id":"chatcmpl-5","object":"chat.completion.chunk","created":1700000050,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"Thinking"},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl-5","object":"chat.completion.chunk","created":1700000050,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"content":"Partial"},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl-5","object":"chat.completion.chunk","created":1700000050,"model":"gpt-4o-2024-08-06","choices":[],"usage":{"prompt_tokens":-1,"completion_tokens":1,"total_tokens":0}}
+
+            data: [DONE]
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned invalid usage evidence.");
+        // Reasoning precedes text, matching the order a completed response would have used.
+        failed.PartialParts.Length.ShouldBe(2);
+        failed.PartialParts[0].ShouldBeOfType<ReasoningPart>().Content.Text.ShouldBe("Thinking");
+        failed.PartialParts[1].ShouldBeOfType<TextPart>().Text.ShouldBe("Partial");
+        // Invalid usage is never reported as retained evidence.
+        failed.Usage.ShouldBeNull();
+        var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
+        terminal.PartialParts.ShouldBe(failed.PartialParts);
+        observer.Events.ShouldNotContain(e => e is ModelPartCompleted);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenStreamTruncatedDuringToolCall_RetainsOnlyToolCallsWithCompleteArguments()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = """
+            data: {"id":"chatcmpl-6","object":"chat.completion.chunk","created":1700000060,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"get_weather","arguments":"{\"location\":\"Paris\"}"}}]},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl-6","object":"chat.completion.chunk","created":1700000060,"model":"gpt-4o-2024-08-06","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_b","type":"function","function":{"name":"get_time","arguments":"{\"timezone\":"}}]},"finish_reason":null}]}
+
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        // The first call's arguments are complete JSON; the second is cut mid-object and cannot be represented truthfully.
+        var toolCall = failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.Tool.Name.ShouldBe("get_weather");
+        toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_a"));
+        toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
     }
 
     [Fact]

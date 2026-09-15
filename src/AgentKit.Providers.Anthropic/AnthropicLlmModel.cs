@@ -88,16 +88,21 @@ public sealed class AnthropicLlmModel: ILlmModel
         ArgumentNullException.ThrowIfNull(observer);
 
         // This adapter and its wire parser both emit events; the sequencing wrapper guarantees the observer
-        // sees exactly one ModelResponseStarted, contiguous sequences, and nothing after a terminal event.
-        observer = new SequencingModelResponseObserver(observer);
+        // sees exactly one ModelResponseStarted, contiguous sequences, and nothing after a terminal event. It
+        // also retains the parts already completed and the latest usage, so an attempt interrupted outside the
+        // parser (transport fault, deadline, caller cancellation) still settles with truthful partial output.
+        var sequencing = new SequencingModelResponseObserver(observer);
         var requestId = request.Context.ModelRequestId;
-        long sequence = 0;
 
         async Task<ModelAttemptResult> FailAsync(ProviderFailure failure)
         {
-            await observer.OnEventAsync(new ModelResponseFailed(requestId, sequence++, failure, [], usage: null), cancellationToken)
+            var partialParts = sequencing.CompletedParts;
+            var usage = sequencing.Usage;
+            await sequencing.OnEventAsync(
+                    new ModelResponseFailed(requestId, sequencing.NextSequence, failure, partialParts, usage),
+                    cancellationToken)
                 .ConfigureAwait(false);
-            return new ModelAttemptFailed(failure, [], usage: null);
+            return new ModelAttemptFailed(failure, partialParts, usage);
         }
 
         Task<ModelAttemptResult> FailWithKindAsync(ProviderFailureKind kind, string safeMessage, Exception? cause = null) =>
@@ -125,12 +130,18 @@ public sealed class AnthropicLlmModel: ILlmModel
                 diagnosticCause: null,
                 ExtensionData.Empty);
 
-            await observer.OnEventAsync(new ModelResponseCancelled(requestId, sequence++, cancellation, [], usage: null), cancellationToken)
+            // The caller's token is usually the reason the attempt is being cancelled; delivering the terminal
+            // event with it would let a token-honouring observer throw and lose the cancellation record.
+            var partialParts = sequencing.CompletedParts;
+            var usage = sequencing.Usage;
+            await sequencing.OnEventAsync(
+                    new ModelResponseCancelled(requestId, sequencing.NextSequence, cancellation, partialParts, usage),
+                    CancellationToken.None)
                 .ConfigureAwait(false);
-            return new ModelAttemptCancelled(cancellation, [], usage: null);
+            return new ModelAttemptCancelled(cancellation, partialParts, usage);
         }
 
-        await observer.OnEventAsync(new ModelResponseStarted(requestId, sequence++), cancellationToken).ConfigureAwait(false);
+        await sequencing.OnEventAsync(new ModelResponseStarted(requestId, sequencing.NextSequence), cancellationToken).ConfigureAwait(false);
 
         if (request.Context.Tools.Length > 0 && !_descriptor.Capabilities.SupportsToolCalls)
         {
@@ -262,10 +273,10 @@ public sealed class AnthropicLlmModel: ILlmModel
                 {
                     return useStreaming
                         ? await _streamParser
-                            .ParseStreamingAsync(body, parseContext, observer, linkedSource.Token)
+                            .ParseStreamingAsync(body, parseContext, sequencing, linkedSource.Token)
                             .ConfigureAwait(false)
                         : await _streamParser
-                            .ParseBufferedAsync(body, parseContext, observer, linkedSource.Token)
+                            .ParseBufferedAsync(body, parseContext, sequencing, linkedSource.Token)
                             .ConfigureAwait(false);
                 }
             }
