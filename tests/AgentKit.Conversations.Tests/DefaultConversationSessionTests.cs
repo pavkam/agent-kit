@@ -293,6 +293,102 @@ public sealed class DefaultConversationSessionTests
         exception.ParamName.ShouldBe("options");
     }
 
+    [Fact]
+    public void Constructor_WhenAgentIdDiffersFromTheOptionsAgentId_ThrowsArgumentException()
+    {
+        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
+        options.AgentId = new AgentId(Guid.NewGuid());
+
+        var exception = Should.Throw<ArgumentException>(() => CreateSession(options: options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenAgentRevisionDiffersFromTheOptionsRevision_ThrowsArgumentException()
+    {
+        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
+        options.AgentDefinitionRevision = new AgentDefinitionRevision(99);
+
+        var exception = Should.Throw<ArgumentException>(() => CreateSession(options: options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenAgentSecurityProfileDiffersFromTheOptionsSecurityProfileKey_ThrowsArgumentException()
+    {
+        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
+        options.SecurityProfileKey = new SecurityProfileKey("a-different-security-profile");
+
+        var exception = Should.Throw<ArgumentException>(() => CreateSession(options: options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenAgentSessionProfileDiffersFromTheOptionsSessionProfileKey_ThrowsArgumentException()
+    {
+        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
+        var original = options.SessionProfile!;
+        options.SessionProfile = new SessionProfileSnapshot(
+            new SessionProfileReference(new SessionProfileKey("a-different-session-profile"), original.Reference.Version),
+            original.CoordinatorKey,
+            original.RunCoordinatorKey,
+            original.DefaultStoreKey,
+            original.RequiredStoreCapabilities,
+            original.RequiresDurableStore,
+            original.RequiresDistributedFencing,
+            original.RetentionProfile,
+            original.BusyBehavior,
+            original.MaximumAppendEntries,
+            original.MaximumPageSize,
+            original.VerifySnapshotHashes,
+            original.DeleteOnDispose,
+            original.ConfigurationFingerprint);
+
+        var exception = Should.Throw<ArgumentException>(() => CreateSession(options: options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenConfigurationVersionDiffersFromTheOptionsConfigurationVersion_ThrowsArgumentException()
+    {
+        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
+        options.ConfigurationVersion = new ConfigurationVersion(99);
+
+        var exception = Should.Throw<ArgumentException>(() => CreateSession(options: options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenConfigurationFingerprintDiffersFromTheSessionProfileFingerprint_ThrowsArgumentException()
+    {
+        var options = ConversationSessionOptionsFactory.ValidWithExactEvidence();
+        options.Configuration = new EffectiveConfigurationSnapshot(
+            options.ConfigurationVersion, new ContentHash("sha256:a-different-fingerprint"), [], []);
+
+        var exception = Should.Throw<ArgumentException>(() => CreateSession(options: options));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenExactAgentAndConfigurationEvidenceIsSupplied_UsesThemToBuildTheRunRequest()
+    {
+        var loop = new FakeAgentLoop();
+        using var session = CreateSession(loop: loop, options: ConversationSessionOptionsFactory.ValidWithExactEvidence());
+
+        var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        var request = loop.LastRequest.ShouldNotBeNull();
+        _ = request.Agent.ShouldNotBeNull();
+        _ = request.Configuration.ShouldNotBeNull();
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
@@ -318,6 +414,52 @@ public sealed class DefaultConversationSessionTests
     {
         var exception = Should.Throw<ArgumentOutOfRangeException>(
             () => CreateSession(configureOptions: options => options.AttemptTimeout = TimeSpan.FromSeconds(-1)));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenToolPresentationBindingIsValid_CapturesItWithoutThrowing()
+    {
+        var advertised = Advertised(new ToolId("read"), "read");
+        var descriptor = Descriptor(advertised.Id);
+        using var session = CreateSession(configureOptions: options =>
+        {
+            options.Tools.Add(advertised);
+            options.ToolPresentationBindings.Add(new ConversationToolPresentationBinding(descriptor, advertised));
+        });
+
+        _ = session.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void Constructor_WhenToolPresentationBindingReferencesAToolNotAdvertised_ThrowsArgumentException()
+    {
+        var advertised = Advertised(new ToolId("read"), "read");
+        var descriptor = Descriptor(advertised.Id);
+
+        var exception = Should.Throw<ArgumentException>(() => CreateSession(configureOptions: options =>
+            // "advertised" itself is never added to options.Tools, so the binding references an unadvertised tool.
+            options.ToolPresentationBindings.Add(new ConversationToolPresentationBinding(descriptor, advertised))));
+
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Constructor_WhenTwoToolPresentationBindingsShareTheSameAdvertisedAlias_ThrowsArgumentException()
+    {
+        var firstAdvertised = Advertised(new ToolId("read"), "shared-name");
+        var firstDescriptor = Descriptor(firstAdvertised.Id);
+        var secondAdvertised = Advertised(new ToolId("write"), "shared-name");
+        var secondDescriptor = Descriptor(secondAdvertised.Id);
+
+        var exception = Should.Throw<ArgumentException>(() => CreateSession(configureOptions: options =>
+        {
+            options.Tools.Add(firstAdvertised);
+            options.Tools.Add(secondAdvertised);
+            options.ToolPresentationBindings.Add(new ConversationToolPresentationBinding(firstDescriptor, firstAdvertised));
+            options.ToolPresentationBindings.Add(new ConversationToolPresentationBinding(secondDescriptor, secondAdvertised));
+        }));
 
         exception.ParamName.ShouldBe("options");
     }
@@ -749,6 +891,106 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
+    public async Task OpenAsync_WhenTheCoordinatorCannotLoadTheSession_RejectsWithoutBindingSession()
+    {
+        var coordinator = new FakeSessionCoordinator { LoadResult = new SessionLoadFailed("store unavailable") };
+        using var session = CreateSession(coordinator: coordinator);
+
+        var result = await session.OpenAsync(new SessionId(Guid.NewGuid()), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ConversationSessionOpenRejected>();
+        coordinator.CreateCallCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ReadHistoryAsync_WhenCoordinatorReturnsNotFound_ReturnsUnavailable()
+    {
+        var coordinator = new FakeSessionCoordinator
+        {
+            ReadResultFactory = request => new SessionReadNotFound(request.Context.ToAddress()),
+        };
+        var sessionId = new SessionId(Guid.NewGuid());
+        using var session = CreateSession(coordinator: coordinator);
+        _ = await session.OpenAsync(sessionId, TestContext.Current.CancellationToken);
+
+        var result = await session.ReadHistoryAsync(new SessionSequence(0), 10, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ConversationHistoryUnavailable>().SafeMessage.ShouldContain("unavailable");
+    }
+
+    [Fact]
+    public async Task ReadHistoryAsync_WhenAPageContainsAMessageOwnedByAnotherSession_ReturnsUnavailable()
+    {
+        // The entry's own address matches the request (so IsValidPage's pagination check accepts the page); only
+        // the message content embedded inside it names a different session, which is the ownership check's target.
+        var coordinator = new FakeSessionCoordinator();
+        var sessionId = new SessionId(Guid.NewGuid());
+        var runId = new RunId(Guid.NewGuid());
+        var turnId = new TurnId(Guid.NewGuid());
+        var mismatchedMessage = new UserMessage(
+            new MessageId(Guid.NewGuid()),
+            ConversationSessionOptionsFactory.AgentId,
+            new SessionId(Guid.NewGuid()),
+            null,
+            coordinator.BranchId,
+            runId,
+            turnId,
+            DateTimeOffset.UnixEpoch,
+            MessageState.Complete,
+            [new TextPart("not this session", TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
+        var entry = new MessageSessionEntry(
+            new SessionEntryId(Guid.NewGuid()),
+            new SessionAddress(ConversationSessionOptionsFactory.AgentId, sessionId),
+            new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), runId, turnId),
+            coordinator.BranchId,
+            new SessionSequence(1),
+            null,
+            DateTimeOffset.UnixEpoch,
+            new SchemaVersion("1"),
+            mismatchedMessage);
+        coordinator.ReadResultFactory = _ => new SessionPage([entry], new SessionSequence(1), hasMore: false);
+        using var session = CreateSession(coordinator: coordinator);
+        _ = await session.OpenAsync(sessionId, TestContext.Current.CancellationToken);
+
+        var result = await session.ReadHistoryAsync(new SessionSequence(0), 10, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ConversationHistoryUnavailable>().SafeMessage.ShouldContain("ownership");
+    }
+
+    [Fact]
+    public async Task ReadHistoryAsync_WhenThePageReturnsMoreEntriesThanRequested_ReturnsUnavailable()
+    {
+        var coordinator = new FakeSessionCoordinator();
+        var sessionId = new SessionId(Guid.NewGuid());
+        var first = HistoryEntry(sessionId, coordinator.BranchId, 1, "first");
+        var second = HistoryEntry(sessionId, coordinator.BranchId, 2, "second");
+        coordinator.ReadResultFactory = _ => new SessionPage([first, second], new SessionSequence(2), hasMore: false);
+        using var session = CreateSession(coordinator: coordinator);
+        _ = await session.OpenAsync(sessionId, TestContext.Current.CancellationToken);
+
+        var result = await session.ReadHistoryAsync(new SessionSequence(0), 1, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ConversationHistoryUnavailable>().SafeMessage.ShouldContain("pagination");
+    }
+
+    [Fact]
+    public async Task ReadHistoryAsync_WhenAnEntrysSequenceDoesNotAdvancePastTheCursor_ReturnsUnavailable()
+    {
+        var coordinator = new FakeSessionCoordinator();
+        var sessionId = new SessionId(Guid.NewGuid());
+        // The entry's sequence (0) does not advance past the requested cursor (also 0), which real stores never do.
+        var stale = HistoryEntry(sessionId, coordinator.BranchId, 0, "stale");
+        coordinator.ReadResultFactory = _ => new SessionPage([stale], new SessionSequence(1), hasMore: false);
+        using var session = CreateSession(coordinator: coordinator);
+        _ = await session.OpenAsync(sessionId, TestContext.Current.CancellationToken);
+
+        var result = await session.ReadHistoryAsync(new SessionSequence(0), 10, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ConversationHistoryUnavailable>().SafeMessage.ShouldContain("pagination");
+    }
+
+    [Fact]
     public async Task ReadHistoryAsync_WhenSessionIsNotBound_ReturnsUnavailableWithoutCreatingOrReading()
     {
         var coordinator = new FakeSessionCoordinator();
@@ -1005,7 +1247,8 @@ public sealed class DefaultConversationSessionTests
         ISecurityProfileSelector? selector = null,
         IAgentLoop? loop = null,
         Action<ConversationSessionOptions>? configureOptions = null,
-        TimeProvider? timeProvider = null) =>
+        TimeProvider? timeProvider = null,
+        ConversationSessionOptions? options = null) =>
         new(
             coordinator ?? new FakeSessionCoordinator(),
             selector ?? new FakeSecurityProfileSelector(),
@@ -1021,7 +1264,7 @@ public sealed class DefaultConversationSessionTests
             new GuidIdentifierGenerator<MessageId>(static guid => new MessageId(guid)),
             new GuidIdentifierGenerator<SessionEntryId>(static guid => new SessionEntryId(guid)),
             timeProvider ?? new FakeTimeProvider(),
-            Options.Create(ConversationSessionOptionsFactory.Valid(configureOptions)));
+            Options.Create(options ?? ConversationSessionOptionsFactory.Valid(configureOptions)));
 
     /// <summary>
     /// Builds a real <see cref="IServiceScopeFactory"/> whose scopes resolve <paramref name="loop"/> as the keyed
@@ -1089,6 +1332,30 @@ public sealed class DefaultConversationSessionTests
             new ModelLimits(maxContextTokens: 4096, maxOutputTokens: 1024),
             pricing: null,
             ExtensionData.Empty);
+    }
+
+    private static ToolDescriptor Descriptor(ToolId id)
+    {
+        using var document = JsonDocument.Parse("{\"type\":\"object\"}");
+        return new ToolDescriptor(
+            id,
+            new ToolVersion("v1"),
+            "display name",
+            "Describes a tool.",
+            new JsonSchema(
+                new JsonSchemaDialectId("https://json-schema.org/draft/2020-12/schema"),
+                document.RootElement),
+            null,
+            new ToolEffects(ToolEffect.ReadOnly, IdempotencyClassification.ReadOnly, []),
+            new ToolExecutionHints(ToolSchedulingMode.Unspecified, null, null, null),
+            new ToolSourceId("tests"),
+            ExtensionData.Empty);
+    }
+
+    private static LlmToolDefinition Advertised(ToolId id, string name)
+    {
+        using var document = JsonDocument.Parse("{\"type\":\"object\"}");
+        return new LlmToolDefinition(id, name, "Describes a tool.", document.RootElement);
     }
 
     private sealed class NullValueOptions: IOptions<ConversationSessionOptions>

@@ -28,4 +28,35 @@ internal static class ConversationSessionOptionsFactory
         configure?.Invoke(options);
         return options;
     }
+
+    /// <summary>Builds a valid options instance carrying an exact <see cref="AgentDefinition"/> and
+    /// <see cref="EffectiveConfigurationSnapshot"/> pair whose evidence matches every decomposed option field.</summary>
+    public static ConversationSessionOptions ValidWithExactEvidence(Action<ConversationSessionOptions>? configure = null)
+    {
+        var options = Valid();
+        // Matches TestSecurityEvidence.Authorization's hardcoded AgentDefinitionRevision(1), which
+        // FakeSecurityProfileSelector returns by default for every captured authorization.
+        options.AgentDefinitionRevision = new AgentDefinitionRevision(1);
+        options.Agent = new AgentDefinition(
+            options.AgentId,
+            options.AgentDefinitionRevision,
+            "agent",
+            options.ModelSelectionPolicy!,
+            options.ModelRequirements,
+            [],
+            [],
+            options.ToolChoice,
+            options.RequestSettings,
+            new RunPolicyDefaults(options.MaxTurns, options.AttemptTimeout),
+            ExtensionData.Empty,
+            options.SecurityProfileKey,
+            options.SessionProfile!.Reference.Key);
+        options.Configuration = new EffectiveConfigurationSnapshot(
+            options.ConfigurationVersion,
+            options.SessionProfile.ConfigurationFingerprint,
+            [],
+            []);
+        configure?.Invoke(options);
+        return options;
+    }
 }
