@@ -22,4 +22,12 @@ public sealed class ContentDeltaTests
         _ = toolArguments.ShouldBeOfType<ToolArgumentsContentDelta>();
         _ = provider.ShouldBeOfType<ProviderContentDelta>();
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new TextContentDelta("x");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

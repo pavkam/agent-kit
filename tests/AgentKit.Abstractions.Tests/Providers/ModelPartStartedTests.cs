@@ -14,4 +14,12 @@ public sealed class ModelPartStartedTests
         var requestId = new ModelRequestId(Guid.NewGuid());
         new ModelPartStarted(requestId, 1, 0).ShouldBe(new ModelPartStarted(requestId, 1, 0));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ModelPartStarted(new ModelRequestId(Guid.NewGuid()), 1, 0);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

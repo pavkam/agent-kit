@@ -18,4 +18,12 @@ public sealed class EmbeddingVectorTests
         _ = quantized.ShouldBeOfType<QuantizedByteVector>();
         _ = packed.ShouldBeOfType<PackedBinaryVector>();
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new DenseFloatVector([1.0f]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

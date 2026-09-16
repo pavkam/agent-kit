@@ -14,4 +14,12 @@ public sealed class EmbeddingInputTests
         EmbeddingInput input = new TextEmbeddingInput("hello", null);
         _ = input.ShouldBeOfType<TextEmbeddingInput>();
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new TextEmbeddingInput("hello", null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
