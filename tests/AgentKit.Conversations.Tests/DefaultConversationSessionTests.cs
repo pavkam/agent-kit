@@ -1559,7 +1559,7 @@ public sealed class DefaultConversationSessionTests
         TimeProvider? timeProvider = null,
         ConversationSessionOptions? options = null,
         IToolPresenter? toolPresenter = null,
-        Microsoft.Extensions.Logging.ILogger<DefaultConversationSession>? logger = null) =>
+        ILogger<DefaultConversationSession>? logger = null) =>
         new(
             coordinator ?? new FakeSessionCoordinator(),
             selector ?? new FakeSecurityProfileSelector(),

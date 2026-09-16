@@ -68,7 +68,7 @@ internal sealed class TestGrantStore: ISecurityGrantStore
             new BeforeRunOperationCorrelation(
                 new OperationId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
                 null)),
-        TestSupport.TestExecutionIdentity.Create(
+        TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
             ExecutionSubjectKind.Human),

@@ -37,7 +37,7 @@ public sealed class DefaultIdentityValidationPolicyTests
             new TenantId("tenant"),
             new PrincipalId("principal"),
             ExecutionSubjectKind.Anonymous,
-            IdentityTestData.Evidence("issuer", now, null),
+            Evidence("issuer", now, null),
             [],
             [],
             IdentityAssuranceLevel.Basic,
@@ -56,7 +56,7 @@ public sealed class DefaultIdentityValidationPolicyTests
         var clock = new FakeTimeProvider(now);
         var options = new AgentIdentityOptionsSnapshot(false, 1, TimeSpan.FromMinutes(1), TimeSpan.FromHours(1));
         var policy = new DefaultIdentityValidationPolicy(new IdentityIssuerCatalog([]), clock, options);
-        var identity = Identity(IdentityTestData.Evidence("issuer", now.AddMinutes(5), null));
+        var identity = Identity(Evidence("issuer", now.AddMinutes(5), null));
 
         var result = await policy.ValidateAsync(identity, TestContext.Current.CancellationToken);
 
@@ -71,7 +71,7 @@ public sealed class DefaultIdentityValidationPolicyTests
         var clock = new FakeTimeProvider(now);
         var options = new AgentIdentityOptionsSnapshot(false, 1, TimeSpan.FromMinutes(1), TimeSpan.FromHours(2));
         var policy = new DefaultIdentityValidationPolicy(new IdentityIssuerCatalog([]), clock, options);
-        var identity = Identity(IdentityTestData.Evidence(
+        var identity = Identity(Evidence(
             "issuer", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)));
 
         var result = await policy.ValidateAsync(identity, TestContext.Current.CancellationToken);
