@@ -39,4 +39,30 @@ public sealed class SessionLocationResultTests
         copy.ShouldBe(original);
         original.Address.ShouldBe(address);
     }
+
+    [Fact]
+    public void SessionDirectoryLookupDenied_WhenSafeMessageIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionDirectoryLookupDenied(" ")).ParamName.ShouldBe("safeMessage");
+
+    [Fact]
+    public void SessionDirectoryLookupDenied_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionDirectoryLookupDenied("denied");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeMessage.ShouldBe("denied");
+    }
+
+    [Fact]
+    public void SessionDirectoryLookupUnavailable_WhenSafeMessageIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionDirectoryLookupUnavailable(" ")).ParamName.ShouldBe("safeMessage");
+
+    [Fact]
+    public void SessionDirectoryLookupUnavailable_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionDirectoryLookupUnavailable("unavailable");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeMessage.ShouldBe("unavailable");
+    }
 }

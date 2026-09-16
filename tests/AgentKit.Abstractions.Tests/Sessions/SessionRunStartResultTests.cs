@@ -45,4 +45,30 @@ public sealed class SessionRunStartResultTests
     [Fact]
     public void SessionRunAccepted_WhenStateIsNull_ThrowsExactArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => new SessionRunAccepted(null!, new SessionVersion(1), existing: false)).ParamName.ShouldBe("state");
+
+    [Fact]
+    public void SessionRunStartFenced_WhenSafeReasonIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionRunStartFenced(" ")).ParamName.ShouldBe("safeReason");
+
+    [Fact]
+    public void SessionRunStartFenced_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionRunStartFenced("fenced");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeReason.ShouldBe("fenced");
+    }
+
+    [Fact]
+    public void SessionRunStartRejected_WhenSafeReasonIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionRunStartRejected(" ")).ParamName.ShouldBe("safeReason");
+
+    [Fact]
+    public void SessionRunStartRejected_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionRunStartRejected("rejected");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeReason.ShouldBe("rejected");
+    }
 }

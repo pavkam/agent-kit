@@ -73,4 +73,17 @@ public sealed class SessionInputLookupResultTests
         original.Correlation.ShouldBe(correlation);
         original.Receipt.ShouldBe(receipt);
     }
+
+    [Fact]
+    public void SessionInputLookupRejected_WhenSafeReasonIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionInputLookupRejected(" ")).ParamName.ShouldBe("safeReason");
+
+    [Fact]
+    public void SessionInputLookupRejected_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionInputLookupRejected("rejected");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeReason.ShouldBe("rejected");
+    }
 }

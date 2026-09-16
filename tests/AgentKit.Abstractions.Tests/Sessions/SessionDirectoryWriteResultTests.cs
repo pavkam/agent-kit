@@ -49,4 +49,30 @@ public sealed class SessionDirectoryWriteResultTests
         original.Location.ShouldBe(location);
         original.Existing.ShouldBeTrue();
     }
+
+    [Fact]
+    public void SessionDirectoryWriteDenied_WhenSafeMessageIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionDirectoryWriteDenied(" ")).ParamName.ShouldBe("safeMessage");
+
+    [Fact]
+    public void SessionDirectoryWriteDenied_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionDirectoryWriteDenied("denied");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeMessage.ShouldBe("denied");
+    }
+
+    [Fact]
+    public void SessionDirectoryWriteUnavailable_WhenSafeMessageIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionDirectoryWriteUnavailable(" ")).ParamName.ShouldBe("safeMessage");
+
+    [Fact]
+    public void SessionDirectoryWriteUnavailable_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionDirectoryWriteUnavailable("unavailable");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeMessage.ShouldBe("unavailable");
+    }
 }

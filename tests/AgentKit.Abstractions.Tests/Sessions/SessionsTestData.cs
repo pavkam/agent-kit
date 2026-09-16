@@ -106,4 +106,21 @@ internal static class SessionsTestData
             DateTimeOffset.UnixEpoch.AddMinutes(1),
             1);
     }
+
+    public static SessionAcceptedRunState AcceptedRunState()
+    {
+        var correlation = InRun();
+        var authorization = Authorization(correlation, SessionId);
+        var materializedEntryId = new SessionEntryId(Guid.Parse("a0000000-0000-0000-0000-000000000010"));
+        var acceptedEntryId = new SessionEntryId(Guid.Parse("a0000000-0000-0000-0000-000000000011"));
+        var previousEntryId = new SessionEntryId(Guid.Parse("a0000000-0000-0000-0000-000000000012"));
+        var messageId = new MessageId(Guid.Parse("a0000000-0000-0000-0000-000000000013"));
+        return new SessionAcceptedRunState(
+            Address(), LaneId, new SessionLaneRevision(1), correlation, new OperationStateRevision(1), Identity(),
+            authorization, ProfileReference(), Configuration(),
+            new SessionBranchCursor(BranchId, previousEntryId),
+            new SessionBranchCursor(BranchId, acceptedEntryId),
+            new SessionSequence(1), AdmissionId, [AdmissionId], [materializedEntryId], [messageId], TurnId,
+            DateTimeOffset.UnixEpoch);
+    }
 }

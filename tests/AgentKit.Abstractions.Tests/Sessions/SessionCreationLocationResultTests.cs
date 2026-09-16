@@ -38,6 +38,32 @@ public sealed class SessionCreationLocationResultTests
     }
 
     [Fact]
+    public void SessionDirectoryCreationLookupDenied_WhenSafeMessageIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionDirectoryCreationLookupDenied(" ")).ParamName.ShouldBe("safeMessage");
+
+    [Fact]
+    public void SessionDirectoryCreationLookupDenied_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionDirectoryCreationLookupDenied("denied");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeMessage.ShouldBe("denied");
+    }
+
+    [Fact]
+    public void SessionDirectoryCreationLookupUnavailable_WhenSafeMessageIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionDirectoryCreationLookupUnavailable(" ")).ParamName.ShouldBe("safeMessage");
+
+    [Fact]
+    public void SessionDirectoryCreationLookupUnavailable_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionDirectoryCreationLookupUnavailable("unavailable");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeMessage.ShouldBe("unavailable");
+    }
+
+    [Fact]
     public void SessionCreationLocationResult_WhenPatternMatched_DiscriminatesDerivedKinds()
     {
         SessionCreationLocationResult located = new SessionCreationLocationLocated(SessionsTestData.Location());
