@@ -498,6 +498,146 @@ public sealed class InMemoryArtifactStoreTests: ArtifactStoreConformanceTests<In
         result.ShouldBeOfType<ArtifactDeleteRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.RetentionConflict);
     }
 
+    [Fact]
+    public async Task PrepareAsync_WhenPreparationIdentityIsAlreadyInUse_RejectsWithConflict()
+    {
+        var fixture = new StoreFixture();
+        var preparationId = new ArtifactPreparationId(Guid.NewGuid());
+        var first = fixture.CreatePrepare("output"u8.ToArray(), idempotencyKey: "prepare-1", preparationId: preparationId);
+        await fixture.RegisterPrepareGrantAsync(first);
+        var firstResult = await fixture.Store.PrepareAsync(first, TestContext.Current.CancellationToken);
+        _ = firstResult.ShouldBeOfType<ArtifactPrepared>();
+
+        var second = fixture.CreatePrepare(
+            "different output"u8.ToArray(), idempotencyKey: "prepare-2", preparationId: preparationId);
+        await fixture.RegisterPrepareGrantAsync(second);
+        var secondResult = await fixture.Store.PrepareAsync(second, TestContext.Current.CancellationToken);
+
+        secondResult.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Conflict);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_WhenObservedContentDoesNotMatchDeclaredMetadata_RejectsWithIntegrityMismatch()
+    {
+        var fixture = new StoreFixture();
+        var declared = fixture.CreatePrepare("original"u8.ToArray());
+        var tampered = new ArtifactStorePrepareRequest(
+            declared.ArtifactId, declared.PreparationId, declared.Version, declared.ProfileKey,
+            declared.ProfileVersion, declared.TenantId, declared.CreatedBy, declared.DirectoryId,
+            declared.Metadata, [.. "different"u8.ToArray()], declared.CreatedAt, declared.ExpiresAt,
+            declared.Scope, declared.Identity, declared.Grant, declared.IdempotencyKey);
+        await fixture.RegisterPrepareGrantAsync(tampered);
+
+        var result = await fixture.Store.PrepareAsync(tampered, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.IntegrityMismatch);
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_WhenGrantIsNotRegistered_RejectsWithoutMutatingState()
+    {
+        var fixture = new StoreFixture();
+        var prepare = fixture.CreatePrepare("output"u8.ToArray());
+        await fixture.RegisterPrepareGrantAsync(prepare);
+        _ = await fixture.Store.PrepareAsync(prepare, TestContext.Current.CancellationToken);
+        var finalize = fixture.CreateFinalize(prepare.PreparationId, prepare.Identity);
+        // Deliberately does not register the finalize grant, so consumption is denied.
+
+        var result = await fixture.Store.FinalizeAsync(finalize, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactFinalizeRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
+
+        var retry = fixture.CreateFinalize(prepare.PreparationId, prepare.Identity);
+        await fixture.RegisterFinalizeGrantAsync(retry);
+        var retryResult = await fixture.Store.FinalizeAsync(retry, TestContext.Current.CancellationToken);
+        _ = retryResult.ShouldBeOfType<ArtifactFinalized>();
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenReferenceTenantDiffersFromAuthenticatedIdentity_ReturnsNotFound()
+    {
+        var fixture = new StoreFixture();
+        var reference = await fixture.CommitAsync("output"u8.ToArray());
+        var otherTenantIdentity = StoreFixture.CreateIdentity("other-tenant", "other-principal");
+        var read = fixture.CreateRead(reference, otherTenantIdentity);
+        await fixture.RegisterReadGrantAsync(read);
+
+        var result = await fixture.Store.ReadAsync(read, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactReadRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.NotFound);
+    }
+
+    [Fact]
+    public async Task AbortAsync_WhenGrantIsNotRegistered_RejectsWithoutMutatingState()
+    {
+        var fixture = new StoreFixture();
+        var prepare = fixture.CreatePrepare("output"u8.ToArray());
+        await fixture.RegisterPrepareGrantAsync(prepare);
+        _ = await fixture.Store.PrepareAsync(prepare, TestContext.Current.CancellationToken);
+        var abort = fixture.CreateAbort(prepare.PreparationId, prepare.Identity);
+        // Deliberately does not register the abort grant, so consumption is denied.
+
+        var result = await fixture.Store.AbortAsync(abort, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactAbortRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
+
+        var finalize = fixture.CreateFinalize(prepare.PreparationId, prepare.Identity);
+        await fixture.RegisterFinalizeGrantAsync(finalize);
+        var finalized = await fixture.Store.FinalizeAsync(finalize, TestContext.Current.CancellationToken);
+        _ = finalized.ShouldBeOfType<ArtifactFinalized>();
+    }
+
+    [Fact]
+    public async Task AbortAsync_WhenCalledAgainForAnAlreadyAbortedPreparation_IsIdempotent()
+    {
+        var fixture = new StoreFixture();
+        var prepare = fixture.CreatePrepare("output"u8.ToArray());
+        await fixture.RegisterPrepareGrantAsync(prepare);
+        _ = await fixture.Store.PrepareAsync(prepare, TestContext.Current.CancellationToken);
+        var firstAbort = fixture.CreateAbort(prepare.PreparationId, prepare.Identity);
+        await fixture.RegisterAbortGrantAsync(firstAbort);
+        var firstResult = await fixture.Store.AbortAsync(firstAbort, TestContext.Current.CancellationToken);
+        firstResult.ShouldBeOfType<ArtifactAborted>().AlreadyAbsent.ShouldBeFalse();
+
+        var secondAbort = fixture.CreateAbort(prepare.PreparationId, prepare.Identity);
+        await fixture.RegisterAbortGrantAsync(secondAbort);
+        var secondResult = await fixture.Store.AbortAsync(secondAbort, TestContext.Current.CancellationToken);
+
+        secondResult.ShouldBeOfType<ArtifactAborted>().AlreadyAbsent.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenGrantIsNotRegistered_RejectsWithoutMutatingState()
+    {
+        var fixture = new StoreFixture();
+        var reference = await fixture.CommitAsync("output"u8.ToArray());
+        var delete = fixture.CreateDelete(reference, fixture.Identity);
+        // Deliberately does not register the delete grant, so consumption is denied.
+
+        var result = await fixture.Store.DeleteAsync(delete, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactDeleteRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
+
+        var read = fixture.CreateRead(reference, fixture.Identity);
+        await fixture.RegisterReadGrantAsync(read);
+        var readResult = await fixture.Store.ReadAsync(read, TestContext.Current.CancellationToken);
+        _ = readResult.ShouldBeOfType<ArtifactReadOpened>();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenReferenceTenantDiffersFromAuthenticatedIdentity_ReturnsNotFound()
+    {
+        var fixture = new StoreFixture();
+        var reference = await fixture.CommitAsync("output"u8.ToArray());
+        var otherTenantIdentity = StoreFixture.CreateIdentity("other-tenant", "other-principal");
+        var delete = fixture.CreateDelete(reference, otherTenantIdentity);
+        await fixture.RegisterDeleteGrantAsync(delete);
+
+        var result = await fixture.Store.DeleteAsync(delete, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactDeleteRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.NotFound);
+    }
+
     private sealed class StoreFixture
     {
         private int _sequence;

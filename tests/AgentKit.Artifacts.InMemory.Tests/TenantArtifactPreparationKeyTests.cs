@@ -40,6 +40,15 @@ public sealed class TenantArtifactPreparationKeyTests
         otherTenantPreparation.ShouldNotBe(preparation);
     }
 
+    [Fact]
+    public void Properties_WhenConstructed_ExposeTheExactCapturedValues()
+    {
+        var key = new TenantArtifactPreparationKey(TenantId(), PreparationId());
+
+        key.TenantId.ShouldBe(TenantId());
+        key.PreparationId.ShouldBe(PreparationId());
+    }
+
     private static TenantId TenantId() => new("tenant");
     private static ArtifactPreparationId PreparationId() => new(Guid.Parse("10000000-0000-0000-0000-000000000001"));
     private static ArtifactId ArtifactId() => new(Guid.Parse("20000000-0000-0000-0000-000000000002"));

@@ -18,6 +18,16 @@ public sealed class TenantArtifactKeyTests
         otherTenantArtifact.ShouldNotBe(artifact);
     }
 
+    [Fact]
+    public void Properties_WhenConstructed_ExposeTheExactCapturedValues()
+    {
+        var key = new TenantArtifactKey(TenantId(), ArtifactId(), Version());
+
+        key.TenantId.ShouldBe(TenantId());
+        key.ArtifactId.ShouldBe(ArtifactId());
+        key.Version.ShouldBe(Version());
+    }
+
     private static TenantId TenantId() => new("tenant");
     private static ArtifactId ArtifactId() => new(Guid.Parse("20000000-0000-0000-0000-000000000002"));
     private static ArtifactVersion Version() => new("1");
