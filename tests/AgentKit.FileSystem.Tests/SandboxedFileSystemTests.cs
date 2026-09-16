@@ -1904,6 +1904,33 @@ public sealed class SandboxedFileSystemTests: IDisposable
         }
     }
 
+    [Fact]
+    public async Task ApplyPatchAsync_WhenALaterEntryFailsToStage_RemovesTheEarlierEntrysOrphanedStagingFile()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var readOnlyDirectory = Path.Combine(_rootSandboxedFileSystemPatch, "readonly-dir-2");
+        _ = Directory.CreateDirectory(readOnlyDirectory);
+        File.SetUnixFileMode(readOnlyDirectory, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
+            var stagesFine = new WorkspacePatchCreate(MutationIdSandboxedFileSystemPatch(35), new FileSystemPath("stages-fine.txt"), "content"u8.ToArray().ToImmutableArray(), TestSecurity.Grant());
+            var failsToStage = new WorkspacePatchCreate(MutationIdSandboxedFileSystemPatch(36), new FileSystemPath("readonly-dir-2/new.txt"), "content"u8.ToArray().ToImmutableArray(), TestSecurity.Grant());
+            var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest([stagesFine, failsToStage]), TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+            File.Exists(Path.Combine(_rootSandboxedFileSystemPatch, "stages-fine.txt")).ShouldBeFalse();
+            Directory.GetFiles(_rootSandboxedFileSystemPatch, ".agentkit-stage-*").ShouldBeEmpty();
+        }
+        finally
+        {
+            File.SetUnixFileMode(readOnlyDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
     private SandboxedFileSystem CreateFileSystemSandboxedFileSystemPatch(ISecurityGrantStore store) => new(Options.Create(new SandboxedFileSystemOptions { RootDirectory = _rootSandboxedFileSystemPatch }), store, TimeProvider.System);
     private async Task WriteAsync(string path, string content) => await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemPatch, path), content, TestContext.Current.CancellationToken);
     private async Task<ContentHash> FingerprintAsync(string path) => FileSecurityBinding.ContentFingerprint(await File.ReadAllBytesAsync(Path.Combine(_rootSandboxedFileSystemPatch, path), TestContext.Current.CancellationToken));
