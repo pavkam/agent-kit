@@ -30,4 +30,19 @@ public sealed class FileSearchPatternTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new FileSearchPattern(new string('x', FileSearchPattern.MaximumLength + 1), FileSearchPatternKind.Literal));
         exception.ParamName.ShouldBe("value");
     }
+
+    [Fact]
+    public void FileSearchPattern_WhenRegexIsSupportedByPinnedEngine_ConstructsSuccessfully()
+    {
+        var pattern = new FileSearchPattern(/*lang=regex*/"needle[0-9]+", FileSearchPatternKind.RegularExpression);
+        pattern.Value.ShouldBe("needle[0-9]+");
+        pattern.Kind.ShouldBe(FileSearchPatternKind.RegularExpression);
+    }
+
+    [Fact]
+    public void FileSearchPattern_ToString_ReturnsPatternText()
+    {
+        var pattern = new FileSearchPattern("needle", FileSearchPatternKind.Literal);
+        pattern.ToString().ShouldBe("needle");
+    }
 }

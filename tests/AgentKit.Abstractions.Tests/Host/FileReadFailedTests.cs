@@ -20,6 +20,14 @@ public sealed class FileReadFailedTests: Conformance.SingleMessageLeafConformanc
         failed.SafeMessage.ShouldBe("disk error");
     }
 
+    [Fact]
+    public void FileReadFailed_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileReadFailed("disk error");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     /// <inheritdoc/>
     protected override FileReadFailed Create(string message) => new(message);
 

@@ -38,4 +38,8 @@ public sealed class GlobSecurityBindingTests
         GlobSecurityBinding.Fingerprint(null, pattern, true, false, 5, 100, 10, [])
             .ShouldBe(GlobSecurityBinding.Fingerprint(null, pattern, true, false, 5, 100, 10));
     }
+
+    [Fact]
+    public void Resource_WhenCalled_DelegatesToDirectorySecurityBinding() =>
+        GlobSecurityBinding.Resource(new FileSystemPath("src")).ShouldBe(DirectorySecurityBinding.Resource(new FileSystemPath("src")));
 }

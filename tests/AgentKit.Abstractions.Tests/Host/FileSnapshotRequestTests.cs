@@ -14,4 +14,27 @@ public sealed class FileSnapshotRequestTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new FileSnapshotRequest(new FileSystemPath("a.txt"), 0, SecurityTestData.Grant()));
         exception.ParamName.ShouldBe("maximumBytes");
     }
+
+    [Fact]
+    public void FileSnapshotRequest_WhenGrantIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => new FileSnapshotRequest(new FileSystemPath("a.txt"), 100, null!)).ParamName.ShouldBe("grant");
+
+    [Fact]
+    public void FileSnapshotRequest_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var path = new FileSystemPath("a.txt");
+        var grant = SecurityTestData.Grant();
+        var request = new FileSnapshotRequest(path, 100, grant);
+        request.Path.ShouldBe(path);
+        request.MaximumBytes.ShouldBe(100);
+        request.Grant.ShouldBeSameAs(grant);
+    }
+
+    [Fact]
+    public void FileSnapshotRequest_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileSnapshotRequest(new FileSystemPath("a.txt"), 100, SecurityTestData.Grant());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

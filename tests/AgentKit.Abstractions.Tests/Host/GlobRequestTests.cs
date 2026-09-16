@@ -41,4 +41,12 @@ public sealed class GlobRequestTests
 
         exception.ParamName.ShouldBe("value");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new GlobRequest(null, new GlobPattern("**/*.cs"), true, false, 5, 100, 10, SecurityTestData.Grant());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

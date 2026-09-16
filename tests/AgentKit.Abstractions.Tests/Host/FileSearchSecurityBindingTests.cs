@@ -56,4 +56,8 @@ public sealed class FileSearchSecurityBindingTests
             .ShouldBe(FileSearchSecurityBinding.Fingerprint(
                 null, pattern, pathPattern, true, false, 5, 100, 1_000, 10, 200, TimeSpan.FromSeconds(2)));
     }
+
+    [Fact]
+    public void Resource_WhenCalled_DelegatesToDirectorySecurityBinding() =>
+        FileSearchSecurityBinding.Resource(new FileSystemPath("src")).ShouldBe(DirectorySecurityBinding.Resource(new FileSystemPath("src")));
 }

@@ -20,6 +20,14 @@ public sealed class FileWriteFailedTests: Conformance.SingleMessageLeafConforman
         failed.SafeMessage.ShouldBe("disk error");
     }
 
+    [Fact]
+    public void FileWriteFailed_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileWriteFailed("disk error");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     /// <inheritdoc/>
     protected override FileWriteFailed Create(string message) => new(message);
 

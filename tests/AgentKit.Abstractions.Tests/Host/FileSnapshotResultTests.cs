@@ -27,4 +27,12 @@ public sealed class FileSnapshotResultTests
             new FileSnapshotResult(undefined, [1, 2, 3], new ContentHash("sha256:test"), null))
             .ParamName.ShouldBe("status");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileSnapshotResult(FileSnapshotStatus.Success, [1, 2, 3], new ContentHash("sha256:test"), null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

@@ -34,4 +34,12 @@ public sealed class FileReadTests
     public void FileRead_Equality_WhenSameValues_InstancesAreEqual() => new FileRead("text", 4).ShouldBe(new FileRead("text", 4));
     [Fact]
     public void FileRead_Equality_WhenDifferentContent_InstancesAreNotEqual() => new FileRead("text", 4).ShouldNotBe(new FileRead("other", 4));
+
+    [Fact]
+    public void FileRead_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileRead("text", 4);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

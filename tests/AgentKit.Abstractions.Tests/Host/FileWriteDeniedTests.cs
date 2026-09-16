@@ -20,6 +20,14 @@ public sealed class FileWriteDeniedTests: Conformance.SingleMessageLeafConforman
         denied.SafeMessage.ShouldBe("too large");
     }
 
+    [Fact]
+    public void FileWriteDenied_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileWriteDenied("too large");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     /// <inheritdoc/>
     protected override FileWriteDenied Create(string message) => new(message);
 

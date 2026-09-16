@@ -14,4 +14,12 @@ public sealed class DirectoryEnumerationCursorTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new DirectoryEnumerationCursor(new ContentHash("sha256:test"), 0));
         exception.ParamName.ShouldBe("nextIndex");
     }
+
+    [Fact]
+    public void DirectoryEnumerationCursor_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new DirectoryEnumerationCursor(new ContentHash("sha256:test"), 1);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

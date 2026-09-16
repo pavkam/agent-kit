@@ -39,5 +39,14 @@ public sealed class ProcessResolveRequestTests
         exception.ParamName.ShouldBe("value");
     }
 
+    [Fact]
+    public void ProcessResolveRequest_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var request = Request();
+        request.Executable.ShouldBe("/bin/sh");
+        request.Arguments.ShouldBe(["-lc", "sensitive command"]);
+        request.StandardInput.ShouldBeEmpty();
+    }
+
     private static ProcessResolveRequest Request(ImmutableArray<string>? arguments = null, ImmutableArray<ProcessEnvironmentVariable>? environment = null, ProcessWorkspaceAccess workspaceAccess = ProcessWorkspaceAccess.ReadWrite) => new(new ProcessOperationId(Guid.Parse("11000000-0000-0000-0000-000000000001")), "/bin/sh", arguments ?? ["-lc", "sensitive command"], null, environment ?? [new ProcessEnvironmentVariable("SAFE_NAME", "sensitive-value")], [], new SandboxProfileId("workspace-no-network-v1"), workspaceAccess, ProcessSideEffectClass.WorkspaceMutation, ProcessChildPolicy.AllowSandboxed, new ProcessResourceLimits(TimeSpan.FromSeconds(10), 1024, TimeSpan.FromSeconds(1)));
 }

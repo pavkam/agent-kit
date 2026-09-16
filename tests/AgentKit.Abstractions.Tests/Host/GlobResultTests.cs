@@ -16,4 +16,12 @@ public sealed class GlobResultTests
         left.ShouldBe(right);
         left.GetHashCode().ShouldBe(right.GetHashCode());
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new GlobResult(GlobStatus.Success, [new FileSystemPath("a.cs")], 1, true, null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

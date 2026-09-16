@@ -15,4 +15,21 @@ public sealed class WorkspacePatchRequestTests
         var exception = Should.Throw<ArgumentException>(() => new WorkspacePatchRequest(entries));
         exception.ParamName.ShouldBe("entries");
     }
+
+    [Fact]
+    public void WorkspacePatchRequest_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        WorkspacePatchEntry entry = new WorkspacePatchCreate(new WorkspaceMutationId(Guid.NewGuid()), new FileSystemPath("a.txt"), [1], SecurityTestData.Grant());
+        var request = new WorkspacePatchRequest([entry]);
+        request.Entries.ShouldBe([entry]);
+    }
+
+    [Fact]
+    public void WorkspacePatchRequest_With_WhenApplied_ProducesEqualCopy()
+    {
+        WorkspacePatchEntry entry = new WorkspacePatchCreate(new WorkspaceMutationId(Guid.NewGuid()), new FileSystemPath("a.txt"), [1], SecurityTestData.Grant());
+        var original = new WorkspacePatchRequest([entry]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

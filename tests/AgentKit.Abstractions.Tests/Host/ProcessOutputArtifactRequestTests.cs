@@ -57,4 +57,14 @@ public sealed class ProcessOutputArtifactRequestTests
         request.Content.SequenceEqual((byte[]) [1, 2, 3]).ShouldBeTrue();
         request.IdempotencyKey.ShouldBe(key);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ProcessOutputArtifactRequest(
+            HostTestData.ResolvedIntent(), HostTestData.Scope(), HostTestData.Identity(),
+            ProcessOutputKind.StandardOutput, [1], new IdempotencyKey("replay-key"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

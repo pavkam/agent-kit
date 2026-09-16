@@ -23,4 +23,16 @@ public sealed class DirectoryEnumerationResultTests
         first.ShouldBe(second);
         first.GetHashCode().ShouldBe(second.GetHashCode());
     }
+
+    [Fact]
+    public void DirectoryEnumerationResult_WhenNonSuccessHasNoSafeMessage_ThrowsExactParameter() =>
+        Should.Throw<ArgumentException>(() => new DirectoryEnumerationResult(DirectoryEnumerationStatus.NotFound, [], null, null, null)).ParamName.ShouldBe("safeMessage");
+
+    [Fact]
+    public void DirectoryEnumerationResult_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new DirectoryEnumerationResult(DirectoryEnumerationStatus.Success, [new DirectoryEntry(new FileSystemPath("a.txt"))], new ContentHash("sha256:test"), null, null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

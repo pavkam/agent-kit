@@ -17,4 +17,13 @@ public sealed class WorkspacePatchResultTests
         left.ShouldBe(right);
         left.GetHashCode().ShouldBe(right.GetHashCode());
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var path = new FileSystemPath("a.txt");
+        var original = new WorkspacePatchResult(WorkspacePatchStatus.AtomicCommitted, [new WorkspacePatchEntryResult(0, WorkspacePatchEntryKind.Create, WorkspacePatchEntryStatus.Committed, path, null, new ContentHash("sha256:new"), null)], null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

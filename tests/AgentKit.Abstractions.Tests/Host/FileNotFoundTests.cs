@@ -15,4 +15,12 @@ public sealed class FileNotFoundTests
         var result = new FileNotFound(path);
         result.Path.ShouldBe(path);
     }
+
+    [Fact]
+    public void FileNotFound_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileNotFound(new FileSystemPath("missing.txt"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

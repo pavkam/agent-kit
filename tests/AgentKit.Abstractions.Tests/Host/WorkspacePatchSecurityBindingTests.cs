@@ -24,4 +24,41 @@ public sealed class WorkspacePatchSecurityBindingTests
         variants.ShouldAllBe(value => value != baseline);
         WorkspacePatchSecurityBinding.CreateResources(firstId, path).ShouldBe(FileSecurityBinding.AtomicReplaceResources(firstId, path));
     }
+
+    [Fact]
+    public void DeleteResources_WhenCalled_ReturnsTargetResource()
+    {
+        var path = new FileSystemPath("a.txt");
+        WorkspacePatchSecurityBinding.DeleteResources(path).ShouldBe([FileSecurityBinding.Resource(path)]);
+    }
+
+    [Fact]
+    public void DeleteFingerprint_WhenEvidenceChanges_ChangesFingerprint()
+    {
+        var path = new FileSystemPath("a.txt");
+        var expected = new ContentHash("sha256:old");
+        var baseline = WorkspacePatchSecurityBinding.DeleteFingerprint(path, expected);
+        WorkspacePatchSecurityBinding.DeleteFingerprint(new FileSystemPath("b.txt"), expected).ShouldNotBe(baseline);
+        WorkspacePatchSecurityBinding.DeleteFingerprint(path, new ContentHash("sha256:other")).ShouldNotBe(baseline);
+    }
+
+    [Fact]
+    public void MoveResources_WhenCalled_ReturnsSourceAndDestinationResources()
+    {
+        var source = new FileSystemPath("a.txt");
+        var destination = new FileSystemPath("b.txt");
+        WorkspacePatchSecurityBinding.MoveResources(source, destination).ShouldBe([FileSecurityBinding.Resource(source), FileSecurityBinding.Resource(destination)]);
+    }
+
+    [Fact]
+    public void MoveFingerprint_WhenEvidenceChanges_ChangesFingerprint()
+    {
+        var source = new FileSystemPath("a.txt");
+        var destination = new FileSystemPath("b.txt");
+        var expected = new ContentHash("sha256:old");
+        var baseline = WorkspacePatchSecurityBinding.MoveFingerprint(source, destination, expected);
+        WorkspacePatchSecurityBinding.MoveFingerprint(new FileSystemPath("c.txt"), destination, expected).ShouldNotBe(baseline);
+        WorkspacePatchSecurityBinding.MoveFingerprint(source, new FileSystemPath("d.txt"), expected).ShouldNotBe(baseline);
+        WorkspacePatchSecurityBinding.MoveFingerprint(source, destination, new ContentHash("sha256:other")).ShouldNotBe(baseline);
+    }
 }

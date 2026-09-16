@@ -23,4 +23,12 @@ public sealed class ProcessRunRequestTests
         request.Intent.ShouldBeSameAs(intent);
         request.Grant.ShouldBeSameAs(grant);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ProcessRunRequest(HostTestData.ResolvedIntent(), SecurityTestData.Grant());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

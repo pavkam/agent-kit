@@ -20,6 +20,14 @@ public sealed class FileReadDeniedTests: Conformance.SingleMessageLeafConformanc
         denied.SafeMessage.ShouldBe("outside sandbox");
     }
 
+    [Fact]
+    public void FileReadDenied_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileReadDenied("outside sandbox");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     /// <inheritdoc/>
     protected override FileReadDenied Create(string message) => new(message);
 

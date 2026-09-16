@@ -15,4 +15,12 @@ public sealed class FileAlreadyExistsTests
         var result = new FileAlreadyExists(path);
         result.Path.ShouldBe(path);
     }
+
+    [Fact]
+    public void FileAlreadyExists_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileAlreadyExists(new FileSystemPath("a.txt"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

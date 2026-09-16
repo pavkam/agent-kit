@@ -36,4 +36,54 @@ public sealed class FileSecurityBindingTests
         variants.ShouldAllBe(value => value != baseline);
         variants.Distinct().Count().ShouldBe(variants.Length);
     }
+
+    [Fact]
+    public void ReadFingerprint_WhenPathChanges_ChangesEvidence()
+    {
+        var first = FileSecurityBinding.ReadFingerprint(new FileSystemPath("a.txt"));
+        var second = FileSecurityBinding.ReadFingerprint(new FileSystemPath("b.txt"));
+        second.ShouldNotBe(first);
+    }
+
+    [Fact]
+    public void SnapshotFingerprint_WhenMaximumBytesIsNotPositive_ThrowsExactParameter() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => FileSecurityBinding.SnapshotFingerprint(new FileSystemPath("a.txt"), 0)).ParamName.ShouldBe("maximumBytes");
+
+    [Fact]
+    public void SnapshotFingerprint_WhenMaximumBytesChanges_ChangesEvidence()
+    {
+        var path = new FileSystemPath("a.txt");
+        var first = FileSecurityBinding.SnapshotFingerprint(path, 100);
+        var second = FileSecurityBinding.SnapshotFingerprint(path, 200);
+        second.ShouldNotBe(first);
+    }
+
+    [Fact]
+    public void WriteFingerprint_WhenContentIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => FileSecurityBinding.WriteFingerprint(new FileSystemPath("a.txt"), null!, FileWriteMode.CreateNew)).ParamName.ShouldBe("content");
+
+    [Fact]
+    public void WriteFingerprint_WhenModeIsUndefined_ThrowsExactParameter() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => FileSecurityBinding.WriteFingerprint(new FileSystemPath("a.txt"), "text", (FileWriteMode) 99)).ParamName.ShouldBe("mode");
+
+    [Fact]
+    public void WriteFingerprint_WhenModeChanges_ChangesEvidence()
+    {
+        var path = new FileSystemPath("a.txt");
+        var first = FileSecurityBinding.WriteFingerprint(path, "text", FileWriteMode.CreateNew);
+        var second = FileSecurityBinding.WriteFingerprint(path, "text", FileWriteMode.Append);
+        second.ShouldNotBe(first);
+    }
+
+    [Theory]
+    [InlineData(FileWriteMode.CreateOrOverwrite, SecurityEffect.CreateOrReplace)]
+    [InlineData(FileWriteMode.CreateNew, SecurityEffect.Create)]
+    [InlineData(FileWriteMode.ReplaceExisting, SecurityEffect.Replace)]
+    [InlineData(FileWriteMode.Append, SecurityEffect.Append)]
+    public void WriteEffect_WhenModeIsDefined_ReturnsExpectedEffect(FileWriteMode mode, SecurityEffect expected) =>
+        FileSecurityBinding.WriteEffect(mode).ShouldBe(expected);
+
+    [Fact]
+    public void WriteEffect_WhenModeIsUndefined_ThrowsExactParameter() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => FileSecurityBinding.WriteEffect((FileWriteMode) 99)).ParamName.ShouldBe("mode");
 }

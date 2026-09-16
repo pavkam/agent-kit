@@ -33,4 +33,12 @@ public sealed class ProcessRunResultTests
         var exception = Should.Throw<ArgumentException>(() => new ProcessRunResult(ProcessRunStatus.Denied, 1, [], [], 0, 0, false, false, ProcessSideEffectCertainty.NotStarted, "Denied."));
         exception.ParamName.ShouldBe("exitCode");
     }
+
+    [Fact]
+    public void ProcessRunResult_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ProcessRunResult(ProcessRunStatus.Exited, 0, [1, 2], [3], 2, 1, false, false, ProcessSideEffectCertainty.Completed, null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

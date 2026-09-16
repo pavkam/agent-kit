@@ -16,4 +16,12 @@ public sealed class DirectorySecurityBindingTests
         var resumed = DirectorySecurityBinding.Fingerprint(path, 10, new DirectoryEnumerationCursor(new ContentHash("sha256:snapshot"), 2));
         resumed.ShouldNotBe(first);
     }
+
+    [Fact]
+    public void Resource_WhenPathIsNull_ReturnsRootResource() =>
+        DirectorySecurityBinding.Resource(null).ShouldBe(new ProtectedResource(ProtectedResourceKind.Directory, "."));
+
+    [Fact]
+    public void Resource_WhenPathIsProvided_ReturnsExactResource() =>
+        DirectorySecurityBinding.Resource(new FileSystemPath("src")).ShouldBe(new ProtectedResource(ProtectedResourceKind.Directory, "src"));
 }

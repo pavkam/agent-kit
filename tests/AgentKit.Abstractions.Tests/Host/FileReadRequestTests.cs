@@ -22,4 +22,12 @@ public sealed class FileReadRequestTests
         var path = new FileSystemPath("a.txt");
         new FileReadRequest(path, SecurityTestData.Grant()).ShouldBe(new FileReadRequest(path, SecurityTestData.Grant()));
     }
+
+    [Fact]
+    public void FileReadRequest_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileReadRequest(new FileSystemPath("a.txt"), SecurityTestData.Grant());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

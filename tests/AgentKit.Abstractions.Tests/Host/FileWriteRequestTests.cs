@@ -31,4 +31,12 @@ public sealed class FileWriteRequestTests
         var path = new FileSystemPath("a.txt");
         new FileWriteRequest(path, "hi", FileWriteMode.CreateNew, SecurityTestData.Grant()).ShouldBe(new FileWriteRequest(path, "hi", FileWriteMode.CreateNew, SecurityTestData.Grant()));
     }
+
+    [Fact]
+    public void FileWriteRequest_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileWriteRequest(new FileSystemPath("a.txt"), "hi", FileWriteMode.CreateNew, SecurityTestData.Grant());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

@@ -21,4 +21,12 @@ public sealed class FileWrittenTests
         var written = new FileWritten(42);
         written.BytesWritten.ShouldBe(42);
     }
+
+    [Fact]
+    public void FileWritten_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new FileWritten(42);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
