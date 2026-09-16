@@ -295,6 +295,27 @@ public sealed class DefaultContextAssemblerTests
     }
 
     [Fact]
+    public async Task AssembleAsync_WhenHistoryContainsInstructionMessage_LogsExcludedInstructionMessageCountWithoutContent()
+    {
+        const string protectedContent = "do-not-log-this-instruction";
+        var logger = new TestSupport.RecordingLogger<DefaultContextAssembler>();
+        var assembler = new DefaultContextAssembler(logger);
+        var smuggled = new DeveloperMessage(
+            new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), null, new BranchId(Guid.NewGuid()),
+            null, null, DateTimeOffset.UnixEpoch, MessageState.Complete,
+            [new TextPart(protectedContent, TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var history = ImmutableArray.Create<AgentMessage>(TestFactory.UserMessage(), smuggled);
+
+        _ = await assembler.AssembleAsync(TestFactory.AssemblyRequest(history), TestContext.Current.CancellationToken);
+
+        var entries = logger.Snapshot();
+        var excluded = entries.Single(static entry => entry.EventId.Id == 2003);
+        excluded.Level.ShouldBe(Microsoft.Extensions.Logging.LogLevel.Warning);
+        excluded.State["ExcludedCount"].ShouldBe(1);
+        entries.ShouldAllBe(entry => !entry.Message.Contains(protectedContent, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task AssembleAsync_WhenHistoryContainsSystemMessage_DoesNotForwardItWithSystemAuthority()
     {
         // context-assembly-and-instructions.md / AGENTS.md: history content never gains system/developer precedence.
