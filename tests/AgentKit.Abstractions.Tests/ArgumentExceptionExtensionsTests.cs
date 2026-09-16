@@ -72,6 +72,38 @@ public sealed class ArgumentExceptionExtensionsTests
     }
 
     [Fact]
+    public void ThrowIfDefaultEmptyOrDuplicate_WhenArrayIsDefault_ThrowsArgumentException()
+    {
+        ImmutableArray<TurnId> values = default;
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDefaultEmptyOrDuplicate(values));
+        exception.ParamName.ShouldBe("values");
+    }
+
+    [Fact]
+    public void ThrowIfDefaultEmptyOrDuplicate_WhenArrayContainsDefaultValue_ThrowsArgumentException()
+    {
+        ImmutableArray<TurnId> values = [new TurnId(Guid.NewGuid()), default];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDefaultEmptyOrDuplicate(values));
+        exception.ParamName.ShouldBe("values");
+    }
+
+    [Fact]
+    public void ThrowIfDefaultEmptyOrDuplicate_WhenArrayContainsDuplicateValue_ThrowsArgumentException()
+    {
+        var turnId = new TurnId(Guid.NewGuid());
+        ImmutableArray<TurnId> values = [turnId, turnId];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDefaultEmptyOrDuplicate(values));
+        exception.ParamName.ShouldBe("values");
+    }
+
+    [Fact]
+    public void ThrowIfDefaultEmptyOrDuplicate_WhenArrayIsInitializedAndUnique_DoesNotThrow()
+    {
+        ImmutableArray<TurnId> values = [new TurnId(Guid.NewGuid()), new TurnId(Guid.NewGuid())];
+        Should.NotThrow(() => ArgumentException.ThrowIfDefaultEmptyOrDuplicate(values));
+    }
+
+    [Fact]
     public void ThrowIfNotAbsoluteUri_WhenUriIsAbsolute_DoesNotThrow()
     {
         var uri = new Uri("https://api.example.test/v1/");
@@ -198,6 +230,41 @@ public sealed class ArgumentExceptionExtensionsTests
         ArgumentException.ThrowIfNotSuccessfulRunOutcome(outcome);
         Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfSuccessfulRunOutcome(outcome)).ParamName.ShouldBe("outcome");
     }
+
+    [Fact]
+    public void ThrowIfNotSuccessfulRunOutcome_WhenAgentRunCompletedHasIncompleteMessage_ThrowsArgumentException()
+    {
+        AgentRunOutcome outcome = new AgentRunCompleted(AssistantMessage(MessageState.Interrupted));
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfNotSuccessfulRunOutcome(outcome));
+        exception.ParamName.ShouldBe(nameof(outcome));
+    }
+
+    [Fact]
+    public void ThrowIfNotSuccessfulRunOutcome_WhenAgentRunCompletedHasCompleteMessage_DoesNotThrow()
+    {
+        AgentRunOutcome outcome = new AgentRunCompleted(AssistantMessage(MessageState.Complete));
+        Should.NotThrow(() => ArgumentException.ThrowIfNotSuccessfulRunOutcome(outcome));
+    }
+
+    private static AssistantMessage AssistantMessage(MessageState state) => new(
+        new MessageId(Guid.NewGuid()),
+        new AgentId(Guid.NewGuid()),
+        new SessionId(Guid.NewGuid()),
+        null,
+        new BranchId(Guid.NewGuid()),
+        new RunId(Guid.NewGuid()),
+        new TurnId(Guid.NewGuid()),
+        DateTimeOffset.UnixEpoch,
+        state,
+        [new TextPart("done", TextSemantics.Plain, ExtensionData.Empty)],
+        new AssistantResponseMetadata(
+            new ModelRequestId(Guid.NewGuid()),
+            new ProviderResponseIdentity(new ProviderId("test"), null, new ApiFamilyId("test"), new ModelId("test"), new ModelId("test"), null, null, null),
+            NormalizedStopReason.Completed,
+            null,
+            ModelUsage.NotReported,
+            ExtensionData.Empty),
+        ExtensionData.Empty);
 
     [Fact]
     public void ThrowIfIssuerMismatch_WhenIssuerMatches_DoesNotThrow()
@@ -768,6 +835,13 @@ public sealed class ArgumentExceptionExtensionsTests
     }
 
     [Fact]
+    public void ThrowIfNotNetworkEndpointResource_WhenKindIsNetworkEndpoint_DoesNotThrow()
+    {
+        var resource = new ProtectedResource(ProtectedResourceKind.NetworkEndpoint, "endpoint");
+        Should.NotThrow(() => ArgumentException.ThrowIfNotNetworkEndpointResource(resource));
+    }
+
+    [Fact]
     public void ThrowIfInvalidSessionEntryCodecReadableVersions_WhenValuesAreValid_DoesNotThrow() => Should.NotThrow(() => ArgumentException.ThrowIfInvalidSessionEntryCodecReadableVersions([Version1, Version2], Version1));
     [Fact]
     public void ThrowIfInvalidSessionEntryCodecReadableVersions_WhenWriteVersionIsDefault_ReportsWriteVersionParameterName()
@@ -1328,4 +1402,113 @@ public sealed class ArgumentExceptionExtensionsTests
     [Fact]
     public void ThrowIfPathNotRooted_WhenPathIsAbsolute_DoesNotThrow() =>
         ArgumentException.ThrowIfPathNotRooted(Path.GetFullPath("toolchain"));
+
+    [Fact]
+    public void ThrowIfDuplicateAgentDefinitionSourceIds_WhenContainsNull_ThrowsArgumentException()
+    {
+        ImmutableArray<IAgentDefinitionSource> sources = [Source("one"), null!];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateAgentDefinitionSourceIds(sources));
+        exception.ParamName.ShouldBe("sources");
+    }
+
+    [Fact]
+    public void ThrowIfDuplicateAgentDefinitionSourceIds_WhenSourceIdIsDefault_ThrowsArgumentException()
+    {
+        ImmutableArray<IAgentDefinitionSource> sources = [new FakeAgentDefinitionSource(default)];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateAgentDefinitionSourceIds(sources));
+        exception.ParamName.ShouldBe("sources");
+    }
+
+    [Fact]
+    public void ThrowIfDuplicateAgentDefinitionSourceIds_WhenIdsRepeat_ThrowsArgumentException()
+    {
+        ImmutableArray<IAgentDefinitionSource> sources = [Source("dup"), Source("dup")];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateAgentDefinitionSourceIds(sources));
+        exception.ParamName.ShouldBe("sources");
+    }
+
+    [Fact]
+    public void ThrowIfDuplicateAgentDefinitionSourceIds_WhenIdsAreDistinct_DoesNotThrow()
+    {
+        ImmutableArray<IAgentDefinitionSource> sources = [Source("one"), Source("two")];
+        Should.NotThrow(() => ArgumentException.ThrowIfDuplicateAgentDefinitionSourceIds(sources));
+    }
+
+    [Fact]
+    public void ThrowIfDuplicateAgentDefinitionSnapshotSourceIds_WhenContainsNull_ThrowsArgumentException()
+    {
+        ImmutableArray<AgentDefinitionSourceSnapshot> snapshots = [Snapshot("one"), null!];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateAgentDefinitionSnapshotSourceIds(snapshots));
+        exception.ParamName.ShouldBe("snapshots");
+    }
+
+    [Fact]
+    public void ThrowIfDuplicateAgentDefinitionSnapshotSourceIds_WhenIdsRepeat_ThrowsArgumentException()
+    {
+        ImmutableArray<AgentDefinitionSourceSnapshot> snapshots = [Snapshot("dup"), Snapshot("dup")];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfDuplicateAgentDefinitionSnapshotSourceIds(snapshots));
+        exception.ParamName.ShouldBe("snapshots");
+    }
+
+    [Fact]
+    public void ThrowIfDuplicateAgentDefinitionSnapshotSourceIds_WhenIdsAreDistinct_DoesNotThrow()
+    {
+        ImmutableArray<AgentDefinitionSourceSnapshot> snapshots = [Snapshot("one"), Snapshot("two")];
+        Should.NotThrow(() => ArgumentException.ThrowIfDuplicateAgentDefinitionSnapshotSourceIds(snapshots));
+    }
+
+    [Fact]
+    public void ThrowIfUnknownAgentDefinitionSource_WhenSnapshotsContainNull_ThrowsArgumentException()
+    {
+        ImmutableArray<AgentDefinitionSourceSnapshot> snapshots = [Snapshot("one"), null!];
+        ImmutableArray<IAgentDefinitionSource> sources = [Source("one")];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfUnknownAgentDefinitionSource(snapshots, sources));
+        exception.ParamName.ShouldBe("snapshots");
+    }
+
+    [Fact]
+    public void ThrowIfUnknownAgentDefinitionSource_WhenSourcesContainNull_ThrowsArgumentException()
+    {
+        ImmutableArray<AgentDefinitionSourceSnapshot> snapshots = [Snapshot("one")];
+        ImmutableArray<IAgentDefinitionSource> sources = [Source("one"), null!];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfUnknownAgentDefinitionSource(snapshots, sources));
+        exception.ParamName.ShouldBe("sources");
+    }
+
+    [Fact]
+    public void ThrowIfUnknownAgentDefinitionSource_WhenSourceIdIsDefault_ThrowsArgumentException()
+    {
+        ImmutableArray<AgentDefinitionSourceSnapshot> snapshots = [Snapshot("one")];
+        ImmutableArray<IAgentDefinitionSource> sources = [new FakeAgentDefinitionSource(default)];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfUnknownAgentDefinitionSource(snapshots, sources));
+        exception.ParamName.ShouldBe("sources");
+    }
+
+    [Fact]
+    public void ThrowIfUnknownAgentDefinitionSource_WhenSnapshotNamesUnregisteredSource_ThrowsArgumentException()
+    {
+        ImmutableArray<AgentDefinitionSourceSnapshot> snapshots = [Snapshot("unregistered")];
+        ImmutableArray<IAgentDefinitionSource> sources = [Source("one")];
+        var exception = Should.Throw<ArgumentException>(() => ArgumentException.ThrowIfUnknownAgentDefinitionSource(snapshots, sources));
+        exception.ParamName.ShouldBe("snapshots");
+    }
+
+    [Fact]
+    public void ThrowIfUnknownAgentDefinitionSource_WhenAllSnapshotsNameRegisteredSources_DoesNotThrow()
+    {
+        ImmutableArray<AgentDefinitionSourceSnapshot> snapshots = [Snapshot("one")];
+        ImmutableArray<IAgentDefinitionSource> sources = [Source("one")];
+        Should.NotThrow(() => ArgumentException.ThrowIfUnknownAgentDefinitionSource(snapshots, sources));
+    }
+
+    private static FakeAgentDefinitionSource Source(string sourceId) => new(new AgentDefinitionSourceId(sourceId));
+    private static AgentDefinitionSourceSnapshot Snapshot(string sourceId) => new(new AgentDefinitionSourceId(sourceId), new AgentDefinitionSourceVersion(1), 0, []);
+
+    private sealed class FakeAgentDefinitionSource(AgentDefinitionSourceId sourceId): IAgentDefinitionSource
+    {
+        public AgentDefinitionSourceId SourceId { get; } = sourceId;
+
+        public ValueTask<AgentDefinitionSourceSnapshot> ReadAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
 }

@@ -122,6 +122,105 @@ public sealed class RunContinuationContextTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void Constructor_WhenCausesRepeatSameInstance_ThrowsExactArgumentException()
+    {
+        var cause = new DeferredCompletionContinuationCause(_operationId);
+        var exception = Should.Throw<ArgumentException>(() => Context(new IdleContinuationBoundary(), [cause, cause]));
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe("causes");
+    }
+
+    [Fact]
+    public void Constructor_WhenCommittedBoundaryResponseCorrelationMismatches_ThrowsExactArgumentException()
+    {
+        var boundary = CommittedBoundary();
+        var otherRunId = new RunId(Guid.Parse("ff000000-0000-0000-0000-000000000001"));
+        var exception = Should.Throw<ArgumentException>(() => new RunContinuationContext(
+            _agentId, _sessionId, _laneId, _operationId, otherRunId, AgentRunState.Driving, _revision, Cursor(), _cutoff,
+            new ConfigurationVersion(2), new RunPolicyVersion(1), boundary, requiredStopOutcome: null, []));
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe("boundary");
+    }
+
+    [Fact]
+    public void Constructor_WhenPromotedCauseTargetsIdleBoundary_AcceptsEvidence()
+    {
+        var boundary = new IdleContinuationBoundary();
+        var cause = new PromotedInputContinuationCause(PromotionSnapshot(boundary: PromotionBoundary.OtherwiseIdle, previousTurnId: null));
+        var context = Context(boundary, [cause]);
+        _ = context.Causes.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void Constructor_WhenPromotedCauseTargetsDeferredBoundaryAndTurnsMatch_AcceptsEvidence()
+    {
+        var deferredTurnId = _targetTurnId;
+        var deferredModelRequestId = new ModelRequestId(Guid.Parse("ffffffff-0000-0000-0000-000000000001"));
+        var boundary = new DeferredContinuationBoundary(deferredTurnId, deferredModelRequestId, _operationId);
+        var cause = new PromotedInputContinuationCause(PromotionSnapshot(boundary: PromotionBoundary.AfterContinuationCheckpoint, previousTurnId: null, targetTurnId: deferredTurnId));
+        var context = Context(boundary, [cause], AgentRunState.SuspendedDeferred);
+        _ = context.Causes.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void Constructor_WhenCommittedToolResultsCauseDoesNotMatchBoundary_ThrowsExactArgumentException()
+    {
+        var callId = new ToolCallId(Guid.Parse("11110000-0000-0000-0000-000000000001"));
+        var boundary = CommittedBoundaryWithToolCall(callId);
+        var mismatchedCause = new CommittedToolResultsContinuationCause([
+            new CommittedToolResultReference(
+                new SessionEntryId(Guid.Parse("22220000-0000-0000-0000-000000000001")),
+                new ToolCallId(Guid.Parse("33330000-0000-0000-0000-000000000001")),
+                _committedTurnId),
+        ]);
+        var exception = Should.Throw<ArgumentException>(() => Context(boundary, [mismatchedCause]));
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe("causes");
+    }
+
+    [Fact]
+    public void Constructor_WhenOutputRepairCauseDoesNotMatchBoundaryDecision_ThrowsExactArgumentException()
+    {
+        var boundary = CommittedBoundary();
+        var decision = new OutputRetryRequired(
+            new OutputRepairInstruction("retry with corrections"),
+            new OutputValidationFailure(OutputValidationFailureKind.ValidatorFailed, "invalid", []));
+        var cause = new OutputRepairContinuationCause(decision);
+        var exception = Should.Throw<ArgumentException>(() => Context(boundary, [cause]));
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe("causes");
+    }
+
+    [Fact]
+    public void Constructor_WhenDeferredCompletionCauseDoesNotMatchBoundary_ThrowsExactArgumentException()
+    {
+        var boundary = CommittedBoundary();
+        var cause = new DeferredCompletionContinuationCause(_operationId);
+        var exception = Should.Throw<ArgumentException>(() => Context(boundary, [cause]));
+        exception.GetType().ShouldBe(typeof(ArgumentException));
+        exception.ParamName.ShouldBe("causes");
+    }
+
+    private static CommittedTurnContinuationBoundary CommittedBoundaryWithToolCall(ToolCallId callId)
+    {
+        var requestId = new ModelRequestId(Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"));
+        var parts = new ContentPart[]
+        {
+            new ToolCallPart(callId, new ToolReference(new ToolAlias("tool"), null, null), default, null, ExtensionData.Empty),
+        }.ToImmutableArray();
+        var response = new AssistantMessage(
+            new MessageId(Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")), _agentId, _sessionId, conversationId: null, _branchId, _runId, _committedTurnId,
+            DateTimeOffset.UnixEpoch, MessageState.Complete, parts,
+            new AssistantResponseMetadata(requestId, new ProviderResponseIdentity(new ProviderId("test"), null, new ApiFamilyId("test"), new ModelId("test-model"), new ModelId("test-model"), null, null, null), NormalizedStopReason.Completed, rawStopReason: null, ModelUsage.NotReported, ExtensionData.Empty),
+            ExtensionData.Empty);
+        var toolResults = ImmutableArray.Create(new CommittedToolResultReference(
+            new SessionEntryId(Guid.Parse("44440000-0000-0000-0000-000000000001")),
+            callId,
+            _committedTurnId));
+        return new CommittedTurnContinuationBoundary(response, toolResults, outputDecision: null, requiresOutputValidation: false);
+    }
+
     private static RunContinuationContext Context(RunContinuationBoundary boundary, ImmutableArray<RunContinuationCause> causes, AgentRunState state = AgentRunState.Driving) => new(_agentId, _sessionId, _laneId, _operationId, _runId, state, _revision, Cursor(), _cutoff, new ConfigurationVersion(2), new RunPolicyVersion(1), boundary, requiredStopOutcome: null, causes);
     private static RunContinuationContext ContextWithDefault(string parameter) => new(parameter == "agentId" ? default : _agentId, parameter == "sessionId" ? default : _sessionId, parameter == "executionLaneId" ? default : _laneId, parameter == "operationId" ? default : _operationId, parameter == "runId" ? default : _runId, AgentRunState.Driving, parameter == "operationStateRevision" ? default : _revision, Cursor(), _cutoff, parameter == "configurationVersion" ? default : new ConfigurationVersion(2), parameter == "policyVersion" ? default : new RunPolicyVersion(1), new IdleContinuationBoundary(), requiredStopOutcome: null, []);
     private static InputPromotionSnapshot PromotionSnapshot(ExecutionLaneId? laneId = null, SessionSequence? cutoff = null, PromotionBoundary boundary = PromotionBoundary.AfterTurnCommitted, TurnId? previousTurnId = null, TurnId? targetTurnId = null) => new(_agentId, _sessionId, laneId ?? _laneId, new InRunOperationCorrelation(_operationId, _runId, _committedTurnId), _revision, Cursor(), cutoff ?? _cutoff, expectedVersion: null, expectedFencingToken: null, boundary, previousTurnId ?? (boundary == PromotionBoundary.AfterTurnCommitted ? _committedTurnId : null), targetTurnId ?? _targetTurnId, [new AdmissionId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"))]);

@@ -22,12 +22,14 @@ public sealed class OutputSchemaEngineProfileTests
     [InlineData("annotations")]
     [InlineData("overlap")]
     [InlineData("default")]
+    [InlineData("duplicateDialects")]
     public void OutputSchemaEngineProfile_WhenCapabilitySetsAreInvalid_RejectsExactSet(string invalid)
     {
         ImmutableArray<JsonSchemaDialectId> dialects = invalid switch
         {
             "dialects" => [],
             "default" => [new("urn:test:other")],
+            "duplicateDialects" => [_dialect, _dialect],
             _ => [_dialect]
         };
         ImmutableArray<string> assertions = invalid switch
@@ -40,7 +42,7 @@ public sealed class OutputSchemaEngineProfileTests
         var exception = Should.Throw<ArgumentException>(() => Profile(dialects, assertions, annotations));
         exception.ParamName.ShouldBe(invalid switch
         {
-            "dialects" => "supportedDialects",
+            "dialects" or "duplicateDialects" => "supportedDialects",
             "assertions" => "assertionKeywords",
             "annotations" or "overlap" => "annotationKeywords",
             _ => "defaultDialect"

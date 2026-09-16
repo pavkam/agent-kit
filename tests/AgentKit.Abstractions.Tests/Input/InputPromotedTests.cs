@@ -19,6 +19,16 @@ public sealed class InputPromotedTests
     }
 
     [Fact]
+    public void InputPromoted_WhenPromotedCountDiffersFromSnapshotSelection_ThrowsArgumentExceptionWithParamName()
+    {
+        var payload = Payload(1, InputDelivery.Steer);
+        var promoted = new AdmittedInput(Admission(1), Agent(), Session(), Lane(), Identity(), new SessionSequence(1), payload, payload, Manifest(), DateTimeOffset.UnixEpoch, new SessionSequence(2));
+        var snapshot = Snapshot([Admission(1), Admission(2)]);
+        var exception = ShouldThrowExactly<ArgumentException>(() => new InputPromoted(snapshot, [promoted], new SessionVersion(1)));
+        exception.ParamName.ShouldBe("promoted");
+    }
+
+    [Fact]
     public void InputPromoted_WhenRecordTargetsAnotherLane_ThrowsArgumentExceptionWithParamName()
     {
         var payload = Payload(1, InputDelivery.Steer);
