@@ -817,6 +817,27 @@ first durable local implementation. Future stores follow
 AgentKit.Session.ProviderName. A store is registered separately and composition
 fails when none is present; there is no hidden production default.
 
+AgentKit.Session.Sqlite persists one row per session, branch, entry, lane,
+admission, and idempotency receipt in a relational schema, not one whole-store
+JSON blob. A durable read or mutation loads and (for writes, atomically
+commits) only the rows the operation actually needs — typically one session's
+own metadata, one branch's cached tip, and the exact bounded page of entries a
+read requested — inside a SQLite transaction: a deferred (read) transaction for
+reads and a non-deferred (`BEGIN IMMEDIATE`) transaction for mutations, so
+SQLite's own write lock, not a process-local gate, arbitrates writers and makes
+the optimistic-concurrency check against `SessionVersion` atomic with the
+commit. Branching copies a parent branch's committed rows up to the fork point
+without decoding them. Because ordinary appends, admissions, lane
+provisioning, and run acceptance never decode a previously committed entry
+payload, and forking never decodes at all, a corrupt or unreadable entry can
+only affect a paged read that actually names the row containing it — never a
+scan across the whole store. This is a deliberate breaking on-disk format
+change from the single-row-blob shape used before this schema existed; the
+format was never released, so `SqliteSchemaMode.ApplyKnownMigrations` creates
+the relational schema fresh rather than reading or reinterpreting an older
+blob-shaped database, and `SqliteSchemaMode.ValidateExact` against one fails
+with a typed exception instead of silently reinterpreting it.
+
 ## Mutation boundaries and idempotency
 
 The mutation coordinator never holds its session critical section while waiting
