@@ -4,22 +4,17 @@
 namespace AgentKit.Session.Sqlite;
 
 /// <summary>
-/// The mutable in-process state of one session: its identity facts, every
-/// branch it has ever forked, and idempotency caches for creation and
-/// branching.
+/// One session's row-backed identity facts: address, tenancy, active branch, lifecycle, and the
+/// canonical whole-session optimistic-concurrency version.
 /// </summary>
 /// <remarks>
-/// All access to instances of this type is serialized by
-/// <see cref="SqliteSessionStore"/>'s single store-wide gate; this class
-/// performs no synchronization of its own.
+/// This is a query-result / write-parameter shape for exactly the <c>agentkit_sessions</c> row.
+/// Its branches, entries, lanes, admissions, and idempotency receipts each live in their own table
+/// and are read or written independently through <see cref="SqliteSessionUnitOfWork"/>; loading or
+/// persisting one session's metadata never touches another session's rows.
 /// </remarks>
 internal sealed class SessionRecord
 {
-    /// <summary>Initializes an empty record exclusively for bounded persistence decoding.</summary>
-    public SessionRecord()
-    {
-    }
-
     /// <summary>Initializes a new instance of the <see cref="SessionRecord"/> class.</summary>
     /// <param name="address">The session's complete address.</param>
     /// <param name="conversationId">The optional higher-level conversation this session belongs to.</param>
@@ -27,88 +22,56 @@ internal sealed class SessionRecord
     /// <param name="ownerId">The principal that created the session.</param>
     /// <param name="activeBranchId">The session's initial (and currently active) branch.</param>
     /// <param name="createdAt">The time the session was created.</param>
-    [SetsRequiredMembers]
-    public SessionRecord(
+    /// <param name="updatedAt">The time the session was last mutated.</param>
+    /// <param name="state">The session's lifecycle state.</param>
+    /// <param name="version">The canonical whole-session compare-and-swap version.</param>
+    internal SessionRecord(
         SessionAddress address,
         ConversationId? conversationId,
         TenantId tenantId,
         PrincipalId ownerId,
         BranchId activeBranchId,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        DateTimeOffset updatedAt,
+        SessionLifecycleState state,
+        long version)
     {
+        ArgumentNullException.ThrowIfNull(address);
         Address = address;
         ConversationId = conversationId;
         TenantId = tenantId;
         OwnerId = ownerId;
         ActiveBranchId = activeBranchId;
         CreatedAt = createdAt;
-        UpdatedAt = createdAt;
+        UpdatedAt = updatedAt;
+        State = state;
+        Version = version;
     }
 
     /// <summary>Gets the session's complete address.</summary>
-    public required SessionAddress Address { get; set; }
+    internal SessionAddress Address { get; }
 
     /// <summary>Gets the optional higher-level conversation this session belongs to.</summary>
-    public ConversationId? ConversationId { get; set; }
+    internal ConversationId? ConversationId { get; }
 
     /// <summary>Gets the tenant that owns the session.</summary>
-    public TenantId TenantId { get; set; }
+    internal TenantId TenantId { get; }
 
     /// <summary>Gets the principal that created the session.</summary>
-    public PrincipalId OwnerId { get; set; }
+    internal PrincipalId OwnerId { get; }
+
+    /// <summary>Gets the currently active branch.</summary>
+    internal BranchId ActiveBranchId { get; }
 
     /// <summary>Gets the time the session was created.</summary>
-    public DateTimeOffset CreatedAt { get; set; }
-
-    /// <summary>Gets or sets the currently active branch.</summary>
-    public BranchId ActiveBranchId { get; set; }
+    internal DateTimeOffset CreatedAt { get; }
 
     /// <summary>Gets or sets the time the session was last mutated.</summary>
-    public DateTimeOffset UpdatedAt { get; set; }
+    internal DateTimeOffset UpdatedAt { get; set; }
 
-    /// <summary>Gets or sets the session's lifecycle state.</summary>
-    public SessionLifecycleState State { get; set; } = SessionLifecycleState.Active;
+    /// <summary>Gets the session's lifecycle state.</summary>
+    internal SessionLifecycleState State { get; }
 
     /// <summary>Gets or sets the canonical whole-session compare-and-swap version.</summary>
-    public long Version { get; set; }
-
-    /// <summary>Gets every branch this session has ever forked, keyed by branch identity.</summary>
-    public Dictionary<BranchId, BranchRecord> Branches { get; set; } = [];
-
-    /// <summary>
-    /// Gets the cache of previously accepted branch-creation results, keyed
-    /// by idempotency key.
-    /// </summary>
-    public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionBranchRequest, SessionBranched>> BranchIdempotency { get; set; } = [];
-
-    /// <summary>Gets the index from caller input identity to the canonical admission in <see cref="AdmissionsById"/>.</summary>
-    /// <remarks>
-    /// The index stores only the <see cref="AdmissionId"/> so that durable JSON, which does not preserve object references,
-    /// never rehydrates a second detached <see cref="StoredAdmission"/> that promotion would fail to advance.
-    /// </remarks>
-    public Dictionary<InputId, AdmissionId> AdmissionsByInput { get; set; } = [];
-
-    /// <summary>Gets the single canonical retained admission keyed by runtime admission identity.</summary>
-    public Dictionary<AdmissionId, StoredAdmission> AdmissionsById { get; set; } = [];
-
-    /// <summary>Gets exact input-admission commit receipts keyed by transaction idempotency identity.</summary>
-    public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionInputAdmissionRequest, AcceptedInput>> AdmissionIdempotency { get; set; } = [];
-
-    /// <summary>Gets lane state keyed by resolved execution lane.</summary>
-    public Dictionary<ExecutionLaneId, LaneRecord> Lanes { get; set; } = [];
-
-    /// <summary>Gets successful lane-provision receipts keyed by their exact idempotency key.</summary>
-    public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionExecutionLaneProvisionRequest, SessionExecutionLaneProvisioned>> LaneProvisionIdempotency { get; set; } = [];
-
-    /// <summary>Gets every globally reserved session-entry identity.</summary>
-    public HashSet<SessionEntryId> EntryIds { get; set; } = [];
-
-    /// <summary>Gets every globally reserved message identity materialized in session history.</summary>
-    public HashSet<MessageId> MessageIds { get; set; } = [];
-
-    /// <summary>Gets successful run-start receipts keyed by start idempotency identity.</summary>
-    public Dictionary<IdempotencyKey, RunStartReceipt> RunStartIdempotency { get; set; } = [];
-
-    /// <summary>Gets successful lane-release receipts keyed by release idempotency identity.</summary>
-    public Dictionary<IdempotencyKey, IdempotencyReceipt<SessionRunReleaseRequest, SessionRunReleased>> RunReleaseIdempotency { get; set; } = [];
+    internal long Version { get; set; }
 }

@@ -11,78 +11,78 @@ public sealed partial class SqliteSessionStore
     /// <inheritdoc/>
     public ValueTask<SessionCreateResult> CreateAsync(AuthorizedSessionStoreRequest<SessionStoreCreateRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Create,
-            token => CreateCoreAsync(request.Request, token), static result => result is SessionCreated,
+            (uow, token) => CreateCoreAsync(uow, request.Request, token), static result => result is SessionCreated,
             static reason => new SessionCreateFailed(reason), cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<SessionLoadResult> LoadAsync(AuthorizedSessionStoreRequest<SessionOperationContext> context, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(context, SecurityOperationKind.StateRead, SecurityEffect.Observe,
-            token => LoadCoreAsync(context.Request, token), static result => result is SessionLoaded,
+            (uow, token) => LoadCoreAsync(uow, context.Request, token), static result => result is SessionLoaded,
             static reason => new SessionLoadFailed(reason), cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<SessionExecutionLaneProvisionResult> ProvisionLaneAsync(AuthorizedSessionStoreRequest<SessionExecutionLaneProvisionRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Create,
-            token => ProvisionLaneCoreAsync(request.Request, token), static result => result is SessionExecutionLaneProvisioned,
+            (uow, token) => ProvisionLaneCoreAsync(uow, request.Request, token), static result => result is SessionExecutionLaneProvisioned,
             static reason => new SessionExecutionLaneProvisionRejected(reason), cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<SessionAppendResult> AppendAsync(AuthorizedSessionStoreRequest<SessionAppendRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Append,
-            token => AppendCoreAsync(request.Request, token), static result => result is SessionAppended,
+            (uow, token) => AppendCoreAsync(uow, request.Request, token), static result => result is SessionAppended,
             static reason => new SessionAppendFailed(reason), cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<SessionPageResult> ReadAsync(AuthorizedSessionStoreRequest<SessionReadRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateRead, SecurityEffect.Observe,
-            token => ReadCoreAsync(request.Request, token), static result => result is SessionPage,
+            (uow, token) => ReadCoreAsync(uow, request.Request, token), static result => result is SessionPage,
             static reason => new SessionReadFailed(reason), cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<SessionBranchResult> CreateBranchAsync(AuthorizedSessionStoreRequest<SessionBranchRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Create,
-            token => CreateBranchCoreAsync(request.Request, token), static result => result is SessionBranched,
+            (uow, token) => CreateBranchCoreAsync(uow, request.Request, token), static result => result is SessionBranched,
             static reason => new SessionBranchFailed(reason), cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<SessionDeleteResult> DeleteAsync(AuthorizedSessionStoreRequest<SessionDeleteRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Delete,
-            token => DeleteCoreAsync(request.Request, token), static result => result is SessionDeleted,
+            (uow, token) => DeleteCoreAsync(uow, request.Request, token), static result => result is SessionDeleted,
             static reason => new SessionDeleteFailed(reason), cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<SessionInputLookupResult> LookupInputAsync(AuthorizedSessionStoreRequest<SessionInputLookupRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateRead, SecurityEffect.Observe,
-            token => LookupInputCoreAsync(request.Request, token), static result => result is SessionInputReplayFound or SessionInputNotFound,
+            (uow, token) => LookupInputCoreAsync(uow, request.Request, token), static result => result is SessionInputReplayFound or SessionInputNotFound,
             static reason => new SessionInputLookupRejected(reason), cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<InputAdmissionResult> AdmitInputAsync(AuthorizedSessionStoreRequest<SessionInputAdmissionRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Append,
-            token => AdmitInputCoreAsync(request.Request, token), static result => result is AcceptedInput,
+            (uow, token) => AdmitInputCoreAsync(uow, request.Request, token), static result => result is AcceptedInput,
             static reason => new RejectedInput(new InputRejection(InputRejectionKind.Unauthorized, reason)), cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<SessionRunStartResult> AcceptRunAsync(AuthorizedSessionStoreRequest<SessionRunStartRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
-            token => AcceptRunCoreAsync(request.Request, token), static result => result is SessionRunAccepted,
+            (uow, token) => AcceptRunCoreAsync(uow, request.Request, token), static result => result is SessionRunAccepted,
             static reason => new SessionRunStartRejected(reason), cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<SessionRunStateResult> LoadRunStateAsync(AuthorizedSessionStoreRequest<SessionRunStateRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateRead, SecurityEffect.Observe,
-            token => LoadRunStateCoreAsync(request.Request, token), static result => result is SessionRunStateLoaded,
+            (uow, token) => LoadRunStateCoreAsync(uow, request.Request, token), static result => result is SessionRunStateLoaded,
             static reason => new SessionRunStateUnavailable(reason), cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(AuthorizedSessionStoreRequest<SessionRunReleaseRequest> request, CancellationToken cancellationToken = default) =>
         ObserveAuthorizedAsync(request, SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
-            token => ReleaseRunCoreAsync(request.Request, token), static result => result is SessionRunReleased,
+            (uow, token) => ReleaseRunCoreAsync(uow, request.Request, token), static result => result is SessionRunReleased,
             static reason => new SessionRunReleaseRejected(SessionRunReleaseRejectionKind.Unsupported, reason), cancellationToken);
 
     private ValueTask<TResult> ObserveAuthorizedAsync<TRequest, TResult>(
         AuthorizedSessionStoreRequest<TRequest> request, SecurityOperationKind kind, SecurityEffect effect,
-        Func<CancellationToken, ValueTask<TResult>> action, Func<TResult, bool> succeeded,
+        Func<SqliteSessionUnitOfWork, CancellationToken, ValueTask<TResult>> action, Func<TResult, bool> succeeded,
         Func<string, TResult> rejected, CancellationToken cancellationToken)
         where TRequest : class where TResult : class
     {
@@ -96,60 +96,12 @@ public sealed partial class SqliteSessionStore
             async token =>
             {
                 var denial = await EnforceAsync(request, kind, effect, token).ConfigureAwait(false);
-                if (denial is not null)
-                {
-                    return rejected(denial);
-                }
-
-                await _databaseGate.WaitAsync(token).ConfigureAwait(false);
-                try
-                {
-                    if (kind == SecurityOperationKind.StateRead)
-                    {
-                        Hydrate(await _database.LoadAsync(token).ConfigureAwait(false));
-                        return await action(token).ConfigureAwait(false);
-                    }
-
-                    return await _database.MutateAsync(Hydrate, action, Capture, token).ConfigureAwait(false);
-                }
-                finally
-                {
-                    _ = _databaseGate.Release();
-                }
+                return denial is not null
+                    ? rejected(denial)
+                    : kind == SecurityOperationKind.StateRead
+                        ? await _database.RunReadAsync(action, token).ConfigureAwait(false)
+                        : await _database.RunWriteAsync(action, token).ConfigureAwait(false);
             }, succeeded, cancellationToken);
-    }
-
-    /// <summary>Replaces the process projection with the exact transaction snapshot.</summary>
-    /// <param name="state">The nonnull complete persisted state.</param>
-    private void Hydrate(SqliteSessionStoreState state)
-    {
-        Debug.Assert(state is not null, "A decoded store state is required.");
-        using (_gate.EnterScope())
-        {
-            _sessions.Clear();
-            foreach (var pair in state.Sessions) { _sessions.Add(pair.Key, pair.Value); }
-            _createIdempotency.Clear();
-            foreach (var pair in state.CreateIdempotency) { _createIdempotency.Add(pair.Key, pair.Value); }
-            _deletedCreateIdempotency.Clear();
-            foreach (var pair in state.DeletedCreateIdempotency) { _deletedCreateIdempotency.Add(pair.Key, pair.Value); }
-            _deleteIdempotency.Clear();
-            foreach (var pair in state.DeleteIdempotency) { _deleteIdempotency.Add(pair.Key, pair.Value); }
-        }
-    }
-
-    /// <summary>Captures the complete process projection while its operation is serialized.</summary>
-    /// <returns>A detached state ready for bounded serialization.</returns>
-    private SqliteSessionStoreState Capture()
-    {
-        using (_gate.EnterScope())
-        {
-            var state = new SqliteSessionStoreState();
-            foreach (var pair in _sessions) { state.Sessions.Add(pair.Key, pair.Value); }
-            foreach (var pair in _createIdempotency) { state.CreateIdempotency.Add(pair.Key, pair.Value); }
-            foreach (var pair in _deletedCreateIdempotency) { state.DeletedCreateIdempotency.Add(pair.Key, pair.Value); }
-            foreach (var pair in _deleteIdempotency) { state.DeleteIdempotency.Add(pair.Key, pair.Value); }
-            return state;
-        }
     }
 
     private async ValueTask<string?> EnforceAsync<TRequest>(AuthorizedSessionStoreRequest<TRequest> wrapper,
