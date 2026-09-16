@@ -111,7 +111,9 @@ public sealed class ConversationRunObserverTests
         var sut = CreateObserver(observer, presenter, bindings);
         var call = new ToolCallPart(
             new ToolCallId(Guid.NewGuid()),
-            new ToolReference(descriptor.Id, omitWireVersion ? null : descriptor.Version, advertised.Name),
+            omitWireVersion
+                ? new ToolReference(new ToolAlias(advertised.Name), null, null)
+                : new ToolReference(new ToolAlias(advertised.Name), descriptor.Id, descriptor.Version),
             JsonDocument.Parse("{\"path\":\"a.txt\"}").RootElement,
             null,
             ExtensionData.Empty);
@@ -143,7 +145,7 @@ public sealed class ConversationRunObserverTests
                 new ConversationToolPresentationBinding(descriptor, advertised)));
         var call = new ToolCallPart(
             new ToolCallId(Guid.NewGuid()),
-            new ToolReference(descriptor.Id, new ToolVersion("different"), advertised.Name),
+            new ToolReference(new ToolAlias(advertised.Name), descriptor.Id, new ToolVersion("different")),
             JsonDocument.Parse("{}").RootElement,
             null,
             ExtensionData.Empty);
@@ -174,7 +176,9 @@ public sealed class ConversationRunObserverTests
                 new ConversationToolPresentationBinding(descriptor, advertised)));
         var call = new ToolCallPart(
             new ToolCallId(Guid.NewGuid()),
-            new ToolReference(descriptor.Id, omitWireVersion ? null : descriptor.Version, advertised.Name),
+            omitWireVersion
+                ? new ToolReference(new ToolAlias(advertised.Name), null, null)
+                : new ToolReference(new ToolAlias(advertised.Name), descriptor.Id, descriptor.Version),
             JsonDocument.Parse("{}").RootElement,
             null,
             ExtensionData.Empty);

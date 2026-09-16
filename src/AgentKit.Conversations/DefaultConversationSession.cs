@@ -746,7 +746,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                                 break;
                             case ToolCallPart call:
                                 events.Add(new ConversationToolCallEvent(
-                                    call.CallId, call.Tool.Name, call.Arguments.GetRawText()));
+                                    call.CallId, call.Tool.ProviderAlias.Value, call.Arguments.GetRawText()));
                                 break;
                             case ReasoningPart { Content.Text: { } reasoningText }:
                                 events.Add(new ConversationReasoningEvent(reasoningText));
@@ -767,7 +767,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                     {
                         events.Add(new ConversationToolResultEvent(
                             part.CallId,
-                            part.Tool.Name,
+                            part.Tool.ProviderAlias.Value,
                             part.Outcome.Kind == ToolCallOutcomeKind.Success,
                             DescribeToolResult(part)));
                     }

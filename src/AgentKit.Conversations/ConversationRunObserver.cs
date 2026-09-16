@@ -70,7 +70,7 @@ internal sealed class ConversationRunObserver: IAgentRunObserver
             var presentation = await PresentAsync(started.Call, cancellationToken).ConfigureAwait(false);
             return new ConversationToolCallEvent(
                 started.Call.CallId,
-                started.Call.Tool.Name,
+                started.Call.Tool.ProviderAlias.Value,
                 started.Call.Arguments.GetRawText(),
                 presentation);
         }
@@ -80,7 +80,7 @@ internal sealed class ConversationRunObserver: IAgentRunObserver
             var presentation = await PresentAsync(completed.Result, cancellationToken).ConfigureAwait(false);
             return new ConversationToolResultEvent(
                 completed.Result.CallId,
-                completed.Result.Tool.Name,
+                completed.Result.Tool.ProviderAlias.Value,
                 completed.Result.Outcome.Kind == ToolCallOutcomeKind.Success,
                 _describeToolResult(completed.Result),
                 presentation);

@@ -49,7 +49,7 @@ internal static class FakeMessages
     public static ToolCallPart ToolCall(string toolName, string argumentsJson) =>
         new(
             new ToolCallId(Guid.NewGuid()),
-            new ToolReference(new ToolId(toolName), null, toolName),
+            new ToolReference(new ToolAlias(toolName), null, null),
             JsonDocument.Parse(argumentsJson).RootElement,
             null,
             ExtensionData.Empty);
@@ -67,6 +67,7 @@ internal static class FakeMessages
                 failureReason: null,
                 ExtensionData.Empty),
             [new TextPart(resultText, TextSemantics.Plain, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
             ExtensionData.Empty);
 
     /// <summary>Builds a failed tool-result content part answering <paramref name="call"/> with the given safe failure reason.</summary>
@@ -85,6 +86,7 @@ internal static class FakeMessages
                 failureReason: failureReason,
                 ExtensionData.Empty),
             resultText is null ? [] : [new TextPart(resultText, TextSemantics.Plain, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
             ExtensionData.Empty);
 
     private static AssistantResponseMetadata ResponseMetadata(ModelUsage usage) =>

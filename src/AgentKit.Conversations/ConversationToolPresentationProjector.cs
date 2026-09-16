@@ -3,6 +3,8 @@
 
 namespace AgentKit.Conversations;
 
+using System.Linq;
+
 /// <summary>Projects durable or live tool parts through the same exact captured presenter binding.</summary>
 internal static class ConversationToolPresentationProjector
 {
@@ -27,12 +29,16 @@ internal static class ConversationToolPresentationProjector
             return null;
         }
 
+        // A parsed ToolCallPart never carries a resolved Id (only the invoker's own catalog resolution can populate
+        // one), so matching by advertised alias text is the only lookup that works before and after resolution.
+        // When the reference does happen to already carry a resolved identity, it must still agree with the
+        // binding's captured descriptor identity and version, matching the prior exact-binding safety net.
         var tool = part is ToolCallPart call ? call.Tool : ((ToolResultPart) part).Tool;
-        var descriptor = bindings.TryGetValue(tool.Id, out var binding)
-            && (tool.Version is null || binding.Descriptor.Version == tool.Version)
-            && string.Equals(binding.AdvertisedTool.Name, tool.Name, StringComparison.Ordinal)
-                ? binding.Descriptor
-                : null;
+        var descriptor = bindings.Values.FirstOrDefault(binding =>
+                string.Equals(binding.AdvertisedTool.Name, tool.ProviderAlias.Value, StringComparison.Ordinal)
+                && (tool.Id is not { } toolId || binding.Descriptor.Id == toolId)
+                && (tool.Version is null || binding.Descriptor.Version == tool.Version))
+            ?.Descriptor;
         ToolPresentationSource source = part is ToolCallPart toolCall
             ? new ToolCallPresentationSource(toolCall)
             : new ToolResultPresentationSource((ToolResultPart) part);
