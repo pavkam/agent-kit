@@ -51,6 +51,41 @@ internal static class LoopTestData
     public static OutputConfigurationRejected OutputConfigurationRejected() =>
         new(new OutputSchemaConfigurationFailure(OutputSchemaConfigurationFailureKind.MalformedSchema, "invalid", []));
 
+    public static SecurityAuthorizationContext RunAuthorization(ConfigurationVersion? configurationVersion = null) =>
+        new(
+            new SecurityProfileKey("security"),
+            new SecurityProfileVersion(1),
+            new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(Guid.Parse("b0000000-0000-0000-0000-00000000000a")),
+                new SecurityPolicyVersion(1),
+                new ContentHash("sha256:policy")),
+            new ComponentKey<ISecurityAuthority>("authority"),
+            new AgentDefinitionRevision(1),
+            configurationVersion ?? new ConfigurationVersion(1),
+            new SecurityAuthorizationScope(AgentId, SessionId, InRun()),
+            Identity());
+
+    public static SessionProfileSnapshot SessionProfile() => TestSecurityEvidence.SessionProfile();
+
+    public static AgentRunRequest RunRequest() =>
+        new(
+            AgentId,
+            SessionId,
+            BranchId,
+            RunId,
+            Identity(),
+            RunAuthorization(),
+            SessionProfile(),
+            new ModelSelectionPolicy([new ModelAlias("chat")]),
+            ModelRequirements.None,
+            [],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            8,
+            TimeSpan.FromMinutes(1),
+            ExtensionData.Empty);
+
     public static ToolResultPart ToolResult() =>
         new(new ToolCallId(Guid.Parse("b0000000-0000-0000-0000-000000000009")), new ToolReference(new ToolAlias("t"), new ToolId("t"), new ToolVersion("1")),
             new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
