@@ -19,6 +19,19 @@ public sealed class McpToolContractTests
     }
 
     [Fact]
+    public void Descriptor_WhenComparedWithACloneOfItself_ReportsEqualAndPreservesRecordContract()
+    {
+        var contract = new McpToolContract<WeatherTools>();
+        var method = contract.Methods.ShouldHaveSingleItem();
+
+        var clone = method with { };
+
+        clone.ShouldBe(method);
+        clone.GetHashCode().ShouldBe(method.GetHashCode());
+        method.ToString().ShouldContain(nameof(McpToolMethodDescriptor));
+    }
+
+    [Fact]
     public void Create_WhenRequestIsPrimitive_RejectsContract()
     {
         var exception = Should.Throw<InvalidOperationException>(static () => new McpToolContract<PrimitiveRequestTools>());
