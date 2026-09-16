@@ -59,6 +59,15 @@ public sealed class SessionStoreDescriptorTests
     }
 
     private static SessionStoreDescriptor Descriptor() => new(new SessionStoreKey("store"), SessionStoreCapabilities.None, SessionConsistencyModel.Strong, durable: false, supportsDistributedFencing: false);
+
+    [Fact]
+    public void Properties_WhenRead_ReturnConstructedValues()
+    {
+        var descriptor = new SessionStoreDescriptor(new SessionStoreKey("store"), SessionStoreCapabilities.Branching, SessionConsistencyModel.Strong, durable: true, supportsDistributedFencing: true);
+        descriptor.Key.ShouldBe(new SessionStoreKey("store"));
+        descriptor.Capabilities.ShouldBe(SessionStoreCapabilities.Branching);
+        descriptor.Consistency.ShouldBe(SessionConsistencyModel.Strong);
+    }
     [Fact]
     public void SessionStoreDescriptor_Constructor_WhenDurableTrueOrFalse_RoundTrips()
     {

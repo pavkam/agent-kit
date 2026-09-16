@@ -19,6 +19,29 @@ public sealed class SessionExecutionCapabilityTests
         Should.Throw<ArgumentNullException>(() => new SessionExecutionCapability(profile, coordinator, null!)).ParamName.ShouldBe("runCoordinator");
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var coordinator = new UnsupportedCoordinator();
+        var runCoordinator = new UnsupportedRunCoordinator();
+        var profile = TestSecurityEvidence.SessionProfile();
+        var capability = new SessionExecutionCapability(profile, coordinator, runCoordinator);
+        capability.Profile.ShouldBe(profile);
+        capability.Coordinator.ShouldBeSameAs(coordinator);
+        capability.RunCoordinator.ShouldBeSameAs(runCoordinator);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var coordinator = new UnsupportedCoordinator();
+        var runCoordinator = new UnsupportedRunCoordinator();
+        var profile = TestSecurityEvidence.SessionProfile();
+        var original = new SessionExecutionCapability(profile, coordinator, runCoordinator);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private sealed class UnsupportedCoordinator: ISessionCoordinator
     {
         public ValueTask<SessionCreateResult> CreateAsync(SessionCreateRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default) => throw new NotSupportedException();
