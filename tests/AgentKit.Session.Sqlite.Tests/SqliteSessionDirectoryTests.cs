@@ -222,7 +222,7 @@ public sealed class SqliteSessionDirectoryTests
             new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = databasePath, Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly, Pooling = false }.ConnectionString);
         probe.Open();
         using var command = probe.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'agentkit_session_directory';";
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'agentkit_session_directory_schema';";
         Convert.ToInt64(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture).ShouldBe(0);
     }
 
@@ -249,9 +249,11 @@ public sealed class SqliteSessionDirectoryTests
     }
 
     [Fact]
-    public void Constructor_WhenLegacyIdentityLessTableExists_MigratesUnderApplyKnownMigrationsOnly()
+    public void Constructor_WhenLegacyWholeBlobTableExists_LeavesItInertAndCreatesRelationalSchemaFresh()
     {
-        // The first directory schema had no identity columns; known migration binds it to the configured instance, validation-only does not.
+        // The pre-1.0 single-row-blob format is a breaking change: ApplyKnownMigrations never reads or reinterprets
+        // it, it just creates the new relational tables fresh alongside the untouched legacy table. ValidateExact
+        // against the legacy-only file fails typed until that fresh schema exists.
         var path = Path.Combine(Path.GetTempPath(), $"agentkit-directory-legacy-{Guid.NewGuid():N}");
         _ = Directory.CreateDirectory(path);
         var databasePath = Path.Combine(path, "sessions.db");
@@ -284,6 +286,13 @@ public sealed class SqliteSessionDirectoryTests
 
         validateOnly.Message.ShouldBe("The SQLite session directory schema or persistent store identity is unavailable.");
         migrated.Durable.ShouldBeTrue();
+
+        using var probe = new Microsoft.Data.Sqlite.SqliteConnection(
+            new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = databasePath, Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly, Pooling = false }.ConnectionString);
+        probe.Open();
+        using var legacyProbe = probe.CreateCommand();
+        legacyProbe.CommandText = "SELECT state_json FROM agentkit_session_directory WHERE singleton = 1;";
+        ((byte[]) legacyProbe.ExecuteScalar()!).ShouldBe("{}"u8.ToArray());
     }
 
     [Fact]

@@ -3,28 +3,22 @@
 
 namespace AgentKit.Session.Sqlite;
 
-/// <summary>Coordinates atomic directory projection transactions in the selected session database.</summary>
+/// <summary>Owns bootstrap, schema validation, and per-operation transactions for the relational directory schema.</summary>
 /// <remarks>
 /// Bootstrap honors the target's <see cref="SqliteDatabaseOpenMode"/> and <see cref="SqliteSchemaMode"/> exactly like
-/// <see cref="SqliteSessionDatabase"/>: known schema is installed or migrated only under
-/// <see cref="SqliteSchemaMode.ApplyKnownMigrations"/>, and every mode validates that the directory table exists at
-/// schema version one and carries the configured <see cref="SqliteSessionStoreTarget.ExpectedStoreInstanceId"/>.
+/// <see cref="SqliteSessionDatabase"/>: known schema is installed only under
+/// <see cref="SqliteSchemaMode.ApplyKnownMigrations"/>, and every mode validates that every required table exists and
+/// that the schema marker row carries the configured <see cref="SqliteSessionStoreTarget.ExpectedStoreInstanceId"/>.
+/// A pre-relational (whole-directory-blob) database is a foreign schema: it never satisfies this validation, so
+/// <see cref="SqliteSchemaMode.ValidateExact"/> against one fails with a typed exception instead of reinterpreting it.
 /// </remarks>
 internal sealed class SqliteSessionDirectoryDatabase
 {
-    private const string _schema = """
-        CREATE TABLE IF NOT EXISTS agentkit_session_directory (
-            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-            schema_version INTEGER NOT NULL,
-            store_instance_id TEXT NOT NULL,
-            state_json BLOB NOT NULL
-        );
-        """;
     private readonly SqliteSessionStoreTarget _target;
     private readonly SqliteSessionStoreSettings _settings;
     private readonly JsonSerializerOptions _json;
 
-    /// <summary>Initializes and validates the durable directory table in the exact configured database.</summary>
+    /// <summary>Initializes and validates the directory tables in the exact configured database.</summary>
     /// <param name="target">The explicit database target.</param>
     /// <param name="settings">Finite database bounds.</param>
     /// <exception cref="ArgumentNullException">A parameter is null.</exception>
@@ -44,35 +38,33 @@ internal sealed class SqliteSessionDirectoryDatabase
         Initialize();
     }
 
-    /// <summary>Loads the latest directory projection.</summary>
-    /// <param name="cancellationToken">Cancels the read.</param>
-    /// <returns>The complete committed state.</returns>
-    internal async ValueTask<SqliteSessionDirectoryState> LoadAsync(CancellationToken cancellationToken)
+    /// <summary>Runs one read-only operation inside a deferred transaction over a consistent multi-table snapshot.</summary>
+    internal async ValueTask<TResult> RunReadAsync<TResult>(
+        Func<SqliteSessionDirectoryUnitOfWork, CancellationToken, ValueTask<TResult>> action, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(action);
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ReadAsync(connection, null, cancellationToken).ConfigureAwait(false);
+        await using var transaction = connection.BeginTransaction(deferred: true);
+        var unitOfWork = new SqliteSessionDirectoryUnitOfWork(connection, transaction, _json);
+        var result = await action(unitOfWork, cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return result;
     }
 
-    /// <summary>Runs one mutation against the latest state and commits it atomically.</summary>
-    /// <typeparam name="T">The mutation outcome.</typeparam>
-    /// <param name="action">The synchronous semantic mutation.</param>
-    /// <param name="cancellationToken">Cancels before commit.</param>
-    /// <returns>The committed semantic outcome.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="action"/> is null.</exception>
-    internal async ValueTask<T> MutateAsync<T>(Func<SqliteSessionDirectoryState, T> action, CancellationToken cancellationToken)
+    /// <summary>
+    /// Runs one mutating operation inside a non-deferred ("<c>BEGIN IMMEDIATE</c>") transaction so its
+    /// read-decide-write sequence is atomic with the commit.
+    /// </summary>
+    internal async ValueTask<TResult> RunWriteAsync<TResult>(
+        Func<SqliteSessionDirectoryUnitOfWork, CancellationToken, ValueTask<TResult>> action, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(action);
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = connection.BeginTransaction(deferred: false);
-        var state = await ReadAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-        var result = action(state);
-        await using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = "UPDATE agentkit_session_directory SET state_json = $state WHERE singleton = 1;";
-        _ = command.Parameters.AddWithValue("$state", JsonSerializer.SerializeToUtf8Bytes(state, _json));
-        _ = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        var unitOfWork = new SqliteSessionDirectoryUnitOfWork(connection, transaction, _json);
+        var result = await action(unitOfWork, cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return result;
     }
@@ -110,83 +102,38 @@ internal sealed class SqliteSessionDirectoryDatabase
         connection.Open();
         if (_target.SchemaMode == SqliteSchemaMode.ApplyKnownMigrations)
         {
-            ApplyKnownMigrations(connection);
+            using var schema = connection.CreateCommand();
+            schema.CommandText = SqliteSessionDirectorySchema.CreateSchema;
+            _ = schema.ExecuteNonQuery();
+            using var insert = connection.CreateCommand();
+            insert.CommandText = $"INSERT OR IGNORE INTO {SqliteSessionDirectorySchema.SchemaTable} VALUES (1, 1, $id);";
+            _ = insert.Parameters.AddWithValue("$id", _target.ExpectedStoreInstanceId.Value.ToString("D"));
+            _ = insert.ExecuteNonQuery();
         }
 
-        if (!TableExists(connection)
-            || !ColumnExists(connection, "schema_version")
-            || !ColumnExists(connection, "store_instance_id")
-            || !ColumnExists(connection, "state_json"))
+        foreach (var table in SqliteSessionDirectorySchema.RequiredTables)
         {
-            throw new InvalidOperationException("The SQLite session directory schema or persistent store identity is unavailable.");
+            if (!TableExists(connection, table))
+            {
+                throw new InvalidOperationException("The SQLite session directory schema or persistent store identity is unavailable.");
+            }
         }
 
         using var validate = connection.CreateCommand();
-        validate.CommandText = "SELECT schema_version, store_instance_id FROM agentkit_session_directory WHERE singleton = 1;";
+        validate.CommandText = $"SELECT schema_version, store_instance_id FROM {SqliteSessionDirectorySchema.SchemaTable} WHERE singleton = 1;";
         using var reader = validate.ExecuteReader();
         if (!reader.Read() || reader.GetInt32(0) != 1
-            || !string.Equals(reader.GetString(1), ExpectedInstanceId(), StringComparison.Ordinal))
+            || !string.Equals(reader.GetString(1), _target.ExpectedStoreInstanceId.Value.ToString("D"), StringComparison.Ordinal))
         {
             throw new InvalidOperationException("The SQLite session directory schema or persistent store identity is unavailable.");
         }
     }
 
-    /// <summary>Installs the current directory schema or migrates the earlier identity-less table shape in place.</summary>
-    /// <param name="connection">The open bootstrap connection.</param>
-    private void ApplyKnownMigrations(SqliteConnection connection)
+    private static bool TableExists(SqliteConnection connection, string table)
     {
-        Debug.Assert(connection is not null, "Bootstrap owns an open connection.");
-        if (TableExists(connection) && !ColumnExists(connection, "store_instance_id"))
-        {
-            using var migrate = connection.CreateCommand();
-            migrate.CommandText = """
-                ALTER TABLE agentkit_session_directory ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1;
-                ALTER TABLE agentkit_session_directory ADD COLUMN store_instance_id TEXT NOT NULL DEFAULT '';
-                UPDATE agentkit_session_directory SET store_instance_id = $id WHERE singleton = 1 AND store_instance_id = '';
-                """;
-            _ = migrate.Parameters.AddWithValue("$id", ExpectedInstanceId());
-            _ = migrate.ExecuteNonQuery();
-        }
-
-        using var schema = connection.CreateCommand();
-        schema.CommandText = _schema;
-        _ = schema.ExecuteNonQuery();
-        using var insert = connection.CreateCommand();
-        insert.CommandText = "INSERT OR IGNORE INTO agentkit_session_directory VALUES (1, 1, $id, $state);";
-        _ = insert.Parameters.AddWithValue("$id", ExpectedInstanceId());
-        _ = insert.Parameters.AddWithValue("$state", JsonSerializer.SerializeToUtf8Bytes(new SqliteSessionDirectoryState(), _json));
-        _ = insert.ExecuteNonQuery();
-    }
-
-    private static bool TableExists(SqliteConnection connection)
-    {
-        Debug.Assert(connection is not null, "Bootstrap owns an open connection.");
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'agentkit_session_directory';";
-        return Convert.ToInt64(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture) > 0;
-    }
-
-    private static bool ColumnExists(SqliteConnection connection, string column)
-    {
-        Debug.Assert(connection is not null, "Bootstrap owns an open connection.");
-        Debug.Assert(!string.IsNullOrWhiteSpace(column), "A column name is required.");
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('agentkit_session_directory') WHERE name = $column;";
-        _ = command.Parameters.AddWithValue("$column", column);
-        return Convert.ToInt64(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture) > 0;
-    }
-
-    private string ExpectedInstanceId() => _target.ExpectedStoreInstanceId.Value.ToString("D");
-
-    private async ValueTask<SqliteSessionDirectoryState> ReadAsync(SqliteConnection connection, SqliteTransaction? transaction, CancellationToken cancellationToken)
-    {
-        await using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = "SELECT state_json FROM agentkit_session_directory WHERE singleton = 1;";
-        var scalar = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        var payload = scalar as byte[]
-            ?? throw new InvalidOperationException("The SQLite session directory state is unavailable.");
-        return JsonSerializer.Deserialize<SqliteSessionDirectoryState>(payload, _json)
-            ?? throw new InvalidOperationException("The SQLite session directory state is invalid.");
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = $name;";
+        _ = command.Parameters.AddWithValue("$name", table);
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture) > 0;
     }
 }
