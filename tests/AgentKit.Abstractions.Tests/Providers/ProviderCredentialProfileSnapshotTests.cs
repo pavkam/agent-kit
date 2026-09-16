@@ -50,6 +50,10 @@ public sealed class ProviderCredentialProfileSnapshotTests
         credentialCopy.ShouldNotBeSameAs(credential);
         credential.ProviderId.ShouldBe(new ProviderId("provider"));
         credential.SourceKey.ShouldBe(new ProviderCredentialSourceKey("source"));
+        credential.Reference.ShouldBe(CredentialReference());
+        credential.ServiceSurface.ShouldBe(new ProviderServiceSurfaceId("chat"));
+        credential.ConfigurationFingerprint.ShouldBe(new ContentHash("sha256:credential"));
+        credential.Extensions.ShouldBe(ExtensionData.Empty);
     }
 
     private static ProviderCredentialProfileReference CredentialReference() => new(new ProviderCredentialProfileKey("credential-profile"), new ProviderCredentialProfileVersion(1));

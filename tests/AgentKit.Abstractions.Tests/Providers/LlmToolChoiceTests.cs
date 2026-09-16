@@ -31,4 +31,12 @@ public sealed class LlmToolChoiceTests
         LlmToolChoice.None.Mode.ShouldBe(LlmToolChoiceMode.None);
         LlmToolChoice.Required.Mode.ShouldBe(LlmToolChoiceMode.Required);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = LlmToolChoice.Named("tool");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

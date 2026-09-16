@@ -25,5 +25,13 @@ public sealed class ModelAttemptCancelledTests
         exception.ParamName.ShouldBe("cancellation");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ModelAttemptCancelled(Failure(kind: ProviderFailureKind.Cancellation), [], null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ProviderFailure Failure(ProviderFailureKind kind = ProviderFailureKind.Unknown, string safeMessage = "failed") => new(kind, new ProviderId("openai"), null, null, null, null, safeMessage, null, ExtensionData.Empty);
 }

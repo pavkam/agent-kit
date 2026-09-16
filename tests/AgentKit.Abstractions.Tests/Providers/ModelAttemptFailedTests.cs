@@ -17,5 +17,13 @@ public sealed class ModelAttemptFailedTests
         first.GetHashCode().ShouldBe(second.GetHashCode());
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ModelAttemptFailed(Failure(), [], null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ProviderFailure Failure(ProviderFailureKind kind = ProviderFailureKind.Unknown, string safeMessage = "failed") => new(kind, new ProviderId("openai"), null, null, null, null, safeMessage, null, ExtensionData.Empty);
 }

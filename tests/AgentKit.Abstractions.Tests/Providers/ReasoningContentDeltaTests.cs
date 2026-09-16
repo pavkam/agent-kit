@@ -32,4 +32,12 @@ public sealed class ReasoningContentDeltaTests
 
     [Fact]
     public void ReasoningContentDelta_Equality_WhenSameValues_InstancesAreEqual() => new ReasoningContentDelta("thinking", ExtensionData.Empty).ShouldBe(new ReasoningContentDelta("thinking", ExtensionData.Empty));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ReasoningContentDelta("thinking", ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

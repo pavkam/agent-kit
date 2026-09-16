@@ -30,4 +30,12 @@ public sealed class ProviderContentDeltaTests
         var providerId = new ProviderId("openai");
         new ProviderContentDelta(providerId, ExtensionData.Empty).ShouldBe(new ProviderContentDelta(providerId, ExtensionData.Empty));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ProviderContentDelta(new ProviderId("openai"), ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

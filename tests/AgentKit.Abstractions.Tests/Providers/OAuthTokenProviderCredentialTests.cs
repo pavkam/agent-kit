@@ -12,4 +12,12 @@ public sealed class OAuthTokenProviderCredentialTests
     public void OAuthTokenProviderCredential_Constructor_WhenTokenInvalid_ThrowsArgumentException() => _ = Should.Throw<ArgumentException>(() => new OAuthTokenProviderCredential(" ", null));
     [Fact]
     public void OAuthTokenProviderCredential_Equality_WhenSameValues_InstancesAreEqual() => new OAuthTokenProviderCredential("token", null).ShouldBe(new OAuthTokenProviderCredential("token", null));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new OAuthTokenProviderCredential("token", null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

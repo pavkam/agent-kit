@@ -61,6 +61,10 @@ public sealed class ProviderEndpointProfileSnapshotTests
         endpoint.GetHashCode().ShouldBe(same.GetHashCode());
         copy.ShouldBe(endpoint);
         copy.ShouldNotBeSameAs(endpoint);
+        endpoint.Reference.ShouldBe(EndpointReference());
+        endpoint.ServiceSurface.ShouldBe(new ProviderServiceSurfaceId("chat"));
+        endpoint.ConfigurationFingerprint.ShouldBe(new ContentHash("sha256:endpoint"));
+        endpoint.Extensions.ShouldBe(ExtensionData.Empty);
     }
 
     private static ProviderEndpointProfileReference EndpointReference() => new(new ProviderEndpointProfileKey("endpoint-profile"), new ProviderEndpointProfileVersion(1));

@@ -18,4 +18,12 @@ public sealed class PackedBinaryVectorTests
         first.ShouldBe(second);
         first.GetHashCode().ShouldBe(second.GetHashCode());
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new PackedBinaryVector([0b10101010], signed: false);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

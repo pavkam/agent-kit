@@ -21,4 +21,12 @@ public sealed class QuantizedByteVectorTests
 
     [Fact]
     public void QuantizedByteVector_Equality_WhenDifferentSignedness_InstancesAreNotEqual() => new QuantizedByteVector([1, 2], signed: true).ShouldNotBe(new QuantizedByteVector([1, 2], signed: false));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new QuantizedByteVector([1, 2, 3], signed: true);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

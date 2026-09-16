@@ -22,4 +22,12 @@ public sealed class ModelLimitsTests
 
     [Fact]
     public void ModelLimits_Equality_WhenSameValues_InstancesAreEqual() => new ModelLimits(1000, 500).ShouldBe(new ModelLimits(1000, 500));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ModelLimits(1000, 500);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

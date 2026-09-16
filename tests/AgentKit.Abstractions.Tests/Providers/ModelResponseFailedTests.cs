@@ -18,6 +18,14 @@ public sealed class ModelResponseFailedTests
         first.GetHashCode().ShouldBe(second.GetHashCode());
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ModelResponseFailed(new ModelRequestId(_fixedRequestGuid), 1, Failure(), [], null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ProviderFailure Failure(ProviderFailureKind kind = ProviderFailureKind.Unknown, string safeMessage = "failed") => new(kind, new ProviderId("openai"), null, null, null, null, safeMessage, null, ExtensionData.Empty);
     private static readonly Guid _fixedRequestGuid = Guid.Parse("77777777-7777-7777-7777-777777777777");
 }

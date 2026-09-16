@@ -30,4 +30,12 @@ public sealed class ToolArgumentsContentDeltaTests
         var callId = new ToolCallId(Guid.NewGuid());
         new ToolArgumentsContentDelta(callId, "{}").ShouldBe(new ToolArgumentsContentDelta(callId, "{}"));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolArgumentsContentDelta(new ToolCallId(Guid.NewGuid()), "{}");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
