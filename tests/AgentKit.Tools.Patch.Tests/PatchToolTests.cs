@@ -226,17 +226,293 @@ public sealed class PatchToolTests
         json.RootElement.GetProperty("entries")[1].GetProperty("status").GetString().ShouldBe(secondStatus.ToString());
     }
 
+    [Fact]
+    public void Descriptor_WhenRead_ExposesStableIdentity()
+    {
+        var tool = CreateTool(new FakeSnapshotReader(), new FakePatchApplier(), new SequencedSecurityAuthority());
+
+        tool.Descriptor.Id.ShouldBe(PatchTool.Id);
+        tool.Descriptor.Effects.Effect.ShouldBe(ToolEffect.Mutating);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenPatchExceedsByteBound_RejectsWithLimitExceeded()
+    {
+        var snapshot = new FakeSnapshotReader();
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority();
+        var patch = """
+            *** Begin Patch
+            *** Add File: new.txt
+            +some added content that is long enough
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority, new PatchToolOptions { MaximumPatchBytes = 5 }).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        Status(result).ShouldBe("\"LimitExceeded\"");
+        authority.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenObservationAuthorizationIsDenied_ReturnsFailureWithoutPlanningFurther()
+    {
+        var snapshot = new FakeSnapshotReader();
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority(denyAt: 1);
+        var patch = """
+            *** Begin Patch
+            *** Add File: new.txt
+            +content
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Denied);
+        applier.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenAddTargetAlreadyExists_RejectsWithConflict()
+    {
+        var snapshot = new FakeSnapshotReader();
+        snapshot.Results["exists.txt"] = FakeSnapshotReader.Snapshot("already here");
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority();
+        var patch = """
+            *** Begin Patch
+            *** Add File: exists.txt
+            +content
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        Status(result).ShouldBe("\"Conflict\"");
+        applier.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenAddedFileExceedsFileByteBound_RejectsWithLimitExceeded()
+    {
+        var snapshot = new FakeSnapshotReader();
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority();
+        var patch = """
+            *** Begin Patch
+            *** Add File: new.txt
+            +this content is longer than the configured bound
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority, new PatchToolOptions { MaximumFileBytes = 5 }).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        Status(result).ShouldBe("\"LimitExceeded\"");
+        applier.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenUpdateTargetIsMissing_RejectsWithSnapshotStatusReason()
+    {
+        var snapshot = new FakeSnapshotReader();
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority();
+        var patch = """
+            *** Begin Patch
+            *** Update File: missing.txt
+            @@
+            -old
+            +new
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        Status(result).ShouldBe("\"NotFound\"");
+        result.Outcome.FailureReason.ShouldBe("Missing.");
+        applier.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenUpdatedFileExceedsFileByteBound_RejectsWithLimitExceeded()
+    {
+        var snapshot = new FakeSnapshotReader();
+        snapshot.Results["a.txt"] = FakeSnapshotReader.Snapshot("ab\n");
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority();
+        var patch = """
+            *** Begin Patch
+            *** Update File: a.txt
+            @@
+            -ab
+            +abcdefgh
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority, new PatchToolOptions { MaximumFileBytes = 5 }).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        Status(result).ShouldBe("\"LimitExceeded\"");
+        applier.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenUpdateHunkProducesNoByteChange_RejectsWithNoChange()
+    {
+        var snapshot = new FakeSnapshotReader();
+        snapshot.Results["a.txt"] = FakeSnapshotReader.Snapshot("same\n");
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority();
+        var patch = """
+            *** Begin Patch
+            *** Update File: a.txt
+            @@
+            -same
+            +same
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        Status(result).ShouldBe("\"NoChange\"");
+        applier.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenDeleteTargetIsMissing_RejectsWithSnapshotStatusReason()
+    {
+        var snapshot = new FakeSnapshotReader();
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority();
+        var patch = """
+            *** Begin Patch
+            *** Delete File: missing.txt
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        Status(result).ShouldBe("\"NotFound\"");
+        applier.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenDeleteIsValid_AuthorizesAndAppliesDeleteEntry()
+    {
+        var snapshot = new FakeSnapshotReader();
+        snapshot.Results["old.txt"] = FakeSnapshotReader.Snapshot("old");
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority();
+        var patch = """
+            *** Begin Patch
+            *** Delete File: old.txt
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        var delete = applier.Requests.ShouldHaveSingleItem().Entries.ShouldHaveSingleItem()
+            .ShouldBeOfType<WorkspacePatchDelete>();
+        authority.Requests[1].Effect.ShouldBe(SecurityEffect.Delete);
+        authority.Requests[1].Resources.ShouldBe(WorkspacePatchSecurityBinding.DeleteResources(delete.Path));
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenMoveSourceIsMissing_RejectsWithSnapshotStatusReason()
+    {
+        var snapshot = new FakeSnapshotReader();
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority();
+        var patch = """
+            *** Begin Patch
+            *** Update File: missing.txt
+            *** Move to: new.txt
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        Status(result).ShouldBe("\"NotFound\"");
+        applier.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenMoveDestinationObservationIsDenied_ReturnsFailureWithoutApplying()
+    {
+        var snapshot = new FakeSnapshotReader();
+        snapshot.Results["old.txt"] = FakeSnapshotReader.Snapshot("old");
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority(denyAt: 2);
+        var patch = """
+            *** Begin Patch
+            *** Update File: old.txt
+            *** Move to: new.txt
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Denied);
+        applier.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenMoveDestinationAlreadyExists_RejectsWithConflict()
+    {
+        var snapshot = new FakeSnapshotReader();
+        snapshot.Results["old.txt"] = FakeSnapshotReader.Snapshot("old");
+        snapshot.Results["new.txt"] = FakeSnapshotReader.Snapshot("already there");
+        var applier = new FakePatchApplier();
+        var authority = new SequencedSecurityAuthority();
+        var patch = """
+            *** Begin Patch
+            *** Update File: old.txt
+            *** Move to: new.txt
+            *** End Patch
+            """;
+
+        var result = await CreateTool(snapshot, applier, authority).InvokeAsync(
+            Request(PatchArguments(patch)), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        Status(result).ShouldBe("\"Conflict\"");
+        applier.Requests.ShouldBeEmpty();
+    }
+
     private static PatchTool CreateTool(
         IFileSnapshotReader snapshotReader,
         IWorkspacePatchApplier applier,
-        ISecurityAuthority authority) => new(
+        ISecurityAuthority authority,
+        PatchToolOptions? options = null) => new(
             snapshotReader,
             applier,
             authority,
             new SequenceSecurityRequestIdGenerator(),
             new SequenceMutationIdGenerator(),
             new FixedTimeProvider(),
-            Options.Create(new PatchToolOptions()));
+            Options.Create(options ?? new PatchToolOptions()));
 
     private static string PatchArguments(string patch) => JsonSerializer.Serialize(new { patch });
 
