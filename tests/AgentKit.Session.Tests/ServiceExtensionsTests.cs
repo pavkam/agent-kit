@@ -160,4 +160,45 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
         _ = provider.GetRequiredService<ISessionEntryCodecCatalog>().ShouldBeOfType<SessionEntryCodecCatalog>();
     }
+
+    [Fact]
+    public void AddAgentSession_WhenIdentifierGeneratorsAreResolved_ProduceDistinctIdentities()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentSession().AddInMemorySessionStore();
+        using var provider = services.BuildServiceProvider();
+
+        var leaseId = provider.GetRequiredService<IIdentifierGenerator<SessionLeaseId>>().Create();
+        var sessionId = provider.GetRequiredService<IIdentifierGenerator<SessionId>>().Create();
+        var intentId = provider.GetRequiredService<IIdentifierGenerator<SecurityEnforcementIntentId>>().Create();
+
+        leaseId.ShouldNotBe(default);
+        sessionId.ShouldNotBe(default);
+        intentId.ShouldNotBe(default);
+    }
+
+    [Fact]
+    public void AddAgentSession_WhenStoreCatalogAndSelectorAreResolved_ReflectComposedStores()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentSession().AddSessionStore<FakeSessionStore>();
+        using var provider = services.BuildServiceProvider();
+
+        var catalog = provider.GetRequiredService<ISessionStoreCatalog>();
+        var selector = provider.GetRequiredService<ISessionStoreSelector>();
+
+        _ = catalog.GetDescriptors().ShouldHaveSingleItem();
+        _ = selector.ShouldBeOfType<DefaultSessionStoreSelector>();
+    }
+
+    [Fact]
+    public void AddSessionEntryCodec_WhenCalled_RegistersProvidedCodec()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSessionEntryCodec<MessageSessionEntryCodec>();
+        _ = services.AddSessionEntryCodec<MessageSessionEntryCodec>();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetServices<ISessionEntryCodec>().Count().ShouldBe(2);
+    }
 }
