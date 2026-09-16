@@ -15,6 +15,11 @@ public sealed class SearchToolTests
     [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"base_path\":\"../escape\"}")]
     [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"exclude_patterns\":[\"../obj/**\"]}")]
     [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"exclude_patterns\":[false]}")]
+    [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"exclude_patterns\":\"not-an-array\"}")]
+    [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"maximum_duration_ms\":0}")]
+    [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"maximum_duration_ms\":-1}")]
+    [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"maximum_duration_ms\":999999999}")]
+    [InlineData( /*lang=json,strict*/"{\"pattern\":\"x\",\"maximum_duration_ms\":\"soon\"}")]
     public async Task InvokeAsync_WhenArgumentsInvalid_DoesNotAuthorizeOrObserve(string json)
     {
         var searcher = new FakeFileContentSearcher();
@@ -25,6 +30,29 @@ public sealed class SearchToolTests
         result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         authority.Requests.ShouldBeEmpty();
         searcher.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenExcludePatternsExceedsMaximumCount_ReturnsInvalidArguments()
+    {
+        var searcher = new FakeFileContentSearcher();
+        var authority = new RecordingSecurityAuthority();
+        var excludePatterns = Enumerable.Range(0, 101).Select(static index => $"pattern-{index}/**");
+        var json = JsonSerializer.Serialize(new { pattern = "x", exclude_patterns = excludePatterns });
+
+        var result = await CreateTool(searcher, authority).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        authority.Requests.ShouldBeEmpty();
+        searcher.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Descriptor_WhenAccessed_MatchesPresentationDescriptor()
+    {
+        var tool = CreateTool(new FakeFileContentSearcher(), new RecordingSecurityAuthority());
+
+        tool.Descriptor.ShouldBeSameAs(SearchTool.PresentationDescriptor);
     }
 
     [Fact]

@@ -7,10 +7,59 @@ namespace AgentKit.Tools.Search.Tests;
 public sealed class SearchToolPresentationFormatterTests
 {
     [Fact]
+    public void Descriptor_WhenAccessed_MatchesSearchToolPresentationDescriptor()
+    {
+        var formatter = new SearchToolPresentationFormatter();
+
+        formatter.Descriptor.ShouldBeSameAs(SearchTool.PresentationDescriptor);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenSourceIsUnrecognized_ReturnsNull()
+    {
+        var formatter = new SearchToolPresentationFormatter();
+
+        var presentation = await formatter.FormatAsync(
+            new ToolPresentationRequest(formatter.Descriptor, new UnsupportedPresentationSource(), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task FormatAsync_WhenCallIsLiteralAndScoped_ShowsPatternScopeAndExclusions()
     {
         var presentation = await FormatCall(/*lang=json,strict*/ """{"pattern":"needle","regex":false,"base_path":"src","path_pattern":"**/*.cs","exclude_patterns":["**/obj/**"]}""");
         presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("Search (literal) for needle under src in **/*.cs; excluding **/obj/**");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenCallOmitsOptionalFields_ShowsBareSearchPreview()
+    {
+        var presentation = await FormatCall(/*lang=json,strict*/ """{"pattern":"needle"}""");
+
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("Search (regex) for needle");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenCallMissingPattern_ReturnsNull()
+    {
+        var presentation = await FormatCall(/*lang=json,strict*/ """{"base_path":"src"}""");
+
+        presentation.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(/*lang=json,strict*/ """{"pattern":"n","base_path":1}""")]
+    [InlineData(/*lang=json,strict*/ """{"pattern":"n","path_pattern":1}""")]
+    [InlineData(/*lang=json,strict*/ """{"pattern":"n","exclude_patterns":"not-an-array"}""")]
+    [InlineData(/*lang=json,strict*/ """{"pattern":"n","exclude_patterns":[1]}""")]
+    [InlineData(/*lang=json,strict*/ """{"pattern":"n","regex":"maybe"}""")]
+    public async Task FormatAsync_WhenCallOptionsAreMalformed_ReturnsNull(string json)
+    {
+        var presentation = await FormatCall(json);
+
+        presentation.ShouldBeNull();
     }
 
     [Fact]
@@ -40,6 +89,47 @@ public sealed class SearchToolPresentationFormatterTests
     [Fact]
     public async Task FormatAsync_WhenSuccessfulPayloadMalformed_DeclinesToGenericFallback() =>
         (await FormatResult(/*lang=json,strict*/ """{"status":"Success","matches":null}""", true)).ShouldBeNull();
+
+    [Fact]
+    public async Task FormatAsync_WhenFailedPayloadMalformed_FallsBackToFailureReason()
+    {
+        var presentation = await FormatResult(/*lang=json,strict*/ """{"matches":null}""", false, "Denied.");
+
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("Denied.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenMatchEntryIsMalformed_DeclinesToGenericFallback()
+    {
+        var presentation = await FormatResult(
+            /*lang=json,strict*/ """{"status":"Success","matches":[{"path":"a.txt"}],"visited_files":1,"visited_bytes":1,"complete":true}""",
+            true);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultContentIsNotOneTextPart_ReturnsNull()
+    {
+        var outcome = new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("search"), null, null), outcome, [],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await new SearchToolPresentationFormatter().FormatAsync(
+            new ToolPresentationRequest(SearchTool.PresentationDescriptor, new ToolResultPresentationSource(result), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultProjectionIsNotJson_ReturnsNull()
+    {
+        var presentation = await FormatResult("not json", true);
+
+        presentation.ShouldBeNull();
+    }
 
     private static async Task<ToolPresentation?> FormatCall(string json)
     {
