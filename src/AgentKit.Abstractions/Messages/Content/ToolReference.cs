@@ -6,7 +6,8 @@ namespace AgentKit;
 /// <summary>
 /// Identifies the tool referenced by a <see cref="ToolCallPart"/> or
 /// <see cref="ToolResultPart"/>, including exactly what was advertised to
-/// the model at call time.
+/// the model at call time and, once resolution succeeds, the canonical
+/// identity it resolved to.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -15,64 +16,77 @@ namespace AgentKit;
 /// without synchronization.
 /// </para>
 /// <para>
-/// <see cref="Name"/> is deliberately captured separately from
-/// <see cref="Id"/>: the name is whatever text was actually advertised to
-/// the model in the request that produced this call, while <see cref="Id"/>
-/// is the stable AgentKit identity resolved for it. If the tool catalog
-/// changes between when a call is requested and when it is later inspected,
-/// the recorded <see cref="Name"/> still reflects history accurately
-/// instead of silently reporting whatever name the tool happens to have
-/// now.
+/// <see cref="ProviderAlias"/> is deliberately captured separately from
+/// <see cref="Id"/>: the alias is whatever text was actually advertised to,
+/// or received back from, the model — including a hallucinated name the
+/// model invented for a tool that was never registered — while
+/// <see cref="Id"/> is the stable AgentKit identity resolved for it, once a
+/// later resolution step matches the alias against the registered tool
+/// catalog. A parser that only observes the model's raw response can never
+/// prove resolution succeeded, so it always leaves <see cref="Id"/> and
+/// <see cref="Version"/> null; only the component that actually consults the
+/// tool catalog may populate them.
+/// </para>
+/// <para>
+/// <see cref="Id"/> and <see cref="Version"/> are both present or both
+/// absent: a resolved reference always carries the exact version the
+/// catalog snapshot bound to that identity, and an unresolved reference
+/// never claims a canonical identity it did not earn.
 /// </para>
 /// </remarks>
 public sealed record ToolReference
 {
     /// <summary>Initializes a new instance of the <see cref="ToolReference"/> record.</summary>
-    /// <param name="id">The stable tool identity.</param>
+    /// <param name="providerAlias">The exact provider-visible alias advertised to, or received from, the model.</param>
+    /// <param name="id">The resolved stable tool identity, or null when the reference is not yet resolved.</param>
     /// <param name="version">
-    /// The resolved tool version, when the run's tool catalog snapshot
-    /// resolved one; <see langword="null"/> when the tool is unversioned.
+    /// The resolved tool version, present exactly when <paramref name="id"/> is present.
     /// </param>
-    /// <param name="name">
-    /// The tool name exactly as advertised to the model at the time of the
-    /// call.
-    /// </param>
-    /// <exception cref="ArgumentException">
-    /// <paramref name="name"/> is null, empty, or consists only of
-    /// whitespace.
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="providerAlias"/> is default, <paramref name="id"/> is present but default,
+    /// <paramref name="version"/> is present but default, or exactly one of <paramref name="id"/> and
+    /// <paramref name="version"/> is present without the other.
     /// </exception>
-    public ToolReference(ToolId id, ToolVersion? version, string name)
+    public ToolReference(ToolAlias providerAlias, ToolId? id, ToolVersion? version)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentOutOfRangeException.ThrowIfEqual(providerAlias, default);
+        ArgumentException.ThrowIfNotEqual(id.HasValue, version.HasValue, nameof(version));
+        if (id is { } resolvedId)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(resolvedId, default, nameof(id));
+        }
+
+        if (version is { } resolvedVersion)
+        {
+            ArgumentOutOfRangeException.ThrowIfEqual(resolvedVersion, default, nameof(version));
+        }
+
+        ProviderAlias = providerAlias;
         Id = id;
         Version = version;
-        Name = name;
     }
 
-    /// <summary>Gets the stable tool identity.</summary>
-    public ToolId Id { get; init; }
-
-    /// <summary>
-    /// Gets the resolved tool version, when the run's tool catalog snapshot
-    /// resolved one.
-    /// </summary>
-    public ToolVersion? Version { get; init; }
-
-    /// <summary>
-    /// Gets the tool name exactly as advertised to the model at the time of
-    /// the call.
-    /// </summary>
-    /// <exception cref="ArgumentException">
-    /// The value assigned during initialization or non-destructive mutation is null, empty, or
-    /// consists only of whitespace.
-    /// </exception>
-    public string Name
+    /// <summary>Gets the exact provider-visible alias advertised to, or received from, the model.</summary>
+    /// <value>A nondefault alias; always present regardless of whether resolution succeeded.</value>
+    public ToolAlias ProviderAlias
     {
         get;
         init
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(value);
+            ArgumentOutOfRangeException.ThrowIfEqual(value, default);
             field = value;
         }
     }
+
+    /// <summary>Gets the resolved stable tool identity.</summary>
+    /// <value>Null exactly when this reference has not been resolved against a tool catalog.</value>
+    public ToolId? Id { get; }
+
+    /// <summary>Gets the resolved tool version.</summary>
+    /// <value>Present exactly when <see cref="Id"/> is present.</value>
+    public ToolVersion? Version { get; }
+
+    /// <summary>Gets whether this reference resolved to a canonical tool identity.</summary>
+    /// <value><see langword="true"/> exactly when <see cref="Id"/> is present.</value>
+    public bool IsResolved => Id.HasValue;
 }

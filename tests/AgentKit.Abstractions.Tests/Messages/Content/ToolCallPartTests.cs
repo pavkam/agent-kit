@@ -19,7 +19,7 @@ public sealed class ToolCallPartTests
     public void ToolCallPart_WhenArgumentsAreValid_ExposesValues()
     {
         var callId = new ToolCallId(Guid.NewGuid());
-        var tool = new ToolReference(new ToolId("read"), null, "read");
+        var tool = new ToolReference(new ToolAlias("read"), null, null);
         var part = new ToolCallPart(callId, tool, default, null, ExtensionData.Empty);
         part.CallId.ShouldBe(callId);
         part.Tool.ShouldBe(tool);
@@ -37,7 +37,7 @@ public sealed class ToolCallPartTests
     public void ToolCallPart_Equality_WhenSameValues_InstancesAreEqual()
     {
         var callId = new ToolCallId(Guid.NewGuid());
-        var tool = new ToolReference(new ToolId("t"), null, "tool");
+        var tool = new ToolReference(new ToolAlias("t"), null, null);
         new ToolCallPart(callId, tool, default, null, ExtensionData.Empty).ShouldBe(new ToolCallPart(callId, tool, default, null, ExtensionData.Empty));
     }
 
@@ -47,7 +47,7 @@ public sealed class ToolCallPartTests
         // Messages are immutable values; a part rebuilt from persisted JSON must equal its original so idempotent
         // replay, fingerprinting, and dedup do not depend on JsonElement backing-document identity.
         var callId = new ToolCallId(Guid.NewGuid());
-        var tool = new ToolReference(new ToolId("t"), null, "tool");
+        var tool = new ToolReference(new ToolAlias("t"), null, null);
         using var first = System.Text.Json.JsonDocument.Parse("""{"path":"a.txt","limit":10}""");
         using var second = System.Text.Json.JsonDocument.Parse("""{"path":"a.txt","limit":10}""");
 
@@ -61,7 +61,7 @@ public sealed class ToolCallPartTests
     [Fact]
     public void With_WhenToolIsNull_ThrowsArgumentNullException()
     {
-        var part = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("read"), null, "read"), default, null, ExtensionData.Empty);
+        var part = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("read"), null, null), default, null, ExtensionData.Empty);
 
         var exception = Should.Throw<ArgumentNullException>(() => part with { Tool = null! });
 

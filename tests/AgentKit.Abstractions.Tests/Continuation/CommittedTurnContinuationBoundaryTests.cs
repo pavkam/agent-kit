@@ -73,7 +73,7 @@ public sealed class CommittedTurnContinuationBoundaryTests
         var requestId = new ModelRequestId(Guid.Parse("20000000-0000-0000-0000-000000000001"));
         var parts = callIds.Select(static callId => (ContentPart) new ToolCallPart(
             callId,
-            new ToolReference(new ToolId("tool"), null, "tool"),
+            new ToolReference(new ToolAlias("tool"), null, null),
             default,
             null,
             ExtensionData.Empty)).ToImmutableArray();
