@@ -577,7 +577,7 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
     {
         using var document = JsonDocument.Parse($$"""{"target":"{{target}}"}""");
         var value = document.RootElement.Clone();
-        return toolArguments ? new ToolCallPart(callId, new ToolReference(new ToolId("test"), null, "test"), value, null, ExtensionData.Empty) : new StructuredDataPart(value, null, ExtensionData.Empty);
+        return toolArguments ? new ToolCallPart(callId, new ToolReference(new ToolAlias("test"), null, null), value, null, ExtensionData.Empty) : new StructuredDataPart(value, null, ExtensionData.Empty);
     }
 
     [Fact]

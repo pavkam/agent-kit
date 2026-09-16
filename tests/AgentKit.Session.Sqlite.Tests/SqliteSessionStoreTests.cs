@@ -489,7 +489,7 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
             using var arguments = JsonDocument.Parse("""{"path":"README.md","limit":10}""");
             var toolCall = new ToolCallPart(
                 Identifier<ToolCallId>(offset + 5),
-                new ToolReference(new ToolId("read"), null, "read"),
+                new ToolReference(new ToolAlias("read"), null, null),
                 arguments.RootElement.Clone(),
                 new ProviderToolCallId("call_1"),
                 ExtensionData.Empty);

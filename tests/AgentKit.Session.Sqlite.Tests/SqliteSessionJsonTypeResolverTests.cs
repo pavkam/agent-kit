@@ -21,7 +21,7 @@ public sealed class SqliteSessionJsonTypeResolverTests
         new TextPart("text", TextSemantics.Plain, ExtensionData.Empty),
         new StructuredDataPart(JsonDocument.Parse("""{"a":1}""").RootElement.Clone(), null, ExtensionData.Empty),
         new ToolCallPart(new ToolCallId(Guid.NewGuid()), Tool(), JsonDocument.Parse("{}").RootElement.Clone(), null, ExtensionData.Empty),
-        new ToolResultPart(new ToolCallId(Guid.NewGuid()), Tool(), Outcome(), [], ExtensionData.Empty),
+        new ToolResultPart(new ToolCallId(Guid.NewGuid()), Tool(), Outcome(), [], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty),
         new ReasoningPart(new ReasoningContent("why", ReasoningVisibility.Visible, null, ExtensionData.Empty), ExtensionData.Empty),
         new MediaReferencePart(
             new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "image/png", null, [1, 2], 2, null, ExtensionData.Empty),
@@ -118,7 +118,7 @@ public sealed class SqliteSessionJsonTypeResolverTests
         return options;
     }
 
-    private static ToolReference Tool() => new(new ToolId("search"), null, "search");
+    private static ToolReference Tool() => new(new ToolAlias("search"), null, null);
 
     private static ToolCallOutcome Outcome() => new(
         ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty);

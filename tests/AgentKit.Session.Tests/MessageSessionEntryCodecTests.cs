@@ -101,7 +101,7 @@ public sealed class MessageSessionEntryCodecTests
         var entry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1);
         var toolCall = new ToolCallPart(
             new ToolCallId(Guid.NewGuid()),
-            new ToolReference(new ToolId("search"), null, "search"),
+            new ToolReference(new ToolAlias("search"), new ToolId("search"), new ToolVersion("1")),
             JsonDocument.Parse("{}").RootElement.Clone(),
             null,
             ExtensionData.Empty);
