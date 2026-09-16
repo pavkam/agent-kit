@@ -6,6 +6,24 @@ namespace AgentKit.Tools.Plan.Tests;
 public sealed class SessionPlanStateStoreTests
 {
     [Fact]
+    public async Task Constructor_WhenUsingDefaultIntentOverload_UsesCollisionResistantIntentGenerator()
+    {
+        var sessions = SessionsWith(TestData.Entry());
+        var grants = new RecordingGrantStore();
+        var store = new SessionPlanStateStore(
+            sessions, grants, new FixedPlanIdGenerator(), new FixedEntryIdGenerator(), new FixedTimeProvider());
+        var fingerprint = PlanSecurityBinding.ReadFingerprint(TestData.Context.ToAddress());
+
+        var result = await store.ReadAsync(
+            new PlanReadRequest(TestData.Context, TestData.SessionProfile, TestData.ToolCallId, TestData.Grant(
+                store.SecurityAudience, SecurityOperationKind.StateRead, SecurityEffect.Observe, fingerprint)),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<PlanStateFound>();
+        grants.Intents.ShouldHaveSingleItem().Id.ShouldNotBe(default);
+    }
+
+    [Fact]
     public void Constructor_WhenIntentIdsIsNull_ThrowsWithExactParameterName()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new SessionPlanStateStore(
@@ -333,6 +351,277 @@ public sealed class SessionPlanStateStoreTests
     }
 
     [Fact]
+    public async Task ReplaceAsync_WhenGrantMismatches_PerformsNoSessionObservation()
+    {
+        var sessions = SessionsWith();
+        var store = Store(sessions, new RecordingGrantStore());
+        var wrong = new InputFingerprint("wrong");
+
+        var result = await store.ReplaceAsync(
+            new PlanReplaceRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                "Ship it",
+                TestData.Items(),
+                null,
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, wrong)),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<PlanStateDenied>();
+        sessions.LoadCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenSessionDoesNotExist_ReturnsFailedWithoutAppend()
+    {
+        var sessions = new RecordingSessionCoordinator
+        {
+            LoadResult = new SessionNotFound(TestData.Context.ToAddress()),
+        };
+        var store = Store(sessions, new RecordingGrantStore());
+        var fingerprint = PlanSecurityBinding.ReplaceFingerprint(
+            TestData.Context.ToAddress(), "Ship it", TestData.Items(), null);
+
+        var result = await store.ReplaceAsync(
+            new PlanReplaceRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                "Ship it",
+                TestData.Items(),
+                null,
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, fingerprint)),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<PlanStateFailed>().SafeMessage.ShouldContain("does not exist");
+        sessions.Appends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenSessionLoadFails_ReturnsFailedWithStoreMessage()
+    {
+        var sessions = new RecordingSessionCoordinator
+        {
+            LoadResult = new SessionLoadFailed("store unavailable"),
+        };
+        var store = Store(sessions, new RecordingGrantStore());
+        var fingerprint = PlanSecurityBinding.ReplaceFingerprint(
+            TestData.Context.ToAddress(), "Ship it", TestData.Items(), null);
+
+        var result = await store.ReplaceAsync(
+            new PlanReplaceRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                "Ship it",
+                TestData.Items(),
+                null,
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, fingerprint)),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<PlanStateFailed>().SafeMessage.ShouldBe("store unavailable");
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenPageReadFails_ReturnsFailedWithStoreMessage()
+    {
+        var sessions = new RecordingSessionCoordinator
+        {
+            LoadResult = new SessionLoaded(TestData.Descriptor(new SessionVersion(0))),
+        };
+        sessions.Pages.Enqueue(new SessionReadFailed("page read failed"));
+        var store = Store(sessions, new RecordingGrantStore());
+        var fingerprint = PlanSecurityBinding.ReplaceFingerprint(
+            TestData.Context.ToAddress(), "Ship it", TestData.Items(), null);
+
+        var result = await store.ReplaceAsync(
+            new PlanReplaceRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                "Ship it",
+                TestData.Items(),
+                null,
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, fingerprint)),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<PlanStateFailed>().SafeMessage.ShouldBe("page read failed");
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenAppendReportsConflict_ReturnsCurrentRevisionFromReload()
+    {
+        var sessions = SessionsWith();
+        sessions.AppendResult = new SessionAppendConflict(new SessionVersion(0), new SessionVersion(3));
+        sessions.Pages.Enqueue(new SessionPage([TestData.Entry(revision: 4)], new SessionSequence(1), false));
+        var store = Store(sessions, new RecordingGrantStore());
+        var fingerprint = PlanSecurityBinding.ReplaceFingerprint(
+            TestData.Context.ToAddress(), "Ship it", TestData.Items(), null);
+
+        var result = await store.ReplaceAsync(
+            new PlanReplaceRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                "Ship it",
+                TestData.Items(),
+                null,
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, fingerprint)),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<PlanStateConflict>().CurrentRevision.ShouldBe(new PlanRevision(4));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ReplaceAsync_WhenAppendFails_ReturnsFailedWithSafeMessage(bool notFound)
+    {
+        var sessions = SessionsWith();
+        sessions.AppendResult = notFound
+            ? new SessionAppendNotFound(TestData.Context.ToAddress())
+            : new SessionAppendFailed("append store failure");
+        var store = Store(sessions, new RecordingGrantStore());
+        var fingerprint = PlanSecurityBinding.ReplaceFingerprint(
+            TestData.Context.ToAddress(), "Ship it", TestData.Items(), null);
+
+        var result = await store.ReplaceAsync(
+            new PlanReplaceRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                "Ship it",
+                TestData.Items(),
+                null,
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, fingerprint)),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<PlanStateFailed>().SafeMessage.ShouldBe(
+            notFound ? "The target session no longer exists." : "append store failure");
+    }
+
+    [Fact]
+    public async Task SetStatusAsync_WhenGrantMismatches_PerformsNoSessionObservation()
+    {
+        var sessions = SessionsWith(TestData.Entry(first: PlanItemStatus.InProgress));
+        var store = Store(sessions, new RecordingGrantStore());
+        var wrong = new InputFingerprint("wrong");
+
+        var result = await store.SetStatusAsync(
+            new PlanStatusRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                new PlanItemId("one"),
+                PlanItemStatus.Completed,
+                new PlanRevision(1),
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, wrong)),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<PlanStateDenied>();
+        sessions.LoadCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task SetStatusAsync_WhenSessionDoesNotExist_ReturnsFailedWithStoreMessage()
+    {
+        var sessions = new RecordingSessionCoordinator
+        {
+            LoadResult = new SessionNotFound(TestData.Context.ToAddress()),
+        };
+        var store = Store(sessions, new RecordingGrantStore());
+        var expected = new PlanRevision(1);
+        var fingerprint = PlanSecurityBinding.StatusFingerprint(
+            TestData.Context.ToAddress(), new PlanItemId("one"), PlanItemStatus.Completed, expected);
+
+        var result = await store.SetStatusAsync(
+            new PlanStatusRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                new PlanItemId("one"),
+                PlanItemStatus.Completed,
+                expected,
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, fingerprint)),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<PlanStateFailed>().SafeMessage.ShouldContain("does not exist");
+    }
+
+    [Fact]
+    public async Task SetStatusAsync_WhenNoPlanExists_ReturnsMissing()
+    {
+        var sessions = SessionsWith();
+        var store = Store(sessions, new RecordingGrantStore());
+        var expected = new PlanRevision(1);
+        var fingerprint = PlanSecurityBinding.StatusFingerprint(
+            TestData.Context.ToAddress(), new PlanItemId("one"), PlanItemStatus.Completed, expected);
+
+        var result = await store.SetStatusAsync(
+            new PlanStatusRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                new PlanItemId("one"),
+                PlanItemStatus.Completed,
+                expected,
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, fingerprint)),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<PlanStateMissing>();
+    }
+
+    [Fact]
+    public async Task SetStatusAsync_WhenRevisionStale_ReturnsConflictWithoutAppend()
+    {
+        var sessions = SessionsWith(TestData.Entry(revision: 2));
+        var store = Store(sessions, new RecordingGrantStore());
+        var expected = new PlanRevision(1);
+        var fingerprint = PlanSecurityBinding.StatusFingerprint(
+            TestData.Context.ToAddress(), new PlanItemId("one"), PlanItemStatus.Completed, expected);
+
+        var result = await store.SetStatusAsync(
+            new PlanStatusRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                new PlanItemId("one"),
+                PlanItemStatus.Completed,
+                expected,
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, fingerprint)),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<PlanStateConflict>().CurrentRevision.ShouldBe(new PlanRevision(2));
+        sessions.Appends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SetStatusAsync_WhenItemIdDoesNotExist_ReturnsFailedWithoutAppend()
+    {
+        var sessions = SessionsWith(TestData.Entry());
+        var store = Store(sessions, new RecordingGrantStore());
+        var expected = new PlanRevision(1);
+        var missingId = new PlanItemId("does-not-exist");
+        var fingerprint = PlanSecurityBinding.StatusFingerprint(
+            TestData.Context.ToAddress(), missingId, PlanItemStatus.Completed, expected);
+
+        var result = await store.SetStatusAsync(
+            new PlanStatusRequest(
+                TestData.Context,
+                TestData.SessionProfile,
+                TestData.ToolCallId,
+                missingId,
+                PlanItemStatus.Completed,
+                expected,
+                TestData.Grant(store.SecurityAudience, SecurityOperationKind.StateMutation, SecurityEffect.Mutate, fingerprint)),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<PlanStateFailed>().SafeMessage.ShouldContain("does not exist");
+        sessions.Appends.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task SetStatusAsync_WhenItWouldCreateTwoActiveItems_FailsWithoutAppend()
     {
         var sessions = SessionsWith(TestData.Entry(first: PlanItemStatus.InProgress));
@@ -354,6 +643,18 @@ public sealed class SessionPlanStateStoreTests
 
         result.ShouldBeOfType<PlanStateFailed>().SafeMessage.ShouldContain("At most one");
         sessions.Appends.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void With_WhenReplacingPlan_ProducesAnIndependentCopy()
+    {
+        var entry = TestData.Entry();
+
+        var replaced = entry with { Plan = TestData.Plan(2) };
+
+        replaced.Plan.Revision.ShouldBe(new PlanRevision(2));
+        entry.Plan.Revision.ShouldBe(new PlanRevision(1));
+        replaced.ShouldNotBe(entry);
     }
 
     private static SessionPlanStateStore Store(

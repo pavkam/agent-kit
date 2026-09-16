@@ -65,7 +65,9 @@ public sealed class PlanToolPresentationFormatter: IToolPresentationFormatter
         {
             return (true, "none");
         }
-        return revision.TryGetInt64(out var value) ? (true, value.ToString(CultureInfo.InvariantCulture)) : (false, "");
+        return revision.ValueKind == JsonValueKind.Number && revision.TryGetInt64(out var value)
+            ? (true, value.ToString(CultureInfo.InvariantCulture))
+            : (false, "");
     }
 
     private static ToolPresentation? FormatResult(ToolResultPart result, ToolPresentationBounds bounds)

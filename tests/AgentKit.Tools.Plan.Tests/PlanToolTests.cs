@@ -52,6 +52,172 @@ public sealed class PlanToolTests
     }
 
     [Fact]
+    public void Descriptor_WhenRead_ExposesStableIdentity()
+    {
+        var tool = Tool(new RecordingPlanStateStore(), new RecordingSecurityAuthority());
+
+        tool.Descriptor.Id.ShouldBe(PlanTool.Id);
+        tool.Descriptor.ShouldBeSameAs(PlanTool.PresentationDescriptor);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSessionProfileMissing_PerformsNoAuthorizationOrStateAccess()
+    {
+        var store = new RecordingPlanStateStore();
+        var authority = new RecordingSecurityAuthority();
+        var context = new ToolExecutionContext(
+            TestData.AgentId,
+            TestData.SessionId,
+            TestData.ToolCallId,
+            TestData.Correlation,
+            TestData.Identity,
+            TestSupport.TestSecurityEvidence.Authorization(TestData.AgentId, TestData.SessionId, TestData.Correlation, TestData.Identity),
+            sessionProfile: null);
+        var request = new ToolInvocationRequest(context, JsonDocument.Parse( /*lang=json,strict*/"{\"action\":\"get\"}").RootElement, DateTimeOffset.UnixEpoch);
+
+        var result = await Tool(store, authority).InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.FailureReason!.ShouldContain("captured session profile");
+        authority.Requests.ShouldBeEmpty();
+        store.Reads.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenExpectedRevisionHasWrongType_RejectsWithSafeMessage()
+    {
+        var store = new RecordingPlanStateStore();
+        var authority = new RecordingSecurityAuthority();
+
+        var result = await Tool(store, authority).InvokeAsync(
+            Request( /*lang=json,strict*/"{\"action\":\"replace\",\"title\":\"T\",\"items\":[{\"id\":\"one\",\"text\":\"One\",\"status\":\"pending\"}],\"expected_revision\":\"not-a-number\"}"),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        authority.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenItemMissingRequiredField_RejectsWithoutStateAccess()
+    {
+        var store = new RecordingPlanStateStore();
+        var authority = new RecordingSecurityAuthority();
+
+        var result = await Tool(store, authority).InvokeAsync(
+            Request( /*lang=json,strict*/"{\"action\":\"replace\",\"title\":\"T\",\"items\":[{\"id\":\"one\",\"status\":\"pending\"}]}"),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        authority.Requests.ShouldBeEmpty();
+        store.Replacements.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSetStatusMissingItemId_RejectsWithoutStateAccess()
+    {
+        var store = new RecordingPlanStateStore();
+        var authority = new RecordingSecurityAuthority();
+
+        var result = await Tool(store, authority).InvokeAsync(
+            Request( /*lang=json,strict*/"{\"action\":\"set_status\",\"status\":\"completed\",\"expected_revision\":1}"),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        authority.Requests.ShouldBeEmpty();
+        store.StatusChanges.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSetStatusMissingStatus_RejectsWithoutStateAccess()
+    {
+        var store = new RecordingPlanStateStore();
+        var authority = new RecordingSecurityAuthority();
+
+        var result = await Tool(store, authority).InvokeAsync(
+            Request( /*lang=json,strict*/"{\"action\":\"set_status\",\"item_id\":\"one\",\"expected_revision\":1}"),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        authority.Requests.ShouldBeEmpty();
+        store.StatusChanges.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSetStatusUsesBlockedStatus_BindsBlockedStatus()
+    {
+        var store = new RecordingPlanStateStore
+        {
+            Result = new PlanStateFound(TestData.Plan(2)),
+        };
+        var authority = new RecordingSecurityAuthority();
+
+        _ = await Tool(store, authority).InvokeAsync(
+            Request( /*lang=json,strict*/"{\"action\":\"set_status\",\"item_id\":\"one\",\"status\":\"blocked\",\"expected_revision\":1}"),
+            TestContext.Current.CancellationToken);
+
+        store.StatusChanges.ShouldHaveSingleItem().Status.ShouldBe(PlanItemStatus.Blocked);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSetStatusUsesUnsupportedStatusValue_RejectsWithoutStateAccess()
+    {
+        var store = new RecordingPlanStateStore();
+        var authority = new RecordingSecurityAuthority();
+
+        var result = await Tool(store, authority).InvokeAsync(
+            Request( /*lang=json,strict*/"{\"action\":\"set_status\",\"item_id\":\"one\",\"status\":\"unknown_status\",\"expected_revision\":1}"),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        authority.Requests.ShouldBeEmpty();
+        store.StatusChanges.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenStoreReturnsFailed_ReturnsFailedWithSafeMessage()
+    {
+        var store = new RecordingPlanStateStore
+        {
+            Result = new PlanStateFailed("store failure"),
+        };
+        var result = await Tool(store, new RecordingSecurityAuthority()).InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.FailureReason.ShouldBe("store failure");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenFoundPlanHasEveryItemStatus_ProjectsEachStatusText()
+    {
+        var plan = new WorkPlan(
+            TestData.PlanId,
+            new PlanRevision(1),
+            "Ship it",
+            [
+                new WorkPlanItem(new PlanItemId("a"), "A", PlanItemStatus.Pending),
+                new WorkPlanItem(new PlanItemId("b"), "B", PlanItemStatus.InProgress),
+                new WorkPlanItem(new PlanItemId("c"), "C", PlanItemStatus.Completed),
+                new WorkPlanItem(new PlanItemId("d"), "D", PlanItemStatus.Blocked),
+            ],
+            TestData.Identity,
+            DateTimeOffset.UnixEpoch);
+        var store = new RecordingPlanStateStore
+        {
+            Result = new PlanStateFound(plan),
+        };
+
+        var result = await Tool(store, new RecordingSecurityAuthority()).InvokeAsync(Request( /*lang=json,strict*/"{\"action\":\"get\"}"), TestContext.Current.CancellationToken);
+
+        using var json = Json(result);
+        var items = json.RootElement.GetProperty("plan").GetProperty("items");
+        items[0].GetProperty("status").GetString().ShouldBe("pending");
+        items[1].GetProperty("status").GetString().ShouldBe("in_progress");
+        items[2].GetProperty("status").GetString().ShouldBe("completed");
+        items[3].GetProperty("status").GetString().ShouldBe("blocked");
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenReading_BindsExactObserveGrantAndProjectsMissingAsSuccess()
     {
         var store = new RecordingPlanStateStore();

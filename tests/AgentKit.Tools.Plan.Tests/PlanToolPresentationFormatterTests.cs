@@ -43,6 +43,105 @@ public sealed class PlanToolPresentationFormatterTests
         presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("The plan changed; current revision is 7.");
     }
 
+    [Fact]
+    public void Descriptor_WhenRead_MatchesPlanToolDescriptor() =>
+        new PlanToolPresentationFormatter().Descriptor.ShouldBeSameAs(PlanTool.PresentationDescriptor);
+
+    [Fact]
+    public async Task FormatAsync_WhenSourceKindIsUnsupported_ReturnsNull()
+    {
+        var presentation = await new PlanToolPresentationFormatter().FormatAsync(
+            new ToolPresentationRequest(PlanTool.PresentationDescriptor, new UnsupportedPresentationSource(), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenActionIsGet_ShowsFixedText()
+    {
+        var presentation = await FormatCall(/*lang=json,strict*/ """{"action":"get"}""");
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("Get current plan");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenActionIsUnsupported_ReturnsNull()
+    {
+        var presentation = await FormatCall(/*lang=json,strict*/ """{"action":"unknown"}""");
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenReplaceMissingTitle_ReturnsNull()
+    {
+        var presentation = await FormatCall(/*lang=json,strict*/ """{"action":"replace","items":[{"id":"a","text":"Test","status":"pending"}]}""");
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenReplaceItemsIsNotArray_ReturnsNull()
+    {
+        var presentation = await FormatCall(/*lang=json,strict*/ """{"action":"replace","title":"Ship","items":"not-an-array"}""");
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenStatusMissingItemIdOrStatus_ReturnsNull()
+    {
+        var presentation = await FormatCall(/*lang=json,strict*/ """{"action":"set_status","item_id":"a"}""");
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenReplaceOmitsExpectedRevision_ShowsNoneRevision()
+    {
+        var presentation = await FormatCall(/*lang=json,strict*/ """{"action":"replace","title":"Ship","items":[{"id":"a","text":"Test","status":"pending"}]}""");
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldContain("expected revision none");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenExpectedRevisionHasWrongType_ReturnsNull()
+    {
+        var presentation = await FormatCall(/*lang=json,strict*/ """{"action":"replace","title":"Ship","items":[{"id":"a","text":"Test","status":"pending"}],"expected_revision":"not-a-number"}""");
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenPlanObjectShapeIsMalformed_FallsBackToFailureOnly()
+    {
+        var presentation = await FormatResult(/*lang=json,strict*/ """{"plan":{"id":"plan-1"}}""", true);
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenItemShapeIsMalformed_FallsBackToFailureOnly()
+    {
+        var presentation = await FormatResult(
+            /*lang=json,strict*/ """{"plan":{"id":"plan-1","revision":1,"title":"Ship","items":[{"id":"a"}]}}""", true);
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenContentIsNotExactlyOneTextPart_FallsBackToFailureOnly()
+    {
+        var outcome = new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, "reason text", ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()),
+            new ToolReference(new ToolAlias("plan"), null, null),
+            outcome,
+            [],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+            ExtensionData.Empty);
+
+        var presentation = await new PlanToolPresentationFormatter().FormatAsync(
+            new ToolPresentationRequest(PlanTool.PresentationDescriptor, new ToolResultPresentationSource(result), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("reason text");
+    }
+
+    private sealed record UnsupportedPresentationSource: ToolPresentationSource;
+
     private static async Task<ToolPresentation?> FormatCall(string json)
     {
         using var document = JsonDocument.Parse(json);
