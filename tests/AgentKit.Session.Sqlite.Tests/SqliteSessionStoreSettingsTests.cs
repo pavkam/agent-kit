@@ -78,6 +78,28 @@ public sealed class SqliteSessionStoreSettingsTests
             .ParamName.ShouldBe("lockTimeout");
 
     [Fact]
+    public void ToString_WhenCalled_IncludesCapturedFieldNames()
+    {
+        var settings = SqliteSessionStoreSettings.CreateDefault();
+
+        var text = settings.ToString();
+
+        text.ShouldContain(nameof(SqliteSessionStoreSettings.LockTimeout));
+        text.ShouldContain(nameof(SqliteSessionStoreSettings.MaximumEntryPayloadBytes));
+    }
+
+    [Fact]
+    public void With_WhenCalledWithoutChanges_ClonesEveryField()
+    {
+        var settings = SqliteSessionStoreSettings.CreateDefault();
+
+        var cloned = settings with { };
+
+        cloned.ShouldNotBeSameAs(settings);
+        cloned.ShouldBe(settings);
+    }
+
+    [Fact]
     public void Equals_WhenSnapshotBoundDiffers_IsNotEqual()
     {
         var left = new SqliteSessionStoreSettings(TimeSpan.FromSeconds(1), 1, 1);

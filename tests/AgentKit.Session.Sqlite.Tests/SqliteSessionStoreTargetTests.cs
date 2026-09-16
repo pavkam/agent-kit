@@ -114,6 +114,32 @@ public sealed class SqliteSessionStoreTargetTests
     }
 
     [Fact]
+    public void ToString_WhenCalled_IncludesCapturedFieldNames()
+    {
+        var target = new SqliteSessionStoreTarget(
+            Path.Combine(Path.GetTempPath(), "sessions.db"), new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+            SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations);
+
+        var text = target.ToString();
+
+        text.ShouldContain(nameof(SqliteSessionStoreTarget.DatabasePath));
+        text.ShouldContain(nameof(SqliteSessionStoreTarget.OpenMode));
+    }
+
+    [Fact]
+    public void With_WhenCalledWithoutChanges_ClonesEveryField()
+    {
+        var target = new SqliteSessionStoreTarget(
+            Path.Combine(Path.GetTempPath(), "sessions.db"), new SqliteSessionStoreInstanceId(Guid.NewGuid()),
+            SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ApplyKnownMigrations);
+
+        var cloned = target with { };
+
+        cloned.ShouldNotBeSameAs(target);
+        cloned.ShouldBe(target);
+    }
+
+    [Fact]
     public void Equals_WhenInstanceIdDiffers_IsNotEqual()
     {
         var path = Path.Combine(Path.GetTempPath(), "sessions.db");
