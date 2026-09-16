@@ -432,6 +432,54 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    public async Task WriteAsync_WhenModeReplaceExistingAndTargetIsSymlinkOutsideRoot_ReturnsFailedWithoutOutsideEffect()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var fs = CreateFileSystem();
+        _ = Directory.CreateDirectory(_outsideRoot);
+        var outsidePath = Path.Combine(_outsideRoot, "secret.txt");
+        File.WriteAllText(outsidePath, "outside");
+        _ = File.CreateSymbolicLink(Path.Combine(_root, "secret-link.txt"), outsidePath);
+        var result = await fs.WriteAsync(new FileWriteRequest(
+            new FileSystemPath("secret-link.txt"), "replacement", FileWriteMode.ReplaceExisting, TestSecurity.Grant()),
+            TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<FileWriteFailed>();
+        File.ReadAllText(outsidePath).ShouldBe("outside");
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenModeReplaceExistingAndParentIsNotWritable_ReturnsFailedWithoutMutation()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var fs = CreateFileSystem();
+        var restricted = Path.Combine(_root, "restricted");
+        _ = Directory.CreateDirectory(restricted);
+        var target = Path.Combine(restricted, "notes.txt");
+        File.WriteAllText(target, "original");
+        File.SetUnixFileMode(restricted, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            var result = await fs.WriteAsync(new FileWriteRequest(
+                new FileSystemPath("restricted/notes.txt"), "replacement", FileWriteMode.ReplaceExisting, TestSecurity.Grant()),
+                TestContext.Current.CancellationToken);
+            result.ShouldBeOfType<FileWriteFailed>().SafeMessage.ShouldContain("staged");
+        }
+        finally
+        {
+            File.SetUnixFileMode(restricted, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            File.ReadAllText(target).ShouldBe("original");
+        }
+    }
+
+    [Fact]
     public async Task ReadAsync_WhenFileExceedsMaximumReadBytes_ReturnsFileReadFailed()
     {
         var fs = CreateFileSystem(o => o.MaximumReadBytes = 4);
@@ -659,6 +707,30 @@ public sealed class SandboxedFileSystemTests: IDisposable
         var result = await fs.GlobAsync(new GlobRequest(null, new GlobPattern("**/*.cs"), true, true, 10, 100, 20, TestSecurity.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(GlobStatus.NoMatches);
         result.Matches.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GlobAsync_WhenBaseDirectoryDoesNotExist_ReturnsNotFound()
+    {
+        var fs = CreateFileSystem();
+        var result = await fs.GlobAsync(new GlobRequest(new FileSystemPath("missing"), new GlobPattern("**/*.cs"), true, false, 10, 100, 20, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(GlobStatus.NotFound);
+        result.Complete.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GlobAsync_WhenBaseDirectoryIsSymlinkOutsideRoot_ReturnsDenied()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var fs = CreateFileSystem();
+        _ = Directory.CreateDirectory(_outsideRoot);
+        _ = Directory.CreateSymbolicLink(Path.Combine(_root, "outside-base"), _outsideRoot);
+        var result = await fs.GlobAsync(new GlobRequest(new FileSystemPath("outside-base"), new GlobPattern("**/*.cs"), true, false, 10, 100, 20, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(GlobStatus.Denied);
     }
 
     [Fact]
