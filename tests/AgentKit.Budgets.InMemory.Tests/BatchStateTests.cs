@@ -18,6 +18,24 @@ public sealed class BatchStateTests
         resultException.ParamName.ShouldBe("result");
     }
 
+    /// <summary>Verifies a valid construction exposes the exact captured request and result.</summary>
+    [Fact]
+    public void BatchState_WhenArgumentsAreValid_ExposesExactCapturedValues()
+    {
+        var request = CreateBatchRequest();
+        var receipt = new BudgetLedgerReservationReceipt(
+            new BudgetLedgerReservationReference(request.Scope, new BudgetReservationId(Guid.Parse("40000000-0000-0000-0000-000000000001"))),
+            request.OriginalRequests[0],
+            new BudgetEffectiveReservation(DateTimeOffset.UnixEpoch));
+        var result = new BudgetLedgerBatchReserved([receipt]);
+        var state = new BatchState(request, result);
+        state.Request.ShouldBeSameAs(request);
+        state.Result.ShouldBeSameAs(result);
+        var copy = state with { };
+        copy.Request.ShouldBeSameAs(request);
+        copy.Result.ShouldBeSameAs(result);
+    }
+
     private static BudgetLedgerBatchReserveRequest CreateBatchRequest()
     {
         var address = new BudgetScopeAddress(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.Parse("30000000-0000-0000-0000-000000000001")), null, null, null);

@@ -374,6 +374,366 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
         }
     }
 
+    /// <summary>Verifies scope creation rejects a nonexistent parent scope reference.</summary>
+    [Fact]
+    public async Task CreateScopeAsync_WhenParentScopeIsUnavailable_ThrowsReferenceUnavailable()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var missingParent = new BudgetScopeId(Guid.NewGuid());
+        var request = new BudgetLedgerScopeCreateRequest(
+            new BudgetScopeRequest(missingParent, Address(), [], new IdempotencyKey("missing-parent")),
+            new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5)));
+        _ = await Should.ThrowAsync<BudgetLedgerReferenceUnavailableException>(async () => await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>Verifies a child scope exceeding the captured maximum depth is rejected without persisting.</summary>
+    [Fact]
+    public async Task CreateScopeAsync_WhenDepthExceedsCapturedMaximum_ReturnsMaximumDepthRejection()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var shallowAdmission = new BudgetScopeAdmission(1, 32, TimeSpan.FromMinutes(5));
+        var root = (await ledger.CreateScopeAsync(ScopeRequest("depth-root", admission: shallowAdmission), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var childRequest = new BudgetLedgerScopeCreateRequest(
+            new BudgetScopeRequest(root.Id, Address(), [], new IdempotencyKey("depth-child")), shallowAdmission);
+        var rejected = (await ledger.CreateScopeAsync(childRequest, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreateRejected>();
+        rejected.Failure.Kind.ShouldBe(BudgetScopeCreationFailureKind.MaximumDepthExceeded);
+    }
+
+    /// <summary>Verifies a scope limit for an unregistered dimension is rejected without persisting.</summary>
+    [Fact]
+    public async Task CreateScopeAsync_WhenLimitDimensionIsUnregistered_ReturnsInvalidLimitRejection()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var request = new BudgetLedgerScopeCreateRequest(
+            new BudgetScopeRequest(null, Address(), [new BudgetLimit(new BudgetDimension("test.unregistered"), 10, new BudgetUnit("count"), BudgetLimitKind.Hard)], new IdempotencyKey("invalid-limit-dimension")),
+            new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5)));
+        var rejected = (await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreateRejected>();
+        rejected.Failure.Kind.ShouldBe(BudgetScopeCreationFailureKind.InvalidLimit);
+    }
+
+    /// <summary>Verifies concurrent atomic batches bound to disjoint idempotency keys cannot be replayed as one batch.</summary>
+    [Fact]
+    public async Task ReserveBatchAsync_WhenItemKeysBelongToDifferentBatches_ThrowsMutationConflict()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "batch-conflict-scope");
+        var firstItem = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.sum"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey("batch-conflict-a"));
+        var secondItem = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.sum"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey("batch-conflict-b"));
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [firstItem]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>();
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [secondItem]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>();
+        var mixedItem = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.sum"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey("batch-conflict-a"));
+        var otherMixedItem = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.sum"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey("batch-conflict-b"));
+        _ = await Should.ThrowAsync<BudgetLedgerMutationConflictException>(async () => await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [mixedItem, otherMixedItem]), TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>Verifies a dimension descriptor with an undefined aggregation kind is rejected before accounting.</summary>
+    [Fact]
+    public async Task ReserveBatchAsync_WhenDescriptorAggregationIsUndefined_ThrowsBudgetLedgerStateException()
+    {
+        var catalog = new UndefinedAggregationCatalog();
+        var ledger = new InMemoryBudgetLedger(TimeProvider.System, new SequentialIdGenerator<BudgetScopeId>(id => new(id)), new SequentialIdGenerator<BudgetReservationId>(id => new(id)), catalog);
+        var scope = (await ledger.CreateScopeAsync(new BudgetLedgerScopeCreateRequest(new BudgetScopeRequest(null, Address(), [], new IdempotencyKey("undefined-aggregation-scope")), new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5))), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var item = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.undefined"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey("undefined-aggregation-item"));
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken));
+        exception.Message.ShouldContain("undefined aggregation");
+    }
+
+    /// <summary>Verifies a reservation unit that conflicts with a captured scope limit's unit is rejected.</summary>
+    [Fact]
+    public async Task ReserveBatchAsync_WhenReservationUnitConflictsWithScopeLimit_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var request = new BudgetLedgerScopeCreateRequest(
+            new BudgetScopeRequest(null, Address(), [new BudgetLimit(new BudgetDimension("test.multi-unit"), 100, new BudgetUnit("count"), BudgetLimitKind.Hard)], new IdempotencyKey("limit-unit-conflict-scope")),
+            new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5)));
+        var scope = (await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var item = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.multi-unit"), 1, new BudgetUnit("bytes"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey("limit-unit-conflict-item"));
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken));
+        exception.Message.ShouldContain("captured scope limit");
+    }
+
+    /// <summary>Verifies a reservation identity source that produces a duplicate value is rejected.</summary>
+    [Fact]
+    public async Task ReserveBatchAsync_WhenReservationIdentitySourceProducesDuplicate_ThrowsBudgetLedgerStateException()
+    {
+        var duplicateId = new BudgetReservationId(Guid.Parse("70000000-0000-0000-0000-000000000001"));
+        var ledger = new InMemoryBudgetLedger(TimeProvider.System, new SequentialIdGenerator<BudgetScopeId>(id => new(id)), new ConstantIdGenerator<BudgetReservationId>(duplicateId), new InMemoryBudgetLedgerConformanceFixtureCatalog());
+        var scope = (await ledger.CreateScopeAsync(new BudgetLedgerScopeCreateRequest(new BudgetScopeRequest(null, Address(), [], new IdempotencyKey("duplicate-reservation-scope")), new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5))), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var firstItem = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.sum"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey("duplicate-reservation-first"));
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [firstItem]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>();
+        var secondItem = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.sum"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey("duplicate-reservation-second"));
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [secondItem]), TestContext.Current.CancellationToken));
+        exception.Message.ShouldContain("duplicate value");
+    }
+
+    /// <summary>Verifies unstarted expired reservations are cleaned up while admitting a fresh atomic batch.</summary>
+    [Fact]
+    public async Task ReserveBatchAsync_WhenPriorReservationExpired_CleansUpExpiredCapacityWhileAdmittingNewBatch()
+    {
+        var fixture = new InMemoryBudgetLedgerConformanceFixture();
+        var ledger = fixture.CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "expire-cleanup-scope");
+        _ = await ReserveAsync(ledger, scope, "expire-cleanup-first");
+        fixture.Advance(TimeSpan.FromMinutes(10));
+        var second = await ReserveAsync(ledger, scope, "expire-cleanup-second");
+        var snapshot = await ledger.GetSnapshotAsync(scope, TestContext.Current.CancellationToken);
+        snapshot.Usages.Single(usage => usage.Dimension == new BudgetDimension("test.sum")).Reserved.ShouldBe(BudgetQuantity.FromDecimal(1));
+        second.Id.ShouldNotBe(default);
+    }
+
+    /// <summary>Verifies starting an already-started reservation replays truthfully instead of double-counting.</summary>
+    [Fact]
+    public async Task MarkStartedAsync_WhenAlreadyStarted_ReturnsAlreadyStartedReplay()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "already-started-scope");
+        var reservation = await ReserveAsync(ledger, scope, "already-started-reservation");
+        _ = (await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetStarted>();
+        var second = (await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetStarted>();
+        second.WasAlreadyStarted.ShouldBeTrue();
+    }
+
+    /// <summary>Verifies releasing a settled reservation reports the terminal settlement instead of releasing capacity.</summary>
+    [Fact]
+    public async Task ReleaseUnstartedAsync_WhenReservationAlreadySettled_ReturnsAlreadySettled()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "already-settled-scope");
+        var reservation = await ReserveAsync(ledger, scope, "already-settled-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 1), TestContext.Current.CancellationToken);
+        var release = (await ledger.ReleaseUnstartedAsync(reservation, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerAlreadySettled>();
+        release.Commit.ShouldBe(commit);
+    }
+
+    /// <summary>Verifies releasing an already-released reservation is an idempotent no-op.</summary>
+    [Fact]
+    public async Task ReleaseUnstartedAsync_WhenCalledTwice_IsIdempotent()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "double-release-scope");
+        var reservation = await ReserveAsync(ledger, scope, "double-release-reservation");
+        _ = (await ledger.ReleaseUnstartedAsync(reservation, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerReleased>();
+        _ = (await ledger.ReleaseUnstartedAsync(reservation, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerReleased>();
+    }
+
+    /// <summary>Verifies settlement of a reservation that never started is rejected.</summary>
+    [Fact]
+    public async Task SettleAsync_WhenReservationNeverStarted_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "unstarted-settle-scope");
+        var reservation = await ReserveAsync(ledger, scope, "unstarted-settle-reservation");
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 1), TestContext.Current.CancellationToken));
+        exception.Message.ShouldContain("not started or is released");
+    }
+
+    /// <summary>Verifies correction before settlement is rejected.</summary>
+    [Fact]
+    public async Task CorrectAsync_WhenReservationNotYetSettled_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "unsettled-correct-scope");
+        var reservation = await ReserveAsync(ledger, scope, "unsettled-correct-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1), TestContext.Current.CancellationToken));
+        exception.Message.ShouldContain("Only settled accounting");
+    }
+
+    /// <summary>Verifies a correction revision that does not increase monotonically is rejected.</summary>
+    [Fact]
+    public async Task CorrectAsync_WhenRevisionDoesNotIncreaseMonotonically_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "non-monotonic-scope");
+        var reservation = await ReserveAsync(ledger, scope, "non-monotonic-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        _ = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 1), TestContext.Current.CancellationToken);
+        _ = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 5), TestContext.Current.CancellationToken);
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 3), TestContext.Current.CancellationToken));
+        exception.Message.ShouldContain("monotonically");
+    }
+
+    /// <summary>Verifies a page size above the captured finite ledger bound is rejected.</summary>
+    [Fact]
+    public async Task ReadUnresolvedStartedAsync_WhenPageSizeExceedsCapturedBound_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "page-size-scope");
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ReadUnresolvedStartedAsync(new BudgetUnresolvedReservationQuery(scope, 33, null), TestContext.Current.CancellationToken));
+        exception.Message.ShouldContain("page size");
+    }
+
+    /// <summary>Verifies reconciliation of an unstarted reservation is rejected.</summary>
+    [Fact]
+    public async Task ReconcileAsync_WhenReservationNeverStarted_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "unstarted-reconcile-scope");
+        var reservation = await ReserveAsync(ledger, scope, "unstarted-reconcile-reservation");
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ReconcileAsync(new BudgetLedgerReconciliationRequest(reservation, new BudgetStillUnknown(), new IdempotencyKey("unstarted-reconcile-key")), TestContext.Current.CancellationToken));
+        exception.Message.ShouldContain("started reservation");
+    }
+
+    /// <summary>Verifies estimated reconciliation evidence settles the reservation using the estimated actual.</summary>
+    [Fact]
+    public async Task ReconcileAsync_WhenEvidenceIsEstimated_SettlesUsingEstimatedActual()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "estimated-reconcile-scope");
+        var reservation = await ReserveAsync(ledger, scope, "estimated-reconcile-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var result = (await ledger.ReconcileAsync(new BudgetLedgerReconciliationRequest(reservation, new BudgetActualEstimated(1), new IdempotencyKey("estimated-reconcile-key")), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerReconciliationSettled>();
+        result.Commit.Actual.ShouldBe(1);
+    }
+
+    /// <summary>Verifies an overrun hold reference whose boundary is not part of the reservation's real lineage is rejected.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenBoundaryIsNotInReservationLineage_ThrowsReferenceUnavailable()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scopeA = await CreateScopeAsync(ledger, "lineage-scope-a");
+        var scopeB = await CreateScopeAsync(ledger, "lineage-scope-b");
+        var reservation = await ReserveAsync(ledger, scopeA, "lineage-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+        var realHold = commit.CreatedOverrunHolds.Single().Reference;
+        var unrelatedHold = new BudgetOverrunHoldReference(scopeB, reservation, realHold.TriggeringRevision);
+        var request = ResolutionRequest(unrelatedHold);
+        _ = await Should.ThrowAsync<BudgetLedgerReferenceUnavailableException>(async () => await ledger.ResolveOverrunHoldAsync(request, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>Verifies operator resolution is rejected for a hold owned by a boundary that did not capture the authorized-resolution policy.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenPolicyDoesNotAcceptOperatorResolution_ThrowsBudgetLedgerStateException()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var scope = await CreateScopeAsync(ledger, "wrong-policy-scope");
+        var reservation = await ReserveAsync(ledger, scope, "wrong-policy-reservation");
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+        var request = ResolutionRequest(commit.CreatedOverrunHolds.Single().Reference);
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.ResolveOverrunHoldAsync(request, TestContext.Current.CancellationToken));
+        exception.Message.ShouldContain("cannot accept operator resolution");
+    }
+
+    /// <summary>Verifies overrun resolution finds no hard-limit blockers for a dimension with no captured hard limit.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenDimensionHasNoHardLimit_FindsNoHardFailures()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var request = new BudgetLedgerScopeCreateRequest(
+            new BudgetScopeRequest(null, Address(), [], new IdempotencyKey("no-hard-limit-scope")),
+            new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5), BudgetOverrunHoldPolicy.RequireAuthorizedResolution));
+        var scope = (await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var item = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.unlimited"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey("no-hard-limit-item"));
+        var reservation = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+        _ = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1), TestContext.Current.CancellationToken);
+        var resolutionRequest = ResolutionRequest(commit.CreatedOverrunHolds.Single().Reference);
+        _ = (await ledger.ResolveOverrunHoldAsync(resolutionRequest, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetOverrunHoldResolved>();
+    }
+
+    /// <summary>Verifies overrun resolution correctly aggregates a maximum-aggregation dimension against its hard limit.</summary>
+    [Fact]
+    public async Task ResolveOverrunHoldAsync_WhenDimensionUsesMaximumAggregation_EvaluatesHardFailureWithMaximum()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var request = new BudgetLedgerScopeCreateRequest(
+            new BudgetScopeRequest(null, Address(), [new BudgetLimit(new BudgetDimension("test.maximum"), 1, new BudgetUnit("count"), BudgetLimitKind.Hard)], new IdempotencyKey("maximum-agg-scope")),
+            new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5), BudgetOverrunHoldPolicy.RequireAuthorizedResolution));
+        var scope = (await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var item = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.maximum"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey("maximum-agg-item"));
+        var reservation = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        var commit = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+        var resolutionRequest = ResolutionRequest(commit.CreatedOverrunHolds.Single().Reference);
+        var result = (await ledger.ResolveOverrunHoldAsync(resolutionRequest, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetOverrunHoldResolutionBlocked>();
+        result.HardLimitFailures.ShouldNotBeEmpty();
+    }
+
+    /// <summary>Verifies a correction eligible for automatic clearing with no captured hard limit clears the overrun hold.</summary>
+    [Fact]
+    public async Task CorrectAsync_WhenDimensionHasNoHardLimitAndCorrectionReturnsWithinReserved_ClearsOverrunHold()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var request = new BudgetLedgerScopeCreateRequest(
+            new BudgetScopeRequest(null, Address(), [], new IdempotencyKey("no-hard-limit-clear-scope")),
+            new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5)));
+        var scope = (await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var item = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.unlimited"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey("no-hard-limit-clear-item"));
+        var reservation = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        _ = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+        var corrected = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1), TestContext.Current.CancellationToken);
+        corrected.ClearedOverrunHolds.ShouldNotBeEmpty();
+    }
+
+    /// <summary>Verifies a correction eligible for automatic clearing on a concurrent-gauge dimension with a hard limit clears the overrun hold.</summary>
+    [Fact]
+    public async Task CorrectAsync_WhenDimensionUsesConcurrentGaugeAggregationAndCorrectionClears_ClearsOverrunHold()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var request = new BudgetLedgerScopeCreateRequest(
+            new BudgetScopeRequest(null, Address(), [new BudgetLimit(new BudgetDimension("test.gauge"), 10, new BudgetUnit("count"), BudgetLimitKind.Hard)], new IdempotencyKey("gauge-clear-scope")),
+            new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5)));
+        var scope = (await ledger.CreateScopeAsync(request, TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var operationId = new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001"));
+        var item = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.gauge"), 1, new BudgetUnit("count"), operationId, null, new IdempotencyKey("gauge-clear-item"));
+        var concurrentItem = new BudgetReservationRequest(scope.Id, new BudgetDimension("test.gauge"), 1, new BudgetUnit("count"), operationId, null, new IdempotencyKey("gauge-clear-concurrent-item"));
+        var reservation = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
+        _ = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [concurrentItem]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>();
+        _ = await ledger.MarkStartedAsync(reservation, TestContext.Current.CancellationToken);
+        _ = await ledger.SettleAsync(new BudgetLedgerSettlementRequest(reservation, 2), TestContext.Current.CancellationToken);
+        var corrected = await ledger.CorrectAsync(new BudgetLedgerCorrectionRequest(reservation, 1, 1), TestContext.Current.CancellationToken);
+        corrected.ClearedOverrunHolds.ShouldNotBeEmpty();
+    }
+
+    private sealed class UndefinedAggregationCatalog: IBudgetDimensionCatalog
+    {
+        public bool TryGet(BudgetDimension dimension, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BudgetDimensionDescriptor? descriptor)
+        {
+            if (dimension == new BudgetDimension("test.undefined"))
+            {
+                descriptor = new BudgetDimensionDescriptor(dimension, BudgetAggregationKind.Sum, [new BudgetUnit("count")]) with
+                {
+                    Aggregation = (BudgetAggregationKind) 99
+                };
+                return true;
+            }
+            descriptor = null;
+            return false;
+        }
+    }
+
+    private sealed class InMemoryBudgetLedgerConformanceFixtureCatalog: IBudgetDimensionCatalog
+    {
+        private static readonly ImmutableArray<BudgetDimensionDescriptor> Descriptors =
+        [
+            new(new BudgetDimension("test.sum"), BudgetAggregationKind.Sum, [new BudgetUnit("count")]),
+        ];
+
+        public bool TryGet(BudgetDimension dimension, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BudgetDimensionDescriptor? descriptor)
+        {
+            descriptor = Descriptors.FirstOrDefault(item => item.Dimension == dimension);
+            return descriptor is not null;
+        }
+    }
+
+    private sealed class SequentialIdGenerator<T>(Func<Guid, T> factory): IIdentifierGenerator<T>
+        where T : struct
+    {
+        private int _value;
+        public T Create() => factory(Guid.Parse($"80000000-0000-0000-0000-{Interlocked.Increment(ref _value):000000000000}"));
+    }
+
+    private sealed class ConstantIdGenerator<T>(T value): IIdentifierGenerator<T>
+        where T : struct
+    {
+        public T Create() => value;
+    }
+
     private static async Task<BudgetLedgerScopeReference> CreateScopeAsync(IBudgetLedger ledger, string key) => (await ledger.CreateScopeAsync(ScopeRequest(key), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
     private static BudgetLedgerScopeCreateRequest ScopeRequest(string key, BudgetScopeAddress? address = null, BudgetScopeAdmission? admission = null) => new(new BudgetScopeRequest(null, address ?? Address(), [new BudgetLimit(new BudgetDimension("test.sum"), 100, new BudgetUnit("count"), BudgetLimitKind.Hard)], new IdempotencyKey(key)), admission ?? new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5)));
     private static async Task<BudgetLedgerReservationReference> ReserveAsync(IBudgetLedger ledger, BudgetLedgerScopeReference scope, string key) => (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [new BudgetReservationRequest(scope.Id, new BudgetDimension("test.sum"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey(key))]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
@@ -397,6 +757,72 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
     }
 
     private static bool HasTag(Activity activity, string name) => !string.IsNullOrWhiteSpace(activity.GetTagItem(name)?.ToString());
+    /// <summary>Verifies the generated log-state accessors work through the classic non-generic enumeration surface
+    /// that some third-party logging providers use instead of the generic key/value interface.</summary>
+    [Fact]
+    public async Task Operations_WhenLoggerEnumeratesStateViaLegacyEnumerable_ExercisesGeneratedStateAccessors()
+    {
+        var logger = new LegacyEnumeratingLogger();
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger(logger);
+        var scope = await CreateScopeAsync(ledger, "legacy-enumerable-scope");
+        _ = await Should.ThrowAsync<BudgetLedgerReferenceUnavailableException>(async () => await ledger.GetSnapshotAsync(new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), Address()), TestContext.Current.CancellationToken));
+        logger.CompletedCounts.ShouldNotBeEmpty();
+        logger.FailedCounts.ShouldNotBeEmpty();
+        logger.CompletedCounts.ShouldAllBe(count => count > 0);
+        logger.FailedCounts.ShouldAllBe(count => count > 0);
+    }
+
+    private sealed class LegacyEnumeratingLogger: ILogger<InMemoryBudgetLedger>
+    {
+        internal List<int> CompletedCounts { get; } = [];
+        internal List<int> FailedCounts { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (state is not System.Collections.IEnumerable legacy)
+            {
+                return;
+            }
+
+            var count = 0;
+            foreach (var _ in legacy)
+            {
+                count++;
+            }
+
+            if (state is IReadOnlyList<KeyValuePair<string, object?>> indexed && indexed.Count > 0)
+            {
+                for (var index = 0; index < indexed.Count; index++)
+                {
+                    _ = indexed[index];
+                }
+
+                try
+                {
+                    _ = indexed[indexed.Count];
+                }
+                catch (IndexOutOfRangeException)
+                {
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                }
+            }
+
+            if (eventId.Id == 7050)
+            {
+                CompletedCounts.Add(count);
+            }
+            else if (eventId.Id == 7051)
+            {
+                FailedCounts.Add(count);
+            }
+        }
+    }
+
     private sealed class RecordingLogger: ILogger<InMemoryBudgetLedger>
     {
         internal List<(EventId EventId, string Message, IReadOnlyDictionary<string, object?> Tags)> Entries { get; } = [];
