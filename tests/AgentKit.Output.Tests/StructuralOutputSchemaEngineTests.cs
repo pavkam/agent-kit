@@ -5,6 +5,8 @@ namespace AgentKit.Output.Tests;
 
 using AgentKit.Conformance;
 
+using Microsoft.Extensions.Logging;
+
 /// <summary>Verifies StructuralOutputSchemaEngine behavior and contracts.</summary>
 public sealed class StructuralOutputSchemaEngineTests: OutputSchemaEngineConformanceTests<StructuralSchemaConformanceFixture>
 {
@@ -207,12 +209,158 @@ public sealed class StructuralOutputSchemaEngineTests: OutputSchemaEngineConform
         result.ShouldBeOfType<OutputSchemaEvaluationConfigurationRejected>().Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.ResourceLimitExceeded);
     }
 
+    [Theory]
+    [InlineData( /*lang=json,strict*/"""{"items":"not-a-schema"}""")]
+    [InlineData( /*lang=json,strict*/"""{"$schema":123}""")]
+    [InlineData( /*lang=json,strict*/"""{"title":123}""")]
+    [InlineData( /*lang=json,strict*/"""{"deprecated":"x"}""")]
+    [InlineData( /*lang=json,strict*/"""{"examples":"x"}""")]
+    [InlineData( /*lang=json,strict*/"""{"properties":"x"}""")]
+    [InlineData( /*lang=json,strict*/"""{"type":[]}""")]
+    [InlineData( /*lang=json,strict*/"""{"required":"x"}""")]
+    public void Preflight_WhenAKeywordValueHasTheWrongShape_ReturnsMalformedSchemaFailure(string json)
+    {
+        var result = _engine.Preflight(Request(json), TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<OutputSchemaPreflightRejected>().Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.MalformedSchema);
+    }
+
+    [Fact]
+    public void Preflight_WhenTypeIsANonEmptyArrayOfUniqueSupportedNames_ReturnsManifest()
+    {
+        var result = _engine.Preflight(Request( /*lang=json,strict*/"""{"type":["string","integer"]}"""), TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<OutputSchemaPreflightAccepted>();
+    }
+
+    [Theory]
+    [InlineData("[]", true)]
+    [InlineData("true", true)]
+    [InlineData("null", true)]
+    [InlineData("1.5", true)]
+    [InlineData("{}", false)]
+    public void Evaluate_WhenSchemaDeclaresAMultiTypeArray_MatchesEveryCandidateKind(string candidateJson, bool matches)
+    {
+        var result = Evaluate( /*lang=json,strict*/"""{"type":["array","boolean","null","number"]}""", candidateJson);
+        if (matches)
+        {
+            _ = result.ShouldBeOfType<OutputSchemaEvaluationPassed>();
+        }
+        else
+        {
+            _ = result.ShouldBeOfType<OutputSchemaCandidateInvalid>();
+        }
+    }
+
+    [Fact]
+    public void Evaluate_WhenMaximumIssuesIsReachedMidTraversal_StopsWithoutEvaluatingRemainingItems()
+    {
+        var schema = TestFactory.Schema( /*lang=json,strict*/"""{"type":"array","items":{"type":"integer"}}""");
+        var manifest = _engine.Preflight(new OutputSchemaPreflightRequest(schema, Limits), TestContext.Current.CancellationToken).ShouldBeOfType<OutputSchemaPreflightAccepted>().Manifest;
+        var candidate = TestFactory.ParseJson( /*lang=json,strict*/"""["a","b","c"]""");
+        var request = new OutputSchemaEvaluationRequest(schema, candidate, manifest, Limits, Limits, maximumIssues: 1);
+
+        var result = _engine.Evaluate(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<OutputSchemaCandidateInvalid>().Issues.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void Evaluate_WhenCandidateIsAnArrayWithoutDuplicateMembers_ReturnsPassed()
+    {
+        var result = Evaluate("true", /*lang=json,strict*/ """["a","b","c"]""");
+        _ = result.ShouldBeOfType<OutputSchemaEvaluationPassed>();
+    }
+
+    [Fact]
+    public void Preflight_WhenNestedObjectExceedsSmallNodeLimit_ReturnsResourceLimitFailure()
+    {
+        var request = new OutputSchemaPreflightRequest(TestFactory.Schema( /*lang=json,strict*/"""{"default":{"w":1}}"""), new OutputSchemaProcessingLimits(4096, 16, 2));
+        var result = _engine.Preflight(request, TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<OutputSchemaPreflightRejected>().Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.ResourceLimitExceeded);
+    }
+
+    [Fact]
+    public void Preflight_WhenNestedObjectExceedsSmallDepthLimit_ReturnsResourceLimitFailure()
+    {
+        var request = new OutputSchemaPreflightRequest(TestFactory.Schema( /*lang=json,strict*/"""{"default":{"a":{"b":1}}}"""), new OutputSchemaProcessingLimits(4096, 2, 100));
+        var result = _engine.Preflight(request, TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<OutputSchemaPreflightRejected>().Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.ResourceLimitExceeded);
+    }
+
     [Fact]
     public void Preflight_WhenCancellationIsRequested_ThrowsOperationCanceledException()
     {
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         _ = Should.Throw<OperationCanceledException>(() => _engine.Preflight(Request("true"), cancellation.Token));
+    }
+
+    [Fact]
+    public void Evaluate_WhenTheSchemaItselfFailsPreflight_ReturnsConfigurationRejection()
+    {
+        var accepted = _engine.Preflight(Request("true"), TestContext.Current.CancellationToken).ShouldBeOfType<OutputSchemaPreflightAccepted>();
+        var unsupportedSchema = TestFactory.Schema( /*lang=json,strict*/"""{"pattern":"x"}""");
+        var request = new OutputSchemaEvaluationRequest(unsupportedSchema, TestFactory.ParseJson("null"), accepted.Manifest, Limits, Limits, 1);
+
+        var result = _engine.Evaluate(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputSchemaEvaluationConfigurationRejected>().Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.UnsupportedVocabulary);
+    }
+
+    [Fact]
+    public void Evaluate_WhenCandidateExceedsConfiguredLocalLimits_ReturnsCandidateInvalid()
+    {
+        var schema = TestFactory.Schema("true");
+        var manifest = _engine.Preflight(new OutputSchemaPreflightRequest(schema, Limits), TestContext.Current.CancellationToken).ShouldBeOfType<OutputSchemaPreflightAccepted>().Manifest;
+        var tinyLimits = new OutputSchemaProcessingLimits(8, 16, 128);
+        var request = new OutputSchemaEvaluationRequest(schema, TestFactory.ParseJson("\"too long for the byte limit\""), manifest, Limits, tinyLimits, 1);
+
+        var result = _engine.Evaluate(request, TestContext.Current.CancellationToken);
+
+        var invalid = result.ShouldBeOfType<OutputSchemaCandidateInvalid>();
+        invalid.Issues.ShouldHaveSingleItem().Code.ShouldBe("candidate-resource-limit");
+    }
+
+    [Fact]
+    public void Preflight_WhenTheLoggerFailsAfterASuccessfulOutcome_PropagatesAfterObservingFailure()
+    {
+        var engine = new StructuralOutputSchemaEngine(new ThrowingLogger<StructuralOutputSchemaEngine>());
+
+        var exception = Should.Throw<InvalidTimeZoneException>(() => engine.Preflight(Request("true"), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("logger failure");
+    }
+
+    [Fact]
+    public void Evaluate_WhenTheLoggerFailsAfterASuccessfulOutcome_PropagatesAfterObservingFailure()
+    {
+        var schema = TestFactory.Schema("true");
+        var manifest = _engine.Preflight(new OutputSchemaPreflightRequest(schema, Limits), TestContext.Current.CancellationToken).ShouldBeOfType<OutputSchemaPreflightAccepted>().Manifest;
+        var engine = new StructuralOutputSchemaEngine(new ThrowingLogger<StructuralOutputSchemaEngine>());
+
+        var exception = Should.Throw<InvalidTimeZoneException>(() => engine.Evaluate(
+            new OutputSchemaEvaluationRequest(schema, TestFactory.ParseJson("null"), manifest, Limits, Limits, 1),
+            TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("logger failure");
+    }
+
+    /// <summary>Throws only on its first invocation so the engine's own failure-path logging can still complete.</summary>
+    private sealed class ThrowingLogger<TCategory>: ILogger<TCategory>
+    {
+        private int _calls;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                throw new InvalidTimeZoneException("logger failure");
+            }
+        }
     }
 
     private OutputSchemaEvaluationResult Evaluate(string schemaJson, string candidateJson)

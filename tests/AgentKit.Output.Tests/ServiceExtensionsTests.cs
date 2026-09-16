@@ -39,6 +39,7 @@ public sealed class ServiceExtensionsTests
         using var provider = services.BuildServiceProvider();
         _ = provider.GetRequiredService<IOutputProcessor>();
         _ = provider.GetRequiredService<IOutputDefinitionResolver>();
+        _ = provider.GetRequiredService<IOutputSchemaEngine>();
     }
 
     [Fact]
@@ -108,6 +109,18 @@ public sealed class ServiceExtensionsTests
             TestContext.Current.CancellationToken);
 
         _ = result.ShouldBeOfType<OutputAccepted>();
+    }
+
+    [Fact]
+    public void ReplaceOutputSchemaEngine_WhenUsingTheDefaultProfile_ReplacesRegisteredEngine()
+    {
+        var services = new ServiceCollection();
+
+        _ = services.AddAgentOutput();
+        _ = services.ReplaceOutputSchemaEngine<PatternOutputSchemaEngine>();
+
+        using var provider = services.BuildServiceProvider();
+        _ = provider.GetRequiredService<IOutputSchemaEngine>().ShouldBeOfType<PatternOutputSchemaEngine>();
     }
 
     [Fact]

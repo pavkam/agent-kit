@@ -42,6 +42,28 @@ public sealed class DefaultOutputProcessorTests
         exception.ParamName.ShouldBe("request");
     }
 
+    [Fact]
+    public async Task ProcessAsync_WhenCancelledBeforeProcessing_ThrowsOperationCanceledException()
+    {
+        var processor = CreateProcessor();
+        var definition = TestFactory.Definition();
+        var request = TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("hi"));
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => processor.ProcessAsync(request, cancellation.Token).AsTask());
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenAValidatorThrowsUnexpectedly_PropagatesAfterObservingFailure()
+    {
+        var validator = new FakeOutputValidator("boom", static _ => throw new InvalidOperationException("validator failure"));
+        var processor = CreateProcessor(validators: [validator]);
+        var definition = TestFactory.Definition(validators: [new OutputValidatorReference("boom")]);
+        var request = TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("hi"));
+        var exception = await Should.ThrowAsync<InvalidOperationException>(() => processor.ProcessAsync(request, TestContext.Current.CancellationToken).AsTask());
+        exception.Message.ShouldBe("validator failure");
+    }
+
     [Theory]
     [InlineData(OutputMode.SyntheticTool)]
     [InlineData(OutputMode.Media)]
@@ -235,6 +257,17 @@ public sealed class DefaultOutputProcessorTests
     }
 
     [Fact]
+    public async Task ProcessAsync_WhenStructuredCandidateIsAnArrayOfObjects_TraversesNestedArrayElements()
+    {
+        var processor = CreateProcessor();
+        var schema = TestFactory.Schema( /*lang=json,strict*/"""{"type":"array","items":{"type":"object","required":["name"]}}""");
+        var definition = TestFactory.Definition(OutputMode.NativeSchema, schema: schema);
+        var response = TestFactory.StructuredResponse(TestFactory.ParseJson( /*lang=json,strict*/"""[{"name":"a"},{"name":"b"}]"""));
+        var result = await processor.ProcessAsync(TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<OutputAccepted>();
+    }
+
+    [Fact]
     public async Task ProcessAsync_WhenSchemaIsOptional_RejectsDuplicateCandidateMembers()
     {
         var processor = CreateProcessor(options => options.RequireSchemaForStructuredModes = false);
@@ -399,6 +432,16 @@ public sealed class DefaultOutputProcessorTests
         var processor = CreateProcessor(options => options.MaximumCandidateBytes = 1);
         var definition = TestFactory.Definition(OutputMode.Text, retryPolicy: OutputRetryPolicy.None);
         var result = await processor.ProcessAsync(TestFactory.ProcessingRequest(definition, TestFactory.TextResponse("é")), TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<OutputRejected>().Failure.Kind.ShouldBe(OutputValidationFailureKind.OversizedCandidate);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WhenTrailingLoneSurrogateFlushExceedsMaximumBytes_ReturnsOversizedCandidate()
+    {
+        var processor = CreateProcessor(options => options.MaximumCandidateBytes = 1);
+        var definition = TestFactory.Definition(OutputMode.Text, retryPolicy: OutputRetryPolicy.None);
+        var response = TestFactory.TextResponse("\uD800");
+        var result = await processor.ProcessAsync(TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
         result.ShouldBeOfType<OutputRejected>().Failure.Kind.ShouldBe(OutputValidationFailureKind.OversizedCandidate);
     }
 
@@ -652,5 +695,38 @@ public sealed class DefaultOutputProcessorTests
         _ = result.ShouldBeOfType<OutputSchemaPreflightAccepted>();
     }
 
+    [Fact]
+    public async Task ProcessAsync_WhenTheSchemaEngineRejectsAtEvaluationTime_ReturnsConfigurationRejected()
+    {
+        var processor = new DefaultOutputProcessor([], new AlwaysRejectingAtEvaluateSchemaEngine(), DefaultOptions());
+        var definition = TestFactory.Definition(OutputMode.NativeSchema, schema: TestFactory.Schema("true"));
+        var response = TestFactory.StructuredResponse(TestFactory.ParseJson("\"anything\""));
+
+        var result = await processor.ProcessAsync(TestFactory.ProcessingRequest(definition, response), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<OutputConfigurationRejected>().Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.PreflightEvidenceMismatch);
+    }
+
     private static ActivitySamplingResult SampleAllData(ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded;
+
+    /// <summary>A test-only schema engine whose preflight always succeeds but whose evaluation always reports a configuration rejection.</summary>
+    private sealed class AlwaysRejectingAtEvaluateSchemaEngine: IOutputSchemaEngine
+    {
+        private static readonly JsonSchemaDialectId _dialect = new("urn:agentkit:test:always-reject:v1");
+
+        public OutputSchemaEngineProfile Profile { get; } = new(
+            new OutputSchemaProfileId("test-always-reject"),
+            new OutputSchemaProfileVersion(1),
+            _dialect,
+            [_dialect],
+            [],
+            []);
+
+        public OutputSchemaPreflightResult Preflight(OutputSchemaPreflightRequest request, CancellationToken cancellationToken = default) =>
+            new OutputSchemaPreflightAccepted(new OutputSchemaPreflightManifest(Profile, _dialect, new ContentHash("sha256:always"), request.Limits, 1, 1));
+
+        public OutputSchemaEvaluationResult Evaluate(OutputSchemaEvaluationRequest request, CancellationToken cancellationToken = default) =>
+            new OutputSchemaEvaluationConfigurationRejected(
+                new OutputSchemaConfigurationFailure(OutputSchemaConfigurationFailureKind.PreflightEvidenceMismatch, "Always rejected at evaluation time.", []));
+    }
 }

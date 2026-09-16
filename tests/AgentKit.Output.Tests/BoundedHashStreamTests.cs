@@ -51,4 +51,88 @@ public sealed class BoundedHashStreamTests
 
         _ = Should.Throw<OutputSchemaSizeLimitException>(() => stream.Write([1, 2]));
     }
+
+    [Fact]
+    public void Write_ByteArrayOverload_WhenWithinBounds_DelegatesToSpanOverload()
+    {
+        using var stream = new BoundedHashStream(8, TestContext.Current.CancellationToken);
+
+        stream.Write([1, 2, 3, 4], 1, 2);
+
+        stream.Length.ShouldBe(2L);
+    }
+
+    [Fact]
+    public void Capabilities_ReflectWriteOnlyBoundedContract()
+    {
+        using var stream = new BoundedHashStream(8, TestContext.Current.CancellationToken);
+
+        stream.CanRead.ShouldBeFalse();
+        stream.CanSeek.ShouldBeFalse();
+        stream.CanWrite.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Position_Get_ReflectsCumulativeBytesWritten()
+    {
+        using var stream = new BoundedHashStream(8, TestContext.Current.CancellationToken);
+
+        stream.Write([1, 2, 3]);
+
+        stream.Position.ShouldBe(3L);
+        stream.Length.ShouldBe(3L);
+    }
+
+    [Fact]
+    public void Position_Set_ThrowsNotSupportedException() =>
+        Should.Throw<NotSupportedException>(() =>
+        {
+            using var stream = new BoundedHashStream(8, TestContext.Current.CancellationToken);
+            stream.Position = 1;
+        });
+
+    [Fact]
+    public void Read_ThrowsNotSupportedException()
+    {
+        using var stream = new BoundedHashStream(8, TestContext.Current.CancellationToken);
+
+        _ = Should.Throw<NotSupportedException>(() => stream.Read(new byte[1], 0, 1));
+    }
+
+    [Fact]
+    public void Seek_ThrowsNotSupportedException()
+    {
+        using var stream = new BoundedHashStream(8, TestContext.Current.CancellationToken);
+
+        _ = Should.Throw<NotSupportedException>(() => stream.Seek(0, SeekOrigin.Begin));
+    }
+
+    [Fact]
+    public void SetLength_ThrowsNotSupportedException()
+    {
+        using var stream = new BoundedHashStream(8, TestContext.Current.CancellationToken);
+
+        _ = Should.Throw<NotSupportedException>(() => stream.SetLength(1));
+    }
+
+    [Fact]
+    public void Flush_WhenCancelled_ThrowsOperationCanceledException()
+    {
+        using var cancellation = new CancellationTokenSource();
+        using var stream = new BoundedHashStream(8, cancellation.Token);
+        cancellation.Cancel();
+
+        _ = Should.Throw<OperationCanceledException>(stream.Flush);
+    }
+
+    [Fact]
+    public void CompleteHash_WhenCalled_ReturnsStableLowercaseSha256Identity()
+    {
+        using var stream = new BoundedHashStream(8, TestContext.Current.CancellationToken);
+        stream.Write("abc"u8);
+
+        var hash = stream.CompleteHash();
+
+        hash.Value.ShouldBe("sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    }
 }

@@ -148,6 +148,19 @@ public sealed class InMemoryOutputDefinitionRegistryTests
     }
 
     [Fact]
+    public void Constructor_WhenAnAlternativeSchemaIsUnsupported_ThrowsTypedConfigurationException()
+    {
+        var definition = TestFactory.Definition(OutputMode.Union) with
+        {
+            Alternatives = [new OutputAlternative("choice", TestFactory.Schema(/*lang=json,strict*/"""{"pattern":"secret"}"""))],
+        };
+
+        var exception = Should.Throw<OutputDefinitionConfigurationException>(() => CreateRegistry([definition]));
+
+        exception.Failure.Kind.ShouldBe(OutputSchemaConfigurationFailureKind.UnsupportedVocabulary);
+    }
+
+    [Fact]
     public void Constructor_WhenTextModeDeclaresSchema_ThrowsTypedConfigurationException()
     {
         var definition = TestFactory.Definition(OutputMode.Text, schema: TestFactory.Schema("false"));
