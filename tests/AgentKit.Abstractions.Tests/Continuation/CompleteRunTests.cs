@@ -13,4 +13,19 @@ public sealed class CompleteRunTests
         exception.ParamName.ShouldBe("outcome");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new CompleteRun(new AgentRunIdle());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var outcome = new AgentRunIdle();
+        var decision = new CompleteRun(outcome);
+        decision.Outcome.ShouldBe(outcome);
+    }
 }

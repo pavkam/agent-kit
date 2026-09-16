@@ -13,4 +13,19 @@ public sealed class HaltRunTests
         exception.ParamName.ShouldBe("outcome");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new HaltRun(new AgentRunTurnLimitReached(1));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var outcome = new AgentRunTurnLimitReached(1);
+        var decision = new HaltRun(outcome);
+        decision.Outcome.ShouldBe(outcome);
+    }
 }

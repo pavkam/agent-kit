@@ -86,6 +86,17 @@ internal static class LoopTestData
             TimeSpan.FromMinutes(1),
             ExtensionData.Empty);
 
+    public static InputPromotionSnapshot PromotionSnapshot() =>
+        new(AgentId, SessionId, new ExecutionLaneId(Guid.Parse("b0000000-0000-0000-0000-00000000000b")), InRun(),
+            new OperationStateRevision(1), new SessionBranchCursor(BranchId, null), new SessionSequence(1), null, null,
+            PromotionBoundary.BeforeFirstModelRequest, null, TurnId, [new AdmissionId(Guid.Parse("b0000000-0000-0000-0000-00000000000c"))]);
+
+    public static OutputRetryRequired RetryRequired() =>
+        new(new OutputRepairInstruction("fix the output"), new OutputValidationFailure(OutputValidationFailureKind.SchemaValidationFailed, "invalid", []));
+
+    public static CommittedToolResultReference ToolResultReference(int value = 1) =>
+        new(new SessionEntryId(Guid.Parse($"b0000000-0000-0000-0000-0000000000{value:D2}")), new ToolCallId(Guid.Parse($"b1000000-0000-0000-0000-0000000000{value:D2}")), TurnId);
+
     public static ToolResultPart ToolResult() =>
         new(new ToolCallId(Guid.Parse("b0000000-0000-0000-0000-000000000009")), new ToolReference(new ToolAlias("t"), new ToolId("t"), new ToolVersion("1")),
             new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
