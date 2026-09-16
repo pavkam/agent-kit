@@ -43,6 +43,15 @@ public sealed class ModelDescriptorSourceSnapshotTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void Initializer_WhenConversationModelsAreValid_ReplacesValue()
+    {
+        var original = Snapshot();
+        var replacement = ProvidersTestData.Descriptor("other");
+        var copy = original with { ConversationModels = [replacement] };
+        copy.ConversationModels.ShouldBe([replacement]);
+    }
+
     private static ModelDescriptorSourceId SourceId() => new("source");
     private static ModelDescriptorSourceVersion Version() => new(1);
     private static ModelDescriptorSourceSnapshot Snapshot() => new(SourceId(), Version(), [ProvidersTestData.Descriptor()]);

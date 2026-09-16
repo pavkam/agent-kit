@@ -103,5 +103,16 @@ public sealed class ModelSelectionPolicyTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void Initializer_WhenValuesAreValid_ReplaceExistingValues()
+    {
+        var original = Policy();
+        var replacementCandidates = new[] { new ModelAlias("other") }.ToImmutableArray();
+        var replacementExtensions = new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("key", new ExtensionValue([1])));
+        var copy = original with { Candidates = replacementCandidates, Extensions = replacementExtensions };
+        copy.Candidates.ShouldBe(replacementCandidates);
+        copy.Extensions.ShouldBe(replacementExtensions);
+    }
+
     private static ModelSelectionPolicy Policy() => new([new ModelAlias("chat")]);
 }

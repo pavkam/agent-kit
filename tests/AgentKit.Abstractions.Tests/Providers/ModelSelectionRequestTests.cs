@@ -99,6 +99,27 @@ public sealed class ModelSelectionRequestTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void Initializer_WhenValuesAreValid_ReplaceExistingValues()
+    {
+        var original = Request();
+        var replacementScope = Scope();
+        var replacementPolicy = new ModelSelectionPolicy([new ModelAlias("other")]);
+        var replacementRequirements = new ModelRequirements { RequiresStreaming = true };
+        var replacementCatalog = new ModelCatalogSnapshot(new ModelCatalogVersion(2), []);
+        var copy = original with
+        {
+            Scope = replacementScope,
+            Policy = replacementPolicy,
+            Requirements = replacementRequirements,
+            Catalog = replacementCatalog,
+        };
+        copy.Scope.ShouldBe(replacementScope);
+        copy.Policy.ShouldBe(replacementPolicy);
+        copy.Requirements.ShouldBe(replacementRequirements);
+        copy.Catalog.ShouldBe(replacementCatalog);
+    }
+
     private static SecurityAuthorizationScope Scope() =>
         new(new AgentId(Guid.NewGuid()), null, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null));
 

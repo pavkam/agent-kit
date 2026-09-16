@@ -36,6 +36,15 @@ public sealed class ModelSelectionResultTests
     }
 
     [Fact]
+    public void ModelSelected_Initializer_WhenDecisionIsValid_ReplacesValue()
+    {
+        var original = new ModelSelected(ProvidersTestData.Decision());
+        var replacement = ProvidersTestData.Decision() with { Reason = "updated" };
+        var copy = original with { Decision = replacement };
+        copy.Decision.ShouldBe(replacement);
+    }
+
+    [Fact]
     public void NoCompatibleModel_WhenRequirementsIsNull_ThrowsExactArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => new NoCompatibleModel(null!, [ProvidersTestData.Diagnostic()])).ParamName.ShouldBe("requirements");
 
@@ -82,6 +91,16 @@ public sealed class ModelSelectionResultTests
     }
 
     [Fact]
+    public void NoCompatibleModel_Initializer_WhenValuesAreValid_ReplaceExistingValues()
+    {
+        var original = NoCompatibleModel();
+        var replacementRequirements = new ModelRequirements { RequiresStreaming = true };
+        var copy = original with { Requirements = replacementRequirements, Diagnostics = [ProvidersTestData.Diagnostic()] };
+        copy.Requirements.ShouldBe(replacementRequirements);
+        copy.Diagnostics.ShouldBe([ProvidersTestData.Diagnostic()]);
+    }
+
+    [Fact]
     public void InvalidModelPolicy_WhenReasonIsBlank_ThrowsExactArgumentException() =>
         Should.Throw<ArgumentException>(() => new InvalidModelPolicy(" ")).ParamName.ShouldBe("reason");
 
@@ -105,6 +124,14 @@ public sealed class ModelSelectionResultTests
         var original = new InvalidModelPolicy("invalid");
         var copy = original with { };
         copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void InvalidModelPolicy_Initializer_WhenReasonIsValid_ReplacesValue()
+    {
+        var original = new InvalidModelPolicy("invalid");
+        var copy = original with { Reason = "updated" };
+        copy.Reason.ShouldBe("updated");
     }
 
     private static NoCompatibleModel NoCompatibleModel() => new(ModelRequirements.None, [ProvidersTestData.Diagnostic()]);

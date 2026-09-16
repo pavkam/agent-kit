@@ -73,5 +73,14 @@ public sealed class ModelCatalogSnapshotTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void Initializer_WhenConversationModelsAreValid_ReplacesValue()
+    {
+        var original = Snapshot();
+        var replacement = ProvidersTestData.Descriptor("other");
+        var copy = original with { ConversationModels = [replacement] };
+        copy.ConversationModels.ShouldBe([replacement]);
+    }
+
     private static ModelCatalogSnapshot Snapshot() => new(new ModelCatalogVersion(1), [ProvidersTestData.Descriptor()]);
 }

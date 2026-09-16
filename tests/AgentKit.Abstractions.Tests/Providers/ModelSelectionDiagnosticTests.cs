@@ -46,4 +46,12 @@ public sealed class ModelSelectionDiagnosticTests
         var copy = original with { };
         copy.ShouldBe(original);
     }
+
+    [Fact]
+    public void Initializer_WhenReasonIsValid_ReplacesValue()
+    {
+        var original = ProvidersTestData.Diagnostic();
+        var copy = original with { Reason = "updated" };
+        copy.Reason.ShouldBe("updated");
+    }
 }
