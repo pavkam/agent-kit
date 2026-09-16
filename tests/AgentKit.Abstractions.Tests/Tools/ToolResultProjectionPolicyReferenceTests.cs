@@ -32,4 +32,12 @@ public sealed class ToolResultProjectionPolicyReferenceTests
     private static ToolResultProjectionPolicyReference Reference() => new(Key(), Version());
     [Fact]
     public void PolicyRecords_WhenInspected_ExposeGetOnlyProperties() => typeof(ToolResultProjectionPolicyReference).GetProperties(BindingFlags.Instance | BindingFlags.Public).ShouldAllBe(static property => property.SetMethod == null);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Reference();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

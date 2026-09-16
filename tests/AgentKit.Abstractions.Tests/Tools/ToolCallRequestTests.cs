@@ -33,7 +33,17 @@ public sealed class ToolCallRequestTests
         var request = new ToolCallRequest(tool, context, arguments, DateTimeOffset.UnixEpoch);
         request.Tool.ShouldBe(tool);
         request.Context.ShouldBe(context);
+        request.Arguments.GetRawText().ShouldBe(arguments.GetRawText());
         request.RequestedAt.ShouldBe(DateTimeOffset.UnixEpoch);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var tool = new ToolReference(new ToolAlias("t"), null, null);
+        var original = new ToolCallRequest(tool, ExecutionContext(), default, DateTimeOffset.UnixEpoch);
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 
     private static AgentId AgentId() => new(Guid.NewGuid());

@@ -137,6 +137,14 @@ public sealed class ToolsetPublicationTests
         first.ShouldNotBe(reordered);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Create([], []);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ToolsetPublication Create(
         ImmutableArray<ToolsetSourceSelection> sources,
         ImmutableArray<ToolAliasAssignment> aliases) => new(

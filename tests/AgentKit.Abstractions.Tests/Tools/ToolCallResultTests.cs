@@ -142,6 +142,33 @@ public sealed class ToolCallResultTests
     }
 
     [Fact]
+    public void ToolCallResult_Constructor_WhenSucceeded_RetainsCompleteEvidence()
+    {
+        var fixture = Fixture.Create();
+        var result = fixture.Result(status: ToolTerminalStatus.Succeeded, sideEffectCertainty: SideEffectCertainty.DefinitelyPerformed);
+        result.Status.ShouldBe(ToolTerminalStatus.Succeeded);
+        result.Error.ShouldBeNull();
+        _ = result.InvocationStartedAt.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void ToolCallResult_Constructor_WhenKeyedResolvedCallHasExternalKey_RetainsKey()
+    {
+        var fixture = Fixture.Create(idempotency: IdempotencyClassification.IdempotentWithKey);
+        var result = fixture.Result();
+        result.ExternalIdempotencyKey.ShouldBe(new IdempotencyKey("external"));
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var fixture = Fixture.Create();
+        var original = fixture.Result();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
     public void ToolCallResult_Equality_WhenOrderedContentDiffers_IsStructural()
     {
         var fixture = Fixture.Create();

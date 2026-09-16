@@ -21,4 +21,12 @@ public sealed class ToolsetSourceSelectionTests
         var selection = new ToolsetSourceSelection(new ToolSourceId("agentkit.tools.files"));
         selection.SourceId.ShouldBe(new ToolSourceId("agentkit.tools.files"));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolsetSourceSelection(new ToolSourceId("agentkit.tools.files"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

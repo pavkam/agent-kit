@@ -56,4 +56,12 @@ public sealed class ToolEffectsTests
         first.GetHashCode().ShouldBe(same.GetHashCode());
         first.ShouldNotBe(reordered);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolEffects(ToolEffect.ReadOnly, null, null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

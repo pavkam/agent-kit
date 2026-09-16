@@ -21,7 +21,16 @@ public sealed class ToolInvocationRequestTests
         var context = ExecutionContext();
         var request = new ToolInvocationRequest(context, default, DateTimeOffset.UnixEpoch);
         request.Context.ShouldBe(context);
+        request.Arguments.ValueKind.ShouldBe(System.Text.Json.JsonValueKind.Undefined);
         request.RequestedAt.ShouldBe(DateTimeOffset.UnixEpoch);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolInvocationRequest(ExecutionContext(), default, DateTimeOffset.UnixEpoch);
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 
     private static AgentId AgentId() => new(Guid.NewGuid());

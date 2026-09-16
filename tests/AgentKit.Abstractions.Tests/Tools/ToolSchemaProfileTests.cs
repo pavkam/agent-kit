@@ -45,6 +45,14 @@ public sealed class ToolSchemaProfileTests
         Create([], []).AssertionKeywords.ShouldBeEmpty();
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Create(["type"], ["title"]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ToolSchemaProfile Create(ImmutableArray<string> assertions, ImmutableArray<string> annotations) =>
         new(new("profile"), new(1), ToolSchemaTestData.Dialect, assertions, annotations);
 }

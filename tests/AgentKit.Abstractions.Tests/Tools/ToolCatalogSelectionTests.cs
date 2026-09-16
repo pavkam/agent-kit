@@ -51,6 +51,15 @@ public sealed class ToolCatalogSelectionTests
         Exact<ArgumentException>(() => _ = new ToolCatalogSelection([candidate], wrongCase), "aliases");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var candidate = ToolCatalogMergeTestData.Candidate();
+        var original = new ToolCatalogSelection([candidate], ImmutableDictionary<ToolAlias, ToolCatalogCandidate>.Empty.Add(new ToolAlias("read"), candidate));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static void Exact<TException>(Action action, string parameter) where TException : ArgumentException
     {
         var exception = Should.Throw<TException>(action);

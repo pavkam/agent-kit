@@ -25,4 +25,12 @@ public sealed class ToolSchemaLimitsTests
         limits.ShouldBe(new ToolSchemaLimits(1, 2, 3, int.MaxValue));
         limits.ShouldNotBe(new ToolSchemaLimits(1, 2, 3, 4));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolSchemaLimits(1, 2, 3, 4);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

@@ -253,6 +253,14 @@ public sealed class ToolCatalogSnapshotTests
         first.ShouldNotBe(Create([tool], Policies(tool), sourceVersions: Sources().Add(new("empty-source"), new("v1"))));
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Create();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ImmutableDictionary<ToolSourceId, ToolSourceVersion> Sources(string version = "source-7") =>
         ImmutableDictionary<ToolSourceId, ToolSourceVersion>.Empty.Add(new ToolSourceId("agentkit.tools.tests"), new ToolSourceVersion(version));
 

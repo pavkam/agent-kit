@@ -69,6 +69,15 @@ public sealed class ToolInvocationResultTests
         first.ShouldNotBe(second);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var content = ImmutableArray.Create<ContentPart>(Text("hi"));
+        var original = new ToolInvocationResult(SuccessOutcome(), content);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ToolCallOutcome SuccessOutcome() => new(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty);
 
     private static TextPart Text(string value) => new(value, TextSemantics.Plain, ExtensionData.Empty);

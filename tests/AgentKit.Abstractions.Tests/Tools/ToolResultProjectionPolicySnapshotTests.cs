@@ -89,4 +89,12 @@ public sealed class ToolResultProjectionPolicySnapshotTests
     private static ToolResultProjectionBounds Bounds() => new(1_024, 4);
     [Fact]
     public void PolicyRecords_WhenInspected_ExposeGetOnlyProperties() => typeof(ToolResultProjectionPolicySnapshot).GetProperties(BindingFlags.Instance | BindingFlags.Public).ShouldAllBe(static property => property.SetMethod == null);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolResultProjectionPolicySnapshot(Reference(), Bounds(), ToolResultProjectionTransformations.None, ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

@@ -14,4 +14,23 @@ public sealed class ToolCallAcceptanceEvidenceTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ToolCallAcceptanceEvidence(new GrantId(Guid.NewGuid()), default, DateTimeOffset.UnixEpoch));
         exception.ParamName.ShouldBe("validatedArgumentsFingerprint");
     }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var grantId = new GrantId(Guid.NewGuid());
+        var fingerprint = new InputFingerprint("sha256:accepted");
+        var evidence = new ToolCallAcceptanceEvidence(grantId, fingerprint, DateTimeOffset.UnixEpoch);
+        evidence.InvocationGrantId.ShouldBe(grantId);
+        evidence.ValidatedArgumentsFingerprint.ShouldBe(fingerprint);
+        evidence.AcceptedAt.ShouldBe(DateTimeOffset.UnixEpoch);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolCallAcceptanceEvidence(new GrantId(Guid.NewGuid()), new InputFingerprint("sha256:accepted"), DateTimeOffset.UnixEpoch);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

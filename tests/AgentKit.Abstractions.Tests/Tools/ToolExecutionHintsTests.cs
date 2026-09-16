@@ -57,4 +57,12 @@ public sealed class ToolExecutionHintsTests
         hints.ExpectedDuration.ShouldBeNull();
         hints.ApprovalMayBeCached.ShouldBeNull();
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolExecutionHints(ToolSchedulingMode.Unspecified, null, null, null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

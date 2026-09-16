@@ -30,4 +30,12 @@ public sealed class ToolExecutionPolicyReferenceTests
         reference.Version.ShouldBe(new ToolExecutionPolicyVersion(3));
         reference.ShouldBe(new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(3)));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolExecutionPolicyReference(new ToolExecutionPolicyKey("standard"), new ToolExecutionPolicyVersion(3));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

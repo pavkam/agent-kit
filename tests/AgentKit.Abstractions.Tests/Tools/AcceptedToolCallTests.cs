@@ -14,11 +14,36 @@ public sealed class AcceptedToolCallTests
         var fixture = Fixture.Create();
         var accepted = fixture.Accepted();
         accepted.AgentId.ShouldBe(fixture.AgentId);
+        accepted.SessionId.ShouldBe(fixture.SessionId);
+        accepted.TurnId.ShouldBe(fixture.TurnId);
+        accepted.OperationId.ShouldBe(fixture.OperationId);
         accepted.Authorization.ShouldBe(fixture.Authorization);
         accepted.Acceptance.ShouldBe(fixture.Acceptance);
+        accepted.ProviderAlias.ShouldBe(new ToolAlias("provider-tool"));
         accepted.ToolId.ShouldBe(fixture.ToolId);
+        accepted.ToolVersion.ShouldBe(fixture.ToolVersion);
+        accepted.ExternalIdempotencyKey.ShouldBeNull();
+        accepted.Admission.ShouldBe(fixture.Admission);
+        accepted.RequestedAt.ShouldBe(DateTimeOffset.UnixEpoch);
         _ = accepted.Normalization.ExecutionPolicy.ShouldNotBeNull();
         accepted.ProjectionPolicy.ShouldBe(fixture.ProjectionPolicy);
+    }
+
+    [Fact]
+    public void AcceptedToolCall_Constructor_WhenKeyedCallHasExternalKey_RetainsKey()
+    {
+        var fixture = Fixture.Create(idempotency: IdempotencyClassification.IdempotentWithKey);
+        var accepted = fixture.Accepted();
+        accepted.ExternalIdempotencyKey.ShouldBe(new IdempotencyKey("external"));
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var fixture = Fixture.Create();
+        var original = fixture.Accepted();
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 
     [Fact]

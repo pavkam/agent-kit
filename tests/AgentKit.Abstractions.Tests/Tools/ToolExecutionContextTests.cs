@@ -37,6 +37,22 @@ public sealed class ToolExecutionContextTests
         context.ToolCallId.ShouldBe(callId);
         context.Correlation.ShouldBe(correlation);
         context.Identity.ShouldBe(identity);
+        context.Authorization.ShouldBe(authorization);
+        _ = context.SessionProfile.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var agentId = AgentId();
+        var sessionId = SessionId();
+        var callId = ToolCallId();
+        var correlation = Correlation();
+        var identity = Identity();
+        var authorization = TestSupport.TestSecurityEvidence.Authorization(agentId, sessionId, correlation, identity);
+        var original = new ToolExecutionContext(agentId, sessionId, callId, correlation, identity, authorization, TestSupport.TestSecurityEvidence.SessionProfile());
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 
     [Fact]

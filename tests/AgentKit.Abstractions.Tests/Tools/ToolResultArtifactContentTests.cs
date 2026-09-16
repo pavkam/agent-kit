@@ -22,5 +22,22 @@ public sealed class ToolResultArtifactContentTests
         exception.ParamName.ShouldBe("extensions");
     }
 
+    [Fact]
+    public void ToolResultArtifactContent_Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var reference = Artifact();
+        var content = new ToolResultArtifactContent(reference, ExtensionData.Empty);
+        content.Reference.ShouldBeSameAs(reference);
+        content.Extensions.ShouldBe(ExtensionData.Empty);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolResultArtifactContent(Artifact(), ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ArtifactReference Artifact() => new(new ArtifactId(Guid.NewGuid()), new ArtifactVersion("1"), new ArtifactDirectoryId("output"), new ArtifactProfileKey("test"), new ArtifactProfileVersion(1), new TenantId("tenant"), new ArtifactOwnerId("session:owner"), new PrincipalId("principal"), "text/plain", 1, new ArtifactIntegrity(new ContentHash("hash"), DateTimeOffset.UnixEpoch), ArtifactDataClassification.Internal, ArtifactOwnershipKind.Session, ArtifactMutability.Immutable, new ArtifactRetention(new ArtifactRetentionPolicyKey("session"), null, false), DateTimeOffset.UnixEpoch);
 }

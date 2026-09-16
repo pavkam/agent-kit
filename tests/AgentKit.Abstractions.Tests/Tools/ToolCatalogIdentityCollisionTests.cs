@@ -34,6 +34,16 @@ public sealed class ToolCatalogIdentityCollisionTests
         Exact<ArgumentException>(() => _ = new ToolCatalogIdentityCollision([first, second]), "candidates");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var first = ToolCatalogMergeTestData.Candidate();
+        var second = ToolCatalogMergeTestData.Candidate("other", "other");
+        var original = new ToolCatalogIdentityCollision([first, second]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static void Exact<TException>(Action action, string parameter) where TException : ArgumentException
     {
         var exception = Should.Throw<TException>(action);

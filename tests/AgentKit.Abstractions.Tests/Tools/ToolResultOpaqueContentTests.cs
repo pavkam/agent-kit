@@ -17,6 +17,16 @@ public sealed class ToolResultOpaqueContentTests
         var content = new ToolResultOpaqueContent("vendor.future", payload, ExtensionData.Empty);
         content.TypeDiscriminator.ShouldBe("vendor.future");
         content.CanonicalPayload.ShouldBe(payload);
+        content.Extensions.ShouldBe(ExtensionData.Empty);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var payload = new ExtensionValue([.. Encoding.UTF8.GetBytes( /*lang=json,strict*/"{\"future\":true}")]);
+        var original = new ToolResultOpaqueContent("vendor.future", payload, ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 
     [Fact]

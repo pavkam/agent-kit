@@ -40,4 +40,12 @@ public sealed class ToolResultProjectionBoundsTests
 
     [Fact]
     public void PolicyRecords_WhenInspected_ExposeGetOnlyProperties() => typeof(ToolResultProjectionBounds).GetProperties(BindingFlags.Instance | BindingFlags.Public).ShouldAllBe(static property => property.SetMethod == null);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolResultProjectionBounds(1, 1);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

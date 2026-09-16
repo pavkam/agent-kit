@@ -29,6 +29,16 @@ public sealed class ToolCatalogMissingAliasTargetTests
         Exact<ArgumentException>(() => _ = new ToolCatalogMissingAliasTarget(candidate.Toolset, new(new ToolAlias("absent"), candidate.Identity)), "assignment");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var candidate = ToolCatalogMergeTestData.Candidate();
+        var assignment = candidate.Toolset.Aliases[0];
+        var original = new ToolCatalogMissingAliasTarget(candidate.Toolset, assignment);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static void Exact<TException>(Action action, string parameter) where TException : ArgumentException
     {
         var exception = Should.Throw<TException>(action);

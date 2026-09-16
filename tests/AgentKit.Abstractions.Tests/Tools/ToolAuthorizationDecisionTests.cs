@@ -16,4 +16,13 @@ public sealed class ToolAuthorizationDecisionTests
         _ = granted.ShouldBeOfType<ToolAuthorizationGranted>();
         _ = denied.ShouldBeOfType<ToolAuthorizationDenied>();
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var granted = new ToolAuthorizationGranted();
+        var deniedCopy = new ToolAuthorizationDenied("no") with { };
+        deniedCopy.ShouldBe(new ToolAuthorizationDenied("no"));
+        (granted with { }).ShouldBe(granted);
+    }
 }

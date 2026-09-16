@@ -60,6 +60,16 @@ public sealed class ToolCatalogAliasCollisionTests
         Exact<ArgumentException>(() => _ = new ToolCatalogAliasCollision(alias, [first, second]), "candidates");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var first = ToolCatalogMergeTestData.Candidate();
+        var second = ToolCatalogMergeTestData.Candidate("other", "other", "different");
+        var original = new ToolCatalogAliasCollision(new ToolAlias("read"), [first, second]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static void Exact<TException>(Action action, string parameter) where TException : ArgumentException
     {
         var exception = Should.Throw<TException>(action);

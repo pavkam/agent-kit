@@ -51,6 +51,14 @@ public sealed class ToolDiscoverySelectionTests
         Exact<ArgumentException>(() => _ = new ToolDiscoverySelection(ToolCaptureTestData.Discovery(), [], [a]), "providers");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolDiscoverySelection(ToolCaptureTestData.Discovery(), [], []);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static void Exact<TException>(Action action, string parameter) where TException : ArgumentException
     {
         var error = Should.Throw<TException>(action);

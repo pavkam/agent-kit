@@ -22,6 +22,30 @@ public sealed class ToolResultNormalizationSnapshotTests
         exception.ParamName.ShouldBe("rejectionPolicy");
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var rejection = RejectionPolicy();
+        var projection = ProjectionPolicy();
+        var bounds = new ToolResultBounds(1, 1);
+        var version = new ToolResultNormalizationAlgorithmVersion(1);
+        var snapshot = new ToolResultNormalizationSnapshot(rejection, projection, null, version, bounds, ToolResultProjectionTransformations.Redaction, ExtensionData.Empty);
+        snapshot.RejectionPolicy.ShouldBe(rejection);
+        snapshot.ProjectionPolicy.ShouldBe(projection);
+        snapshot.AlgorithmVersion.ShouldBe(version);
+        snapshot.Bounds.ShouldBe(bounds);
+        snapshot.AllowedTransformations.ShouldBe(ToolResultProjectionTransformations.Redaction);
+        snapshot.Extensions.ShouldBe(ExtensionData.Empty);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolResultNormalizationSnapshot(RejectionPolicy(), ProjectionPolicy(), null, new ToolResultNormalizationAlgorithmVersion(1), new ToolResultBounds(1, 1), ToolResultProjectionTransformations.None, ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ToolResultProjectionPolicyReference ProjectionPolicy() => new(new ToolResultProjectionPolicyKey("projection"), new ToolResultProjectionPolicyVersion(1));
     private static ToolResultRejectionPolicyReference RejectionPolicy() => new(new ToolResultRejectionPolicyKey("rejection"), new ToolResultRejectionPolicyVersion(1));
 }

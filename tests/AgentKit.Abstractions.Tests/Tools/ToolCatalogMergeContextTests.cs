@@ -41,6 +41,28 @@ public sealed class ToolCatalogMergeContextTests
         Exact<ArgumentException>(() => _ = new ToolCatalogMergeContext(request, [first], [new ToolCatalogAliasCollision(new ToolAlias("read"), [first, second])]), "collisions");
     }
 
+    [Fact]
+    public void Constructor_WhenCollisionIsMissingAliasTarget_AcceptsEmptyMembership()
+    {
+        var candidate = ToolCatalogMergeTestData.Candidate();
+        var request = ToolCatalogMergeTestData.Request([candidate.Toolset]);
+        var assignment = candidate.Toolset.Aliases[0];
+        var missing = new ToolCatalogMissingAliasTarget(candidate.Toolset, assignment);
+        var context = new ToolCatalogMergeContext(request, [candidate], [missing]);
+        context.Collisions.ShouldBe([missing]);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var first = ToolCatalogMergeTestData.Candidate();
+        var second = ToolCatalogMergeTestData.Candidate("other", "other");
+        var request = ToolCatalogMergeTestData.Request([first.Toolset, second.Toolset]);
+        var original = new ToolCatalogMergeContext(request, [first, second], [new ToolCatalogIdentityCollision([first, second])]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static void Exact<TException>(Action action, string parameter) where TException : ArgumentException
     {
         var exception = Should.Throw<TException>(action);

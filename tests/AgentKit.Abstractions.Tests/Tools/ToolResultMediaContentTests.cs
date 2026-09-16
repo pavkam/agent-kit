@@ -42,5 +42,22 @@ public sealed class ToolResultMediaContentTests
         content.Reference.ShouldBe(reference);
     }
 
+    [Fact]
+    public void ToolResultMediaContent_Constructor_WhenUriSourceRetainsUri_PreservesEvidence()
+    {
+        var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.Uri, "text/plain", new Uri("https://example.test/media"), [], 1, new ContentHash("hash"), ExtensionData.Empty);
+        var content = new ToolResultMediaContent(reference, ExtensionData.Empty);
+        content.Reference.ShouldBe(reference);
+        content.Extensions.ShouldBe(ExtensionData.Empty);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolResultMediaContent(Media(), ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static MediaReference Media() => new(new MediaId(Guid.NewGuid()), MediaSourceKind.InlineBytes, "text/plain", null, [1], 1, new ContentHash("hash"), ExtensionData.Empty);
 }

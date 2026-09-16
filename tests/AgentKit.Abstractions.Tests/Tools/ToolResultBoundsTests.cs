@@ -15,4 +15,12 @@ public sealed class ToolResultBoundsTests
         bounds.MaximumCanonicalBytes.ShouldBe(1);
         bounds.MaximumParts.ShouldBe(1);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolResultBounds(1, 1);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

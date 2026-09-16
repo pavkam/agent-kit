@@ -16,4 +16,12 @@ public sealed class ToolSchemaCompiledTests
         var handle = new CallbackCompiledToolSchema();
         new ToolSchemaCompiled(handle).Schema.ShouldBeSameAs(handle);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolSchemaCompiled(new CallbackCompiledToolSchema());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

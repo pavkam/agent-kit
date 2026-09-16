@@ -34,6 +34,14 @@ public sealed class ToolAuthorizationRequestTests
         request.Descriptor.ShouldBe(descriptor);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolAuthorizationRequest(ExecutionContext(), Descriptor());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static AgentId AgentId() => new(Guid.NewGuid());
     private static SessionId SessionId() => new(Guid.NewGuid());
     private static ToolCallId ToolCallId() => new(Guid.NewGuid());

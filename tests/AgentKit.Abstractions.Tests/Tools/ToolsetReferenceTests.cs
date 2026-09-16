@@ -32,4 +32,12 @@ public sealed class ToolsetReferenceTests
         reference.ShouldBe(same);
         reference.GetHashCode().ShouldBe(same.GetHashCode());
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolsetReference(new ToolsetKey("toolset"), new ToolExecutionPolicyKey("policy"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

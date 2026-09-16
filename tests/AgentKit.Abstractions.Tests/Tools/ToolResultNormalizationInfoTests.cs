@@ -36,4 +36,42 @@ public sealed class ToolResultNormalizationInfoTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ToolResultNormalizationInfo([], 2, null, 3, null, ExtensionData.Empty));
         exception.ParamName.ShouldBe("omittedCanonicalBytes");
     }
+
+    [Fact]
+    public void ToolResultNormalizationInfo_Constructor_WhenInputPartsIsNegative_ThrowsExactException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ToolResultNormalizationInfo([], null, -1, null, null, ExtensionData.Empty));
+        exception.ParamName.ShouldBe("inputParts");
+    }
+
+    [Fact]
+    public void ToolResultNormalizationInfo_Constructor_WhenOmittedPartsIsNegative_ThrowsExactException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ToolResultNormalizationInfo([], null, null, null, -1, ExtensionData.Empty));
+        exception.ParamName.ShouldBe("omittedParts");
+    }
+
+    [Fact]
+    public void ToolResultNormalizationInfo_Constructor_WhenOmittedPartsExceedsInputParts_ThrowsExactException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ToolResultNormalizationInfo([], null, 2, null, 3, ExtensionData.Empty));
+        exception.ParamName.ShouldBe("omittedParts");
+    }
+
+    [Fact]
+    public void Equality_WhenEquivalentTransformationsDifferByInstance_IsStructurallyEqual()
+    {
+        var left = new ToolResultNormalizationInfo([ToolResultNormalizationTransformation.Redacted], 10, 2, 1, 1, ExtensionData.Empty);
+        var right = new ToolResultNormalizationInfo([ToolResultNormalizationTransformation.Redacted], 10, 2, 1, 1, ExtensionData.Empty);
+        left.ShouldBe(right);
+        left.GetHashCode().ShouldBe(right.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolResultNormalizationInfo([ToolResultNormalizationTransformation.Redacted], 10, 2, 1, 1, ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

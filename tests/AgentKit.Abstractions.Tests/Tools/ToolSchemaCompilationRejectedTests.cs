@@ -17,4 +17,12 @@ public sealed class ToolSchemaCompilationRejectedTests
     [InlineData(ToolSchemaRejectionReason.ResourceLimitExceeded)]
     public void Constructor_WhenReasonDefined_RetainsTypedRejection(ToolSchemaRejectionReason reason) =>
         new ToolSchemaCompilationRejected(reason).Reason.ShouldBe(reason);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolSchemaCompilationRejected(ToolSchemaRejectionReason.InvalidSchema);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

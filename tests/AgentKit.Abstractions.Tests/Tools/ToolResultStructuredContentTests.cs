@@ -40,4 +40,32 @@ public sealed class ToolResultStructuredContentTests
         var exception = Should.Throw<ArgumentNullException>(() => new ToolResultStructuredContent(document.RootElement, null, null!));
         exception.ParamName.ShouldBe("extensions");
     }
+
+    [Fact]
+    public void ToolResultStructuredContent_Constructor_WhenSchemaVersionIsDefault_ThrowsExactException()
+    {
+        using var document = JsonDocument.Parse("{}");
+        var schema = new JsonSchemaReference("schema-name", default);
+        var exception = Should.Throw<ArgumentException>(() => new ToolResultStructuredContent(document.RootElement, schema, ExtensionData.Empty));
+        exception.ParamName.ShouldBe("schema");
+    }
+
+    [Fact]
+    public void ToolResultStructuredContent_Constructor_WhenSchemaIsValid_RetainsSchema()
+    {
+        using var document = JsonDocument.Parse("{}");
+        var schema = new JsonSchemaReference("schema-name", new SchemaVersion("1"));
+        var content = new ToolResultStructuredContent(document.RootElement, schema, ExtensionData.Empty);
+        content.Schema.ShouldBe(schema);
+        content.Extensions.ShouldBe(ExtensionData.Empty);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        using var document = JsonDocument.Parse("{}");
+        var original = new ToolResultStructuredContent(document.RootElement, null, ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

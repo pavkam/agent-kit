@@ -76,6 +76,14 @@ public sealed class ToolDescriptorTests
             .ShouldNotBe(Create(inputSchema: Schema(/*lang=json,strict*/ "{\"type\":\"object\"}")));
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Create();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ToolDescriptor Create(
         string name = "tool",
         string description = "description",

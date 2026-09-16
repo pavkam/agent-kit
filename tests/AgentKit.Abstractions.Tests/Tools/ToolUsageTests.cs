@@ -35,4 +35,13 @@ public sealed class ToolUsageTests
         var exception = Should.Throw<ArgumentException>(() => new ToolUsage(default, ExtensionData.Empty));
         exception.ParamName.ShouldBe("measurements");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var measurement = new ToolUsageMeasurement(new BudgetDimension("requests"), new BudgetUnit("count"), BudgetQuantity.FromDecimal(1), ToolUsageMeasurementQuality.Measured);
+        var original = new ToolUsage([measurement], ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

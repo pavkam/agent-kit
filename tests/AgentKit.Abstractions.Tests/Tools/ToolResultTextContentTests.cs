@@ -28,4 +28,21 @@ public sealed class ToolResultTextContentTests
         var exception = Should.Throw<ArgumentNullException>(() => new ToolResultTextContent("text", TextSemantics.Plain, null!));
         exception.ParamName.ShouldBe("extensions");
     }
+
+    [Fact]
+    public void ToolResultTextContent_Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var content = new ToolResultTextContent("text", TextSemantics.Plain, ExtensionData.Empty);
+        content.Text.ShouldBe("text");
+        content.Semantics.ShouldBe(TextSemantics.Plain);
+        content.Extensions.ShouldBe(ExtensionData.Empty);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ToolResultTextContent("text", TextSemantics.Plain, ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
