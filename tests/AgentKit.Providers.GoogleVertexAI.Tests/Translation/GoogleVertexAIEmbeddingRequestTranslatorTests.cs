@@ -122,4 +122,24 @@ public sealed class GoogleVertexAIEmbeddingRequestTranslatorTests
         _ = Should.Throw<NotSupportedException>(
             () => new GoogleVertexAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest)));
     }
+
+    [Fact]
+    public void Translate_WhenTruncationIsUndefined_ThrowsNotSupportedException()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)], EmbeddingPurpose.Unspecified, null, null, (EmbeddingTruncation) 999, ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(
+            () => new GoogleVertexAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest)));
+    }
+
+    [Fact]
+    public void Translate_WhenPurposeIsUndefined_ThrowsNotSupportedException()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)], (EmbeddingPurpose) 999, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(
+            () => new GoogleVertexAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest)));
+    }
 }
