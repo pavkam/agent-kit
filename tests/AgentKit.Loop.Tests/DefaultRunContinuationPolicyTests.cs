@@ -108,6 +108,32 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
     }
 
     [Fact]
+    public async Task DecideAsync_WhenOutputRetryDecisionHasNoMatchingRepairCause_HaltsInvalidState()
+    {
+        var fixture = CreateFixture();
+        var retry = CreateRetry();
+        var boundary = fixture.CreateCommittedBoundary(retry, requiresOutput: true);
+        var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(boundary, []), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunInvalidState>()
+            .SafeMessage.ShouldContain("output retry decision");
+    }
+
+    [Fact]
+    public async Task DecideAsync_WhenCommittedTurnHasToolResultsButNoMatchingCauseExists_HaltsInvalidState()
+    {
+        // RunContinuationContext itself validates any *present* CommittedToolResultsContinuationCause against the
+        // boundary, so the only way to reach the policy's own mismatch guard is to omit the cause entirely.
+        var fixture = CreateFixture();
+        var boundary = fixture.CreateCommittedBoundaryWithToolResult(out _);
+
+        var decision = await fixture.Policy.DecideAsync(fixture.CreateContext(boundary, []), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunInvalidState>()
+            .SafeMessage.ShouldContain("Committed tool results");
+    }
+
+    [Fact]
     public async Task DecideAsync_WhenRetryBoundaryIsSafeButNoRetryEvidenceExists_HaltsInvalidState()
     {
         var fixture = CreateFixture();
@@ -166,6 +192,36 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
             var response = TestFactory.Response(requestId, [new TextPart("answer", TextSemantics.Plain, ExtensionData.Empty)], NormalizedStopReason.Completed);
             var message = new AssistantMessage(new MessageId(Guid.Parse("88888888-8888-8888-8888-888888888888")), _agentId, _sessionId, null, _branchId, _runId, turnId, DateTimeOffset.UnixEpoch, MessageState.Complete, response.Parts, new AssistantResponseMetadata(response.RequestId, response.Identity, response.StopReason, null, response.Usage, ExtensionData.Empty), ExtensionData.Empty);
             return new CommittedTurnContinuationBoundary(message, [], decision, requiresOutput);
+        }
+
+        /// <summary>Creates a committed boundary whose response requested one tool call, with its correlated reference.</summary>
+        public CommittedTurnContinuationBoundary CreateCommittedBoundaryWithToolResult(out CommittedToolResultReference reference)
+        {
+            var turnId = new TurnId(Guid.Parse("66666666-6666-6666-6666-666666666666"));
+            var callId = new ToolCallId(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"));
+            var response = new AssistantMessage(
+                new MessageId(Guid.Parse("88888888-8888-8888-8888-888888888888")),
+                _agentId,
+                _sessionId,
+                null,
+                _branchId,
+                _runId,
+                turnId,
+                DateTimeOffset.UnixEpoch,
+                MessageState.Complete,
+                [new ToolCallPart(callId, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty)],
+                new AssistantResponseMetadata(
+                    new ModelRequestId(Guid.Parse("77777777-7777-7777-7777-777777777777")),
+                    new ProviderResponseIdentity(
+                        new ProviderId("test-provider"), null, new ApiFamilyId("test-api"), new ModelId("test-model"),
+                        new ModelId("test-model"), null, null, null),
+                    NormalizedStopReason.ToolUse,
+                    rawStopReason: null,
+                    ModelUsage.NotReported,
+                    ExtensionData.Empty),
+                ExtensionData.Empty);
+            reference = new CommittedToolResultReference(new SessionEntryId(Guid.NewGuid()), callId, turnId);
+            return new CommittedTurnContinuationBoundary(response, [reference], null, false);
         }
 
         /// <summary>Creates promotion evidence correlated with this fixture's committed turn.</summary>
