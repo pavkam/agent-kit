@@ -23,8 +23,13 @@ dotnet test --solution AgentKit.slnx --configuration Release --no-build --timeou
 `make test` restores and builds before running that solution command. For
 coverage, `make coverage` creates a report at
 `artifacts/coverage/report/index.html`; `make coverage-check` also applies the
-configured line-coverage threshold. Coverage measures exercised code, not
-complete architectural conformance.
+configured line-coverage threshold (`COVERAGE_MINIMUM_LINE`, currently 90%).
+Coverage measures exercised code, not complete architectural conformance.
+
+[CI](../../.github/workflows/ci.yml) runs `make coverage-check` on every pull
+request and push to `main`, then uploads the merged Cobertura report to
+[Codecov](https://codecov.io/gh/pavkam/agent-kit), which backs the coverage
+badge in [the README](../../README.md).
 
 ## Know what each layer proves
 

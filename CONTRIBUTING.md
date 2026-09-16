@@ -72,14 +72,15 @@ Run a focused project from the repository root:
 dotnet test --project tests/AgentKit.Providers.Tests/AgentKit.Providers.Tests.csproj --configuration Release --timeout 300s
 ```
 
-Before submitting a code change, run the same build, test, and lint gates used
-by [CI](.github/workflows/ci.yml):
+Before submitting a code change, run the same build, test, lint, and coverage
+gates used by [CI](.github/workflows/ci.yml):
 
 ```sh
 make format
 make lint
 make build
 make test
+make coverage-check
 ```
 
 For a documentation-only change, format the files you edited, then run:

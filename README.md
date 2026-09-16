@@ -3,6 +3,7 @@
 Build agents in C# from parts you can see, swap, and trust.
 
 [![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/pavkam/agent-kit/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/pavkam/agent-kit/branch/main/graph/badge.svg)](https://codecov.io/gh/pavkam/agent-kit)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)](global.json)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange)](docs/getting-started.md#current-status)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
