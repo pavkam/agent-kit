@@ -998,6 +998,135 @@ public sealed class SandboxedFileSystemTests: IDisposable
         result.Complete.ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task SearchAsync_WhenBaseDirectoryDoesNotExist_ReturnsNotFound()
+    {
+        var fileSystem = CreateFileSystemSandboxedFileSystemSearch();
+        var request = Request(new FileSearchPattern("needle", FileSearchPatternKind.Literal), basePath: new FileSystemPath("missing"));
+        var result = await fileSystem.SearchAsync(request, TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSearchStatus.NotFound);
+        result.Complete.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenBaseDirectoryIsSymlinkOutsideRoot_ReturnsDenied()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var outside = Path.Combine(Path.GetTempPath(), $"agentkit-search-base-outside-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(outside);
+        try
+        {
+            _ = Directory.CreateSymbolicLink(Path.Combine(_rootSandboxedFileSystemSearch, "outside-base"), outside);
+            var fileSystem = CreateFileSystemSandboxedFileSystemSearch();
+            var request = Request(new FileSearchPattern("needle", FileSearchPatternKind.Literal), basePath: new FileSystemPath("outside-base"));
+            var result = await fileSystem.SearchAsync(request, TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(FileSearchStatus.Denied);
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenSubdirectoryPermissionDenied_ReturnsDeniedWithoutVisitingItsContent()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var restricted = Path.Combine(_rootSandboxedFileSystemSearch, "restricted");
+        _ = Directory.CreateDirectory(restricted);
+        await File.WriteAllTextAsync(Path.Combine(restricted, "secret.txt"), "needle", TestContext.Current.CancellationToken);
+        File.SetUnixFileMode(restricted, UnixFileMode.None);
+        try
+        {
+            var fileSystem = CreateFileSystemSandboxedFileSystemSearch();
+            var result = await fileSystem.SearchAsync(Request(new FileSearchPattern("needle", FileSearchPatternKind.Literal)), TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(FileSearchStatus.Denied);
+            result.VisitedFiles.ShouldBe(0);
+        }
+        finally
+        {
+            File.SetUnixFileMode(restricted, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenCandidateFilePermissionDenied_ReturnsDeniedWithoutReadingContent()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var restricted = Path.Combine(_rootSandboxedFileSystemSearch, "secret.txt");
+        await File.WriteAllTextAsync(restricted, "needle", TestContext.Current.CancellationToken);
+        File.SetUnixFileMode(restricted, UnixFileMode.None);
+        try
+        {
+            var fileSystem = CreateFileSystemSandboxedFileSystemSearch();
+            var result = await fileSystem.SearchAsync(Request(new FileSearchPattern("needle", FileSearchPatternKind.Literal)), TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(FileSearchStatus.Denied);
+        }
+        finally
+        {
+            File.SetUnixFileMode(restricted, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenLaterSiblingFollowsATerminatedSubtree_SkipsItWithoutOpening()
+    {
+        foreach (var name in new[] { "a", "b", "c", "d" })
+        {
+            var directory = Path.Combine(_rootSandboxedFileSystemSearch, name);
+            _ = Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "needle.txt"), "needle", TestContext.Current.CancellationToken);
+        }
+
+        var fileSystem = CreateFileSystemSandboxedFileSystemSearch();
+        var request = new FileSearchRequest(null, new FileSearchPattern("needle", FileSearchPatternKind.Literal), new GlobPattern("**/*"), true, false, 10, 2, 1024 * 1024, 100, 1024, TimeSpan.FromSeconds(10), TestSecurity.Grant());
+        var result = await fileSystem.SearchAsync(request, TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSearchStatus.LimitExceeded);
+        result.VisitedFiles.ShouldBe(2);
+        result.Matches.Select(static match => match.Path.Value).ShouldBe(["a/needle.txt", "b/needle.txt"]);
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenCandidateExceedsRemainingByteBudget_ReturnsLimitExceeded()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemSearch, "big.txt"), new string('x', 100), TestContext.Current.CancellationToken);
+        var fileSystem = CreateFileSystemSandboxedFileSystemSearch();
+        var request = new FileSearchRequest(null, new FileSearchPattern("needle", FileSearchPatternKind.Literal), new GlobPattern("**/*"), true, false, 10, 100, 10, 100, 1024, TimeSpan.FromSeconds(10), TestSecurity.Grant());
+        var result = await fileSystem.SearchAsync(request, TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSearchStatus.LimitExceeded);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("observed-byte");
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenCandidateIsANamedPipe_SkipsItWithoutHangingOrMatching()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var fifoPath = Path.Combine(_rootSandboxedFileSystemSearch, "fifo.txt");
+        var mkfifo = Process.Start("mkfifo", fifoPath);
+        await mkfifo.WaitForExitAsync(TestContext.Current.CancellationToken);
+        mkfifo.ExitCode.ShouldBe(0);
+        var fileSystem = CreateFileSystemSandboxedFileSystemSearch();
+        var result = await fileSystem.SearchAsync(Request(new FileSearchPattern("needle", FileSearchPatternKind.Literal)), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSearchStatus.NoMatches);
+        result.Matches.ShouldBeEmpty();
+    }
+
     private SandboxedFileSystem CreateFileSystemSandboxedFileSystemSearch(ISecurityGrantStore? grantStore = null, TimeProvider? timeProvider = null, Action<SandboxedFileSystemOptions>? configure = null)
     {
         var options = new SandboxedFileSystemOptions
