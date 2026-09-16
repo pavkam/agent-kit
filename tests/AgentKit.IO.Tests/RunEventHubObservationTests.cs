@@ -48,4 +48,22 @@ public sealed class RunEventHubObservationTests
         Should.Throw<ArgumentOutOfRangeException>(() => observation.Finish((RunEventHubOutcome) (-1))).ParamName.ShouldBe("outcome");
         observation.Finish(RunEventHubOutcome.Succeeded);
     }
+
+    [Fact]
+    public void Dispose_WhenElapsedTimeMeasurementFails_StillCompletesWithoutThrowing()
+    {
+        var basis = RunEventHubTests.Event(1);
+        var observation = new RunEventHubObservation(RunEventHubOperation.Publish,
+            basis.AgentId, basis.SessionId, basis.RunId, new ElapsedThrowingTimeProvider(), NullLogger.Instance);
+        observation.Finish(RunEventHubOutcome.Succeeded);
+        Should.NotThrow(observation.Dispose);
+    }
+
+    private sealed class ElapsedThrowingTimeProvider: TimeProvider
+    {
+        private int _calls;
+
+        public override long GetTimestamp() =>
+            Interlocked.Increment(ref _calls) == 1 ? base.GetTimestamp() : throw new InvalidTimeZoneException("clock failure");
+    }
 }

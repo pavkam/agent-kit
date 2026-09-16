@@ -279,8 +279,32 @@ public sealed class AgentRunOutputPublisherTests
         }
     }
 
-    private static AgentRunOutputPublisher Publisher(int subscriptions = 32) =>
-        new(Agent, Session, null, Run, TimeProvider.System, new RunOutputPublisherOptions(subscriptions));
+    [Fact]
+    public async Task CompleteAsync_WhenTheLoggerFails_StillExposesTheEnvelope()
+    {
+        await using var publisher = Publisher(logger: new ThrowingLogger<AgentRunOutputPublisher>());
+        var finished = RunResultTestData.Finished();
+
+        await publisher.CompleteAsync(finished, TestContext.Current.CancellationToken);
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(async () => await publisher.CompleteAsync(
+            RunResultTestData.Finished(messages: [RunResultTestData.Message()]),
+            TestContext.Current.CancellationToken));
+    }
+
+    private static AgentRunOutputPublisher Publisher(int subscriptions = 32, ILogger<AgentRunOutputPublisher>? logger = null) =>
+        new(Agent, Session, null, Run, TimeProvider.System, new RunOutputPublisherOptions(subscriptions), logger);
+
+    private sealed class ThrowingLogger<TCategory>: ILogger<TCategory>
+    {
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            throw new InvalidTimeZoneException("logger failure");
+    }
 
     private static MessageCommittedEvent ForeignEvent(long sequence) => new(
         Agent, Session, null, ForeignRun, Turn, sequence, DateTimeOffset.UnixEpoch,

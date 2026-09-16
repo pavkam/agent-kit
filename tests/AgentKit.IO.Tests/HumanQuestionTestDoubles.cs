@@ -109,6 +109,13 @@ internal sealed class FixedTimeProvider: TimeProvider
     public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch;
 }
 
+internal sealed class ThrowingTimestampTimeProvider: TimeProvider
+{
+    public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch;
+
+    public override long GetTimestamp() => throw new InvalidTimeZoneException("clock failure");
+}
+
 internal sealed class ThrowingLogger: ILogger<DefaultHumanQuestionBroker>
 {
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => throw new InvalidOperationException("observer");

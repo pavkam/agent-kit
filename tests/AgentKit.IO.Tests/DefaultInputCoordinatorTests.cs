@@ -133,6 +133,30 @@ public sealed class DefaultInputCoordinatorTests
     }
 
     [Fact]
+    public async Task AdmitAsync_WhenTheQueueReturnsCapacityExceeded_ReturnsItUnchanged()
+    {
+        var capacityExceeded = new QueueCapacityExceeded(new InputCapacityLimit(10, 10), TimeSpan.FromSeconds(1));
+        var queue = new RecordingInputQueue(admit: (_, _) => capacityExceeded);
+
+        var result = await Coordinator(queue).AdmitAsync(
+            InputCoordinationTestData.AdmissionRequest(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeSameAs(capacityExceeded);
+    }
+
+    [Fact]
+    public async Task AdmitAsync_WhenTheQueueItselfRejects_ReturnsItUnchanged()
+    {
+        var rejected = new RejectedInput(new InputRejection(InputRejectionKind.InvalidInput, "queue rejection"));
+        var queue = new RecordingInputQueue(admit: (_, _) => rejected);
+
+        var result = await Coordinator(queue).AdmitAsync(
+            InputCoordinationTestData.AdmissionRequest(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeSameAs(rejected);
+    }
+
+    [Fact]
     public async Task AdmitAsync_WhenThePayloadExceedsThePartBound_RejectsBeforeTouchingTheQueue()
     {
         var queue = new RecordingInputQueue();
@@ -211,6 +235,32 @@ public sealed class DefaultInputCoordinatorTests
     }
 
     [Fact]
+    public async Task AdmitAsync_WhenMetricsRecordingFailsFromNegativeElapsedTime_StillReturnsTheQueueOutcome()
+    {
+        var queue = new RecordingInputQueue();
+        var coordinator = Coordinator(queue, clock: new NegativeElapsedTimeProvider());
+
+        var result = await coordinator.AdmitAsync(
+            InputCoordinationTestData.AdmissionRequest(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<AcceptedInput>();
+        queue.AppendCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AdmitAsync_WhenElapsedTimeMeasurementFails_StillReturnsTheQueueOutcome()
+    {
+        var queue = new RecordingInputQueue();
+        var coordinator = Coordinator(queue, clock: new ElapsedThrowingTimeProvider());
+
+        var result = await coordinator.AdmitAsync(
+            InputCoordinationTestData.AdmissionRequest(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<AcceptedInput>();
+        queue.AppendCalls.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task AdmitAsync_WhenSeparateRequestsCarryEqualPayloads_ProducesTheSameFingerprint()
     {
         var first = new RecordingInputQueue();
@@ -269,6 +319,30 @@ public sealed class DefaultInputCoordinatorTests
     }
 
     [Fact]
+    public async Task PromoteAsync_WhenTheQueueCommitsSuccessfully_ReturnsItUnchanged()
+    {
+        var promoted = InputCoordinationTestData.Promoted();
+        var queue = new RecordingInputQueue(promote: _ => promoted);
+
+        var result = await Coordinator(queue).PromoteAsync(
+            InputCoordinationTestData.PromotionRequest(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeSameAs(promoted);
+    }
+
+    [Fact]
+    public async Task PromoteAsync_WhenTheQueueRejects_ReturnsItUnchanged()
+    {
+        var rejected = InputCoordinationTestData.Rejected();
+        var queue = new RecordingInputQueue(promote: _ => rejected);
+
+        var result = await Coordinator(queue).PromoteAsync(
+            InputCoordinationTestData.PromotionRequest(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeSameAs(rejected);
+    }
+
+    [Fact]
     public async Task PromoteAsync_WhenCancelledBeforePromotion_DoesNotTouchTheQueue()
     {
         var queue = new RecordingInputQueue();
@@ -279,6 +353,45 @@ public sealed class DefaultInputCoordinatorTests
             InputCoordinationTestData.PromotionRequest(), cancellation.Token));
 
         queue.PromoteCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task PromoteAsync_WhenTheLoggerFails_StillReturnsTheQueueOutcome()
+    {
+        var queue = new RecordingInputQueue();
+        var coordinator = Coordinator(queue, logger: new ThrowingLogger<DefaultInputCoordinator>());
+
+        var result = await coordinator.PromoteAsync(
+            InputCoordinationTestData.PromotionRequest(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<InputPromotionRejected>();
+        queue.PromoteCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task PromoteAsync_WhenMetricsRecordingFailsFromNegativeElapsedTime_StillReturnsTheQueueOutcome()
+    {
+        var queue = new RecordingInputQueue();
+        var coordinator = Coordinator(queue, clock: new NegativeElapsedTimeProvider());
+
+        var result = await coordinator.PromoteAsync(
+            InputCoordinationTestData.PromotionRequest(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<InputPromotionRejected>();
+        queue.PromoteCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task PromoteAsync_WhenElapsedTimeMeasurementFails_StillReturnsTheQueueOutcome()
+    {
+        var queue = new RecordingInputQueue();
+        var coordinator = Coordinator(queue, clock: new ElapsedThrowingTimeProvider());
+
+        var result = await coordinator.PromoteAsync(
+            InputCoordinationTestData.PromotionRequest(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<InputPromotionRejected>();
+        queue.PromoteCalls.ShouldBe(1);
     }
 
     [Fact]
@@ -383,6 +496,27 @@ public sealed class DefaultInputCoordinatorTests
         public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch;
 
         public override long GetTimestamp() => throw new InvalidTimeZoneException("clock failure");
+    }
+
+    /// <summary>Yields a decreasing timestamp sequence so the base <c>GetElapsedTime(long)</c> implementation computes a negative duration.</summary>
+    private sealed class NegativeElapsedTimeProvider: TimeProvider
+    {
+        private long _next = 1_000_000L;
+
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch;
+
+        public override long GetTimestamp() => Interlocked.Add(ref _next, -100_000L);
+    }
+
+    /// <summary>Succeeds on the timestamp captured at the start of an operation but fails when elapsed time is later measured.</summary>
+    private sealed class ElapsedThrowingTimeProvider: TimeProvider
+    {
+        private int _calls;
+
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch;
+
+        public override long GetTimestamp() =>
+            Interlocked.Increment(ref _calls) == 1 ? base.GetTimestamp() : throw new InvalidTimeZoneException("clock failure");
     }
 
     private sealed class ThrowingLogger<TCategory>: ILogger<TCategory>

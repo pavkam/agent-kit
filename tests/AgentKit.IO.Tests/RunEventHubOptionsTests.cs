@@ -16,4 +16,31 @@ public sealed class RunEventHubOptionsTests
         exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
         exception.ParamName.ShouldBe(parameter);
     }
+
+    [Fact]
+    public void Constructor_WhenBoundsAreOmitted_SelectsDocumentedPackageDefaults()
+    {
+        var options = new RunEventHubOptions();
+
+        options.MaximumSubscriptions.ShouldBe(32);
+        options.CapacityPerSubscription.ShouldBe(256);
+    }
+
+    [Fact]
+    public void Constructor_WhenBoundsAreSupplied_RetainsThemExactly()
+    {
+        var options = new RunEventHubOptions(3, 7);
+
+        options.MaximumSubscriptions.ShouldBe(3);
+        options.CapacityPerSubscription.ShouldBe(7);
+    }
+
+    [Fact]
+    public void With_WhenNoMembersChanged_ProducesAnEqualClone()
+    {
+        var options = new RunEventHubOptions(3, 7);
+        var clone = options with { };
+        clone.ShouldBe(options);
+        clone.ShouldNotBeSameAs(options);
+    }
 }

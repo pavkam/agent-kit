@@ -64,4 +64,20 @@ internal static class InputCoordinationTestData
 
     internal static InputPromotionRejected Rejected() => new(
         new InputRejection(InputRejectionKind.InvalidInput, "test rejection"));
+
+    internal static InputPromoted Promoted()
+    {
+        var admissionId = new AdmissionId(Guid.Parse("15000000-0000-0000-0000-000000000001"));
+        var payload = Payload();
+        var manifest = new InputPreprocessingManifest(
+            new ConfigurationVersion(1),
+            InputPayloadFingerprint.Create(payload),
+            InputPayloadFingerprint.Create(payload));
+        var admitted = new AdmittedInput(
+            admissionId, Agent, Session, Lane, Identity(), new SessionSequence(1), payload, payload, manifest, DateTimeOffset.UnixEpoch, new SessionSequence(2));
+        var snapshot = new InputPromotionSnapshot(
+            Agent, Session, Lane, Operation(), new OperationStateRevision(1), new SessionBranchCursor(Branch, null),
+            new SessionSequence(1), null, null, PromotionBoundary.AfterTurnCommitted, Turn, NextTurn, [admissionId]);
+        return new InputPromoted(snapshot, [admitted], new SessionVersion(1));
+    }
 }

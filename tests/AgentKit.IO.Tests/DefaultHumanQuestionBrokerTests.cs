@@ -127,6 +127,42 @@ public sealed class DefaultHumanQuestionBrokerTests
     }
 
     [Fact]
+    public async Task AskAsync_WhenChannelTimesOut_ReturnsTheChannelResultUnchanged()
+    {
+        var store = new RecordingGrantStore();
+        var channel = new RecordingQuestionChannel
+        {
+            Result = static prompt => new HumanQuestionTimedOut(prompt.Id),
+        };
+        var broker = new DefaultHumanQuestionBroker(store, channel);
+        var result = await broker.AskAsync(Request(broker.SecurityAudience), TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<HumanQuestionTimedOut>();
+    }
+
+    [Fact]
+    public async Task AskAsync_WhenChannelReportsUnavailable_ReturnsTheChannelResultUnchanged()
+    {
+        var store = new RecordingGrantStore();
+        var channel = new RecordingQuestionChannel
+        {
+            Result = static prompt => new HumanQuestionUnavailable(prompt.Id, "channel offline"),
+        };
+        var broker = new DefaultHumanQuestionBroker(store, channel);
+        var result = await broker.AskAsync(Request(broker.SecurityAudience), TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<HumanQuestionUnavailable>().SafeMessage.ShouldBe("channel offline");
+    }
+
+    [Fact]
+    public async Task AskAsync_WhenTheClockFails_StillReturnsTheChannelOutcome()
+    {
+        var store = new RecordingGrantStore();
+        var channel = new RecordingQuestionChannel();
+        var broker = new DefaultHumanQuestionBroker(store, channel, new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.NewGuid())), new ThrowingTimestampTimeProvider(), Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultHumanQuestionBroker>.Instance);
+        var result = await broker.AskAsync(Request(broker.SecurityAudience), TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<HumanQuestionAnswered>();
+    }
+
+    [Fact]
     public async Task AskAsync_WhenAlreadyCancelled_PerformsNoGrantConsumptionOrPublication()
     {
         var store = new RecordingGrantStore();

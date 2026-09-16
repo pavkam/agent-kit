@@ -47,4 +47,13 @@ public sealed class RunOutputPublisherOptionsTests
         new RunOutputPublisherOptions(5, 11).ShouldBe(new RunOutputPublisherOptions(5, 11));
         new RunOutputPublisherOptions(5, 11).ShouldNotBe(new RunOutputPublisherOptions(5, 12));
     }
+
+    [Fact]
+    public void With_WhenNoMembersChanged_ProducesAnEqualClone()
+    {
+        var options = new RunOutputPublisherOptions(5, 11);
+        var clone = options with { };
+        clone.ShouldBe(options);
+        clone.ShouldNotBeSameAs(options);
+    }
 }
