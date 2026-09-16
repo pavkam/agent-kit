@@ -34,4 +34,25 @@ internal static class SecurityAuthorityTestData
             new InputFingerprint("sha256:abc"),
             (now ?? DateTimeOffset.UnixEpoch).AddMinutes(10));
     }
+
+    /// <summary>Creates a valid, non-expired approval request bound to a request from <see cref="CreateRequest"/>.</summary>
+    /// <param name="now">The optional issue instant used to derive the request and its bounded expiry.</param>
+    /// <returns>One approval request suitable for exercising approval-handler and broker behavior.</returns>
+    internal static ApprovalRequest CreateApprovalRequest(DateTimeOffset? now = null)
+    {
+        var issued = now ?? DateTimeOffset.UnixEpoch;
+        var securityRequest = CreateRequest(issued);
+        var binding = new ApprovalScopeBinding(
+            securityRequest,
+            new SecurityPolicyVersion(1),
+            new SecurityRevocationVersion(1),
+            issued,
+            issued.AddMinutes(5),
+            1);
+        return new ApprovalRequest(
+            new ApprovalRequestId(Guid.Parse("41000000-0000-0000-0000-000000000004")),
+            binding,
+            "Approve a bounded test operation.",
+            issued);
+    }
 }
