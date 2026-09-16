@@ -20,6 +20,14 @@ public sealed class BudgetLedgerAlreadySettledTests
         new BudgetLedgerAlreadySettled(commit).Commit.ShouldBe(commit);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetLedgerAlreadySettled(Commit(ReservationId()));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetLedgerScopeReference Scope(OperationId? operationId = null) => new(new BudgetScopeId(Guid.NewGuid()), Address(operationId));
     private static BudgetScopeAddress Address(OperationId? operationId = null) => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()), null, null, operationId);
     private static BudgetReservationId ReservationId() => new(Guid.NewGuid());

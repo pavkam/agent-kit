@@ -27,6 +27,23 @@ public sealed class BudgetLedgerScopeCreateRequestTests
         request.Admission.ShouldBe(admission);
     }
 
+    [Fact]
+    public void Constructor_WhenOriginalRequestHasNondefaultParentScopeId_PreservesEvidence()
+    {
+        var originalRequest = new BudgetScopeRequest(new BudgetScopeId(Guid.NewGuid()), Address(), [], new IdempotencyKey("scope"));
+        var admission = Admission();
+        var request = new BudgetLedgerScopeCreateRequest(originalRequest, admission);
+        request.OriginalRequest.ShouldBeSameAs(originalRequest);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetLedgerScopeCreateRequest(ScopeRequest(), Admission());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetScopeAddress Address(OperationId? operationId = null) => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()), null, null, operationId);
     private static BudgetScopeRequest ScopeRequest() => new(null, Address(), [], new IdempotencyKey("scope"));
     private static BudgetLimit Limit() => new(new BudgetDimension("tests.requests"), 1m, new BudgetUnit("requests"), BudgetLimitKind.Hard);

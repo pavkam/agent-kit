@@ -46,4 +46,12 @@ public sealed class BudgetLedgerBatchReserveHeldTests
         var second = new BudgetOverrunHold(new BudgetOverrunHoldReference(scope, reservation, new BudgetAccountingRevision(2)), new BudgetDimension("test.sum"), new BudgetUnit("count"), 1, 3, BudgetOverrunHoldPolicy.ClearWhenReconciled);
         return (first, second);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetLedgerBatchReserveHeld([Hold()]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

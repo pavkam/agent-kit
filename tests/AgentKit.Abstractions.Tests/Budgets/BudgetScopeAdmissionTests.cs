@@ -45,4 +45,16 @@ public sealed class BudgetScopeAdmissionTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetScopeAdmission(1, 1, TimeSpan.FromMinutes(1), (BudgetOverrunHoldPolicy) int.MaxValue));
         exception.ParamName.ShouldBe("overrunHoldPolicy");
     }
+
+    [Fact]
+    public void Constructor_WhenOverrunPolicyIsSupplied_PreservesIt() =>
+        new BudgetScopeAdmission(1, 1, TimeSpan.FromMinutes(1), BudgetOverrunHoldPolicy.RequireAuthorizedResolution).OverrunHoldPolicy.ShouldBe(BudgetOverrunHoldPolicy.RequireAuthorizedResolution);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetScopeAdmission(1, 1, TimeSpan.FromMinutes(1));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

@@ -15,4 +15,12 @@ public sealed class BudgetEffectiveReservationTests
         var effectiveReservation = new BudgetEffectiveReservation(expiresAt);
         effectiveReservation.ExpiresAt.ShouldBe(expiresAt);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetEffectiveReservation(DateTimeOffset.UnixEpoch);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

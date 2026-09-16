@@ -52,5 +52,15 @@ public sealed class BudgetLedgerBatchReservedTests
     private static BudgetReservationId ReservationId() => new(Guid.NewGuid());
     private static OperationId OperationId() => new(Guid.NewGuid());
     private static BudgetReservationRequest Request(BudgetScopeId scopeId, decimal amount = 1m, string dimension = "tests.requests", string unit = "requests", string idempotencyKey = "key", OperationId? operationId = null) => new(scopeId, new BudgetDimension(dimension), amount, new BudgetUnit(unit), operationId ?? new OperationId(Guid.Parse("00000000-0000-0000-0000-000000000101")), null, new IdempotencyKey(idempotencyKey));
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var scope = Scope();
+        ImmutableArray<BudgetLedgerReservationReceipt> receipts = [Receipt(scope, ReservationId(), "first")];
+        var original = new BudgetLedgerBatchReserved(receipts);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetLedgerReservationReceipt Receipt(BudgetLedgerScopeReference scope, BudgetReservationId reservationId, string idempotencyKey, string dimension = "tests.requests", string unit = "requests", OperationId? operationId = null) => new(new BudgetLedgerReservationReference(scope, reservationId), Request(scope.Id, dimension: dimension, unit: unit, idempotencyKey: idempotencyKey, operationId: operationId), new BudgetEffectiveReservation(DateTimeOffset.UnixEpoch));
 }

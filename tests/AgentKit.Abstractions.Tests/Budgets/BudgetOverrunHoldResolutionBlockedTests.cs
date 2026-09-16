@@ -64,4 +64,24 @@ public sealed class BudgetOverrunHoldResolutionBlockedTests
         Should.Throw<ArgumentException>(() => new BudgetOverrunHoldResolutionBlocked(HoldReference(), [null!], [])).ParamName.ShouldBe("currentOverruns");
         Should.Throw<ArgumentException>(() => new BudgetOverrunHoldResolutionBlocked(HoldReference(), [], [null!])).ParamName.ShouldBe("hardLimitFailures");
     }
+
+    [Fact]
+    public void Equals_WhenHardLimitFailuresMatch_HasEqualHashCode()
+    {
+        var hold = HoldReference();
+        var failure = LimitFailure();
+        var first = new BudgetOverrunHoldResolutionBlocked(hold, [], [failure]);
+        var second = new BudgetOverrunHoldResolutionBlocked(hold, [], [failure]);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var hold = HoldReference();
+        var original = new BudgetOverrunHoldResolutionBlocked(hold, [Hold()], [LimitFailure()]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

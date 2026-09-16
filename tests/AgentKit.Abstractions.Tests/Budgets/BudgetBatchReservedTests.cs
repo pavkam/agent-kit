@@ -34,4 +34,20 @@ public sealed class BudgetBatchReservedTests
     [Fact]
     public void Reservations_WhenApiShapeIsInspected_HasNoSetter() => typeof(BudgetBatchReserved).GetProperty(nameof(BudgetBatchReserved.Reservations))!.SetMethod.ShouldBeNull();
 
+    [Fact]
+    public void Constructor_WhenCalledWithValidArguments_InitializesProperties()
+    {
+        ImmutableArray<IBudgetReservation> reservations = [new TestBudgetReservation()];
+        var batch = new BudgetBatchReserved(reservations);
+        batch.Reservations.ShouldBe(reservations);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        ImmutableArray<IBudgetReservation> reservations = [new TestBudgetReservation()];
+        var original = new BudgetBatchReserved(reservations);
+        var copy = original with { };
+        copy.Reservations.ShouldBe(reservations);
+    }
 }

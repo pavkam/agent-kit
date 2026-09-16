@@ -18,6 +18,27 @@ public sealed class BudgetOverrunHoldResolutionRequestTests
     [Fact]
     public void BudgetOverrunHoldResolutionRequest_WhenReplayKeyIsDefault_ThrowsExactParameterName() => Should.Throw<ArgumentException>(() => new BudgetOverrunHoldResolutionRequest(HoldReference(), Receipt(HoldReference()), default)).ParamName.ShouldBe("idempotencyKey");
 
+    [Fact]
+    public void Constructor_WhenCalledWithValidArguments_InitializesProperties()
+    {
+        var hold = HoldReference();
+        var receipt = Receipt(hold);
+        var key = new IdempotencyKey("resolve");
+        var request = new BudgetOverrunHoldResolutionRequest(hold, receipt, key);
+        request.Hold.ShouldBe(hold);
+        request.EnforcementReceipt.ShouldBeSameAs(receipt);
+        request.IdempotencyKey.ShouldBe(key);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var hold = HoldReference();
+        var original = new BudgetOverrunHoldResolutionRequest(hold, Receipt(hold), new IdempotencyKey("resolve"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetOverrunHoldReference HoldReference()
     {
         var address = new BudgetScopeAddress(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.Parse("00000000-0000-0000-0000-000000000001")), null, null, null);

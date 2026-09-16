@@ -32,5 +32,13 @@ public sealed class BudgetLedgerScopeReferenceTests
         reference.Address.ShouldBe(address);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), Address());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetScopeAddress Address(OperationId? operationId = null) => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()), null, null, operationId);
 }

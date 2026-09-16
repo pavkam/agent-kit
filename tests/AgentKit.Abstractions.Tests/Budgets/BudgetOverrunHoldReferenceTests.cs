@@ -64,6 +64,15 @@ public sealed class BudgetOverrunHoldReferenceTests
         BudgetOverrunSecurityBinding.Resource(hold).Kind.ShouldBe(ProtectedResourceKind.ApplicationState);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var scope = Scope();
+        var original = new BudgetOverrunHoldReference(scope, new BudgetLedgerReservationReference(scope, ReservationId()), new BudgetAccountingRevision(1));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetScopeAddress Address(OperationId? operationId = null) => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()), null, null, operationId);
     private static BudgetLedgerReservationReference Reservation() => new(Scope(), ReservationId());
     private static BudgetReservationId ReservationId() => new(Guid.NewGuid());

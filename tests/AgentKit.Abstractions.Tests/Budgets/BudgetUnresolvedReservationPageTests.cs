@@ -66,5 +66,16 @@ public sealed class BudgetUnresolvedReservationPageTests
     private static BudgetReservationId ReservationId() => new(Guid.NewGuid());
     private static BudgetReservationRequest Request(BudgetScopeId scopeId, decimal amount = 1m, string dimension = "tests.requests", string unit = "requests", string idempotencyKey = "key", OperationId? operationId = null) => new(scopeId, new BudgetDimension(dimension), amount, new BudgetUnit(unit), operationId ?? new OperationId(Guid.Parse("00000000-0000-0000-0000-000000000101")), null, new IdempotencyKey(idempotencyKey));
     private static BudgetLedgerReservationReceipt Receipt(BudgetLedgerScopeReference scope, BudgetReservationId reservationId, string idempotencyKey, string dimension = "tests.requests", string unit = "requests", OperationId? operationId = null) => new(new BudgetLedgerReservationReference(scope, reservationId), Request(scope.Id, dimension: dimension, unit: unit, idempotencyKey: idempotencyKey, operationId: operationId), new BudgetEffectiveReservation(DateTimeOffset.UnixEpoch));
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var scope = Scope();
+        var watermark = new BudgetLedgerWatermark(1);
+        ImmutableArray<BudgetUnresolvedReservation> items = [Unresolved(scope, ReservationId(), "first")];
+        var original = new BudgetUnresolvedReservationPage(scope, watermark, items, null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetUnresolvedReservation Unresolved(BudgetLedgerScopeReference scope, BudgetReservationId reservationId, string idempotencyKey) => new(Receipt(scope, reservationId, idempotencyKey), DateTimeOffset.UnixEpoch.AddTicks(-1));
 }

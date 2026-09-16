@@ -17,4 +17,12 @@ public sealed class BudgetLedgerScopeCreateRejectedTests
         var scopeFailure = new BudgetScopeCreationFailed(BudgetScopeCreationFailureKind.InvalidLimit, "safe");
         new BudgetLedgerScopeCreateRejected(scopeFailure).Failure.ShouldBe(scopeFailure);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetLedgerScopeCreateRejected(new BudgetScopeCreationFailed(BudgetScopeCreationFailureKind.InvalidLimit, "safe"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

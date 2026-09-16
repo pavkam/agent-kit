@@ -45,4 +45,12 @@ public sealed class BudgetCommitResultTests
 
     [Fact]
     public void OverrunResultArrays_WhenEmptyIsAllowed_PreserveEmptyEvidence() => new BudgetCommitResult(ReservationId(), 1, 1, 0, 0, null, []).CreatedOverrunHolds.ShouldBeEmpty();
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetCommitResult(ReservationId(), 1, 1, 0, 0);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

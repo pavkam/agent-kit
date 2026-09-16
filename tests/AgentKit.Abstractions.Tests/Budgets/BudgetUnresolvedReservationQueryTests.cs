@@ -45,6 +45,15 @@ public sealed class BudgetUnresolvedReservationQueryTests
         query.After.ShouldBe(cursor);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var scope = Scope();
+        var original = new BudgetUnresolvedReservationQuery(scope, 1, new BudgetReservationCursor(scope, new BudgetLedgerWatermark(1), ReservationId()));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetLedgerScopeReference Scope(OperationId? operationId = null) => new(new BudgetScopeId(Guid.NewGuid()), Address(operationId));
     private static BudgetScopeAddress Address(OperationId? operationId = null) => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()), null, null, operationId);
     private static BudgetReservationId ReservationId() => new(Guid.NewGuid());

@@ -33,6 +33,14 @@ public sealed class BudgetLedgerSettlementRequestTests
         request.Actual.ShouldBe(0m);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetLedgerSettlementRequest(Reservation(), 0m);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetLedgerScopeReference Scope(OperationId? operationId = null) => new(new BudgetScopeId(Guid.NewGuid()), Address(operationId));
     private static BudgetScopeAddress Address(OperationId? operationId = null) => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()), null, null, operationId);
     private static BudgetLedgerReservationReference Reservation() => new(Scope(), ReservationId());

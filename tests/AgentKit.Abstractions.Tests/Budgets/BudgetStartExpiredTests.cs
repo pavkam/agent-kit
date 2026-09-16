@@ -24,4 +24,12 @@ public sealed class BudgetStartExpiredTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetStartExpired(default, DateTimeOffset.UtcNow));
         exception.ParamName.ShouldBe("reservationId");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetStartExpired(new BudgetReservationId(Guid.Parse("10000000-0000-0000-0000-000000000001")), DateTimeOffset.UnixEpoch);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

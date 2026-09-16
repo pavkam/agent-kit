@@ -16,4 +16,12 @@ public sealed class BudgetDimensionUsageTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetDimensionUsage(new BudgetDimension("tests.requests"), new BudgetUnit("requests"), reserved, committed, null));
         exception.ParamName.ShouldBe(parameterName);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetDimensionUsage(new BudgetDimension("tests.requests"), new BudgetUnit("requests"), 1m, 0m, null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

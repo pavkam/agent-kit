@@ -18,6 +18,14 @@ public sealed class BudgetLedgerScopeCreatedTests
         new BudgetLedgerScopeCreated(scope).Scope.ShouldBe(scope);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetLedgerScopeCreated(Scope());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetLedgerScopeReference Scope(OperationId? operationId = null) => new(new BudgetScopeId(Guid.NewGuid()), Address(operationId));
     private static BudgetScopeAddress Address(OperationId? operationId = null) => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()), null, null, operationId);
 }

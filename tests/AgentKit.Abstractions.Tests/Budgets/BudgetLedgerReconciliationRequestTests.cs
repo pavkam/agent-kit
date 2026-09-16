@@ -33,6 +33,14 @@ public sealed class BudgetLedgerReconciliationRequestTests
 
     private static BudgetLedgerScopeReference Scope(OperationId? operationId = null) => new(new BudgetScopeId(Guid.NewGuid()), Address(operationId));
     private static BudgetScopeAddress Address(OperationId? operationId = null) => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()), null, null, operationId);
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetLedgerReconciliationRequest(Reservation(), new BudgetActualEstimated(0m), new IdempotencyKey("reconcile"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetLedgerReservationReference Reservation() => new(Scope(), ReservationId());
     private static BudgetReservationId ReservationId() => new(Guid.NewGuid());
 }

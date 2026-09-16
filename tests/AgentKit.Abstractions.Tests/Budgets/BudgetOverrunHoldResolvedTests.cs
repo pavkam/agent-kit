@@ -29,7 +29,18 @@ public sealed class BudgetOverrunHoldResolvedTests
         var hold = HoldReference();
         var receipt = Receipt(hold);
         var resolved = new BudgetOverrunHoldResolved(hold, new BudgetAccountingRevision(1), receipt);
+        resolved.Hold.ShouldBe(hold);
+        resolved.ResolutionRevision.ShouldBe(new BudgetAccountingRevision(1));
         resolved.EnforcementReceipt.ShouldBeSameAs(receipt);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var hold = HoldReference();
+        var original = new BudgetOverrunHoldResolved(hold, new BudgetAccountingRevision(1), Receipt(hold));
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 
     private static BudgetOverrunHoldReference HoldReference()

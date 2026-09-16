@@ -32,4 +32,12 @@ public sealed class BudgetLedgerDescriptorTests
 
         exception.ParamName.ShouldBe("concurrencyDomain");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetLedgerDescriptor(true, BudgetLedgerConcurrencyDomain.Distributed);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

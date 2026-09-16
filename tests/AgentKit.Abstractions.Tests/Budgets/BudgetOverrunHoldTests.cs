@@ -6,6 +6,27 @@ namespace AgentKit.Abstractions.Tests.Budgets;
 public sealed class BudgetOverrunHoldTests
 {
     [Fact]
+    public void Constructor_WhenCalledWithValidArguments_InitializesProperties()
+    {
+        var reference = HoldReference();
+        var hold = new BudgetOverrunHold(reference, Dimension(), Unit(), 1, 2, BudgetOverrunHoldPolicy.ClearWhenReconciled);
+        hold.Reference.ShouldBe(reference);
+        hold.Dimension.ShouldBe(Dimension());
+        hold.Unit.ShouldBe(Unit());
+        hold.Reserved.ShouldBe(1);
+        hold.CurrentActual.ShouldBe(2);
+        hold.Policy.ShouldBe(BudgetOverrunHoldPolicy.ClearWhenReconciled);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetOverrunHold(HoldReference(), Dimension(), Unit(), 1, 2, BudgetOverrunHoldPolicy.ClearWhenReconciled);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
     public void BudgetOverrunHold_WhenRequiredReferenceIsNull_ThrowsExactParameterName() => Should.Throw<ArgumentNullException>(() => new BudgetOverrunHold(null!, Dimension(), Unit(), 1, 2, BudgetOverrunHoldPolicy.ClearWhenReconciled)).ParamName.ShouldBe("reference");
 
     [Fact]

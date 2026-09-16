@@ -22,4 +22,12 @@ public sealed class BudgetActualEstimatedTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new BudgetActualEstimated(actual));
         exception.ParamName.ShouldBe("actual");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetActualEstimated(1m);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

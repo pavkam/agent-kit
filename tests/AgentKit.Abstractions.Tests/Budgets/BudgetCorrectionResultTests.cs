@@ -68,4 +68,24 @@ public sealed class BudgetCorrectionResultTests
     [Fact]
     public void Revision_WhenApiShapeIsInspected_HasNoSetter() => typeof(BudgetCorrectionResult).GetProperty(nameof(BudgetCorrectionResult.Revision))!.SetMethod.ShouldBeNull();
 
+    [Fact]
+    public void Constructor_WhenFourArgumentOverloadIsUsed_DefaultsHoldEvidenceToEmpty()
+    {
+        var result = new BudgetCorrectionResult(ReservationId(), 0m, 1m, 1);
+        result.ReservationId.ShouldBe(ReservationId());
+        result.PreviousActual.ShouldBe(0m);
+        result.CorrectedActual.ShouldBe(1m);
+        result.Revision.ShouldBe(1);
+        result.AccountingRevision.ShouldBeNull();
+        result.CreatedOverrunHolds.ShouldBeEmpty();
+        result.ClearedOverrunHolds.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new BudgetCorrectionResult(ReservationId(), 0m, 1m, 1);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

@@ -35,5 +35,16 @@ public sealed class BudgetUnresolvedReservationTests
     private static BudgetLedgerScopeReference Scope(OperationId? operationId = null) => new(new BudgetScopeId(Guid.NewGuid()), Address(operationId));
     private static BudgetScopeAddress Address(OperationId? operationId = null) => new(new TenantId("tenant"), new PrincipalId("principal"), new AgentId(Guid.NewGuid()), null, null, operationId);
     private static BudgetReservationId ReservationId() => new(Guid.NewGuid());
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var scope = Scope();
+        var expiresAt = DateTimeOffset.UnixEpoch;
+        var receipt = new BudgetLedgerReservationReceipt(new BudgetLedgerReservationReference(scope, ReservationId()), Request(scope.Id), new BudgetEffectiveReservation(expiresAt));
+        var original = new BudgetUnresolvedReservation(receipt, expiresAt.AddTicks(-1));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BudgetReservationRequest Request(BudgetScopeId scopeId, decimal amount = 1m, string dimension = "tests.requests", string unit = "requests", string idempotencyKey = "key", OperationId? operationId = null) => new(scopeId, new BudgetDimension(dimension), amount, new BudgetUnit(unit), operationId ?? new OperationId(Guid.Parse("00000000-0000-0000-0000-000000000101")), null, new IdempotencyKey(idempotencyKey));
 }

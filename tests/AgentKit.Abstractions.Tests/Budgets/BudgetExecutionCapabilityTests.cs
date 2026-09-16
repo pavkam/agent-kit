@@ -117,6 +117,17 @@ public sealed class BudgetExecutionCapabilityTests
     };
     private static ExecutionIdentity Identity() => TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
     private static TestBudgetScope Scope(BudgetScopeAddress address) => new(new BudgetScopeId(Guid.Parse("50000000-0000-0000-0000-000000000005")), address);
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var identity = Identity();
+        var correlation = new InRunOperationCorrelation(_operationId, _runId, null);
+        var scope = Scope(Address(runId: _runId, operationId: _operationId));
+        var original = new BudgetExecutionCapability(new BudgetProfileKey("standard"), new BudgetProfileVersion(7), identity, correlation, scope);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static RunId OtherRunId() => new(Guid.Parse("60000000-0000-0000-0000-000000000006"));
     private static OperationId OtherOperationId() => new(Guid.Parse("70000000-0000-0000-0000-000000000007"));
 }
