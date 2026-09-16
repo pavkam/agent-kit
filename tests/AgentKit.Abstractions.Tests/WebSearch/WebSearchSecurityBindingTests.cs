@@ -20,4 +20,15 @@ public sealed class WebSearchSecurityBindingTests
         var second = WebSearchSecurityBinding.Fingerprint(id, provider, destination, "second", [], WebSearchFreshness.Any, 5, DateTimeOffset.UnixEpoch);
         second.ShouldNotBe(first);
     }
+
+    [Fact]
+    public void Fingerprint_WhenDomainsDiffer_ChangesEvidence()
+    {
+        var id = new WebSearchRequestId(Guid.NewGuid());
+        var provider = new ProviderId("provider");
+        var destination = new ProtectedResource(ProtectedResourceKind.NetworkEndpoint, "https://search.example/");
+        var first = WebSearchSecurityBinding.Fingerprint(id, provider, destination, "query", [new NormalizedHost("example.com")], WebSearchFreshness.Any, 5, DateTimeOffset.UnixEpoch);
+        var second = WebSearchSecurityBinding.Fingerprint(id, provider, destination, "query", [new NormalizedHost("other.example")], WebSearchFreshness.Any, 5, DateTimeOffset.UnixEpoch);
+        second.ShouldNotBe(first);
+    }
 }
