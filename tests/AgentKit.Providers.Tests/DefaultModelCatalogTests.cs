@@ -3,7 +3,7 @@
 
 namespace AgentKit.Providers.Tests;
 
-
+using AgentKit.TestSupport;
 
 /// <summary>Verifies DefaultModelCatalog behavior and contracts.</summary>
 public sealed class DefaultModelCatalogTests
@@ -65,6 +65,43 @@ public sealed class DefaultModelCatalogTests
     }
 
     [Fact]
+    public async Task RefreshAsync_WhenCancelledDuringSourceRead_PropagatesCancellationWithoutReplacingSnapshot()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var cancelling = new CancellingSource(new ModelDescriptorSourceId("cancelling"), cancellation);
+        var logger = new RecordingLogger<DefaultModelCatalog>();
+        var catalog = new DefaultModelCatalog([cancelling], logger);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            async () => await catalog.RefreshAsync(cancellation.Token));
+
+        logger.Snapshot().ShouldContain(entry => entry.Message.Contains("cancelled", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task RefreshAsync_WhenSourceFails_LogsFailure()
+    {
+        var failing = new TogglingSource(new ModelDescriptorSourceId("toggling")) { ShouldFail = true };
+        var logger = new RecordingLogger<DefaultModelCatalog>();
+        var catalog = new DefaultModelCatalog([failing], logger);
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(async () => await catalog.RefreshAsync(TestContext.Current.CancellationToken));
+
+        logger.Snapshot().ShouldContain(entry => entry.Message.Contains("failed", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task RefreshAsync_WhenSucceeding_LogsCatalogComposed()
+    {
+        var logger = new RecordingLogger<DefaultModelCatalog>();
+        var catalog = new DefaultModelCatalog([Source("first", ProviderTestData.Model("a"))], logger);
+
+        _ = await catalog.RefreshAsync(TestContext.Current.CancellationToken);
+
+        logger.Snapshot().ShouldContain(entry => entry.Message.Contains("Composed model catalog", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Constructor_WhenTwoSourcesShareAnId_ThrowsArgumentException()
     {
         var exception = Should.Throw<ArgumentException>(() => CreateCatalog(Source("duplicate", ProviderTestData.Model("a")), Source("duplicate", ProviderTestData.Model("b"))));
@@ -97,6 +134,19 @@ public sealed class DefaultModelCatalogTests
         public ModelDescriptorSourceId SourceId { get; } = sourceId;
 
         public ValueTask<ModelDescriptorSourceSnapshot> ReadAsync(CancellationToken cancellationToken = default) => ShouldFail ? throw new InvalidOperationException("Discovery failed.") : ValueTask.FromResult(new ModelDescriptorSourceSnapshot(SourceId, new ModelDescriptorSourceVersion(1), [ProviderTestData.Model("a")]));
+    }
+
+    /// <summary>A source that cancels its own caller-supplied token before returning, used to exercise the cancellation catch path.</summary>
+    private sealed class CancellingSource(ModelDescriptorSourceId sourceId, CancellationTokenSource cancellation): IModelDescriptorSource
+    {
+        public ModelDescriptorSourceId SourceId { get; } = sourceId;
+
+        public async ValueTask<ModelDescriptorSourceSnapshot> ReadAsync(CancellationToken cancellationToken = default)
+        {
+            await cancellation.CancelAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new UnreachableException("The token must already be cancelled by this point.");
+        }
     }
 
     [Fact]

@@ -50,4 +50,16 @@ public sealed class KnownModelCatalogProvenanceTests
 
         left.ShouldBe(right);
     }
+
+    [Fact]
+    public void WithExpression_WhenCloningWithNoChanges_ProducesEqualButDistinctInstance()
+    {
+        var original = new KnownModelCatalogProvenance("first", _url, null, _generated, _generated);
+
+        var copy = original with { };
+
+        copy.ShouldNotBeSameAs(original);
+        copy.ShouldBe(original);
+        copy.SourceName.ShouldBe("first");
+    }
 }

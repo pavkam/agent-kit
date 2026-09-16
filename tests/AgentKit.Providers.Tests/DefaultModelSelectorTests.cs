@@ -3,7 +3,7 @@
 
 namespace AgentKit.Providers.Tests;
 
-
+using AgentKit.TestSupport;
 
 /// <summary>Verifies DefaultModelSelector behavior and contracts.</summary>
 public sealed class DefaultModelSelectorTests
@@ -131,6 +131,68 @@ public sealed class DefaultModelSelectorTests
         _ = services.AddLogging();
         _ = services.AddAgentProviders();
         return services.BuildServiceProvider().GetRequiredService<IModelSelector>();
+    }
+
+    [Fact]
+    public async Task SelectAsync_WhenCapabilityValidatorThrows_PropagatesExceptionAfterRecordingFailure()
+    {
+        var logger = new RecordingLogger<DefaultModelSelector>();
+        var selector = new DefaultModelSelector(new ThrowingCapabilityValidator(), logger);
+        var request = ProviderTestData.SelectionRequest(ProviderTestData.Catalog(ProviderTestData.Model("a")), ProviderTestData.Policy(candidates: ["a"]));
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await selector.SelectAsync(request, TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("Validator exploded.");
+        logger.Snapshot().ShouldContain(entry => entry.Message.Contains("failed", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task SelectAsync_WhenCancelled_LogsCancellation()
+    {
+        var logger = new RecordingLogger<DefaultModelSelector>();
+        var selector = new DefaultModelSelector(new DefaultModelCapabilityValidator(), logger);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+        var request = ProviderTestData.SelectionRequest(ProviderTestData.Catalog(ProviderTestData.Model("a")), ProviderTestData.Policy(candidates: ["a"]));
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await selector.SelectAsync(request, cancellation.Token));
+
+        logger.Snapshot().ShouldContain(entry => entry.Message.Contains("cancelled", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task SelectAsync_WhenCandidateSelected_LogsModelSelected()
+    {
+        var logger = new RecordingLogger<DefaultModelSelector>();
+        var selector = new DefaultModelSelector(new DefaultModelCapabilityValidator(), logger);
+        var request = ProviderTestData.SelectionRequest(ProviderTestData.Catalog(ProviderTestData.Model("a")), ProviderTestData.Policy(candidates: ["a"]));
+
+        _ = await selector.SelectAsync(request, TestContext.Current.CancellationToken);
+
+        logger.Snapshot().ShouldContain(entry => entry.Message.Contains("Selected model", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SelectAsync_WhenNoCandidateMatches_LogsNoCompatibleModel()
+    {
+        var logger = new RecordingLogger<DefaultModelSelector>();
+        var selector = new DefaultModelSelector(new DefaultModelCapabilityValidator(), logger);
+        var request = ProviderTestData.SelectionRequest(ProviderTestData.Catalog(ProviderTestData.Model("other")), ProviderTestData.Policy(candidates: ["missing"]));
+
+        _ = await selector.SelectAsync(request, TestContext.Current.CancellationToken);
+
+        logger.Snapshot().ShouldContain(entry => entry.Message.Contains("No compatible model", StringComparison.Ordinal));
+    }
+
+    /// <summary>A validator that always throws, used to exercise the selector's generic-failure observability path.</summary>
+    private sealed class ThrowingCapabilityValidator: IModelCapabilityValidator
+    {
+        public ValueTask<CapabilityValidationResult> ValidateAsync(
+            ModelDescriptor model,
+            ModelRequirements requirements,
+            CapabilityDowngradePolicy downgradePolicy,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Validator exploded.");
     }
 
     [Fact]

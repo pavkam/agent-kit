@@ -37,6 +37,18 @@ public sealed class ProviderResponseParseContextTests
     }
 
     [Fact]
+    public void WithExpression_WhenReplacingDeploymentId_ProducesIndependentCopy()
+    {
+        var original = CreateContext(deploymentId: null, ProviderRequest);
+
+        var copy = original with { DeploymentId = Deployment };
+
+        copy.DeploymentId.ShouldBe(Deployment);
+        original.DeploymentId.ShouldBeNull();
+        copy.ShouldNotBe(original);
+    }
+
+    [Fact]
     public void CreateResponseIdentity_WhenBodyReportsModelAndResponseId_UsesBothAndCarriesContext()
     {
         var context = CreateContext(Deployment, ProviderRequest);

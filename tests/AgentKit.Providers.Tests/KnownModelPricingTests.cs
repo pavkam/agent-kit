@@ -66,4 +66,16 @@ public sealed class KnownModelPricingTests
         new KnownModelPricing("USD", 1m, 2m, 3m, 4m).ShouldBe(new KnownModelPricing("USD", 1m, 2m, 3m, 4m));
         new KnownModelPricing("USD", 1m, 2m, 3m, 4m).ShouldNotBe(new KnownModelPricing("EUR", 1m, 2m, 3m, 4m));
     }
+
+    [Fact]
+    public void WithExpression_WhenCloningWithNoChanges_ProducesEqualButDistinctInstance()
+    {
+        var original = new KnownModelPricing("USD", 1m, 2m, null, null);
+
+        var copy = original with { };
+
+        copy.ShouldNotBeSameAs(original);
+        copy.ShouldBe(original);
+        copy.Currency.ShouldBe("USD");
+    }
 }

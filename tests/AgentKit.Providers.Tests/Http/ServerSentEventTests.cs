@@ -60,4 +60,16 @@ public sealed class ServerSentEventTests
         left.ShouldBe(right);
         left.GetHashCode().ShouldBe(right.GetHashCode());
     }
+
+    [Fact]
+    public void WithExpression_WhenCloningWithNoChanges_ProducesEqualButDistinctInstance()
+    {
+        var original = new ServerSentEvent("e", "first", "i", 1);
+
+        var copy = original with { };
+
+        copy.ShouldNotBeSameAs(original);
+        copy.ShouldBe(original);
+        copy.Data.ShouldBe("first");
+    }
 }

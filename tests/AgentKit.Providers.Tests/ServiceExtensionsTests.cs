@@ -66,6 +66,29 @@ public sealed class ServiceExtensionsTests
     }
 
     [Fact]
+    public async Task AddModelDescriptorSource_RegistersTheCustomSourceAdditively()
+    {
+        using var provider = Build(static services =>
+        {
+            _ = services.AddAgentProviders();
+            return services.AddModelDescriptorSource<CustomModelDescriptorSource>();
+        });
+
+        var snapshot = await provider.GetRequiredService<IModelCatalog>().GetSnapshotAsync(TestContext.Current.CancellationToken);
+
+        snapshot.ConversationModels.ShouldHaveSingleItem().Alias.Value.ShouldBe("custom");
+    }
+
+    /// <summary>A minimal descriptor source used to verify AddModelDescriptorSource's DI registration.</summary>
+    private sealed class CustomModelDescriptorSource: IModelDescriptorSource
+    {
+        public ModelDescriptorSourceId SourceId { get; } = new("custom-source");
+
+        public ValueTask<ModelDescriptorSourceSnapshot> ReadAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new ModelDescriptorSourceSnapshot(SourceId, new ModelDescriptorSourceVersion(1), [ProviderTestData.Model("custom")]));
+    }
+
+    [Fact]
     public async Task AddAgentProviders_WithNoDescriptorSource_ProducesEmptyCatalogRatherThanADefaultModel()
     {
         using var provider = Build(static services => services.AddAgentProviders());

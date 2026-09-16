@@ -170,6 +170,18 @@ public sealed class KnownModelTests
         first.ShouldBe(second);
     }
 
+    [Fact]
+    public void WithExpression_WhenCloningWithNoChanges_ProducesEqualButDistinctInstance()
+    {
+        var original = Create(displayName: "first");
+
+        var copy = original with { };
+
+        copy.ShouldNotBeSameAs(original);
+        copy.ShouldBe(original);
+        copy.DisplayName.ShouldBe("first");
+    }
+
     private static KnownModel Create(
         ProviderId? providerId = null,
         ModelId? modelId = null,

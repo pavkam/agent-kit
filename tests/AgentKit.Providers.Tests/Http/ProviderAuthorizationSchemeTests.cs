@@ -91,4 +91,16 @@ public sealed class ProviderAuthorizationSchemeTests
         new ProviderAuthorizationScheme("Authorization", "Bearer ").ShouldBe(ProviderAuthorizationScheme.BearerToken);
         ProviderAuthorizationScheme.ForApiKeyHeader("api-key").ShouldNotBe(ProviderAuthorizationScheme.BearerToken);
     }
+
+    [Fact]
+    public void WithExpression_WhenReplacingPrefix_ProducesIndependentCopy()
+    {
+        var original = ProviderAuthorizationScheme.ForApiKeyHeader("api-key");
+
+        var copy = original with { ApiKeyValuePrefix = "Bearer " };
+
+        copy.ApiKeyValuePrefix.ShouldBe("Bearer ");
+        original.ApiKeyValuePrefix.ShouldBe(string.Empty);
+        copy.ShouldNotBe(original);
+    }
 }

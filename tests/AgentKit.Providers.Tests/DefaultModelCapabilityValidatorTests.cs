@@ -41,6 +41,34 @@ public sealed class DefaultModelCapabilityValidatorTests
     }
 
     [Fact]
+    public async Task ValidateAsync_WhenReasoningRequiredAndMissing_ReturnsUnsupported()
+    {
+        var result = await _validator.ValidateAsync(
+            ProviderTestData.Model("m", reasoning: false),
+            new ModelRequirements { RequiresReasoning = true },
+            CapabilityDowngradePolicy.Reject,
+            TestContext.Current.CancellationToken);
+
+        var unsupported = result.ShouldBeOfType<CapabilitiesUnsupported>();
+        unsupported.Capabilities.ShouldHaveSingleItem()
+            .Capability.ShouldBe(ModelCapabilityKind.Reasoning);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenVisionInputRequiredAndMissing_ReturnsUnsupported()
+    {
+        var result = await _validator.ValidateAsync(
+            ProviderTestData.Model("m", visionInput: false),
+            new ModelRequirements { RequiresVisionInput = true },
+            CapabilityDowngradePolicy.Reject,
+            TestContext.Current.CancellationToken);
+
+        var unsupported = result.ShouldBeOfType<CapabilitiesUnsupported>();
+        unsupported.Capabilities.ShouldHaveSingleItem()
+            .Capability.ShouldBe(ModelCapabilityKind.VisionInput);
+    }
+
+    [Fact]
     public async Task ValidateAsync_WhenToolCallsMissingAndDowngradeAllowed_StillUnsupported()
     {
         var result = await _validator.ValidateAsync(
