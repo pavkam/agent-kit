@@ -1166,7 +1166,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
                     case ToolCallPart call:
                         entries.Add(new ChatEntry(
                             ChatEntryKind.ToolCall,
-                            $"Tool · {call.Tool.Name}",
+                            $"Tool · {call.Tool.ProviderAlias.Value}",
                             "Stored tool request",
                             Presentation: await conversation.PresentToolAsync(call, cancellationToken).ConfigureAwait(false)));
                         break;
@@ -1174,7 +1174,7 @@ internal sealed class ChatScreen: Screen, IApprovalPrompt, IHumanQuestionPrompt,
                         var succeeded = result.Outcome.Kind == ToolCallOutcomeKind.Success;
                         entries.Add(new ChatEntry(
                             succeeded ? ChatEntryKind.ToolResultSuccess : ChatEntryKind.ToolResultFailure,
-                            $"{(succeeded ? "Completed" : "Failed")} · {result.Tool.Name}",
+                            $"{(succeeded ? "Completed" : "Failed")} · {result.Tool.ProviderAlias.Value}",
                             succeeded ? "Stored tool result" : Text.Escape(result.Outcome.FailureReason ?? "The stored tool call failed."),
                             Presentation: await conversation.PresentToolAsync(result, cancellationToken).ConfigureAwait(false)));
                         break;
