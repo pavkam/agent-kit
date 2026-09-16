@@ -617,7 +617,7 @@ public sealed class GoogleGeminiLlmModelTests
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
         failed.PartialParts.Length.ShouldBe(2);
         failed.PartialParts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Checking.");
-        failed.PartialParts[1].ShouldBeOfType<ToolCallPart>().Tool.Name.ShouldBe("get_weather");
+        failed.PartialParts[1].ShouldBeOfType<ToolCallPart>().Tool.ProviderAlias.Value.ShouldBe("get_weather");
         var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
         terminal.PartialParts.ShouldBe(failed.PartialParts);
         observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));

@@ -48,7 +48,7 @@ public sealed class GoogleGeminiContentTranslatorTests
     public void Translate_WhenConversationHasToolUseAndResult_MatchesExpectedRequestBody()
     {
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000001"));
-        var toolReference = new ToolReference(new ToolId("get_weather"), null, "get_weather");
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
 
         var assistantMessage = TestMessages.Assistant(
             new ToolCallPart(
@@ -59,12 +59,7 @@ public sealed class GoogleGeminiContentTranslatorTests
                 ExtensionData.Empty));
 
         var toolMessage = TestMessages.Tool(
-            new ToolResultPart(
-                callId,
-                toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
-                [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)],
-                ExtensionData.Empty));
+            new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty));
 
         var messages = ImmutableArray.Create<AgentMessage>(
             TestMessages.System("You are a weather assistant."),
@@ -227,7 +222,7 @@ public sealed class GoogleGeminiContentTranslatorTests
     public void Translate_WhenToolCallPartCarriesThoughtSignature_EmitsThoughtSignatureOnFunctionCallPart()
     {
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000003"));
-        var toolReference = new ToolReference(new ToolId("check_flight"), null, "check_flight");
+        var toolReference = new ToolReference(new ToolAlias("check_flight"), null, null);
         var signedCall = new ToolCallPart(
             callId,
             toolReference,
@@ -236,7 +231,7 @@ public sealed class GoogleGeminiContentTranslatorTests
             GoogleGeminiThoughtSignature.Create("sig_fc_alpha"));
         var unsignedCall = new ToolCallPart(
             new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000004")),
-            new ToolReference(new ToolId("book_taxi"), null, "book_taxi"),
+            new ToolReference(new ToolAlias("book_taxi"), null, null),
             JsonDocument.Parse("""{"time":"18:00"}""").RootElement,
             new ProviderToolCallId("call_sig_002"),
             ExtensionData.Empty);
@@ -496,15 +491,10 @@ public sealed class GoogleGeminiContentTranslatorTests
     public void Translate_WhenToolResultOutcomeIsFailure_TranslatesErrorField()
     {
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000002"));
-        var toolReference = new ToolReference(new ToolId("get_weather"), null, "get_weather");
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
 
         var toolMessage = TestMessages.Tool(
-            new ToolResultPart(
-                callId,
-                toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, "The location was not found.", ExtensionData.Empty),
-                [],
-                ExtensionData.Empty));
+            new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, "The location was not found.", ExtensionData.Empty), [], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty));
 
         var context = new LlmRequestContext(
             new ModelRequestId(Guid.NewGuid()),

@@ -50,7 +50,9 @@ public sealed class GoogleGeminiResponseParserTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
         completed.Response.Parts.Length.ShouldBe(1);
         var toolCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
-        toolCall.Tool.Name.ShouldBe("get_weather");
+        toolCall.Tool.ProviderAlias.Value.ShouldBe("get_weather");
+        toolCall.Tool.Id.ShouldBeNull();
+        toolCall.Tool.IsResolved.ShouldBeFalse();
         toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_xyz789"));
         toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
         var deltaEvent = observer.Events.OfType<ModelPartDelta>().ShouldHaveSingleItem();
@@ -89,12 +91,12 @@ public sealed class GoogleGeminiResponseParserTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
         completed.Response.Parts.Length.ShouldBe(2);
         var signedCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
-        signedCall.Tool.Name.ShouldBe("check_flight");
+        signedCall.Tool.ProviderAlias.Value.ShouldBe("check_flight");
         signedCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_sig_001"));
         GoogleGeminiThoughtSignature.TryRead(signedCall.Extensions).ShouldBe("sig_fc_alpha");
         signedCall.Extensions.Values.Keys.ShouldBe([GoogleGeminiExtensionKeys.ThoughtSignature]);
         var unsignedCall = completed.Response.Parts[1].ShouldBeOfType<ToolCallPart>();
-        unsignedCall.Tool.Name.ShouldBe("book_taxi");
+        unsignedCall.Tool.ProviderAlias.Value.ShouldBe("book_taxi");
         unsignedCall.Extensions.ShouldBe(ExtensionData.Empty);
         observer.Events.OfType<ModelPartCompleted>().Select(e => e.Part).ShouldBe(completed.Response.Parts);
     }
@@ -253,7 +255,7 @@ public sealed class GoogleGeminiResponseParserTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
         completed.Response.Parts.Length.ShouldBe(1);
         var toolCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
-        toolCall.Tool.Name.ShouldBe("get_weather");
+        toolCall.Tool.ProviderAlias.Value.ShouldBe("get_weather");
         toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("toolu_stream_01"));
         toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
         var argumentFragments = observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<ToolArgumentsContentDelta>().Select(d => d.JsonFragment).ToArray();
@@ -275,10 +277,10 @@ public sealed class GoogleGeminiResponseParserTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
         completed.Response.Parts.Length.ShouldBe(2);
         var signedCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
-        signedCall.Tool.Name.ShouldBe("check_flight");
+        signedCall.Tool.ProviderAlias.Value.ShouldBe("check_flight");
         GoogleGeminiThoughtSignature.TryRead(signedCall.Extensions).ShouldBe("sig_fc_stream_alpha");
         var unsignedCall = completed.Response.Parts[1].ShouldBeOfType<ToolCallPart>();
-        unsignedCall.Tool.Name.ShouldBe("book_taxi");
+        unsignedCall.Tool.ProviderAlias.Value.ShouldBe("book_taxi");
         unsignedCall.Extensions.ShouldBe(ExtensionData.Empty);
         observer.Events.OfType<ModelPartCompleted>().Select(e => e.Part).ShouldBe(completed.Response.Parts);
     }
@@ -360,7 +362,7 @@ public sealed class GoogleGeminiResponseParserTests
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
         completed.Response.Parts.OfType<TextPart>().Single().Text.ShouldBe("Let me check the weather.");
-        completed.Response.Parts.OfType<ToolCallPart>().Single().Tool.Name.ShouldBe("get_weather");
+        completed.Response.Parts.OfType<ToolCallPart>().Single().Tool.ProviderAlias.Value.ShouldBe("get_weather");
     }
 
     [Fact]

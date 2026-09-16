@@ -576,7 +576,7 @@ public sealed class GoogleGeminiResponseParser: IGoogleGeminiResponseParser
 
         return new ToolCallPart(
             callId,
-            new ToolReference(new ToolId(functionCall.Name), null, functionCall.Name),
+            new ToolReference(new ToolAlias(functionCall.Name), null, null),
             arguments,
             functionCall.Id is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
             GoogleGeminiThoughtSignature.Create(thoughtSignature));

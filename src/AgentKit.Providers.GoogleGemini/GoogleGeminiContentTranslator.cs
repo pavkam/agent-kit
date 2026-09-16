@@ -235,7 +235,7 @@ public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslato
                             ["functionCall"] = new JsonObject
                             {
                                 ["id"] = providerCallIds.GetValueOrDefault(toolCall.CallId, toolCall.CallId.ToString()),
-                                ["name"] = toolCall.Tool.Name,
+                                ["name"] = toolCall.Tool.ProviderAlias.Value,
                                 ["args"] = JsonNode.Parse(toolCall.Arguments.GetRawText()),
                             },
                         },
@@ -307,7 +307,7 @@ public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslato
                 ["functionResponse"] = new JsonObject
                 {
                     ["id"] = providerCallIds.GetValueOrDefault(toolResult.CallId, toolResult.CallId.ToString()),
-                    ["name"] = toolResult.Tool.Name,
+                    ["name"] = toolResult.Tool.ProviderAlias.Value,
                     ["response"] = BuildFunctionResponsePayload(toolResult),
                 },
             });

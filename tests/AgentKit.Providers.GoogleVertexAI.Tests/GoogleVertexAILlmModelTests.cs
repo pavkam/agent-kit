@@ -179,7 +179,7 @@ public sealed class GoogleVertexAILlmModelTests
     [Fact]
     public async Task ExecuteAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
     {
-        const string hostileBody = """{ "error": { "code": 401, "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test.", "status": "UNAUTHENTICATED" } }""";
+        const string hostileBody = /*lang=json,strict*/ """{ "error": { "code": 401, "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test.", "status": "UNAUTHENTICATED" } }""";
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
         {
             Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
@@ -469,7 +469,7 @@ public sealed class GoogleVertexAILlmModelTests
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
         failed.PartialParts.Length.ShouldBe(2);
         failed.PartialParts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Checking.");
-        failed.PartialParts[1].ShouldBeOfType<ToolCallPart>().Tool.Name.ShouldBe("get_weather");
+        failed.PartialParts[1].ShouldBeOfType<ToolCallPart>().Tool.ProviderAlias.Value.ShouldBe("get_weather");
         var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
         terminal.PartialParts.ShouldBe(failed.PartialParts);
         observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
