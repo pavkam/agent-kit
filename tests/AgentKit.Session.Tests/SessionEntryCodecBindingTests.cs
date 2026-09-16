@@ -13,6 +13,28 @@ public sealed class SessionEntryCodecBindingTests
         Should.Throw<ArgumentNullException>(() => new SessionEntryCodecBinding(codec, null!)).ParamName.ShouldBe("descriptor");
     }
 
+    [Fact]
+    public void Equals_WhenCodecAndDescriptorMatch_AreEqual()
+    {
+        var codec = new FakeCodec();
+        var first = new SessionEntryCodecBinding(codec, codec.Descriptor);
+        var second = new SessionEntryCodecBinding(codec, codec.Descriptor);
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenCloned_ProducesAnEquivalentInstance()
+    {
+        var codec = new FakeCodec();
+        var original = new SessionEntryCodecBinding(codec, codec.Descriptor);
+
+        var clone = original with { };
+
+        clone.ShouldBe(original);
+    }
+
     private static readonly SessionEntryTypeId Type = new("agentkit.test/v1");
     private static readonly SchemaVersion Version = new("agentkit.test/v1");
     private sealed class FakeCodec(bool throwOnSecondDescriptorRead = false): ISessionEntryCodec

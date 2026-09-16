@@ -27,4 +27,57 @@ public sealed class DefaultSessionStoreCatalogTests
         var catalog = new DefaultSessionStoreCatalog([store]);
         catalog.GetDescriptors().ShouldBe([store.Descriptor]);
     }
+
+    [Fact]
+    public void GetDescriptors_WhenMultipleStoresAreProvided_OrdersByKeyOrdinally()
+    {
+        var zebra = new FakeSessionStoreWithKey("zebra");
+        var alpha = new FakeSessionStoreWithKey("alpha");
+
+        var catalog = new DefaultSessionStoreCatalog([zebra, alpha]);
+
+        catalog.GetDescriptors().Select(static descriptor => descriptor.Key.Value)
+            .ShouldBe(["alpha", "zebra"]);
+    }
+
+    private sealed class FakeSessionStoreWithKey: ISessionStore
+    {
+        public FakeSessionStoreWithKey(string key) =>
+            Descriptor = new SessionStoreDescriptor(new SessionStoreKey(key), SessionStoreCapabilities.None,
+                SessionConsistencyModel.Strong, durable: false, supportsDistributedFencing: false);
+
+        public ComponentId SecurityAudience { get; } = new("agentkit.session.tests.keyed-store");
+        public SessionStoreDescriptor Descriptor { get; }
+
+        public ValueTask<SessionCreateResult> CreateAsync(AuthorizedSessionStoreRequest<SessionStoreCreateRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionLoadResult> LoadAsync(AuthorizedSessionStoreRequest<SessionOperationContext> context,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionExecutionLaneProvisionResult> ProvisionLaneAsync(
+            AuthorizedSessionStoreRequest<SessionExecutionLaneProvisionRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionAppendResult> AppendAsync(AuthorizedSessionStoreRequest<SessionAppendRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionPageResult> ReadAsync(AuthorizedSessionStoreRequest<SessionReadRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionBranchResult> CreateBranchAsync(AuthorizedSessionStoreRequest<SessionBranchRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionDeleteResult> DeleteAsync(AuthorizedSessionStoreRequest<SessionDeleteRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionInputLookupResult> LookupInputAsync(
+            AuthorizedSessionStoreRequest<SessionInputLookupRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<InputAdmissionResult> AdmitInputAsync(
+            AuthorizedSessionStoreRequest<SessionInputAdmissionRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionRunStartResult> AcceptRunAsync(
+            AuthorizedSessionStoreRequest<SessionRunStartRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionRunStateResult> LoadRunStateAsync(
+            AuthorizedSessionStoreRequest<SessionRunStateRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<SessionRunReleaseResult> ReleaseRunAsync(
+            AuthorizedSessionStoreRequest<SessionRunReleaseRequest> request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
 }

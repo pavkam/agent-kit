@@ -108,8 +108,45 @@ public sealed class SessionEntryCodecCatalogTests
 
     [Fact]
     public void Options_WhenMaximumPayloadIsPositive_PreservesValue() => new SessionEntryCodecCatalogOptions(int.MaxValue).MaximumPayloadBytes.ShouldBe(int.MaxValue);
+
+    [Fact]
+    public void Options_WhenMaximumPayloadMatches_AreEqual()
+    {
+        var first = new SessionEntryCodecCatalogOptions(16);
+        var second = new SessionEntryCodecCatalogOptions(16);
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void Options_WhenCloned_ProducesAnEquivalentInstance()
+    {
+        var original = new SessionEntryCodecCatalogOptions(16);
+
+        var clone = original with { };
+
+        clone.ShouldBe(original);
+    }
     [Fact]
     public void Constructor_WhenOptionsIsNull_UsesDocumentedDefault() => _ = new SessionEntryCodecCatalog([], TimeProvider.System, null).Decode(new SessionEntryWireEnvelope(new SessionEntryTypeId("unknown"), Version, [1])).ShouldBeOfType<SessionEntryOpaque>();
+
+    [Fact]
+    public void Encode_WhenCodecLegitimatelyRejects_ReturnsThatExactResult()
+    {
+        var codec = new FakeCodec { RejectEncode = true };
+        var result = new SessionEntryCodecCatalog([codec], TimeProvider.System).Encode(new TestEntry());
+        result.ShouldBeOfType<SessionEntryEncodeRejected>().Reason.ShouldBe("codec rejected");
+    }
+
+    [Fact]
+    public void Decode_WhenCodecLegitimatelyRejects_ReturnsThatExactResult()
+    {
+        var codec = new FakeCodec { RejectDecode = true };
+        var catalog = new SessionEntryCodecCatalog([codec], TimeProvider.System);
+        var result = catalog.Decode(codec.Wire);
+        result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason.ShouldBe("codec rejected");
+    }
 
     [Fact]
     public void Decode_WhenCodecReplacesInputWire_Rejects()
@@ -414,6 +451,8 @@ public sealed class SessionEntryCodecCatalogTests
         public bool ReplaceDecodeWire { get; init; }
         public bool ReturnNullEncode { get; init; }
         public bool ReturnNullDecode { get; init; }
+        public bool RejectEncode { get; init; }
+        public bool RejectDecode { get; init; }
         public Exception? EncodeException { get; init; }
         public bool ReturnNullDescriptor { get; init; }
         public SessionEntryCodecDescriptor Descriptor { get => ReturnNullDescriptor ? null! : ++DescriptorReads > 1 && throwOnSecondDescriptorRead ? throw new InvalidOperationException() : field; } = new(Type, typeof(TestEntry), Version, [Version], new SessionEntryCodecLimits(16, 1, 1, 2));
@@ -421,12 +460,23 @@ public sealed class SessionEntryCodecCatalogTests
         public SessionEntryEncodeResult Encode(SessionEntry entry)
         {
             EncodeCalls++;
-            return EncodeException is { } exception ? throw exception : ReturnNullEncode ? null! : new SessionEntryEncoded(EncodeWire ?? Wire);
+            return EncodeException is { } exception
+                ? throw exception
+                : RejectEncode
+                    ? new SessionEntryEncodeRejected("codec rejected")
+                    : ReturnNullEncode
+                        ? null!
+                        : new SessionEntryEncoded(EncodeWire ?? Wire);
         }
 
         public SessionEntryDecodeResult Decode(SessionEntryWireEnvelope wire)
         {
             DecodeCalls++;
+            if (RejectDecode)
+            {
+                return new SessionEntryDecodeRejected("codec rejected");
+            }
+
             if (ReturnNullDecode)
             {
                 return null!;
