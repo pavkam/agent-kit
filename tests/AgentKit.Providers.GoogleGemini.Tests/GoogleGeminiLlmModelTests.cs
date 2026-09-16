@@ -202,6 +202,84 @@ public sealed class GoogleGeminiLlmModelTests
         handler.Requests.Count.ShouldBe(1);
     }
 
+    /// <summary>Verifies caller cancellation while a request is still in flight (before any response) returns a typed cancellation.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenCallerCancelsWhileSendIsInFlight_ReturnsCancelledResult()
+    {
+        var handler = new GatedSendHttpMessageHandler();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")));
+        var observer = new RecordingModelResponseObserver();
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1)), observer, cancellation.Token);
+        (await Task.WhenAny(handler.Entered, pending)).ShouldBe(handler.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+    }
+
+    /// <summary>Verifies the injected deadline cancels a request still in flight (before any response) without wall-clock waiting.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineExpiresWhileSendIsInFlight_ReturnsTimeoutFailure()
+    {
+        var clock = new FakeTimeProvider(Now);
+        var handler = new GatedSendHttpMessageHandler();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")), timeProvider: clock);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddSeconds(1)), observer, TestContext.Current.CancellationToken);
+        (await Task.WhenAny(handler.Entered, pending)).ShouldBe(handler.Entered);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+    }
+
+    /// <summary>Verifies the injected deadline cancels a blocked success-body read without wall-clock waiting.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineExpiresDuringSuccessBodyRead_ReturnsTimeoutFailure()
+    {
+        var clock = new FakeTimeProvider(Now);
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(body),
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")), timeProvider: clock);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddSeconds(1)), observer, TestContext.Current.CancellationToken);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    /// <summary>Verifies the transport's own timeout while reading a success body is a typed timeout, never an escaping exception.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTransportTimesOutDuringSuccessBodyRead_ReturnsTypedTimeoutFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new FaultingReadStream(static () => new TaskCanceledException("The transport timed out.", new TimeoutException()))),
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
     /// <summary>Verifies caller cancellation while reading an error body returns one cancellation outcome.</summary>
     [Fact]
     public async Task ExecuteAsync_WhenCallerCancelsDuringErrorBodyRead_ReturnsCancelled()
@@ -295,6 +373,24 @@ public sealed class GoogleGeminiLlmModelTests
         failure.StatusCode.ShouldBe(502);
         _ = failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    /// <summary>Verifies a translator NotSupportedException is mapped to a typed InvalidRequest failure without sending an HTTP request.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTranslatorRejectsUnsupportedSettings_ReturnsInvalidRequestFailureWithoutSendingHttpRequest()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("AIza-test")));
+        var settings = LlmRequestSettings.Default with { ParallelToolCalls = false };
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.GeminiFlash, Now.AddMinutes(1), settings: settings), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.SafeMessage.ShouldBe("The request could not be translated for the Gemini GenerateContent wire format.");
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<NotSupportedException>();
+        handler.Requests.ShouldBeEmpty();
     }
 
     /// <summary>Verifies observer cancellation during failure publication cannot trigger a second terminal event.</summary>
