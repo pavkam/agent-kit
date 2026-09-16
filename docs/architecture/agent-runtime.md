@@ -69,12 +69,12 @@ that key before `AddAgentLoop` replaces the built-in decision. Until the loop
 carries an explicit lane and policy snapshot, it drives one implicit lane per
 branch (the lane identity is the branch identity), reports the turn number as
 its operation-state revision, and names a single fixed policy version. The
-reduced loop projects each tool batch into one tool-message entry, so a batch
-of any size has exactly one real committed `SessionEntryId`. Because the
+reduced loop projects each tool batch into one tool-message entry, so a batch of
+any size has exactly one real committed `SessionEntryId`. Because the
 committed-turn boundary requires `CommittedToolResultReference` to carry a
 distinct `SessionEntryId` per call, the loop derives one deterministic,
-policy-facing-only identity per call from that real batch entry identity and
-the call's position, documented on `DefaultAgentLoop.DerivePerCallEntryId`. This
+policy-facing-only identity per call from that real batch entry identity and the
+call's position, documented on `DefaultAgentLoop.DerivePerCallEntryId`. This
 lets every committed-tool-results turn — one call or many — reach the
 continuation policy uniformly; there is no longer a batch-size bypass. A future
 revision that commits one real session entry per tool result removes this
@@ -284,21 +284,29 @@ policies commonly complete synchronously. Progress and results are immutable
 snapshots; mutable state-machine internals stay inside the run scope.
 
 The reduced first-party loop implements a narrower, request-based
-`IAgentLoop.RunAsync(AgentRunRequest request, AgentRunServices services,
-CancellationToken cancellationToken = default)` rather than the fuller
-`AgentRunInvocation`-based signature above, and its `AgentRunServices` bundle
-correspondingly carries only the collaborators the reduced loop actually
-drives a run with: `ISessionCoordinator`, `ISecurityProfileSelector`,
-`IContextAssembler`, `IToolInvoker`, `IModelCatalog`, `IModelSelector`,
-`ILlmModelResolver`, and `IRunContinuationPolicy`. It does not yet carry
-`IInputCoordinator`, `SessionExecutionCapability`, `IModelRequestExecutor`,
-`IToolExecutor`, `IOutputProcessor`, `IOutputPublisher`, `IHookDispatcher`, or
+`IAgentLoop.RunAsync` signature —
+
+```csharp
+Task<AgentLoopResult> RunAsync(
+    AgentRunRequest request,
+    AgentRunServices services,
+    CancellationToken cancellationToken = default);
+```
+
+— rather than the fuller `AgentRunInvocation`-based signature above, and its
+`AgentRunServices` bundle correspondingly carries only the collaborators the
+reduced loop actually drives a run with: `ISessionCoordinator`,
+`ISecurityProfileSelector`, `IContextAssembler`, `IToolInvoker`,
+`IModelCatalog`, `IModelSelector`, `ILlmModelResolver`, and
+`IRunContinuationPolicy`. It does not yet carry `IInputCoordinator`,
+`SessionExecutionCapability`, `IModelRequestExecutor`, `IToolExecutor`,
+`IOutputProcessor`, `IOutputPublisher`, `IHookDispatcher`, or
 `BudgetExecutionCapability`, because those packages are not yet wired into the
-reduced loop. What the reduced shape already delivers, matching this
-document's normative intent exactly, is that every collaborator in its
-`AgentRunServices` arrives through `RunAsync` rather than constructor
-injection, and is compiled per run by the facade's run-activation boundary
-honoring the run's selected keyed `IAgentLoop`.
+reduced loop. What the reduced shape already delivers, matching this document's
+normative intent exactly, is that every collaborator in its `AgentRunServices`
+arrives through `RunAsync` rather than constructor injection, and is compiled
+per run by the facade's run-activation boundary honoring the run's selected
+keyed `IAgentLoop`.
 
 The
 [continuation evaluation contract](../concepts/agent-loop-state-machine.md#continuation-evaluation-boundary)
@@ -352,10 +360,9 @@ collaborator itself.
 
 The selected per-agent collaborators arrive through the immutable
 `AgentRunServices` bundle instead, as an explicit parameter of
-`IAgentLoop.RunAsync` (`RunAsync(AgentRunRequest request, AgentRunServices
-services, CancellationToken cancellationToken = default)` in the reduced
-request-based contract this package implements today). The facade's run
-activation boundary — `AgentEngine.RunAgentAsync`, using the package-internal
+`IAgentLoop.RunAsync` in the reduced request-based contract this package
+implements today (see the signature above). The facade's run activation boundary
+— `AgentEngine.RunAgentAsync`, using the package-internal
 `AgentRunServicesFactory` — compiles one bundle per run, inside the freshly
 created run scope, after resolving the run's keyed `IAgentLoop`. For each
 collaborator that could plausibly be selected per loop key (session
@@ -366,16 +373,16 @@ registration when no such keyed variant exists. `IModelCatalog` is always
 resolved unkeyed, because composition requires exactly one engine-wide catalog.
 The continuation policy is resolved from the fixed
 `AgentLoopComponentDefaults.ContinuationPolicyKey` rather than the run's loop
-key, because the reduced loop still consults one replaceable, engine-wide
-policy rather than a policy selected per keyed loop.
+key, because the reduced loop still consults one replaceable, engine-wide policy
+rather than a policy selected per keyed loop.
 
 Reserving constructor injection for genuinely key-independent mechanics and
 supplying every per-agent collaborator through `RunAsync`'s explicit
 `AgentRunServices` parameter is what prevents an unkeyed constructor dependency
-from silently replacing one definition's selected context assembler, model
-path, tool invoker, or continuation policy with whatever happens to be the
-engine-wide default — the defect this shape closes. An agent definition selects
-its loop key through `AgentDefinition.LoopKey`; leaving it unset resolves to
+from silently replacing one definition's selected context assembler, model path,
+tool invoker, or continuation policy with whatever happens to be the engine-wide
+default — the defect this shape closes. An agent definition selects its loop key
+through `AgentDefinition.LoopKey`; leaving it unset resolves to
 `AgentLoopComponentDefaults.LoopKey`, so every definition, configured or not,
 always names an exact keyed `IAgentLoop` selection rather than an ambient
 unkeyed registration.

@@ -163,14 +163,14 @@ Unknown compatible serialized fields are retained in typed extension data.
 `SessionSequence` is a per-branch coordinate: it is an entry's 1-based commit
 position within its own `BranchId` alone. A store accepts an append only when
 its batch's sequences are contiguous starting at that branch's own current tip
-plus one; how many entries a sibling branch of the same session has committed
-is irrelevant. `SessionVersion` remains the one whole-session
-optimistic-concurrency token and advances by exactly one per committed
-mutation regardless of which branch it targets, so two branches' own sequence
-numbering is independent and may coincide numerically without naming related
-entries. `SessionEntryId`, not the pair of branch and sequence, is an entry's
-stable cross-branch identity; a fork carries an entry's original ID and
-sequence forward unchanged into the new branch's own sequence space.
+plus one; how many entries a sibling branch of the same session has committed is
+irrelevant. `SessionVersion` remains the one whole-session
+optimistic-concurrency token and advances by exactly one per committed mutation
+regardless of which branch it targets, so two branches' own sequence numbering
+is independent and may coincide numerically without naming related entries.
+`SessionEntryId`, not the pair of branch and sequence, is an entry's stable
+cross-branch identity; a fork carries an entry's original ID and sequence
+forward unchanged into the new branch's own sequence space.
 
 Coding-harness planning uses the same rule. `PlanSessionEntry` carries a
 complete immutable `WorkPlan` revision with stable plan/item identities and an
@@ -819,24 +819,24 @@ fails when none is present; there is no hidden production default.
 
 AgentKit.Session.Sqlite persists one row per session, branch, entry, lane,
 admission, and idempotency receipt in a relational schema, not one whole-store
-JSON blob. A durable read or mutation loads and (for writes, atomically
-commits) only the rows the operation actually needs — typically one session's
-own metadata, one branch's cached tip, and the exact bounded page of entries a
-read requested — inside a SQLite transaction: a deferred (read) transaction for
-reads and a non-deferred (`BEGIN IMMEDIATE`) transaction for mutations, so
-SQLite's own write lock, not a process-local gate, arbitrates writers and makes
-the optimistic-concurrency check against `SessionVersion` atomic with the
-commit. Branching copies a parent branch's committed rows up to the fork point
-without decoding them. Because ordinary appends, admissions, lane
-provisioning, and run acceptance never decode a previously committed entry
-payload, and forking never decodes at all, a corrupt or unreadable entry can
-only affect a paged read that actually names the row containing it — never a
-scan across the whole store. This is a deliberate breaking on-disk format
-change from the single-row-blob shape used before this schema existed; the
-format was never released, so `SqliteSchemaMode.ApplyKnownMigrations` creates
-the relational schema fresh rather than reading or reinterpreting an older
-blob-shaped database, and `SqliteSchemaMode.ValidateExact` against one fails
-with a typed exception instead of silently reinterpreting it.
+JSON blob. A durable read or mutation loads and (for writes, atomically commits)
+only the rows the operation actually needs — typically one session's own
+metadata, one branch's cached tip, and the exact bounded page of entries a read
+requested — inside a SQLite transaction: a deferred (read) transaction for reads
+and a non-deferred (`BEGIN IMMEDIATE`) transaction for mutations, so SQLite's
+own write lock, not a process-local gate, arbitrates writers and makes the
+optimistic-concurrency check against `SessionVersion` atomic with the commit.
+Branching copies a parent branch's committed rows up to the fork point without
+decoding them. Because ordinary appends, admissions, lane provisioning, and run
+acceptance never decode a previously committed entry payload, and forking never
+decodes at all, a corrupt or unreadable entry can only affect a paged read that
+actually names the row containing it — never a scan across the whole store. This
+is a deliberate breaking on-disk format change from the single-row-blob shape
+used before this schema existed; the format was never released, so
+`SqliteSchemaMode.ApplyKnownMigrations` creates the relational schema fresh
+rather than reading or reinterpreting an older blob-shaped database, and
+`SqliteSchemaMode.ValidateExact` against one fails with a typed exception
+instead of silently reinterpreting it.
 
 ## Mutation boundaries and idempotency
 
@@ -877,20 +877,20 @@ naming the installed operation and run until `ISessionStore.ReleaseRunAsync`
 explicitly clears it.
 
 `ReleaseRunAsync` atomically clears a lane's installed accepted run state so a
-later `AcceptRunAsync` for the same lane no longer observes `SessionRunStartBusy`.
-The release request names the exact operation, run, and total-state revision it
-owns; a store clears the lane only when its installed accepted state's
-correlation and revision match that evidence, so a stale caller — for example a
-lease left over from a superseded attempt — can never clear a different, newer
-occupant (`SessionRunReleaseRejected` with kind `Fenced`). A missing session or
-lane, and a cross-tenant caller, are all masked as kind `LaneNotFound`, the same
-masking every other protected session operation uses. A lane holding no accepted
-run is kind `NoAcceptedRun`, and a stale expected whole-session version is kind
-`SessionVersion`. Release appends no session entry and does not move any branch
-tip; it only clears the lane's durable ownership marker and advances the
-canonical whole-session version by one. It carries an idempotency key so a
-retried release after a lost response returns the original `SessionRunReleased`
-receipt rather than a second commit.
+later `AcceptRunAsync` for the same lane no longer observes
+`SessionRunStartBusy`. The release request names the exact operation, run, and
+total-state revision it owns; a store clears the lane only when its installed
+accepted state's correlation and revision match that evidence, so a stale caller
+— for example a lease left over from a superseded attempt — can never clear a
+different, newer occupant (`SessionRunReleaseRejected` with kind `Fenced`). A
+missing session or lane, and a cross-tenant caller, are all masked as kind
+`LaneNotFound`, the same masking every other protected session operation uses. A
+lane holding no accepted run is kind `NoAcceptedRun`, and a stale expected
+whole-session version is kind `SessionVersion`. Release appends no session entry
+and does not move any branch tip; it only clears the lane's durable ownership
+marker and advances the canonical whole-session version by one. It carries an
+idempotency key so a retried release after a lost response returns the original
+`SessionRunReleased` receipt rather than a second commit.
 
 `ISessionRunLease` exposes this as an explicit `ReleaseAsync` member distinct
 from ordinary `DisposeAsync`. Plain disposal intentionally releases only the
@@ -903,9 +903,9 @@ coordinator, using the lease's own retained context and total-state revision
 plus a freshly loaded session version, and then performs the same local release
 as `DisposeAsync`. A failure releasing durable state — a stale version, a store
 outage, or cancellation — is logged and swallowed rather than thrown, matching
-the no-throw contract expected of a disposal-adjacent operation; local
-ownership is always released regardless. A failed durable release leaves the
-lane busy until a later successful `ReleaseAsync` call or store-level recovery.
+the no-throw contract expected of a disposal-adjacent operation; local ownership
+is always released regardless. A failed durable release leaves the lane busy
+until a later successful `ReleaseAsync` call or store-level recovery.
 
 Conversation history belongs here. Durable memory across sessions belongs to the
 memory component. The working provider context belongs to the context component.

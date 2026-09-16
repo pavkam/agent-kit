@@ -240,10 +240,10 @@ and typed details. The envelope and canonical status vocabulary are identical to
 the Gemini Developer API's, so the adapter reuses the Gemini package's public
 error mapping and failure factory rather than a Vertex-specific copy: the body
 <code>status</code> classifies first, and only an absent or unmapped status
-falls back to the HTTP status table. Retry <code>RESOURCE_EXHAUSTED</code>/429 only after the
-documented delay, plus <code>UNAVAILABLE</code>, selected <code>ABORTED</code>,
-and transport failures when idempotent. Never retry an LRO creation without
-deduplication.
+falls back to the HTTP status table. Retry <code>RESOURCE_EXHAUSTED</code>/429
+only after the documented delay, plus <code>UNAVAILABLE</code>, selected
+<code>ABORTED</code>, and transport failures when idempotent. Never retry an LRO
+creation without deduplication.
 
 Capture Google request/trace headers, publisher model resource, resolved model
 version, location, endpoint/deployed-model identifiers, token usage by modality,

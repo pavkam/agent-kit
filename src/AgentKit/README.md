@@ -49,9 +49,8 @@ implementation is rejected. Keyed alternatives remain independent.
 keyed and scoped, so different agent definitions can select different loops
 (`AgentDefinition.LoopKey`, defaulting to `AgentLoopComponentDefaults.LoopKey`
 when unset). Composition requires at least one keyed `IAgentLoop` registration
-and, once the catalog is ready, that every published definition's exact
-selected key actually resolves; two registrations sharing one key are
-ambiguous.
+and, once the catalog is ready, that every published definition's exact selected
+key actually resolves; two registrations sharing one key are ambiguous.
 
 Missing and ambiguous services produce stable composition diagnostics, including
 when Microsoft DI constructor validation is disabled. Feature-only hosts using

@@ -63,11 +63,11 @@ sequences are contiguous starting at the target branch's own current tip plus
 one; the count of entries committed on a different branch of the same session
 MUST NOT influence that computation or that append's acceptance. The
 whole-session `SessionVersion` compare-and-swap token remains distinct from
-sequence: it advances by exactly one per committed mutation regardless of
-which branch the mutation targets, so two sibling branches' sequence
-coordinates may coincide numerically without naming related entries. An
-entry's ID, not the pair of branch and sequence, is its stable identity across
-every branch that retains a copy of it after a fork.
+sequence: it advances by exactly one per committed mutation regardless of which
+branch the mutation targets, so two sibling branches' sequence coordinates may
+coincide numerically without naming related entries. An entry's ID, not the pair
+of branch and sequence, is its stable identity across every branch that retains
+a copy of it after a fork.
 
 Current branch tips, lane configuration, inboxes, leases, total operation state,
 bounded progress checkpoints, and staged outcomes MAY use replaceable typed

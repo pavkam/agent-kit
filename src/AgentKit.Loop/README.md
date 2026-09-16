@@ -20,10 +20,10 @@ definitions in one engine can select different keyed loops. `DefaultAgentLoop`'s
 own constructor takes only genuinely key-independent mechanics (identifier
 generators, the clock, its own named options); every per-agent collaborator it
 drives a run with — session coordination, authorization capture, context
-assembly, tool invocation, model selection and resolution, and the
-continuation policy — arrives per run through the `AgentRunServices` parameter
-of `IAgentLoop.RunAsync`, compiled by the facade's run-activation boundary for
-the run's exact selected key.
+assembly, tool invocation, model selection and resolution, and the continuation
+policy — arrives per run through the `AgentRunServices` parameter of
+`IAgentLoop.RunAsync`, compiled by the facade's run-activation boundary for the
+run's exact selected key.
 
 Target: **.NET 10**. For a source-checkout setup and a runnable agent, follow
 [Getting started](../../docs/getting-started.md). Complete engine composition is
