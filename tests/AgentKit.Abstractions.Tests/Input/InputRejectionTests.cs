@@ -15,6 +15,22 @@ public sealed class InputRejectionTests
         kindException.ParamName.ShouldBe("kind");
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var rejection = new InputRejection(InputRejectionKind.Unauthorized, "safe");
+        rejection.Kind.ShouldBe(InputRejectionKind.Unauthorized);
+        rejection.SafeReason.ShouldBe("safe");
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new InputRejection(InputRejectionKind.Unauthorized, "safe");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static TException ShouldThrowExactly<TException>(Func<object?> action)
         where TException : Exception
     {

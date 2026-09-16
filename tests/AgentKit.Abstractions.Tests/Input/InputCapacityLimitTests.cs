@@ -15,6 +15,26 @@ public sealed class InputCapacityLimitTests
         capacityException.ParamName.ShouldBe("maximumPendingInputs");
     }
 
+    [Fact]
+    public void Constructor_WhenCurrentPendingInputsIsNegative_ThrowsExactParameter() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => new InputCapacityLimit(1, -1)).ParamName.ShouldBe("currentPendingInputs");
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var limit = new InputCapacityLimit(10, 3);
+        limit.MaximumPendingInputs.ShouldBe(10);
+        limit.CurrentPendingInputs.ShouldBe(3);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new InputCapacityLimit(10, 3);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static TException ShouldThrowExactly<TException>(Func<object?> action)
         where TException : Exception
     {

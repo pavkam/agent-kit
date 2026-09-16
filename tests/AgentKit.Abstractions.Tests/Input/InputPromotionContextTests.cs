@@ -39,6 +39,36 @@ public sealed class InputPromotionContextTests
         context.TargetTurnId.ShouldBe(Turn());
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var version = new SessionVersion(1);
+        var fence = new FencingToken(1);
+        var payload = Payload(1, InputDelivery.Steer);
+        var eligible = Admitted(payload, payload);
+        var context = new InputPromotionContext(Agent(), Session(), Lane(), Operation(), new OperationStateRevision(1), new SessionBranchCursor(Branch(), null), new SessionSequence(1), version, fence, PromotionBoundary.AfterTurnCommitted, Turn(), NextTurn(), [eligible], 2);
+        context.AgentId.ShouldBe(Agent());
+        context.SessionId.ShouldBe(Session());
+        context.ExecutionLaneId.ShouldBe(Lane());
+        context.ExpectedOperation.ShouldBe(Operation());
+        context.OperationStateRevision.ShouldBe(new OperationStateRevision(1));
+        context.BranchCursor.ShouldBe(new SessionBranchCursor(Branch(), null));
+        context.CutoffSequence.ShouldBe(new SessionSequence(1));
+        context.ExpectedVersion.ShouldBe(version);
+        context.ExpectedFencingToken.ShouldBe(fence);
+        context.Boundary.ShouldBe(PromotionBoundary.AfterTurnCommitted);
+        context.Eligible.ShouldBe([eligible]);
+        context.MaximumPromotions.ShouldBe(2);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = PromotionContext([]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static AdmittedInput Admitted(AgentInput original, AgentInput effective, SessionSequence? promoted = null) => new(Admission(1), Agent(), Session(), Lane(), Identity(), new SessionSequence(1), original, effective, Manifest(), DateTimeOffset.UnixEpoch, promoted);
     private static AgentInput Payload(long id, InputDelivery delivery) => new(Input(id), delivery, [Part()], ExtensionData.Empty);
     private static TextPart Part() => new("input", TextSemantics.Plain, ExtensionData.Empty);

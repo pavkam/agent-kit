@@ -71,4 +71,25 @@ public sealed class AdmissionReceiptTests
         exception.GetType().ShouldBe(exceptionType);
         ((ArgumentException) exception).ParamName.ShouldBe(parameterName);
     }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var receipt = new AdmissionReceipt(Admission(1), Input(1), Agent(), Session(), Lane(), new SessionSequence(1), true);
+        receipt.AdmissionId.ShouldBe(Admission(1));
+        receipt.InputId.ShouldBe(Input(1));
+        receipt.AgentId.ShouldBe(Agent());
+        receipt.SessionId.ShouldBe(Session());
+        receipt.ExecutionLaneId.ShouldBe(Lane());
+        receipt.AdmittedSequence.ShouldBe(new SessionSequence(1));
+        receipt.Existing.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new AdmissionReceipt(Admission(1), Input(1), Agent(), Session(), Lane(), new SessionSequence(1), false);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

@@ -105,4 +105,33 @@ public sealed class InputAdmissionRequestTests
         exception.GetType().ShouldBe(exceptionType);
         ((ArgumentException) exception).ParamName.ShouldBe(parameterName);
     }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var identity = Identity();
+        var correlation = Operation();
+        var authorization = Authorization(identity, Agent(), Session(), correlation);
+        var input = Payload(1, InputDelivery.Steer);
+        var version = new SessionVersion(1);
+        var request = new InputAdmissionRequest(Agent(), Session(), Lane(), identity, correlation, authorization, input, version);
+        request.AgentId.ShouldBe(Agent());
+        request.SessionId.ShouldBe(Session());
+        request.ExecutionLaneId.ShouldBe(Lane());
+        request.Identity.ShouldBe(identity);
+        request.Correlation.ShouldBe(correlation);
+        request.Authorization.ShouldBe(authorization);
+        request.Input.ShouldBe(input);
+        request.ExpectedVersion.ShouldBe(version);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var identity = Identity();
+        var correlation = Operation();
+        var original = new InputAdmissionRequest(Agent(), Session(), Lane(), identity, correlation, Authorization(identity, Agent(), Session(), correlation), Payload(1, InputDelivery.Steer));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

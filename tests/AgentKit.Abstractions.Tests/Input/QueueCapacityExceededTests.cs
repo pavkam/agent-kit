@@ -15,6 +15,29 @@ public sealed class QueueCapacityExceededTests
         retryException.ParamName.ShouldBe("retryAfter");
     }
 
+    [Fact]
+    public void Constructor_WhenLimitIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => new QueueCapacityExceeded(null!, null)).ParamName.ShouldBe("limit");
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var limit = new InputCapacityLimit(1, 0);
+        var exceeded = new QueueCapacityExceeded(limit, TimeSpan.FromSeconds(1));
+        exceeded.Limit.ShouldBeSameAs(limit);
+        exceeded.RetryAfter.ShouldBe(TimeSpan.FromSeconds(1));
+        InputAdmissionResult result = exceeded;
+        _ = result.ShouldBeOfType<QueueCapacityExceeded>();
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new QueueCapacityExceeded(new InputCapacityLimit(1, 0), TimeSpan.FromSeconds(1));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static TException ShouldThrowExactly<TException>(Func<object?> action)
         where TException : Exception
     {

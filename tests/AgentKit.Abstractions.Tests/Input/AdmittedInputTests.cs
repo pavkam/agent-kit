@@ -113,4 +113,29 @@ public sealed class AdmittedInputTests
         exception.GetType().ShouldBe(exceptionType);
         ((ArgumentException) exception).ParamName.ShouldBe(parameterName);
     }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var payload = Payload(1, InputDelivery.Steer);
+        var manifest = Manifest();
+        var identity = Identity();
+        var admitted = new AdmittedInput(Admission(1), Agent(), Session(), Lane(), identity, new SessionSequence(1), payload, payload, manifest, DateTimeOffset.UnixEpoch, new SessionSequence(2));
+        admitted.SessionId.ShouldBe(Session());
+        admitted.Identity.ShouldBe(identity);
+        admitted.OriginalPayload.ShouldBe(payload);
+        admitted.EffectivePayload.ShouldBe(payload);
+        admitted.Preprocessing.ShouldBe(manifest);
+        admitted.AdmittedAt.ShouldBe(DateTimeOffset.UnixEpoch);
+        admitted.PromotedSequence.ShouldBe(new SessionSequence(2));
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var payload = Payload(1, InputDelivery.Steer);
+        var original = Admitted(payload, payload);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

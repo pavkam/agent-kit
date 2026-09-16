@@ -38,4 +38,12 @@ public sealed class InputPreprocessingManifestTests
         exception.GetType().ShouldBe(exceptionType);
         ((ArgumentException) exception).ParamName.ShouldBe(parameterName);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new InputPreprocessingManifest(new ConfigurationVersion(1), new InputFingerprint("original"), new InputFingerprint("effective"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

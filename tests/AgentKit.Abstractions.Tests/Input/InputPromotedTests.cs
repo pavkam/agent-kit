@@ -37,6 +37,31 @@ public sealed class InputPromotedTests
         exception.ParamName.ShouldBe("promoted");
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var payload = Payload(1, InputDelivery.Steer);
+        var promoted = new AdmittedInput(Admission(1), Agent(), Session(), Lane(), Identity(), new SessionSequence(1), payload, payload, Manifest(), DateTimeOffset.UnixEpoch, new SessionSequence(2));
+        var snapshot = Snapshot([Admission(1)]);
+        var version = new SessionVersion(1);
+        var result = new InputPromoted(snapshot, [promoted], version);
+        result.Snapshot.ShouldBeSameAs(snapshot);
+        result.Promoted.ShouldBe([promoted]);
+        result.SessionVersion.ShouldBe(version);
+        InputPromotionResult typed = result;
+        _ = typed.ShouldBeOfType<InputPromoted>();
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var payload = Payload(1, InputDelivery.Steer);
+        var promoted = new AdmittedInput(Admission(1), Agent(), Session(), Lane(), Identity(), new SessionSequence(1), payload, payload, Manifest(), DateTimeOffset.UnixEpoch, new SessionSequence(2));
+        var original = new InputPromoted(Snapshot([Admission(1)]), [promoted], new SessionVersion(1));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static AdmittedInput Admitted(AgentInput original, AgentInput effective, SessionSequence? promoted = null) => new(Admission(1), Agent(), Session(), Lane(), Identity(), new SessionSequence(1), original, effective, Manifest(), DateTimeOffset.UnixEpoch, promoted);
     private static InputPromotionSnapshot Snapshot(ImmutableArray<AdmissionId> admissions) => new(Agent(), Session(), Lane(), Operation(), new OperationStateRevision(1), new SessionBranchCursor(Branch(), null), new SessionSequence(1), null, null, PromotionBoundary.AfterTurnCommitted, Turn(), NextTurn(), admissions);
     private static AgentInput Payload(long id, InputDelivery delivery) => new(Input(id), delivery, [Part()], ExtensionData.Empty);

@@ -68,4 +68,12 @@ public sealed class AgentInputTests
         exception.GetType().ShouldBe(exceptionType);
         ((ArgumentException) exception).ParamName.ShouldBe(parameterName);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new AgentInput(Input(1), InputDelivery.Steer, [Part()], ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

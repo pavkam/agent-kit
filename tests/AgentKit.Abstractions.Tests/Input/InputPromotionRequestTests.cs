@@ -50,6 +50,36 @@ public sealed class InputPromotionRequestTests
     private static InputPromotionRequest PromotionRequest(SecurityAuthorizationContext authorization) => new(Agent(), Session(), Lane(), Operation(), new OperationStateRevision(1), new SessionBranchCursor(Branch(), null), new SessionSequence(1), null, null, Identity(), authorization, PromotionBoundary.AfterTurnCommitted, Turn(), NextTurn(), 1);
     private static SecurityAuthorizationContext Authorization(ExecutionIdentity identity, AgentId agentId, SessionId sessionId, OperationCorrelation correlation) => new(new SecurityProfileKey("profile"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("90000000-0000-0000-0000-000000000001")), new SecurityPolicyVersion(1), new ContentHash("safe")), new ComponentKey<ISecurityAuthority>("authority"), new AgentDefinitionRevision(0), new ConfigurationVersion(1), new SecurityAuthorizationScope(agentId, sessionId, correlation), identity);
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var version = new SessionVersion(1);
+        var fence = new FencingToken(1);
+        var request = new InputPromotionRequest(Agent(), Session(), Lane(), Operation(), new OperationStateRevision(1), new SessionBranchCursor(Branch(), null), new SessionSequence(1), version, fence, Identity(), Authorization(Identity(), Agent(), Session(), Operation()), PromotionBoundary.AfterTurnCommitted, Turn(), NextTurn(), 5);
+        request.AgentId.ShouldBe(Agent());
+        request.SessionId.ShouldBe(Session());
+        request.ExecutionLaneId.ShouldBe(Lane());
+        request.ExpectedOperation.ShouldBe(Operation());
+        request.OperationStateRevision.ShouldBe(new OperationStateRevision(1));
+        request.BranchCursor.ShouldBe(new SessionBranchCursor(Branch(), null));
+        request.CutoffSequence.ShouldBe(new SessionSequence(1));
+        request.ExpectedVersion.ShouldBe(version);
+        request.ExpectedFencingToken.ShouldBe(fence);
+        request.Identity.ShouldBe(Identity());
+        request.Boundary.ShouldBe(PromotionBoundary.AfterTurnCommitted);
+        request.PreviousTurnId.ShouldBe(Turn());
+        request.TargetTurnId.ShouldBe(NextTurn());
+        request.MaximumPromotions.ShouldBe(5);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new InputPromotionRequest(Agent(), Session(), Lane(), Operation(), new OperationStateRevision(1), new SessionBranchCursor(Branch(), null), new SessionSequence(1), null, null, Identity(), Authorization(Identity(), Agent(), Session(), Operation()), PromotionBoundary.AfterTurnCommitted, Turn(), NextTurn(), 1);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static TException ShouldThrowExactly<TException>(Func<object?> action)
         where TException : Exception
     {

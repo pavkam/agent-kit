@@ -25,6 +25,24 @@ public sealed class InputPromotionSnapshotTests
         firstRequestException.ParamName.ShouldBe("previousTurnId");
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsOptionalEvidence()
+    {
+        var version = new SessionVersion(1);
+        var fence = new FencingToken(1);
+        var snapshot = new InputPromotionSnapshot(Agent(), Session(), Lane(), Operation(), new OperationStateRevision(1), new SessionBranchCursor(Branch(), null), new SessionSequence(1), version, fence, PromotionBoundary.AfterTurnCommitted, Turn(), NextTurn(), [Admission(1)]);
+        snapshot.ExpectedVersion.ShouldBe(version);
+        snapshot.ExpectedFencingToken.ShouldBe(fence);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Snapshot([Admission(1)]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static InputPromotionSnapshot Snapshot(ImmutableArray<AdmissionId> admissions) => new(Agent(), Session(), Lane(), Operation(), new OperationStateRevision(1), new SessionBranchCursor(Branch(), null), new SessionSequence(1), null, null, PromotionBoundary.AfterTurnCommitted, Turn(), NextTurn(), admissions);
     private static ExecutionLaneId Lane() => new(Guid.Parse("40000000-0000-0000-0000-000000000001"));
     private static AdmissionId Admission(long value) => new(Guid.Parse($"00000000-0000-0000-0000-{value:000000000000}"));
