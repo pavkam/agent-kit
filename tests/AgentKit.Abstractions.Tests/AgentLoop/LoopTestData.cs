@@ -41,4 +41,20 @@ internal static class LoopTestData
 
     public static ContextPreparationFailure PreparationFailure() =>
         new(ContextPreparationFailureKind.Unknown, "unavailable", ExtensionData.Empty);
+
+    public static ToolCallPart ToolCall() =>
+        new(new ToolCallId(Guid.Parse("b0000000-0000-0000-0000-000000000009")), new ToolReference(new ToolAlias("t"), new ToolId("t"), new ToolVersion("1")), default, null, ExtensionData.Empty);
+
+    public static OutputRejected OutputRejected() =>
+        new(new OutputValidationFailure(OutputValidationFailureKind.SchemaValidationFailed, "invalid", []));
+
+    public static OutputConfigurationRejected OutputConfigurationRejected() =>
+        new(new OutputSchemaConfigurationFailure(OutputSchemaConfigurationFailureKind.MalformedSchema, "invalid", []));
+
+    public static ToolResultPart ToolResult() =>
+        new(new ToolCallId(Guid.Parse("b0000000-0000-0000-0000-000000000009")), new ToolReference(new ToolAlias("t"), new ToolId("t"), new ToolVersion("1")),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+            [new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+            ExtensionData.Empty);
 }
