@@ -148,7 +148,7 @@ public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
                     break;
 
                 case RuntimeMessage:
-                    result.Add(CreateMessage("user", TranslateUserContent(message.Parts)));
+                    result.Add(CreateMessage("user", TranslateRuntimeContent(message.Parts)));
                     break;
 
                 case AssistantMessage:
@@ -217,6 +217,9 @@ public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
 
         return content;
     }
+
+    private static JsonArray TranslateRuntimeContent(ImmutableArray<ContentPart> parts) =>
+        [new JsonObject { ["text"] = RuntimeMessageProjection.BuildEnvelopeJson(parts) }];
 
     private static JsonArray TranslateAssistantContent(
         ImmutableArray<ContentPart> parts,

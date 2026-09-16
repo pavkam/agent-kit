@@ -521,4 +521,30 @@ public sealed class GoogleGeminiContentTranslatorTests
 
         functionResponse["response"]!["error"]!.GetValue<string>().ShouldBe("The location was not found.");
     }
+
+    [Fact]
+    public void Translate_WhenMessageIsRuntimeMessage_ProjectsTheSharedTaggedEnvelope()
+    {
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [TestMessages.Runtime("The run was interrupted.")],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new GoogleGeminiContentTranslator().Translate(request);
+        var content = body["contents"]![0]!.AsObject();
+
+        content["role"]!.GetValue<string>().ShouldBe("user");
+        var part = content["parts"]![0]!.AsObject();
+        var notice = JsonNode.Parse(part["text"]!.GetValue<string>())!;
+        notice["format"]!.GetValue<string>().ShouldBe(RuntimeMessageProjection.Format);
+        notice["content"]!.GetValue<string>().ShouldBe("The run was interrupted.");
+
+        // The envelope tags the notice so it is never indistinguishable from a plain user message.
+        part["text"]!.GetValue<string>().ShouldNotBe("The run was interrupted.");
+    }
 }

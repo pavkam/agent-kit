@@ -64,7 +64,10 @@ instruction, even when framework-authored. An adapter without a native runtime
 role MUST use an explicitly tagged non-instruction-bearing projection or reject
 the request; it MUST NOT map the notice to system/developer merely because that
 wire role is convenient. History processors, repair, compaction, and imported
-message normalization obey the same non-elevation rule.
+message normalization obey the same non-elevation rule. Every first-party
+conversational adapter builds that tagged projection from the one shared
+`agentkit.runtime-message.v1` envelope helper, so the marker is identical across
+providers instead of each adapter inventing its own ad hoc tag.
 
 Instructions are structured sources with provenance and precedence. The core
 MUST NOT flatten system, developer, retrieved, and user content into one string

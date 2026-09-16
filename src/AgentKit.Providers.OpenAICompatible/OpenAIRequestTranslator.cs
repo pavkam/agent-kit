@@ -137,11 +137,7 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
                     break;
 
                 case RuntimeMessage:
-                    result.Add(CreateTextMessage("user", new JsonObject
-                    {
-                        ["format"] = "agentkit.runtime-message.v1",
-                        ["content"] = JoinText(message.Parts),
-                    }.ToJsonString()));
+                    result.Add(CreateTextMessage("user", RuntimeMessageProjection.BuildEnvelopeJson(message.Parts)));
                     break;
 
                 case AssistantMessage:

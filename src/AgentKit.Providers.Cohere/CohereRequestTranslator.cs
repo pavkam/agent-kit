@@ -117,8 +117,15 @@ public sealed class CohereRequestTranslator: ICohereRequestTranslator
                     break;
 
                 case UserMessage:
-                case RuntimeMessage:
                     result.Add(new JsonObject { ["role"] = "user", ["content"] = JoinText(message.Parts, message) });
+                    break;
+
+                case RuntimeMessage:
+                    result.Add(new JsonObject
+                    {
+                        ["role"] = "user",
+                        ["content"] = RuntimeMessageProjection.BuildEnvelopeJson(message.Parts),
+                    });
                     break;
 
                 case AssistantMessage:

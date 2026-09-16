@@ -53,6 +53,21 @@ internal static class TestMessages
             state,
             [.. parts], ExtensionData.Empty);
 
+    /// <summary>Builds a <see cref="RuntimeMessage"/> containing a single text part.</summary>
+    public static RuntimeMessage Runtime(string text) =>
+        new(
+            new MessageId(Guid.NewGuid()),
+            Agent,
+            Session,
+            conversationId: null,
+            Branch,
+            Run,
+            Turn,
+            CreatedAt,
+            MessageState.Complete,
+            [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
+
     /// <summary>Builds an <see cref="AssistantMessage"/> containing the given parts.</summary>
     public static AssistantMessage Assistant(params ContentPart[] parts) =>
         new(

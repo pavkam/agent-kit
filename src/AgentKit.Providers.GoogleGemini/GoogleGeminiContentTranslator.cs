@@ -136,7 +136,7 @@ public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslato
                     break;
 
                 case RuntimeMessage:
-                    result.Add(CreateContent("user", TranslateUserParts(message.Parts)));
+                    result.Add(CreateContent("user", TranslateRuntimeParts(message.Parts)));
                     break;
 
                 case AssistantMessage:
@@ -210,6 +210,9 @@ public sealed class GoogleGeminiContentTranslator: IGoogleGeminiContentTranslato
 
         return result;
     }
+
+    private static JsonArray TranslateRuntimeParts(ImmutableArray<ContentPart> parts) =>
+        [new JsonObject { ["text"] = RuntimeMessageProjection.BuildEnvelopeJson(parts) }];
 
     private static JsonArray TranslateAssistantParts(
         ImmutableArray<ContentPart> parts,

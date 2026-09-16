@@ -343,4 +343,31 @@ public sealed class AnthropicMessageTranslatorTests
 
         body["model"]!.GetValue<string>().ShouldBe(TestModels.ClaudeSonnet.ModelId.Value);
     }
+
+    [Fact]
+    public void Translate_WhenMessageIsRuntimeMessage_ProjectsTheSharedTaggedEnvelope()
+    {
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.Runtime("The run was interrupted.")],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new AnthropicMessageTranslator().Translate(request, Options, useStreaming: false);
+        var message = body["messages"]![0]!.AsObject();
+
+        message["role"]!.GetValue<string>().ShouldBe("user");
+        var block = message["content"]![0]!.AsObject();
+        block["type"]!.GetValue<string>().ShouldBe("text");
+        var notice = JsonNode.Parse(block["text"]!.GetValue<string>())!;
+        notice["format"]!.GetValue<string>().ShouldBe(RuntimeMessageProjection.Format);
+        notice["content"]!.GetValue<string>().ShouldBe("The run was interrupted.");
+
+        // The envelope tags the notice so it is never indistinguishable from a plain user message.
+        block["text"]!.GetValue<string>().ShouldNotBe("The run was interrupted.");
+    }
 }

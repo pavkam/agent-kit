@@ -92,6 +92,11 @@ namespace AgentKit.Providers
     {
         public static System.Collections.Generic.Dictionary<AgentKit.ToolCallId, string> Collect(System.Collections.Immutable.ImmutableArray<AgentKit.AgentMessage> messages) { }
     }
+    public static class RuntimeMessageProjection
+    {
+        public const string Format = "agentkit.runtime-message.v1";
+        public static string BuildEnvelopeJson(System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> parts) { }
+    }
     public static class ServiceExtensions
     {
         extension(Microsoft.Extensions.DependencyInjection.IServiceCollection services)

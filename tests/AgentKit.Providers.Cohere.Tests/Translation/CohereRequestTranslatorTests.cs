@@ -421,4 +421,29 @@ public sealed class CohereRequestTranslatorTests
 
         body["safety_mode"]!.GetValue<string>().ShouldBe("CONTEXTUAL");
     }
+
+    [Fact]
+    public void Translate_WhenMessageIsRuntimeMessage_ProjectsTheSharedTaggedEnvelope()
+    {
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.CommandAPlus,
+            [TestMessages.Runtime("The run was interrupted.")],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new CohereRequestTranslator().Translate(request, useStreaming: false);
+        var message = body["messages"]![0]!.AsObject();
+
+        message["role"]!.GetValue<string>().ShouldBe("user");
+        var notice = JsonNode.Parse(message["content"]!.GetValue<string>())!;
+        notice["format"]!.GetValue<string>().ShouldBe(RuntimeMessageProjection.Format);
+        notice["content"]!.GetValue<string>().ShouldBe("The run was interrupted.");
+
+        // The envelope tags the notice so it is never indistinguishable from a plain user message.
+        message["content"]!.GetValue<string>().ShouldNotBe("The run was interrupted.");
+    }
 }

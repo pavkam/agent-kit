@@ -322,6 +322,14 @@ it MUST NOT map it to a system or developer role when that mapping elevates the
 notice's trust or instruction priority. History processors and repair policies
 are bound by the same non-elevation rule.
 
+Every first-party conversational translator builds this tagged representation
+through `AgentKit.Providers.RuntimeMessageProjection`, so the marker and shape
+are identical on every provider's wire, not merely "some tagged form" chosen
+independently per adapter. Translators still choose their own surrounding role
+and content-part nesting (a single text content block, a bare string content
+field, and so on) because that remains wire-format specific; only the envelope
+text itself is shared.
+
 ### Content-part support values
 
 `ContentPart` variants above reference several narrow, independently owned value

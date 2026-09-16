@@ -516,6 +516,21 @@ public sealed class MistralAIRequestTranslatorTests
         _ = Should.Throw<NotSupportedException>(() => Translate(TestMessages.Assistant(blockers), TestMessages.Assistant(victim)));
     }
 
+    [Fact]
+    public void Translate_WhenMessageIsRuntimeMessage_ProjectsTheSharedTaggedEnvelope()
+    {
+        var body = Translate(TestMessages.Runtime("The run was interrupted."));
+        var message = body["messages"]![0]!.AsObject();
+
+        message["role"]!.GetValue<string>().ShouldBe("user");
+        var notice = JsonNode.Parse(message["content"]!.GetValue<string>())!;
+        notice["format"]!.GetValue<string>().ShouldBe(RuntimeMessageProjection.Format);
+        notice["content"]!.GetValue<string>().ShouldBe("The run was interrupted.");
+
+        // The envelope tags the notice so it is never indistinguishable from a plain user message.
+        message["content"]!.GetValue<string>().ShouldNotBe("The run was interrupted.");
+    }
+
     private static JsonObject Translate(params AgentMessage[] messages)
     {
         var context = new LlmRequestContext(
