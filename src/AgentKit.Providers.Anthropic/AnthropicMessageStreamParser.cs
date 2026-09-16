@@ -670,7 +670,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
         var delta = new ToolArgumentsContentDelta(callId, argumentsElement.GetRawText());
         var part = new ToolCallPart(
             callId,
-            new ToolReference(new ToolId(name), null, name),
+            new ToolReference(new ToolAlias(name), null, null),
             argumentsElement,
             block.Id is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
             ExtensionData.Empty);
@@ -813,7 +813,7 @@ public sealed class AnthropicMessageStreamParser: IAnthropicMessageStreamParser
 
                 "tool_use" => new ToolCallPart(
                     ToolCallId!.Value,
-                    new ToolReference(new ToolId(ToolName ?? "unknown"), null, ToolName ?? "unknown"),
+                    new ToolReference(new ToolAlias(ToolName ?? "unknown"), null, null),
                     ProviderJson.ParseArguments(Json.ToString()),
                     ProviderCallId is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
                     ExtensionData.Empty),

@@ -206,7 +206,7 @@ public sealed class AnthropicMessageTranslator: IAnthropicMessageTranslator
                     {
                         ["type"] = "tool_use",
                         ["id"] = providerCallIds.GetValueOrDefault(toolCall.CallId, toolCall.CallId.ToString()),
-                        ["name"] = toolCall.Tool.Name,
+                        ["name"] = toolCall.Tool.ProviderAlias.Value,
                         ["input"] = JsonNode.Parse(toolCall.Arguments.GetRawText()),
                     });
                     break;
