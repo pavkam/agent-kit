@@ -1057,6 +1057,94 @@ public sealed class SqliteBudgetLedgerTests: BudgetLedgerConformanceTests<Sqlite
         public BudgetReservationId Create() => value;
     }
 
+    /// <summary>Proves a corrupted persisted scope digest fails its integrity check.</summary>
+    [Fact]
+    public async Task ReadScope_WhenStoredDigestIsCorrupted_ThrowsInvalidData()
+    {
+        var directory = CreateDirectoryPath();
+        var target = TargetIn(directory);
+        var ledger = new SqliteBudgetLedger(target, SqliteBudgetLedgerSettings.CreateDefault(), TimeProvider.System, new ScopeIds(), new ReservationIds(), new MultiDimensionCatalog());
+        await ledger.InitializeAsync(TestContext.Current.CancellationToken);
+        var scope = await CreateScopeAsync(ledger, "digest-corruption-scope");
+        ExecuteRaw(target.DatabasePath, "UPDATE budget_scopes SET request_digest=randomblob(32);");
+
+        var exception = await Should.ThrowAsync<BudgetLedgerPersistenceUnavailableException>(async () => await ledger.GetSnapshotAsync(scope, TestContext.Current.CancellationToken));
+        _ = exception.InnerException.ShouldBeOfType<InvalidDataException>();
+    }
+
+    /// <summary>Proves a zero-length persisted scope request blob is rejected before its digest is even compared.</summary>
+    [Fact]
+    public async Task ReadScope_WhenStoredRequestBlobIsEmpty_ThrowsInvalidData()
+    {
+        var directory = CreateDirectoryPath();
+        var target = TargetIn(directory);
+        var ledger = new SqliteBudgetLedger(target, SqliteBudgetLedgerSettings.CreateDefault(), TimeProvider.System, new ScopeIds(), new ReservationIds(), new MultiDimensionCatalog());
+        await ledger.InitializeAsync(TestContext.Current.CancellationToken);
+        var scope = await CreateScopeAsync(ledger, "empty-request-scope");
+        ExecuteRaw(target.DatabasePath, "UPDATE budget_scopes SET request=X'';");
+
+        var exception = await Should.ThrowAsync<BudgetLedgerPersistenceUnavailableException>(async () => await ledger.GetSnapshotAsync(scope, TestContext.Current.CancellationToken));
+        _ = exception.InnerException.ShouldBeOfType<InvalidDataException>();
+    }
+
+    /// <summary>Proves a zero-length persisted dimension-projection coefficient is rejected.</summary>
+    [Fact]
+    public async Task ReadProjection_WhenStoredCoefficientIsEmpty_ThrowsInvalidData()
+    {
+        var directory = CreateDirectoryPath();
+        var target = TargetIn(directory);
+        var ledger = new SqliteBudgetLedger(target, SqliteBudgetLedgerSettings.CreateDefault(), TimeProvider.System, new ScopeIds(), new ReservationIds(), new MultiDimensionCatalog());
+        await ledger.InitializeAsync(TestContext.Current.CancellationToken);
+        var scope = await CreateScopeAsync(ledger, "empty-coefficient-scope");
+        _ = await ReserveAsync(ledger, scope, "empty-coefficient-reservation");
+        ExecuteRaw(target.DatabasePath, "UPDATE budget_dimension_projections SET reserved_coefficient=X'';");
+
+        var exception = await Should.ThrowAsync<BudgetLedgerPersistenceUnavailableException>(async () => await ledger.GetSnapshotAsync(scope, TestContext.Current.CancellationToken));
+        _ = exception.InnerException.ShouldBeOfType<InvalidDataException>();
+    }
+
+    /// <summary>Proves a missing maximum-accounting row for a decremented Maximum-aggregation dimension is rejected.</summary>
+    [Fact]
+    public async Task ReleaseUnstartedAsync_WhenMaximumAccountingRowIsMissingOnDecrement_ThrowsInvalidData()
+    {
+        var directory = CreateDirectoryPath();
+        var target = TargetIn(directory);
+        var ledger = new SqliteBudgetLedger(target, SqliteBudgetLedgerSettings.CreateDefault(), TimeProvider.System, new ScopeIds(), new ReservationIds(), new MultiDimensionCatalog());
+        await ledger.InitializeAsync(TestContext.Current.CancellationToken);
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var scope = (await ledger.CreateScopeAsync(new(new(null, address, [], new("missing-maximum-scope")), new(8, 32, TimeSpan.FromMinutes(5))), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var item = new BudgetReservationRequest(scope.Id, new("test.maximum"), 1, new("count"), new OperationId(Guid.NewGuid()), null, new("missing-maximum-item"));
+        var reservation = (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [item]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
+        ExecuteRaw(target.DatabasePath, "DELETE FROM budget_maximum_values;");
+
+        var exception = await Should.ThrowAsync<BudgetLedgerPersistenceUnavailableException>(async () => await ledger.ReleaseUnstartedAsync(reservation, TestContext.Current.CancellationToken));
+        _ = exception.InnerException.ShouldBeOfType<InvalidDataException>();
+    }
+
+    private static void ExecuteRaw(string path, string sql)
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        _ = command.ExecuteNonQuery();
+    }
+
+    private sealed class MultiDimensionCatalog: IBudgetDimensionCatalog
+    {
+        private static readonly ImmutableArray<BudgetDimensionDescriptor> Descriptors =
+        [
+            new(new BudgetDimension("test.sum"), BudgetAggregationKind.Sum, [new BudgetUnit("count")]),
+            new(new BudgetDimension("test.maximum"), BudgetAggregationKind.Maximum, [new BudgetUnit("count")]),
+        ];
+
+        public bool TryGet(BudgetDimension dimension, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BudgetDimensionDescriptor? descriptor)
+        {
+            descriptor = Descriptors.FirstOrDefault(item => item.Dimension == dimension);
+            return descriptor is not null;
+        }
+    }
+
     private sealed class CaptureLogger: ILogger<SqliteBudgetLedger>
     {
         internal ConcurrentQueue<(EventId EventId, KeyValuePair<string, object?>[] State)> Entries { get; } = new();
