@@ -150,6 +150,44 @@ public sealed class AwsSigV4SignerTests
         signed["Authorization"].ShouldNotContain("x-amz-security-token");
     }
 
+    /// <summary>Verifies query-string parameters are percent-decoded, re-encoded, and sorted by key then value in the canonical query string.</summary>
+    [Fact]
+    public void SignRequest_WhenUriHasQueryString_SortsAndEncodesParametersInCanonicalQueryString()
+    {
+        var uri = new Uri("https://bedrock-runtime.us-east-1.amazonaws.com/model/foo/converse?b=2&a=1&c");
+        var headers = new Dictionary<string, string> { ["content-type"] = "application/json" };
+
+        var signed = AwsSigV4Signer.SignRequest(
+            "POST", uri, headers, "{}"u8, Credential, "us-east-1", "bedrock", Timestamp);
+
+        var expected = DeriveSignaturePerSpecification(
+            "/model/foo/converse",
+            "bedrock-runtime.us-east-1.amazonaws.com",
+            "{}"u8.ToArray(),
+            "bedrock",
+            canonicalQueryString: "a=1&b=2&c=");
+        signed["Authorization"].ShouldEndWith($"Signature={expected}");
+    }
+
+    /// <summary>Verifies a header value with an internal run of multiple spaces is collapsed to one space, per the SigV4 canonical-header trimming rule.</summary>
+    [Fact]
+    public void SignRequest_WhenHeaderValueHasInternalRunOfSpaces_CollapsesToSingleSpace()
+    {
+        var uri = new Uri("https://bedrock-runtime.us-east-1.amazonaws.com/model/foo/converse");
+        var headers = new Dictionary<string, string> { ["content-type"] = "application/json", ["x-custom"] = "  foo   bar  " };
+
+        var signed = AwsSigV4Signer.SignRequest(
+            "POST", uri, headers, "{}"u8, Credential, "us-east-1", "bedrock", Timestamp);
+
+        var expected = DeriveSignaturePerSpecification(
+            "/model/foo/converse",
+            "bedrock-runtime.us-east-1.amazonaws.com",
+            "{}"u8.ToArray(),
+            "bedrock",
+            extraSignedHeader: ("x-custom", "foo bar"));
+        signed["Authorization"].ShouldEndWith($"Signature={expected}");
+    }
+
     [Fact]
     public void SignRequest_WhenCalledTwiceWithSameInputs_ProducesIdenticalSignature()
     {
@@ -173,26 +211,32 @@ public sealed class AwsSigV4SignerTests
     /// <param name="body">The request body bytes.</param>
     /// <param name="service">The signing service name in the credential scope.</param>
     /// <param name="includeContentType">Whether a <c>content-type: application/json</c> header is part of the signed request.</param>
+    /// <param name="canonicalQueryString">The canonical query string line exactly as it must appear in the canonical request.</param>
+    /// <param name="extraSignedHeader">An additional already-normalized header name/value pair to sign, when any.</param>
     /// <returns>The lowercase hexadecimal signature.</returns>
     private static string DeriveSignaturePerSpecification(
         string canonicalUri,
         string host,
         byte[] body,
         string service,
-        bool includeContentType = true)
+        bool includeContentType = true,
+        string canonicalQueryString = "",
+        (string Name, string Value)? extraSignedHeader = null)
     {
         // Step 1: canonical request = method \n canonical URI \n canonical query \n canonical headers \n signed headers \n hashed payload.
         var hashedPayload = Convert.ToHexStringLower(SHA256.HashData(body));
         var canonicalHeaders = (includeContentType ? "content-type:application/json\n" : string.Empty) +
                                $"host:{host}\n" +
                                $"x-amz-content-sha256:{hashedPayload}\n" +
-                               "x-amz-date:20240101T000000Z\n";
-        var signedHeaders = (includeContentType ? "content-type;" : string.Empty) + "host;x-amz-content-sha256;x-amz-date";
+                               "x-amz-date:20240101T000000Z\n" +
+                               (extraSignedHeader is { } extra ? $"{extra.Name}:{extra.Value}\n" : string.Empty);
+        var signedHeaders = (includeContentType ? "content-type;" : string.Empty) + "host;x-amz-content-sha256;x-amz-date" +
+                             (extraSignedHeader is { } named ? $";{named.Name}" : string.Empty);
         var canonicalRequest = string.Join(
             '\n',
             includeContentType ? "POST" : "GET",
             canonicalUri,
-            string.Empty,
+            canonicalQueryString,
             canonicalHeaders,
             signedHeaders,
             hashedPayload);
