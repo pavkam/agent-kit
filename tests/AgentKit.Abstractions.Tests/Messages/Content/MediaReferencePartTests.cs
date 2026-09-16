@@ -26,7 +26,9 @@ public sealed class MediaReferencePartTests
     public void MediaReferencePart_Equality_WhenSameValues_InstancesAreEqual()
     {
         var reference = new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.Uri, "image/png", new Uri("https://example.com/a.png"), [], null, null, ExtensionData.Empty);
-        new MediaReferencePart(reference, MediaSemantics.Input, ExtensionData.Empty).ShouldBe(new MediaReferencePart(reference, MediaSemantics.Input, ExtensionData.Empty));
+        var part = new MediaReferencePart(reference, MediaSemantics.Input, ExtensionData.Empty);
+        part.ShouldBe(new MediaReferencePart(reference, MediaSemantics.Input, ExtensionData.Empty));
+        part.Reference.ShouldBeSameAs(reference);
     }
 
     [Fact]

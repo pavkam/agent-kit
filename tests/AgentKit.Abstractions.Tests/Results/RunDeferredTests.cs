@@ -41,4 +41,12 @@ public sealed class RunDeferredTests
         first.ShouldBe(second); first.GetHashCode().ShouldBe(second.GetHashCode());
         first.ShouldNotBe(new RunDeferred([RunResultTestData.Deferred(2), RunResultTestData.Deferred()]));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new RunDeferred([RunResultTestData.Deferred()]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

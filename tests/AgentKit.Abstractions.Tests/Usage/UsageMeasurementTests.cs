@@ -42,4 +42,12 @@ public sealed class UsageMeasurementTests
         exception.ParamName.ShouldBe("measurements");
         exception.GetType().ShouldBe(kind == "null" ? typeof(ArgumentNullException) : typeof(ArgumentException));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = RunUsageTests.Measure(1);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

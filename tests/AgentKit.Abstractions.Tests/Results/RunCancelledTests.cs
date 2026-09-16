@@ -7,4 +7,14 @@ public sealed class RunCancelledTests
 {
     [Fact]
     public void Constructor_WhenEvidenceIsNull_RejectsExactArgument() => Should.Throw<ArgumentNullException>(() => new RunCancelled(null!)).ParamName.ShouldBe("reason");
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var reason = new CancellationReason(TestSupport.RunResultTestData.Error(AgentErrorCodes.Cancelled));
+        var original = new RunCancelled(reason);
+        var copy = original with { };
+        copy.ShouldBe(original);
+        copy.Reason.ShouldBe(reason);
+    }
 }

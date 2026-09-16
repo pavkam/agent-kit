@@ -16,7 +16,12 @@ public sealed class ReasoningContentTests
     }
 
     [Fact]
-    public void ReasoningContent_Equality_WhenSameValues_InstancesAreEqual() => new ReasoningContent("thinking", ReasoningVisibility.Visible, null, ExtensionData.Empty).ShouldBe(new ReasoningContent("thinking", ReasoningVisibility.Visible, null, ExtensionData.Empty));
+    public void ReasoningContent_Equality_WhenSameValues_InstancesAreEqual()
+    {
+        var content = new ReasoningContent("thinking", ReasoningVisibility.Visible, null, ExtensionData.Empty);
+        content.ShouldBe(new ReasoningContent("thinking", ReasoningVisibility.Visible, null, ExtensionData.Empty));
+        content.Extensions.ShouldBe(ExtensionData.Empty);
+    }
     [Fact]
     public void ReasoningContent_WhenExtensionsIsNull_ThrowsArgumentNullException()
     {

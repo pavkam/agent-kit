@@ -45,4 +45,39 @@ public sealed class HistoryViewTests
 
         view.Messages.ShouldHaveSingleItem().BranchId.ShouldBe(parentBranch);
     }
+
+    [Fact]
+    public void Equals_WhenMessagesAndRepairsMatch_HasEqualHashCode()
+    {
+        var agentId = new AgentId(Guid.NewGuid());
+        var sessionId = new SessionId(Guid.NewGuid());
+        var branchId = new BranchId(Guid.NewGuid());
+        var cursor = new MessageCursor(agentId, sessionId, null, branchId, new SessionVersion(1), new SessionSequence(1));
+        AgentMessage message = new UserMessage(
+            new MessageId(Guid.NewGuid()),
+            agentId,
+            sessionId,
+            null,
+            branchId,
+            null,
+            null,
+            DateTimeOffset.UnixEpoch,
+            MessageState.Complete,
+            [new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
+        var repair = new HistoryRepair([message.Id], HistoryRepairKind.NormalizedContent, "reason", ExtensionData.Empty);
+        var first = new HistoryView(cursor, [message], [repair]);
+        var second = new HistoryView(cursor, [message], [repair]);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var cursor = new MessageCursor(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), null, new BranchId(Guid.NewGuid()), new SessionVersion(0), new SessionSequence(0));
+        var original = new HistoryView(cursor, [], []);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

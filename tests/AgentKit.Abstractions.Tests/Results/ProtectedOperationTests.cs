@@ -53,4 +53,12 @@ public sealed class ProtectedOperationTests
         var second = RunResultTestData.ProtectedOperation();
         first.ShouldBe(second); first.GetHashCode().ShouldBe(second.GetHashCode());
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = RunResultTestData.ProtectedOperation();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

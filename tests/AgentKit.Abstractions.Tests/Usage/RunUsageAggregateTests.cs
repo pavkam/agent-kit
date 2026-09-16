@@ -27,4 +27,12 @@ public sealed class RunUsageAggregateTests
         exception.ParamName.ShouldBe(parameter);
         exception.GetType().ShouldBe(invalid == "null" ? typeof(ArgumentNullException) : invalid is "dimension" or "unit" or "aggregation" ? typeof(ArgumentOutOfRangeException) : typeof(ArgumentException));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new RunUsageAggregate(BudgetDimensions.InputTokens, RunUsageTests.Tokens, BudgetAggregationKind.Sum, [RunUsageTests.Measure(1)]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

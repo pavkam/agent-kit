@@ -27,4 +27,14 @@ public sealed class AgentRunRejectedTests
         exception.ParamName.ShouldBe(parameter);
         exception.GetType().ShouldBe(parameter == "failure" ? typeof(ArgumentNullException) : typeof(ArgumentOutOfRangeException));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new AgentRunRejected<string>(RunResultTestData.Agent, RunResultTestData.Session, RunResultTestData.Error(AgentErrorCodes.AuthorizationDenied));
+        var copy = original with { };
+        copy.ShouldBe(original);
+        copy.AgentId.ShouldBe(original.AgentId);
+        copy.SessionId.ShouldBe(original.SessionId);
+    }
 }

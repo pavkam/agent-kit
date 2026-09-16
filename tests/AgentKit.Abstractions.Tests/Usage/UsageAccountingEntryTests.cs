@@ -46,4 +46,12 @@ public sealed class UsageAccountingEntryTests
 
     [Fact]
     public void Apply_WhenEntryIsNull_RejectsBeforeCreatingProjection() => Should.Throw<ArgumentNullException>(() => new RunUsage(RunUsageTests.Run, []).Apply(null!)).ParamName.ShouldBe("entry");
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = RunUsageTests.Entry(1, []);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

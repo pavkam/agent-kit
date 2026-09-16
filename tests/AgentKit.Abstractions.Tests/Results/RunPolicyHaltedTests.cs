@@ -17,4 +17,12 @@ public sealed class RunPolicyHaltedTests
         var outcome = new RunPolicyHalted(new(error));
         outcome.Reason.Error.ShouldBeSameAs(error);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new RunPolicyHalted(new PolicyHalt(RunResultTestData.Error(AgentErrorCodes.InternalFailure)));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

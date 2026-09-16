@@ -26,7 +26,9 @@ public sealed class ReasoningPartTests
     public void ReasoningPart_Equality_WhenSameValues_InstancesAreEqual()
     {
         var content = new ReasoningContent("thinking", ReasoningVisibility.Visible, null, ExtensionData.Empty);
-        new ReasoningPart(content, ExtensionData.Empty).ShouldBe(new ReasoningPart(content, ExtensionData.Empty));
+        var part = new ReasoningPart(content, ExtensionData.Empty);
+        part.ShouldBe(new ReasoningPart(content, ExtensionData.Empty));
+        part.Content.ShouldBeSameAs(content);
     }
 
     [Fact]

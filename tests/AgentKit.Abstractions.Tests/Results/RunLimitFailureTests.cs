@@ -49,4 +49,12 @@ public sealed class RunLimitFailureTests
         limit.HasPartialOutput.ShouldBeTrue();
         limit.SideEffectCertainty.ShouldBe(SideEffectCertainty.Unknown);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new RunLimitFailure(Limit(), new ComponentId("budget"), true, SideEffectCertainty.Unknown);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

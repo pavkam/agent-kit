@@ -153,4 +153,13 @@ public sealed class JsonSchemaTests
         schema.Document.TryGetProperty("futureKeyword", out var retained).ShouldBeTrue();
         retained.GetProperty("arbitrary").GetBoolean().ShouldBeTrue();
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        using var source = JsonDocument.Parse("true");
+        var original = new JsonSchema(_dialect, source.RootElement);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

@@ -94,6 +94,8 @@ public sealed class ModelUsageTests
         copy.GetHashCode().ShouldBe(interim.GetHashCode());
         final.ShouldNotBe(interim);
         interim.ReportState.ShouldBe(ModelUsageReportState.Interim);
+        interim.CachedInputTokens.ShouldBe(long.MaxValue);
+        interim.ReasoningTokens.ShouldBeNull();
     }
 
     [Fact]

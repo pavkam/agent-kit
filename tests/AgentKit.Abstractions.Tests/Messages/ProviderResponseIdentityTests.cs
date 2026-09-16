@@ -26,5 +26,14 @@ public sealed class ProviderResponseIdentityTests
 
     [Fact]
     public void ProviderResponseIdentity_Equality_WhenSameValues_InstancesAreEqual() => ResponseIdentity().ShouldBe(ResponseIdentity());
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = ResponseIdentity();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ProviderResponseIdentity ResponseIdentity() => new(new ProviderId("openai"), null, new ApiFamilyId("chat"), new ModelId("gpt"), new ModelId("gpt"), null, null, null);
 }

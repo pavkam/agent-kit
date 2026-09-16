@@ -17,4 +17,12 @@ public sealed class RunFailedTests
         var outcome = new RunFailed(new(error));
         outcome.Failure.Error.ShouldBeSameAs(error);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new RunFailed(new RunFailure(RunResultTestData.Error(AgentErrorCodes.InternalFailure)));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

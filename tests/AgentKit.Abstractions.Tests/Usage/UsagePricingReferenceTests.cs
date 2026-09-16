@@ -18,4 +18,20 @@ public sealed class UsagePricingReferenceTests
         exception.ParamName.ShouldBe(parameter);
         exception.GetType().ShouldBe(invalid is null ? typeof(ArgumentNullException) : typeof(ArgumentException));
     }
+
+    [Fact]
+    public void Constructor_WhenCalledWithValidArguments_InitializesProperties()
+    {
+        var pricing = new UsagePricingReference("catalog", "v1");
+        pricing.Source.ShouldBe("catalog");
+        pricing.Version.ShouldBe("v1");
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new UsagePricingReference("catalog", "v1");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

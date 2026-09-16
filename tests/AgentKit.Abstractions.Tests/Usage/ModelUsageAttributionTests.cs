@@ -17,4 +17,13 @@ public sealed class ModelUsageAttributionTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ModelUsageAttribution(parameter == "requestId" ? default : model.RequestId, parameter == "providerId" ? default : model.ProviderId, parameter == "apiFamily" ? default : model.ApiFamily, parameter == "modelId" ? default : model.ModelId, parameter == "deploymentId" ? default(DeploymentId) : null));
         exception.ParamName.ShouldBe(parameter);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ModelUsageAttribution(RunUsageTests.Model.RequestId, RunUsageTests.Model.ProviderId, RunUsageTests.Model.ApiFamily, RunUsageTests.Model.ModelId, new DeploymentId("deployment"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+        copy.DeploymentId.ShouldBe(new DeploymentId("deployment"));
+    }
 }

@@ -21,7 +21,10 @@ public sealed class UnknownContentPartTests
     public void UnknownContentPart_Equality_WhenSameValues_InstancesAreEqual()
     {
         var raw = JsonDocument.Parse("{}").RootElement;
-        new UnknownContentPart("custom", raw, ExtensionData.Empty).ShouldBe(new UnknownContentPart("custom", raw, ExtensionData.Empty));
+        var part = new UnknownContentPart("custom", raw, ExtensionData.Empty);
+        var other = new UnknownContentPart("custom", raw, ExtensionData.Empty);
+        part.ShouldBe(other);
+        part.GetHashCode().ShouldBe(other.GetHashCode());
     }
 
     [Fact]

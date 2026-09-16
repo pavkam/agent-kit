@@ -60,6 +60,32 @@ public sealed class AgentHookEventArgsTests
         Should.NotThrow(args.Validate);
     }
 
+    [Fact]
+    public void CaptureMutableState_WhenNotOverridden_ReturnsNull()
+    {
+        var args = new TestEventArgs(
+            new AgentId(Guid.NewGuid()),
+            null,
+            new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null),
+            DateTimeOffset.UnixEpoch,
+            new HookInvocationId(Guid.NewGuid()));
+
+        args.CaptureMutableState().ShouldBeNull();
+    }
+
+    [Fact]
+    public void RestoreMutableState_WhenNotOverridden_DoesNotThrow()
+    {
+        var args = new TestEventArgs(
+            new AgentId(Guid.NewGuid()),
+            null,
+            new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null),
+            DateTimeOffset.UnixEpoch,
+            new HookInvocationId(Guid.NewGuid()));
+
+        Should.NotThrow(() => args.RestoreMutableState(null));
+    }
+
     private sealed class TestEventArgs: AgentHookEventArgs
     {
         public TestEventArgs(

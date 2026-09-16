@@ -23,5 +23,19 @@ public sealed class StructuredDataPartTests
     }
 
     [Fact]
-    public void StructuredDataPart_Equality_WhenSameValues_InstancesAreEqual() => new StructuredDataPart(default, null, ExtensionData.Empty).ShouldBe(new StructuredDataPart(default, null, ExtensionData.Empty));
+    public void StructuredDataPart_Equality_WhenSameValues_InstancesAreEqual()
+    {
+        var first = new StructuredDataPart(default, null, ExtensionData.Empty);
+        var second = new StructuredDataPart(default, null, ExtensionData.Empty);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new StructuredDataPart(default, null, ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

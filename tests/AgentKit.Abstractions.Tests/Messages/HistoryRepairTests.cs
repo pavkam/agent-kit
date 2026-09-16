@@ -19,4 +19,13 @@ public sealed class HistoryRepairTests
         left.ShouldBe(right);
         left.GetHashCode().ShouldBe(right.GetHashCode());
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var id = new MessageId(Guid.Parse("10000000-0000-0000-0000-000000000001"));
+        var original = new HistoryRepair([id], HistoryRepairKind.NormalizedContent, "reason", ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

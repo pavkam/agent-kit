@@ -20,4 +20,12 @@ public sealed class SecurityDecisionReferenceTests
         exception.ParamName.ShouldBe(parameter);
         exception.GetType().ShouldBe(parameter == "policySnapshot" ? typeof(ArgumentNullException) : typeof(ArgumentOutOfRangeException));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = RunResultTestData.Decision();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

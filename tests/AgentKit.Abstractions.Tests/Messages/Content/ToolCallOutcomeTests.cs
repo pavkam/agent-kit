@@ -130,6 +130,7 @@ public sealed class ToolCallOutcomeTests
         var equal = Create(extensions: new ExtensionData(ImmutableDictionary<string, ExtensionValue>.Empty.Add("test", new ExtensionValue([1, 2]))));
         value.ShouldBe(equal);
         value.GetHashCode().ShouldBe(equal.GetHashCode());
+        value.Extensions.ShouldBe(extensions);
         (value with { }).ShouldBe(value);
         value.Equals(null).ShouldBeFalse();
         ToolCallOutcome[] different =

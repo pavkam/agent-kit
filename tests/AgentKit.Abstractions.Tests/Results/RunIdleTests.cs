@@ -3,16 +3,21 @@
 
 namespace AgentKit.Abstractions.Tests.Results;
 
-public sealed class PolicyHaltTests
+public sealed class RunIdleTests
 {
     [Fact]
-    public void Constructor_WhenEvidenceIsNull_RejectsExactArgument() => Should.Throw<ArgumentNullException>(() => new PolicyHalt(null!)).ParamName.ShouldBe("reason");
+    public void Equals_WhenSameValues_InstancesAreEqual()
+    {
+        var first = new RunIdle();
+        var second = new RunIdle();
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var error = TestSupport.RunResultTestData.Error(AgentErrorCodes.InternalFailure);
-        var original = new PolicyHalt(error);
+        var original = new RunIdle();
         var copy = original with { };
         copy.ShouldBe(original);
     }
