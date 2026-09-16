@@ -183,6 +183,33 @@ public sealed class GoogleGeminiResponseParserTests
         observer.Events.ShouldNotContain(@event => @event is ModelResponseCompleted);
     }
 
+    public static TheoryData<string?, NormalizedStopReason> FinishReasonMappings => new()
+    {
+        { "STOP", NormalizedStopReason.Completed },
+        { "MAX_TOKENS", NormalizedStopReason.Length },
+        { null, NormalizedStopReason.Pending },
+        { "SOME_FUTURE_REASON", NormalizedStopReason.Error },
+    };
+
+    [Theory]
+    [MemberData(nameof(FinishReasonMappings))]
+    public async Task ParseBufferedAsync_WhenFinishReasonVaries_MapsToExpectedStopReason(string? finishReason, NormalizedStopReason expected)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        var finishReasonMember = finishReason is null ? string.Empty : $"\"finishReason\":\"{finishReason}\",";
+        var json = "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"hi\"}]},"
+            + finishReasonMember
+            + "\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":1,\"candidatesTokenCount\":1,\"totalTokenCount\":2}}";
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(expected);
+    }
+
     [Fact]
     public async Task ParseBufferedAsync_WhenBodyIsNotJson_FailsWithProtocolViolation()
     {
@@ -491,5 +518,49 @@ public sealed class GoogleGeminiResponseParserTests
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
         failed.Usage.ShouldNotBeNull().ReportState.ShouldBe(ModelUsageReportState.Interim);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenUsageTokenCountIsNegative_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hello"}]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":-1,"candidatesTokenCount":2,"totalTokenCount":1}}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned invalid usage evidence.");
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenChunkIsMalformedAfterInvalidUsageWasRetained_RetainsNoUsageOnFailure()
+    {
+        // Invalid usage evidence retained from an earlier chunk must never mask the malformed-chunk cause;
+        // TryBuildRetainedUsage swallows the secondary validation failure and reports no usage instead of throwing.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hello"}]},"index":0}],"usageMetadata":{"promptTokenCount":-1,"totalTokenCount":0}}
+
+            data: { not valid json
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned a malformed streaming chunk.");
+        failed.Usage.ShouldBeNull();
     }
 }

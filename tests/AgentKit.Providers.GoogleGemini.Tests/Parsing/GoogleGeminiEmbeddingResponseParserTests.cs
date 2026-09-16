@@ -134,4 +134,20 @@ public sealed class GoogleGeminiEmbeddingResponseParserTests
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.RequestId.ShouldBe(providerRequestId);
     }
+
+    [Fact]
+    public async Task ParseAsync_WhenAnEmbeddingHasNoValues_ReturnsProtocolFailure()
+    {
+        var parser = new GoogleGeminiEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"embeddings":[{"values":[]}]}"""u8.ToArray());
+
+        var result = await parser.ParseAsync(body, CreateContext(new EmbeddingRequestId(Guid.NewGuid())), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned an empty embedding vector at position 0.");
+    }
 }
