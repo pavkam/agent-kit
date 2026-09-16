@@ -21,8 +21,13 @@ public static class ServiceExtensions
         /// <c>ILlmModelResolver</c>, or the keyed <c>IRunContinuationPolicy</c>: the host still selects a session
         /// store, security policies and authority, and the tool/provider registrations its one agent needs, exactly
         /// as any other AgentKit composition does. This type drives exactly one agent and never selects among
-        /// several keyed loops, so every one of those collaborators is resolved unkeyed except the continuation
-        /// policy, which is resolved from the fixed key named by
+        /// several keyed loops, so every one of those collaborators is resolved unkeyed except the loop and the
+        /// continuation policy. <c>IAgentLoop</c> is registered scoped by its own package (for example
+        /// <c>AgentKit.Loop</c>'s <c>AddAgentLoop</c>), so <see cref="DefaultConversationSession"/> resolves it
+        /// from a short-lived scope created per turn under the fixed key named by
+        /// <see cref="AgentLoopComponentDefaults.LoopKey"/> rather than capturing it at construction, which would
+        /// otherwise make this singleton-lifetime session a captive dependency on a shorter-lived service. The
+        /// continuation policy is resolved from the fixed key named by
         /// <see cref="AgentLoopComponentDefaults.ContinuationPolicyKey"/>. Every registration here is idempotent
         /// (<c>TryAdd</c>) except the bound options, so calling this more than once with different
         /// <paramref name="configure"/> delegates applies every delegate to the same options instance in call order.

@@ -146,7 +146,7 @@ namespace AgentKit.Conversations
         public DefaultConversationSession(
                     AgentKit.ISessionCoordinator sessionCoordinator,
                     AgentKit.ISecurityProfileSelector securityProfileSelector,
-                    AgentKit.IAgentLoop agentLoop,
+                    Microsoft.Extensions.DependencyInjection.IServiceScopeFactory loopScopeFactory,
                     AgentKit.IContextAssembler contextAssembler,
                     AgentKit.IToolInvoker toolInvoker,
                     AgentKit.IModelCatalog modelCatalog,
@@ -163,7 +163,7 @@ namespace AgentKit.Conversations
         public DefaultConversationSession(
                     AgentKit.ISessionCoordinator sessionCoordinator,
                     AgentKit.ISecurityProfileSelector securityProfileSelector,
-                    AgentKit.IAgentLoop agentLoop,
+                    Microsoft.Extensions.DependencyInjection.IServiceScopeFactory loopScopeFactory,
                     AgentKit.IContextAssembler contextAssembler,
                     AgentKit.IToolInvoker toolInvoker,
                     AgentKit.IModelCatalog modelCatalog,

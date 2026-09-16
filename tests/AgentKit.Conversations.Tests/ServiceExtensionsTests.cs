@@ -109,7 +109,8 @@ public sealed class ServiceExtensionsTests
     {
         _ = services.AddSingleton<ISessionCoordinator>(new FakeSessionCoordinator());
         _ = services.AddSingleton<ISecurityProfileSelector>(new FakeSecurityProfileSelector());
-        _ = services.AddSingleton<IAgentLoop>(new FakeAgentLoop());
+        _ = services.AddKeyedSingleton<IAgentLoop>(
+            AgentLoopComponentDefaults.LoopKeyValue, new FakeAgentLoop());
         _ = services.AddSingleton<IContextAssembler>(new UnsupportedContextAssembler());
         _ = services.AddSingleton<IToolInvoker>(new CaptureTestToolInvoker());
         _ = services.AddSingleton<IModelCatalog>(new StaticModelCatalog(new ModelCatalogSnapshot(new ModelCatalogVersion(1), [])));

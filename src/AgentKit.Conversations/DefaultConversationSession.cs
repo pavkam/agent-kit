@@ -17,7 +17,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
 {
     private readonly ISessionCoordinator _sessionCoordinator;
     private readonly ISecurityProfileSelector _securityProfileSelector;
-    private readonly IAgentLoop _agentLoop;
+    private readonly IServiceScopeFactory _loopScopeFactory;
     private readonly AgentRunServices _runServices;
     private readonly IIdentifierGenerator<RunId> _runIds;
     private readonly IIdentifierGenerator<OperationId> _operationIds;
@@ -181,7 +181,12 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <summary>Initializes a conversation session from its validated collaborators and options.</summary>
     /// <param name="sessionCoordinator">Creates, loads, and appends to the underlying session.</param>
     /// <param name="securityProfileSelector">Captures authorization for session admission and each run.</param>
-    /// <param name="agentLoop">Drives the multi-turn tool-calling run.</param>
+    /// <param name="loopScopeFactory">
+    /// Creates the short-lived scope each turn resolves its keyed, scoped <see cref="IAgentLoop"/> from. The loop
+    /// is never captured across turns because <see cref="AgentLoopComponentDefaults.LoopKey"/> registers it scoped;
+    /// capturing it at construction would make this singleton-lifetime session a captive dependency on a
+    /// shorter-lived service.
+    /// </param>
     /// <param name="contextAssembler">Assembles the provider-ready request for each turn the loop drives.</param>
     /// <param name="toolInvoker">Resolves, authorizes, and invokes every tool call the loop requests.</param>
     /// <param name="modelCatalog">Supplies the engine-wide versioned view of configured models.</param>
@@ -208,7 +213,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     public DefaultConversationSession(
         ISessionCoordinator sessionCoordinator,
         ISecurityProfileSelector securityProfileSelector,
-        IAgentLoop agentLoop,
+        IServiceScopeFactory loopScopeFactory,
         IContextAssembler contextAssembler,
         IToolInvoker toolInvoker,
         IModelCatalog modelCatalog,
@@ -225,7 +230,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
         : this(
             sessionCoordinator,
             securityProfileSelector,
-            agentLoop,
+            loopScopeFactory,
             contextAssembler,
             toolInvoker,
             modelCatalog,
@@ -246,7 +251,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     /// <summary>Initializes a conversation session with optional bounded tool presentation.</summary>
     /// <param name="sessionCoordinator">Creates, loads, and appends to the underlying session.</param>
     /// <param name="securityProfileSelector">Captures authorization for session admission and each run.</param>
-    /// <param name="agentLoop">Drives the multi-turn tool-calling run.</param>
+    /// <param name="loopScopeFactory">
+    /// Creates the short-lived scope each turn resolves its keyed, scoped <see cref="IAgentLoop"/> from.
+    /// </param>
     /// <param name="contextAssembler">Assembles the provider-ready request for each turn the loop drives.</param>
     /// <param name="toolInvoker">Resolves, authorizes, and invokes every tool call the loop requests.</param>
     /// <param name="modelCatalog">Supplies the engine-wide versioned view of configured models.</param>
@@ -268,7 +275,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     public DefaultConversationSession(
         ISessionCoordinator sessionCoordinator,
         ISecurityProfileSelector securityProfileSelector,
-        IAgentLoop agentLoop,
+        IServiceScopeFactory loopScopeFactory,
         IContextAssembler contextAssembler,
         IToolInvoker toolInvoker,
         IModelCatalog modelCatalog,
@@ -286,7 +293,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
     {
         ArgumentNullException.ThrowIfNull(sessionCoordinator);
         ArgumentNullException.ThrowIfNull(securityProfileSelector);
-        ArgumentNullException.ThrowIfNull(agentLoop);
+        ArgumentNullException.ThrowIfNull(loopScopeFactory);
         ArgumentNullException.ThrowIfNull(contextAssembler);
         ArgumentNullException.ThrowIfNull(toolInvoker);
         ArgumentNullException.ThrowIfNull(modelCatalog);
@@ -324,7 +331,7 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
 
         _sessionCoordinator = sessionCoordinator;
         _securityProfileSelector = securityProfileSelector;
-        _agentLoop = agentLoop;
+        _loopScopeFactory = loopScopeFactory;
         _runServices = new AgentRunServices(
             sessionCoordinator, securityProfileSelector, contextAssembler, toolInvoker,
             modelCatalog, modelSelector, llmModelResolver, continuationPolicy);
@@ -552,7 +559,9 @@ public sealed class DefaultConversationSession: IConversationSession, IDisposabl
                     _toolPresentationBindings),
         };
 
-        var loopResult = await _agentLoop.RunAsync(request, _runServices, cancellationToken).ConfigureAwait(false);
+        using var loopScope = _loopScopeFactory.CreateScope();
+        var agentLoop = loopScope.ServiceProvider.GetRequiredKeyedService<IAgentLoop>(AgentLoopComponentDefaults.LoopKeyValue);
+        var loopResult = await agentLoop.RunAsync(request, _runServices, cancellationToken).ConfigureAwait(false);
         var events = ProjectEvents(loopResult);
         if (loopResult.Outcome is AgentRunCompleted)
         {
