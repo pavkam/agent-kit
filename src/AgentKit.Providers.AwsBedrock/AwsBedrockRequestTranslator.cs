@@ -241,7 +241,7 @@ public sealed class AwsBedrockRequestTranslator: IAwsBedrockRequestTranslator
                         ["toolUse"] = new JsonObject
                         {
                             ["toolUseId"] = providerCallIds.GetValueOrDefault(toolCall.CallId, toolCall.CallId.ToString()),
-                            ["name"] = toolCall.Tool.Name,
+                            ["name"] = toolCall.Tool.ProviderAlias.Value,
                             ["input"] = JsonNode.Parse(toolCall.Arguments.GetRawText()),
                         },
                     });
