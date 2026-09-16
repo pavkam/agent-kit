@@ -62,6 +62,7 @@ public sealed class ProviderEndpointProfileSnapshotTests
         copy.ShouldBe(endpoint);
         copy.ShouldNotBeSameAs(endpoint);
         endpoint.Reference.ShouldBe(EndpointReference());
+        endpoint.ProviderId.ShouldBe(new ProviderId("provider"));
         endpoint.ServiceSurface.ShouldBe(new ProviderServiceSurfaceId("chat"));
         endpoint.EndpointId.ShouldBe(new ProviderEndpointId("endpoint"));
         endpoint.BaseAddress.ShouldBe(new Uri("https://provider.example/"));
