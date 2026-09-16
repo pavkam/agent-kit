@@ -15,4 +15,36 @@ public sealed class ContextDiagnosticTests
     [Fact]
     public void Constructor_WhenSeverityIsUndefined_Throws() =>
         Should.Throw<ArgumentOutOfRangeException>(() => new ContextDiagnostic((ContextDiagnosticSeverity) 99, "code", "message")).ParamName.ShouldBe("severity");
+
+    [Fact]
+    public void Constructor_WhenCalledWithValidArguments_InitializesProperties()
+    {
+        var source = new ContextSourceReference(new ContextSourceNamespace("agentkit.context"), new ContextSourceKey("instructions"), new ContextSourceVersion("1.0"));
+        var diagnostic = new ContextDiagnostic(ContextDiagnosticSeverity.Warning, "code", "message", source);
+        diagnostic.Severity.ShouldBe(ContextDiagnosticSeverity.Warning);
+        diagnostic.Code.ShouldBe("code");
+        diagnostic.SafeMessage.ShouldBe("message");
+        diagnostic.Source.ShouldBe(source);
+    }
+
+    [Fact]
+    public void Constructor_WhenSourceIsOmitted_DefaultsToNull() =>
+        new ContextDiagnostic(ContextDiagnosticSeverity.Warning, "code", "message").Source.ShouldBeNull();
+
+    [Fact]
+    public void Equals_WhenSameValues_InstancesAreEqual()
+    {
+        var first = new ContextDiagnostic(ContextDiagnosticSeverity.Warning, "code", "message");
+        var second = new ContextDiagnostic(ContextDiagnosticSeverity.Warning, "code", "message");
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ContextDiagnostic(ContextDiagnosticSeverity.Warning, "code", "message");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

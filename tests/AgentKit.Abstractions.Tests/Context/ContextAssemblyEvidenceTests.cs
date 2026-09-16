@@ -30,6 +30,14 @@ public sealed class ContextAssemblyEvidenceTests
         Should.Throw<ArgumentException>(() => new ContextAssemblyEvidence(valid.Agent, valid.Identity, valid.History, authorization, valid.Configuration)).ParamName.ShouldBe("authorization");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Create();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ContextAssemblyEvidence Create()
     {
         var agentId = new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001"));

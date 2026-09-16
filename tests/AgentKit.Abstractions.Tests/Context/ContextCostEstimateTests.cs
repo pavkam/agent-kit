@@ -19,4 +19,12 @@ public sealed class ContextCostEstimateTests
     [InlineData(0L, -1, "estimatedTokens")]
     public void Constructor_WhenCountIsNegative_Throws(long bytes, int? tokens, string parameter) =>
         Should.Throw<ArgumentOutOfRangeException>(() => new ContextCostEstimate(bytes, tokens)).ParamName.ShouldBe(parameter);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ContextCostEstimate(12, null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

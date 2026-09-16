@@ -8,4 +8,12 @@ public sealed class ContextFreshnessTests
 {
     [Fact]
     public void Pinned_WhenRead_HasNoExpiry() => ContextFreshness.Pinned.ExpiresAt.ShouldBeNull();
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ContextFreshness(DateTimeOffset.UnixEpoch);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
