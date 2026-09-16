@@ -50,6 +50,18 @@ public sealed class AgentEngineBuilderExtensionsTests
         Should.Throw<ArgumentNullException>(() => AgentEngine.CreateBuilder().WithIdentity(null!)).ParamName.ShouldBe("identity");
 
     [Fact]
+    public void WithIdentity_WhenValid_SetsThePlanIdentity()
+    {
+        var builder = AgentEngine.CreateBuilder();
+        var identity = TestSupport.TestExecutionIdentity.Create(
+            new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
+
+        _ = builder.WithIdentity(identity);
+
+        AgentEngineBuilderExtensions.Plan(builder).Identity.ShouldBeSameAs(identity);
+    }
+
+    [Fact]
     public void WithAgentId_WhenDefault_ThrowsArgumentOutOfRangeException() =>
         Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().WithAgentId(default)).ParamName.ShouldBe("agentId");
 
@@ -62,6 +74,16 @@ public sealed class AgentEngineBuilderExtensionsTests
     [Fact]
     public void WithAttemptTimeout_WhenZero_ThrowsArgumentOutOfRangeException() =>
         Should.Throw<ArgumentOutOfRangeException>(() => AgentEngine.CreateBuilder().WithAttemptTimeout(TimeSpan.Zero)).ParamName.ShouldBe("timeout");
+
+    [Fact]
+    public void WithAttemptTimeout_WhenPositive_SetsThePlanAttemptTimeout()
+    {
+        var builder = AgentEngine.CreateBuilder();
+
+        _ = builder.WithAttemptTimeout(TimeSpan.FromSeconds(42));
+
+        AgentEngineBuilderExtensions.Plan(builder).AttemptTimeout.ShouldBe(TimeSpan.FromSeconds(42));
+    }
 
     [Fact]
     public void WithRequestSettings_WhenNull_ThrowsArgumentNullException() =>
