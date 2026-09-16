@@ -19,11 +19,6 @@ internal static class WebContentProjector
         int maximumCharacters)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumCharacters);
-        if (bytes.Contains((byte) 0))
-        {
-            throw new InvalidDataException("The response appears to contain binary content.");
-        }
-
         var declared = ParseContentType(contentType, out var charset);
         var sniffed = Sniff(bytes);
         var mediaType = declared ?? sniffed ?? "text/plain";
@@ -33,6 +28,15 @@ internal static class WebContentProjector
         }
 
         var encoding = SelectEncoding(bytes, charset);
+
+        // A NUL byte is expected for common characters under a two-byte-per-unit UTF-16 encoding
+        // (for example, the low byte of every Latin-1-range code unit) and is not evidence of
+        // binary content there; only single-byte-oriented encodings apply this heuristic.
+        if (encoding is not UnicodeEncoding && bytes.Contains((byte) 0))
+        {
+            throw new InvalidDataException("The response appears to contain binary content.");
+        }
+
         string decoded;
         try
         {

@@ -136,3 +136,8 @@ internal sealed class FixedTimeProvider: TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch;
 }
+
+internal sealed class CallbackUtcNowTimeProvider(Func<DateTimeOffset> callback): TimeProvider
+{
+    public override DateTimeOffset GetUtcNow() => callback();
+}

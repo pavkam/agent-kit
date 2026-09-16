@@ -32,4 +32,159 @@ public sealed class WebContentProjectorTests
         projection.Text.ShouldBe("hi");
         projection.Encoding.ShouldBe("utf-8");
     }
+
+    [Fact]
+    public void Project_WhenMaximumCharactersNotPositive_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => WebContentProjector.Project([0x41], "text/plain", 0));
+
+    [Fact]
+    public void Project_WhenMediaTypeUnsupported_ThrowsTypedContentFailure()
+    {
+        var action = () => WebContentProjector.Project(Encoding.UTF8.GetBytes("binary-ish"), "image/png", 100);
+
+        action.ShouldThrow<InvalidDataException>().Message.ShouldContain("image/png");
+    }
+
+    [Fact]
+    public void Project_WhenContentTypeMissing_SniffsPlainTextByDefault()
+    {
+        var projection = WebContentProjector.Project(Encoding.UTF8.GetBytes("hello"), null, 100);
+
+        projection.DeclaredMediaType.ShouldBeNull();
+        projection.MediaType.ShouldBe("text/plain");
+        projection.Text.ShouldBe("hello");
+    }
+
+    [Fact]
+    public void Project_WhenContentTypeIsWhitespace_SniffsPlainTextByDefault()
+    {
+        var projection = WebContentProjector.Project(Encoding.UTF8.GetBytes("hello"), "   ", 100);
+
+        projection.DeclaredMediaType.ShouldBeNull();
+        projection.MediaType.ShouldBe("text/plain");
+    }
+
+    [Fact]
+    public void Project_WhenContentTypeHeaderIsMalformed_ThrowsTypedContentFailure()
+    {
+        var action = () => WebContentProjector.Project(Encoding.UTF8.GetBytes("hello"), "\"", 100);
+
+        action.ShouldThrow<InvalidDataException>().Message.ShouldContain("Content-Type");
+    }
+
+    [Fact]
+    public void Project_WhenContentTypeMissingButBodySniffsAsHtml_UsesHtmlToTextTransform()
+    {
+        var projection = WebContentProjector.Project(Encoding.UTF8.GetBytes("<html><body>hi</body></html>"), null, 100);
+
+        projection.SniffedMediaType.ShouldBe("text/html");
+        projection.MediaType.ShouldBe("text/html");
+        projection.Transform.ShouldBe("html_to_text_v1");
+    }
+
+    [Fact]
+    public void Project_WhenContentTypeMissingButBodySniffsAsJson_ReportsSniffedMediaType()
+    {
+        var projection = WebContentProjector.Project(Encoding.UTF8.GetBytes(/*lang=json,strict*/ "{\"a\":1}"), null, 100);
+
+        projection.SniffedMediaType.ShouldBe("application/json");
+        projection.MediaType.ShouldBe("application/json");
+    }
+
+    [Theory]
+    [InlineData("utf-16")]
+    [InlineData("utf-16le")]
+    [InlineData("unicode")]
+    public void Project_WhenLittleEndianUtf16CharsetDeclared_DecodesText(string charset)
+    {
+        byte[] bytes = [0x68, 0x00, 0x69, 0x00];
+
+        var projection = WebContentProjector.Project(bytes, $"text/plain; charset={charset}", 100);
+
+        projection.Text.ShouldBe("hi");
+    }
+
+    [Fact]
+    public void Project_WhenUtf16BigEndianCharsetDeclared_DecodesText()
+    {
+        byte[] bytes = [0x00, 0x68, 0x00, 0x69];
+
+        var projection = WebContentProjector.Project(bytes, "text/plain; charset=utf-16be", 100);
+
+        projection.Text.ShouldBe("hi");
+    }
+
+    [Theory]
+    [InlineData("iso-8859-1")]
+    [InlineData("latin1")]
+    public void Project_WhenLatin1CharsetDeclared_DecodesText(string charset)
+    {
+        var projection = WebContentProjector.Project([0x68, 0x69], $"text/plain; charset={charset}", 100);
+
+        projection.Text.ShouldBe("hi");
+    }
+
+    [Theory]
+    [InlineData("us-ascii")]
+    [InlineData("ascii")]
+    public void Project_WhenAsciiCharsetDeclared_DecodesText(string charset)
+    {
+        var projection = WebContentProjector.Project([0x68, 0x69], $"text/plain; charset={charset}", 100);
+
+        projection.Text.ShouldBe("hi");
+    }
+
+    [Fact]
+    public void Project_WhenCharsetUnsupported_ThrowsTypedContentFailure()
+    {
+        var action = () => WebContentProjector.Project([0x68], "text/plain; charset=shift-jis", 100);
+
+        action.ShouldThrow<InvalidDataException>().Message.ShouldContain("shift-jis");
+    }
+
+    [Fact]
+    public void Project_WhenUtf16LeBomPresent_RemovesBomFromText()
+    {
+        byte[] bytes = [0xFF, 0xFE, 0x68, 0x00, 0x69, 0x00];
+
+        var projection = WebContentProjector.Project(bytes, "text/plain", 100);
+
+        projection.Text.ShouldBe("hi");
+    }
+
+    [Fact]
+    public void Project_WhenUtf16BeBomPresent_RemovesBomFromText()
+    {
+        byte[] bytes = [0xFE, 0xFF, 0x00, 0x68, 0x00, 0x69];
+
+        var projection = WebContentProjector.Project(bytes, "text/plain", 100);
+
+        projection.Text.ShouldBe("hi");
+    }
+
+    [Fact]
+    public void Project_WhenHtmlTagIsUnclosed_AppendsTheRemainderVerbatimAndStops()
+    {
+        var projection = WebContentProjector.Project(Encoding.UTF8.GetBytes("<html><body>before<div"), "text/html", 100);
+
+        projection.Text.ShouldBe("before<div");
+    }
+
+    [Fact]
+    public void Project_WhenTrailingSpacesPrecedeNewline_TrimsThemBeforeInsertingTheNewline()
+    {
+        var projection = WebContentProjector.Project(Encoding.UTF8.GetBytes("<html><body>line1   <br>line2</body></html>"), "text/html", 200);
+
+        projection.Text.ShouldBe("line1\nline2");
+    }
+
+    [Fact]
+    public void Project_WhenCalledTwiceWithEquivalentInput_ProducesEqualProjections()
+    {
+        var first = WebContentProjector.Project(Encoding.UTF8.GetBytes("hello"), "text/plain", 100);
+        var second = WebContentProjector.Project(Encoding.UTF8.GetBytes("hello"), "text/plain", 100);
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
 }
