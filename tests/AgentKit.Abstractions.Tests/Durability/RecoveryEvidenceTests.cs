@@ -97,6 +97,17 @@ public sealed class RecoveryEvidenceTests
         evidence.LatestCheckpoint.ShouldBe(checkpoint);
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsDerivedProperties()
+    {
+        var address = DurabilityTestData.Address();
+        var context = DurabilityTestData.Context();
+        var evidence = new RecoveryEvidence(address, context, DurableOperationState.EffectPending, SideEffectCertainty.Unknown, startDefinitelyAbsent: false, terminalResultRecorded: false);
+        evidence.Address.ShouldBe(address);
+        evidence.ExecutionContext.ShouldBe(context);
+        evidence.State.ShouldBe(DurableOperationState.EffectPending);
+    }
+
     private static RecoveryEvidence Evidence(DurableOperationBinding binding, DurableCheckpoint? latestCheckpoint = null) => new(binding, DurableOperationState.OutcomeReady, SideEffectCertainty.Unknown, startDefinitelyAbsent: false, terminalResultRecorded: true, latestCheckpoint);
     private static DurableCheckpoint Checkpoint(DurableOperationBinding binding) => new(DurabilityTestData.CheckpointId, binding, DurableCheckpointKind.RunSettled, DurabilityTestData.Payload(), DurabilityTestData.Token, DurabilityTestData.Now);
 

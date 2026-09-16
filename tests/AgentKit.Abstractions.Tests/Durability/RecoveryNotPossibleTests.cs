@@ -20,4 +20,29 @@ public sealed class RecoveryNotPossibleTests: Conformance.SingleMessageLeafConfo
 
     /// <inheritdoc/>
     protected override string GetValue(RecoveryNotPossible subject) => subject.SafeReason;
+
+    [Fact]
+    public void With_WhenSafeReasonIsWhitespace_ThrowsArgumentException()
+    {
+        var notPossible = new RecoveryNotPossible("reason");
+        Should.Throw<ArgumentException>(() => _ = notPossible with { SafeReason = " " }).ParamName.ShouldBe("SafeReason");
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new RecoveryNotPossible("reason");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        RecoveryDecision typed = original;
+        _ = typed.ShouldBeOfType<RecoveryNotPossible>();
+    }
+
+    [Fact]
+    public void With_WhenSafeReasonIsValid_UpdatesSafeReason()
+    {
+        var original = new RecoveryNotPossible("reason");
+        var updated = original with { SafeReason = "other reason" };
+        updated.SafeReason.ShouldBe("other reason");
+    }
 }

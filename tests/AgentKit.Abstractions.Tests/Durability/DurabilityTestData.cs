@@ -139,4 +139,24 @@ internal static class DurabilityTestData
 
     public static ExternalOperationReference ExternalReference() =>
         new(new DurableBackendKey("backend"), "handle-1");
+
+    public static IExecutionLease Lease() => new FakeExecutionLease();
+
+    private sealed class FakeExecutionLease: IExecutionLease
+    {
+        public ExecutionLeaseId LeaseId => DurabilityTestData.LeaseId;
+
+        public WorkerId OwnerWorkerId => WorkerId;
+
+        public DurableOperationAddress Address => DurabilityTestData.Address();
+
+        public FencingToken FencingToken => Token;
+
+        public DateTimeOffset ExpiresAt => Now.AddMinutes(1);
+
+        public ValueTask<LeaseRenewalResult> RenewAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<LeaseRenewalResult>(new LeaseRenewed(ExpiresAt));
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
 }

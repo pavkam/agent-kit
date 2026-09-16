@@ -10,4 +10,12 @@ public sealed class LeaseRenewedTests
 {
     [Fact]
     public void LeaseRenewed_Constructor_PreservesExtendedExpiry() => new LeaseRenewed(DurabilityTestData.Now).ExpiresAt.ShouldBe(DurabilityTestData.Now);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new LeaseRenewed(DurabilityTestData.Now);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

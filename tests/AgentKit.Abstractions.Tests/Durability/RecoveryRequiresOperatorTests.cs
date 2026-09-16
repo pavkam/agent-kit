@@ -20,4 +20,29 @@ public sealed class RecoveryRequiresOperatorTests: Conformance.SingleMessageLeaf
 
     /// <inheritdoc/>
     protected override string GetValue(RecoveryRequiresOperator subject) => subject.SafeReason;
+
+    [Fact]
+    public void With_WhenSafeReasonIsWhitespace_ThrowsArgumentException()
+    {
+        var requiresOperator = new RecoveryRequiresOperator("reason");
+        Should.Throw<ArgumentException>(() => _ = requiresOperator with { SafeReason = " " }).ParamName.ShouldBe("SafeReason");
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new RecoveryRequiresOperator("reason");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        RecoveryDecision typed = original;
+        _ = typed.ShouldBeOfType<RecoveryRequiresOperator>();
+    }
+
+    [Fact]
+    public void With_WhenSafeReasonIsValid_UpdatesSafeReason()
+    {
+        var original = new RecoveryRequiresOperator("reason");
+        var updated = original with { SafeReason = "other reason" };
+        updated.SafeReason.ShouldBe("other reason");
+    }
 }

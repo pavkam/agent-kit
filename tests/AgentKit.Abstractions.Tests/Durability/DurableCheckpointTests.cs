@@ -30,6 +30,67 @@ public sealed class DurableCheckpointTests
     }
 
     [Fact]
+    public void DurableCheckpoint_Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var address = DurabilityTestData.Address();
+        var context = DurabilityTestData.Context();
+        var payload = DurabilityTestData.Payload();
+        var checkpoint = new DurableCheckpoint(DurabilityTestData.CheckpointId, address, context, DurableCheckpointKind.RunSettled, payload, DurabilityTestData.Token, DurabilityTestData.Now);
+        checkpoint.Id.ShouldBe(DurabilityTestData.CheckpointId);
+        checkpoint.Address.ShouldBe(address);
+        checkpoint.ExecutionContext.ShouldBe(context);
+        checkpoint.Kind.ShouldBe(DurableCheckpointKind.RunSettled);
+        checkpoint.State.ShouldBe(payload);
+        checkpoint.FencingToken.ShouldBe(DurabilityTestData.Token);
+        checkpoint.RecordedAt.ShouldBe(DurabilityTestData.Now);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = DurabilityTestData.Checkpoint();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void With_WhenIdIsDefault_ThrowsArgumentOutOfRangeException()
+    {
+        var checkpoint = DurabilityTestData.Checkpoint();
+        Should.Throw<ArgumentOutOfRangeException>(() => _ = checkpoint with { Id = default }).ParamName.ShouldBe("Id");
+    }
+
+    [Fact]
+    public void With_WhenKindIsUndefined_ThrowsArgumentOutOfRangeException()
+    {
+        var checkpoint = DurabilityTestData.Checkpoint();
+        Should.Throw<ArgumentOutOfRangeException>(() => _ = checkpoint with { Kind = (DurableCheckpointKind) 99 }).ParamName.ShouldBe("Kind");
+    }
+
+    [Fact]
+    public void With_WhenStateIsNull_ThrowsArgumentNullException()
+    {
+        var checkpoint = DurabilityTestData.Checkpoint();
+        Should.Throw<ArgumentNullException>(() => _ = checkpoint with { State = null! }).ParamName.ShouldBe("State");
+    }
+
+    [Fact]
+    public void With_WhenFencingTokenIsDefault_ThrowsArgumentOutOfRangeException()
+    {
+        var checkpoint = DurabilityTestData.Checkpoint();
+        Should.Throw<ArgumentOutOfRangeException>(() => _ = checkpoint with { FencingToken = default }).ParamName.ShouldBe("FencingToken");
+    }
+
+    [Fact]
+    public void With_WhenStateIsValid_UpdatesState()
+    {
+        var checkpoint = DurabilityTestData.Checkpoint();
+        var newPayload = new OperationPayload(new SchemaVersion("v2"), [4, 5, 6]);
+        var updated = checkpoint with { State = newPayload };
+        updated.State.ShouldBe(newPayload);
+    }
+
+    [Fact]
     public void DurableCheckpoint_PairConstructor_WhenBindingIsInconsistent_RejectsBeforeCheckpointStateIsAccepted()
     {
         var exception = Should.Throw<ArgumentException>(() => new DurableCheckpoint(DurabilityTestData.CheckpointId, DurabilityTestData.Address(), Context(BindingMismatch.Run), DurableCheckpointKind.RunSettled, DurabilityTestData.Payload(), DurabilityTestData.Token, DurabilityTestData.Now));

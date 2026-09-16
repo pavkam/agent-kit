@@ -16,4 +16,12 @@ public sealed class LeaseLostTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new LeaseLost(default(FencingToken)));
         exception.ParamName.ShouldBe("currentToken");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new LeaseLost();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

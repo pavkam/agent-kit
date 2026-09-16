@@ -10,4 +10,12 @@ public sealed class DurableDecodedTests
 {
     [Fact]
     public void DurableDecoded_Constructor_PreservesState() => new DurableDecoded<string>("state").State.ShouldBe("state");
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new DurableDecoded<string>("state");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

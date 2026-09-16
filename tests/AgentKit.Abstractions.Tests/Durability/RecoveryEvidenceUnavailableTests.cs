@@ -20,4 +20,29 @@ public sealed class RecoveryEvidenceUnavailableTests: Conformance.SingleMessageL
 
     /// <inheritdoc/>
     protected override string GetValue(RecoveryEvidenceUnavailable subject) => subject.SafeMessage;
+
+    [Fact]
+    public void With_WhenSafeMessageIsWhitespace_ThrowsArgumentException()
+    {
+        var unavailable = new RecoveryEvidenceUnavailable("message");
+        Should.Throw<ArgumentException>(() => _ = unavailable with { SafeMessage = " " }).ParamName.ShouldBe("SafeMessage");
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new RecoveryEvidenceUnavailable("message");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        RecoveryEvidenceResult result = original;
+        _ = result.ShouldBeOfType<RecoveryEvidenceUnavailable>();
+    }
+
+    [Fact]
+    public void With_WhenSafeMessageIsValid_UpdatesSafeMessage()
+    {
+        var original = new RecoveryEvidenceUnavailable("message");
+        var updated = original with { SafeMessage = "other message" };
+        updated.SafeMessage.ShouldBe("other message");
+    }
 }

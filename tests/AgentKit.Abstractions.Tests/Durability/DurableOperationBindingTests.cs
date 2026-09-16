@@ -165,6 +165,14 @@ public sealed class DurableOperationBindingTests
         explicitName.ParamName.ShouldBe("checkpointArgument");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new DurableOperationBinding(DurabilityTestData.Address(), DurabilityTestData.Context());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static DurableCheckpoint Checkpoint(DurableOperationBinding binding) => new(DurabilityTestData.CheckpointId, binding, DurableCheckpointKind.RunSettled, DurabilityTestData.Payload(), DurabilityTestData.Token, DurabilityTestData.Now);
     private static DurableOperationAddress Address(BindingMismatch mismatch) => mismatch switch
     {

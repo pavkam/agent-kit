@@ -93,6 +93,58 @@ public sealed class RecoverableOperationDescriptorTests
         original.IdempotencyKey.ShouldBe(DurabilityTestData.Descriptor().IdempotencyKey);
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var address = DurabilityTestData.Address();
+        var context = DurabilityTestData.Context();
+        var payload = DurabilityTestData.Payload();
+        var deadline = DurabilityTestData.Now.AddMinutes(5);
+        var descriptor = new RecoverableOperationDescriptor(
+            address,
+            context,
+            new DurableOperationName("tool.call"),
+            new DurableOperationVersion("v1"),
+            new IdempotencyKey("idem-1"),
+            payload,
+            DurableRetryOwner.Caller,
+            DurableTimeoutOwner.Caller,
+            CancellationSemantics.LocalWaitOnly,
+            SecurityEffect.Execute,
+            IdempotencyClassification.NonIdempotent,
+            deadline,
+            DurabilityTestData.OperationId);
+
+        descriptor.Address.ShouldBe(address);
+        descriptor.ExecutionContext.ShouldBe(context);
+        descriptor.Input.ShouldBe(payload);
+        descriptor.RetryOwner.ShouldBe(DurableRetryOwner.Caller);
+        descriptor.TimeoutOwner.ShouldBe(DurableTimeoutOwner.Caller);
+        descriptor.Cancellation.ShouldBe(CancellationSemantics.LocalWaitOnly);
+        descriptor.Effect.ShouldBe(SecurityEffect.Execute);
+        descriptor.Idempotency.ShouldBe(IdempotencyClassification.NonIdempotent);
+        descriptor.Deadline.ShouldBe(deadline);
+        descriptor.CausalParentId.ShouldBe(DurabilityTestData.OperationId);
+    }
+
+    [Fact]
+    public void With_WhenInputIsValid_UpdatesInput()
+    {
+        var original = DurabilityTestData.Descriptor();
+        var newPayload = new OperationPayload(new SchemaVersion("v2"), [7, 8, 9]);
+        var updated = original with { Input = newPayload };
+        updated.Input.ShouldBe(newPayload);
+    }
+
+    [Fact]
+    public void With_WhenExtensionsIsValid_UpdatesExtensions()
+    {
+        var original = DurabilityTestData.Descriptor();
+        var extensions = ExtensionData.Empty;
+        var updated = original with { Extensions = extensions };
+        updated.Extensions.ShouldBe(extensions);
+    }
+
     private static RecoverableOperationDescriptor Create(string parameterName, bool useCanonicalBindingConstructor)
     {
         var binding = new DurableOperationBinding(DurabilityTestData.Address(), DurabilityTestData.Context());

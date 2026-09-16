@@ -19,4 +19,34 @@ public sealed class DurableRecordFailedTests
     public void DurableRecordFailed_Constructor_WhenCommittedIsOmitted_DurabilityIsUnknown() => new DurableRecordFailed("store unavailable").Committed.ShouldBeNull();
     [Fact]
     public void DurableRecordFailed_Constructor_WhenCommittedIsProven_PreservesIt() => new DurableRecordFailed("partial failure", committed: true).Committed.ShouldBe(true);
+
+    [Fact]
+    public void DurableRecordFailed_Constructor_WhenArgumentsAreValid_RoundTripsSafeMessage()
+    {
+        var failed = new DurableRecordFailed("store unavailable");
+        failed.SafeMessage.ShouldBe("store unavailable");
+    }
+
+    [Fact]
+    public void With_WhenSafeMessageIsWhitespace_ThrowsArgumentException()
+    {
+        var failed = new DurableRecordFailed("store unavailable");
+        Should.Throw<ArgumentException>(() => _ = failed with { SafeMessage = " " }).ParamName.ShouldBe("SafeMessage");
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new DurableRecordFailed("store unavailable");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void With_WhenSafeMessageIsValid_UpdatesSafeMessage()
+    {
+        var original = new DurableRecordFailed("store unavailable");
+        var updated = original with { SafeMessage = "other message" };
+        updated.SafeMessage.ShouldBe("other message");
+    }
 }

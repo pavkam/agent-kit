@@ -21,4 +21,23 @@ public sealed class ExecutionLeaseHeldByAnotherWorkerTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new ExecutionLeaseHeldByAnotherWorker(DurabilityTestData.WorkerId, default, DurabilityTestData.Now));
         exception.ParamName.ShouldBe("currentToken");
     }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var held = new ExecutionLeaseHeldByAnotherWorker(DurabilityTestData.WorkerId, DurabilityTestData.Token, DurabilityTestData.Now);
+        held.CurrentOwnerWorkerId.ShouldBe(DurabilityTestData.WorkerId);
+        held.CurrentToken.ShouldBe(DurabilityTestData.Token);
+        held.ExpiresAt.ShouldBe(DurabilityTestData.Now);
+        ExecutionLeaseResult result = held;
+        _ = result.ShouldBeOfType<ExecutionLeaseHeldByAnotherWorker>();
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ExecutionLeaseHeldByAnotherWorker(DurabilityTestData.WorkerId, DurabilityTestData.Token, DurabilityTestData.Now);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

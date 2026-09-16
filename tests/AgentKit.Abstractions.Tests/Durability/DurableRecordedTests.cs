@@ -22,4 +22,12 @@ public sealed class DurableRecordedTests
         recorded.FencingToken.ShouldBe(new FencingToken(3));
         recorded.RecordedAt.ShouldBe(DurabilityTestData.Now);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new DurableRecorded(new FencingToken(3), DurabilityTestData.Now);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

@@ -72,6 +72,22 @@ public sealed class JsonDurableOperationCodecTests
     }
 
     [Fact]
+    public void Encode_WhenValueCannotBeRepresentedAsJson_ThrowsArgumentException()
+    {
+        var codec = Codec<Type>();
+
+        Should.Throw<ArgumentException>(() => codec.Encode(typeof(int))).ParamName.ShouldBe("value");
+    }
+
+    [Fact]
+    public void Properties_WhenConstructed_RoundTripOperationNameAndVersion()
+    {
+        var codec = Codec();
+        codec.OperationName.ShouldBe(Name);
+        codec.Version.ShouldBe(Version);
+    }
+
+    [Fact]
     public void Decode_WhenPayloadIsNull_RejectsExactArgument() =>
         Should.Throw<ArgumentNullException>(() => Codec().Decode(null!)).ParamName.ShouldBe("payload");
 

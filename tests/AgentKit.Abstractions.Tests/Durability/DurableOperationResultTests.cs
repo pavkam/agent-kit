@@ -70,5 +70,28 @@ public sealed class DurableOperationResultTests
         exception.ParamName.ShouldBe("state");
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var address = DurabilityTestData.Address();
+        var context = DurabilityTestData.Context();
+        var payload = DurabilityTestData.Payload();
+        var result = new DurableOperationResult(address, context, DurableOperationState.Completed, SideEffectCertainty.DefinitelyPerformed, payload, DurabilityTestData.Token, DurabilityTestData.Now);
+        result.Address.ShouldBe(address);
+        result.ExecutionContext.ShouldBe(context);
+        result.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyPerformed);
+        result.Output.ShouldBe(payload);
+        result.FencingToken.ShouldBe(DurabilityTestData.Token);
+    }
+
+    [Fact]
+    public void With_WhenOutputIsValid_UpdatesOutput()
+    {
+        var original = DurabilityTestData.Result();
+        var newPayload = new OperationPayload(new SchemaVersion("v2"), [9, 9, 9]);
+        var updated = original with { Output = newPayload };
+        updated.Output.ShouldBe(newPayload);
+    }
+
     private static DurableOperationResult Result(DurableOperationState state) => new(DurabilityTestData.Address(), DurabilityTestData.Context(), state, SideEffectCertainty.DefinitelyPerformed, DurabilityTestData.Payload(), DurabilityTestData.Token, DurabilityTestData.Now);
 }

@@ -116,6 +116,21 @@ public sealed class DurableOperationAddressTests
         (DurabilityTestData.Address() with { TurnId = null }).TurnId.ShouldBeNull();
 
     [Fact]
+    public void With_WhenIdentityIsValid_UpdatesProperty()
+    {
+        var address = DurabilityTestData.Address();
+        var newAgentId = new AgentId(Guid.Parse("f7000000-0000-0000-0000-000000000016"));
+        var newSessionId = new SessionId(Guid.Parse("f8000000-0000-0000-0000-000000000017"));
+        var newRunId = new RunId(Guid.Parse("f9000000-0000-0000-0000-000000000018"));
+        var newOperationId = new OperationId(Guid.Parse("fa000000-0000-0000-0000-000000000019"));
+
+        (address with { AgentId = newAgentId }).AgentId.ShouldBe(newAgentId);
+        (address with { SessionId = newSessionId }).SessionId.ShouldBe(newSessionId);
+        (address with { RunId = newRunId }).RunId.ShouldBe(newRunId);
+        (address with { OperationId = newOperationId }).OperationId.ShouldBe(newOperationId);
+    }
+
+    [Fact]
     public void Equality_WhenSameCoordinates_InstancesAreEqual() =>
         DurabilityTestData.Address().ShouldBe(DurabilityTestData.Address());
 }

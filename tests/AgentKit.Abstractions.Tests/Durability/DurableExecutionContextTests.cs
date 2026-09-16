@@ -73,6 +73,23 @@ public sealed class DurableExecutionContextTests
         context.ConfigurationVersion.ShouldBe(context.Authorization.ConfigurationVersion);
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsSelectionKeys()
+    {
+        var profileKey = new DurabilityProfileKey("p");
+        var backendKey = new DurableBackendKey("b");
+        var journalKey = new DurableJournalKey("j");
+        var leaseManagerKey = new DurableLeaseManagerKey("l");
+        var recoveryPolicyKey = new RecoveryPolicyKey("r");
+        var context = new DurableExecutionContext(profileKey, new DurabilityProfileVersion(1), backendKey, journalKey, leaseManagerKey, recoveryPolicyKey, DurabilityTestData.Authorization());
+
+        context.ProfileKey.ShouldBe(profileKey);
+        context.BackendKey.ShouldBe(backendKey);
+        context.JournalKey.ShouldBe(journalKey);
+        context.LeaseManagerKey.ShouldBe(leaseManagerKey);
+        context.RecoveryPolicyKey.ShouldBe(recoveryPolicyKey);
+    }
+
     private static DurableExecutionContext ContextWithInvalidSelection(string parameter) => new(parameter == "profileKey" ? default : new DurabilityProfileKey("p"), parameter == "profileVersion" ? default : new DurabilityProfileVersion(1), parameter == "backendKey" ? default : new DurableBackendKey("b"), parameter == "journalKey" ? default : new DurableJournalKey("j"), parameter == "leaseManagerKey" ? default : new DurableLeaseManagerKey("l"), parameter == "recoveryPolicyKey" ? default : new RecoveryPolicyKey("r"), DurabilityTestData.Authorization());
     private static DurableExecutionContext ContextWithInvalidCopy(DurableExecutionContext context, string property) => property switch
     {

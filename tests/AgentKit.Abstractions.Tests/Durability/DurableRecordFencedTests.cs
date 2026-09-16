@@ -36,4 +36,12 @@ public sealed class DurableRecordFencedTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new DurableRecordFenced(default, new FencingToken(1)));
         exception.ParamName.ShouldBe("presentedToken");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new DurableRecordFenced(new FencingToken(1), new FencingToken(2));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
