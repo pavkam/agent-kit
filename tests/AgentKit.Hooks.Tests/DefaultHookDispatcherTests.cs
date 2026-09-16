@@ -680,6 +680,108 @@ public sealed class DefaultHookDispatcherTests
     }
 
     [Fact]
+    public async Task DispatchAsync_WhenDispatchCompletesSuccessfully_LogsCompletedEvent()
+    {
+        var logger = new RecordingLogger<DefaultHookDispatcher>();
+        var dispatcher = new DefaultHookDispatcher(logger);
+        var args = new TestHookEventArgs();
+
+        await dispatcher.DispatchAsync(_point, [Hook("a")], args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        var completed = logger.Snapshot().Single(static log => log.EventId.Id == 8000);
+        completed.Level.ShouldBe(LogLevel.Debug);
+        completed.State["HookPoint"].ShouldBe(_point);
+        completed.State["HookInvocationId"].ShouldBe(args.InvocationId);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenCallerCancels_LogsCancelledEvent()
+    {
+        var logger = new RecordingLogger<DefaultHookDispatcher>();
+        var dispatcher = new DefaultHookDispatcher(logger);
+        var args = new TestHookEventArgs();
+        using var cancellation = new CancellationTokenSource();
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = (_, _, _) =>
+                {
+                    cancellation.Cancel();
+                    return Task.CompletedTask;
+                },
+            },
+            Hook("b"),
+        };
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => dispatcher.DispatchAsync(
+            _point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: cancellation.Token));
+
+        var cancelled = logger.Snapshot().Single(static log => log.EventId.Id == 8001);
+        cancelled.Level.ShouldBe(LogLevel.Debug);
+        cancelled.State["HookPoint"].ShouldBe(_point);
+        cancelled.State["HookInvocationId"].ShouldBe(args.InvocationId);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenHookThrowsAndFailureModeIsFailOperation_LogsFailedEventWithErrorType()
+    {
+        var logger = new RecordingLogger<DefaultHookDispatcher>();
+        var dispatcher = new DefaultHookDispatcher(logger);
+        var args = new TestHookEventArgs();
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (_, _, _) => throw new InvalidOperationException("boom"),
+            },
+        };
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => dispatcher.DispatchAsync(
+            _point, hooks, args, Invoker, HookDispatchScope.Root, cancellationToken: TestContext.Current.CancellationToken));
+
+        var failed = logger.Snapshot().Single(static log => log.EventId.Id == 8002);
+        failed.Level.ShouldBe(LogLevel.Error);
+        failed.State["HookPoint"].ShouldBe(_point);
+        failed.State["HookInvocationId"].ShouldBe(args.InvocationId);
+        failed.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenFailureModeIsolatesAHookFailure_LogsInvocationIsolatedEventWithoutPayload()
+    {
+        const string payload = "secret-hook-payload-must-not-be-logged";
+        var logger = new RecordingLogger<DefaultHookDispatcher>();
+        var dispatcher = new DefaultHookDispatcher(logger);
+        var args = new TestHookEventArgs { Payload = payload };
+        var hooks = new[]
+        {
+            new TestHook
+            {
+                Id = new HookId("a"),
+                OnInvoke = static (_, _, _) => throw new InvalidOperationException("boom"),
+            },
+            Hook("b"),
+        };
+
+        await dispatcher.DispatchAsync(_point, hooks, args, Invoker, HookDispatchScope.Root, HookFailureMode.Isolate, cancellationToken: TestContext.Current.CancellationToken);
+
+        var isolated = logger.Snapshot().Single(static log => log.EventId.Id == 8003);
+        isolated.Level.ShouldBe(LogLevel.Warning);
+        isolated.State["HookPoint"].ShouldBe(_point);
+        isolated.State["HookId"].ShouldBe(new HookId("a"));
+        isolated.State["HookInvocationId"].ShouldBe(args.InvocationId);
+        isolated.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
+        foreach (var log in logger.Snapshot())
+        {
+            log.Message.ShouldNotContain(payload);
+            log.State.Values.ShouldAllBe(value => value == null || !value.ToString()!.Contains(payload, StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
     public async Task DispatchAsync_WhenHostEscalatesFailureMode_LogsEscalationWithoutPayload()
     {
         const string payload = "secret-hook-payload-must-not-be-logged";
