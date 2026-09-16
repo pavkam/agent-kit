@@ -37,6 +37,47 @@ public sealed class ServiceExtensionsTests
         _ = Should.Throw<InvalidOperationException>(() => services.AddIdentityNormalizationPolicy<NullPolicy>(new IdentityNormalizationPolicyRegistration("duplicate")));
     }
 
+    [Fact]
+    public void ReplaceDelegatedIdentityDeriver_WhenCalled_ReplacesTheSingularDeriver()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentIdentity();
+        _ = services.ReplaceDelegatedIdentityDeriver<StubDelegatedIdentityDeriver>();
+        using var provider = services.BuildServiceProvider();
+
+        var deriver = provider.GetRequiredService<IDelegatedIdentityDeriver>();
+
+        _ = deriver.ShouldBeOfType<StubDelegatedIdentityDeriver>();
+        provider.GetServices<IDelegatedIdentityDeriver>().Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public void ReplaceIdentityResolver_WhenCalled_ReplacesTheScopedResolver()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddAgentIdentity();
+        _ = services.ReplaceIdentityResolver<StubExecutionIdentityResolver>();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var resolver = scope.ServiceProvider.GetRequiredService<IExecutionIdentityResolver>();
+
+        _ = resolver.ShouldBeOfType<StubExecutionIdentityResolver>();
+        scope.ServiceProvider.GetServices<IExecutionIdentityResolver>().Count().ShouldBe(1);
+    }
+
+    private sealed class StubDelegatedIdentityDeriver: IDelegatedIdentityDeriver
+    {
+        public ValueTask<IdentityResolutionResult> DeriveAsync(DelegatedIdentityRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Not invoked by this test.");
+    }
+
+    private sealed class StubExecutionIdentityResolver: IExecutionIdentityResolver
+    {
+        public ValueTask<IdentityResolutionResult> ResolveAsync(IdentityAssertion assertion, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Not invoked by this test.");
+    }
+
     [Theory]
     [InlineData(0, 1, 1)]
     [InlineData(1, 0, 1)]

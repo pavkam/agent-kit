@@ -3,4 +3,10 @@
 
 namespace AgentKit.Identity.Tests;
 
-internal sealed record TestIssuerSettings(DateTimeOffset AuthenticatedAt, DateTimeOffset? ExpiresAt, bool Revoked = false, long Version = 1, bool NullNormalization = false);
+internal sealed record TestIssuerSettings(
+    DateTimeOffset AuthenticatedAt,
+    DateTimeOffset? ExpiresAt,
+    bool Revoked = false,
+    long Version = 1,
+    bool NullNormalization = false,
+    bool RejectNormalization = false);

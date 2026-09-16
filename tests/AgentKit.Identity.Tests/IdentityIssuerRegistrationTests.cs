@@ -14,4 +14,17 @@ public sealed class IdentityIssuerRegistrationTests
         var exception = Should.Throw<ArgumentException>(() => new IdentityIssuerRegistration(default));
         exception.ParamName.ShouldBe("issuerId");
     }
+
+    [Fact]
+    public void Equality_WhenIssuerIdsMatch_TreatsInstancesAsEqual()
+    {
+        var first = new IdentityIssuerRegistration(new IdentityIssuerId("issuer"));
+        var second = new IdentityIssuerRegistration(new IdentityIssuerId("issuer"));
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+        first.IssuerId.ShouldBe(new IdentityIssuerId("issuer"));
+        first.ToString().ShouldContain(nameof(IdentityIssuerRegistration));
+        (first with { }).ShouldBe(first);
+    }
 }

@@ -179,6 +179,40 @@ public sealed class ExecutionIdentityResolverTests: IdentityNormalizerConformanc
     }
 
     [Fact]
+    public async Task ResolveAsync_WhenIssuerExplicitlyRejectsNormalization_PreservesItsTypedFailure()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero));
+        using var provider = BuildProvider(
+            clock,
+            new TestIssuerSettings(clock.GetUtcNow().AddMinutes(-1), clock.GetUtcNow().AddHours(1), RejectNormalization: true));
+        using var scope = provider.CreateScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IExecutionIdentityResolver>().ResolveAsync(
+            Assertion("issuer"), TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<IdentityRejected>();
+        rejected.Failure.Kind.ShouldBe(IdentityFailureKind.Malformed);
+        rejected.Failure.SafeMessage.ShouldBe("rejected by issuer");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenNormalizationPolicyExplicitlyRejects_PreservesItsTypedFailure()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero));
+        var services = CreateServices(clock, new TestIssuerSettings(clock.GetUtcNow().AddMinutes(-1), clock.GetUtcNow().AddHours(1)));
+        _ = services.AddIdentityNormalizationPolicy<RejectingPolicy>(new IdentityNormalizationPolicyRegistration("rejecting"));
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IExecutionIdentityResolver>().ResolveAsync(
+            Assertion("issuer"), TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<IdentityRejected>();
+        rejected.Failure.Kind.ShouldBe(IdentityFailureKind.Malformed);
+        rejected.Failure.SafeMessage.ShouldBe("rejected by policy");
+    }
+
+    [Fact]
     public async Task ResolveAsync_WhenIssuerReturnsNullNormalizationResult_RejectsUnavailable()
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero));

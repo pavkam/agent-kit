@@ -25,4 +25,69 @@ public sealed class DefaultIdentityValidationPolicyTests
         });
         exception.ParamName.ShouldBe(parameterName);
     }
+
+    [Fact]
+    public async Task ValidateAsync_WhenSubjectIsAnonymousAndAnonymousIsDisallowed_RejectsAsUnsupported()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var clock = new FakeTimeProvider(now);
+        var options = new AgentIdentityOptionsSnapshot(false, 1, TimeSpan.FromMinutes(1), TimeSpan.FromHours(1));
+        var policy = new DefaultIdentityValidationPolicy(new IdentityIssuerCatalog([]), clock, options);
+        var identity = new ExecutionIdentity(
+            new TenantId("tenant"),
+            new PrincipalId("principal"),
+            ExecutionSubjectKind.Anonymous,
+            IdentityTestData.Evidence("issuer", now, null),
+            [],
+            [],
+            IdentityAssuranceLevel.Basic,
+            new IdentityVersion(1));
+
+        var result = await policy.ValidateAsync(identity, TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<IdentityValidationRejected>();
+        rejected.Failure.Kind.ShouldBe(IdentityFailureKind.Unsupported);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenAuthenticatedAtIsInTheFutureBeyondClockSkew_RejectsAsMalformed()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var clock = new FakeTimeProvider(now);
+        var options = new AgentIdentityOptionsSnapshot(false, 1, TimeSpan.FromMinutes(1), TimeSpan.FromHours(1));
+        var policy = new DefaultIdentityValidationPolicy(new IdentityIssuerCatalog([]), clock, options);
+        var identity = Identity(IdentityTestData.Evidence("issuer", now.AddMinutes(5), null));
+
+        var result = await policy.ValidateAsync(identity, TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<IdentityValidationRejected>();
+        rejected.Failure.Kind.ShouldBe(IdentityFailureKind.Malformed);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenEvidenceExpiredBeyondClockSkew_RejectsAsExpired()
+    {
+        var now = DateTimeOffset.UnixEpoch.AddHours(1);
+        var clock = new FakeTimeProvider(now);
+        var options = new AgentIdentityOptionsSnapshot(false, 1, TimeSpan.FromMinutes(1), TimeSpan.FromHours(2));
+        var policy = new DefaultIdentityValidationPolicy(new IdentityIssuerCatalog([]), clock, options);
+        var identity = Identity(IdentityTestData.Evidence(
+            "issuer", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5)));
+
+        var result = await policy.ValidateAsync(identity, TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<IdentityValidationRejected>();
+        rejected.Failure.Kind.ShouldBe(IdentityFailureKind.Expired);
+        rejected.Failure.SafeMessage.ShouldBe("Authentication evidence has expired.");
+    }
+
+    private static ExecutionIdentity Identity(AuthenticationEvidence evidence) => new(
+        new TenantId("tenant"),
+        new PrincipalId("principal"),
+        ExecutionSubjectKind.Human,
+        evidence,
+        [],
+        [],
+        IdentityAssuranceLevel.Basic,
+        new IdentityVersion(1));
 }

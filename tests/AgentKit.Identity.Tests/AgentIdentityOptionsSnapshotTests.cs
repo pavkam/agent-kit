@@ -17,4 +17,17 @@ public sealed class AgentIdentityOptionsSnapshotTests
         var exception = Should.Throw<ArgumentOutOfRangeException>(() => new AgentIdentityOptionsSnapshot(false, depth, TimeSpan.FromTicks(skewTicks), TimeSpan.FromTicks(lifetimeTicks)));
         exception.ParamName.ShouldBe(parameterName);
     }
+
+    [Fact]
+    public void Properties_WhenConstructed_ExposeTheExactCapturedValues()
+    {
+        var snapshot = new AgentIdentityOptionsSnapshot(true, 5, TimeSpan.FromMinutes(1), TimeSpan.FromHours(2));
+
+        snapshot.AllowAnonymous.ShouldBeTrue();
+        snapshot.MaximumDelegationDepth.ShouldBe(5);
+        snapshot.MaximumClockSkew.ShouldBe(TimeSpan.FromMinutes(1));
+        snapshot.MaximumEvidenceLifetime.ShouldBe(TimeSpan.FromHours(2));
+        snapshot.ToString().ShouldContain(nameof(AgentIdentityOptionsSnapshot));
+        (snapshot with { }).ShouldBe(snapshot);
+    }
 }
