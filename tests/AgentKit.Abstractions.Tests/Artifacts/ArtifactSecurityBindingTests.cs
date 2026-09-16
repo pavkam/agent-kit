@@ -42,6 +42,14 @@ public sealed class ArtifactSecurityBindingTests
         exception.ParamName.ShouldBe("reason");
     }
 
+    [Fact]
+    public void FinalizeFingerprint_WhenInputsAreEquivalent_IsStable() =>
+        ArtifactSecurityBinding.FinalizeFingerprint(PreparationId()).ShouldBe(ArtifactSecurityBinding.FinalizeFingerprint(PreparationId()));
+
+    [Fact]
+    public void AbortFingerprint_WhenInputsAreEquivalent_IsStable() =>
+        ArtifactSecurityBinding.AbortFingerprint(PreparationId(), ArtifactAbortReason.Cancelled).ShouldBe(ArtifactSecurityBinding.AbortFingerprint(PreparationId(), ArtifactAbortReason.Cancelled));
+
     [Theory]
     [InlineData("read")]
     [InlineData("delete")]

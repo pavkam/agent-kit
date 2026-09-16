@@ -5,51 +5,40 @@ namespace AgentKit.Abstractions.Tests.Artifacts;
 
 
 
-/// <summary>Verifies ArtifactDeleteRequest behavior and contracts.</summary>
-public sealed class ArtifactDeleteRequestTests
+/// <summary>Verifies ArtifactReadRequest behavior and contracts.</summary>
+public sealed class ArtifactReadRequestTests
 {
     [Fact]
     public void Constructor_WhenCalledWithValidArguments_InitializesProperties()
     {
-        var correlation = Correlation();
-        var identity = Identity();
-        var reference = Reference();
-        var key = new IdempotencyKey("delete");
-        var request = new ArtifactDeleteRequest(AgentId(), SessionId(), null, correlation, identity, reference, key);
+        var request = new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Reference());
         request.AgentId.ShouldBe(AgentId());
         request.SessionId.ShouldBe(SessionId());
         request.ToolCallId.ShouldBeNull();
-        request.Correlation.ShouldBe(correlation);
-        request.Identity.ShouldBe(identity);
-        request.Reference.ShouldBe(reference);
-        request.IdempotencyKey.ShouldBe(key);
-    }
-
-    [Fact]
-    public void ArtifactDeleteRequest_WhenIdempotencyKeyIsBlank_ThrowsExactParameter()
-    {
-        var exception = Should.Throw<ArgumentException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Reference(), default));
-        exception.ParamName.ShouldBe("idempotencyKey");
+        request.Correlation.ShouldBe(Correlation());
+        request.Identity.ShouldBe(Identity());
+        request.Reference.ShouldBe(Reference());
+        request.ToString().ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
     public void Constructor_WhenCorrelationIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, null!, Identity(), Reference(), new IdempotencyKey("delete")));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactReadRequest(AgentId(), SessionId(), null, null!, Identity(), Reference()));
         exception.ParamName.ShouldBe("correlation");
     }
 
     [Fact]
     public void Constructor_WhenIdentityIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), null!, Reference(), new IdempotencyKey("delete")));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), null!, Reference()));
         exception.ParamName.ShouldBe("identity");
     }
 
     [Fact]
     public void Constructor_WhenReferenceIsNull_ThrowsExactParameter()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), Identity(), null!, new IdempotencyKey("delete")));
+        var exception = Should.Throw<ArgumentNullException>(() => new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), Identity(), null!));
         exception.ParamName.ShouldBe("reference");
     }
 
@@ -62,7 +51,7 @@ public sealed class ArtifactDeleteRequestTests
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new ArtifactDeleteRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Reference(), new IdempotencyKey("delete"));
+        var original = new ArtifactReadRequest(AgentId(), SessionId(), null, Correlation(), Identity(), Reference());
         var copy = original with { };
         copy.ShouldBe(original);
     }
