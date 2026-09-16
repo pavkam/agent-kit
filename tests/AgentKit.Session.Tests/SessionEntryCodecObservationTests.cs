@@ -25,6 +25,71 @@ public sealed class SessionEntryCodecObservationTests
         logger.Entries[0].Message.ShouldNotContain("protected-content");
     }
 
+    [Fact]
+    public void Observe_WhenActionReturnsOpaqueResult_RecordsOpaqueOutcome()
+    {
+        var logger = new CollectingLogger<ExecutionLaneProvisionedSessionEntryCodec>();
+        var wire = new SessionEntryWireEnvelope(new SessionEntryTypeId("other"), Version, [1]);
+
+        var result = SessionEntryCodecObservation.Observe<SessionEntryDecodeResult>(TimeProvider.System, logger,
+            "test.opaque", null, () => new SessionEntryOpaque(wire));
+
+        _ = result.ShouldBeOfType<SessionEntryOpaque>();
+        logger.Entries.ShouldHaveSingleItem().EventId.Id.ShouldBe(6009);
+    }
+
+    [Fact]
+    public void Observe_WhenResultTypeIsUnrecognized_RecordsUnknownOutcome()
+    {
+        var logger = new CollectingLogger<ExecutionLaneProvisionedSessionEntryCodec>();
+
+        var result = SessionEntryCodecObservation.Observe(TimeProvider.System, logger, "test.unknown", null,
+            () => new UnknownDecodeResult());
+
+        _ = result.ShouldBeOfType<UnknownDecodeResult>();
+        logger.Entries.ShouldHaveSingleItem().EventId.Id.ShouldBe(6009);
+    }
+
+    [Fact]
+    public void Observe_WhenDecodeActionFaultsWithoutInitialEvidence_LogsUncorrelatedFault()
+    {
+        var logger = new CollectingLogger<ExecutionLaneProvisionedSessionEntryCodec>();
+        var expected = new InvalidOperationException("decode failed");
+
+        var actual = Should.Throw<InvalidOperationException>(() =>
+            SessionEntryCodecObservation.Observe<SessionEntryDecodeResult>(TimeProvider.System, logger,
+                "test.decode-fault", null, () => throw expected));
+
+        actual.ShouldBeSameAs(expected);
+        logger.Entries.ShouldHaveSingleItem().EventId.Id.ShouldBe(6010);
+    }
+
+    [Fact]
+    public void Observe_WhenEvidenceIsAnUnrecognizedSessionEntryType_TagsWithoutLaneOrRun()
+    {
+        using var parent = new Activity("portable.codec.unrecognized").Start();
+        Activity? stopped = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = static source => source.Name == AgentKitDiagnostics.ActivitySourceName,
+            Sample = (ref options) => options.Name == AgentKitActivityNames.SessionEntryCodec
+                && options.Parent == parent.Context ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
+            ActivityStopped = activity => stopped = activity,
+        };
+        ActivitySource.AddActivityListener(listener);
+        var logger = new CollectingLogger<ExecutionLaneProvisionedSessionEntryCodec>();
+        var evidence = TestFactory.MessageEntry(
+            new SessionAddress(new AgentId(Id(2)), new SessionId(Id(3))), new BranchId(Id(5)), 1);
+
+        var result = SessionEntryCodecObservation.Observe<SessionEntryEncodeResult>(TimeProvider.System, logger,
+            "test.unrecognized-evidence", evidence, () => new SessionEntryEncodeRejected("not configured"));
+
+        _ = result.ShouldBeOfType<SessionEntryEncodeRejected>();
+        stopped.ShouldNotBeNull().GetTagItem(AgentKitTagNames.ExecutionLaneId).ShouldBeNull();
+    }
+
+    private sealed record UnknownDecodeResult: SessionEntryDecodeResult;
+
     private static Guid Id(int value) => Guid.Parse($"00000000-0000-0000-0000-{value:D12}");
     private static ActivityListener Listener(Activity parent, Action<Activity> stopped)
     {
