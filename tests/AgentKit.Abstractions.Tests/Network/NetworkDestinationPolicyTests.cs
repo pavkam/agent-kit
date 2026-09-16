@@ -46,4 +46,100 @@ public sealed class NetworkDestinationPolicyTests
     [Fact]
     public void AllowsAddress_WhenAddressIsNull_ThrowsArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => NetworkDestinationPolicy.Default.AllowsAddress(null!)).ParamName.ShouldBe("address");
+
+    [Theory]
+    [InlineData("230.5.6.7")]
+    [InlineData("240.1.2.3")]
+    public void AllowsAddress_WhenAddressIsInReservedTopRange_ReturnsFalse(string literal) =>
+        NetworkDestinationPolicy.Default.AllowsAddress(IPAddress.Parse(literal)).ShouldBeFalse();
+
+    [Fact]
+    public void Constructor_WhenAllowedSchemesIsDefault_ThrowsExactParameter() =>
+        Should.Throw<ArgumentException>(() => new NetworkDestinationPolicy(default, null, false)).ParamName.ShouldBe("allowedSchemes");
+
+    [Fact]
+    public void Constructor_WhenAllowedSchemesIsEmpty_ThrowsExactParameter() =>
+        Should.Throw<ArgumentException>(() => new NetworkDestinationPolicy([], null, false)).ParamName.ShouldBe("allowedSchemes");
+
+    [Fact]
+    public void Constructor_WhenAllowedHostsIsDefault_ThrowsExactParameter() =>
+        Should.Throw<ArgumentException>(() => new NetworkDestinationPolicy(["https"], default(ImmutableArray<NormalizedHost>), false)).ParamName.ShouldBe("allowedHosts");
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        ImmutableArray<NormalizedHost> hosts = [new NormalizedHost("example.test")];
+        var policy = new NetworkDestinationPolicy(["HTTPS"], hosts, true);
+        policy.AllowedSchemes.ShouldBe(["https"]);
+        policy.AllowedHosts.ShouldBe(hosts);
+        policy.AllowPrivateAddresses.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void AllowsSchemeAndHost_WhenDestinationIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => NetworkDestinationPolicy.Default.AllowsSchemeAndHost(null!)).ParamName.ShouldBe("destination");
+
+    [Fact]
+    public void AllowsSchemeAndHost_WhenSchemeNotAllowed_ReturnsFalse()
+    {
+        var destination = new NetworkDestination("ftp", new NormalizedHost("example.test"), 21, NetworkRoute.Root);
+        NetworkDestinationPolicy.Default.AllowsSchemeAndHost(destination).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AllowsSchemeAndHost_WhenHostRestrictedAndMatches_ReturnsTrue()
+    {
+        var policy = new NetworkDestinationPolicy(["https"], [new NormalizedHost("example.test")], false);
+        var destination = new NetworkDestination("https", new NormalizedHost("example.test"), 443, NetworkRoute.Root);
+        policy.AllowsSchemeAndHost(destination).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void AllowsSchemeAndHost_WhenHostRestrictedAndDoesNotMatch_ReturnsFalse()
+    {
+        var policy = new NetworkDestinationPolicy(["https"], [new NormalizedHost("example.test")], false);
+        var destination = new NetworkDestination("https", new NormalizedHost("other.test"), 443, NetworkRoute.Root);
+        policy.AllowsSchemeAndHost(destination).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AllowsSchemeAndHost_WhenHostsUnrestricted_ReturnsTrue()
+    {
+        var destination = new NetworkDestination("https", new NormalizedHost("anything.test"), 443, NetworkRoute.Root);
+        NetworkDestinationPolicy.Default.AllowsSchemeAndHost(destination).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Equality_WhenAllowedHostsAreBothNull_IsEqual()
+    {
+        var left = new NetworkDestinationPolicy(["https"], null, false);
+        var right = new NetworkDestinationPolicy(["https"], null, false);
+        left.ShouldBe(right);
+        left.GetHashCode().ShouldBe(right.GetHashCode());
+    }
+
+    [Fact]
+    public void Equality_WhenOneAllowedHostsIsNull_IsNotEqual()
+    {
+        var left = new NetworkDestinationPolicy(["https"], null, false);
+        var right = new NetworkDestinationPolicy(["https"], [new NormalizedHost("example.test")], false);
+        left.ShouldNotBe(right);
+    }
+
+    [Fact]
+    public void Equality_WhenEquivalentHostArraysDifferByInstance_IsStructurallyEqual()
+    {
+        var left = new NetworkDestinationPolicy(["https"], [new NormalizedHost("example.test")], false);
+        var right = new NetworkDestinationPolicy(["https"], [new NormalizedHost("example.test")], false);
+        left.ShouldBe(right);
+        left.GetHashCode().ShouldBe(right.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new NetworkDestinationPolicy(["https"], [new NormalizedHost("example.test")], false);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

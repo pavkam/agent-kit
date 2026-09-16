@@ -92,6 +92,26 @@ public sealed class NetworkRequestTests
         resources[2].Identifier.ShouldBe("[2001:db8::1]:443");
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsGrant()
+    {
+        var grant = Grant();
+        var request = new NetworkRequest(
+            Id(), NetworkMethod.Get, Destination(), NetworkHeaderSet.Empty, null, Bounds(),
+            [Address()], NetworkDataClassification.Public, grant);
+        request.Grant.ShouldBeSameAs(grant);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new NetworkRequest(
+            Id(), NetworkMethod.Get, Destination(), NetworkHeaderSet.Empty, null, Bounds(),
+            [Address()], NetworkDataClassification.Public, Grant());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static NetworkOperationId Id() => new(
         Guid.Parse("10000000-0000-0000-0000-000000000001"));
 

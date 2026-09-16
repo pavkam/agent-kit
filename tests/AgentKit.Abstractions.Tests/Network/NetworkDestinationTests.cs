@@ -28,4 +28,12 @@ public sealed class NetworkDestinationTests
         var action = () => new NetworkDestination("https", new NormalizedHost("example.test"), 443, default);
         action.ShouldThrow<ArgumentException>().ParamName.ShouldBe("route");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new NetworkDestination("https", new NormalizedHost("example.test"), 443, NetworkRoute.Root);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
