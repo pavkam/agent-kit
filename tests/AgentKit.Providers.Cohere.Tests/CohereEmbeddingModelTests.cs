@@ -16,7 +16,7 @@ public sealed class CohereEmbeddingModelTests
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
     private static EmbeddingModelDescriptor CreateDescriptor() => new(new EmbeddingModelAlias("embed"), CohereProviderDefaults.ProviderId, CohereProviderDefaults.EmbeddingApiFamily, new ModelId("embed-v4.0"), deploymentId: null, CohereProviderDefaults.DefaultEmbeddingCapabilities, CohereProviderDefaults.DefaultEmbeddingLimits, pricing: null, ExtensionData.Empty);
     private static EmbeddingModelRequest CreateRequest(EmbeddingModelDescriptor descriptor, DateTimeOffset deadline) => new(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello", null), new TextEmbeddingInput("world", null)], EmbeddingPurpose.Document, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, deadline, ProviderRequestOptions.Empty);
-    private static CohereEmbeddingModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, CohereProviderOptions? options = null) => new(CreateDescriptor(), options ?? new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/") }, new CohereEmbeddingRequestTranslator(), new CohereEmbeddingResponseParser(), credentials, new HttpClient(handler), new FakeTimeProvider(Now));
+    private static CohereEmbeddingModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, CohereProviderOptions? options = null, TimeProvider? timeProvider = null) => new(CreateDescriptor(), options ?? new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/") }, new CohereEmbeddingRequestTranslator(), new CohereEmbeddingResponseParser(), credentials, new HttpClient(handler), timeProvider ?? new FakeTimeProvider(Now));
     [Fact]
     public async Task GenerateAsync_WhenUsingApiKeyCredential_SendsBearerHeaderAndReturnsCompletedResponse()
     {
@@ -211,5 +211,172 @@ public sealed class CohereEmbeddingModelTests
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
         _ = failed.Failure.DiagnosticCause.ShouldBeOfType<IOException>();
+    }
+
+    /// <summary>Verifies caller cancellation before credential resolution returns one cancelled outcome without sending the HTTP request.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenCallerCancelsBeforeCredentialResolution_ReturnsCancelledResult()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")));
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var result = await model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddMinutes(1)), cts.Token);
+
+        var cancelled = result.ShouldBeOfType<EmbeddingAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies an expired OAuth credential is a typed authentication failure without ever sending the HTTP request.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenOAuthTokenExpired_FailsWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var expiredCredential = new OAuthTokenProviderCredential("expired-token", Now.AddMinutes(-5));
+        var model = CreateModel(handler, new StaticProviderCredentialSource(expiredCredential));
+
+        var result = await model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies a configured client name is sent as the X-Client-Name header.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenClientNameConfigured_SendsXClientNameHeader()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response_float.json");
+        var options = new CohereProviderOptions { BaseAddress = new Uri("https://api.cohere.test/"), ClientName = "agentkit" };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")), options: options);
+
+        _ = await model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        handler.Requests[0].Headers.GetValues("X-Client-Name").ShouldContain("agentkit");
+    }
+
+    /// <summary>Verifies caller cancellation while the request is still being sent (before any response headers arrive) returns one cancelled outcome.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenCallerCancelsWhileSendIsInFlight_ReturnsCancelledResult()
+    {
+        var handler = new GatedSendHttpMessageHandler();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddMinutes(1)), cancellation.Token);
+        (await Task.WhenAny(handler.Entered, pending)).ShouldBe(handler.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<EmbeddingAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+    }
+
+    /// <summary>Verifies the request deadline elapsing while the request is still being sent is a typed timeout, not a caller cancellation.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenDeadlineElapsesWhileSendIsInFlight_ReturnsTypedTimeoutFailure()
+    {
+        var handler = new GatedSendHttpMessageHandler();
+        var timeProvider = new FakeTimeProvider(Now);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")), timeProvider: timeProvider);
+
+        var pending = model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddSeconds(5)), TestContext.Current.CancellationToken);
+        await handler.Entered;
+        timeProvider.Advance(TimeSpan.FromSeconds(6));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.SafeMessage.ShouldBe("The request did not complete before its deadline.");
+    }
+
+    /// <summary>Verifies the request deadline elapsing while the provider's error response body is still being received returns a typed timeout retaining the HTTP evidence.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenDeadlineElapsesDuringErrorBodyRead_ReturnsTypedTimeoutFailureRetainingHttpEvidence()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StreamContent(body) });
+        var timeProvider = new FakeTimeProvider(Now);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")), timeProvider: timeProvider);
+
+        var pending = model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddSeconds(5)), TestContext.Current.CancellationToken);
+        await body.Entered;
+        timeProvider.Advance(TimeSpan.FromSeconds(6));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.StatusCode.ShouldBe(429);
+        failed.Failure.SafeMessage.ShouldBe("The provider error response was not received before the request deadline.");
+    }
+
+    /// <summary>Verifies a bare transport timeout (neither the caller nor the deadline) while reading the provider's error body still yields a typed timeout retaining the HTTP evidence.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenTransportTimesOutDuringErrorBodyRead_ReturnsTypedTimeoutFailureRetainingHttpEvidence()
+    {
+        var body = new FaultingReadStream(static () => new OperationCanceledException("The transport's own read timeout elapsed."));
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StreamContent(body) });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")));
+
+        var result = await model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.StatusCode.ShouldBe(429);
+        failed.Failure.SafeMessage.ShouldBe("The transport timed out while the provider error response was being received.");
+    }
+
+    /// <summary>Verifies caller cancellation while the successful response body is still streaming in returns one cancelled outcome.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenCallerCancelsDuringSuccessfulBodyRead_ReturnsCancelledResult()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddMinutes(1)), cancellation.Token);
+        await body.Entered;
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<EmbeddingAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+    }
+
+    /// <summary>Verifies the request deadline elapsing while the successful response body is still streaming in returns a typed timeout.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenDeadlineElapsesDuringSuccessfulBodyRead_ReturnsTypedTimeoutFailure()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) });
+        var timeProvider = new FakeTimeProvider(Now);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")), timeProvider: timeProvider);
+
+        var pending = model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddSeconds(5)), TestContext.Current.CancellationToken);
+        await body.Entered;
+        timeProvider.Advance(TimeSpan.FromSeconds(6));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.SafeMessage.ShouldBe("The response was not fully received before the request's deadline.");
+    }
+
+    /// <summary>Verifies a bare transport timeout (neither the caller nor the deadline) while reading the successful response body still yields a typed timeout.</summary>
+    [Fact]
+    public async Task GenerateAsync_WhenTransportTimesOutDuringSuccessfulBodyRead_ReturnsTypedTimeoutFailure()
+    {
+        var body = new FaultingReadStream(static () => new OperationCanceledException("The transport's own read timeout elapsed."));
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("cohere-test-key")));
+
+        var result = await model.GenerateAsync(CreateRequest(CreateDescriptor(), Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.SafeMessage.ShouldBe("The transport timed out while the response body was being received.");
     }
 }
