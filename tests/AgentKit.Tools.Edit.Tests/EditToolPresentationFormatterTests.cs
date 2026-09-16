@@ -106,6 +106,198 @@ public sealed class EditToolPresentationFormatterTests
         presentation.Parts[0].Text.ShouldNotContain("{\"");
     }
 
+    [Fact]
+    public async Task FormatAsync_WhenResultOutcomeIsNotSuccess_RendersFailureReason()
+    {
+        var outcome = new ToolCallOutcome(
+            ToolCallOutcomeKind.Failed,
+            ToolTerminalStatus.InvocationFailed,
+            SideEffectCertainty.DefinitelyNotPerformed,
+            false,
+            "The exact old text was not found.",
+            ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("edit"), null, null), outcome, [],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await FormatResultAsync(result, new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe(
+            "Edit failed: The exact old text was not found.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultHasNoTextProjection_RendersFallback()
+    {
+        var outcome = new ToolCallOutcome(
+            ToolCallOutcomeKind.Success,
+            ToolTerminalStatus.Succeeded,
+            SideEffectCertainty.DefinitelyPerformed,
+            false,
+            null,
+            ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("edit"), null, null), outcome, [],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await FormatResultAsync(result, new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe(
+            "Edit completed, but its result projection is unavailable.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenProjectionExceedsInputBound_ReturnsTruncatedNoticeWithoutInspectingJson()
+    {
+        var json = JsonSerializer.Serialize(new { status = "Committed", path = "a", replacements = 1, bytes = 1_000_000, atomic_target_visibility = true });
+        var outcome = new ToolCallOutcome(
+            ToolCallOutcomeKind.Success,
+            ToolTerminalStatus.Succeeded,
+            SideEffectCertainty.DefinitelyPerformed,
+            false,
+            null,
+            ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("edit"), null, null), outcome,
+            [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await FormatResultAsync(result, new ToolPresentationBounds(maximumInputBytes: 4));
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Truncated);
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldContain("exceeds the presentation input limit");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultJsonIsMissingRequiredProperties_RendersFallback()
+    {
+        var json = JsonSerializer.Serialize(new { status = "Committed", path = "a" });
+        var outcome = new ToolCallOutcome(
+            ToolCallOutcomeKind.Success,
+            ToolTerminalStatus.Succeeded,
+            SideEffectCertainty.DefinitelyPerformed,
+            false,
+            null,
+            ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("edit"), null, null), outcome,
+            [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await FormatResultAsync(result, new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe(
+            "Edit completed, but its result projection is malformed.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultJsonIsMissingPath_RendersFallback()
+    {
+        var json = JsonSerializer.Serialize(new { status = "Committed", replacements = 1, bytes = 1, atomic_target_visibility = true });
+        var outcome = new ToolCallOutcome(
+            ToolCallOutcomeKind.Success,
+            ToolTerminalStatus.Succeeded,
+            SideEffectCertainty.DefinitelyPerformed,
+            false,
+            null,
+            ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("edit"), null, null), outcome,
+            [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await FormatResultAsync(result, new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe(
+            "Edit completed, but its result projection is malformed.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultProjectionIsNotJson_RendersFallback()
+    {
+        var outcome = new ToolCallOutcome(
+            ToolCallOutcomeKind.Success,
+            ToolTerminalStatus.Succeeded,
+            SideEffectCertainty.DefinitelyPerformed,
+            false,
+            null,
+            ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("edit"), null, null), outcome,
+            [new TextPart("not json", TextSemantics.Code, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await FormatResultAsync(result, new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe(
+            "Edit completed, but its result projection is malformed.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultHasNonEmptyStringWarning_AppendsWarningLine()
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            status = "Committed",
+            path = "a.cs",
+            replacements = 1,
+            bytes = 3,
+            atomic_target_visibility = true,
+            warning = "Consider reviewing surrounding whitespace.",
+        });
+        var outcome = new ToolCallOutcome(
+            ToolCallOutcomeKind.Success,
+            ToolTerminalStatus.Succeeded,
+            SideEffectCertainty.DefinitelyPerformed,
+            false,
+            null,
+            ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("edit"), null, null), outcome,
+            [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await FormatResultAsync(result, new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldContain(
+            "Warning: Consider reviewing surrounding whitespace.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultWarningHasWrongJsonKind_RendersFallback()
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            status = "Committed",
+            path = "a.cs",
+            replacements = 1,
+            bytes = 3,
+            atomic_target_visibility = true,
+            warning = 42,
+        });
+        var outcome = new ToolCallOutcome(
+            ToolCallOutcomeKind.Success,
+            ToolTerminalStatus.Succeeded,
+            SideEffectCertainty.DefinitelyPerformed,
+            false,
+            null,
+            ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("edit"), null, null), outcome,
+            [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await FormatResultAsync(result, new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+        presentation.Parts.ShouldHaveSingleItem().Text.ShouldBe(
+            "Edit completed, but its result projection is malformed.");
+    }
+
     private static ValueTask<ToolPresentation?> FormatAsync(string json)
     {
         using var document = JsonDocument.Parse(json);

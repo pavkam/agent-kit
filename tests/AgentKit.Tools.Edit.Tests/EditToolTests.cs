@@ -175,6 +175,124 @@ public sealed class EditToolTests
         Status(result).ShouldBe("\"Conflict\"");
     }
 
+    [Fact]
+    public void Descriptor_WhenAccessed_MatchesPresentationDescriptor()
+    {
+        var tool = CreateTool(new FakeSnapshotReader(), new FakeAtomicFileReplacer(), new SequencedSecurityAuthority());
+
+        tool.Descriptor.ShouldBeSameAs(EditTool.PresentationDescriptor);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSnapshotFails_ReturnsInvocationFailedWithoutMutation()
+    {
+        var snapshot = new FakeSnapshotReader
+        {
+            Result = new FileSnapshotResult(FileSnapshotStatus.NotFound, [], null, "Not found."),
+        };
+        var replacer = new FakeAtomicFileReplacer();
+
+        var result = await CreateTool(snapshot, replacer, new SequencedSecurityAuthority()).InvokeAsync(
+            Request(Arguments("old", "new")), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Failed);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.FailureReason.ShouldBe("Not found.");
+        replacer.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSnapshotDeniedByHost_ReturnsDeniedTerminalStatus()
+    {
+        var snapshot = new FakeSnapshotReader
+        {
+            Result = new FileSnapshotResult(FileSnapshotStatus.Denied, [], null, "No symlinks."),
+        };
+
+        var result = await CreateTool(snapshot, new FakeAtomicFileReplacer(), new SequencedSecurityAuthority()).InvokeAsync(
+            Request(Arguments("old", "new")), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Denied);
+        result.Outcome.FailureReason.ShouldBe("No symlinks.");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSnapshotSucceedsWithoutFingerprint_ReturnsInvocationFailed()
+    {
+        // A defensive contract check: success without a fingerprint is treated as a failed observation.
+        var snapshot = new FakeSnapshotReader
+        {
+            Result = new FileSnapshotResult(FileSnapshotStatus.Success, [(byte) 'a'], null, null),
+        };
+
+        var result = await CreateTool(snapshot, new FakeAtomicFileReplacer(), new SequencedSecurityAuthority()).InvokeAsync(
+            Request(Arguments("old", "new")), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.FailureReason.ShouldBe("The file snapshot failed.");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenContentIsNotStrictUtf8_ReturnsBinaryOrInvalidTextFailure()
+    {
+        byte[] invalidUtf8 = [0xff, 0xfe, 0x00];
+        var snapshot = new FakeSnapshotReader { Result = FakeSnapshotReader.Snapshot(invalidUtf8) };
+
+        var result = await CreateTool(snapshot, new FakeAtomicFileReplacer(), new SequencedSecurityAuthority()).InvokeAsync(
+            Request(Arguments("old", "new")), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.FailureReason.ShouldBe("The edit target is not strict UTF-8 text.");
+        Status(result).ShouldBe("\"BinaryOrInvalidText\"");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenContentContainsNulByte_ReturnsBinaryOrInvalidTextFailure()
+    {
+        var snapshot = new FakeSnapshotReader { Result = FakeSnapshotReader.Snapshot("old\0binary") };
+
+        var result = await CreateTool(snapshot, new FakeAtomicFileReplacer(), new SequencedSecurityAuthority()).InvokeAsync(
+            Request(Arguments("old", "new")), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.FailureReason.ShouldBe("The edit target is binary content.");
+        Status(result).ShouldBe("\"BinaryOrInvalidText\"");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenOldTextNotFound_ReturnsNoMatchFailure()
+    {
+        var snapshot = new FakeSnapshotReader { Result = FakeSnapshotReader.Snapshot("content") };
+
+        var result = await CreateTool(snapshot, new FakeAtomicFileReplacer(), new SequencedSecurityAuthority()).InvokeAsync(
+            Request(Arguments("missing", "new")), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.FailureReason.ShouldBe("The exact old text was not found.");
+        Status(result).ShouldBe("\"NoMatch\"");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenFinalContentExceedsMaximumBytes_ReturnsLimitExceededFailure()
+    {
+        var snapshot = new FakeSnapshotReader { Result = FakeSnapshotReader.Snapshot("old") };
+        var json = JsonSerializer.Serialize(new
+        {
+            path = "src/a.cs",
+            old_text = "old",
+            new_text = "much longer replacement text",
+            replace_all = false,
+            maximum_bytes = 5,
+        });
+
+        var result = await CreateTool(snapshot, new FakeAtomicFileReplacer(), new SequencedSecurityAuthority()).InvokeAsync(
+            Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvocationFailed);
+        result.Outcome.FailureReason.ShouldBe("The final content exceeds the requested complete-file byte bound.");
+        Status(result).ShouldBe("\"LimitExceeded\"");
+    }
+
     private static EditTool CreateTool(
         IFileSnapshotReader snapshotReader,
         IAtomicFileReplacer replacer,
