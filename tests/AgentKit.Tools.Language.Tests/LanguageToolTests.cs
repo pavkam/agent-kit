@@ -15,6 +15,10 @@ public sealed class LanguageToolTests
     [InlineData( /*lang=json,strict*/"{\"action\":\"workspace_symbols\",\"query\":\"\"}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"references\",\"path\":\"../a.cs\",\"line\":1,\"character\":1}")]
     [InlineData( /*lang=json,strict*/"{\"action\":\"definitions\",\"path\":\"a.cs\",\"line\":0,\"character\":1}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"bogus_action\"}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"diagnostics\",\"path\":\"a.cs\",\"timeout_ms\":0}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"diagnostics\",\"path\":\"a.cs\",\"timeout_ms\":999999999}")]
+    [InlineData( /*lang=json,strict*/"{\"action\":\"diagnostics\",\"path\":\"a.cs\",\"timeout_ms\":\"soon\"}")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoAuthorizationOrQuery(string json)
     {
         var service = new RecordingLanguageService();
@@ -69,6 +73,23 @@ public sealed class LanguageToolTests
     }
 
     [Fact]
+    public async Task InvokeAsync_WhenWorkspaceSymbolQueryExceedsCharacterBoundary_RejectsWithoutAuthorization()
+    {
+        var service = new RecordingLanguageService();
+        var authority = new RecordingSecurityAuthority();
+        var options = OptionsForTool();
+        options.MaximumQueryCharacters = 5;
+        var longQuery = new string('q', 6);
+
+        var result = await CreateTool(service, authority, options).InvokeAsync(
+            Request($$"""{"action":"workspace_symbols","query":"{{longQuery}}"}"""), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        authority.Requests.ShouldBeEmpty();
+        service.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenWorkspaceSymbolQueryValid_OmitsPathAndHashesQueryInEvidence()
     {
         var service = new RecordingLanguageService
@@ -107,6 +128,43 @@ public sealed class LanguageToolTests
         json.RootElement.GetProperty("diagnostics")[0].GetProperty("message").GetString().ShouldBe("message");
         json.RootElement.GetProperty("locations")[0].GetProperty("start_line").GetInt32().ShouldBe(1);
         json.RootElement.GetProperty("locations")[0].GetProperty("start_character").GetInt32().ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenSymbolsPresentAndNoFieldExceedsBoundary_ProjectsCompleteSymbolEntries()
+    {
+        var shortLocation = new LanguageLocation(
+            new FileSystemPath("src/a.cs"),
+            new LanguageRange(new LanguagePosition(0, 0), new LanguagePosition(0, 1)),
+            new ContentHash("sha256:document"));
+        var symbol = new LanguageSymbol("Name", "Class", "Container", shortLocation);
+        var diagnostic = new LanguageDiagnostic(LanguageDiagnosticSeverity.Warning, "msg", "code", "source", shortLocation);
+        var service = new RecordingLanguageService
+        {
+            Result = new LanguageQueryResult(
+                LanguageQueryStatus.Success,
+                LanguageQueryKind.DocumentSymbols,
+                null,
+                [shortLocation],
+                [symbol],
+                [diagnostic],
+                true,
+                null),
+        };
+
+        var result = await CreateTool(service, new RecordingSecurityAuthority()).InvokeAsync(
+            Request( /*lang=json,strict*/"""{"action":"document_symbols","path":"src/a.cs","maximum_results":10}"""),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        using var json = JsonDocument.Parse(result.Content.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text);
+        json.RootElement.GetProperty("complete").GetBoolean().ShouldBeTrue();
+        json.RootElement.GetProperty("projection_truncated").GetBoolean().ShouldBeFalse();
+        var projectedSymbol = json.RootElement.GetProperty("symbols")[0];
+        projectedSymbol.GetProperty("name").GetString().ShouldBe("Name");
+        projectedSymbol.GetProperty("kind").GetString().ShouldBe("Class");
+        projectedSymbol.GetProperty("container_name").GetString().ShouldBe("Container");
+        projectedSymbol.GetProperty("location").GetProperty("path").GetString().ShouldBe("src/a.cs");
     }
 
     [Fact]
