@@ -174,7 +174,100 @@ public sealed class DefaultSessionStoreSelectorTests
         tags.ShouldAllBe(static tag => tag.Value is string);
     }
 
-    private static SessionProfileSnapshot Profile(string storeKey, bool requiresDurableStore = false) => new(new SessionProfileReference(new SessionProfileKey("profile"), new SessionProfileVersion(1)), new ComponentKey<ISessionCoordinator>("coordinator"), new ComponentKey<ISessionRunCoordinator>("run-coordinator"), new SessionStoreKey(storeKey), SessionStoreCapabilities.None, requiresDurableStore, requiresDistributedFencing: false, new SessionRetentionProfileKey("retention"), SessionBusyBehavior.Reject, maximumAppendEntries: 8, maximumPageSize: 16, verifySnapshotHashes: true, deleteOnDispose: false, new ContentHash("sha256:profile"));
+    [Fact]
+    public async Task ResolveExistingAsync_WhenAddressMatchesLocation_ReturnsThatExactStore()
+    {
+        var store = new FakeSessionStore();
+        var selector = new DefaultSessionStoreSelector([store], NullLogger<DefaultSessionStoreSelector>.Instance);
+        var context = TestFactory.OperationContext(TestFactory.Descriptor().Address);
+        var location = new SessionLocation(context.ToAddress(), context.Identity.TenantId,
+            new SessionStoreKey("fake"), new SessionDirectoryRevision(1), DateTimeOffset.UnixEpoch,
+            new SchemaVersion("v1"));
+
+        var result = await selector.ResolveExistingAsync(
+            new SessionStoreSelectionRequest(context, Profile("fake"), location), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionStoreSelected>().Store.ShouldBeSameAs(store);
+    }
+
+    [Fact]
+    public async Task ResolveExistingAsync_WhenAddressDoesNotMatchLocation_ReturnsTypedMismatchRejection()
+    {
+        var selector = new DefaultSessionStoreSelector([new FakeSessionStore()], NullLogger<DefaultSessionStoreSelector>.Instance);
+        var context = TestFactory.OperationContext(TestFactory.Descriptor().Address);
+        var otherAddress = TestFactory.Descriptor().Address;
+        var location = new SessionLocation(otherAddress, context.Identity.TenantId, new SessionStoreKey("fake"),
+            new SessionDirectoryRevision(1), DateTimeOffset.UnixEpoch, new SchemaVersion("v1"));
+
+        var result = await selector.ResolveExistingAsync(
+            new SessionStoreSelectionRequest(context, Profile("fake"), location), TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionStoreSelectionRejected(
+            SessionStoreSelectionRejectionReason.IdentityAddressOrConfigurationMismatch,
+            "The session routing evidence is inconsistent."));
+    }
+
+    [Fact]
+    public async Task ResolveExistingAsync_WhenTenantDoesNotMatchLocation_ReturnsTypedMismatchRejection()
+    {
+        var selector = new DefaultSessionStoreSelector([new FakeSessionStore()], NullLogger<DefaultSessionStoreSelector>.Instance);
+        var context = TestFactory.OperationContext(TestFactory.Descriptor().Address);
+        var location = new SessionLocation(context.ToAddress(), new TenantId("other-tenant"),
+            new SessionStoreKey("fake"), new SessionDirectoryRevision(1), DateTimeOffset.UnixEpoch,
+            new SchemaVersion("v1"));
+
+        var result = await selector.ResolveExistingAsync(
+            new SessionStoreSelectionRequest(context, Profile("fake"), location), TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionStoreSelectionRejected(
+            SessionStoreSelectionRejectionReason.IdentityAddressOrConfigurationMismatch,
+            "The session routing evidence is inconsistent."));
+    }
+
+    [Fact]
+    public async Task ResolveExistingAsync_WhenDistributedFencingIsRequiredAndUnsupported_ReturnsTypedCapabilityRejection()
+    {
+        var selector = new DefaultSessionStoreSelector([new FakeSessionStore()], NullLogger<DefaultSessionStoreSelector>.Instance);
+        var context = TestFactory.OperationContext(TestFactory.Descriptor().Address);
+        var location = new SessionLocation(context.ToAddress(), context.Identity.TenantId,
+            new SessionStoreKey("fake"), new SessionDirectoryRevision(1), DateTimeOffset.UnixEpoch,
+            new SchemaVersion("v1"));
+        var profile = Profile("fake", requiresDistributedFencing: true);
+
+        var result = await selector.ResolveExistingAsync(
+            new SessionStoreSelectionRequest(context, profile, location), TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionStoreSelectionRejected(
+            SessionStoreSelectionRejectionReason.IncompatibleCapabilities,
+            "The selected session store cannot satisfy the profile's capability requirement."));
+    }
+
+    [Fact]
+    public async Task ResolveExistingAsync_WhenRequiredCapabilitiesAreMissing_ReturnsTypedCapabilityRejection()
+    {
+        var selector = new DefaultSessionStoreSelector([new FakeSessionStore()], NullLogger<DefaultSessionStoreSelector>.Instance);
+        var context = TestFactory.OperationContext(TestFactory.Descriptor().Address);
+        var location = new SessionLocation(context.ToAddress(), context.Identity.TenantId,
+            new SessionStoreKey("fake"), new SessionDirectoryRevision(1), DateTimeOffset.UnixEpoch,
+            new SchemaVersion("v1"));
+        var profile = Profile("fake", requiredStoreCapabilities: SessionStoreCapabilities.Snapshots);
+
+        var result = await selector.ResolveExistingAsync(
+            new SessionStoreSelectionRequest(context, profile, location), TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionStoreSelectionRejected(
+            SessionStoreSelectionRejectionReason.IncompatibleCapabilities,
+            "The selected session store cannot satisfy the profile's capability requirement."));
+    }
+
+    private static SessionProfileSnapshot Profile(string storeKey, bool requiresDurableStore = false,
+        bool requiresDistributedFencing = false,
+        SessionStoreCapabilities requiredStoreCapabilities = SessionStoreCapabilities.None) => new(
+        new SessionProfileReference(new SessionProfileKey("profile"), new SessionProfileVersion(1)),
+        new ComponentKey<ISessionCoordinator>("coordinator"), new ComponentKey<ISessionRunCoordinator>("run-coordinator"),
+        new SessionStoreKey(storeKey), requiredStoreCapabilities, requiresDurableStore, requiresDistributedFencing,
+        new SessionRetentionProfileKey("retention"), SessionBusyBehavior.Reject, maximumAppendEntries: 8,
+        maximumPageSize: 16, verifySnapshotHashes: true, deleteOnDispose: false, new ContentHash("sha256:profile"));
     private sealed class ThrowingLogger: ILogger<DefaultSessionStoreSelector>
     {
         public IDisposable? BeginScope<TState>(TState state)
