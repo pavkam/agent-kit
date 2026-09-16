@@ -47,6 +47,26 @@ public sealed class SqliteSecurityGrantCodecTests
         _ = Should.Throw<InvalidDataException>(() => SqliteSecurityGrantCodec.DecodeGrant(payload, _settings));
     }
 
+    /// <summary>Verifies decoding rejects an empty or over-bound envelope before any parsing begins.</summary>
+    [Fact]
+    public void DecodeGrant_WhenPayloadIsEmptyOrExceedsTheBoundedLength_ThrowsInvalidDataException()
+    {
+        var tooLarge = new byte[_settings.MaximumGrantBytes + 1];
+
+        _ = Should.Throw<InvalidDataException>(() => SqliteSecurityGrantCodec.DecodeGrant([], _settings));
+        _ = Should.Throw<InvalidDataException>(() => SqliteSecurityGrantCodec.DecodeGrant(tooLarge, _settings));
+    }
+
+    /// <summary>Verifies enforcement decoding rejects an empty or over-bound envelope before any parsing begins.</summary>
+    [Fact]
+    public void DecodeEnforcement_WhenPayloadIsEmptyOrExceedsTheBoundedLength_ThrowsInvalidDataException()
+    {
+        var tooLarge = new byte[_settings.MaximumEnforcementBytes + 1];
+
+        _ = Should.Throw<InvalidDataException>(() => SqliteSecurityGrantCodec.DecodeEnforcement([], _settings));
+        _ = Should.Throw<InvalidDataException>(() => SqliteSecurityGrantCodec.DecodeEnforcement(tooLarge, _settings));
+    }
+
     /// <summary>Verifies complete captured authorization survives strict grant and enforcement reconstruction.</summary>
     [Fact]
     public void Encode_WhenAuthorizationIsCaptured_PreservesEveryPinnedReference()

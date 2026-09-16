@@ -32,4 +32,16 @@ public sealed class SqliteSecurityGrantStoreSettingsTests
         fractional.ParamName.ShouldBe("lockTimeout");
         excessive.ParamName.ShouldBe("lockTimeout");
     }
+
+    /// <summary>Verifies default settings expose conservative bounds and support non-destructive copying.</summary>
+    [Fact]
+    public void CreateDefault_WhenCopiedWithNoChanges_RetainsEveryBound()
+    {
+        var original = SqliteSecurityGrantStoreSettings.CreateDefault();
+
+        var copy = original with { };
+
+        copy.ShouldBe(original);
+        copy.ShouldNotBeSameAs(original);
+    }
 }

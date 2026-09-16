@@ -10,17 +10,24 @@ internal static class TestGrantFactory
     /// <param name="now">The validity-window start.</param>
     /// <param name="resource">The exact protected resource identifier.</param>
     /// <param name="allowedUses">The positive use count.</param>
+    /// <param name="correlation">The optional operation correlation leaf; defaults to an in-run correlation without a turn.</param>
+    /// <param name="identity">The optional execution identity; defaults to a minimal test identity without claims or delegation.</param>
     /// <returns>Valid grant evidence.</returns>
-    internal static SecurityGrant CreateGrant(DateTimeOffset now, string resource = "/workspace/file.txt", int allowedUses = 2)
+    internal static SecurityGrant CreateGrant(
+        DateTimeOffset now,
+        string resource = "/workspace/file.txt",
+        int allowedUses = 2,
+        OperationCorrelation? correlation = null,
+        ExecutionIdentity? identity = null)
     {
         var scope = new SecurityAuthorizationScope(
             new AgentId(Guid.Parse("10000000-0000-0000-0000-000000000001")),
             new SessionId(Guid.Parse("20000000-0000-0000-0000-000000000002")),
-            new InRunOperationCorrelation(
+            correlation ?? new InRunOperationCorrelation(
                 new OperationId(Guid.Parse("30000000-0000-0000-0000-000000000003")),
                 new RunId(Guid.Parse("40000000-0000-0000-0000-000000000004")),
                 null));
-        var identity = TestSupport.TestExecutionIdentity.Create(
+        identity ??= TestSupport.TestExecutionIdentity.Create(
             new TenantId("tenant"),
             new PrincipalId("principal"),
             ExecutionSubjectKind.Human);
@@ -115,4 +122,38 @@ internal static class TestGrantFactory
     internal static SecurityEnforcementIntent CreateIntent() => new(
         new SecurityEnforcementIntentId(Guid.Parse("70000000-0000-0000-0000-000000000007")),
         null);
+
+    /// <summary>Creates an identity carrying non-empty claims, a non-empty delegation chain, and expiring evidence.</summary>
+    /// <param name="now">The authentication instant used to derive a later expiry.</param>
+    /// <returns>An identity that exercises every optional codec branch.</returns>
+    internal static ExecutionIdentity CreateRichIdentity(DateTimeOffset now)
+    {
+        var claim = new IdentityClaim(new IdentityIssuerId("issuer"), "role", "admin", IdentityClaimValueKind.Text);
+        var evidence = new AuthenticationEvidence(
+            new AuthenticationEvidenceId("evidence"),
+            new IdentityIssuerId("issuer"),
+            "password",
+            now,
+            now.AddMinutes(30),
+            new AuthenticationEvidenceFingerprint(new ContentHash("sha256:fingerprint")));
+        var delegationLink = new DelegationIdentityLink(
+            new DelegationId(Guid.Parse("90000000-0000-0000-0000-000000000009")),
+            new TenantId("tenant"),
+            new PrincipalId("parent-principal"),
+            new IdentityIssuerId("issuer"),
+            new AuthenticationEvidenceId("parent-evidence"),
+            new IdentityVersion(1),
+            now,
+            [claim],
+            IdentityAssuranceLevel.HardwareBacked);
+        return new ExecutionIdentity(
+            new TenantId("tenant"),
+            new PrincipalId("principal"),
+            ExecutionSubjectKind.Human,
+            evidence,
+            [claim],
+            [delegationLink],
+            IdentityAssuranceLevel.HardwareBacked,
+            new IdentityVersion(1));
+    }
 }
