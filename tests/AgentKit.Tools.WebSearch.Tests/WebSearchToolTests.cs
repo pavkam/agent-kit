@@ -16,6 +16,13 @@ public sealed class WebSearchToolTests
     [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"maximum_results\":0}")]
     [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"freshness\":\"century\"}")]
     [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"extra\":true}")]
+    [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"domains\":\"not-an-array\"}")]
+    [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"domains\":[\"a.com\",\"b.com\",\"c.com\",\"d.com\",\"e.com\",\"f.com\",\"g.com\",\"h.com\",\"i.com\",\"j.com\",\"k.com\"]}")]
+    [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"freshness\":1}")]
+    [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"timeout_seconds\":0}")]
+    [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"timeout_seconds\":-1}")]
+    [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"timeout_seconds\":999999}")]
+    [InlineData( /*lang=json,strict*/"{\"query\":\"q\",\"timeout_seconds\":\"soon\"}")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoIdentityAllocationAuthorizationOrSearch(string json)
     {
         var provider = new EnforcingSearchProvider();
@@ -52,6 +59,22 @@ public sealed class WebSearchToolTests
         request.Deadline.ShouldBe(DateTimeOffset.UnixEpoch.AddSeconds(45));
         request.Grant.InputFingerprint.ShouldBe(security.InputFingerprint);
         provider.GrantMatched.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("any", WebSearchFreshness.Any)]
+    [InlineData("day", WebSearchFreshness.Day)]
+    [InlineData("month", WebSearchFreshness.Month)]
+    [InlineData("year", WebSearchFreshness.Year)]
+    public async Task InvokeAsync_WhenFreshnessSpecified_ForwardsExactFreshnessToProvider(string freshness, WebSearchFreshness expected)
+    {
+        var provider = new EnforcingSearchProvider();
+        var json = JsonSerializer.Serialize(new { query = "q", freshness });
+
+        var result = await Tool(provider, new RecordingSecurityAuthority()).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        provider.Requests.ShouldHaveSingleItem().Freshness.ShouldBe(expected);
     }
 
     [Fact]
