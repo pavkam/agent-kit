@@ -70,6 +70,294 @@ public sealed class DefaultApprovalBrokerTests
         handler.CallCount.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task RequestAsync_WhenStoreLacksTrustedControlPlane_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var store = new FakeApprovalStore(capabilities: new ApprovalStoreCapabilities(IsDurable: true, ProvidesTrustedControlPlane: false));
+        var broker = CreateBroker(store, new DenyApprovalHandler(), new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason
+            .ShouldBe("Approval storage does not provide trusted control-plane access.");
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenCreateThrowsOperationCanceled_Propagates()
+    {
+        var request = CreateApprovalRequest();
+        var store = new FakeApprovalStore(create: (_, _) => throw new OperationCanceledException());
+        var broker = CreateBroker(store, new DenyApprovalHandler(), new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => broker.RequestAsync(request, TestContext.Current.CancellationToken).AsTask());
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenCreateThrowsException_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var store = new FakeApprovalStore(create: (_, _) => throw new InvalidOperationException("boom"));
+        var broker = CreateBroker(store, new DenyApprovalHandler(), new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason.ShouldBe("Approval storage is unavailable.");
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenCreateReturnsConflict_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var store = new FakeApprovalStore(create: (_, _) => ValueTask.FromResult(ApprovalStoreCreateResult.Conflict));
+        var broker = CreateBroker(store, new DenyApprovalHandler(), new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason
+            .ShouldBe("The approval request identity is already bound to different evidence.");
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenReadAfterCreateThrows_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var store = new FakeApprovalStore(read: (_, _) => throw new InvalidOperationException("boom"));
+        var broker = CreateBroker(store, new DenyApprovalHandler(), new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason.ShouldBe("Approval storage is unavailable.");
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenReadAfterCreateThrowsOperationCanceled_Propagates()
+    {
+        var request = CreateApprovalRequest();
+        var store = new FakeApprovalStore(read: (_, _) => throw new OperationCanceledException());
+        var broker = CreateBroker(store, new DenyApprovalHandler(), new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => broker.RequestAsync(request, TestContext.Current.CancellationToken).AsTask());
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenRetainedRequestDiffersFromRequest_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var differentRequest = new ApprovalRequest(request.Id, request.Binding, "A different presentation.", _now);
+        var store = new FakeApprovalStore(
+            read: (_, _) => ValueTask.FromResult(new ApprovalStoreReadResult(differentRequest, null)));
+        var broker = CreateBroker(store, new DenyApprovalHandler(), new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason
+            .ShouldBe("Retained approval evidence does not match the request.");
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenExpiresBetweenCreateAndRetainedCheck_ReturnsExpired()
+    {
+        var request = CreateApprovalRequest();
+        var timeProvider = new FakeTimeProvider(_now);
+        FakeApprovalStore? store = null;
+        store = new FakeApprovalStore(
+            read: (id, token) =>
+            {
+                timeProvider.SetUtcNow(request.Binding.ExpiresAt);
+                return store!.PassthroughReadAsync(id, token);
+            });
+        var broker = new DefaultApprovalBroker(
+            store,
+            new DenyApprovalHandler(),
+            new AllowResponderAuthorizer(),
+            new RecordingAuditDispatcher(),
+            new FixedAuditRecordIdGenerator(),
+            timeProvider);
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ApprovalBrokerExpired>();
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenHandlerThrowsOperationCanceled_Propagates()
+    {
+        var request = CreateApprovalRequest();
+        var store = new InMemoryApprovalStore();
+        var handler = new ThrowingHandler(new OperationCanceledException());
+        var broker = CreateBroker(store, handler, new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => broker.RequestAsync(request, TestContext.Current.CancellationToken).AsTask());
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenHandlerThrowsException_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var store = new InMemoryApprovalStore();
+        var handler = new ThrowingHandler(new InvalidOperationException("boom"));
+        var broker = CreateBroker(store, handler, new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason.ShouldBe("The approval channel failed.");
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenHandlerCannotResolveInline_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var store = new InMemoryApprovalStore();
+        var broker = CreateBroker(store, new DenyApprovalHandler(), new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason
+            .ShouldBe("No approval channel resolved the request.");
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenResponseRespondedAtReachesExpiry_ReturnsExpired()
+    {
+        var request = CreateApprovalRequest();
+        var store = new InMemoryApprovalStore();
+        var handler = new RespondingHandler(value => new ApprovalResponse(
+            new ApprovalResponseId(Guid.Parse("51000000-0000-0000-0000-000000000005")),
+            value.Id,
+            value.Binding,
+            ApprovalResolution.Approved,
+            value.Binding.Request.Identity,
+            value.Binding.ExpiresAt));
+        var broker = CreateBroker(store, handler, new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ApprovalBrokerExpired>();
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenResponseApproverTenantMismatchesRequest_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var store = new InMemoryApprovalStore();
+        var mismatchedIdentity = TestSupport.TestExecutionIdentity.Create(
+            new TenantId("a-different-tenant"),
+            new PrincipalId("principal"),
+            ExecutionSubjectKind.Human);
+        var handler = new RespondingHandler(value => new ApprovalResponse(
+            new ApprovalResponseId(Guid.Parse("51000000-0000-0000-0000-000000000005")),
+            value.Id,
+            value.Binding,
+            ApprovalResolution.Approved,
+            mismatchedIdentity,
+            _now.AddSeconds(1)));
+        var broker = CreateBroker(store, handler, new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason
+            .ShouldBe("The approval response does not match the retained request binding.");
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenResponderAuthorizerThrowsOperationCanceled_Propagates()
+    {
+        var request = CreateApprovalRequest();
+        var store = new InMemoryApprovalStore();
+        var handler = new RespondingHandler(static value => CreateResponse(value, ApprovalResolution.Approved));
+        var broker = CreateBroker(store, handler, new ThrowingResponderAuthorizer(new OperationCanceledException()), new RecordingAuditDispatcher());
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => broker.RequestAsync(request, TestContext.Current.CancellationToken).AsTask());
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenResponderAuthorizerThrowsException_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var store = new InMemoryApprovalStore();
+        var handler = new RespondingHandler(static value => CreateResponse(value, ApprovalResolution.Approved));
+        var broker = CreateBroker(store, handler, new ThrowingResponderAuthorizer(new InvalidOperationException("boom")), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason.ShouldBe("Approval responder authorization failed.");
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenResolveThrowsOperationCanceled_Propagates()
+    {
+        var request = CreateApprovalRequest();
+        var handler = new RespondingHandler(static value => CreateResponse(value, ApprovalResolution.Approved));
+        var store = new FakeApprovalStore(resolve: (_, _) => throw new OperationCanceledException());
+        var broker = CreateBroker(store, handler, new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => broker.RequestAsync(request, TestContext.Current.CancellationToken).AsTask());
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenResolveThrowsException_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var handler = new RespondingHandler(static value => CreateResponse(value, ApprovalResolution.Approved));
+        var store = new FakeApprovalStore(resolve: (_, _) => throw new InvalidOperationException("boom"));
+        var broker = CreateBroker(store, handler, new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason.ShouldBe("Approval storage is unavailable.");
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenResolveReturnsNotFound_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var handler = new RespondingHandler(static value => CreateResponse(value, ApprovalResolution.Approved));
+        var store = new FakeApprovalStore(resolve: (_, _) => ValueTask.FromResult(ApprovalStoreResolveResult.NotFound));
+        var broker = CreateBroker(store, handler, new AllowResponderAuthorizer(), new RecordingAuditDispatcher());
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason
+            .ShouldBe("The approval response could not be committed.");
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenAuditDispatchThrowsOperationCanceled_Propagates()
+    {
+        var request = CreateApprovalRequest();
+        var handler = new RespondingHandler(static value => CreateResponse(value, ApprovalResolution.Approved));
+        var broker = CreateBroker(
+            new InMemoryApprovalStore(),
+            handler,
+            new AllowResponderAuthorizer(),
+            new ThrowingAuditDispatcher(new OperationCanceledException()));
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            () => broker.RequestAsync(request, TestContext.Current.CancellationToken).AsTask());
+    }
+
+    [Fact]
+    public async Task RequestAsync_WhenAuditDispatchThrowsException_ReturnsUnavailable()
+    {
+        var request = CreateApprovalRequest();
+        var handler = new RespondingHandler(static value => CreateResponse(value, ApprovalResolution.Approved));
+        var broker = CreateBroker(
+            new InMemoryApprovalStore(),
+            handler,
+            new AllowResponderAuthorizer(),
+            new ThrowingAuditDispatcher(new InvalidOperationException("boom")));
+
+        var result = await broker.RequestAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ApprovalBrokerUnavailable>().SafeReason.ShouldBe("Required approval audit failed.");
+    }
+
     private static DefaultApprovalBroker CreateBroker(
         IApprovalStore store,
         IApprovalHandler handler,
@@ -158,5 +446,64 @@ public sealed class DefaultApprovalBrokerTests
     {
         public SecurityAuditRecordId Create() =>
             new(Guid.Parse("61000000-0000-0000-0000-000000000006"));
+    }
+
+    /// <summary>An approval store whose operations are individually overridable, defaulting to an in-memory pass-through.</summary>
+    private sealed class FakeApprovalStore(
+        ApprovalStoreCapabilities? capabilities = null,
+        Func<ApprovalRequest, CancellationToken, ValueTask<ApprovalStoreCreateResult>>? create = null,
+        Func<ApprovalRequestId, CancellationToken, ValueTask<ApprovalStoreReadResult>>? read = null,
+        Func<ApprovalResponse, CancellationToken, ValueTask<ApprovalStoreResolveResult>>? resolve = null): IApprovalStore
+    {
+        private readonly InMemoryApprovalStore _inner = new();
+
+        public ApprovalStoreCapabilities Capabilities { get; } =
+            capabilities ?? new ApprovalStoreCapabilities(IsDurable: false, ProvidesTrustedControlPlane: true);
+
+        public ValueTask<ApprovalStoreCreateResult> CreateAsync(
+            ApprovalRequest request,
+            CancellationToken cancellationToken = default) =>
+            create is not null ? create(request, cancellationToken) : _inner.CreateAsync(request, cancellationToken);
+
+        public ValueTask<ApprovalStoreReadResult> ReadAsync(
+            ApprovalRequestId requestId,
+            CancellationToken cancellationToken = default) =>
+            read is not null ? read(requestId, cancellationToken) : _inner.ReadAsync(requestId, cancellationToken);
+
+        public ValueTask<ApprovalStoreResolveResult> ResolveAsync(
+            ApprovalResponse response,
+            CancellationToken cancellationToken = default) =>
+            resolve is not null ? resolve(response, cancellationToken) : _inner.ResolveAsync(response, cancellationToken);
+
+        /// <summary>Invokes the default in-memory read behavior, bypassing any overriding delegate.</summary>
+        public ValueTask<ApprovalStoreReadResult> PassthroughReadAsync(
+            ApprovalRequestId requestId,
+            CancellationToken cancellationToken) =>
+            _inner.ReadAsync(requestId, cancellationToken);
+    }
+
+    private sealed class ThrowingHandler(Exception exception): IApprovalHandler
+    {
+        public ValueTask<ApprovalHandlerResult> TryResolveAsync(
+            ApprovalRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw exception;
+    }
+
+    private sealed class ThrowingResponderAuthorizer(Exception exception): IApprovalResponderAuthorizer
+    {
+        public ValueTask<ApprovalResponderAuthorizationResult> AuthorizeAsync(
+            ApprovalRequest request,
+            ApprovalResponse candidateResponse,
+            CancellationToken cancellationToken = default) =>
+            throw exception;
+    }
+
+    private sealed class ThrowingAuditDispatcher(Exception exception): ISecurityAuditDispatcher
+    {
+        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(
+            SecurityAuditRecord record,
+            CancellationToken cancellationToken = default) =>
+            throw exception;
     }
 }
