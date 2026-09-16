@@ -39,6 +39,48 @@ public sealed class InputAdmittedSessionEntryCodecTests: SessionEntryCodecConfor
     }
 
     [Fact]
+    public void Encode_WhenEntryIsNotAnInputAdmittedSessionEntry_RejectsBeforePersistence()
+    {
+        var result = new InputAdmittedSessionEntryCodec().Encode(PortableSessionEntryCodecTestEntries.Lane());
+
+        result.ShouldBeOfType<SessionEntryEncodeRejected>().Reason.ShouldBe(
+            "The entry is not a input-admitted session entry.");
+    }
+
+    [Fact]
+    public void Encode_WhenValueExceedsConfiguredJsonDepth_ReturnsRejected()
+    {
+        var builder = new System.Text.StringBuilder();
+        for (var i = 0; i < 100; i++)
+        {
+            _ = builder.Append("{\"a\":");
+        }
+        _ = builder.Append('1');
+        for (var i = 0; i < 100; i++)
+        {
+            _ = builder.Append('}');
+        }
+        using var document = JsonDocument.Parse(builder.ToString(), new JsonDocumentOptions { MaxDepth = 200 });
+        var entry = AdmittedEntry([new StructuredDataPart(document.RootElement.Clone(), null, ExtensionData.Empty)]);
+
+        var result = new InputAdmittedSessionEntryCodec().Encode(entry);
+
+        result.ShouldBeOfType<SessionEntryEncodeRejected>().Reason.ShouldBe(
+            "The input-admitted entry cannot be represented by the version-one schema.");
+    }
+
+    [Fact]
+    public void Decode_WhenWireTypeIdDoesNotMatchCodec_ReturnsOpaque()
+    {
+        var codec = new InputAdmittedSessionEntryCodec();
+        var wire = new SessionEntryWireEnvelope(new SessionEntryTypeId("other"), new SchemaVersion("1"), [1]);
+
+        var result = codec.Decode(wire);
+
+        result.ShouldBeOfType<SessionEntryOpaque>().Wire.ShouldBeSameAs(wire);
+    }
+
+    [Fact]
     public void Decode_WhenIdentityIsEmptyGuid_ReturnsRejected()
     {
         var codec = new InputAdmittedSessionEntryCodec();

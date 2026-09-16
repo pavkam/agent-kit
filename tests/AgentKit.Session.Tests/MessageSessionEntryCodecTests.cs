@@ -25,6 +25,56 @@ public sealed class MessageSessionEntryCodecTests
     }
 
     [Fact]
+    public void Encode_WhenEntryIsNotAMessageSessionEntry_RejectsBeforePersistence()
+    {
+        var result = new MessageSessionEntryCodec().Encode(PortableSessionEntryCodecTestEntries.Lane());
+
+        result.ShouldBeOfType<SessionEntryEncodeRejected>().Reason.ShouldBe(
+            "The entry is not a message session entry.");
+    }
+
+    [Fact]
+    public void Encode_WhenValueExceedsConfiguredJsonDepth_ReturnsRejected()
+    {
+        var descriptor = TestFactory.Descriptor();
+        var entry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1);
+        var builder = new System.Text.StringBuilder();
+        for (var i = 0; i < 100; i++)
+        {
+            _ = builder.Append("{\"a\":");
+        }
+        _ = builder.Append('1');
+        for (var i = 0; i < 100; i++)
+        {
+            _ = builder.Append('}');
+        }
+        using var document = JsonDocument.Parse(builder.ToString(), new JsonDocumentOptions { MaxDepth = 200 });
+        entry = entry with
+        {
+            Message = entry.Message with
+            {
+                Parts = [new StructuredDataPart(document.RootElement.Clone(), null, ExtensionData.Empty)],
+            },
+        };
+
+        var result = new MessageSessionEntryCodec().Encode(entry);
+
+        result.ShouldBeOfType<SessionEntryEncodeRejected>().Reason.ShouldBe(
+            "The message entry cannot be represented by the version-one schema.");
+    }
+
+    [Fact]
+    public void Decode_WhenWireTypeIdDoesNotMatchCodec_ReturnsOpaque()
+    {
+        var codec = new MessageSessionEntryCodec();
+        var wire = new SessionEntryWireEnvelope(new SessionEntryTypeId("other"), new SchemaVersion("1"), [1]);
+
+        var result = codec.Decode(wire);
+
+        result.ShouldBeOfType<SessionEntryOpaque>().Wire.ShouldBeSameAs(wire);
+    }
+
+    [Fact]
     public void Encode_WhenEntrySchemaDiffersFromCodecSchema_RejectsBeforePersistence()
     {
         var descriptor = TestFactory.Descriptor();
