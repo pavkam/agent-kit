@@ -208,5 +208,212 @@ public sealed class SqliteBudgetLedgerCodecTests
         return -1;
     }
 
+    /// <summary>Proves an unsupported evidence type is rejected before any bytes are produced.</summary>
+    [Fact]
+    public void Encode_WhenValueTypeIsUnsupported_ThrowsArgumentException()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        _ = Should.Throw<ArgumentException>(() => SqliteBudgetLedgerCodec.Encode("not supported", settings, settings.MaximumPayloadBytes));
+    }
+
+    /// <summary>Proves an empty payload is rejected before decoding begins.</summary>
+    [Fact]
+    public void Decode_WhenPayloadIsEmpty_ThrowsInvalidData()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        _ = Should.Throw<InvalidDataException>(() => SqliteBudgetLedgerCodec.Decode<BudgetLedgerScopeCreateRequest>([], settings, settings.MaximumPayloadBytes));
+    }
+
+    /// <summary>Proves a structurally valid envelope whose kind does not match the requested type is rejected.</summary>
+    [Fact]
+    public void Decode_WhenKindDoesNotMatchRequestedType_ThrowsInvalidData()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        var payload = SqliteBudgetLedgerCodec.Encode(Request(), settings, settings.MaximumPayloadBytes);
+        _ = Should.Throw<InvalidDataException>(() => SqliteBudgetLedgerCodec.Decode<BudgetLedgerBatchReserveRequest>(payload, settings, settings.MaximumPayloadBytes));
+    }
+
+    /// <summary>Proves a correction result with created and cleared overrun holds round-trips exactly.</summary>
+    [Fact]
+    public void RoundTrip_WhenCorrectionHasCreatedAndClearedHolds_PreservesEveryHold()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var scope = new BudgetLedgerScopeReference(new(Guid.NewGuid()), address);
+        var reservation = new BudgetLedgerReservationReference(scope, new(Guid.NewGuid()));
+        var holdReference = new BudgetOverrunHoldReference(scope, reservation, new(1));
+        var hold = new BudgetOverrunHold(holdReference, new("test.sum"), new("count"), 1m, 2m, BudgetOverrunHoldPolicy.ClearWhenReconciled);
+        var clearedReference = new BudgetOverrunHoldReference(scope, reservation, new(2));
+        BudgetCorrectionResult value = new(reservation.Id, 2m, 1m, 1, new(3), [hold], [clearedReference]);
+
+        var payload = SqliteBudgetLedgerCodec.Encode(value, settings, settings.MaximumResultBytes);
+        var decoded = SqliteBudgetLedgerCodec.Decode<BudgetCorrectionResult>(payload, settings, settings.MaximumResultBytes);
+
+        decoded.ShouldBe(value);
+    }
+
+    /// <summary>Proves every concrete reconciliation-evidence kind round-trips exactly.</summary>
+    [Theory]
+    [MemberData(nameof(ReconciliationEvidenceCases))]
+    public void RoundTrip_WhenReconciliationEvidenceVaries_PreservesExactKind(BudgetReconciliationEvidence value)
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+
+        var payload = SqliteBudgetLedgerCodec.Encode(value, settings, settings.MaximumResultBytes);
+        var decoded = SqliteBudgetLedgerCodec.Decode<BudgetReconciliationEvidence>(payload, settings, settings.MaximumResultBytes);
+
+        decoded.ShouldBe(value);
+    }
+
+    public static TheoryData<BudgetReconciliationEvidence> ReconciliationEvidenceCases =>
+    [
+        new BudgetActualMeasured(1m),
+        new BudgetActualEstimated(2m),
+        new BudgetNoUsageProven(),
+        new BudgetStillUnknown(),
+    ];
+
+    /// <summary>Proves every concrete reconciliation-result kind round-trips exactly.</summary>
+    [Fact]
+    public void RoundTrip_WhenReconciliationResultIsReleasedOrRetainedUnknown_PreservesExactKind()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var scope = new BudgetLedgerScopeReference(new(Guid.NewGuid()), address);
+        var reservation = new BudgetLedgerReservationReference(scope, new(Guid.NewGuid()));
+
+        BudgetLedgerReconciliationResult released = new BudgetLedgerReconciliationReleased(reservation);
+        var releasedPayload = SqliteBudgetLedgerCodec.Encode(released, settings, settings.MaximumResultBytes);
+        SqliteBudgetLedgerCodec.Decode<BudgetLedgerReconciliationResult>(releasedPayload, settings, settings.MaximumResultBytes).ShouldBe(released);
+
+        BudgetLedgerReconciliationResult retainedUnknown = new BudgetLedgerReconciliationRetainedUnknown(reservation);
+        var retainedPayload = SqliteBudgetLedgerCodec.Encode(retainedUnknown, settings, settings.MaximumResultBytes);
+        SqliteBudgetLedgerCodec.Decode<BudgetLedgerReconciliationResult>(retainedPayload, settings, settings.MaximumResultBytes).ShouldBe(retainedUnknown);
+    }
+
+    /// <summary>Proves an unknown persisted reconciliation-evidence kind byte is rejected.</summary>
+    [Fact]
+    public void Decode_WhenReconciliationEvidenceKindByteIsUnknown_ThrowsInvalidData()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        var payload = SqliteBudgetLedgerCodec.Encode<BudgetReconciliationEvidence>(new BudgetStillUnknown(), settings, settings.MaximumResultBytes).ToArray();
+        payload[^1] = 99;
+
+        _ = Should.Throw<InvalidDataException>(() => SqliteBudgetLedgerCodec.Decode<BudgetReconciliationEvidence>(payload, settings, settings.MaximumResultBytes));
+    }
+
+    /// <summary>Proves an unknown persisted reconciliation-result kind byte is rejected.</summary>
+    [Fact]
+    public void Decode_WhenReconciliationResultKindByteIsUnknown_ThrowsInvalidData()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var scope = new BudgetLedgerScopeReference(new(Guid.NewGuid()), address);
+        var reservation = new BudgetLedgerReservationReference(scope, new(Guid.NewGuid()));
+        BudgetLedgerReconciliationResult value = new BudgetLedgerReconciliationReleased(reservation);
+        var payload = SqliteBudgetLedgerCodec.Encode(value, settings, settings.MaximumResultBytes).ToArray();
+        payload[6] = 99;
+
+        _ = Should.Throw<InvalidDataException>(() => SqliteBudgetLedgerCodec.Decode<BudgetLedgerReconciliationResult>(payload, settings, settings.MaximumResultBytes));
+    }
+
+    /// <summary>Proves an unknown persisted overrun-resolution result kind byte is rejected.</summary>
+    [Fact]
+    public void Decode_WhenResolutionResultKindByteIsUnknown_ThrowsInvalidData()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        var value = ResolutionBlocked();
+        var payload = SqliteBudgetLedgerCodec.Encode<BudgetOverrunHoldResolutionResult>(value, settings, settings.MaximumResultBytes).ToArray();
+        payload[6] = 99;
+
+        _ = Should.Throw<InvalidDataException>(() => SqliteBudgetLedgerCodec.Decode<BudgetOverrunHoldResolutionResult>(payload, settings, settings.MaximumResultBytes));
+    }
+
+    /// <summary>Proves a blocked resolution with a nonempty current-overruns collection round-trips exactly.</summary>
+    [Fact]
+    public void RoundTrip_WhenResolutionBlockedHasCurrentOverruns_PreservesOverruns()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        var value = ResolutionBlocked();
+
+        var payload = SqliteBudgetLedgerCodec.Encode<BudgetOverrunHoldResolutionResult>(value, settings, settings.MaximumResultBytes);
+        var decoded = SqliteBudgetLedgerCodec.Decode<BudgetOverrunHoldResolutionResult>(payload, settings, settings.MaximumResultBytes);
+
+        decoded.ShouldBe(value);
+    }
+
+    /// <summary>Proves a resolved outcome carrying a required distributed fence round-trips exactly.</summary>
+    [Fact]
+    public void RoundTrip_WhenResolvedEnforcementReceiptHasRequiredFence_PreservesFence()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var scope = new BudgetLedgerScopeReference(new(Guid.NewGuid()), address);
+        var reservation = new BudgetLedgerReservationReference(scope, new(Guid.NewGuid()));
+        var holdReference = new BudgetOverrunHoldReference(scope, reservation, new(1));
+        var receipt = EnforcementReceipt(holdReference, requiredFence: new FencingToken(7));
+        BudgetOverrunHoldResolutionResult value = new BudgetOverrunHoldResolved(holdReference, new(2), receipt);
+
+        var payload = SqliteBudgetLedgerCodec.Encode(value, settings, settings.MaximumResultBytes);
+        var decoded = SqliteBudgetLedgerCodec.Decode<BudgetOverrunHoldResolutionResult>(payload, settings, settings.MaximumResultBytes);
+
+        decoded.ShouldBe(value);
+    }
+
+    /// <summary>Proves a persisted string with a negative declared length is rejected.</summary>
+    [Fact]
+    public void Decode_WhenStringLengthIsNegative_ThrowsInvalidData()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        var payload = SqliteBudgetLedgerCodec.Encode(Request(), settings, settings.MaximumPayloadBytes).ToArray();
+        var lengthOffset = IndexOfSequence(payload, BitConverter.GetBytes(5));
+        lengthOffset.ShouldBeGreaterThanOrEqualTo(0);
+        BitConverter.GetBytes(-1).CopyTo(payload, lengthOffset);
+
+        _ = Should.Throw<InvalidDataException>(() => SqliteBudgetLedgerCodec.Decode<BudgetLedgerScopeCreateRequest>(payload, settings, settings.MaximumPayloadBytes));
+    }
+
+    /// <summary>Proves a persisted exact quantity with a negative declared coefficient length is rejected.</summary>
+    [Fact]
+    public void Decode_WhenQuantityCoefficientLengthIsNegative_ThrowsInvalidData()
+    {
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var scope = new BudgetLedgerScopeReference(new(Guid.NewGuid()), address);
+        var reservation = new BudgetLedgerReservationReference(scope, new(Guid.NewGuid()));
+        var holdReference = new BudgetOverrunHoldReference(scope, reservation, new(1));
+        var quantity = BudgetQuantity.FromDecimal(123456m);
+        var failure = new BudgetLimitFailure(scope.Id, new("test.sum"), BudgetLimitKind.Hard, 1m, quantity, quantity, new("count"), "bounded failure");
+        BudgetOverrunHoldResolutionResult value = new BudgetOverrunHoldResolutionBlocked(holdReference, [], [failure]);
+        var payload = SqliteBudgetLedgerCodec.Encode(value, settings, settings.MaximumResultBytes).ToArray();
+        var coefficientByteCount = quantity.Coefficient.GetByteCount(isUnsigned: true);
+        var lengthOffset = IndexOfSequence(payload, BitConverter.GetBytes(coefficientByteCount));
+        lengthOffset.ShouldBeGreaterThanOrEqualTo(0);
+        BitConverter.GetBytes(-1).CopyTo(payload, lengthOffset);
+
+        _ = Should.Throw<InvalidDataException>(() => SqliteBudgetLedgerCodec.Decode<BudgetOverrunHoldResolutionResult>(payload, settings, settings.MaximumResultBytes));
+    }
+
+    private static BudgetOverrunHoldResolutionBlocked ResolutionBlocked()
+    {
+        var address = new BudgetScopeAddress(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null);
+        var scope = new BudgetLedgerScopeReference(new(Guid.NewGuid()), address);
+        var reservation = new BudgetLedgerReservationReference(scope, new(Guid.NewGuid()));
+        var holdReference = new BudgetOverrunHoldReference(scope, reservation, new(1));
+        var overrun = new BudgetOverrunHold(holdReference, new("test.sum"), new("count"), 1m, 2m, BudgetOverrunHoldPolicy.RequireAuthorizedResolution);
+        var failure = new BudgetLimitFailure(scope.Id, new("test.sum"), BudgetLimitKind.Hard, 10m, BudgetQuantity.FromDecimal(2), BudgetQuantity.FromDecimal(1), new("count"), "blocked");
+        return new(holdReference, [overrun], [failure]);
+    }
+
+    private static SecurityEnforcementIntentReceipt EnforcementReceipt(BudgetOverrunHoldReference hold, FencingToken? requiredFence)
+    {
+        var enforcement = new SecurityEnforcementRequest(
+            new SecurityAuthorizationScope(hold.Boundary.Address.AgentId, null, new BeforeRunOperationCorrelation(new(Guid.NewGuid()), null)),
+            TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("operator"), ExecutionSubjectKind.Human),
+            new ComponentId("budget-operator"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate,
+            [BudgetOverrunSecurityBinding.Resource(hold)], BudgetOverrunSecurityBinding.Fingerprint(hold), new SecurityRevocationVersion(1));
+        return new(new(Guid.NewGuid()), new(Guid.NewGuid()), new(Guid.NewGuid()), enforcement, requiredFence, new ContentHash("sha256:codec-test"), DateTimeOffset.UnixEpoch);
+    }
+
     private static BudgetLedgerScopeCreateRequest Request() => new(new BudgetScopeRequest(null, new(new("tenant"), new("principal"), new(Guid.NewGuid()), null, null, null), [new(new("test.sum"), 10, new("count"), BudgetLimitKind.Hard)], new("codec")), new(8, 32, TimeSpan.FromMinutes(5)));
 }
