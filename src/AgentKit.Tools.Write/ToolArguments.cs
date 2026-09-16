@@ -42,23 +42,4 @@ internal static class ToolArguments
         error = null;
         return true;
     }
-
-    /// <summary>Reads an optional string property from a JSON argument object.</summary>
-    /// <param name="arguments">The candidate JSON argument value.</param>
-    /// <param name="name">The property name to read.</param>
-    /// <param name="value">The parsed string when present; otherwise, <see langword="null"/>.</param>
-    /// <returns><see langword="true"/> only when the named property exists and contains a string.</returns>
-    public static bool TryGetOptionalString(JsonElement arguments, string name, out string? value)
-    {
-        if (arguments.ValueKind == JsonValueKind.Object
-            && arguments.TryGetProperty(name, out var property)
-            && property.ValueKind == JsonValueKind.String)
-        {
-            value = property.GetString();
-            return true;
-        }
-
-        value = null;
-        return false;
-    }
 }

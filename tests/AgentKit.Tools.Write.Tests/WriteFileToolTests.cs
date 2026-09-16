@@ -141,6 +141,22 @@ public sealed class WriteFileToolTests
     }
 
     [Fact]
+    public async Task InvokeAsync_WhenPathContainsTraversalWithValidMode_ReturnsInvalidPathMessageWithoutWriting()
+    {
+        var fileSystem = new FakeFileSystem { OnWrite = static r => new FileWritten(r.Content.Length) };
+        var tool = TestFactory.Tool(fileSystem);
+
+        var result = await tool.InvokeAsync(
+            TestFactory.Request(/*lang=json,strict*/ """{"path": "../escape.txt", "content": "hi", "mode": "create_or_replace"}"""),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.FailureReason.ShouldStartWith("Invalid path:");
+        fileSystem.ReceivedWrites.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenModeOmitted_ReturnsRejectedWithoutWriting()
     {
         var fileSystem = new FakeFileSystem { OnWrite = static r => new FileWritten(r.Content.Length) };

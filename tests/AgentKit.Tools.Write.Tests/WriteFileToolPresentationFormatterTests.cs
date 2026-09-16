@@ -52,6 +52,84 @@ public sealed class WriteFileToolPresentationFormatterTests
         presentation.ShouldNotBeNull().Parts[1].Text.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task FormatAsync_WhenResultHasPlainTextPart_RendersItAsText()
+    {
+        var result = ResultWith(
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+            [new TextPart("Wrote 5 byte(s) to 'a.txt'.", TextSemantics.Plain, ExtensionData.Empty)]);
+
+        var presentation = await FormatResultAsync(result);
+
+        var part = presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem();
+        part.Kind.ShouldBe(ToolPresentationPartKind.Text);
+        part.Text.ShouldBe("Wrote 5 byte(s) to 'a.txt'.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultHasCodeTextPart_RendersItAsCode()
+    {
+        var result = ResultWith(
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+            [new TextPart(/*lang=json,strict*/ "{\"a\":1}", TextSemantics.Code, ExtensionData.Empty)]);
+
+        var presentation = await FormatResultAsync(result);
+
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Kind.ShouldBe(ToolPresentationPartKind.Code);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultContentIsEmpty_FallsBackToFailureReason()
+    {
+        var result = ResultWith(
+            new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed, false, "Write failed.", ExtensionData.Empty),
+            []);
+
+        var presentation = await FormatResultAsync(result);
+
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("Write failed.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultContentIsEmptyWithoutFailureReason_FallsBackToSourceStatus()
+    {
+        var result = ResultWith(
+            new ToolCallOutcome(ToolCallOutcomeKind.Rejected, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed, false, null, ExtensionData.Empty),
+            []);
+
+        var presentation = await FormatResultAsync(result);
+
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("Denied");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenSourceIsUnrecognized_ReturnsNull()
+    {
+        var formatter = new WriteFileToolPresentationFormatter();
+
+        var presentation = await formatter.FormatAsync(
+            new ToolPresentationRequest(formatter.Descriptor, new UnsupportedPresentationSource(), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    private static ToolResultPart ResultWith(ToolCallOutcome outcome, ImmutableArray<ContentPart> content) => new(
+        new ToolCallId(Guid.NewGuid()),
+        new ToolReference(new ToolAlias("write_file"), null, null),
+        outcome,
+        content,
+        new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+        ExtensionData.Empty);
+
+    private static ValueTask<ToolPresentation?> FormatResultAsync(ToolResultPart result)
+    {
+        var formatter = new WriteFileToolPresentationFormatter();
+        return formatter.FormatAsync(
+            new ToolPresentationRequest(formatter.Descriptor, new ToolResultPresentationSource(result), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+    }
+
     private static ValueTask<ToolPresentation?> FormatAsync(string json)
     {
         using var document = JsonDocument.Parse(json);
