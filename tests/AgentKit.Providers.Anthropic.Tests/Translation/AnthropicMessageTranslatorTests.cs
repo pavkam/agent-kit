@@ -365,4 +365,203 @@ public sealed class AnthropicMessageTranslatorTests
         // The envelope tags the notice so it is never indistinguishable from a plain user message.
         block["text"]!.GetValue<string>().ShouldNotBe("The run was interrupted.");
     }
+
+    [Fact]
+    public void Translate_WhenTopPConfigured_SerializesTopP()
+    {
+        var settings = LlmRequestSettings.Default with { TopP = 0.5 };
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.User("hi")],
+            [],
+            LlmToolChoice.Auto,
+            settings,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new AnthropicMessageTranslator().Translate(request, Options, useStreaming: false);
+
+        body["top_p"]!.GetValue<double>().ShouldBe(0.5);
+    }
+
+    [Fact]
+    public void Translate_WhenSystemMessageContainsNonTextPart_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var system = TestMessages.System("prefix") with { Parts = [unknown] };
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [system],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AnthropicMessageTranslator().Translate(request, Options, useStreaming: false));
+    }
+
+    [Fact]
+    public void Translate_WhenUserMessageContainsUnsupportedPartKind_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.User(unknown)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AnthropicMessageTranslator().Translate(request, Options, useStreaming: false));
+    }
+
+    [Fact]
+    public void Translate_WhenAssistantMessageContainsPlainText_TranslatesTextBlock()
+    {
+        var assistant = TestMessages.Assistant(new TextPart("Hello there", TextSemantics.Plain, ExtensionData.Empty));
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [assistant],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new AnthropicMessageTranslator().Translate(request, Options, useStreaming: false);
+        var block = body["messages"]![0]!["content"]![0]!;
+
+        block["type"]!.GetValue<string>().ShouldBe("text");
+        block["text"]!.GetValue<string>().ShouldBe("Hello there");
+    }
+
+    [Fact]
+    public void Translate_WhenAssistantMessageContainsUnsupportedPartKind_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var assistant = TestMessages.Assistant(unknown);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [assistant],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AnthropicMessageTranslator().Translate(request, Options, useStreaming: false));
+    }
+
+    [Fact]
+    public void Translate_WhenToolMessageContainsNonToolResultPart_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.Tool(unknown)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AnthropicMessageTranslator().Translate(request, Options, useStreaming: false));
+    }
+
+    [Fact]
+    public void Translate_WhenToolResultContainsStructuredData_SerializesRawJsonAsTextBlock()
+    {
+        using var json = JsonDocument.Parse("""{"status":"ok"}""");
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000002")),
+            new ToolReference(new ToolAlias("check"), null, null),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+            [new StructuredDataPart(json.RootElement, null, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+            ExtensionData.Empty);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.Tool(result)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new AnthropicMessageTranslator().Translate(request, Options, useStreaming: false);
+        var block = body["messages"]![0]!["content"]![0]!["content"]![0]!;
+
+        block["type"]!.GetValue<string>().ShouldBe("text");
+        block["text"]!.GetValue<string>().ShouldBe(/*lang=json,strict*/ """{"status":"ok"}""");
+    }
+
+    [Fact]
+    public void Translate_WhenToolResultContentContainsUnsupportedPartKind_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000003")),
+            new ToolReference(new ToolAlias("check"), null, null),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+            [unknown],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+            ExtensionData.Empty);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.Tool(result)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AnthropicMessageTranslator().Translate(request, Options, useStreaming: false));
+    }
+
+    [Fact]
+    public void Translate_WhenToolChoiceIsAuto_SerializesAutoType()
+    {
+        var tool = new LlmToolDefinition(new ToolId("noop"), "noop", null, JsonDocument.Parse("{}").RootElement);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.User("hi")],
+            [tool],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new AnthropicMessageTranslator().Translate(request, Options, useStreaming: false);
+
+        body["tool_choice"]!["type"]!.GetValue<string>().ShouldBe("auto");
+    }
+
+    [Fact]
+    public void Translate_WhenToolChoiceModeIsUndefined_ThrowsNotSupportedException()
+    {
+        var tool = new LlmToolDefinition(new ToolId("noop"), "noop", null, JsonDocument.Parse("{}").RootElement);
+        var undefinedChoice = new LlmToolChoice((LlmToolChoiceMode) 999, null);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.User("hi")],
+            [tool],
+            undefinedChoice,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AnthropicMessageTranslator().Translate(request, Options, useStreaming: false));
+    }
 }
