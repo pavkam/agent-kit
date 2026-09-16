@@ -88,6 +88,74 @@ public sealed class MistralAIEmbeddingResponseParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_WhenUInt8Encoding_DecodesUnsignedQuantizedByteVector()
+    {
+        var parser = new MistralAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"object":"list","data":[{"object":"embedding","index":0,"embedding":[5,0,120,250]}],"model":"mistral-embed"}"""u8.ToArray());
+        var result = await parser.ParseAsync(body, CreateContext(EmbeddingEncoding.UInt8), inputs, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        var succeeded = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>();
+        var vector = succeeded.Vector.ShouldBeOfType<QuantizedByteVector>();
+        vector.Signed.ShouldBeFalse();
+        vector.Values.ShouldBe([5, 0, 120, 250]);
+        succeeded.Space.ElementType.ShouldBe(EmbeddingElementType.UInt8);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenBinaryEncoding_DecodesSignedPackedBinaryVectorWithBitDimensions()
+    {
+        var parser = new MistralAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"object":"list","data":[{"object":"embedding","index":0,"embedding":[-86,5]}],"model":"mistral-embed"}"""u8.ToArray());
+        var result = await parser.ParseAsync(body, CreateContext(EmbeddingEncoding.Binary), inputs, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        var succeeded = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>();
+        var vector = succeeded.Vector.ShouldBeOfType<PackedBinaryVector>();
+        vector.Signed.ShouldBeTrue();
+        vector.Values.ShouldBe([170, 5]);
+        succeeded.Space.Dimensions.ShouldBe(16);
+        succeeded.Space.ElementType.ShouldBe(EmbeddingElementType.Binary);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenEmbeddingFieldIsNotAJsonArray_FailsWithProtocolViolation()
+    {
+        var parser = new MistralAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"object":"list","data":[{"object":"embedding","index":0,"embedding":"not-an-array"}],"model":"mistral-embed"}"""u8.ToArray());
+        var result = await parser.ParseAsync(body, CreateContext(EmbeddingEncoding.Float), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        _ = failed.Failure.DiagnosticCause.ShouldBeAssignableTo<JsonException>();
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenPromptTokensIsNegative_FailsWithProtocolViolation()
+    {
+        var parser = new MistralAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1,0.2]}],"model":"mistral-embed","usage":{"prompt_tokens":-5,"total_tokens":-5}}"""u8.ToArray());
+        var result = await parser.ParseAsync(body, CreateContext(EmbeddingEncoding.Float), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned invalid usage evidence.");
+        _ = failed.Failure.DiagnosticCause.ShouldBeAssignableTo<ArgumentException>();
+    }
+
+    [Fact]
     public async Task ParseAsync_WhenBodyIsNotJson_FailsWithProtocolViolation()
     {
         var parser = new MistralAIEmbeddingResponseParser();
