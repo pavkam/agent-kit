@@ -88,6 +88,23 @@ public sealed class DefaultArtifactCoordinatorTests
     }
 
     [Fact]
+    public async Task PrepareAsync_WhenDeclaredLengthUnderstatesActualContent_DeniesOnceObservedBytesExceedTheLimit()
+    {
+        // The declared length (4) passes the initial cheap check against the 4-byte limit, but the stream
+        // actually yields more bytes than declared, so the bounded copy loop itself must detect the overrun.
+        var store = new RecordingArtifactStore();
+        var authority = new RecordingSecurityAuthority();
+        var coordinator = CreateCoordinator(store, authority, maximumBytes: 4);
+        var request = ArtifactTestData.CreatePrepare("0123456789"u8.ToArray(), declaredLength: 4);
+
+        var result = await coordinator.PrepareAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactPrepareRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.LimitExceeded);
+        authority.Requests.ShouldBeEmpty();
+        store.PrepareRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task PrepareAsync_WhenAuthorityDenies_DoesNotDispatchStoreEffect()
     {
         var store = new RecordingArtifactStore();
@@ -149,6 +166,120 @@ public sealed class DefaultArtifactCoordinatorTests
             dispatched.ArtifactId, dispatched.PreparationId, dispatched.Version, dispatched.ProfileKey,
             dispatched.ProfileVersion, dispatched.TenantId, dispatched.CreatedBy, dispatched.DirectoryId,
             dispatched.Metadata, dispatched.CreatedAt, dispatched.ExpiresAt));
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_WhenAuthorized_DispatchesExactPreparationAndGrant()
+    {
+        var store = new RecordingArtifactStore();
+        var authority = new RecordingSecurityAuthority();
+        var coordinator = CreateCoordinator(store, authority);
+        var request = new ArtifactFinalizeRequest(
+            ArtifactTestData.PreparationId, ArtifactTestData.AgentId, ArtifactTestData.SessionId, null,
+            ArtifactTestData.Correlation, ArtifactTestData.Identity, new IdempotencyKey("finalize-1"));
+
+        _ = await coordinator.FinalizeAsync(request, TestContext.Current.CancellationToken);
+
+        var security = authority.Requests.ShouldHaveSingleItem();
+        security.Effect.ShouldBe(SecurityEffect.CreateOrReplace);
+        security.Resources.ShouldBe([ArtifactSecurityBinding.PreparationResource(ArtifactTestData.PreparationId)]);
+        security.InputFingerprint.ShouldBe(ArtifactSecurityBinding.FinalizeFingerprint(ArtifactTestData.PreparationId));
+        var dispatched = store.FinalizeRequests.ShouldHaveSingleItem();
+        dispatched.PreparationId.ShouldBe(ArtifactTestData.PreparationId);
+        dispatched.Grant.ShouldBeSameAs(authority.IssuedGrants.ShouldHaveSingleItem());
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_WhenAuthorityDenies_DoesNotDispatchStoreEffect()
+    {
+        var store = new RecordingArtifactStore();
+        var authority = new RecordingSecurityAuthority(allow: false);
+        var coordinator = CreateCoordinator(store, authority);
+        var request = new ArtifactFinalizeRequest(
+            ArtifactTestData.PreparationId, ArtifactTestData.AgentId, ArtifactTestData.SessionId, null,
+            ArtifactTestData.Correlation, ArtifactTestData.Identity, new IdempotencyKey("finalize-1"));
+
+        var result = await coordinator.FinalizeAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactFinalizeRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
+        store.FinalizeRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AbortAsync_WhenAuthorized_DispatchesExactPreparationAndGrant()
+    {
+        var store = new RecordingArtifactStore();
+        var authority = new RecordingSecurityAuthority();
+        var coordinator = CreateCoordinator(store, authority);
+        var request = new ArtifactAbortRequest(
+            ArtifactTestData.PreparationId, ArtifactTestData.AgentId, ArtifactTestData.SessionId,
+            ArtifactTestData.Correlation, ArtifactTestData.Identity, ArtifactAbortReason.Cancelled, new IdempotencyKey("abort-1"));
+
+        _ = await coordinator.AbortAsync(request, TestContext.Current.CancellationToken);
+
+        var security = authority.Requests.ShouldHaveSingleItem();
+        security.Effect.ShouldBe(SecurityEffect.Delete);
+        security.ToolCallId.ShouldBeNull();
+        security.Resources.ShouldBe([ArtifactSecurityBinding.PreparationResource(ArtifactTestData.PreparationId)]);
+        security.InputFingerprint.ShouldBe(
+            ArtifactSecurityBinding.AbortFingerprint(ArtifactTestData.PreparationId, ArtifactAbortReason.Cancelled));
+        var dispatched = store.AbortRequests.ShouldHaveSingleItem();
+        dispatched.PreparationId.ShouldBe(ArtifactTestData.PreparationId);
+        dispatched.Grant.ShouldBeSameAs(authority.IssuedGrants.ShouldHaveSingleItem());
+    }
+
+    [Fact]
+    public async Task AbortAsync_WhenAuthorityDenies_DoesNotDispatchStoreEffect()
+    {
+        var store = new RecordingArtifactStore();
+        var authority = new RecordingSecurityAuthority(allow: false);
+        var coordinator = CreateCoordinator(store, authority);
+        var request = new ArtifactAbortRequest(
+            ArtifactTestData.PreparationId, ArtifactTestData.AgentId, ArtifactTestData.SessionId,
+            ArtifactTestData.Correlation, ArtifactTestData.Identity, ArtifactAbortReason.Abandoned, new IdempotencyKey("abort-1"));
+
+        var result = await coordinator.AbortAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactAbortRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
+        store.AbortRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenAuthorized_DispatchesExactReferenceAndGrant()
+    {
+        var store = new RecordingArtifactStore();
+        var authority = new RecordingSecurityAuthority();
+        var coordinator = CreateCoordinator(store, authority);
+        var reference = ArtifactTestData.CreateReference();
+        var request = new ArtifactDeleteRequest(
+            ArtifactTestData.AgentId, ArtifactTestData.SessionId, null, ArtifactTestData.Correlation,
+            ArtifactTestData.Identity, reference, new IdempotencyKey("delete-1"));
+
+        _ = await coordinator.DeleteAsync(request, TestContext.Current.CancellationToken);
+
+        var security = authority.Requests.ShouldHaveSingleItem();
+        security.Effect.ShouldBe(SecurityEffect.Delete);
+        security.Resources.ShouldBe([ArtifactSecurityBinding.ArtifactResource(reference.Id)]);
+        security.InputFingerprint.ShouldBe(ArtifactSecurityBinding.DeleteFingerprint(reference));
+        var dispatched = store.DeleteRequests.ShouldHaveSingleItem();
+        dispatched.Reference.ShouldBeSameAs(reference);
+        dispatched.Grant.ShouldBeSameAs(authority.IssuedGrants.ShouldHaveSingleItem());
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenAuthorityDenies_DoesNotDispatchStoreEffect()
+    {
+        var store = new RecordingArtifactStore();
+        var authority = new RecordingSecurityAuthority(allow: false);
+        var coordinator = CreateCoordinator(store, authority);
+        var request = new ArtifactDeleteRequest(
+            ArtifactTestData.AgentId, ArtifactTestData.SessionId, null, ArtifactTestData.Correlation,
+            ArtifactTestData.Identity, ArtifactTestData.CreateReference(), new IdempotencyKey("delete-1"));
+
+        var result = await coordinator.DeleteAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ArtifactDeleteRejected>().Failure.Kind.ShouldBe(ArtifactFailureKind.Denied);
+        store.DeleteRequests.ShouldBeEmpty();
     }
 
     [Fact]

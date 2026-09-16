@@ -24,6 +24,22 @@ public sealed class ArtifactProcessOutputSinkTests
     }
 
     [Fact]
+    public async Task StoreAsync_WhenPreparationFails_ReturnsRejectedWithoutFinalizingOrAborting()
+    {
+        var artifacts = new RecordingArtifactCoordinator
+        {
+            PrepareResult = new ArtifactPrepareRejected(new ArtifactFailure(ArtifactFailureKind.LimitExceeded, "Too large.")),
+        };
+        var sink = new ArtifactProcessOutputSink(artifacts, Options.Create(new AgentArtifactOptions()));
+
+        var result = await sink.StoreAsync(CreateRequest("output"u8.ToArray()), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ProcessOutputArtifactRejected>().SafeMessage.ShouldBe("Too large.");
+        artifacts.FinalizeRequests.ShouldBeEmpty();
+        artifacts.AbortRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task StoreAsync_WhenFinalizationFails_AbortsUnpublishedPreparation()
     {
         var artifacts = new RecordingArtifactCoordinator
