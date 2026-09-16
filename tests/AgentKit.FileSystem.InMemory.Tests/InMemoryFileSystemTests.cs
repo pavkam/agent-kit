@@ -539,6 +539,74 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
+    public async Task GlobAsync_WhenBaseDirectoryIsAFile_ReturnsDenied()
+    {
+        var fs = CreateFileSystem();
+        fs.Seed(new FileSystemPath("not-a-directory.txt"), "content");
+        var result = await fs.GlobAsync(new GlobRequest(new FileSystemPath("not-a-directory.txt"), new GlobPattern("*"), true, false, 10, 100, 20, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(GlobStatus.Denied);
+    }
+
+    [Fact]
+    public async Task GlobAsync_WhenRetainedResultLimitReached_ReturnsLimitExceededDuringMatchRetention()
+    {
+        var fs = CreateFileSystem();
+        fs.Seed(new FileSystemPath("a.cs"), "a");
+        fs.Seed(new FileSystemPath("b.cs"), "b");
+        var result = await fs.GlobAsync(new GlobRequest(null, new GlobPattern("*.cs"), true, false, 10, 100, 1, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(GlobStatus.LimitExceeded);
+        result.Complete.ShouldBeFalse();
+        result.Matches.Select(static path => path.Value).ShouldBe(["a.cs"]);
+    }
+
+    [Fact]
+    public async Task GlobAsync_WhenLimitIsReachedDeepInTraversal_PropagatesTerminalStatusToAncestor()
+    {
+        var fs = CreateFileSystem();
+        fs.CreateDirectory(new FileSystemPath("sub"));
+        fs.Seed(new FileSystemPath("other.cs"), "other");
+        fs.Seed(new FileSystemPath("sub/deep.cs"), "deep");
+        var result = await fs.GlobAsync(new GlobRequest(null, new GlobPattern("**/*.cs"), true, false, 5, 2, 20, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(GlobStatus.LimitExceeded);
+        result.Complete.ShouldBeFalse();
+        result.VisitedEntries.ShouldBe(3);
+        result.Matches.Select(static path => path.Value).ShouldBe(["other.cs"]);
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenCallerCancelsDuringGrantConsumption_PropagatesCancellationWithoutObservingDirectory()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var store = new TestSecurity.RecordingGrantStore
+        {
+            OnIntentConsumption = cancellation.Cancel
+        };
+        var fs = CreateFileSystem(grantStore: store);
+        var action = async () => await fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, TestSecurity.Grant()), cancellation.Token);
+        _ = await action.ShouldThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenGrantStoreThrowsUnexpectedException_LogsFailureAndRethrows()
+    {
+        var fs = CreateFileSystem(grantStore: new ThrowingGrantStore());
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken).AsTask());
+    }
+
+    private sealed class ThrowingGrantStore: ISecurityGrantStore
+    {
+        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Unexpected grant store failure.");
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, SecurityEnforcementIntent intent, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Unexpected grant store failure.");
+
+        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+    }
+
+    [Fact]
     public async Task ReadAsync_WhenObserved_EmitsSecurityCorrelatedActivityWithoutRawPath()
     {
         const string protectedPath = "content-must-not-enter-diagnostics.txt";
@@ -678,6 +746,26 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
+    public async Task SearchAsync_WhenBaseDirectoryDoesNotExist_ReturnsNotFound()
+    {
+        var fs = CreateFileSystem();
+        var request = SearchRequest(new FileSearchPattern("needle", FileSearchPatternKind.Literal), basePath: new FileSystemPath("missing"));
+        var result = await fs.SearchAsync(request, TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSearchStatus.NotFound);
+        result.Complete.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenBaseDirectoryIsAFile_ReturnsDenied()
+    {
+        var fs = CreateFileSystem();
+        fs.Seed(new FileSystemPath("not-a-directory.txt"), "content");
+        var request = SearchRequest(new FileSearchPattern("needle", FileSearchPatternKind.Literal), basePath: new FileSystemPath("not-a-directory.txt"));
+        var result = await fs.SearchAsync(request, TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSearchStatus.Denied);
+    }
+
+    [Fact]
     public async Task SearchAsync_WhenRequestExceedsHostCeiling_DeniesBeforeTraversal()
     {
         var fs = CreateFileSystem(o => o.MaximumSearchMatches = 1);
@@ -717,6 +805,34 @@ public sealed class InMemoryFileSystemTests
     }
 
     [Fact]
+    public async Task SearchAsync_WhenLaterSiblingFollowsATerminatedSubtree_SkipsItWithoutOpening()
+    {
+        var fs = CreateFileSystem();
+        foreach (var name in new[] { "a", "b", "c", "d" })
+        {
+            fs.CreateDirectory(new FileSystemPath(name));
+            fs.Seed(new FileSystemPath($"{name}/needle.txt"), "needle");
+        }
+
+        var request = new FileSearchRequest(null, new FileSearchPattern("needle", FileSearchPatternKind.Literal), new GlobPattern("**/*"), true, false, 10, 2, 1024 * 1024, 100, 1024, TimeSpan.FromSeconds(10), TestSecurity.Grant());
+        var result = await fs.SearchAsync(request, TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSearchStatus.LimitExceeded);
+        result.VisitedFiles.ShouldBe(2);
+        result.Matches.Select(static match => match.Path.Value).ShouldBe(["a/needle.txt", "b/needle.txt"]);
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenCandidateExceedsRemainingByteBudget_ReturnsLimitExceeded()
+    {
+        var fs = CreateFileSystem();
+        fs.Seed(new FileSystemPath("big.txt"), new string('x', 100));
+        var request = new FileSearchRequest(null, new FileSearchPattern("needle", FileSearchPatternKind.Literal), new GlobPattern("**/*"), true, false, 10, 100, 10, 100, 1024, TimeSpan.FromSeconds(10), TestSecurity.Grant());
+        var result = await fs.SearchAsync(request, TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSearchStatus.LimitExceeded);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("observed-byte");
+    }
+
+    [Fact]
     public async Task ReadSnapshotAsync_WhenSuccessful_ReturnsExactBytesHashAndEnforcement()
     {
         byte[] bytes = [0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a];
@@ -746,6 +862,54 @@ public sealed class InMemoryFileSystemTests
         var result = await fs.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("missing"), 100, TestSecurity.Grant()), TestContext.Current.CancellationToken);
         result.Status.ShouldBe(FileSnapshotStatus.Denied);
         result.SafeMessage.ShouldBe("Denied.");
+    }
+
+    [Fact]
+    public async Task ReadSnapshotAsync_WhenRequestMaximumBytesExceedsConfiguredBound_ReturnsDenied()
+    {
+        var fs = CreateFileSystem(o => o.MaximumReadBytes = 10);
+        fs.Seed(new FileSystemPath("a.txt"), "content");
+        var result = await fs.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("a.txt"), 1000, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSnapshotStatus.Denied);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("host boundary");
+    }
+
+    [Fact]
+    public async Task ReadSnapshotAsync_WhenTargetIsMissing_ReturnsNotFound()
+    {
+        var fs = CreateFileSystem();
+        var result = await fs.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("missing.txt"), 100, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSnapshotStatus.NotFound);
+    }
+
+    [Fact]
+    public async Task ReadSnapshotAsync_WhenFileExceedsRequestByteBound_ReturnsLimitExceeded()
+    {
+        var fs = CreateFileSystem();
+        fs.Seed(new FileSystemPath("big.txt"), "0123456789");
+        var result = await fs.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("big.txt"), 4, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSnapshotStatus.LimitExceeded);
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenContentExceedsMaximumWriteBytes_ReturnsDenied()
+    {
+        var fs = CreateFileSystem(o => o.MaximumWriteBytes = 2);
+        fs.Seed(new FileSystemPath("a.txt"), "current");
+        fs.TryReadAllBytes(new FileSystemPath("a.txt"), out var bytes).ShouldBeTrue();
+        var expected = FileSecurityBinding.ContentFingerprint(bytes.AsSpan());
+        var result = await fs.ReplaceAsync(ReplaceRequest("a.txt", expected, "too long"u8.ToArray().ToImmutableArray(), MutationId(6)), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(AtomicFileReplaceStatus.Denied);
+        fs.TryReadAllBytes(new FileSystemPath("a.txt"), out var stillCurrent).ShouldBeTrue();
+        Encoding.UTF8.GetString(stillCurrent.AsSpan()).ShouldBe("current");
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenTargetIsMissing_ReturnsNotFound()
+    {
+        var fs = CreateFileSystem();
+        var result = await fs.ReplaceAsync(ReplaceRequest("missing.txt", new ContentHash("sha256:any"), "content"u8.ToArray().ToImmutableArray(), MutationId(7)), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(AtomicFileReplaceStatus.NotFound);
     }
 
     [Fact]
@@ -924,6 +1088,65 @@ public sealed class InMemoryFileSystemTests
         result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
         fs.TryReadAllBytes(new FileSystemPath("existing.txt"), out var bytes).ShouldBeTrue();
         Encoding.UTF8.GetString(bytes.AsSpan()).ShouldBe("original");
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenEntryCountExceedsConfiguredBoundary_RejectsBeforeGrantConsumption()
+    {
+        var fs = CreateFileSystem(o => o.MaximumPatchEntries = 1, grantStore: new RecordingGrantStore());
+        var entries = ImmutableArray.Create<WorkspacePatchEntry>(
+            new WorkspacePatchCreate(PatchMutationId(20), new FileSystemPath("one.txt"), "one"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()),
+            new WorkspacePatchCreate(PatchMutationId(21), new FileSystemPath("two.txt"), "two"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()));
+        var result = await fs.ApplyPatchAsync(new WorkspacePatchRequest(entries), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("entry boundary");
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenEntryKindDoesNotMatchItsConcreteContract_RejectsBeforeGrantConsumption()
+    {
+        var fs = CreateFileSystem(grantStore: new RecordingGrantStore());
+        var mismatched = new WorkspacePatchCreate(PatchMutationId(22), new FileSystemPath("mismatched.txt"), "content"u8.ToArray().ToImmutableArray(), TestSecurity.Grant())
+            with
+        { Kind = WorkspacePatchEntryKind.Delete };
+        var result = await fs.ApplyPatchAsync(new WorkspacePatchRequest([mismatched]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("does not match its concrete contract");
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenTwoEntriesShareTheSameMutationIdentity_RejectsBeforeGrantConsumption()
+    {
+        var fs = CreateFileSystem(grantStore: new RecordingGrantStore());
+        var sharedId = PatchMutationId(23);
+        var entries = ImmutableArray.Create<WorkspacePatchEntry>(
+            new WorkspacePatchCreate(sharedId, new FileSystemPath("first.txt"), "first"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()),
+            new WorkspacePatchCreate(sharedId, new FileSystemPath("second.txt"), "second"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()));
+        var result = await fs.ApplyPatchAsync(new WorkspacePatchRequest(entries), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("unique");
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenSingleEntryContentExceedsWriteBoundary_RejectsBeforeGrantConsumption()
+    {
+        var fs = CreateFileSystem(o => o.MaximumWriteBytes = 2, grantStore: new RecordingGrantStore());
+        var entry = new WorkspacePatchCreate(PatchMutationId(24), new FileSystemPath("too-big.txt"), "too long"u8.ToArray().ToImmutableArray(), TestSecurity.Grant());
+        var result = await fs.ApplyPatchAsync(new WorkspacePatchRequest([entry]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("write boundary");
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenAggregateContentExceedsPatchByteBoundary_RejectsBeforeGrantConsumption()
+    {
+        var fs = CreateFileSystem(o => o.MaximumPatchBytes = 5, grantStore: new RecordingGrantStore());
+        var entries = ImmutableArray.Create<WorkspacePatchEntry>(
+            new WorkspacePatchCreate(PatchMutationId(25), new FileSystemPath("one.txt"), "abc"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()),
+            new WorkspacePatchCreate(PatchMutationId(26), new FileSystemPath("two.txt"), "abc"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()));
+        var result = await fs.ApplyPatchAsync(new WorkspacePatchRequest(entries), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("aggregate byte boundary");
     }
 
     private static InMemoryFileSystem CreateFileSystem(
