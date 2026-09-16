@@ -46,7 +46,7 @@ public sealed class MistralAIRequestTranslatorTests
     public void Translate_WhenConversationHasToolUseAndResult_MatchesExpectedRequestBody()
     {
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000001"));
-        var toolReference = new ToolReference(new ToolId("get_weather"), null, "get_weather");
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
 
         // "D681PevKs" is the nine-character identifier shape Mistral mints
         // (see https://docs.mistral.ai/capabilities/function_calling/), so
@@ -60,12 +60,7 @@ public sealed class MistralAIRequestTranslatorTests
                 ExtensionData.Empty));
 
         var toolMessage = TestMessages.Tool(
-            new ToolResultPart(
-                callId,
-                toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
-                [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)],
-                ExtensionData.Empty));
+            new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty));
 
         var messages = ImmutableArray.Create<AgentMessage>(
             TestMessages.System("You are a weather assistant."),
@@ -302,21 +297,11 @@ public sealed class MistralAIRequestTranslatorTests
     {
         var callIdA = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000003"));
         var callIdB = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000004"));
-        var toolReference = new ToolReference(new ToolId("noop"), null, "noop");
+        var toolReference = new ToolReference(new ToolAlias("noop"), null, null);
 
         var toolMessage = TestMessages.Tool(
-            new ToolResultPart(
-                callIdA,
-                toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
-                [new TextPart("result a", TextSemantics.Plain, ExtensionData.Empty)],
-                ExtensionData.Empty),
-            new ToolResultPart(
-                callIdB,
-                toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, "boom", ExtensionData.Empty),
-                [],
-                ExtensionData.Empty));
+            new ToolResultPart(callIdA, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("result a", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty),
+            new ToolResultPart(callIdB, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, "boom", ExtensionData.Empty), [], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty));
 
         var context = new LlmRequestContext(
             new ModelRequestId(Guid.NewGuid()),
@@ -386,7 +371,7 @@ public sealed class MistralAIRequestTranslatorTests
     public void Translate_WhenToolCallHasNoProviderCallId_EmitsMatchingNineCharacterWireIds()
     {
         var callId = new ToolCallId(Guid.Parse("7a4d2c0e-5b1f-4e8a-9c3d-2f6e1b0a9d8c"));
-        var toolReference = new ToolReference(new ToolId("get_weather"), null, "get_weather");
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
 
         // Cross-provider replay or compacted history: the canonical identity
         // exists but no provider ever minted a wire identifier for it.
@@ -399,12 +384,7 @@ public sealed class MistralAIRequestTranslatorTests
                 ExtensionData.Empty));
 
         var toolMessage = TestMessages.Tool(
-            new ToolResultPart(
-                callId,
-                toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
-                [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)],
-                ExtensionData.Empty));
+            new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty));
 
         var body = Translate(
             TestMessages.User("What's the weather in Paris?"),
@@ -424,7 +404,7 @@ public sealed class MistralAIRequestTranslatorTests
     public void Translate_WhenProviderCallIdIsNotMistralShaped_ReplacesItWithDerivedWireId()
     {
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000010"));
-        var toolReference = new ToolReference(new ToolId("noop"), null, "noop");
+        var toolReference = new ToolReference(new ToolAlias("noop"), null, null);
 
         // An identifier minted by another provider is not a Mistral identity.
         var assistantMessage = TestMessages.Assistant(
@@ -449,7 +429,7 @@ public sealed class MistralAIRequestTranslatorTests
     {
         var preservedCallId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000020"));
         var derivedCallId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000021"));
-        var toolReference = new ToolReference(new ToolId("noop"), null, "noop");
+        var toolReference = new ToolReference(new ToolAlias("noop"), null, null);
 
         // The later call legitimately owns the wire value the earlier call
         // would have derived; the earlier call must yield to it.
@@ -478,7 +458,7 @@ public sealed class MistralAIRequestTranslatorTests
     {
         var firstCallId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000030"));
         var secondCallId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000031"));
-        var toolReference = new ToolReference(new ToolId("noop"), null, "noop");
+        var toolReference = new ToolReference(new ToolAlias("noop"), null, null);
         var sharedProviderCallId = new ProviderToolCallId("D681PevKs");
 
         var body = Translate(
@@ -499,7 +479,7 @@ public sealed class MistralAIRequestTranslatorTests
     public void Translate_WhenEveryDisambiguatorCollides_ThrowsNotSupportedException()
     {
         var victimCallId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000040"));
-        var toolReference = new ToolReference(new ToolId("noop"), null, "noop");
+        var toolReference = new ToolReference(new ToolAlias("noop"), null, null);
 
         // Sixteen distinct calls preserve exactly the sixteen candidates the
         // victim could derive, so no distinct wire identifier remains.
@@ -552,5 +532,6 @@ public sealed class MistralAIRequestTranslatorTests
             toolReference,
             new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
             [new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
             ExtensionData.Empty);
 }

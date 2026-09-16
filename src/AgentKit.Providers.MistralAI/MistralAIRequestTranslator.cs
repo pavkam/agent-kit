@@ -281,7 +281,7 @@ public sealed class MistralAIRequestTranslator: IMistralAIRequestTranslator
                         ["type"] = "function",
                         ["function"] = new JsonObject
                         {
-                            ["name"] = toolCall.Tool.Name,
+                            ["name"] = toolCall.Tool.ProviderAlias.Value,
                             ["arguments"] = toolCall.Arguments.GetRawText(),
                         },
                     });
@@ -325,7 +325,7 @@ public sealed class MistralAIRequestTranslator: IMistralAIRequestTranslator
                     ["role"] = "tool",
                     ["content"] = BuildToolResultContent(toolResult),
                     ["tool_call_id"] = providerCallIds[toolResult.CallId],
-                    ["name"] = toolResult.Tool.Name,
+                    ["name"] = toolResult.Tool.ProviderAlias.Value,
                 };
         }
     }

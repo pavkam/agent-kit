@@ -105,7 +105,9 @@ public sealed class MistralAIResponseParserTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
         completed.Response.Parts.Length.ShouldBe(1);
         var toolCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
-        toolCall.Tool.Name.ShouldBe("get_weather");
+        toolCall.Tool.ProviderAlias.Value.ShouldBe("get_weather");
+        toolCall.Tool.Id.ShouldBeNull();
+        toolCall.Tool.IsResolved.ShouldBeFalse();
         toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_stream01"));
         toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
         var argumentFragments = observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<ToolArgumentsContentDelta>().Select(d => d.JsonFragment).ToArray();
@@ -125,11 +127,11 @@ public sealed class MistralAIResponseParserTests
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
         completed.Response.Parts.Length.ShouldBe(2);
         var first = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
-        first.Tool.Name.ShouldBe("get_weather");
+        first.Tool.ProviderAlias.Value.ShouldBe("get_weather");
         first.ProviderCallId.ShouldBe(new ProviderToolCallId("call_a"));
         first.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
         var second = completed.Response.Parts[1].ShouldBeOfType<ToolCallPart>();
-        second.Tool.Name.ShouldBe("get_time");
+        second.Tool.ProviderAlias.Value.ShouldBe("get_time");
         second.ProviderCallId.ShouldBe(new ProviderToolCallId("call_b"));
         second.Arguments.GetProperty("zone").GetString().ShouldBe("UTC");
     }
@@ -244,7 +246,7 @@ public sealed class MistralAIResponseParserTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
         completed.Response.Parts.Length.ShouldBe(1);
         var toolCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
-        toolCall.Tool.Name.ShouldBe("get_weather");
+        toolCall.Tool.ProviderAlias.Value.ShouldBe("get_weather");
         toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_xyz789"));
         toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
         var deltaEvent = observer.Events.OfType<ModelPartDelta>().ShouldHaveSingleItem();
@@ -263,7 +265,7 @@ public sealed class MistralAIResponseParserTests
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
         completed.Response.Parts.Length.ShouldBe(2);
         completed.Response.Parts[0].ShouldBeOfType<TextPart>().Text.ShouldBe("Let me check that for you.");
-        completed.Response.Parts[1].ShouldBeOfType<ToolCallPart>().Tool.Name.ShouldBe("get_weather");
+        completed.Response.Parts[1].ShouldBeOfType<ToolCallPart>().Tool.ProviderAlias.Value.ShouldBe("get_weather");
     }
 
     [Fact]
