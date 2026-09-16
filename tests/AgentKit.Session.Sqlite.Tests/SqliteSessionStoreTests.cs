@@ -930,6 +930,451 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
         _ = result.ShouldBeOfType<QueueCapacityExceeded>();
     }
 
+    // ---- AcceptRunAsync edge cases the shared conformance suite does not exercise. ----
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenSessionUnavailable_ReturnsRejected()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var bogusAddress = new SessionAddress(Coverage.Identifier<AgentId>(1), Coverage.Identifier<SessionId>(4));
+        var laneId = Coverage.Identifier<ExecutionLaneId>(1200);
+        var context = Coverage.LaneContext(
+            bogusAddress, laneId, Coverage.Identity(), new BeforeRunOperationCorrelation(Coverage.Identifier<OperationId>(1201), null));
+        var runId = Coverage.Identifier<RunId>(1202);
+        var turnId = Coverage.Identifier<TurnId>(1203);
+        var start = new SessionRunStartRequest(
+            context, Coverage.Identifier<AdmissionId>(1204), [Coverage.Identifier<AdmissionId>(1204)], new SessionSequence(1),
+            new SessionLaneRevision(1), new SessionVersion(0), new SessionBranchCursor(new BranchId(Guid.NewGuid()), null),
+            null, runId, turnId, Coverage.Identifier<SessionEntryId>(1205), [Coverage.Identifier<SessionEntryId>(1206)],
+            [Coverage.Identifier<MessageId>(1207)], Coverage.Identifier<SessionEntryId>(1208), new OperationStateRevision(1),
+            Coverage.Profile(), Coverage.Configuration(),
+            Coverage.Authorization(bogusAddress.AgentId, bogusAddress.SessionId,
+                new InRunOperationCorrelation(context.Correlation.OperationId, runId, turnId), context.Identity),
+            Coverage.Timestamp(1209), new IdempotencyKey("missing-session"));
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunStartRejected>().SafeReason.ShouldBe("The session is unavailable.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenLaneDoesNotExist_ReturnsConflict()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1210, "accept-no-lane");
+        var otherLaneId = Coverage.Identifier<ExecutionLaneId>(1219);
+        var otherLaneContext = Coverage.LaneContext(
+            prepared.Descriptor.Address, otherLaneId, Coverage.Identity(), prepared.Context.Correlation);
+        var start = Coverage.StartRequest(prepared, 1220, context: otherLaneContext);
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.LaneRevision);
+        conflict.SafeReason.ShouldBe("The selected lane does not exist.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenLaneRevisionIsStale_ReturnsConflict()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1230, "accept-stale-lane-revision");
+        var start = Coverage.StartRequest(
+            prepared, 1240, expectedLaneRevision: new SessionLaneRevision(prepared.Provisioned.LaneRevision.Value + 41));
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.LaneRevision);
+        conflict.SafeReason.ShouldBe("The selected lane revision is stale.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenBranchCursorIsStale_ReturnsConflict()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1250, "accept-stale-cursor");
+        var start = Coverage.StartRequest(
+            prepared, 1260, branchCursor: new SessionBranchCursor(prepared.Descriptor.ActiveBranchId, null));
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.BranchCursor);
+        conflict.SafeReason.ShouldBe("The selected branch cursor is stale.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenExpectedVersionIsStale_ReturnsConflict()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1270, "accept-stale-version");
+        var start = Coverage.StartRequest(
+            prepared, 1280, expectedVersion: new SessionVersion(prepared.Provisioned.SessionVersion.Value + 41));
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.SessionVersion);
+        conflict.SafeReason.ShouldBe("The expected session version is stale.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenAdmissionIdentityDiffersFromContext_ReturnsConflict()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1290, "accept-identity-diff");
+        var impersonator = Coverage.Identity("tenant-owner", "impersonator");
+        var mismatchedContext = new SessionOperationContext(
+            prepared.Context.AgentId, prepared.Context.SessionId, prepared.Context.ExecutionLaneId, prepared.Context.Correlation,
+            impersonator,
+            Coverage.Authorization(prepared.Context.AgentId, prepared.Context.SessionId, prepared.Context.Correlation, impersonator));
+        var start = Coverage.StartRequest(prepared, 1300, context: mismatchedContext);
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.AdmissionIdentity);
+        conflict.SafeReason.ShouldBe("Every promoted admission must retain the exact authorized run identity.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenPromotionPlanIsNoLongerEligible_ReturnsConflict()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1310, "accept-plan-ineligible");
+        var bogusAdmissionId = Coverage.Identifier<AdmissionId>(1319);
+        var start = Coverage.StartRequest(
+            prepared, 1320, selectedAdmissionIds: [bogusAdmissionId], initiatingAdmissionId: bogusAdmissionId);
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.PromotionPlan);
+        conflict.SafeReason.ShouldBe("The exact promotion plan is no longer eligible.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenInitiatingAdmissionCorrelationDiffersFromContext_ReturnsConflict()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1330, "accept-correlation-diff");
+        // A different before-run context (same lane and identity, different operation) so the initiating admission's
+        // retained correlation no longer matches this start request's own context correlation.
+        var differentContext = Coverage.LaneContext(
+            prepared.Descriptor.Address, prepared.Context.ExecutionLaneId!.Value, prepared.Context.Identity,
+            new BeforeRunOperationCorrelation(Coverage.Identifier<OperationId>(1339), null));
+        var start = Coverage.StartRequest(prepared, 1340, context: differentContext);
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.AdmissionCorrelation);
+        conflict.SafeReason.ShouldBe("The initiating admission correlation differs from the proposed run.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenReservedEntryIdCollides_ReturnsConflict()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1350, "accept-entry-collides");
+        // Reuses the already-committed admission entry identity as one of the promoted history-entry IDs.
+        var start = Coverage.StartRequest(prepared, 1360, entryIds: [prepared.Admission.EntryId]);
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.PromotionPlan);
+        conflict.SafeReason.ShouldBe("A reserved session-entry identity is already in use.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenReservedMessageIdCollides_ReturnsConflict()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1370, "accept-message-collides");
+        // The provisioning and admission entries already committed sequences 1 and 2; the seeded message is sequence 3.
+        var seededMessage = Coverage.MessageEntry(prepared.Descriptor, 1380, 3, "already-committed");
+        var seedAppend = new SessionAppendRequest(
+            prepared.Context, prepared.Descriptor.ActiveBranchId,
+            new SessionVersion(prepared.Provisioned.SessionVersion.Value + 1), new IdempotencyKey("accept-message-collides-seed"),
+            [seededMessage]);
+        _ = (await store.AppendAsync(
+            await Coverage.AuthorizeAsync(fixture, seedAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken)).ShouldBeOfType<SessionAppended>();
+        // Reuses the already-committed message identity as the promoted run's own message ID.
+        var start = Coverage.StartRequest(
+            prepared, 1390, expectedVersion: new SessionVersion(prepared.Provisioned.SessionVersion.Value + 2),
+            branchCursor: new SessionBranchCursor(prepared.Descriptor.ActiveBranchId, seededMessage.Id),
+            messageIds: [seededMessage.Message.Id]);
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.PromotionPlan);
+        conflict.SafeReason.ShouldBe("A reserved message identity is already in use.");
+    }
+
+    // ---- ReleaseRunAsync and small session-not-found edge cases. ----
+
+    [Fact]
+    public async Task ReleaseRunAsync_WhenSessionUnavailable_ReturnsRejected()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var bogusAddress = new SessionAddress(Coverage.Identifier<AgentId>(1), Coverage.Identifier<SessionId>(4));
+        var laneId = Coverage.Identifier<ExecutionLaneId>(1400);
+        var context = Coverage.LaneContext(
+            bogusAddress, laneId, Coverage.Identity(),
+            new InRunOperationCorrelation(Coverage.Identifier<OperationId>(1401), Coverage.Identifier<RunId>(1402), null));
+        var release = Coverage.ReleaseRequest(context, new OperationStateRevision(1), new SessionVersion(0), "missing-session-release");
+
+        var result = await store.ReleaseRunAsync(
+            await Coverage.AuthorizeAsync(fixture, release, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<SessionRunReleaseRejected>();
+        rejected.Kind.ShouldBe(SessionRunReleaseRejectionKind.LaneNotFound);
+        rejected.SafeReason.ShouldBe("The session is unavailable.");
+    }
+
+    [Fact]
+    public async Task ReleaseRunAsync_WhenLaneDoesNotExist_ReturnsRejected()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "release-no-lane-create");
+        var laneId = Coverage.Identifier<ExecutionLaneId>(1410);
+        var context = Coverage.LaneContext(
+            descriptor.Address, laneId, Coverage.Identity(),
+            new InRunOperationCorrelation(Coverage.Identifier<OperationId>(1411), Coverage.Identifier<RunId>(1412), null));
+        var release = Coverage.ReleaseRequest(context, new OperationStateRevision(1), descriptor.Version, "release-no-lane");
+
+        var result = await store.ReleaseRunAsync(
+            await Coverage.AuthorizeAsync(fixture, release, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<SessionRunReleaseRejected>();
+        rejected.Kind.ShouldBe(SessionRunReleaseRejectionKind.LaneNotFound);
+        rejected.SafeReason.ShouldBe("The selected lane does not exist.");
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenSessionDoesNotExist_ReturnsNotFound()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var address = new SessionAddress(Coverage.Identifier<AgentId>(1), Coverage.Identifier<SessionId>(4));
+        var context = Coverage.SessionContext(address, 1420);
+        var read = new SessionReadRequest(context, new BranchId(Guid.NewGuid()), new SessionSequence(0), 10);
+
+        var result = await store.ReadAsync(
+            await Coverage.AuthorizeAsync(fixture, read, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionReadNotFound(address));
+    }
+
+    [Fact]
+    public async Task LookupInputAsync_WhenSessionDoesNotExist_ReturnsNotFound()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var address = new SessionAddress(Coverage.Identifier<AgentId>(1), Coverage.Identifier<SessionId>(4));
+        var context = Coverage.LaneContext(
+            address, Coverage.Identifier<ExecutionLaneId>(1430), Coverage.Identity(),
+            new BeforeRunOperationCorrelation(Coverage.Identifier<OperationId>(1431), null));
+        var input = new AgentInput(
+            Coverage.Identifier<InputId>(1432), InputDelivery.FollowUp,
+            [new TextPart("lookup", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var lookup = new SessionInputLookupRequest(context, input, new InputFingerprint("sha256:lookup:missing"));
+
+        var result = await store.LookupInputAsync(
+            await Coverage.AuthorizeAsync(fixture, lookup, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionInputNotFound>();
+    }
+
+    [Fact]
+    public async Task LoadRunStateAsync_WhenSessionDoesNotExist_ReturnsUnavailable()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var address = new SessionAddress(Coverage.Identifier<AgentId>(1), Coverage.Identifier<SessionId>(4));
+        var context = Coverage.LaneContext(
+            address, Coverage.Identifier<ExecutionLaneId>(1440), Coverage.Identity(),
+            new InRunOperationCorrelation(Coverage.Identifier<OperationId>(1441), Coverage.Identifier<RunId>(1442), null));
+        var load = new SessionRunStateRequest(context);
+
+        var result = await store.LoadRunStateAsync(
+            await Coverage.AuthorizeAsync(fixture, load, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunStateUnavailable>().SafeReason.ShouldBe("The requested operation state is unavailable.");
+    }
+
+    // ---- AppendAsync edge cases the shared conformance suite does not exercise. ----
+
+    [Fact]
+    public async Task AppendAsync_WhenBranchDoesNotExist_ReturnsNotFound()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "append-no-branch-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1450);
+        var unknownBranch = new BranchId(Guid.NewGuid());
+        var append = new SessionAppendRequest(
+            context, unknownBranch, descriptor.Version, new IdempotencyKey("append-no-branch"),
+            [Coverage.MessageEntry(descriptor, 1451, 1, "orphan", unknownBranch)]);
+
+        var result = await store.AppendAsync(
+            await Coverage.AuthorizeAsync(fixture, append, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionAppendNotFound(descriptor.Address));
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenEntryIdIsAlreadyReserved_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "append-entry-reused-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1460);
+        var first = Coverage.MessageEntry(descriptor, 1461, 1, "first");
+        var firstAppend = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("append-entry-reused-seed"), [first]);
+        var firstResult = (SessionAppended) await store.AppendAsync(
+            await Coverage.AuthorizeAsync(fixture, firstAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        // Reuses the already-committed entry identity for a structurally distinct second entry.
+        var reused = new MessageSessionEntry(
+            first.Id, descriptor.Address, first.Correlation, descriptor.ActiveBranchId, new SessionSequence(2), first.Id,
+            first.RecordedAt, first.SchemaVersion, first.Message);
+        var secondAppend = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, firstResult.NewVersion, new IdempotencyKey("append-entry-reused"), [reused]);
+
+        var result = await store.AppendAsync(
+            await Coverage.AuthorizeAsync(fixture, secondAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionAppendFailed>().SafeMessage.ShouldBe("An appended entry identity is already reserved.");
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenMessageIdIsAlreadyReserved_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "append-message-reused-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1470);
+        var first = Coverage.MessageEntry(descriptor, 1471, 1, "first");
+        var firstAppend = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("append-message-reused-seed"), [first]);
+        var firstResult = (SessionAppended) await store.AppendAsync(
+            await Coverage.AuthorizeAsync(fixture, firstAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+        // A structurally distinct new entry that reuses the already-committed message identity.
+        var reusedMessage = new UserMessage(
+            first.Message.Id, descriptor.Address.AgentId, descriptor.Address.SessionId, descriptor.ConversationId,
+            descriptor.ActiveBranchId, first.Message.RunId, null, Coverage.Timestamp(1472), MessageState.Complete,
+            [new TextPart("second", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var reused = new MessageSessionEntry(
+            Coverage.Identifier<SessionEntryId>(1479), descriptor.Address, Coverage.Correlation(1472), descriptor.ActiveBranchId,
+            new SessionSequence(2), first.Id, Coverage.Timestamp(1472), new SchemaVersion("1"), reusedMessage);
+        var secondAppend = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, firstResult.NewVersion, new IdempotencyKey("append-message-reused"), [reused]);
+
+        var result = await store.AppendAsync(
+            await Coverage.AuthorizeAsync(fixture, secondAppend, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionAppendFailed>().SafeMessage.ShouldBe("An appended message identity is already reserved.");
+    }
+
+    // ---- EnforceAsync (protected-boundary) edge cases the shared conformance suite does not exercise. ----
+
+    [Fact]
+    public async Task LoadAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "enforce-wrong-store-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1480);
+        var authorized = await Coverage.AuthorizeAsync(fixture, context, SecurityOperationKind.StateRead, SecurityEffect.Observe);
+        var mismatched = new AuthorizedSessionStoreRequest<SessionOperationContext>(
+            authorized.Request, new SessionStoreKey("some-other-store"), authorized.Grant, authorized.Intent);
+
+        var result = await store.LoadAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenEnforcementIntentFenceDiffersFromRequest_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "enforce-fence-diff-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1490);
+        var authorized = await Coverage.AuthorizeAsync(fixture, context, SecurityOperationKind.StateRead, SecurityEffect.Observe);
+        // Only SessionRunStartRequest ever carries a fence; any nonnull intent fence for another request kind mismatches.
+        var mismatched = new AuthorizedSessionStoreRequest<SessionOperationContext>(
+            authorized.Request, authorized.StoreKey, authorized.Grant,
+            new SecurityEnforcementIntent(authorized.Intent.Id, new FencingToken(1)));
+
+        var result = await store.LoadAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage.ShouldBe("The enforcement intent fence differs from the session request.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenFencingTokenIsRequested_ReturnsRejectedForUnsupportedDistributedFencing()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1500, "accept-fenced");
+        var start = Coverage.StartRequest(prepared, 1510, expectedFencingToken: new FencingToken(1));
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunStartRejected>().SafeReason
+            .ShouldBe("The selected session store does not support distributed fencing.");
+    }
+
     private static async Task<SessionPage> ReadFirstPageAsync(Harness harness, SessionDescriptor descriptor, SessionOperationContext context)
     {
         var result = await harness.Store.ReadAsync(
@@ -1124,6 +1569,7 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
             AdmissionId? initiatingAdmissionId = null,
             ImmutableArray<SessionEntryId>? entryIds = null,
             ImmutableArray<MessageId>? messageIds = null,
+            FencingToken? expectedFencingToken = null,
             string idempotencyKey = "accept")
         {
             var usedContext = context ?? prepared.Context;
@@ -1139,7 +1585,7 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
                 expectedLaneRevision ?? new SessionLaneRevision(prepared.Provisioned.LaneRevision.Value + 1),
                 expectedVersion ?? new SessionVersion(prepared.Provisioned.SessionVersion.Value + 1),
                 branchCursor ?? new SessionBranchCursor(prepared.Descriptor.ActiveBranchId, prepared.Admission.EntryId),
-                null, runId, turnId, Identifier<SessionEntryId>(offset + 2),
+                expectedFencingToken, runId, turnId, Identifier<SessionEntryId>(offset + 2),
                 entryIds ?? [Identifier<SessionEntryId>(offset + 3)], messageIds ?? [Identifier<MessageId>(offset + 4)],
                 Identifier<SessionEntryId>(offset + 5), new OperationStateRevision(1),
                 Profile(), Configuration(), inRunAuthorization, Timestamp(offset), new IdempotencyKey(idempotencyKey));
