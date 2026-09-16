@@ -51,7 +51,9 @@ public sealed class OpenAIChatCompletionResponseParserTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
         completed.Response.Parts.Length.ShouldBe(1);
         var toolCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
-        toolCall.Tool.Name.ShouldBe("get_weather");
+        toolCall.Tool.ProviderAlias.Value.ShouldBe("get_weather");
+        toolCall.Tool.Id.ShouldBeNull();
+        toolCall.Tool.IsResolved.ShouldBeFalse();
         toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_xyz789"));
         toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
         var deltaEvent = observer.Events.OfType<ModelPartDelta>().ShouldHaveSingleItem();
@@ -71,10 +73,10 @@ public sealed class OpenAIChatCompletionResponseParserTests
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
         completed.Response.Parts.Length.ShouldBe(2);
         var first = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
-        first.Tool.Name.ShouldBe("get_weather");
+        first.Tool.ProviderAlias.Value.ShouldBe("get_weather");
         first.ProviderCallId.ShouldBe(new ProviderToolCallId("call_alpha"));
         var second = completed.Response.Parts[1].ShouldBeOfType<ToolCallPart>();
-        second.Tool.Name.ShouldBe("get_time");
+        second.Tool.ProviderAlias.Value.ShouldBe("get_time");
         second.ProviderCallId.ShouldBe(new ProviderToolCallId("call_beta"));
         first.CallId.ShouldNotBe(second.CallId);
     }
@@ -244,9 +246,9 @@ public sealed class OpenAIChatCompletionResponseParserTests
         var toolCalls = completed.Response.Parts.OfType<ToolCallPart>().ToArray();
         toolCalls.Length.ShouldBe(2);
         toolCalls.Select(static part => part.ProviderCallId?.Value).ShouldBe(["call_a", "call_b"]);
-        toolCalls[0].Tool.Name.ShouldBe("get_weather");
+        toolCalls[0].Tool.ProviderAlias.Value.ShouldBe("get_weather");
         toolCalls[0].Arguments.GetProperty("location").GetString().ShouldBe("Paris");
-        toolCalls[1].Tool.Name.ShouldBe("get_time");
+        toolCalls[1].Tool.ProviderAlias.Value.ShouldBe("get_time");
         toolCalls[1].Arguments.GetProperty("timezone").GetString().ShouldBe("UTC");
         toolCalls[0].CallId.ShouldNotBe(toolCalls[1].CallId);
         // Each id-keyed slot owns a distinct part index and its own start/delta/complete events.
@@ -267,7 +269,7 @@ public sealed class OpenAIChatCompletionResponseParserTests
         var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
         var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
-        toolCall.Tool.Name.ShouldBe("get_weather");
+        toolCall.Tool.ProviderAlias.Value.ShouldBe("get_weather");
         toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_a"));
         toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
         _ = observer.Events.OfType<ModelPartStarted>().ShouldHaveSingleItem();
@@ -335,7 +337,7 @@ public sealed class OpenAIChatCompletionResponseParserTests
         // The slot keeps the id it was first bound to; the conflicting fragment never rebinds it.
         var partial = failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
         partial.ProviderCallId.ShouldBe(new ProviderToolCallId("call_a"));
-        partial.Tool.Name.ShouldBe("get_weather");
+        partial.Tool.ProviderAlias.Value.ShouldBe("get_weather");
     }
 
     [Fact]
@@ -383,7 +385,7 @@ public sealed class OpenAIChatCompletionResponseParserTests
         completed.Response.StopReason.ShouldBe(NormalizedStopReason.ToolUse);
         completed.Response.Parts.Length.ShouldBe(1);
         var toolCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
-        toolCall.Tool.Name.ShouldBe("get_weather");
+        toolCall.Tool.ProviderAlias.Value.ShouldBe("get_weather");
         toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_stream1"));
         toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
         var argumentFragments = observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<ToolArgumentsContentDelta>().Select(d => d.JsonFragment).ToArray();
@@ -403,10 +405,10 @@ public sealed class OpenAIChatCompletionResponseParserTests
         var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
         completed.Response.Parts.Length.ShouldBe(2);
         var first = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
-        first.Tool.Name.ShouldBe("get_weather");
+        first.Tool.ProviderAlias.Value.ShouldBe("get_weather");
         first.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
         var second = completed.Response.Parts[1].ShouldBeOfType<ToolCallPart>();
-        second.Tool.Name.ShouldBe("get_time");
+        second.Tool.ProviderAlias.Value.ShouldBe("get_time");
         second.Arguments.GetProperty("timezone").GetString().ShouldBe("UTC");
         first.CallId.ShouldNotBe(second.CallId);
     }
@@ -503,7 +505,7 @@ public sealed class OpenAIChatCompletionResponseParserTests
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
         // The first call's arguments are complete JSON; the second is cut mid-object and cannot be represented truthfully.
         var toolCall = failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
-        toolCall.Tool.Name.ShouldBe("get_weather");
+        toolCall.Tool.ProviderAlias.Value.ShouldBe("get_weather");
         toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_a"));
         toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
     }

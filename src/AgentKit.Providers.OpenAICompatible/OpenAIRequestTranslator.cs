@@ -253,7 +253,7 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
                         ["type"] = "function",
                         ["function"] = new JsonObject
                         {
-                            ["name"] = toolCall.Tool.Name,
+                            ["name"] = toolCall.Tool.ProviderAlias.Value,
                             ["arguments"] = toolCall.Arguments.GetRawText(),
                         },
                     });
@@ -316,8 +316,8 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
         Debug.Assert(maximumCharacters > 0, "The compatibility profile validates its positive bound.");
         var remaining = maximumCharacters;
         var version = result.Tool.Version?.ToString();
-        ConsumeToolResultBudget(result.Tool.Id.Value?.Length ?? 0, ref remaining);
-        ConsumeToolResultBudget(result.Tool.Name.Length, ref remaining);
+        ConsumeToolResultBudget(result.Tool.Id?.Value.Length ?? 0, ref remaining);
+        ConsumeToolResultBudget(result.Tool.ProviderAlias.Value.Length, ref remaining);
         ConsumeToolResultBudget(version?.Length ?? 0, ref remaining);
         ConsumeToolResultBudget(result.Outcome.FailureReason?.Length ?? 0, ref remaining);
         var content = new JsonArray();
@@ -341,9 +341,9 @@ public sealed class OpenAIRequestTranslator: IOpenAIRequestTranslator
             ["format"] = "agentkit.tool-result.v1",
             ["tool"] = new JsonObject
             {
-                ["id"] = result.Tool.Id.Value,
+                ["id"] = result.Tool.Id?.Value,
                 ["version"] = version,
-                ["requested_name"] = result.Tool.Name,
+                ["requested_name"] = result.Tool.ProviderAlias.Value,
             },
             ["outcome"] = new JsonObject
             {

@@ -193,7 +193,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
                 var toolCallPart = new ToolCallPart(
                     callId,
-                    new ToolReference(new ToolId(toolCall.Function.Name), null, toolCall.Function.Name),
+                    new ToolReference(new ToolAlias(toolCall.Function.Name), null, null),
                     arguments,
                     new ProviderToolCallId(toolCall.Id),
                     ExtensionData.Empty);
@@ -502,7 +502,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
             var toolCallPart = new ToolCallPart(
                 slot.CallId,
-                new ToolReference(new ToolId(toolName), null, toolName),
+                new ToolReference(new ToolAlias(toolName), null, null),
                 arguments,
                 slot.ProviderCallId is { } providerCallId ? new ProviderToolCallId(providerCallId) : null,
                 ExtensionData.Empty);
@@ -636,7 +636,7 @@ public sealed class OpenAIChatCompletionResponseParser: IOpenAIStreamParser
 
             partial.Add(new ToolCallPart(
                 slot.CallId,
-                new ToolReference(new ToolId(toolName), null, toolName),
+                new ToolReference(new ToolAlias(toolName), null, null),
                 arguments,
                 slot.ProviderCallId is { } providerCallId ? new ProviderToolCallId(providerCallId) : null,
                 ExtensionData.Empty));

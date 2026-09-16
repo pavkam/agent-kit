@@ -58,7 +58,7 @@ public sealed class MoonshotKimiLlmModelTests
         var runId = new RunId(Guid.NewGuid());
         var turnId = new TurnId(Guid.NewGuid());
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000001"));
-        var toolReference = new ToolReference(new ToolId("web_search"), null, "web_search");
+        var toolReference = new ToolReference(new ToolAlias("web_search"), null, null);
         var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), agentId, sessionId, conversationId: null, branchId, runId, turnId, Now, MessageState.Complete, [new TextPart("Summarize today's news.", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var assistantMessage = new AssistantMessage(new MessageId(Guid.NewGuid()), agentId, sessionId, conversationId: null, branchId, runId, turnId, Now, MessageState.Complete,
             [
@@ -74,7 +74,7 @@ public sealed class MoonshotKimiLlmModelTests
                 ExtensionData.Empty),
             ExtensionData.Empty);
         var toolMessage = new ToolMessage(new MessageId(Guid.NewGuid()), agentId, sessionId, conversationId: null, branchId, runId, turnId, Now, MessageState.Complete,
-            [new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("headline one", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty)],
+            [new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("headline one", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty)],
             ExtensionData.Empty);
         var tools = ImmutableArray.Create(new LlmToolDefinition(new ToolId("web_search"), "web_search", "Searches the web.", JsonDocument.Parse("""{"type":"object","properties":{"query":{"type":"string"}}}""").RootElement));
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [userMessage, assistantMessage, toolMessage], tools, LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);

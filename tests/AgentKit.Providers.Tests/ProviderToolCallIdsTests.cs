@@ -18,7 +18,7 @@ public sealed class ProviderToolCallIdsTests
         using var document = JsonDocument.Parse("{}");
         return new ToolCallPart(
             callId,
-            new ToolReference(new ToolId("get_weather"), null, "get_weather"),
+            new ToolReference(new ToolAlias("get_weather"), null, null),
             document.RootElement.Clone(),
             providerCallId is null ? null : new ProviderToolCallId(providerCallId),
             ExtensionData.Empty);

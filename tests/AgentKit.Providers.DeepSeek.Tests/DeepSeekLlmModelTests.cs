@@ -58,7 +58,7 @@ public sealed class DeepSeekLlmModelTests
         var runId = new RunId(Guid.NewGuid());
         var turnId = new TurnId(Guid.NewGuid());
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000001"));
-        var toolReference = new ToolReference(new ToolId("get_weather"), null, "get_weather");
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
         var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), agentId, sessionId, conversationId: null, branchId, runId, turnId, Now, MessageState.Complete, [new TextPart("Weather in Hangzhou tomorrow?", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var assistantMessage = new AssistantMessage(new MessageId(Guid.NewGuid()), agentId, sessionId, conversationId: null, branchId, runId, turnId, Now, MessageState.Complete,
             [
@@ -74,7 +74,7 @@ public sealed class DeepSeekLlmModelTests
                 ExtensionData.Empty),
             ExtensionData.Empty);
         var toolMessage = new ToolMessage(new MessageId(Guid.NewGuid()), agentId, sessionId, conversationId: null, branchId, runId, turnId, Now, MessageState.Complete,
-            [new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("Cloudy 7~13°C", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty)],
+            [new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("Cloudy 7~13°C", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty)],
             ExtensionData.Empty);
         var tools = ImmutableArray.Create(new LlmToolDefinition(new ToolId("get_weather"), "get_weather", "Gets the weather.", JsonDocument.Parse("""{"type":"object","properties":{"location":{"type":"string"}}}""").RootElement));
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [userMessage, assistantMessage, toolMessage], tools, LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);

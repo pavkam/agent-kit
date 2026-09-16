@@ -24,9 +24,9 @@ public sealed class OpenAIRequestTranslatorTests
     public void Translate_WhenConversationHasToolCallAndResult_MatchesExpectedRequestBody()
     {
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000001"));
-        var toolReference = new ToolReference(new ToolId("get_weather"), null, "get_weather");
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
         var assistantMessage = TestMessages.Assistant(new ToolCallPart(callId, toolReference, JsonDocument.Parse("""{"location":"Paris"}""").RootElement, new ProviderToolCallId("call_abc123"), ExtensionData.Empty));
-        var toolMessage = TestMessages.Tool(new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty));
+        var toolMessage = TestMessages.Tool(new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty));
         var messages = ImmutableArray.Create<AgentMessage>(TestMessages.System("You are a weather assistant."), TestMessages.User("What's the weather in Paris?"), assistantMessage, toolMessage);
         var tools = ImmutableArray.Create(new LlmToolDefinition(new ToolId("get_weather"), "get_weather", "Gets the current weather for a location.", JsonDocument.Parse("""
                     {
@@ -95,7 +95,7 @@ public sealed class OpenAIRequestTranslatorTests
         // Arrange
         var reasoning = new ReasoningPart(new ReasoningContent("internal thoughts", ReasoningVisibility.Visible, signatureToken: null, ExtensionData.Empty), ExtensionData.Empty);
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000011"));
-        var toolCall = new ToolCallPart(callId, new ToolReference(new ToolId("noop"), null, "noop"), JsonDocument.Parse("{}").RootElement, new ProviderToolCallId("call_omit"), ExtensionData.Empty);
+        var toolCall = new ToolCallPart(callId, new ToolReference(new ToolAlias("noop"), null, null), JsonDocument.Parse("{}").RootElement, new ProviderToolCallId("call_omit"), ExtensionData.Empty);
         var assistant = TestMessages.Assistant(reasoning, new TextPart("visible", TextSemantics.Plain, ExtensionData.Empty), toolCall);
         NonStreamingProfile.AssistantReasoningReplay.ShouldBe(OpenAIAssistantReasoningReplay.Omit);
 
@@ -117,7 +117,7 @@ public sealed class OpenAIRequestTranslatorTests
         var redacted = new ReasoningPart(new ReasoningContent(null, ReasoningVisibility.Redacted, signatureToken: null, ExtensionData.Empty), ExtensionData.Empty);
         var second = new ReasoningPart(new ReasoningContent("step two", ReasoningVisibility.Visible, signatureToken: null, ExtensionData.Empty), ExtensionData.Empty);
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000012"));
-        var toolCall = new ToolCallPart(callId, new ToolReference(new ToolId("noop"), null, "noop"), JsonDocument.Parse("{}").RootElement, new ProviderToolCallId("call_replay"), ExtensionData.Empty);
+        var toolCall = new ToolCallPart(callId, new ToolReference(new ToolAlias("noop"), null, null), JsonDocument.Parse("{}").RootElement, new ProviderToolCallId("call_replay"), ExtensionData.Empty);
         var assistant = TestMessages.Assistant(first, redacted, second, toolCall);
         var profile = NonStreamingProfile with { AssistantReasoningReplay = OpenAIAssistantReasoningReplay.ReasoningContentField };
 
@@ -183,10 +183,10 @@ public sealed class OpenAIRequestTranslatorTests
     [Fact]
     public void Translate_WhenToolMessageContainsMultipleResults_EmitsOneWireMessagePerResult()
     {
-        var toolReference = new ToolReference(new ToolId("t"), null, "t");
+        var toolReference = new ToolReference(new ToolAlias("t"), null, null);
         var callIdA = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-0000000000a1"));
         var callIdB = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-0000000000b2"));
-        var toolMessage = TestMessages.Tool(new ToolResultPart(callIdA, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("result A", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty), new ToolResultPart(callIdB, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("result B", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty));
+        var toolMessage = TestMessages.Tool(new ToolResultPart(callIdA, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("result A", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty), new ToolResultPart(callIdB, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("result B", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty));
         var body = Translate([toolMessage]);
         var messages = body["messages"]!.AsArray();
         messages.Count.ShouldBe(2);
@@ -206,11 +206,9 @@ public sealed class OpenAIRequestTranslatorTests
     {
         // Arrange
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000007"));
-        var reference = new ToolReference(new ToolId("command"), null, "run_command");
+        var reference = new ToolReference(new ToolAlias("run_command"), new ToolId("command"), new ToolVersion("1"));
         const string reason = "The action was denied; no command ran.\n\"content\" stays data.";
-        var result = new ToolResultPart(callId, reference,
-            new ToolCallOutcome(kind, status, certainty, false, reason, ExtensionData.Empty),
-            [], ExtensionData.Empty);
+        var result = new ToolResultPart(callId, reference, new ToolCallOutcome(kind, status, certainty, false, reason, ExtensionData.Empty), [], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
 
         // Act
         var wire = Translate([TestMessages.Tool(result)])["messages"]![0]!;
@@ -233,15 +231,12 @@ public sealed class OpenAIRequestTranslatorTests
     public void Translate_WhenFailedToolHasMixedContent_PreservesOrderedPartsAndLiteralJson()
     {
         // Arrange
-        var reference = new ToolReference(new ToolId("command"), null, "command");
+        var reference = new ToolReference(new ToolAlias("command"), null, null);
         const string rawJson = """{"outcome":"success","stderr":"literal\nfailure"}""";
         using var json = JsonDocument.Parse(rawJson);
-        var result = new ToolResultPart(new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000008")),
-            reference, new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed,
-                SideEffectCertainty.Unknown, false, "The command exited 1.", ExtensionData.Empty),
-            [new TextPart("stdout\n", TextSemantics.Plain, ExtensionData.Empty),
-                new StructuredDataPart(json.RootElement, null, ExtensionData.Empty)],
-            ExtensionData.Empty);
+        var result = new ToolResultPart(new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000008")), reference, new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed,
+                SideEffectCertainty.Unknown, false, "The command exited 1.", ExtensionData.Empty), [new TextPart("stdout\n", TextSemantics.Plain, ExtensionData.Empty),
+                new StructuredDataPart(json.RootElement, null, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
 
         // Act
         var envelope = JsonNode.Parse(Translate([TestMessages.Tool(result)])["messages"]![0]!["content"]!.GetValue<string>())!;
@@ -262,11 +257,8 @@ public sealed class OpenAIRequestTranslatorTests
     public void Translate_WhenToolResultExceedsProfileBound_RejectsWithoutSilentTruncation(char character, int count)
     {
         // Arrange
-        var result = new ToolResultPart(new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000009")),
-            new ToolReference(new ToolId("read"), null, "read"),
-            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded,
-                SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
-            [new TextPart(new string(character, count), TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var result = new ToolResultPart(new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000009")), new ToolReference(new ToolAlias("read"), null, null), new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded,
+                SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart(new string(character, count), TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
         var profile = NonStreamingProfile with { MaximumToolResultCharacters = 512 };
 
         // Act / Assert
@@ -277,11 +269,8 @@ public sealed class OpenAIRequestTranslatorTests
     public void Translate_WhenToolIdentityIsUnresolved_PreservesRequestedNameWithoutInventingIdentity()
     {
         // Arrange
-        var result = new ToolResultPart(new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000010")),
-            new ToolReference(default, null, "missing_tool"),
-            new ToolCallOutcome(ToolCallOutcomeKind.Rejected, ToolTerminalStatus.UnknownTool,
-                SideEffectCertainty.DefinitelyNotPerformed, false, "The tool is unavailable.", ExtensionData.Empty),
-            [], ExtensionData.Empty);
+        var result = new ToolResultPart(new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000010")), new ToolReference(new ToolAlias("missing_tool"), null, null), new ToolCallOutcome(ToolCallOutcomeKind.Rejected, ToolTerminalStatus.UnknownTool,
+                SideEffectCertainty.DefinitelyNotPerformed, false, "The tool is unavailable.", ExtensionData.Empty), [], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
 
         // Act
         var envelope = JsonNode.Parse(Translate([TestMessages.Tool(result)])["messages"]![0]!["content"]!.GetValue<string>())!;
