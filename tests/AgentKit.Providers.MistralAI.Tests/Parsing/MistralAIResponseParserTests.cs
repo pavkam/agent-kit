@@ -308,6 +308,270 @@ public sealed class MistralAIResponseParserTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenToolCallArgumentsAreJsonObject_UsesObjectDirectly()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_tool_use.json")
+            .Replace("\"arguments\": \"{\\\"location\\\": \\\"Paris\\\"}\"", "\"arguments\": {\"location\": \"Paris\"}", StringComparison.Ordinal);
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
+    }
+
+    /// <summary>Verifies a tool call whose arguments field is present but neither a string nor an object (e.g. null) is treated as an empty-object argument rather than throwing.</summary>
+    [Fact]
+    public async Task ParseBufferedAsync_WhenToolCallArgumentsFieldIsNull_TreatsAsEmptyObject()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_tool_use.json")
+            .Replace("\"arguments\": \"{\\\"location\\\": \\\"Paris\\\"}\"", "\"arguments\": null", StringComparison.Ordinal);
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.Arguments.GetRawText().ShouldBe("{}");
+    }
+
+    /// <summary>Verifies every documented Mistral finish reason maps to its normalized stop reason, including unmapped and absent values.</summary>
+    [Theory]
+    [InlineData("length", NormalizedStopReason.Length)]
+    [InlineData("model_length", NormalizedStopReason.Length)]
+    [InlineData("error", NormalizedStopReason.Error)]
+    [InlineData("some_future_reason", NormalizedStopReason.Error)]
+    public async Task ParseBufferedAsync_WhenFinishReasonVaries_MapsToExpectedNormalizedStopReason(string finishReason, NormalizedStopReason expected)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_text.json")
+            .Replace("\"finish_reason\": \"stop\"", $"\"finish_reason\": \"{finishReason}\"", StringComparison.Ordinal);
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(expected);
+    }
+
+    /// <summary>Verifies a response with no finish_reason at all is normalized as still pending rather than completed.</summary>
+    [Fact]
+    public async Task ParseBufferedAsync_WhenFinishReasonIsAbsent_MapsToPending()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_text.json")
+            .Replace("\"finish_reason\": \"stop\"", "\"finish_reason\": null", StringComparison.Ordinal);
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.Pending);
+    }
+
+    /// <summary>Verifies a tool-call-delta whose function.arguments is a JSON object (not a string) is accumulated via its raw text.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolCallArgumentsFragmentIsJsonObject_AppendsRawObjectText()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"id": "cmpl-objargs", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [{"index": 0, "id": "call_obj", "type": "function", "function": {"name": "get_weather", "arguments": {"location": "Paris"}}}]}, "finish_reason": null}]}
+
+            data: {"id": "cmpl-objargs", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+            data: [DONE]
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
+    }
+
+    /// <summary>Verifies a tool-call-delta whose arguments fragment is neither a string nor an object (e.g. null) contributes no fragment rather than throwing.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolCallArgumentsFragmentIsNull_ContributesNoFragment()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"id": "cmpl-nullargs", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [{"index": 0, "id": "call_null", "type": "function", "function": {"name": "get_weather", "arguments": null}}]}, "finish_reason": null}]}
+
+            data: {"id": "cmpl-nullargs", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+            data: [DONE]
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.Arguments.GetRawText().ShouldBe("{}");
+        observer.Events.OfType<ModelPartDelta>().ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies an empty text-content delta still opens the text slot but contributes no delta event or text.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenTextContentFragmentIsEmpty_OpensSlotWithoutEmittingDelta()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"id": "cmpl-emptytext", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": null}]}
+
+            data: {"id": "cmpl-emptytext", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"content": "Hi"}, "finish_reason": "stop"}]}
+
+            data: [DONE]
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hi");
+        var textDeltas = observer.Events.OfType<ModelPartDelta>().Select(e => e.Delta).OfType<TextContentDelta>().Select(d => d.Text).ToArray();
+        textDeltas.ShouldBe(["Hi"]);
+    }
+
+    /// <summary>Verifies a truncated stream that already closed an unknown-kind slot retains that slot's materialized part in its partial output.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenStreamTruncatedAfterClosedUnknownChunk_RetainsItInPartialParts()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"id": "cmpl-trunc-unknown", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "content": [{"type": "image_url", "image_url": "https://example.com/x.png"}]}, "finish_reason": null}]}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        var unknown = failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<UnknownContentPart>();
+        unknown.TypeName.ShouldBe("image_url");
+    }
+
+    /// <summary>Verifies a truncated stream with an open tool-call slot whose accumulated arguments are malformed JSON omits it from partial parts rather than fabricating a call.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenStreamTruncatedWithMalformedOpenToolCallArguments_OmitsItFromPartialParts()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"id": "cmpl-trunc-badargs", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [{"index": 0, "id": "call_bad", "type": "function", "function": {"name": "get_weather", "arguments": "{bad json"}}]}, "finish_reason": null}]}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.OfType<ToolCallPart>().ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies a truncated stream that already received invalid (negative) usage evidence retains no usage rather than propagating that validation failure as the outcome's cause.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenStreamTruncatedAfterNegativeUsage_RetainsNoUsage()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"id": "cmpl-trunc-negusage", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hi"}, "finish_reason": null}], "usage": {"prompt_tokens": -1, "completion_tokens": 1, "total_tokens": 0}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Usage.ShouldBeNull();
+    }
+
+    /// <summary>Verifies a tool-call slot that never received an explicit close event but has malformed accumulated arguments fails closed at the terminal [DONE] flush.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolCallArgumentsAreMalformedAtDoneSentinel_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"id": "cmpl-donebadargs", "model": "mistral-large-latest-2412", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [{"index": 0, "id": "call_bad", "type": "function", "function": {"name": "get_weather", "arguments": "{bad json"}}]}, "finish_reason": "tool_calls"}]}
+
+            data: [DONE]
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned malformed tool-call arguments.");
+        failed.PartialParts.OfType<ToolCallPart>().ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies negative final usage evidence at the terminal [DONE] flush fails closed rather than reporting fabricated usage.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenFinalUsageTokenCountIsNegative_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new MistralAIResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/streaming_text.sse")
+            .Replace("\"prompt_tokens\": 10", "\"prompt_tokens\": -1", StringComparison.Ordinal);
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+    }
+
+    [Fact]
     public async Task ParseBufferedAsync_WhenBodyIsNotJson_FailsWithProtocolViolation()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
