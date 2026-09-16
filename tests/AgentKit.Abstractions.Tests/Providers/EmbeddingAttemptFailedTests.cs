@@ -14,4 +14,13 @@ public sealed class EmbeddingAttemptFailedTests
         var exception = Should.Throw<ArgumentNullException>(() => new EmbeddingAttemptFailed(null!));
         exception.ParamName.ShouldBe("failure");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var failure = new ProviderFailure(ProviderFailureKind.Unknown, new ProviderId("openai"), null, null, null, null, "failed", null, ExtensionData.Empty);
+        var original = new EmbeddingAttemptFailed(failure);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

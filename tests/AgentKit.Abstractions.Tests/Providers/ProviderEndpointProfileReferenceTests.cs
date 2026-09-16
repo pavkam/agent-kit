@@ -36,5 +36,13 @@ public sealed class ProviderEndpointProfileReferenceTests
         referenceCopy.GetHashCode().ShouldBe(EndpointReference().GetHashCode());
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var reference = EndpointReference();
+        reference.Key.ShouldBe(new ProviderEndpointProfileKey("endpoint-profile"));
+        reference.Version.ShouldBe(new ProviderEndpointProfileVersion(1));
+    }
+
     private static ProviderEndpointProfileReference EndpointReference() => new(new ProviderEndpointProfileKey("endpoint-profile"), new ProviderEndpointProfileVersion(1));
 }

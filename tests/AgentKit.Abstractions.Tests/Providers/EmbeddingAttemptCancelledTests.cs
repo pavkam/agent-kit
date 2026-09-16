@@ -14,4 +14,13 @@ public sealed class EmbeddingAttemptCancelledTests
         var exception = Should.Throw<ArgumentNullException>(() => new EmbeddingAttemptCancelled(null!));
         exception.ParamName.ShouldBe("cancellation");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var cancellation = new ProviderFailure(ProviderFailureKind.Cancellation, new ProviderId("openai"), null, null, null, null, "cancelled", null, ExtensionData.Empty);
+        var original = new EmbeddingAttemptCancelled(cancellation);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

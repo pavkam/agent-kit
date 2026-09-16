@@ -17,5 +17,13 @@ public sealed class ProviderCredentialProfileReferenceTests
         credentialReferenceCopy.ShouldBe(CredentialReference());
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var reference = CredentialReference();
+        reference.Key.ShouldBe(new ProviderCredentialProfileKey("credential-profile"));
+        reference.Version.ShouldBe(new ProviderCredentialProfileVersion(1));
+    }
+
     private static ProviderCredentialProfileReference CredentialReference() => new(new ProviderCredentialProfileKey("credential-profile"), new ProviderCredentialProfileVersion(1));
 }

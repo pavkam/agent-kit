@@ -22,6 +22,14 @@ public sealed class ModelResponseCompletedTests
         new ModelResponseCompleted(requestId, 1, Response()).ShouldBe(new ModelResponseCompleted(requestId, 1, Response()));
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ModelResponseCompleted(new ModelRequestId(_fixedRequestGuid), 1, Response());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static readonly Guid _fixedRequestGuid = Guid.Parse("77777777-7777-7777-7777-777777777777");
     private static ModelResponse Response() => new(new ModelRequestId(_fixedRequestGuid), new ProviderResponseIdentity(new ProviderId("openai"), null, new ApiFamilyId("chat"), new ModelId("gpt"), new ModelId("gpt"), null, null, null), [new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty)], NormalizedStopReason.Completed, ModelUsage.NotReported, ExtensionData.Empty);
 }

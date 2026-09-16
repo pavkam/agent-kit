@@ -10,6 +10,27 @@ public sealed class EmbeddingLimitsTests
 {
     [Fact]
     public void EmbeddingLimits_Constructor_WhenMaxInputsLessThanOne_ThrowsArgumentOutOfRangeException() => _ = Should.Throw<ArgumentOutOfRangeException>(() => new EmbeddingLimits(0, null, null, null));
+
+    [Fact]
+    public void EmbeddingLimits_Constructor_WhenMaxInputTokensLessThanOne_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => new EmbeddingLimits(null, 0, null, null)).ParamName.ShouldBe("maxInputTokensPerInput");
+
+    [Fact]
+    public void EmbeddingLimits_Constructor_WhenDefaultDimensionsLessThanOne_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => new EmbeddingLimits(null, null, 0, null)).ParamName.ShouldBe("defaultDimensions");
+
+    [Fact]
+    public void EmbeddingLimits_Constructor_WhenMaxDimensionsLessThanOne_ThrowsArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => new EmbeddingLimits(null, null, null, 0)).ParamName.ShouldBe("maxDimensions");
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new EmbeddingLimits(96, 8192, 1536, 3072);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     [Fact]
     public void EmbeddingLimits_Constructor_WhenValid_RoundTripsProperties()
     {

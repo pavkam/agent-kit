@@ -22,4 +22,12 @@ public sealed class ModelPartDeltaTests
         var delta = new TextContentDelta("chunk");
         new ModelPartDelta(requestId, 1, 0, delta).ShouldBe(new ModelPartDelta(requestId, 1, 0, delta));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ModelPartDelta(new ModelRequestId(Guid.NewGuid()), 1, 0, new TextContentDelta("chunk"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

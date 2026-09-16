@@ -24,4 +24,12 @@ public sealed class StructuredDataContentDeltaTests
 
     [Fact]
     public void StructuredDataContentDelta_Equality_WhenSameFragment_InstancesAreEqual() => new StructuredDataContentDelta("{}").ShouldBe(new StructuredDataContentDelta("{}"));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new StructuredDataContentDelta("{}");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
