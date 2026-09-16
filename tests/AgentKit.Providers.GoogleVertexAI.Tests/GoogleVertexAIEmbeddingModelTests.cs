@@ -17,7 +17,7 @@ public sealed class GoogleVertexAIEmbeddingModelTests
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
     private static EmbeddingModelDescriptor CreateDescriptor(DeploymentId? deploymentId = null) => new(new EmbeddingModelAlias("embed"), GoogleVertexAIProviderDefaults.ProviderId, GoogleVertexAIProviderDefaults.EmbeddingApiFamily, new ModelId("text-embedding-005"), deploymentId, GoogleVertexAIProviderDefaults.DefaultEmbeddingCapabilities, GoogleVertexAIProviderDefaults.DefaultEmbeddingLimits, pricing: null, ExtensionData.Empty);
     private static EmbeddingModelRequest CreateRequest(EmbeddingModelDescriptor descriptor, DateTimeOffset deadline) => new(new EmbeddingRequestContext(new EmbeddingRequestId(Guid.NewGuid()), descriptor, new EmbeddingRequest([new TextEmbeddingInput("hello world", null)], EmbeddingPurpose.Unspecified, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty)), attempt: 1, deadline, ProviderRequestOptions.Empty);
-    private static GoogleVertexAIEmbeddingModel CreateModel(StubHttpMessageHandler handler, IProviderCredentialSource credentials, EmbeddingModelDescriptor descriptor) => new(descriptor, new GoogleVertexAIProviderOptions { ProjectId = "my-project", Location = "us-central1" }, new GoogleVertexAIEmbeddingRequestTranslator(), new GoogleVertexAIEmbeddingResponseParser(), credentials, new HttpClient(handler), new FakeTimeProvider(Now));
+    private static GoogleVertexAIEmbeddingModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, EmbeddingModelDescriptor descriptor, TimeProvider? timeProvider = null) => new(descriptor, new GoogleVertexAIProviderOptions { ProjectId = "my-project", Location = "us-central1" }, new GoogleVertexAIEmbeddingRequestTranslator(), new GoogleVertexAIEmbeddingResponseParser(), credentials, new HttpClient(handler), timeProvider ?? new FakeTimeProvider(Now));
     [Fact]
     public async Task GenerateAsync_WhenUsingOAuthCredential_SendsBearerHeaderAndPublisherModelUri()
     {
@@ -219,5 +219,174 @@ public sealed class GoogleVertexAIEmbeddingModelTests
         var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.Unavailable);
         _ = failed.Failure.DiagnosticCause.ShouldBeOfType<IOException>();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenCallerCancelsBeforeCredentialResolution_ReturnsCancelledResult()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response.json");
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("token", null)), descriptor);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var result = await model.GenerateAsync(CreateRequest(descriptor, Now.AddMinutes(1)), cts.Token);
+
+        var cancelled = result.ShouldBeOfType<EmbeddingAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenTranslatorRejectsUnsupportedEncoding_ReturnsInvalidRequestFailureWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/embedding_response.json");
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("token", null)), descriptor);
+        var context = new EmbeddingRequestContext(
+            new EmbeddingRequestId(Guid.NewGuid()),
+            descriptor,
+            new EmbeddingRequest([new TextEmbeddingInput("hello world", null)], EmbeddingPurpose.Unspecified, null, EmbeddingEncoding.Int8, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty));
+        var request = new EmbeddingModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var result = await model.GenerateAsync(request, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<NotSupportedException>();
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenCallerCancelsWhileSendIsInFlight_ReturnsCancelledResult()
+    {
+        var handler = new GatedSendHttpMessageHandler();
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("token", null)), descriptor);
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.GenerateAsync(CreateRequest(descriptor, Now.AddMinutes(1)), cancellation.Token);
+        (await Task.WhenAny(handler.Entered, pending)).ShouldBe(handler.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<EmbeddingAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenDeadlineExpiresWhileSendIsInFlight_ReturnsTimeoutFailure()
+    {
+        var clock = new FakeTimeProvider(Now);
+        var handler = new GatedSendHttpMessageHandler();
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("token", null)), descriptor, timeProvider: clock);
+
+        var pending = model.GenerateAsync(CreateRequest(descriptor, Now.AddSeconds(1)), TestContext.Current.CancellationToken);
+        (await Task.WhenAny(handler.Entered, pending)).ShouldBe(handler.Entered);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenDeadlineExpiresDuringErrorBodyRead_ReturnsTimeoutWithStatus()
+    {
+        var clock = new FakeTimeProvider(Now);
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+        {
+            Content = new StreamContent(body),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("token", null)), descriptor, timeProvider: clock);
+
+        var pending = model.GenerateAsync(CreateRequest(descriptor, Now.AddSeconds(1)), TestContext.Current.CancellationToken);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var result = await pending;
+
+        var failure = result.ShouldBeOfType<EmbeddingAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failure.StatusCode.ShouldBe(503);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenTransportTimesOutDuringErrorBodyRead_ReturnsTimeoutWithStatus()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StreamContent(new FaultingReadStream(static () => new TaskCanceledException("The transport timed out.", new TimeoutException()))),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("token", null)), descriptor);
+
+        var result = await model.GenerateAsync(CreateRequest(descriptor, Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<EmbeddingAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failure.StatusCode.ShouldBe(502);
+        _ = failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenCallerCancelsDuringSuccessBodyRead_ReturnsCancelledResult()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(body),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("token", null)), descriptor);
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.GenerateAsync(CreateRequest(descriptor, Now.AddMinutes(1)), cancellation.Token);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<EmbeddingAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenDeadlineExpiresDuringSuccessBodyRead_ReturnsTimeoutFailure()
+    {
+        var clock = new FakeTimeProvider(Now);
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(body),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("token", null)), descriptor, timeProvider: clock);
+
+        var pending = model.GenerateAsync(CreateRequest(descriptor, Now.AddSeconds(1)), TestContext.Current.CancellationToken);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenTransportTimesOutDuringSuccessBodyRead_ReturnsTypedTimeoutFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new FaultingReadStream(static () => new TaskCanceledException("The transport timed out.", new TimeoutException()))),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new OAuthTokenProviderCredential("token", null)), descriptor);
+
+        var result = await model.GenerateAsync(CreateRequest(descriptor, Now.AddMinutes(1)), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
     }
 }

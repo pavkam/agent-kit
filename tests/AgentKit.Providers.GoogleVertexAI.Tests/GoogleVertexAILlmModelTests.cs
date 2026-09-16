@@ -16,15 +16,15 @@ using AgentKit.TestSupport;
 public sealed class GoogleVertexAILlmModelTests
 {
     private static readonly DateTimeOffset Now = new(2025, 6, 1, 12, 0, 0, TimeSpan.Zero);
-    private static LlmModelRequest CreateRequest(ModelDescriptor descriptor)
+    private static LlmModelRequest CreateRequest(ModelDescriptor descriptor, DateTimeOffset? deadline = null)
     {
         var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), conversationId: null, new BranchId(Guid.NewGuid()), new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()), Now, MessageState.Complete, [new TextPart("Hi!", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
         var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [userMessage], [], LlmToolChoice.Auto, LlmRequestSettings.Default, ExtensionData.Empty);
-        return new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        return new LlmModelRequest(context, attempt: 1, deadline ?? Now.AddMinutes(1), ProviderRequestOptions.Empty);
     }
 
     private static ModelDescriptor CreateDescriptor(DeploymentId? deploymentId = null) => new(new ModelAlias("chat"), GoogleVertexAIProviderDefaults.ProviderId, GoogleVertexAIProviderDefaults.ApiFamily, new ModelId("gemini-2.5-flash"), deploymentId, GoogleVertexAIProviderDefaults.DefaultCapabilities, GoogleVertexAIProviderDefaults.DefaultLimits, pricing: null, ExtensionData.Empty);
-    private static GoogleVertexAILlmModel CreateModel(StubHttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor descriptor, bool preferStreaming = false) => new(descriptor, new GoogleVertexAIProviderOptions { ProjectId = "my-project", Location = "us-central1", PreferStreaming = preferStreaming }, new GoogleGeminiContentTranslator(), new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator()), credentials, new HttpClient(handler), new FakeTimeProvider(Now));
+    private static GoogleVertexAILlmModel CreateModel(HttpMessageHandler handler, IProviderCredentialSource credentials, ModelDescriptor descriptor, bool preferStreaming = false, TimeProvider? timeProvider = null) => new(descriptor, new GoogleVertexAIProviderOptions { ProjectId = "my-project", Location = "us-central1", PreferStreaming = preferStreaming }, new GoogleGeminiContentTranslator(), new GoogleGeminiResponseParser(new SequentialToolCallIdGenerator()), credentials, new HttpClient(handler), timeProvider ?? new FakeTimeProvider(Now));
     [Fact]
     public async Task ExecuteAsync_WhenUsingOAuthCredential_SendsBearerHeaderAndPublisherModelUri()
     {
@@ -395,6 +395,154 @@ public sealed class GoogleVertexAILlmModelTests
         failure.ProviderCode.ShouldBeNull();
         failure.SafeMessage.ShouldBe("The provider returned HTTP status 500.");
         _ = failure.DiagnosticCause.ShouldBeOfType<IOException>();
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    /// <summary>Verifies a translator NotSupportedException is mapped to a typed InvalidRequest failure without sending an HTTP request.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTranslatorRejectsUnsupportedSettings_ReturnsInvalidRequestFailureWithoutSendingHttpRequest()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var userMessage = new UserMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), conversationId: null, new BranchId(Guid.NewGuid()), new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()), Now, MessageState.Complete, [new TextPart("Hi!", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var settings = LlmRequestSettings.Default with { ParallelToolCalls = false };
+        var context = new LlmRequestContext(new ModelRequestId(Guid.NewGuid()), descriptor, [userMessage], [], LlmToolChoice.Auto, settings, ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.SafeMessage.ShouldBe("The request could not be translated for the Vertex AI generateContent wire format.");
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<NotSupportedException>();
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies caller cancellation while a request is still in flight (before any response) returns a typed cancellation.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenCallerCancelsWhileSendIsInFlight_ReturnsCancelledResult()
+    {
+        var handler = new GatedSendHttpMessageHandler();
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var observer = new RecordingModelResponseObserver();
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.ExecuteAsync(CreateRequest(descriptor), observer, cancellation.Token);
+        (await Task.WhenAny(handler.Entered, pending)).ShouldBe(handler.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+    }
+
+    /// <summary>Verifies the injected deadline cancels a request still in flight (before any response) without wall-clock waiting.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineExpiresWhileSendIsInFlight_ReturnsTimeoutFailure()
+    {
+        var clock = new FakeTimeProvider(Now);
+        var handler = new GatedSendHttpMessageHandler();
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, timeProvider: clock);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(descriptor, Now.AddSeconds(1)), observer, TestContext.Current.CancellationToken);
+        (await Task.WhenAny(handler.Entered, pending)).ShouldBe(handler.Entered);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+    }
+
+    /// <summary>Verifies the injected deadline cancels a blocked error-body read without wall-clock waiting.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineExpiresDuringErrorBodyRead_ReturnsTimeout()
+    {
+        var clock = new FakeTimeProvider(Now);
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StreamContent(body),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, timeProvider: clock);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(descriptor, Now.AddSeconds(1)), observer, TestContext.Current.CancellationToken);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var result = await pending;
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failure.StatusCode.ShouldBe(400);
+    }
+
+    /// <summary>Verifies the transport's own timeout while reading an error body is a typed timeout that keeps the HTTP status.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTransportTimesOutDuringErrorBodyRead_ReturnsTimeoutWithStatus()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StreamContent(new FaultingReadStream(static () => new TaskCanceledException("The transport timed out.", new TimeoutException()))),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failure.StatusCode.ShouldBe(502);
+        _ = failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
+    }
+
+    /// <summary>Verifies the injected deadline cancels a blocked success-body read without wall-clock waiting.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineExpiresDuringSuccessBodyRead_ReturnsTimeoutFailure()
+    {
+        var clock = new FakeTimeProvider(Now);
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(body),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor, timeProvider: clock);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(descriptor, Now.AddSeconds(1)), observer, TestContext.Current.CancellationToken);
+        (await Task.WhenAny(body.Entered, pending)).ShouldBe(body.Entered);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
+    }
+
+    /// <summary>Verifies the transport's own timeout while reading a success body is a typed timeout, never an escaping exception.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTransportTimesOutDuringSuccessBodyRead_ReturnsTypedTimeoutFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new FaultingReadStream(static () => new TaskCanceledException("The transport timed out.", new TimeoutException()))),
+        });
+        var descriptor = CreateDescriptor();
+        var model = CreateModel(handler, new StaticOAuthCredentialSource("gcp-access-token"), descriptor);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(descriptor), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<TaskCanceledException>();
         observer.Events.OfType<ModelResponseFailed>().Count().ShouldBe(1);
     }
 
