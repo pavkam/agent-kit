@@ -55,6 +55,238 @@ public sealed class SqliteSessionDirectoryTests
     }
 
     [Fact]
+    public async Task LocateAsync_WhenAuditDispatcherThrowsUnexpectedException_ReturnsUnavailable()
+    {
+        var directory = CreateDirectory(new ThrowingAuditDispatcher(), new RecordingGrantStore());
+        var context = Context();
+
+        var result = await directory.LocateAsync(
+            new AuthorizedSessionDirectoryRequest<SessionOperationContext>(
+                context, Grant(context, SecurityOperationKind.StateRead, SecurityEffect.Observe), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDirectoryLookupUnavailable("The directory authorization prerequisite is unavailable."));
+    }
+
+    [Fact]
+    public async Task LocateForCreateAsync_WhenRequiredAuditIsUnavailable_ReturnsUnavailable()
+    {
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditUnavailable("unavailable")), new RecordingGrantStore());
+        var create = CreateRequest("locate-for-create-unavailable");
+
+        var result = await directory.LocateForCreateAsync(
+            new AuthorizedSessionDirectoryRequest<SessionCreateRequest>(
+                create, Grant(create, SecurityOperationKind.StateRead, SecurityEffect.Observe), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDirectoryCreationLookupUnavailable(
+            "Required audit delivery is unavailable for the directory operation."));
+    }
+
+    [Fact]
+    public async Task LocateForCreateAsync_WhenGrantStoreReturnsWrongReceipt_ReturnsDenied()
+    {
+        var grants = new RecordingGrantStore { ReturnWrongReceipt = true };
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), grants);
+        var create = CreateRequest("locate-for-create-denied");
+
+        var result = await directory.LocateForCreateAsync(
+            new AuthorizedSessionDirectoryRequest<SessionCreateRequest>(
+                create, Grant(create, SecurityOperationKind.StateRead, SecurityEffect.Observe), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDirectoryCreationLookupDenied("Directory authorization could not be verified."));
+    }
+
+    [Fact]
+    public async Task RecordAsync_WhenRequiredAuditIsUnavailable_ReturnsUnavailable()
+    {
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditUnavailable("unavailable")), new RecordingGrantStore());
+        var context = Context();
+        var location = Location(context.SessionId.ToString(), "store-a", context.Identity.TenantId);
+        var write = new SessionDirectoryWriteRequest(context, location, new IdempotencyKey("record-unavailable"));
+
+        var result = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                write, Grant(context, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDirectoryWriteUnavailable("Required audit delivery is unavailable for the directory operation."));
+    }
+
+    [Fact]
+    public async Task RecordAsync_WhenGrantStoreReturnsWrongReceipt_ReturnsDenied()
+    {
+        var grants = new RecordingGrantStore { ReturnWrongReceipt = true };
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), grants);
+        var context = Context();
+        var location = Location(context.SessionId.ToString(), "store-a", context.Identity.TenantId);
+        var write = new SessionDirectoryWriteRequest(context, location, new IdempotencyKey("record-denied"));
+
+        var result = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                write, Grant(context, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDirectoryWriteDenied("Directory authorization could not be verified."));
+    }
+
+    [Fact]
+    public async Task RecordAsync_WhenRetriedWithSameIdempotencyKeyAndEvidence_ReturnsExistingLocation()
+    {
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore());
+        var context = Context();
+        var location = Location(context.SessionId.ToString(), "store-a", context.Identity.TenantId);
+        var write = new SessionDirectoryWriteRequest(context, location, new IdempotencyKey("record-replay"));
+
+        var first = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                write, Grant(context, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+        var second = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                write, Grant(context, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+
+        first.ShouldBe(new SessionLocationRecorded(location, existing: false));
+        second.ShouldBe(new SessionLocationRecorded(location, existing: true));
+    }
+
+    [Fact]
+    public async Task RecordAsync_WhenRetriedWithSameKeyAndDifferentStoreKey_ReturnsConflict()
+    {
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore());
+        var context = Context();
+        var first = new SessionDirectoryWriteRequest(
+            context, Location(context.SessionId.ToString(), "store-a", context.Identity.TenantId), new IdempotencyKey("record-diff"));
+        var second = new SessionDirectoryWriteRequest(
+            context, Location(context.SessionId.ToString(), "store-b", context.Identity.TenantId), new IdempotencyKey("record-diff"));
+
+        _ = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                first, Grant(context, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+        var result = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                second, Grant(context, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionLocationConflict>();
+        conflict.Existing.StoreKey.ShouldBe(new SessionStoreKey("store-a"));
+        conflict.RequestedStoreKey.ShouldBe(new SessionStoreKey("store-b"));
+    }
+
+    [Fact]
+    public async Task RecordAsync_WhenExistingLocationBelongsToAnotherOwner_ReturnsDenied()
+    {
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore());
+        var owner = Context();
+        var location = Location(owner.SessionId.ToString(), "store-a", owner.Identity.TenantId);
+        _ = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                new SessionDirectoryWriteRequest(owner, location, new IdempotencyKey("record-owner-1")),
+                Grant(owner, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+        // Same tenant, different principal, and a fresh idempotency key so the write-route lookup misses.
+        var otherIdentity = TestExecutionIdentity.Create(owner.Identity.TenantId, new PrincipalId("someone-else"), ExecutionSubjectKind.Human);
+        var otherPrincipal = new SessionOperationContext(
+            owner.AgentId, owner.SessionId, null, owner.Correlation, otherIdentity,
+            Authorization(owner.AgentId, owner.SessionId, owner.Correlation, otherIdentity));
+
+        var result = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                new SessionDirectoryWriteRequest(otherPrincipal, location, new IdempotencyKey("record-owner-2")),
+                Grant(otherPrincipal, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDirectoryWriteDenied("The directory route cannot be recorded."));
+    }
+
+    [Fact]
+    public async Task RecordAsync_WhenExistingLocationMatchesAndNewKeyRetried_ReturnsExistingAsExisting()
+    {
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore());
+        var context = Context();
+        var location = Location(context.SessionId.ToString(), "store-a", context.Identity.TenantId);
+        _ = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                new SessionDirectoryWriteRequest(context, location, new IdempotencyKey("record-second-key-1")),
+                Grant(context, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+
+        // A fresh idempotency key against the exact same address, tenant, owner, and store key indexes a new
+        // write route but resolves to the already-committed location.
+        var result = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                new SessionDirectoryWriteRequest(context, location, new IdempotencyKey("record-second-key-2")),
+                Grant(context, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionLocationRecorded(location, existing: true));
+    }
+
+    [Fact]
+    public async Task RecordCreateAsync_WhenRequiredAuditIsUnavailable_ReturnsUnavailable()
+    {
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditUnavailable("unavailable")), new RecordingGrantStore());
+        var create = CreateRequest("record-create-unavailable");
+        var location = Location("22222222-2222-2222-2222-222222222222", "store-a");
+
+        var result = await directory.RecordCreateAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>(
+                new SessionDirectoryCreateRecordRequest(create, location),
+                Grant(create, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDirectoryWriteUnavailable("Required audit delivery is unavailable for the directory operation."));
+    }
+
+    [Fact]
+    public async Task RecordCreateAsync_WhenGrantStoreReturnsWrongReceipt_ReturnsDenied()
+    {
+        var grants = new RecordingGrantStore { ReturnWrongReceipt = true };
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), grants);
+        var create = CreateRequest("record-create-denied");
+        var location = Location("22222222-2222-2222-2222-222222222222", "store-a");
+
+        var result = await directory.RecordCreateAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>(
+                new SessionDirectoryCreateRecordRequest(create, location),
+                Grant(create, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDirectoryWriteDenied("Directory authorization could not be verified."));
+    }
+
+    [Fact]
+    public async Task ListAsync_WhenRequiredAuditIsUnavailable_ReturnsUnavailable()
+    {
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditUnavailable("unavailable")), new RecordingGrantStore());
+        var request = ListRequest();
+
+        var result = await directory.ListAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest>(request, Grant(request), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDirectoryListUnavailable("Required audit delivery is unavailable for the directory operation."));
+    }
+
+    [Fact]
+    public async Task ListAsync_WhenGrantStoreReturnsWrongReceipt_ReturnsUnavailable()
+    {
+        var grants = new RecordingGrantStore { ReturnWrongReceipt = true };
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), grants);
+        var request = ListRequest();
+
+        var result = await directory.ListAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest>(request, Grant(request), Intent()),
+            TestContext.Current.CancellationToken);
+
+        // ListAsync intentionally maps a denial the same way as an unavailability (see SqliteSessionDirectory.ListCoreAsync).
+        result.ShouldBe(new SessionDirectoryListUnavailable("Directory authorization could not be verified."));
+    }
+
+    [Fact]
     public async Task RecordCreateAsync_WhenReplayHasEquivalentOriginalRequest_ReturnsWinningRouteWithoutRebinding()
     {
         var audits = new RecordingAuditDispatcher(new SecurityAuditAccepted());
@@ -409,7 +641,7 @@ public sealed class SqliteSessionDirectoryTests
     }
 
     private static SqliteSessionDirectory CreateDirectory(
-        RecordingAuditDispatcher audits,
+        ISecurityAuditDispatcher audits,
         RecordingGrantStore grants,
         Microsoft.Extensions.Logging.ILogger<SqliteSessionDirectory>? logger = null)
     {
@@ -507,6 +739,13 @@ public sealed class SqliteSessionDirectoryTests
     private static SecurityEnforcementIntent Intent() => new(
         new SecurityEnforcementIntentId(Guid.NewGuid()),
         requiredFence: null);
+
+    /// <summary>An audit dispatcher that always throws, to exercise the directory's catch-all authorization failure path.</summary>
+    private sealed class ThrowingAuditDispatcher: ISecurityAuditDispatcher
+    {
+        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Simulated audit dispatch failure.");
+    }
 
     private sealed class RecordingAuditDispatcher(SecurityAuditDispatchResult result): ISecurityAuditDispatcher
     {
