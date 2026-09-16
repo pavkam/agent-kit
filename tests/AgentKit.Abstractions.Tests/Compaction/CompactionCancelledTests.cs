@@ -87,4 +87,12 @@ public sealed class CompactionCancelledTests
     private static CompactionOperationContext Context() => TestSupport.TestSecurityEvidence.CompactionContext(new CompactionId(_fixedCompactionGuid), new AgentId(_fixedAgentGuid), new SessionId(_fixedSessionGuid), Correlation(), Identity());
     private static CompactionManifest Manifest() => new(new CompactionManifestId(Guid.Parse("66666666-6666-6666-6666-666666666666")), Context(), new BranchId(Guid.Parse("44444444-4444-4444-4444-444444444444")), new SessionVersion(1), new CompactionSourceRange(new SessionSequence(1), new SessionSequence(2)), new SessionSequence(3), new CompactionProducer(new CompactionStrategyKey("test"), deterministic: true, ExtensionData.Empty), new ContextEpoch(0), new CompactionSizeEstimate(10, 10, 1), new CompactionSizeEstimate(5, 5, 1), DateTimeOffset.UnixEpoch, ExtensionData.Empty);
     private static CompactionRecord Record() => new(Context(), new SessionVersion(1), new SessionVersion(2), CompactionRecordStatus.Active, Manifest(), new CompactionCheckpoint([new TextPart("summary", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty), supersedes: null, rejection: null, DateTimeOffset.UnixEpoch, ExtensionData.Empty);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new CompactionCancelled(Context(), CompactionCommitState.NotAttempted, "cancelled");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

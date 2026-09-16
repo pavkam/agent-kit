@@ -11,4 +11,12 @@ public sealed class CompactionRejectionTests
     [Fact]
     public void CompactionRejection_Equality_WhenSameValues_InstancesAreEqual() => Rejection().ShouldBe(Rejection());
     private static CompactionRejection Rejection() => new(CompactionRejectionKind.NoSafeCut, "no safe cut", ExtensionData.Empty);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Rejection();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

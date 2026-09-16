@@ -21,4 +21,12 @@ public sealed class CompactionNotReducingTests
     private static readonly Guid _fixedAgentGuid = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly Guid _fixedSessionGuid = Guid.Parse("33333333-3333-3333-3333-333333333333");
     private static CompactionOperationContext Context() => TestSupport.TestSecurityEvidence.CompactionContext(new CompactionId(_fixedCompactionGuid), new AgentId(_fixedAgentGuid), new SessionId(_fixedSessionGuid), Correlation(), Identity());
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new CompactionNotReducing(Context(), new CompactionSizeEstimate(1, 1, 1), new CompactionSizeEstimate(1, 1, 1), 0.5);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

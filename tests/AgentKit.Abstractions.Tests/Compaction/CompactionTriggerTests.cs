@@ -11,4 +11,12 @@ public sealed class CompactionTriggerTests
     [Fact]
     public void CompactionTrigger_Equality_WhenSameValues_InstancesAreEqual() => Trigger().ShouldBe(Trigger());
     private static CompactionTrigger Trigger() => new(CompactionTriggerKind.ExplicitMaintenance, "test", null);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Trigger();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

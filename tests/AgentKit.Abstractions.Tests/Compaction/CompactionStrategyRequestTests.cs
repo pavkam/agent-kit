@@ -28,4 +28,12 @@ public sealed class CompactionStrategyRequestTests
     private static CompactionSourceSnapshot Snapshot(ImmutableArray<SessionEntry> entries) => new(Context(), new BranchId(Guid.Parse("44444444-4444-4444-4444-444444444444")), new SessionVersion(1), new SessionSequence(1), entries);
     private static CompactionCut Cut() => new(Range(), new SessionSequence(3), [new SessionEntryId(Guid.Parse("55555555-5555-5555-5555-555555555555"))]);
     private static CompactionStrategyRequest StrategyRequest() => new(Request(), Snapshot(), Cut());
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = StrategyRequest();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

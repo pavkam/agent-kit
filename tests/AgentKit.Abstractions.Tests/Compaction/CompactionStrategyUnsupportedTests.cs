@@ -11,4 +11,12 @@ public sealed class CompactionStrategyUnsupportedTests
     [Fact]
     public void CompactionStrategyUnsupported_Equality_WhenSameValues_InstancesAreEqual() => new CompactionStrategyUnsupported(Rejection()).ShouldBe(new CompactionStrategyUnsupported(Rejection()));
     private static CompactionRejection Rejection() => new(CompactionRejectionKind.NoSafeCut, "no safe cut", ExtensionData.Empty);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new CompactionStrategyUnsupported(Rejection());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

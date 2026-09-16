@@ -10,4 +10,12 @@ public sealed class CompactionSizeEstimateTests
 {
     [Fact]
     public void CompactionSizeEstimate_Equality_WhenSameValues_InstancesAreEqual() => new CompactionSizeEstimate(1, 2, 3).ShouldBe(new CompactionSizeEstimate(1, 2, 3));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new CompactionSizeEstimate(1, 2, 3);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

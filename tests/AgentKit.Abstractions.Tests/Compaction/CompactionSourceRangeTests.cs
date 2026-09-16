@@ -17,4 +17,12 @@ public sealed class CompactionSourceRangeTests
 
     [Fact]
     public void CompactionSourceRange_Equality_WhenSameValues_InstancesAreEqual() => new CompactionSourceRange(new SessionSequence(1), new SessionSequence(2)).ShouldBe(new CompactionSourceRange(new SessionSequence(1), new SessionSequence(2)));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new CompactionSourceRange(new SessionSequence(1), new SessionSequence(2));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

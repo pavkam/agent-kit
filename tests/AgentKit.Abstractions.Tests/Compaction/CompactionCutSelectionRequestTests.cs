@@ -25,4 +25,12 @@ public sealed class CompactionCutSelectionRequestTests
     private static CompactionRequest Request() => new(Context(), new BranchId(Guid.Parse("44444444-4444-4444-4444-444444444444")), new SessionVersion(1), new SessionSequence(1), new ContextEpoch(0), Trigger(), 100, 0.5, 1, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(5), ExtensionData.Empty);
     private static CompactionSourceSnapshot Snapshot() => Snapshot([]);
     private static CompactionSourceSnapshot Snapshot(ImmutableArray<SessionEntry> entries) => new(Context(), new BranchId(Guid.Parse("44444444-4444-4444-4444-444444444444")), new SessionVersion(1), new SessionSequence(1), entries);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new CompactionCutSelectionRequest(Request(), Snapshot());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

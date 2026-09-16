@@ -27,4 +27,12 @@ public sealed class CompactionCutTests
 
     private static CompactionSourceRange Range() => new(new SessionSequence(1), new SessionSequence(2));
     private static CompactionCut Cut() => new(Range(), new SessionSequence(3), [new SessionEntryId(Guid.Parse("55555555-5555-5555-5555-555555555555"))]);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Cut();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

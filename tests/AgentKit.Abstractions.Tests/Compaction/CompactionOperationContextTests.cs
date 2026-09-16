@@ -9,7 +9,13 @@ using AgentKit;
 public sealed class CompactionOperationContextTests
 {
     [Fact]
-    public void CompactionOperationContext_Equality_WhenSameValues_InstancesAreEqual() => Context().ShouldBe(Context());
+    public void CompactionOperationContext_Equality_WhenSameValues_InstancesAreEqual()
+    {
+        var context = Context();
+        context.ShouldBe(Context());
+        _ = context.Authorization.ShouldNotBeNull();
+        _ = context.SessionProfile.ShouldNotBeNull();
+    }
     private static readonly Guid _fixedOperationGuid = Guid.Parse("88888888-8888-8888-8888-888888888888");
     private static readonly Guid _fixedRunGuid = Guid.Parse("99999999-9999-9999-9999-999999999999");
     private static InRunOperationCorrelation Correlation() => new(new OperationId(_fixedOperationGuid), new RunId(_fixedRunGuid), null);
@@ -21,4 +27,12 @@ public sealed class CompactionOperationContextTests
     private static readonly Guid _fixedAgentGuid = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly Guid _fixedSessionGuid = Guid.Parse("33333333-3333-3333-3333-333333333333");
     private static CompactionOperationContext Context() => TestSupport.TestSecurityEvidence.CompactionContext(new CompactionId(_fixedCompactionGuid), new AgentId(_fixedAgentGuid), new SessionId(_fixedSessionGuid), Correlation(), Identity());
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Context();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

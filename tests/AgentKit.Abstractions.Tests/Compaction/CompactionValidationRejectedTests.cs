@@ -18,7 +18,21 @@ public sealed class CompactionValidationRejectedTests
     [Fact]
     public void CompactionValidationRejected_Constructor_WhenIssuesEmpty_ThrowsArgumentException() => _ = Should.Throw<ArgumentException>(() => new CompactionValidationRejected([]));
     [Fact]
-    public void CompactionValidationRejected_Equality_WhenSameValues_InstancesAreEqual() => new CompactionValidationRejected([Issue()]).ShouldBe(new CompactionValidationRejected([Issue()]));
+    public void CompactionValidationRejected_Equality_WhenSameValues_InstancesAreEqual()
+    {
+        var first = new CompactionValidationRejected([Issue()]);
+        var second = new CompactionValidationRejected([Issue()]);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new CompactionValidationRejected([Issue()]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
     [Fact]
     public void CompactionValidationRejected_Equality_WhenDifferentIssues_InstancesAreNotEqual()
     {

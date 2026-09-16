@@ -11,4 +11,12 @@ public sealed class CompactionProducerTests
     [Fact]
     public void CompactionProducer_Equality_WhenSameValues_InstancesAreEqual() => Producer().ShouldBe(Producer());
     private static CompactionProducer Producer() => new(new CompactionStrategyKey("test"), deterministic: true, ExtensionData.Empty);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Producer();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

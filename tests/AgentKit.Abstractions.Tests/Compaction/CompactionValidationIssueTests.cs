@@ -16,7 +16,21 @@ public sealed class CompactionValidationIssueTests
     }
 
     [Fact]
-    public void CompactionValidationIssue_Equality_WhenSameValues_InstancesAreEqual() => Issue().ShouldBe(Issue());
+    public void CompactionValidationIssue_Equality_WhenSameValues_InstancesAreEqual()
+    {
+        var first = Issue();
+        var second = Issue();
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Issue();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
     [Fact]
     public void CompactionValidationIssue_Equality_WhenDifferentSourceEntryIds_InstancesAreNotEqual()
     {

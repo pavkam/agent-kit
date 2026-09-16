@@ -48,4 +48,12 @@ public sealed class CompactionConflictTests
     private static CompactionSourceRange Range() => new(new SessionSequence(1), new SessionSequence(2));
     private static CompactionProducer Producer() => new(new CompactionStrategyKey("test"), deterministic: true, ExtensionData.Empty);
     private static CompactionManifest Manifest() => new(new CompactionManifestId(Guid.Parse("66666666-6666-6666-6666-666666666666")), Context(), new BranchId(Guid.Parse("44444444-4444-4444-4444-444444444444")), new SessionVersion(1), Range(), new SessionSequence(3), Producer(), new ContextEpoch(0), new CompactionSizeEstimate(10, 10, 1), new CompactionSizeEstimate(5, 5, 1), DateTimeOffset.UnixEpoch, ExtensionData.Empty);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new CompactionConflict(Context(), new SessionVersion(1), new SessionVersion(2), Manifest());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

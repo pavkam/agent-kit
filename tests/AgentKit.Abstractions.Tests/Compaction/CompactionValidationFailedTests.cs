@@ -18,4 +18,12 @@ public sealed class CompactionValidationFailedTests
     [Fact]
     public void CompactionValidationFailed_Equality_WhenSameValues_InstancesAreEqual() => new CompactionValidationFailed(Failure()).ShouldBe(new CompactionValidationFailed(Failure()));
     private static CompactionFailure Failure() => new(CompactionFailureKind.Unknown, "unknown", retryable: false, ExtensionData.Empty);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new CompactionValidationFailed(Failure());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
