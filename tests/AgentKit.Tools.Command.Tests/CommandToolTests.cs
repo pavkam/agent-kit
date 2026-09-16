@@ -38,6 +38,36 @@ public sealed class CommandToolTests
     }
 
     [Fact]
+    public async Task InvokeAsync_WhenCommandContainsNul_RejectsWithoutResolution()
+    {
+        var resolver = new RecordingProcessResolver();
+        var json = JsonSerializer.Serialize(new { command = "echo\0hi" });
+
+        var result = await CreateTool(resolver, new RecordingProcessRunner(), new RecordingSecurityAuthority()).InvokeAsync(
+            Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.FailureReason.ShouldBe("The command contains NUL or exceeds the configured byte boundary.");
+        resolver.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenCommandExceedsMaximumBytes_RejectsWithoutResolution()
+    {
+        var resolver = new RecordingProcessResolver();
+        var options = OptionsForTool();
+        options.MaximumCommandBytes = 4;
+        var json = JsonSerializer.Serialize(new { command = "a very long command" });
+
+        var result = await CreateTool(resolver, new RecordingProcessRunner(), new RecordingSecurityAuthority(), options).InvokeAsync(
+            Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        result.Outcome.FailureReason.ShouldBe("The command contains NUL or exceeds the configured byte boundary.");
+        resolver.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenResolutionFails_DoesNotRequestAuthorityOrExecute()
     {
         var resolver = new RecordingProcessResolver
@@ -281,17 +311,26 @@ public sealed class CommandToolTests
         runner.Requests.ShouldBeEmpty();
     }
 
+    [Fact]
+    public void Descriptor_WhenAccessed_MatchesPresentationDescriptor()
+    {
+        var tool = CreateTool(new RecordingProcessResolver(), new RecordingProcessRunner(), new RecordingSecurityAuthority());
+
+        tool.Descriptor.ShouldBeSameAs(CommandTool.PresentationDescriptor);
+    }
+
     private static CommandTool CreateTool(
         IProcessIntentResolver resolver,
         IProcessRunner runner,
-        ISecurityAuthority authority) => new(
+        ISecurityAuthority authority,
+        CommandToolOptions? options = null) => new(
             resolver,
             runner,
             authority,
             new FixedSecurityRequestIdGenerator(),
             new FixedProcessOperationIdGenerator(),
             new FixedTimeProvider(),
-            Options.Create(OptionsForTool()));
+            Options.Create(options ?? OptionsForTool()));
 
     private static CommandToolOptions OptionsForTool()
     {

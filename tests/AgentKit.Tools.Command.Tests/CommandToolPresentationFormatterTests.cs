@@ -50,6 +50,82 @@ public sealed class CommandToolPresentationFormatterTests
     }
 
     [Fact]
+    public async Task FormatAsync_WhenSourceIsUnrecognized_ReturnsNull()
+    {
+        var formatter = new CommandToolPresentationFormatter();
+
+        var presentation = await formatter.FormatAsync(
+            new ToolPresentationRequest(formatter.Descriptor, new UnsupportedPresentationSource(), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData(/*lang=json,strict*/ "{\"command\":1}")]
+    [InlineData(/*lang=json,strict*/ "{\"command\":\"x\",\"working_directory\":1}")]
+    public async Task FormatAsync_WhenCallIsMalformed_ReturnsNull(string json)
+    {
+        var formatter = new CommandToolPresentationFormatter();
+        using var document = JsonDocument.Parse(json);
+        var call = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("command"), null, null),
+            document.RootElement.Clone(), null, ExtensionData.Empty);
+
+        var presentation = await formatter.FormatAsync(
+            new ToolPresentationRequest(formatter.Descriptor, new ToolCallPresentationSource(call), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultContentIsEmpty_RendersOnlySummary()
+    {
+        var formatter = new CommandToolPresentationFormatter();
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("command"), null, null),
+            new ToolCallOutcome(ToolCallOutcomeKind.Rejected, ToolTerminalStatus.Denied, SideEffectCertainty.DefinitelyNotPerformed, false, "Denied.", ExtensionData.Empty),
+            [], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await formatter.FormatAsync(
+            new ToolPresentationRequest(formatter.Descriptor, new ToolResultPresentationSource(result), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("Outcome: Denied\nDenied.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultContentIsNotOneTextPart_ReturnsNull()
+    {
+        var formatter = new CommandToolPresentationFormatter();
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("command"), null, null),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+            [new TextPart("{}", TextSemantics.Code, ExtensionData.Empty), new TextPart("{}", TextSemantics.Code, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await formatter.FormatAsync(
+            new ToolPresentationRequest(formatter.Descriptor, new ToolResultPresentationSource(result), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenStreamHasNeitherTextNorBase64_LabelsItUnavailable()
+    {
+        var presentation = await FormatResultAsync(JsonSerializer.Serialize(new
+        {
+            exit_code = 0,
+        }));
+
+        var parts = presentation.ShouldNotBeNull().Parts;
+        parts[1].Text.ShouldBe("stdout: unavailable");
+        parts[2].Text.ShouldBe("stderr: unavailable");
+    }
+
+    [Fact]
     public async Task FormatAsync_WhenCallHasWorkingDirectory_PreservesDirectoryAndShellText()
     {
         var formatter = new CommandToolPresentationFormatter();
