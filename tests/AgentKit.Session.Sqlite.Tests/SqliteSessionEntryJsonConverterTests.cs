@@ -25,6 +25,43 @@ public sealed class SqliteSessionEntryJsonConverterTests
         reopened.ShouldBeOfType<MessageSessionEntry>().SchemaVersion.ShouldBe(new SchemaVersion("1"));
     }
 
+    [Fact]
+    public void Read_WhenCodecReportsDecodeRejected_ThrowsJsonExceptionWithReason()
+    {
+        var codecs = new FixedResultCodecCatalog(decodeResult: new SessionEntryDecodeRejected("malformed payload"));
+        var options = Options(codecs);
+        var persisted = JsonSerializer.Serialize<SessionEntry>(MessageEntry(), Options(Catalog()));
+
+        var exception = Should.Throw<JsonException>(() => JsonSerializer.Deserialize<SessionEntry>(persisted, options));
+
+        exception.Message.ShouldBe("malformed payload");
+    }
+
+    [Fact]
+    public void Read_WhenCodecReportsOpaque_ThrowsJsonException()
+    {
+        var persisted = JsonSerializer.Serialize<SessionEntry>(MessageEntry(), Options(Catalog()));
+        var codecs = new FixedResultCodecCatalog(
+            decodeResult: new SessionEntryOpaque(
+                new SessionEntryWireEnvelope(new SessionEntryTypeId("unknown"), new SchemaVersion("1"), [0])));
+        var options = Options(codecs);
+
+        var exception = Should.Throw<JsonException>(() => JsonSerializer.Deserialize<SessionEntry>(persisted, options));
+
+        exception.Message.ShouldBe("The persisted session entry codec is unavailable.");
+    }
+
+    [Fact]
+    public void Write_WhenCodecRejectsEncode_ThrowsJsonException()
+    {
+        var codecs = new FixedResultCodecCatalog(encodeResult: new SessionEntryEncodeRejected("no codec"));
+        var options = Options(codecs);
+
+        var exception = Should.Throw<JsonException>(() => JsonSerializer.Serialize<SessionEntry>(MessageEntry(), options));
+
+        exception.Message.ShouldBe("The session entry has no durable codec.");
+    }
+
     private static SessionEntryCodecCatalog Catalog() => new(
         [new MessageSessionEntryCodec()],
         TimeProvider.System);
@@ -34,6 +71,17 @@ public sealed class SqliteSessionEntryJsonConverterTests
         var options = new JsonSerializerOptions();
         options.Converters.Add(new SqliteSessionEntryJsonConverterFactory(catalog));
         return options;
+    }
+
+    /// <summary>A codec catalog that returns a fixed configured result, to drive the converter's typed failure paths.</summary>
+    private sealed class FixedResultCodecCatalog(
+        SessionEntryEncodeResult? encodeResult = null, SessionEntryDecodeResult? decodeResult = null): ISessionEntryCodecCatalog
+    {
+        public SessionEntryEncodeResult Encode(SessionEntry entry) =>
+            encodeResult ?? throw new InvalidOperationException("This test catalog does not encode.");
+
+        public SessionEntryDecodeResult Decode(SessionEntryWireEnvelope wire) =>
+            decodeResult ?? throw new InvalidOperationException("This test catalog does not decode.");
     }
 
     private static MessageSessionEntry MessageEntry()
