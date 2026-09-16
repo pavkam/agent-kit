@@ -106,6 +106,102 @@ public sealed class OpenAIChatCompletionResponseParserTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenMessageCarriesReasoningContent_EmitsReasoningPartBeforeText()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        const string json = /*lang=json,strict*/ """
+            {"id":"chatcmpl-reasoning","model":"gpt-4o","choices":[{"index":0,"message":{"role":"assistant","content":"The answer is 4.","reasoning_content":"2 + 2 = 4"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":4,"total_tokens":9}}
+            """;
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.Length.ShouldBe(2);
+        var reasoningPart = completed.Response.Parts[0].ShouldBeOfType<ReasoningPart>();
+        reasoningPart.Content.Text.ShouldBe("2 + 2 = 4");
+        var textPart = completed.Response.Parts[1].ShouldBeOfType<TextPart>();
+        textPart.Text.ShouldBe("The answer is 4.");
+        var deltaEvents = observer.Events.OfType<ModelPartDelta>().ToArray();
+        _ = deltaEvents[0].Delta.ShouldBeOfType<ReasoningContentDelta>();
+        _ = deltaEvents[1].Delta.ShouldBeOfType<TextContentDelta>();
+        observer.Events.Select(e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(i => (long) i));
+    }
+
+    public static TheoryData<string?, NormalizedStopReason> FinishReasonMappings => new()
+    {
+        { "length", NormalizedStopReason.Length },
+        { "content_filter", NormalizedStopReason.Error },
+        { null, NormalizedStopReason.Pending },
+        { "some_unrecognized_reason", NormalizedStopReason.Error },
+    };
+
+    [Theory]
+    [MemberData(nameof(FinishReasonMappings))]
+    public async Task ParseBufferedAsync_WhenFinishReasonVaries_MapsToExpectedStopReason(string? finishReason, NormalizedStopReason expected)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var finishReasonJson = finishReason is null ? "null" : $"\"{finishReason}\"";
+        var json = "{\"id\":\"chatcmpl-fr\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":"
+            + finishReasonJson
+            + "}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}";
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(expected);
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenToolCallArgumentsAreWhitespace_ParsesAsEmptyObject()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        const string json = /*lang=json,strict*/ """
+            {"id":"chatcmpl-empty-args","model":"gpt-4o","choices":[{"index":0,"message":{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"   "}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
+            """;
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts[0].ShouldBeOfType<ToolCallPart>();
+        toolCall.Arguments.ValueKind.ShouldBe(JsonValueKind.Object);
+        toolCall.Arguments.EnumerateObject().Any().ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenUnindexedToolCallFragmentHasNoId_ContinuesMostRecentlyOpenedSlot()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"id":"chatcmpl-unindexed","object":"chat.completion.chunk","created":1700000200,"model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"call_only","type":"function","function":{"name":"get_weather","arguments":"{\"lo"}}]},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl-unindexed","object":"chat.completion.chunk","created":1700000200,"model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"function":{"arguments":"cation\":\"Paris\"}"}}]},"finish_reason":"tool_calls"}]}
+
+            data: [DONE]
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_only"));
+        toolCall.Arguments.GetProperty("location").GetString().ShouldBe("Paris");
+    }
+
+    [Fact]
     public async Task ParseBufferedAsync_WhenUsageIsAbsent_ReportsEmptyUsageWithoutEmittingUsageEvent()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
@@ -353,6 +449,34 @@ public sealed class OpenAIChatCompletionResponseParserTests
         failed.Failure.Kind.ShouldNotBe(ProviderFailureKind.ProtocolViolation);
         failed.Failure.ProviderCode.ShouldBe("rate_limit_exceeded");
         failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hel");
+    }
+
+    public static TheoryData<string, ProviderFailureKind> StreamingErrorFrameKinds => new()
+    {
+        { "authentication_error", ProviderFailureKind.Authentication },
+        { "permission_error", ProviderFailureKind.Authorization },
+        { "invalid_request_error", ProviderFailureKind.InvalidRequest },
+        { "server_error", ProviderFailureKind.Unavailable },
+        { "overloaded_error", ProviderFailureKind.Unavailable },
+        { "some_unrecognized_error", ProviderFailureKind.Unknown },
+    };
+
+    [Theory]
+    [MemberData(nameof(StreamingErrorFrameKinds))]
+    public async Task ParseStreamingAsync_WhenChunkContainsErrorObject_MapsErrorTypeToExpectedKind(string errorType, ProviderFailureKind expectedKind)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new OpenAIChatCompletionResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            "data: {\"error\":{\"message\":\"failure\",\"type\":\"" + errorType + "\",\"code\":\"" + errorType + "\"}}\n\ndata: [DONE]\n\n");
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(expectedKind);
+        failed.Failure.ProviderCode.ShouldBe(errorType);
     }
 
     [Fact]
