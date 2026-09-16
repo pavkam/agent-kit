@@ -107,6 +107,22 @@ internal static class SessionsTestData
             1);
     }
 
+    public static SessionRunStartRequest RunStartRequest()
+    {
+        var context = BeforeRunContext();
+        var promotionEntryId = new SessionEntryId(Guid.Parse("a0000000-0000-0000-0000-000000000014"));
+        var materializedEntryId = new SessionEntryId(Guid.Parse("a0000000-0000-0000-0000-000000000015"));
+        var acceptedEntryId = new SessionEntryId(Guid.Parse("a0000000-0000-0000-0000-000000000016"));
+        var messageId = new MessageId(Guid.Parse("a0000000-0000-0000-0000-000000000017"));
+        var configuration = Configuration();
+        var inRunAuthorization = Authorization(InRun(), SessionId, configuration.ConfigurationVersion);
+        return new SessionRunStartRequest(
+            context, AdmissionId, [AdmissionId], new SessionSequence(1), new SessionLaneRevision(1),
+            new SessionVersion(1), Cursor(), null, RunId, TurnId, promotionEntryId, [materializedEntryId],
+            [messageId], acceptedEntryId, new OperationStateRevision(1), ProfileReference(), configuration,
+            inRunAuthorization, DateTimeOffset.UnixEpoch, new IdempotencyKey("start"));
+    }
+
     public static SessionAcceptedRunState AcceptedRunState()
     {
         var correlation = InRun();
