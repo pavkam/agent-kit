@@ -65,6 +65,72 @@ public sealed class DefaultSessionRunCoordinatorTests
     }
 
     [Fact]
+    public void Release_WhenNoSlotWasEverAcquired_IsANoOp()
+    {
+        var scenario = Scenario.Create();
+
+        Should.NotThrow(() => scenario.Coordinator.Release(scenario.Request.Context.Identity.TenantId,
+            scenario.Request.Context.ToAddress(), scenario.Request.ExecutionLaneId,
+            new SessionLeaseId(Guid.NewGuid())));
+    }
+
+    [Fact]
+    public async Task Release_WhenLeaseIdDoesNotMatchCurrentOwner_DoesNotFreeTheLane()
+    {
+        var scenario = Scenario.Create();
+        var acquired = (SessionRunLeaseAcquired) await scenario.Coordinator.AcquireAsync(
+            scenario.Request, scenario.Capability, TestContext.Current.CancellationToken);
+
+        scenario.Coordinator.Release(scenario.Request.Context.Identity.TenantId,
+            scenario.Request.Context.ToAddress(), scenario.Request.ExecutionLaneId,
+            new SessionLeaseId(Guid.NewGuid()));
+        var busy = await scenario.Coordinator.AcquireAsync(scenario.Request, scenario.Capability,
+            TestContext.Current.CancellationToken);
+
+        _ = busy.ShouldBeOfType<SessionRunBusy>();
+        await acquired.Lease.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task AcquireAsync_WhenProfileRequiresDistributedFencing_ReturnsUnavailable()
+    {
+        var scenario = Scenario.Create();
+        var fencingProfile = new SessionProfileSnapshot(scenario.Profile.Reference, scenario.Profile.CoordinatorKey,
+            scenario.Profile.RunCoordinatorKey, scenario.Profile.DefaultStoreKey,
+            scenario.Profile.RequiredStoreCapabilities, scenario.Profile.RequiresDurableStore,
+            requiresDistributedFencing: true, scenario.Profile.RetentionProfile, scenario.Profile.BusyBehavior,
+            scenario.Profile.MaximumAppendEntries, scenario.Profile.MaximumPageSize,
+            scenario.Profile.VerifySnapshotHashes, scenario.Profile.DeleteOnDispose,
+            scenario.Profile.ConfigurationFingerprint);
+        var capability = new SessionExecutionCapability(fencingProfile, scenario.SessionCoordinator,
+            scenario.Coordinator);
+
+        var result = await scenario.Coordinator.AcquireAsync(scenario.Request, capability,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunLeaseUnavailable>().SafeReason.ShouldBe(
+            "The selected profile requires distributed fencing unavailable from the local coordinator.");
+        scenario.SessionCoordinator.LoadCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_WhenLoadThrowsCancellation_LogsCancelledAndStillFreesTheLaneLocally()
+    {
+        var scenario = Scenario.Create();
+        var acquired = (SessionRunLeaseAcquired) await scenario.Coordinator.AcquireAsync(
+            scenario.Request, scenario.Capability, TestContext.Current.CancellationToken);
+        scenario.SessionCoordinator.OnLoad = (_, _, _) => throw new OperationCanceledException("load cancelled");
+
+        await acquired.Lease.ReleaseAsync(TestContext.Current.CancellationToken);
+        var reacquired = await scenario.Coordinator.AcquireAsync(scenario.Request, scenario.Capability,
+            TestContext.Current.CancellationToken);
+
+        scenario.SessionCoordinator.ReleaseCalls.ShouldBeEmpty();
+        _ = reacquired.ShouldBeOfType<SessionRunLeaseAcquired>();
+        await ((SessionRunLeaseAcquired) reacquired).Lease.DisposeAsync();
+    }
+
+    [Fact]
     public async Task AcquireAsync_WhenCanonicalStateMatches_ReturnsExactLease()
     {
         var scenario = Scenario.Create();
