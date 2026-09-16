@@ -734,6 +734,48 @@ public sealed class InMemoryBudgetLedgerTests: BudgetLedgerConformanceTests<InMe
         public T Create() => value;
     }
 
+    /// <summary>Verifies a scope limit whose unit conflicts with a non-immediate ancestor's captured limit is rejected.</summary>
+    [Fact]
+    public async Task CreateScopeAsync_WhenLimitUnitConflictsWithNonImmediateAncestorLimit_ReturnsInvalidLimitRejection()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var admission = new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5));
+        var root = (await ledger.CreateScopeAsync(new(new(null, Address(), [new(new("test.multi-unit"), 100, new("count"), BudgetLimitKind.Hard)], new("ancestor-unit-root")), admission), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var child = (await ledger.CreateScopeAsync(new(new(root.Id, Address(), [], new("ancestor-unit-child")), admission), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+
+        var rejected = (await ledger.CreateScopeAsync(new(new(child.Id, Address(), [new(new("test.multi-unit"), 10, new("bytes"), BudgetLimitKind.Hard)], new("ancestor-unit-grandchild")), admission), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreateRejected>();
+
+        rejected.Failure.Kind.ShouldBe(BudgetScopeCreationFailureKind.InvalidLimit);
+    }
+
+    /// <summary>Verifies a scope limit that widens a non-immediate ancestor's captured hard limit is rejected.</summary>
+    [Fact]
+    public async Task CreateScopeAsync_WhenLimitWidensNonImmediateAncestorHardLimit_ReturnsLimitWiderThanAncestorRejection()
+    {
+        var ledger = new InMemoryBudgetLedgerConformanceFixture().CreateLedger();
+        var admission = new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5));
+        var root = (await ledger.CreateScopeAsync(new(new(null, Address(), [new(new("test.sum"), 10, new("count"), BudgetLimitKind.Hard)], new("ancestor-widen-root")), admission), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+        var child = (await ledger.CreateScopeAsync(new(new(root.Id, Address(), [], new("ancestor-widen-child")), admission), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
+
+        var rejected = (await ledger.CreateScopeAsync(new(new(child.Id, Address(), [new(new("test.sum"), 20, new("count"), BudgetLimitKind.Hard)], new("ancestor-widen-grandchild")), admission), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreateRejected>();
+
+        rejected.Failure.Kind.ShouldBe(BudgetScopeCreationFailureKind.LimitWiderThanAncestor);
+    }
+
+    /// <summary>Verifies a scope identity source that produces a value already bound to an existing scope is rejected.</summary>
+    [Fact]
+    public async Task CreateScopeAsync_WhenScopeIdentitySourceProducesDuplicate_ThrowsBudgetLedgerStateException()
+    {
+        var fixedId = new BudgetScopeId(Guid.NewGuid());
+        var ledger = new InMemoryBudgetLedger(TimeProvider.System, new ConstantIdGenerator<BudgetScopeId>(fixedId), new SequentialIdGenerator<BudgetReservationId>(id => new(id)), new InMemoryBudgetLedgerConformanceFixtureCatalog());
+        var admission = new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5));
+        _ = (await ledger.CreateScopeAsync(new(new(null, Address(), [], new("duplicate-scope-first")), admission), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>();
+
+        var exception = await Should.ThrowAsync<BudgetLedgerStateException>(async () => await ledger.CreateScopeAsync(new(new(null, Address(), [], new("duplicate-scope-second")), admission), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("duplicate value");
+    }
+
     private static async Task<BudgetLedgerScopeReference> CreateScopeAsync(IBudgetLedger ledger, string key) => (await ledger.CreateScopeAsync(ScopeRequest(key), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerScopeCreated>().Scope;
     private static BudgetLedgerScopeCreateRequest ScopeRequest(string key, BudgetScopeAddress? address = null, BudgetScopeAdmission? admission = null) => new(new BudgetScopeRequest(null, address ?? Address(), [new BudgetLimit(new BudgetDimension("test.sum"), 100, new BudgetUnit("count"), BudgetLimitKind.Hard)], new IdempotencyKey(key)), admission ?? new BudgetScopeAdmission(8, 32, TimeSpan.FromMinutes(5)));
     private static async Task<BudgetLedgerReservationReference> ReserveAsync(IBudgetLedger ledger, BudgetLedgerScopeReference scope, string key) => (await ledger.ReserveBatchAsync(new BudgetLedgerBatchReserveRequest(scope, [new BudgetReservationRequest(scope.Id, new BudgetDimension("test.sum"), 1, new BudgetUnit("count"), new OperationId(Guid.Parse("20000000-0000-0000-0000-000000000001")), null, new IdempotencyKey(key))]), TestContext.Current.CancellationToken)).ShouldBeOfType<BudgetLedgerBatchReserved>().Receipts[0].Reservation;
