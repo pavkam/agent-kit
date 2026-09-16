@@ -14,4 +14,12 @@ public sealed class EmbeddingCapabilitiesTests
         var exception = Should.Throw<ArgumentNullException>(() => new EmbeddingCapabilities(true, true, true, true, true, null!));
         exception.ParamName.ShouldBe("extensions");
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new EmbeddingCapabilities(true, true, true, true, true, ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

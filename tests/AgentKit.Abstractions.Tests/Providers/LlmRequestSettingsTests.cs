@@ -50,6 +50,13 @@ public sealed class LlmRequestSettingsTests
     }
 
     [Fact]
+    public void Constructor_WhenMaxOutputTokensIsNegative_ThrowsExactArgumentOutOfRangeException()
+    {
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new LlmRequestSettings(null, null, -1, [], null, null, ExtensionData.Empty));
+        exception.ParamName.ShouldBe("maxOutputTokens");
+    }
+
+    [Fact]
     public void WithExpression_WhenMaxOutputTokensIsNegative_ThrowsArgumentOutOfRangeException()
     {
         var settings = LlmRequestSettings.Default;

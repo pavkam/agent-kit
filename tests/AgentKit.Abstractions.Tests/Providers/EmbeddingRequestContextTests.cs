@@ -45,4 +45,20 @@ public sealed class EmbeddingRequestContextTests
         var exception = Should.Throw<ArgumentNullException>(() => _ = context with { Request = null! });
         exception.ParamName.ShouldBe("value");
     }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var context = CreateRequest().Context;
+        context.Model.ShouldBe(CreateDescriptor());
+        context.Request.ShouldBe(CreateEmbeddingRequest());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = CreateRequest().Context;
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

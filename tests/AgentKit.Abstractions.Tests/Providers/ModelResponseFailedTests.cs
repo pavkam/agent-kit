@@ -26,6 +26,17 @@ public sealed class ModelResponseFailedTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void Equality_WhenPartialPartsArePresent_HashesEveryPart()
+    {
+        var part = new TextPart("partial", TextSemantics.Plain, ExtensionData.Empty);
+        var requestId = new ModelRequestId(_fixedRequestGuid);
+        var first = new ModelResponseFailed(requestId, 1, Failure(), [part], null);
+        var second = new ModelResponseFailed(requestId, 1, Failure(), [part], null);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
     private static ProviderFailure Failure(ProviderFailureKind kind = ProviderFailureKind.Unknown, string safeMessage = "failed") => new(kind, new ProviderId("openai"), null, null, null, null, safeMessage, null, ExtensionData.Empty);
     private static readonly Guid _fixedRequestGuid = Guid.Parse("77777777-7777-7777-7777-777777777777");
 }

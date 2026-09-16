@@ -76,4 +76,11 @@ public sealed class LlmModelRequestTests
         original.Attempt.ShouldBe(1);
         original.Context.Settings.ShouldBeSameAs(LlmRequestSettings.Default);
     }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsOptions()
+    {
+        var request = CreateRequest();
+        request.Options.ShouldBe(ProviderRequestOptions.Empty);
+    }
 }

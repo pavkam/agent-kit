@@ -23,6 +23,14 @@ public sealed class EmbeddingModelDescriptorTests
         first.ShouldBe(second);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Descriptor();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static EmbeddingLimits EmptyLimits() => new(null, null, null, null);
     private static EmbeddingCapabilities Capabilities() => new(true, true, true, true, true, ExtensionData.Empty);
     private static EmbeddingModelDescriptor Descriptor() => new(new EmbeddingModelAlias("default"), new ProviderId("openai"), new ApiFamilyId("openai"), new ModelId("text-embedding-3-small"), null, Capabilities(), EmptyLimits(), null, ExtensionData.Empty);

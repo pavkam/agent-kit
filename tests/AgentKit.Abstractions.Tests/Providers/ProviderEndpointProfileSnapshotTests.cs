@@ -63,6 +63,8 @@ public sealed class ProviderEndpointProfileSnapshotTests
         copy.ShouldNotBeSameAs(endpoint);
         endpoint.Reference.ShouldBe(EndpointReference());
         endpoint.ServiceSurface.ShouldBe(new ProviderServiceSurfaceId("chat"));
+        endpoint.EndpointId.ShouldBe(new ProviderEndpointId("endpoint"));
+        endpoint.BaseAddress.ShouldBe(new Uri("https://provider.example/"));
         endpoint.ConfigurationFingerprint.ShouldBe(new ContentHash("sha256:endpoint"));
         endpoint.Extensions.ShouldBe(ExtensionData.Empty);
     }

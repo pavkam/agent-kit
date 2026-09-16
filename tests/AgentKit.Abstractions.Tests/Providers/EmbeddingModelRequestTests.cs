@@ -90,4 +90,11 @@ public sealed class EmbeddingModelRequestTests
         original.Attempt.ShouldBe(1);
         original.Context.Request.Dimensions.ShouldBeNull();
     }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsOptions()
+    {
+        var request = CreateRequest();
+        request.Options.ShouldBe(ProviderRequestOptions.Empty);
+    }
 }

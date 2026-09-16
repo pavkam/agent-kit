@@ -172,6 +172,18 @@ public sealed class ProtectedSemanticOperationContextTests
                 new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()))
         );
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var operation = Operation();
+        var authorization = TestSecurityEvidence.Authorization(
+            operation.AgentId, operation.SessionId, operation.Correlation, operation.Identity);
+        var original = new ProtectedSemanticOperationContext(
+            operation.AgentId, operation.SessionId, null, operation.Identity, operation.Correlation, authorization);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static OperationCorrelation Correlation(int kind) => kind switch
     {
         0 => new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), new AdmissionId(Guid.NewGuid())),

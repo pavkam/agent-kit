@@ -25,5 +25,13 @@ public sealed class EmbeddingSpaceIdentityTests
         first.ShouldBe(second);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new EmbeddingSpaceIdentity(ProviderIdentity(), 3, EmbeddingElementType.Float32, EmbeddingPurpose.Document, ExtensionData.Empty);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ProviderResponseIdentity ProviderIdentity() => new(new ProviderId("openai"), null, new ApiFamilyId("openai"), new ModelId("text-embedding-3-small"), new ModelId("text-embedding-3-small"), null, null, null);
 }

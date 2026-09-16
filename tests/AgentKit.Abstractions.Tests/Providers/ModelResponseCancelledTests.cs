@@ -26,6 +26,26 @@ public sealed class ModelResponseCancelledTests
         exception.ParamName.ShouldBe("cancellation");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ModelResponseCancelled(new ModelRequestId(_fixedRequestGuid), 1, Failure(kind: ProviderFailureKind.Cancellation), [], null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void Equality_WhenPartialPartsArePresent_HashesEveryPart()
+    {
+        var part = new TextPart("partial", TextSemantics.Plain, ExtensionData.Empty);
+        var requestId = new ModelRequestId(_fixedRequestGuid);
+        var cancellation = Failure(kind: ProviderFailureKind.Cancellation);
+        var first = new ModelResponseCancelled(requestId, 1, cancellation, [part], null);
+        var second = new ModelResponseCancelled(requestId, 1, cancellation, [part], null);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
     private static ProviderFailure Failure(ProviderFailureKind kind = ProviderFailureKind.Unknown, string safeMessage = "failed") => new(kind, new ProviderId("openai"), null, null, null, null, safeMessage, null, ExtensionData.Empty);
     private static readonly Guid _fixedRequestGuid = Guid.Parse("77777777-7777-7777-7777-777777777777");
 }

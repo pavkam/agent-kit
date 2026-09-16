@@ -26,6 +26,18 @@ public sealed class LlmRequestContextTests
     }
 
     [Fact]
+    public void Equality_WhenMessagesAndToolsArePresent_HashesEveryElement()
+    {
+        var message = new UserMessage(new MessageId(Guid.NewGuid()), new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()), null, new BranchId(Guid.NewGuid()), null, null,
+            DateTimeOffset.UnixEpoch, MessageState.Complete, [new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var tool = new LlmToolDefinition(new ToolId("t"), "tool", null, default);
+        var context = CreateRequest().Context with { Messages = [message], Tools = [tool] };
+        var same = CreateRequest().Context with { Messages = [message], Tools = [tool] };
+        context.ShouldBe(same);
+        context.GetHashCode().ShouldBe(same.GetHashCode());
+    }
+
+    [Fact]
     public void WithExpression_WhenModelIsNull_ThrowsArgumentNullException()
     {
         var context = CreateRequest().Context;

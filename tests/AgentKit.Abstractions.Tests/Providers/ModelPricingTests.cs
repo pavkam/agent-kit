@@ -23,4 +23,12 @@ public sealed class ModelPricingTests
 
     [Fact]
     public void ModelPricing_Equality_WhenSameValues_InstancesAreEqual() => new ModelPricing(1m, 2m, "USD").ShouldBe(new ModelPricing(1m, 2m, "USD"));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new ModelPricing(1m, 2m, "USD");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

@@ -20,4 +20,13 @@ public sealed class LlmToolDefinitionTests
         var copy = original with { };
         copy.ShouldBe(original);
     }
+
+    [Fact]
+    public void Initializer_WhenParametersSchemaIsReplaced_ClonesSchema()
+    {
+        var original = new LlmToolDefinition(new ToolId("t"), "tool", null, default);
+        using var document = System.Text.Json.JsonDocument.Parse("""{"type":"object"}""");
+        var copy = original with { ParametersSchema = document.RootElement };
+        copy.ParametersSchema.GetProperty("type").GetString().ShouldBe("object");
+    }
 }

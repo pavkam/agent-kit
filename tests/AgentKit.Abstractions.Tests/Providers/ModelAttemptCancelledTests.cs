@@ -33,5 +33,16 @@ public sealed class ModelAttemptCancelledTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void Equality_WhenPartialPartsArePresent_HashesEveryPart()
+    {
+        var part = new TextPart("partial", TextSemantics.Plain, ExtensionData.Empty);
+        var cancellation = Failure(kind: ProviderFailureKind.Cancellation);
+        var first = new ModelAttemptCancelled(cancellation, [part], null);
+        var second = new ModelAttemptCancelled(cancellation, [part], null);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
     private static ProviderFailure Failure(ProviderFailureKind kind = ProviderFailureKind.Unknown, string safeMessage = "failed") => new(kind, new ProviderId("openai"), null, null, null, null, safeMessage, null, ExtensionData.Empty);
 }

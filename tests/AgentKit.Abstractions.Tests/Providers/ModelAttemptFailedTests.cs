@@ -25,5 +25,15 @@ public sealed class ModelAttemptFailedTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void Equality_WhenPartialPartsArePresent_HashesEveryPart()
+    {
+        var part = new TextPart("partial", TextSemantics.Plain, ExtensionData.Empty);
+        var first = new ModelAttemptFailed(Failure(), [part], null);
+        var second = new ModelAttemptFailed(Failure(), [part], null);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
     private static ProviderFailure Failure(ProviderFailureKind kind = ProviderFailureKind.Unknown, string safeMessage = "failed") => new(kind, new ProviderId("openai"), null, null, null, null, safeMessage, null, ExtensionData.Empty);
 }
