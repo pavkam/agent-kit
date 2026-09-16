@@ -37,6 +37,14 @@ public sealed class SessionExecutionLaneProvisionResultTests
     }
 
     [Fact]
+    public void SessionExecutionLaneProvisioned_WhenArgumentsAreValid_ExposesBranchCursorAndLaneRevision()
+    {
+        var provisioned = Provisioned();
+        provisioned.BranchCursor.ShouldBe(SessionsTestData.Cursor());
+        provisioned.LaneRevision.ShouldBe(new SessionLaneRevision(1));
+    }
+
+    [Fact]
     public void SessionExecutionLaneProvisioned_With_WhenApplied_ProducesEqualCopy()
     {
         var original = Provisioned();

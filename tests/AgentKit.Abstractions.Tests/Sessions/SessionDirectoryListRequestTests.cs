@@ -66,8 +66,12 @@ public sealed class SessionDirectoryListRequestTests
     [Fact]
     public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
     {
-        var request = Request();
+        var identity = SessionsTestData.Identity();
+        var authorization = SessionsTestData.Authorization(SessionsTestData.BeforeRun(), null, identity: identity);
+        var request = Request(identity: identity, authorization: authorization);
         request.AgentId.ShouldBe(SessionsTestData.AgentId);
+        request.Identity.ShouldBe(identity);
+        request.Authorization.ShouldBe(authorization);
         request.AfterSessionId.ShouldBeNull();
         request.MaximumResults.ShouldBe(10);
     }

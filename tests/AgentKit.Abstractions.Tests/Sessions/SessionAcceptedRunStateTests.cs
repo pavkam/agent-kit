@@ -83,4 +83,37 @@ public sealed class SessionAcceptedRunStateTests
         var state = State(evidence);
         state.InitiatingAdmissionId.ShouldBe(evidence.AdmissionId);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = State(Evidence());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsEveryProperty()
+    {
+        var evidence = Evidence();
+        var state = State(evidence);
+        state.Address.ShouldBe(evidence.Address);
+        state.ExecutionLaneId.ShouldBe(evidence.LaneId);
+        state.LaneRevision.ShouldBe(new SessionLaneRevision(2));
+        state.Correlation.ShouldBe(evidence.InRunCorrelation);
+        state.OperationStateRevision.ShouldBe(new OperationStateRevision(1));
+        state.Identity.ShouldBe(evidence.Identity);
+        state.Authorization.ShouldBe(Authorization(evidence, evidence.InRunCorrelation, new ConfigurationVersion(1)));
+        state.SessionProfile.ShouldBe(new SessionProfileReference(new SessionProfileKey("profile"), new SessionProfileVersion(1)));
+        state.Configuration.ShouldBe(new RunConfigurationReference(new ConfigurationVersion(1), new RunPolicyVersion(1), new ContentHash("sha256:configuration")));
+        state.PreviousCursor.ShouldBe(new SessionBranchCursor(evidence.BranchId, evidence.PreviousEntryId));
+        state.CommittedCursor.ShouldBe(new SessionBranchCursor(evidence.BranchId, evidence.AcceptedEntryId));
+        state.PromotionCutoff.ShouldBe(new SessionSequence(1));
+        state.PromotedAdmissionIds.ShouldBe([evidence.AdmissionId]);
+        state.MaterializedEntryIds.ShouldBe([evidence.MaterializedEntryId]);
+        state.MaterializedMessageIds.ShouldBe([evidence.MessageId]);
+        state.InitialTurnId.ShouldBe(evidence.TurnId);
+        state.AcceptedAt.ShouldBe(DateTimeOffset.UnixEpoch);
+        state.State.ShouldBe(DurableOperationState.Accepted);
+    }
 }

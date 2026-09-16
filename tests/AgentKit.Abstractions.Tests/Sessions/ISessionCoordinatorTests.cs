@@ -39,6 +39,50 @@ public sealed class ISessionCoordinatorTests
         Should.Throw<OperationCanceledException>(() => _ = coordinator.LoadRunStateAsync(requests.Load, requests.Capability, cancellation.Token).AsTask()).CancellationToken.ShouldBe(cancellation.Token);
     }
 
+    [Fact]
+    public void ReleaseRunAsync_WhenReferenceIsNull_ThrowsExactArgumentNullException()
+    {
+        ISessionCoordinator coordinator = new UnsupportedCoordinator();
+        var requests = Requests(coordinator);
+        Should.Throw<ArgumentNullException>(() => _ = coordinator.ReleaseRunAsync(null!, requests.Capability).AsTask()).ParamName.ShouldBe("request");
+        Should.Throw<ArgumentNullException>(() => _ = coordinator.ReleaseRunAsync(requests.Release, null!).AsTask()).ParamName.ShouldBe("session");
+    }
+
+    [Fact]
+    public void ReleaseRunAsync_WhenCallerAlreadyCancelled_PreservesCancellationToken()
+    {
+        ISessionCoordinator coordinator = new UnsupportedCoordinator();
+        var requests = Requests(coordinator);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Should.Throw<OperationCanceledException>(() => _ = coordinator.ReleaseRunAsync(requests.Release, requests.Capability, cancellation.Token).AsTask()).CancellationToken.ShouldBe(cancellation.Token);
+    }
+
+    [Fact]
+    public async Task CoordinatorDefaultMethods_WhenNotOverridden_ReturnTypedRejections()
+    {
+        ISessionCoordinator coordinator = new UnsupportedCoordinator();
+        var requests = Requests(coordinator);
+        var token = TestContext.Current.CancellationToken;
+        _ = (await coordinator.ListAsync(ListRequest(), token)).ShouldBeOfType<SessionDirectoryListUnavailable>();
+        _ = (await coordinator.LookupInputAsync(requests.Lookup, requests.Capability, token)).ShouldBeOfType<SessionInputLookupRejected>();
+        _ = (await coordinator.ProvisionLaneAsync(requests.Provision, requests.Capability, token)).ShouldBeOfType<SessionExecutionLaneProvisionRejected>();
+        var admission = await coordinator.AdmitInputAsync(requests.Admission, requests.Capability, token);
+        _ = admission.ShouldBeOfType<RejectedInput>();
+        ((RejectedInput) admission).Rejection.Kind.ShouldBe(InputRejectionKind.Unauthorized);
+        _ = (await coordinator.AcceptRunAsync(requests.Start, requests.Capability, token)).ShouldBeOfType<SessionRunStartRejected>();
+        _ = (await coordinator.LoadRunStateAsync(requests.Load, requests.Capability, token)).ShouldBeOfType<SessionRunStateUnavailable>();
+        var release = await coordinator.ReleaseRunAsync(requests.Release, requests.Capability, token);
+        _ = release.ShouldBeOfType<SessionRunReleaseRejected>();
+        ((SessionRunReleaseRejected) release).Kind.ShouldBe(SessionRunReleaseRejectionKind.Unsupported);
+    }
+
+    private static SessionDirectoryListRequest ListRequest()
+    {
+        var authorization = SessionsTestData.Authorization(SessionsTestData.BeforeRun(), null);
+        return new SessionDirectoryListRequest(SessionsTestData.AgentId, SessionsTestData.Identity(), authorization, null, 10);
+    }
+
     private static SessionOperationContext Context(bool inRun, bool laneBound)
     {
         var agentId = new AgentId(Guid.NewGuid());
@@ -67,11 +111,12 @@ public sealed class ISessionCoordinatorTests
         var start = new SessionRunStartRequest(before, admissionId, [admissionId], new SessionSequence(1), new SessionLaneRevision(3), new SessionVersion(2), cursor, null, runId, turnId, new SessionEntryId(Guid.NewGuid()), [new SessionEntryId(Guid.NewGuid())], [new MessageId(Guid.NewGuid())], new SessionEntryId(Guid.NewGuid()), new OperationStateRevision(1), profile.Reference, configuration, inRunAuthorization, DateTimeOffset.UnixEpoch, new IdempotencyKey("start"));
         var inRun = new SessionOperationContext(before.AgentId, before.SessionId, before.ExecutionLaneId, inRunCorrelation, before.Identity, inRunAuthorization);
         var load = new SessionRunStateRequest(inRun);
+        var release = new SessionRunReleaseRequest(inRun, new OperationStateRevision(1), new SessionVersion(2), new IdempotencyKey("release"));
         var runCoordinator = new UnsupportedRunCoordinator();
-        return new RequestSet(lookup, provision, admission, start, load, new SessionExecutionCapability(profile, coordinator, runCoordinator));
+        return new RequestSet(lookup, provision, admission, start, load, release, new SessionExecutionCapability(profile, coordinator, runCoordinator));
     }
 
-    private sealed record RequestSet(SessionInputLookupRequest Lookup, SessionExecutionLaneProvisionRequest Provision, SessionInputAdmissionRequest Admission, SessionRunStartRequest Start, SessionRunStateRequest Load, SessionExecutionCapability Capability);
+    private sealed record RequestSet(SessionInputLookupRequest Lookup, SessionExecutionLaneProvisionRequest Provision, SessionInputAdmissionRequest Admission, SessionRunStartRequest Start, SessionRunStateRequest Load, SessionRunReleaseRequest Release, SessionExecutionCapability Capability);
     private sealed class UnsupportedCoordinator: ISessionCoordinator
     {
         public ValueTask<SessionCreateResult> CreateAsync(SessionCreateRequest request, SessionProfileSnapshot profile, CancellationToken cancellationToken = default) => throw new NotSupportedException();

@@ -28,11 +28,30 @@ public sealed class SessionRunStartRequestTests
         request.Configuration.ConfigurationVersion.ShouldBe(new ConfigurationVersion(2));
     }
 
-    private static SessionRunStartRequest StartRequest(AcceptanceEvidence evidence, SessionOperationContext context, ConfigurationVersion configurationVersion)
+    [Fact]
+    public void SessionRunStartRequest_WhenExpectedFencingTokenIsDefault_ThrowsExactArgumentOutOfRangeException()
+    {
+        var evidence = Evidence();
+        var context = Context(evidence, new ConfigurationVersion(1));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => StartRequest(evidence, context, new ConfigurationVersion(1), fencingToken: default(FencingToken)));
+        exception.ParamName.ShouldBe("expectedFencingToken");
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var evidence = Evidence();
+        var context = Context(evidence, new ConfigurationVersion(1));
+        var original = StartRequest(evidence, context, new ConfigurationVersion(1));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    private static SessionRunStartRequest StartRequest(AcceptanceEvidence evidence, SessionOperationContext context, ConfigurationVersion configurationVersion, FencingToken? fencingToken = null)
     {
         var configuration = new RunConfigurationReference(configurationVersion, new RunPolicyVersion(1), new ContentHash("sha256:configuration"));
         var authorization = Authorization(evidence, evidence.InRunCorrelation, configurationVersion);
-        return new SessionRunStartRequest(context, evidence.AdmissionId, [evidence.AdmissionId], new SessionSequence(1), new SessionLaneRevision(1), new SessionVersion(1), new SessionBranchCursor(evidence.BranchId, evidence.PreviousEntryId), null, evidence.RunId, evidence.TurnId, evidence.PromotionEntryId, [evidence.MaterializedEntryId], [evidence.MessageId], evidence.AcceptedEntryId, new OperationStateRevision(1), new SessionProfileReference(new SessionProfileKey("profile"), new SessionProfileVersion(1)), configuration, authorization, DateTimeOffset.UnixEpoch, new IdempotencyKey("start"));
+        return new SessionRunStartRequest(context, evidence.AdmissionId, [evidence.AdmissionId], new SessionSequence(1), new SessionLaneRevision(1), new SessionVersion(1), new SessionBranchCursor(evidence.BranchId, evidence.PreviousEntryId), fencingToken, evidence.RunId, evidence.TurnId, evidence.PromotionEntryId, [evidence.MaterializedEntryId], [evidence.MessageId], evidence.AcceptedEntryId, new OperationStateRevision(1), new SessionProfileReference(new SessionProfileKey("profile"), new SessionProfileVersion(1)), configuration, authorization, DateTimeOffset.UnixEpoch, new IdempotencyKey("start"));
     }
 
     private static SessionOperationContext Context(AcceptanceEvidence evidence, ConfigurationVersion configurationVersion) => new(evidence.Address.AgentId, evidence.Address.SessionId, evidence.LaneId, evidence.BeforeRunCorrelation, evidence.Identity, Authorization(evidence, evidence.BeforeRunCorrelation, configurationVersion));

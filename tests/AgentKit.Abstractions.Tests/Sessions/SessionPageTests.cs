@@ -25,6 +25,14 @@ public sealed class SessionPageTests
     }
 
     [Fact]
+    public void Constructor_WhenNonEmptyPageDoesNotExceedSnapshotUpperSequence_PreservesSnapshot()
+    {
+        var snapshot = new SessionReadSnapshot(Address(), BranchId, new SessionVersion(1), new SessionSequence(4));
+        var page = new SessionPage([MessageEntry()], new SessionSequence(1), hasMore: false, snapshot);
+        page.Snapshot.ShouldBeSameAs(snapshot);
+    }
+
+    [Fact]
     public void Constructor_WhenEmptyPageStartsBeyondSnapshotUpperSequence_PreservesLegacyThroughSequence()
     {
         var snapshot = new SessionReadSnapshot(Address(), BranchId, new SessionVersion(1), new SessionSequence(1));

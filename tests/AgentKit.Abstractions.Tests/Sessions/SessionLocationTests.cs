@@ -49,6 +49,7 @@ public sealed class SessionLocationTests
         location.TenantId.ShouldBe(new TenantId("tenant"));
         location.StoreKey.ShouldBe(new SessionStoreKey("store"));
         location.DirectoryRevision.ShouldBe(new SessionDirectoryRevision(1));
+        location.RecordedAt.ShouldBe(DateTimeOffset.UnixEpoch);
         location.SchemaVersion.ShouldBe(new SchemaVersion("v1"));
     }
 

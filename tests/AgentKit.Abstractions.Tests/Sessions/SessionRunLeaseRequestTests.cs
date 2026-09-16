@@ -25,6 +25,7 @@ public sealed class SessionRunLeaseRequestTests
     {
         var context = SessionsTestData.InRunContext();
         var request = new SessionRunLeaseRequest(context, new OperationStateRevision(1));
+        request.ExpectedStateRevision.ShouldBe(new OperationStateRevision(1));
         request.AgentId.ShouldBe(context.AgentId);
         request.SessionId.ShouldBe(context.SessionId);
         request.ExecutionLaneId.ShouldBe(context.ExecutionLaneId!.Value);
