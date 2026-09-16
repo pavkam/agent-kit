@@ -25,6 +25,23 @@ public sealed class DefaultSecurityAuditDispatcherTests: SecurityAuditDispatcher
     }
 
     [Fact]
+    public async Task DispatchAsync_WhenALaterRequiredSinkCannotProveDurableAcceptance_ReturnsUnavailableAfterEarlierWrites()
+    {
+        var durableSink = new RecordingSink();
+        var nonDurableRequiredSink = new RecordingSink();
+        var dispatcher = Dispatcher(
+            SecurityAuditDelivery.Required,
+            [
+                Binding(SecurityAuditDelivery.Required, durable: true, durableSink),
+                Binding(SecurityAuditDelivery.Required, durable: false, nonDurableRequiredSink),
+            ]);
+        var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<SecurityAuditUnavailable>();
+        _ = durableSink.Records.ShouldHaveSingleItem();
+        nonDurableRequiredSink.Records.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task DispatchAsync_WhenConfiguredRequiredSinkFails_ReturnsFailed()
     {
         var dispatcher = Dispatcher(SecurityAuditDelivery.Required, [Binding(SecurityAuditDelivery.Required, durable: true, new ThrowingSink())]);
@@ -155,6 +172,80 @@ public sealed class DefaultSecurityAuditDispatcherTests: SecurityAuditDispatcher
         logger.EventIds.ShouldContain(new EventId(5024));
         blocking.DeliveryCancellation.IsCancellationRequested.ShouldBeTrue();
         blocking.Complete();
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenBestEffortSinkCompletesJustAfterItsDeadline_ContinuesWithoutThrowing()
+    {
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var deliveryTimeout = TimeSpan.FromSeconds(1);
+        var laterSink = new RecordingSink();
+        var dispatcher = Dispatcher(
+            SecurityAuditDelivery.Required,
+            [
+                Binding(SecurityAuditDelivery.BestEffort, durable: false, new DeadlineRacingSink(timeProvider, deliveryTimeout)),
+                Binding(SecurityAuditDelivery.Required, durable: true, laterSink),
+            ],
+            timeProvider: timeProvider,
+            deliveryTimeout: deliveryTimeout);
+
+        var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SecurityAuditAccepted>();
+        _ = laterSink.Records.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenRequiredSinkCompletesJustAfterItsDeadline_ReturnsAmbiguousTimeout()
+    {
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var deliveryTimeout = TimeSpan.FromSeconds(1);
+        var laterSink = new RecordingSink();
+        var dispatcher = Dispatcher(
+            SecurityAuditDelivery.Required,
+            [
+                Binding(SecurityAuditDelivery.Required, durable: true, new DeadlineRacingSink(timeProvider, deliveryTimeout)),
+                Binding(SecurityAuditDelivery.Required, durable: true, laterSink),
+            ],
+            timeProvider: timeProvider,
+            deliveryTimeout: deliveryTimeout);
+
+        var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SecurityAuditTimedOut>().SafeReason.ShouldContain("unknown");
+        laterSink.Records.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenASinkThrowsSynchronouslyAfterExternallyTriggeredCancellation_PropagatesWithoutFaultingLateObservation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var dispatcher = Dispatcher(
+            SecurityAuditDelivery.Required,
+            [Binding(SecurityAuditDelivery.Required, durable: true, new SynchronouslyCancelingSink(cancellation))]);
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(
+            async () => await dispatcher.DispatchAsync(Record(), cancellation.Token));
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenElapsedTimeObservationFailsAfterASuccessfulTimestamp_RecordsNoDuration()
+    {
+        var count = 0L;
+        var durations = 0;
+        using var meterListener = MeterListenerForAudit((measurement, _) => count += measurement, (_, _) => durations++);
+        var dispatcher = Dispatcher(
+            SecurityAuditDelivery.Required,
+            [Binding(SecurityAuditDelivery.Required, durable: true, new RecordingSink())],
+            timeProvider: new ThrowingTimeProvider(throwOnCall: 2));
+
+        var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SecurityAuditAccepted>();
+        count.ShouldBe(1);
+        durations.ShouldBe(0);
     }
 
     [Fact]
@@ -441,6 +532,33 @@ public sealed class DefaultSecurityAuditDispatcherTests: SecurityAuditDispatcher
     private sealed class ThrowingSink: ISecurityAuditSink
     {
         public ValueTask WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default) => ValueTask.FromException(new InvalidOperationException("sink"));
+    }
+
+    /// <summary>A cancellation-ignoring sink that fires its own per-write deadline synchronously before completing.</summary>
+    /// <remarks>
+    /// Advancing the fake clock during the synchronous body of <see cref="WriteAsync"/> lets the write's own deadline
+    /// elapse and complete before the dispatcher ever awaits it, so <c>Task.WaitAsync</c> observes an already
+    /// completed task and returns it without inspecting the (now cancelled) linked token. This deterministically
+    /// exercises the dispatcher's "sink completed exactly at its deadline without throwing" branch.
+    /// </remarks>
+    private sealed class DeadlineRacingSink(FakeTimeProvider timeProvider, TimeSpan deliveryTimeout): ISecurityAuditSink
+    {
+        public ValueTask WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default)
+        {
+            timeProvider.Advance(deliveryTimeout);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    /// <summary>A sink that triggers an external cancellation and then throws synchronously before returning a task.</summary>
+    private sealed class SynchronouslyCancelingSink(CancellationTokenSource externalCancellation): ISecurityAuditSink
+    {
+        public ValueTask WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default)
+        {
+            externalCancellation.Cancel();
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class CancellingSink(CancellationTokenSource cancellation): ISecurityAuditSink
