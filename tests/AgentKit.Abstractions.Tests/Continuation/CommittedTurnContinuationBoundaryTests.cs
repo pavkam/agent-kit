@@ -58,6 +58,28 @@ public sealed class CommittedTurnContinuationBoundaryTests
         exception.ParamName.ShouldBe("toolResults");
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var response = CreateResponse(NewCallId(1));
+        var reference = Reference(1, response.TurnId!.Value);
+        var boundary = new CommittedTurnContinuationBoundary(response, [reference], null, true);
+        boundary.Response.ShouldBe(response);
+        boundary.ToolResults.ShouldBe([reference]);
+        boundary.OutputDecision.ShouldBeNull();
+        boundary.RequiresOutputValidation.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var response = CreateResponse(NewCallId(1));
+        var reference = Reference(1, response.TurnId!.Value);
+        var original = new CommittedTurnContinuationBoundary(response, [reference], null, true);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static ToolCallId NewCallId(int value) => new(Guid.Parse($"00000000-0000-0000-0000-{value:D12}"));
 
     private static CommittedToolResultReference Reference(

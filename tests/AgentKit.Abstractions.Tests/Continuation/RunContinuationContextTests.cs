@@ -84,6 +84,35 @@ public sealed class RunContinuationContextTests
         exception.ParamName.ShouldBe(parameter);
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var boundary = new IdleContinuationBoundary();
+        var context = Context(boundary, []);
+        context.AgentId.ShouldBe(_agentId);
+        context.SessionId.ShouldBe(_sessionId);
+        context.ExecutionLaneId.ShouldBe(_laneId);
+        context.OperationId.ShouldBe(_operationId);
+        context.RunId.ShouldBe(_runId);
+        context.State.ShouldBe(AgentRunState.Driving);
+        context.OperationStateRevision.ShouldBe(_revision);
+        context.BranchCursor.ShouldBe(Cursor());
+        context.InputPromotionCutoff.ShouldBe(_cutoff);
+        context.ConfigurationVersion.ShouldBe(new ConfigurationVersion(2));
+        context.PolicyVersion.ShouldBe(new RunPolicyVersion(1));
+        context.Boundary.ShouldBe(boundary);
+        context.RequiredStopOutcome.ShouldBeNull();
+        context.Causes.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Context(new IdleContinuationBoundary(), []);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static RunContinuationContext Context(RunContinuationBoundary boundary, ImmutableArray<RunContinuationCause> causes, AgentRunState state = AgentRunState.Driving) => new(_agentId, _sessionId, _laneId, _operationId, _runId, state, _revision, Cursor(), _cutoff, new ConfigurationVersion(2), new RunPolicyVersion(1), boundary, requiredStopOutcome: null, causes);
     private static RunContinuationContext ContextWithDefault(string parameter) => new(parameter == "agentId" ? default : _agentId, parameter == "sessionId" ? default : _sessionId, parameter == "executionLaneId" ? default : _laneId, parameter == "operationId" ? default : _operationId, parameter == "runId" ? default : _runId, AgentRunState.Driving, parameter == "operationStateRevision" ? default : _revision, Cursor(), _cutoff, parameter == "configurationVersion" ? default : new ConfigurationVersion(2), parameter == "policyVersion" ? default : new RunPolicyVersion(1), new IdleContinuationBoundary(), requiredStopOutcome: null, []);
     private static InputPromotionSnapshot PromotionSnapshot(ExecutionLaneId? laneId = null, SessionSequence? cutoff = null, PromotionBoundary boundary = PromotionBoundary.AfterTurnCommitted, TurnId? previousTurnId = null, TurnId? targetTurnId = null) => new(_agentId, _sessionId, laneId ?? _laneId, new InRunOperationCorrelation(_operationId, _runId, _committedTurnId), _revision, Cursor(), cutoff ?? _cutoff, expectedVersion: null, expectedFencingToken: null, boundary, previousTurnId ?? (boundary == PromotionBoundary.AfterTurnCommitted ? _committedTurnId : null), targetTurnId ?? _targetTurnId, [new AdmissionId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"))]);
