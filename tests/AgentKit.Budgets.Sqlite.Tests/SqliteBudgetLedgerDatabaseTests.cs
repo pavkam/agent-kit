@@ -181,6 +181,292 @@ public sealed class SqliteBudgetLedgerDatabaseTests: IDisposable
             .ShouldContain("budget_unresolved_reservations_idx");
     }
 
+    /// <summary>Proves cancellation before schema commit propagates and reaches no partial mutation.</summary>
+    [Fact]
+    public void Initialize_WhenCancelledBeforeStart_ThrowsOperationCanceled()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        var database = new SqliteBudgetLedgerDatabase(
+            new(path, new(Guid.NewGuid()), SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
+            SqliteBudgetLedgerSettings.CreateDefault());
+        using var source = new CancellationTokenSource();
+        source.Cancel();
+
+        _ = Should.Throw<OperationCanceledException>(() => database.Initialize(source.Token));
+    }
+
+    /// <summary>Proves reopening an already-initialized target under known-migration mode re-applies WAL and skips integrity failure paths safely.</summary>
+    [Fact]
+    public void Initialize_WhenReopenedUnderKnownMigrations_RevalidatesWithoutIntegrityCheck()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        var id = new SqliteBudgetLedgerInstanceId(Guid.NewGuid());
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations), settings)
+            .Initialize(CancellationToken.None);
+
+        var reopened = new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ApplyKnownMigrations), settings);
+        Should.NotThrow(() => reopened.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a target path that cannot be opened as a database (a directory) is rejected as unavailable.</summary>
+    [Fact]
+    public void Initialize_WhenTargetPathIsADirectory_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger-directory.db");
+        _ = Directory.CreateDirectory(path);
+        var database = new SqliteBudgetLedgerDatabase(
+            new(path, new(Guid.NewGuid()), SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
+            SqliteBudgetLedgerSettings.CreateDefault());
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => database.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a schema-version mismatch is rejected.</summary>
+    [Fact]
+    public void Initialize_WhenUserVersionChanges_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        var id = new SqliteBudgetLedgerInstanceId(Guid.NewGuid());
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations), settings)
+            .Initialize(CancellationToken.None);
+        ExecuteRaw(path, "PRAGMA user_version = 999;");
+        var validate = new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact), settings);
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => validate.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves an unexpected additional table is rejected before per-table definitions are compared.</summary>
+    [Fact]
+    public void Initialize_WhenExtraTableIsAdded_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        var id = new SqliteBudgetLedgerInstanceId(Guid.NewGuid());
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations), settings)
+            .Initialize(CancellationToken.None);
+        ExecuteRaw(path, "CREATE TABLE budget_extra (x INTEGER);");
+        var validate = new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact), settings);
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => validate.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a table redefined with a different shape under the same name is rejected.</summary>
+    [Fact]
+    public void Initialize_WhenTableDefinitionChanges_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        var id = new SqliteBudgetLedgerInstanceId(Guid.NewGuid());
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations), settings)
+            .Initialize(CancellationToken.None);
+        ExecuteRaw(path, "PRAGMA foreign_keys = OFF; DROP TABLE budget_maximum_values; CREATE TABLE budget_maximum_values (scope_id BLOB NOT NULL, dimension TEXT NOT NULL, amount_key BLOB NOT NULL, amount_text TEXT NOT NULL, live_count INTEGER NOT NULL, committed_count INTEGER NOT NULL, PRIMARY KEY(scope_id, dimension, amount_key));");
+        var validate = new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact), settings);
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => validate.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a redefined index under the same name is rejected.</summary>
+    [Fact]
+    public void Initialize_WhenIndexDefinitionChanges_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        var id = new SqliteBudgetLedgerInstanceId(Guid.NewGuid());
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations), settings)
+            .Initialize(CancellationToken.None);
+        ExecuteRaw(path, "DROP INDEX budget_active_charges_idx; CREATE INDEX budget_active_charges_idx ON budget_reservation_charges(scope_id) WHERE active = 1;");
+        var validate = new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact), settings);
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => validate.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a missing named index is rejected as an incomplete index set.</summary>
+    [Fact]
+    public void Initialize_WhenIndexIsDropped_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        var id = new SqliteBudgetLedgerInstanceId(Guid.NewGuid());
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations), settings)
+            .Initialize(CancellationToken.None);
+        ExecuteRaw(path, "DROP INDEX budget_active_charges_idx;");
+        var validate = new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact), settings);
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => validate.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a missing metadata row is rejected as an identity mismatch.</summary>
+    [Fact]
+    public void Initialize_WhenMetadataRowIsDeleted_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        var id = new SqliteBudgetLedgerInstanceId(Guid.NewGuid());
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations), settings)
+            .Initialize(CancellationToken.None);
+        ExecuteRaw(path, "DELETE FROM budget_ledger_metadata;");
+        var validate = new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact), settings);
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => validate.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a metadata store identity of the wrong length is rejected.</summary>
+    [Fact]
+    public void Initialize_WhenMetadataIdentityLengthIsWrong_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        var id = new SqliteBudgetLedgerInstanceId(Guid.NewGuid());
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations), settings)
+            .Initialize(CancellationToken.None);
+        ExecuteRaw(path, "PRAGMA ignore_check_constraints = ON; UPDATE budget_ledger_metadata SET store_id = X'0011';");
+        var validate = new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact), settings);
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => validate.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a non-WAL journal mode is rejected when exact validation requires WAL journaling.</summary>
+    [Fact]
+    public void Initialize_WhenJournalModeIsNotWal_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        var id = new SqliteBudgetLedgerInstanceId(Guid.NewGuid());
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations), settings)
+            .Initialize(CancellationToken.None);
+        ExecuteRaw(path, "PRAGMA journal_mode = DELETE;");
+        var validate = new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact), settings);
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => validate.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a genuinely non-database target file is rejected through the generic storage-failure boundary.</summary>
+    [Fact]
+    public void Initialize_WhenTargetFileIsNotADatabase_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        File.WriteAllBytes(path, [.. Enumerable.Repeat((byte) 0xFF, 512)]);
+        var database = new SqliteBudgetLedgerDatabase(
+            new(path, new(Guid.NewGuid()), SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact),
+            SqliteBudgetLedgerSettings.CreateDefault());
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => database.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a target whose parent directory does not exist is rejected before any connection is opened.</summary>
+    [Fact]
+    public void Initialize_WhenParentDirectoryDoesNotExist_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "missing-parent", "ledger.db");
+        var database = new SqliteBudgetLedgerDatabase(
+            new(path, new(Guid.NewGuid()), SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
+            SqliteBudgetLedgerSettings.CreateDefault());
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => database.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves an ancestor directory that is a symbolic link is rejected as a replaceable traversal.</summary>
+    [Fact]
+    public void Initialize_WhenAncestorDirectoryIsSymbolicLink_ThrowsUnavailable()
+    {
+        var realDirectory = Path.Combine(_directory, "real-parent");
+        _ = Directory.CreateDirectory(realDirectory);
+        var linkDirectory = Path.Combine(_directory, "linked-parent");
+        _ = Directory.CreateSymbolicLink(linkDirectory, realDirectory);
+        var path = Path.Combine(linkDirectory, "ledger.db");
+        var database = new SqliteBudgetLedgerDatabase(
+            new(path, new(Guid.NewGuid()), SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
+            SqliteBudgetLedgerSettings.CreateDefault());
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => database.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a main database path that is itself a symbolic link is rejected as replaceable.</summary>
+    [Fact]
+    public void Initialize_WhenMainFileIsSymbolicLink_ThrowsUnavailable()
+    {
+        var real = Path.Combine(_directory, "real.db");
+        using (File.Create(real))
+        {
+        }
+
+        var path = Path.Combine(_directory, "ledger-link.db");
+        _ = File.CreateSymbolicLink(path, real);
+        var database = new SqliteBudgetLedgerDatabase(
+            new(path, new(Guid.NewGuid()), SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact),
+            SqliteBudgetLedgerSettings.CreateDefault());
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => database.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves opening a nonexistent target without creation permission is rejected.</summary>
+    [Fact]
+    public void Initialize_WhenTargetDoesNotExistAndOpenExisting_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "does-not-exist.db");
+        var database = new SqliteBudgetLedgerDatabase(
+            new(path, new(Guid.NewGuid()), SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact),
+            SqliteBudgetLedgerSettings.CreateDefault());
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => database.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves an orphaned WAL sidecar without its main database file is rejected as inconsistent.</summary>
+    [Fact]
+    public void Initialize_WhenOrphanedSidecarExistsWithoutMainFile_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        using (File.Create(path + "-wal"))
+        {
+        }
+
+        var database = new SqliteBudgetLedgerDatabase(
+            new(path, new(Guid.NewGuid()), SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
+            SqliteBudgetLedgerSettings.CreateDefault());
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => database.Initialize(CancellationToken.None));
+    }
+
+    /// <summary>Proves a database whose page content is corrupted beyond its header fails the integrity check.</summary>
+    [Fact]
+    public void Initialize_WhenPageContentIsCorrupted_ThrowsUnavailable()
+    {
+        var path = Path.Combine(_directory, "ledger.db");
+        var id = new SqliteBudgetLedgerInstanceId(Guid.NewGuid());
+        var settings = SqliteBudgetLedgerSettings.CreateDefault();
+        new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations), settings)
+            .Initialize(CancellationToken.None);
+        ExecuteRaw(path, "PRAGMA foreign_keys = OFF; INSERT INTO budget_scopes(scope_id,parent_scope_id,depth,request,request_digest) VALUES(randomblob(16),NULL,1,X'01',zeroblob(32));");
+        for (var index = 0; index < 200; index++)
+        {
+            ExecuteRaw(path, "PRAGMA foreign_keys = OFF; INSERT INTO budget_dimension_projections(scope_id,dimension,unit,aggregation,reserved_coefficient,reserved_scale,committed_coefficient,committed_scale,open_count) VALUES(randomblob(16),hex(randomblob(16)),'count',0,randomblob(16),0,randomblob(16),0,0);");
+        }
+
+        ExecuteRaw(path, "PRAGMA wal_checkpoint(TRUNCATE);");
+        var bytes = File.ReadAllBytes(path);
+        bytes.Length.ShouldBeGreaterThan(8192);
+        for (var offset = 8192; offset < 8192 + 512; offset++)
+        {
+            bytes[offset] = (byte) (offset % 256);
+        }
+
+        File.WriteAllBytes(path, bytes);
+        var validate = new SqliteBudgetLedgerDatabase(new(path, id, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact), settings);
+
+        _ = Should.Throw<BudgetLedgerPersistenceUnavailableException>(() => validate.Initialize(CancellationToken.None));
+    }
+
+    private static void ExecuteRaw(string path, string sql)
+    {
+        using var connection = new SqliteConnection($"Data Source={path}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        _ = command.ExecuteNonQuery();
+    }
+
     private static void PopulateSettledHistory(SqliteConnection connection, byte[] scopeId)
     {
         using (var scope = connection.CreateCommand())
