@@ -3,27 +3,46 @@
 
 namespace AgentKit.Abstractions.Tests.Sessions;
 
-
-
 /// <summary>Verifies SessionDirectoryCreateRecordRequest behavior and contracts.</summary>
 public sealed class SessionDirectoryCreateRecordRequestTests
 {
     [Fact]
-    public void SessionDirectoryCreateRecordRequest_WhenLocationTenantDiffers_ThrowsExactArgumentException()
+    public void Constructor_WhenRequestIsNull_ThrowsExactArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentException>(() => new SessionDirectoryCreateRecordRequest(CreateRequest(), Location(tenantId: new TenantId("other"))));
-        exception.GetType().ShouldBe(typeof(ArgumentException));
+        var exception = Should.Throw<ArgumentNullException>(() => new SessionDirectoryCreateRecordRequest(null!, SessionsTestData.Location()));
+        exception.ParamName.ShouldBe("request");
+    }
+
+    [Fact]
+    public void Constructor_WhenLocationIsNull_ThrowsExactArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new SessionDirectoryCreateRecordRequest(SessionsTestData.CreateRequest(), null!));
         exception.ParamName.ShouldBe("location");
     }
 
-    private static SessionCreateRequest CreateRequest() => new(new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111")), TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human), CreationAuthorization(), conversationId: null, new IdempotencyKey("create"), ExtensionData.Empty);
-    private static SecurityAuthorizationContext CreationAuthorization()
+    [Fact]
+    public void Constructor_WhenLocationAgentDiffersFromRequest_ThrowsExactArgumentException()
     {
-        var identity = TestSupport.TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
-        var agentId = new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
-        var correlation = new BeforeRunOperationCorrelation(new OperationId(Guid.Parse("33333333-3333-3333-3333-333333333333")), null);
-        return new SecurityAuthorizationContext(new SecurityProfileKey("security"), new SecurityProfileVersion(1), new SecurityPolicySnapshotReference(new SecurityPolicySnapshotId(Guid.Parse("44444444-4444-4444-4444-444444444444")), new SecurityPolicyVersion(1), new ContentHash("sha256:policy")), new ComponentKey<ISecurityAuthority>("authority"), new AgentDefinitionRevision(1), new ConfigurationVersion(1), new SecurityAuthorizationScope(agentId, null, correlation), identity);
+        var location = SessionsTestData.Location(address: new SessionAddress(new AgentId(Guid.NewGuid()), SessionsTestData.SessionId));
+        var exception = Should.Throw<ArgumentException>(() => new SessionDirectoryCreateRecordRequest(SessionsTestData.CreateRequest(), location));
+        exception.ParamName.ShouldBe("location");
     }
 
-    private static SessionLocation Location(TenantId? tenantId = null) => new(new SessionAddress(new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111")), new SessionId(Guid.Parse("22222222-2222-2222-2222-222222222222"))), tenantId ?? new TenantId("tenant"), new SessionStoreKey("store"), new SessionDirectoryRevision(1), DateTimeOffset.UnixEpoch, new SchemaVersion("v1"));
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var request = SessionsTestData.CreateRequest();
+        var location = SessionsTestData.Location();
+        var recordRequest = new SessionDirectoryCreateRecordRequest(request, location);
+        recordRequest.Request.ShouldBe(request);
+        recordRequest.Location.ShouldBe(location);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionDirectoryCreateRecordRequest(SessionsTestData.CreateRequest(), SessionsTestData.Location());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
