@@ -64,6 +64,19 @@ public sealed class SessionCreationLocationResultTests
     }
 
     [Fact]
+    public void SessionCreationLocationConflict_WhenSafeMessageIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionCreationLocationConflict(" ")).ParamName.ShouldBe("safeMessage");
+
+    [Fact]
+    public void SessionCreationLocationConflict_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionCreationLocationConflict("conflict");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeMessage.ShouldBe("conflict");
+    }
+
+    [Fact]
     public void SessionCreationLocationResult_WhenPatternMatched_DiscriminatesDerivedKinds()
     {
         SessionCreationLocationResult located = new SessionCreationLocationLocated(SessionsTestData.Location());

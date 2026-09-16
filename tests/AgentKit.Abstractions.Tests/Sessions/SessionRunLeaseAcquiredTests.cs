@@ -45,6 +45,24 @@ public sealed class SessionRunLeaseAcquiredTests
     }
 
     [Fact]
+    public void SessionRunLeaseAcquired_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var lease = new FakeRunLease();
+        var acquired = new SessionRunLeaseAcquired(lease);
+        acquired.Lease.ShouldBeSameAs(lease);
+    }
+
+    [Fact]
+    public void SessionRunBusy_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var operationId = new OperationId(Guid.NewGuid());
+        var runId = new RunId(Guid.NewGuid());
+        var busy = new SessionRunBusy(operationId, runId);
+        busy.ActiveOperationId.ShouldBe(operationId);
+        busy.ActiveRunId.ShouldBe(runId);
+    }
+
+    [Fact]
     public void SessionRunLeaseUnavailable_WhenSafeReasonIsBlank_ThrowsExactArgumentException() =>
         Should.Throw<ArgumentException>(() => new SessionRunLeaseUnavailable(" ")).ParamName.ShouldBe("safeReason");
 

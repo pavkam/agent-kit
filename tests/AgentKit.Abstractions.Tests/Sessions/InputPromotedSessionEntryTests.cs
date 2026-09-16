@@ -41,5 +41,17 @@ public sealed class InputPromotedSessionEntryTests
         var evidence = Evidence();
         var promoted = new InputPromotedSessionEntry(evidence.PromotionEntryId, evidence.Address, evidence.InRunCorrelation, evidence.BranchId, new SessionSequence(2), evidence.PreviousEntryId, DateTimeOffset.UnixEpoch, new SchemaVersion("1"), evidence.LaneId, evidence.AdmissionId, new SessionSequence(1), [evidence.AdmissionId]);
         promoted.InitiatingAdmissionId.ShouldBe(evidence.AdmissionId);
+        promoted.ExecutionLaneId.ShouldBe(evidence.LaneId);
+        promoted.Cutoff.ShouldBe(new SessionSequence(1));
+        promoted.AdmissionIds.ShouldBe([evidence.AdmissionId]);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var evidence = Evidence();
+        var original = new InputPromotedSessionEntry(evidence.PromotionEntryId, evidence.Address, evidence.InRunCorrelation, evidence.BranchId, new SessionSequence(2), evidence.PreviousEntryId, DateTimeOffset.UnixEpoch, new SchemaVersion("1"), evidence.LaneId, evidence.AdmissionId, new SessionSequence(1), [evidence.AdmissionId]);
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 }

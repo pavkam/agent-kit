@@ -23,6 +23,16 @@ public sealed class SessionRunStartResultTests
     }
 
     [Fact]
+    public void SessionRunStartBusy_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var operationId = new OperationId(Guid.NewGuid());
+        var runId = new RunId(Guid.NewGuid());
+        var busy = new SessionRunStartBusy(operationId, runId);
+        busy.OperationId.ShouldBe(operationId);
+        busy.RunId.ShouldBe(runId);
+    }
+
+    [Fact]
     public void SessionRunStartConflict_WhenKindIsUndefined_ThrowsExactArgumentOutOfRangeException() =>
         Should.Throw<ArgumentOutOfRangeException>(() => new SessionRunStartConflict((SessionRunStartConflictKind) 99, "reason")).ParamName.ShouldBe("kind");
 
@@ -39,12 +49,38 @@ public sealed class SessionRunStartResultTests
     }
 
     [Fact]
+    public void SessionRunStartConflict_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var conflict = new SessionRunStartConflict(SessionRunStartConflictKind.SessionVersion, "conflict");
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.SessionVersion);
+        conflict.SafeReason.ShouldBe("conflict");
+    }
+
+    [Fact]
     public void SessionRunStateLoaded_WhenStateIsNull_ThrowsExactArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => new SessionRunStateLoaded(null!)).ParamName.ShouldBe("state");
 
     [Fact]
     public void SessionRunAccepted_WhenStateIsNull_ThrowsExactArgumentNullException() =>
         Should.Throw<ArgumentNullException>(() => new SessionRunAccepted(null!, new SessionVersion(1), existing: false)).ParamName.ShouldBe("state");
+
+    [Fact]
+    public void SessionRunAccepted_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var state = SessionsTestData.AcceptedRunState();
+        var accepted = new SessionRunAccepted(state, new SessionVersion(3), existing: true);
+        accepted.State.ShouldBe(state);
+        accepted.SessionVersion.ShouldBe(new SessionVersion(3));
+        accepted.Existing.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void SessionRunAccepted_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionRunAccepted(SessionsTestData.AcceptedRunState(), new SessionVersion(3), existing: true);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 
     [Fact]
     public void SessionRunStartFenced_WhenSafeReasonIsBlank_ThrowsExactArgumentException() =>

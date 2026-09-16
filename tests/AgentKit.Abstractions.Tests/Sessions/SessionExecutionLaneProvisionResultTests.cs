@@ -46,4 +46,30 @@ public sealed class SessionExecutionLaneProvisionResultTests
 
     private static SessionExecutionLaneProvisioned Provisioned(ExecutionLaneId? laneId = null, SessionLaneRevision? laneRevision = null) =>
         new(laneId ?? SessionsTestData.LaneId, SessionsTestData.Cursor(), laneRevision ?? new SessionLaneRevision(1), new SessionVersion(2), existing: true);
+
+    [Fact]
+    public void SessionExecutionLaneProvisionConflict_WhenSafeMessageIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionExecutionLaneProvisionConflict(" ")).ParamName.ShouldBe("safeMessage");
+
+    [Fact]
+    public void SessionExecutionLaneProvisionConflict_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionExecutionLaneProvisionConflict("conflict");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeMessage.ShouldBe("conflict");
+    }
+
+    [Fact]
+    public void SessionExecutionLaneProvisionRejected_WhenSafeMessageIsBlank_ThrowsExactArgumentException() =>
+        Should.Throw<ArgumentException>(() => new SessionExecutionLaneProvisionRejected(" ")).ParamName.ShouldBe("safeMessage");
+
+    [Fact]
+    public void SessionExecutionLaneProvisionRejected_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionExecutionLaneProvisionRejected("rejected");
+        var copy = original with { };
+        copy.ShouldBe(original);
+        original.SafeMessage.ShouldBe("rejected");
+    }
 }
