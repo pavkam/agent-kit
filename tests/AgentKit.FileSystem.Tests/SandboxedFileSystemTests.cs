@@ -678,6 +678,73 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    public async Task GlobAsync_WhenRetainedResultLimitReached_ReturnsLimitExceededDuringMatchRetention()
+    {
+        var fs = CreateFileSystem();
+        File.WriteAllText(Path.Combine(_root, "a.cs"), "a");
+        File.WriteAllText(Path.Combine(_root, "b.cs"), "b");
+        var result = await fs.GlobAsync(new GlobRequest(null, new GlobPattern("*.cs"), true, false, 10, 100, 1, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(GlobStatus.LimitExceeded);
+        result.Complete.ShouldBeFalse();
+        result.Matches.Select(static path => path.Value).ShouldBe(["a.cs"]);
+    }
+
+    [Fact]
+    public async Task GlobAsync_WhenLimitIsReachedDeepInTraversal_PropagatesTerminalStatusToAncestor()
+    {
+        var fs = CreateFileSystem();
+        _ = Directory.CreateDirectory(Path.Combine(_root, "sub"));
+        File.WriteAllText(Path.Combine(_root, "other.cs"), "other");
+        File.WriteAllText(Path.Combine(_root, "sub", "deep.cs"), "deep");
+        var result = await fs.GlobAsync(new GlobRequest(null, new GlobPattern("**/*.cs"), true, false, 5, 2, 20, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(GlobStatus.LimitExceeded);
+        result.Complete.ShouldBeFalse();
+        result.VisitedEntries.ShouldBe(3);
+        result.Matches.Select(static path => path.Value).ShouldBe(["other.cs"]);
+    }
+
+    [Fact]
+    public async Task GlobAsync_WhenSubdirectoryPermissionDenied_ReturnsDenied()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var fs = CreateFileSystem();
+        var restricted = Path.Combine(_root, "restricted");
+        _ = Directory.CreateDirectory(restricted);
+        File.WriteAllText(Path.Combine(restricted, "secret.cs"), "secret");
+        File.SetUnixFileMode(restricted, UnixFileMode.None);
+        try
+        {
+            var result = await fs.GlobAsync(new GlobRequest(null, new GlobPattern("**/*.cs"), true, false, 10, 100, 20, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(GlobStatus.Denied);
+        }
+        finally
+        {
+            File.SetUnixFileMode(restricted, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenNestedPathParentIsMissing_ReturnsNotFound()
+    {
+        var fs = CreateFileSystem();
+        var result = await fs.EnumerateAsync(new DirectoryEnumerationRequest(new FileSystemPath("missing/sub"), 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(DirectoryEnumerationStatus.NotFound);
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenEntryNameContainsBackslash_ReturnsFailed()
+    {
+        var fs = CreateFileSystem();
+        File.WriteAllText(Path.Combine(_root, "a\\b.txt"), "content");
+        var result = await fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(DirectoryEnumerationStatus.Failed);
+    }
+
+    [Fact]
     public async Task ReadAsync_WhenObserved_EmitsSecurityCorrelatedActivityWithoutRawPath()
     {
         const string protectedPath = "content-must-not-enter-diagnostics.txt";
@@ -701,6 +768,39 @@ public sealed class SandboxedFileSystemTests: IDisposable
         var activity = stopped.ShouldNotBeNull();
         activity.GetTagItem(AgentKitTagNames.FileSystemOperation).ShouldBe("read");
         activity.TagObjects.Select(static tag => tag.Value?.ToString()).ShouldNotContain(protectedPath);
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenCallerCancelsDuringGrantConsumption_PropagatesCancellationWithoutObservingDirectory()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var store = new TestSecurity.RecordingGrantStore
+        {
+            OnIntentConsumption = cancellation.Cancel
+        };
+        var fs = CreateFileSystem(grantStore: store);
+        var action = async () => await fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, TestSecurity.Grant()), cancellation.Token);
+        _ = await action.ShouldThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task EnumerateAsync_WhenGrantStoreThrowsUnexpectedException_LogsFailureAndRethrows()
+    {
+        var fs = CreateFileSystem(grantStore: new ThrowingGrantStore());
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => fs.EnumerateAsync(new DirectoryEnumerationRequest(null, 10, null, TestSecurity.Grant()), TestContext.Current.CancellationToken).AsTask());
+    }
+
+    private sealed class ThrowingGrantStore: ISecurityGrantStore
+    {
+        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Unexpected grant store failure.");
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, SecurityEnforcementIntent intent, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Unexpected grant store failure.");
+
+        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
     }
 
     private SandboxedFileSystem CreateFileSystem(Action<SandboxedFileSystemOptions>? configure = null, ISecurityGrantStore? grantStore = null)
@@ -959,6 +1059,109 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    public async Task ReadSnapshotAsync_WhenRequestMaximumBytesExceedsConfiguredBound_ReturnsDenied()
+    {
+        var fileSystem = new SandboxedFileSystem(
+            Options.Create(new SandboxedFileSystemOptions { RootDirectory = _rootSandboxedFileSystemEdit, MaximumReadBytes = 10 }),
+            TestSecurity.GrantStore(),
+            TimeProvider.System);
+        var result = await fileSystem.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("a.txt"), 1000, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSnapshotStatus.Denied);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("host boundary");
+    }
+
+    [Fact]
+    public async Task ReadSnapshotAsync_WhenParentDirectoryIsMissing_ReturnsNotFound()
+    {
+        var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
+        var result = await fileSystem.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("missing/sub.txt"), 100, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSnapshotStatus.NotFound);
+    }
+
+    [Fact]
+    public async Task ReadSnapshotAsync_WhenTargetFileIsMissingButParentExists_ReturnsNotFound()
+    {
+        var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
+        var result = await fileSystem.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("missing.txt"), 100, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSnapshotStatus.NotFound);
+    }
+
+    [Fact]
+    public async Task ReadSnapshotAsync_WhenParentIsSymlinkOutsideRoot_ReturnsDenied()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var outside = Path.Combine(Path.GetTempPath(), $"agentkit-snapshot-outside-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(outside);
+        try
+        {
+            _ = Directory.CreateSymbolicLink(Path.Combine(_rootSandboxedFileSystemEdit, "outside-link"), outside);
+            var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
+            var result = await fileSystem.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("outside-link/secret.txt"), 100, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(FileSnapshotStatus.Denied);
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ReadSnapshotAsync_WhenTargetIsSymlinkOutsideRoot_ReturnsDenied()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var outside = Path.Combine(Path.GetTempPath(), $"agentkit-snapshot-outside-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(outside);
+        try
+        {
+            var outsidePath = Path.Combine(outside, "secret.txt");
+            await File.WriteAllTextAsync(outsidePath, "outside", TestContext.Current.CancellationToken);
+            _ = File.CreateSymbolicLink(Path.Combine(_rootSandboxedFileSystemEdit, "secret-link.txt"), outsidePath);
+            var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
+            var result = await fileSystem.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("secret-link.txt"), 100, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(FileSnapshotStatus.Denied);
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ReadSnapshotAsync_WhenFileExceedsRequestByteBound_ReturnsLimitExceeded()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemEdit, "big.txt"), "0123456789", TestContext.Current.CancellationToken);
+        var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
+        var result = await fileSystem.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("big.txt"), 4, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSnapshotStatus.LimitExceeded);
+    }
+
+    [Fact]
+    public async Task ReadSnapshotAsync_WhenTargetIsNamedPipe_ReturnsFailedNotSeekable()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var fifoPath = Path.Combine(_rootSandboxedFileSystemEdit, "fifo");
+        var mkfifo = Process.Start("mkfifo", fifoPath);
+        await mkfifo.WaitForExitAsync(TestContext.Current.CancellationToken);
+        mkfifo.ExitCode.ShouldBe(0);
+        var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
+        var result = await fileSystem.ReadSnapshotAsync(new FileSnapshotRequest(new FileSystemPath("fifo"), 100, TestSecurity.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(FileSnapshotStatus.Failed);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("seekable");
+    }
+
+    [Fact]
     public async Task ReplaceAsync_WhenExpectedVersionMatches_CommitsAtomicallyAndPreservesMode()
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
@@ -1015,6 +1218,166 @@ public sealed class SandboxedFileSystemTests: IDisposable
         result.Status.ShouldBe(AtomicFileReplaceStatus.Denied);
         (await File.ReadAllTextAsync(target, TestContext.Current.CancellationToken)).ShouldBe("current");
         Directory.GetFiles(_rootSandboxedFileSystemEdit, ".agentkit-stage-*").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenContentExceedsMaximumWriteBytes_ReturnsDenied()
+    {
+        var target = Path.Combine(_rootSandboxedFileSystemEdit, "a.txt");
+        await File.WriteAllTextAsync(target, "current", TestContext.Current.CancellationToken);
+        var fileSystem = new SandboxedFileSystem(
+            Options.Create(new SandboxedFileSystemOptions { RootDirectory = _rootSandboxedFileSystemEdit, MaximumWriteBytes = 2 }),
+            TestSecurity.GrantStore(),
+            TimeProvider.System);
+        var expected = FileSecurityBinding.ContentFingerprint(await File.ReadAllBytesAsync(target, TestContext.Current.CancellationToken));
+        var result = await fileSystem.ReplaceAsync(ReplaceRequest("a.txt", expected, "too long"u8.ToArray().ToImmutableArray(), MutationId(6)), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(AtomicFileReplaceStatus.Denied);
+        (await File.ReadAllTextAsync(target, TestContext.Current.CancellationToken)).ShouldBe("current");
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenParentDirectoryMissing_ReturnsNotFound()
+    {
+        var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
+        var result = await fileSystem.ReplaceAsync(
+            ReplaceRequest("missing-parent/a.txt", new ContentHash("sha256:any"), "content"u8.ToArray().ToImmutableArray(), MutationId(7)),
+            TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(AtomicFileReplaceStatus.NotFound);
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenParentIsSymlinkOutsideRoot_ReturnsDenied()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var outside = Path.Combine(Path.GetTempPath(), $"agentkit-replace-outside-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(outside);
+        try
+        {
+            _ = Directory.CreateSymbolicLink(Path.Combine(_rootSandboxedFileSystemEdit, "outside-link"), outside);
+            var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
+            var result = await fileSystem.ReplaceAsync(
+                ReplaceRequest("outside-link/a.txt", new ContentHash("sha256:any"), "content"u8.ToArray().ToImmutableArray(), MutationId(8)),
+                TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(AtomicFileReplaceStatus.Denied);
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenTargetMissingButParentExists_ReturnsNotFound()
+    {
+        var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
+        var result = await fileSystem.ReplaceAsync(
+            ReplaceRequest("missing.txt", new ContentHash("sha256:any"), "content"u8.ToArray().ToImmutableArray(), MutationId(9)),
+            TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(AtomicFileReplaceStatus.NotFound);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("does not exist");
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenTargetIsSymlinkOutsideRoot_ReturnsDeniedWithoutOutsideEffect()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var outside = Path.Combine(Path.GetTempPath(), $"agentkit-replace-outside-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(outside);
+        try
+        {
+            var outsidePath = Path.Combine(outside, "secret.txt");
+            await File.WriteAllTextAsync(outsidePath, "outside", TestContext.Current.CancellationToken);
+            _ = File.CreateSymbolicLink(Path.Combine(_rootSandboxedFileSystemEdit, "secret-link.txt"), outsidePath);
+            var fileSystem = CreateFileSystemSandboxedFileSystemEdit();
+            var result = await fileSystem.ReplaceAsync(
+                ReplaceRequest("secret-link.txt", new ContentHash("sha256:any"), "content"u8.ToArray().ToImmutableArray(), MutationId(10)),
+                TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(AtomicFileReplaceStatus.Denied);
+            (await File.ReadAllTextAsync(outsidePath, TestContext.Current.CancellationToken)).ShouldBe("outside");
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenCurrentTargetExceedsReadBoundary_ReturnsFailedNotConflict()
+    {
+        var target = Path.Combine(_rootSandboxedFileSystemEdit, "a.txt");
+        await File.WriteAllTextAsync(target, "0123456789", TestContext.Current.CancellationToken);
+        var fileSystem = new SandboxedFileSystem(
+            Options.Create(new SandboxedFileSystemOptions { RootDirectory = _rootSandboxedFileSystemEdit, MaximumReadBytes = 4 }),
+            TestSecurity.GrantStore(),
+            TimeProvider.System);
+        var result = await fileSystem.ReplaceAsync(
+            ReplaceRequest("a.txt", new ContentHash("sha256:any"), "content"u8.ToArray().ToImmutableArray(), MutationId(11)),
+            TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(AtomicFileReplaceStatus.Failed);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("boundary");
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WhenCallerCancelsWhileWaitingForAnotherPlanOnTheSamePath_ReleasesQueuePositionWithoutHarm()
+    {
+        var target = Path.Combine(_rootSandboxedFileSystemEdit, "a.txt");
+        await File.WriteAllTextAsync(target, "old", TestContext.Current.CancellationToken);
+        var expected = FileSecurityBinding.ContentFingerprint(await File.ReadAllBytesAsync(target, TestContext.Current.CancellationToken));
+        var gate = new GatedGrantStore();
+        var fileSystem = CreateFileSystemSandboxedFileSystemEdit(gate);
+        var firstTask = fileSystem.ReplaceAsync(ReplaceRequest("a.txt", expected, "first"u8.ToArray().ToImmutableArray(), MutationId(12)), TestContext.Current.CancellationToken).AsTask();
+        await gate.Entered.Task;
+        using var cts = new CancellationTokenSource();
+        var secondTask = fileSystem.ReplaceAsync(ReplaceRequest("a.txt", expected, "second"u8.ToArray().ToImmutableArray(), MutationId(13)), cts.Token).AsTask();
+        await cts.CancelAsync();
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => secondTask);
+        gate.Release();
+        var firstResult = await firstTask;
+        firstResult.Status.ShouldBe(AtomicFileReplaceStatus.Committed);
+        var thirdResult = await fileSystem.ReplaceAsync(ReplaceRequest("a.txt", FileSecurityBinding.ContentFingerprint("first"u8.ToArray()), "third"u8.ToArray().ToImmutableArray(), MutationId(14)), TestContext.Current.CancellationToken);
+        thirdResult.Status.ShouldBe(AtomicFileReplaceStatus.Committed);
+    }
+
+    private sealed class GatedGrantStore: ISecurityGrantStore
+    {
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Release() => _release.TrySetResult();
+
+        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed by gated test store."));
+
+        public async ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(SecurityGrant grant, SecurityEnforcementRequest enforcement, SecurityEnforcementIntent intent, CancellationToken cancellationToken = default)
+        {
+            _ = Entered.TrySetResult();
+            await _release.Task.ConfigureAwait(false);
+            return new GrantConsumptionResult(
+                GrantConsumptionStatus.Consumed,
+                0,
+                "Consumed by gated test store.",
+                new SecurityEnforcementIntentReceipt(
+                    intent.Id,
+                    grant.Id,
+                    grant.RequestId,
+                    enforcement,
+                    intent.RequiredFence,
+                    SecurityEnforcementBinding.Fingerprint(enforcement, intent),
+                    DateTimeOffset.UnixEpoch));
+        }
+
+        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
     }
 
     [Fact]
