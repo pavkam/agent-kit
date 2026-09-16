@@ -1643,6 +1643,195 @@ public sealed class SandboxedFileSystemTests: IDisposable
         (await File.ReadAllTextAsync(Path.Combine(_rootSandboxedFileSystemPatch, "existing.txt"), TestContext.Current.CancellationToken)).ShouldBe("original");
     }
 
+    [Fact]
+    public async Task ApplyPatchAsync_WhenEntryCountExceedsConfiguredBoundary_RejectsBeforeGrantConsumption()
+    {
+        var fileSystem = new SandboxedFileSystem(
+            Options.Create(new SandboxedFileSystemOptions { RootDirectory = _rootSandboxedFileSystemPatch, MaximumPatchEntries = 1 }),
+            new RecordingGrantStore(),
+            TimeProvider.System);
+        var entries = ImmutableArray.Create<WorkspacePatchEntry>(
+            new WorkspacePatchCreate(MutationIdSandboxedFileSystemPatch(20), new FileSystemPath("one.txt"), "one"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()),
+            new WorkspacePatchCreate(MutationIdSandboxedFileSystemPatch(21), new FileSystemPath("two.txt"), "two"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()));
+        var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest(entries), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("entry boundary");
+        File.Exists(Path.Combine(_rootSandboxedFileSystemPatch, "one.txt")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenEntryKindDoesNotMatchItsConcreteContract_RejectsBeforeGrantConsumption()
+    {
+        var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
+        var mismatched = new WorkspacePatchCreate(MutationIdSandboxedFileSystemPatch(22), new FileSystemPath("mismatched.txt"), "content"u8.ToArray().ToImmutableArray(), TestSecurity.Grant())
+            with
+        { Kind = WorkspacePatchEntryKind.Delete };
+        var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest([mismatched]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("does not match its concrete contract");
+        File.Exists(Path.Combine(_rootSandboxedFileSystemPatch, "mismatched.txt")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenTwoEntriesShareTheSameMutationIdentity_RejectsBeforeGrantConsumption()
+    {
+        var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
+        var sharedId = MutationIdSandboxedFileSystemPatch(23);
+        var entries = ImmutableArray.Create<WorkspacePatchEntry>(
+            new WorkspacePatchCreate(sharedId, new FileSystemPath("first.txt"), "first"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()),
+            new WorkspacePatchCreate(sharedId, new FileSystemPath("second.txt"), "second"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()));
+        var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest(entries), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("unique");
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenSingleEntryContentExceedsWriteBoundary_RejectsBeforeGrantConsumption()
+    {
+        var fileSystem = new SandboxedFileSystem(
+            Options.Create(new SandboxedFileSystemOptions { RootDirectory = _rootSandboxedFileSystemPatch, MaximumWriteBytes = 2 }),
+            new RecordingGrantStore(),
+            TimeProvider.System);
+        var entry = new WorkspacePatchCreate(MutationIdSandboxedFileSystemPatch(24), new FileSystemPath("too-big.txt"), "too long"u8.ToArray().ToImmutableArray(), TestSecurity.Grant());
+        var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest([entry]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("write boundary");
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenAggregateContentExceedsPatchByteBoundary_RejectsBeforeGrantConsumption()
+    {
+        var fileSystem = new SandboxedFileSystem(
+            Options.Create(new SandboxedFileSystemOptions { RootDirectory = _rootSandboxedFileSystemPatch, MaximumPatchBytes = 5 }),
+            new RecordingGrantStore(),
+            TimeProvider.System);
+        var entries = ImmutableArray.Create<WorkspacePatchEntry>(
+            new WorkspacePatchCreate(MutationIdSandboxedFileSystemPatch(25), new FileSystemPath("one.txt"), "abc"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()),
+            new WorkspacePatchCreate(MutationIdSandboxedFileSystemPatch(26), new FileSystemPath("two.txt"), "abc"u8.ToArray().ToImmutableArray(), TestSecurity.Grant()));
+        var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest(entries), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("aggregate byte boundary");
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenSourceParentDirectoryIsMissing_RejectsAtPreflight()
+    {
+        var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
+        var entry = new WorkspacePatchCreate(MutationIdSandboxedFileSystemPatch(27), new FileSystemPath("missing-parent/new.txt"), "content"u8.ToArray().ToImmutableArray(), TestSecurity.Grant());
+        var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest([entry]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("does not exist");
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenSourceParentIsSymlinkOutsideRoot_RejectsAtPreflightAsBoundary()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var outside = Path.Combine(Path.GetTempPath(), $"agentkit-patch-outside-{Guid.NewGuid():N}");
+        _ = Directory.CreateDirectory(outside);
+        try
+        {
+            _ = Directory.CreateSymbolicLink(Path.Combine(_rootSandboxedFileSystemPatch, "outside-link"), outside);
+            var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
+            var entry = new WorkspacePatchCreate(MutationIdSandboxedFileSystemPatch(28), new FileSystemPath("outside-link/new.txt"), "content"u8.ToArray().ToImmutableArray(), TestSecurity.Grant());
+            var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest([entry]), TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+            result.SafeMessage.ShouldNotBeNull().ShouldContain("inaccessible boundary");
+            File.Exists(Path.Combine(outside, "new.txt")).ShouldBeFalse();
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenDeleteTargetVersionChanged_RejectsAtPreflight()
+    {
+        await WriteAsync("deletable.txt", "current");
+        var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
+        var entry = new WorkspacePatchDelete(MutationIdSandboxedFileSystemPatch(29), new FileSystemPath("deletable.txt"), new ContentHash("sha256:stale"), TestSecurity.Grant());
+        var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest([entry]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        File.Exists(Path.Combine(_rootSandboxedFileSystemPatch, "deletable.txt")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenMoveSourceVersionChanged_RejectsAtPreflight()
+    {
+        await WriteAsync("movable.txt", "current");
+        var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
+        var entry = new WorkspacePatchMove(MutationIdSandboxedFileSystemPatch(30), new FileSystemPath("movable.txt"), new FileSystemPath("moved.txt"), new ContentHash("sha256:stale"), TestSecurity.Grant());
+        var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest([entry]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        File.Exists(Path.Combine(_rootSandboxedFileSystemPatch, "movable.txt")).ShouldBeTrue();
+        File.Exists(Path.Combine(_rootSandboxedFileSystemPatch, "moved.txt")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenMoveDestinationParentIsMissing_RejectsAtPreflight()
+    {
+        await WriteAsync("movable.txt", "current");
+        var expected = await FingerprintAsync("movable.txt");
+        var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
+        var entry = new WorkspacePatchMove(MutationIdSandboxedFileSystemPatch(31), new FileSystemPath("movable.txt"), new FileSystemPath("missing-dir/moved.txt"), expected, TestSecurity.Grant());
+        var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest([entry]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        File.Exists(Path.Combine(_rootSandboxedFileSystemPatch, "movable.txt")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenMoveDestinationAlreadyExists_RejectsAtPreflight()
+    {
+        await WriteAsync("movable.txt", "current");
+        await WriteAsync("moved.txt", "occupied");
+        var expected = await FingerprintAsync("movable.txt");
+        var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
+        var entry = new WorkspacePatchMove(MutationIdSandboxedFileSystemPatch(32), new FileSystemPath("movable.txt"), new FileSystemPath("moved.txt"), expected, TestSecurity.Grant());
+        var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest([entry]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        (await File.ReadAllTextAsync(Path.Combine(_rootSandboxedFileSystemPatch, "moved.txt"), TestContext.Current.CancellationToken)).ShouldBe("occupied");
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenRequiredFileIsMissing_RejectsAtPreflightWithoutRevealingDetails()
+    {
+        var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
+        var entry = new WorkspacePatchDelete(MutationIdSandboxedFileSystemPatch(33), new FileSystemPath("never-existed.txt"), new ContentHash("sha256:any"), TestSecurity.Grant());
+        var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest([entry]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("does not exist");
+    }
+
+    [Fact]
+    public async Task ApplyPatchAsync_WhenParentDirectoryIsNotWritable_RejectsStagingWithoutPartialEffect()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var readOnlyDirectory = Path.Combine(_rootSandboxedFileSystemPatch, "readonly-dir");
+        _ = Directory.CreateDirectory(readOnlyDirectory);
+        File.SetUnixFileMode(readOnlyDirectory, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            var fileSystem = CreateFileSystemSandboxedFileSystemPatch(new RecordingGrantStore());
+            var entry = new WorkspacePatchCreate(MutationIdSandboxedFileSystemPatch(34), new FileSystemPath("readonly-dir/new.txt"), "content"u8.ToArray().ToImmutableArray(), TestSecurity.Grant());
+            var result = await fileSystem.ApplyPatchAsync(new WorkspacePatchRequest([entry]), TestContext.Current.CancellationToken);
+            result.Status.ShouldBe(WorkspacePatchStatus.RejectedBeforeEffect);
+            result.SafeMessage.ShouldNotBeNull().ShouldContain("staged");
+        }
+        finally
+        {
+            File.SetUnixFileMode(readOnlyDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
     private SandboxedFileSystem CreateFileSystemSandboxedFileSystemPatch(ISecurityGrantStore store) => new(Options.Create(new SandboxedFileSystemOptions { RootDirectory = _rootSandboxedFileSystemPatch }), store, TimeProvider.System);
     private async Task WriteAsync(string path, string content) => await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemPatch, path), content, TestContext.Current.CancellationToken);
     private async Task<ContentHash> FingerprintAsync(string path) => FileSecurityBinding.ContentFingerprint(await File.ReadAllBytesAsync(Path.Combine(_rootSandboxedFileSystemPatch, path), TestContext.Current.CancellationToken));
