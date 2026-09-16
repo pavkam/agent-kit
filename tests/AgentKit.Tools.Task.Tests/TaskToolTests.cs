@@ -106,6 +106,104 @@ public sealed class TaskToolTests
     }
 
     [Fact]
+    public async System.Threading.Tasks.Task InvokeAsync_WhenCorrelationIsNotInRun_PerformsNoAuthorizationOrDispatch()
+    {
+        var broker = new RecordingDelegationBroker();
+        var authority = new RecordingSecurityAuthority();
+        var request = new ToolInvocationRequest(
+            TestSupport.TestSecurityEvidence.ToolContext(
+                TestData.ParentAgentId,
+                TestData.ParentSessionId,
+                TestData.ToolCallId,
+                new BeforeRunOperationCorrelation(TestData.OperationId, null),
+                TestData.Identity),
+            JsonDocument.Parse(ValidArguments).RootElement,
+            DateTimeOffset.UnixEpoch);
+
+        var result = await Tool(broker, authority).InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Unsupported);
+        authority.Requests.ShouldBeEmpty();
+        broker.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task InvokeAsync_WhenBrokerRejects_PreservesTypedFailureWithoutContent()
+    {
+        var broker = new RecordingDelegationBroker
+        {
+            Result = static request => new TaskDelegationRejected(request.Prompt.Id, "Delegation depth exceeded."),
+        };
+
+        var result = await Tool(broker, new RecordingSecurityAuthority()).InvokeAsync(Request(ValidArguments), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.Denied);
+        result.Outcome.FailureReason.ShouldBe("Delegation depth exceeded.");
+        result.Content.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task InvokeAsync_WhenTurnsToolCallsAndTimeoutOmitted_UsesConfiguredDefaults()
+    {
+        var broker = new RecordingDelegationBroker();
+        var json = $$"""
+            {
+              "target_agent_id": "{{TestData.TargetAgentId}}",
+              "objective": "Implement the parser.",
+              "acceptance_criteria": ["All focused tests pass."],
+              "allowed_tools": ["read", "edit"]
+            }
+            """;
+
+        var result = await Tool(broker, new RecordingSecurityAuthority()).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        var prompt = broker.Requests.ShouldHaveSingleItem().Prompt;
+        prompt.Budget.ShouldBe(new TaskDelegationBudget(new TaskToolOptions().DefaultMaximumTurns, new TaskToolOptions().DefaultMaximumToolCalls));
+        prompt.Deadline.ShouldBe(DateTimeOffset.UnixEpoch.Add(new TaskToolOptions().DefaultTimeout));
+    }
+
+    [Theory]
+    [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[],\"timeout_seconds\":0}")]
+    [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[],\"timeout_seconds\":-1}")]
+    [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[],\"timeout_seconds\":999999999}")]
+    [InlineData( /*lang=json,strict*/"{\"target_agent_id\":\"50000000-0000-0000-0000-000000000005\",\"objective\":\"x\",\"acceptance_criteria\":[\"y\"],\"allowed_tools\":[],\"timeout_seconds\":\"soon\"}")]
+    public async System.Threading.Tasks.Task InvokeAsync_WhenTimeoutSecondsIsInvalid_PerformsNoAuthorizationOrDispatch(string json)
+    {
+        var broker = new RecordingDelegationBroker();
+        var authority = new RecordingSecurityAuthority();
+
+        var result = await Tool(broker, authority).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        authority.Requests.ShouldBeEmpty();
+        broker.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task InvokeAsync_WhenAcceptanceCriterionExceedsMaximumCharacters_PerformsNoAuthorizationOrDispatch()
+    {
+        var broker = new RecordingDelegationBroker();
+        var authority = new RecordingSecurityAuthority();
+        var longCriterion = new string('c', 5000);
+        var json = JsonSerializer.Serialize(new
+        {
+            target_agent_id = TestData.TargetAgentId.Value.ToString(),
+            objective = "Implement the parser.",
+            acceptance_criteria = new[] { longCriterion },
+            allowed_tools = Array.Empty<string>(),
+        });
+
+        var result = await Tool(broker, authority).InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        authority.Requests.ShouldBeEmpty();
+        broker.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async System.Threading.Tasks.Task InvokeAsync_WhenNoSession_PerformsNoAuthorizationOrDispatch()
     {
         var broker = new RecordingDelegationBroker();
