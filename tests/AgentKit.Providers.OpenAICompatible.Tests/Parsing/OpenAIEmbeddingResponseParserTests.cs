@@ -233,6 +233,41 @@ public sealed class OpenAIEmbeddingResponseParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_WhenEmbeddingFieldIsNeitherArrayNorString_ReturnsProtocolFailure()
+    {
+        var requestId = new EmbeddingRequestId(Guid.NewGuid());
+        var parser = new OpenAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"object":"list","data":[{"object":"embedding","index":0,"embedding":42}],"model":"text-embedding-3-small"}"""u8.ToArray());
+
+        var result = await parser.ParseAsync(body, CreateContext(requestId), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<JsonException>();
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenUsageHasNegativePromptTokens_ReturnsProtocolFailure()
+    {
+        var requestId = new EmbeddingRequestId(Guid.NewGuid());
+        var parser = new OpenAIEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1,0.2]}],"model":"text-embedding-3-small","usage":{"prompt_tokens":-1,"total_tokens":0}}"""u8.ToArray());
+
+        var result = await parser.ParseAsync(body, CreateContext(requestId), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned invalid usage evidence.");
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public async Task ParseAsync_WhenFailing_ReportsProviderRequestIdOnFailure()
     {
         var requestId = new EmbeddingRequestId(Guid.NewGuid());
