@@ -97,6 +97,50 @@ public sealed class BudgetScopeTests
         Should.Throw<ArgumentNullException>(() => new BudgetScope(ledger, null!)).ParamName.ShouldBe("reference");
     }
 
+    [Fact]
+    public async Task ReserveBatchAsync_WhenLedgerThrowsNonCancellationException_LogsFailureAndRethrows()
+    {
+        var failure = new InvalidOperationException("ledger unavailable");
+        var ledger = new RecordingBudgetLedger
+        {
+            ReserveException = failure
+        };
+        var scopeReference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
+        var request = TestFactory.ReservationRequest(scopeReference.Id);
+        var logger = new CapturingLogger<BudgetScope>();
+        var scope = new BudgetScope(ledger, scopeReference, logger);
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await scope.ReserveBatchAsync([request], TestContext.Current.CancellationToken));
+        exception.ShouldBeSameAs(failure);
+        logger.Events.ShouldContain(entry => entry.EventId == 7012);
+    }
+
+    [Fact]
+    public async Task GetSnapshotAsync_WhenLedgerThrowsNonCancellationException_LogsFailureAndRethrows()
+    {
+        var failure = new InvalidOperationException("ledger unavailable");
+        var ledger = new RecordingBudgetLedger
+        {
+            SnapshotException = failure
+        };
+        var scopeReference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
+        var logger = new CapturingLogger<BudgetScope>();
+        var scope = new BudgetScope(ledger, scopeReference, logger);
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await scope.GetSnapshotAsync(TestContext.Current.CancellationToken));
+        exception.ShouldBeSameAs(failure);
+        logger.Events.ShouldContain(entry => entry.EventId == 7061);
+    }
+
+    private sealed class CapturingLogger<T>: ILogger<T>
+    {
+        public List<(int EventId, LogLevel Level)> Events { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Events.Add((eventId.Id, logLevel));
+    }
+
     private static BudgetLedgerScopeReference Scope() => new(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
     private sealed class RecordingLedgerBudgetRuntimeBoundary: IBudgetLedger
     {

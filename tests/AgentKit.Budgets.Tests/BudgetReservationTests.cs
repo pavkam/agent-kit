@@ -171,4 +171,97 @@ public sealed class BudgetReservationTests
         Should.Throw<ArgumentNullException>(() => new BudgetReservation(null!, Receipt(scope, request))).ParamName.ShouldBe("ledger");
         Should.Throw<ArgumentNullException>(() => new BudgetReservation(ledger, null!)).ParamName.ShouldBe("receipt");
     }
+
+    [Fact]
+    public async Task MarkStartedAsync_WhenReservationExpired_ReportsRejectedActivityOutcome()
+    {
+        var scope = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
+        var receipt = TestFactory.Receipt(scope, TestFactory.ReservationRequest(scope.Id));
+        var ledger = new RecordingBudgetLedger
+        {
+            StartResult = new BudgetStartExpired(receipt.Reservation.Id, DateTimeOffset.UtcNow)
+        };
+        var reservation = new BudgetReservation(ledger, receipt);
+        var result = await reservation.MarkStartedAsync(TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<BudgetStartExpired>();
+    }
+
+    [Fact]
+    public async Task MarkStartedAsync_WhenLedgerThrowsNonCancellationException_LogsFailureAndRethrows()
+    {
+        var failure = new InvalidOperationException("ledger unavailable");
+        var ledger = new RecordingBudgetLedger
+        {
+            StartException = failure
+        };
+        var scope = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
+        var receipt = TestFactory.Receipt(scope, TestFactory.ReservationRequest(scope.Id));
+        var logger = new CapturingLogger<BudgetReservation>();
+        var reservation = new BudgetReservation(ledger, receipt, logger);
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await reservation.MarkStartedAsync(TestContext.Current.CancellationToken));
+        exception.ShouldBeSameAs(failure);
+        logger.Events.ShouldContain(entry => entry.EventId == 7031);
+    }
+
+    [Fact]
+    public async Task CommitAsync_WhenLedgerThrowsNonCancellationException_LogsFailureAndRethrows()
+    {
+        var failure = new InvalidOperationException("ledger unavailable");
+        var ledger = new RecordingBudgetLedger
+        {
+            SettleException = failure
+        };
+        var scope = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
+        var receipt = TestFactory.Receipt(scope, TestFactory.ReservationRequest(scope.Id));
+        var logger = new CapturingLogger<BudgetReservation>();
+        var reservation = new BudgetReservation(ledger, receipt, logger);
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await reservation.CommitAsync(1m, TestContext.Current.CancellationToken));
+        exception.ShouldBeSameAs(failure);
+        logger.Events.ShouldContain(entry => entry.EventId == 7021);
+    }
+
+    [Fact]
+    public async Task CorrectAsync_WhenLedgerThrowsNonCancellationException_LogsFailureAndRethrows()
+    {
+        var failure = new InvalidOperationException("ledger unavailable");
+        var ledger = new RecordingBudgetLedger
+        {
+            CorrectException = failure
+        };
+        var scope = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
+        var receipt = TestFactory.Receipt(scope, TestFactory.ReservationRequest(scope.Id));
+        var logger = new CapturingLogger<BudgetReservation>();
+        var reservation = new BudgetReservation(ledger, receipt, logger);
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await reservation.CorrectAsync(1m, 1, TestContext.Current.CancellationToken));
+        exception.ShouldBeSameAs(failure);
+        logger.Events.ShouldContain(entry => entry.EventId == 7041);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhenReservationAlreadySettled_ReturnsAlreadySettledOutcomeWithoutThrowing()
+    {
+        var scope = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
+        var receipt = TestFactory.Receipt(scope, TestFactory.ReservationRequest(scope.Id));
+        var commit = new BudgetCommitResult(receipt.Reservation.Id, 1m, 1m, 0m, 0m);
+        var ledger = new RecordingBudgetLedger
+        {
+            ReleaseResult = new BudgetLedgerAlreadySettled(commit)
+        };
+        var logger = new CapturingLogger<BudgetReservation>();
+        var reservation = new BudgetReservation(ledger, receipt, logger);
+        await reservation.DisposeAsync();
+        ledger.ReleaseReference.ShouldBe(receipt.Reservation);
+        logger.Events.ShouldContain(entry => entry.EventId == 7020);
+    }
+
+    private sealed class CapturingLogger<T>: ILogger<T>
+    {
+        public List<(int EventId, LogLevel Level)> Events { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Events.Add((eventId.Id, logLevel));
+    }
 }

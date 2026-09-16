@@ -342,4 +342,93 @@ public sealed class BudgetAuthorityTests
         Should.Throw<ArgumentNullException>(() => new BudgetAuthority(null!, TestFactory.DefaultOptions())).ParamName.ShouldBe("ledger");
         Should.Throw<ArgumentNullException>(() => new BudgetAuthority(ledger, null!)).ParamName.ShouldBe("options");
     }
+
+    [Fact]
+    public async Task CreateChildScopeAsync_WhenLedgerThrowsNonCancellationException_LogsFailureAndRethrows()
+    {
+        var failure = new InvalidOperationException("ledger unavailable");
+        var ledger = new RecordingBudgetLedger
+        {
+            CreateException = failure
+        };
+        var logger = new CapturingLogger<BudgetAuthority>();
+        var loggerFactory = new CapturingLoggerFactory(logger);
+        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions(), loggerFactory);
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await authority.CreateChildScopeAsync(TestFactory.ScopeRequest(), TestContext.Current.CancellationToken));
+        exception.ShouldBeSameAs(failure);
+        logger.Events.ShouldContain(entry => entry.EventId == 7003);
+    }
+
+    private sealed class CapturingLoggerFactory(ILogger logger): ILoggerFactory
+    {
+        public void AddProvider(ILoggerProvider provider)
+        {
+        }
+
+        public ILogger CreateLogger(string categoryName) => logger;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>Verifies every successful and cancelled outcome emits its bounded log event when logging is enabled.</summary>
+    [Fact]
+    public async Task RuntimeOperations_WhenLoggingEnabled_EmitBoundedSuccessAndCancellationLogs()
+    {
+        var rawLogger = new CapturingRawLogger();
+        var loggerFactory = new CapturingLoggerFactory(rawLogger);
+        var ledger = new RecordingBudgetLedger();
+        var authority = new BudgetAuthority(ledger, TestFactory.DefaultOptions(), loggerFactory);
+        var reference = new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), TestFactory.Address());
+        var request = TestFactory.ReservationRequest(reference.Id);
+        var receipt = TestFactory.Receipt(reference, request);
+        ledger.CreateResult = new BudgetLedgerScopeCreated(reference);
+        var scope = ((BudgetScopeCreated) await authority.CreateChildScopeAsync(TestFactory.ScopeRequest(), TestContext.Current.CancellationToken)).Scope;
+        rawLogger.Events.ShouldContain(entry => entry == 7000);
+        ledger.CreateResult = new BudgetLedgerScopeCreateRejected(new BudgetScopeCreationFailed(BudgetScopeCreationFailureKind.MaximumDepthExceeded, "depth"));
+        _ = await authority.CreateChildScopeAsync(TestFactory.ScopeRequest(), TestContext.Current.CancellationToken);
+        rawLogger.Events.ShouldContain(entry => entry == 7001);
+        using (var cancelled = new CancellationTokenSource())
+        {
+            cancelled.Cancel();
+            ledger.CreateException = new OperationCanceledException(cancelled.Token);
+            _ = await Should.ThrowAsync<OperationCanceledException>(async () => await authority.CreateChildScopeAsync(TestFactory.ScopeRequest(), cancelled.Token));
+        }
+        rawLogger.Events.ShouldContain(entry => entry == 7002);
+        ledger.ReserveResult = new BudgetLedgerBatchReserved([receipt]);
+        var reservation = ((BudgetReserved) await scope.ReserveAsync(request, TestContext.Current.CancellationToken)).Reservation;
+        rawLogger.Events.ShouldContain(entry => entry == 7010);
+        using (var cancelled = new CancellationTokenSource())
+        {
+            cancelled.Cancel();
+            ledger.ReserveException = new OperationCanceledException(cancelled.Token);
+            _ = await Should.ThrowAsync<OperationCanceledException>(async () => await scope.ReserveAsync(request, cancelled.Token));
+        }
+        rawLogger.Events.ShouldContain(entry => entry == 7011);
+        ledger.StartResult = new BudgetStarted(receipt.Reservation.Id, false);
+        _ = await reservation.MarkStartedAsync(TestContext.Current.CancellationToken);
+        rawLogger.Events.ShouldContain(entry => entry == 7030);
+        ledger.CorrectionResult = new BudgetCorrectionResult(receipt.Reservation.Id, 1m, 1m, 1);
+        _ = await reservation.CorrectAsync(1m, 1, TestContext.Current.CancellationToken);
+        rawLogger.Events.ShouldContain(entry => entry == 7040);
+        using (var cancelled = new CancellationTokenSource())
+        {
+            cancelled.Cancel();
+            ledger.SnapshotException = new OperationCanceledException(cancelled.Token);
+            _ = await Should.ThrowAsync<OperationCanceledException>(async () => await scope.GetSnapshotAsync(cancelled.Token));
+        }
+        rawLogger.Events.ShouldContain(entry => entry == 7062);
+    }
+
+    private sealed class CapturingRawLogger: ILogger
+    {
+        public List<int> Events { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Events.Add(eventId.Id);
+    }
 }
