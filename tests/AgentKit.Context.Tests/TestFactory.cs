@@ -85,15 +85,16 @@ internal static class TestFactory
 
     public static ToolCallPart ToolCall(ToolCallId callId, string toolName = "search") => new(
         callId,
-        new ToolReference(new ToolId(toolName), null, toolName),
+        new ToolReference(new ToolAlias(toolName), null, null),
         default,
         null, ExtensionData.Empty);
 
     public static ToolResultPart ToolResult(ToolCallId callId, string toolName = "search") => new(
         callId,
-        new ToolReference(new ToolId(toolName), null, toolName),
+        new ToolReference(new ToolAlias(toolName), null, null),
         new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
         [new TextPart("ok", TextSemantics.Plain, ExtensionData.Empty)],
+        new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
         ExtensionData.Empty);
 
     public static ContextAssemblyRequest AssemblyRequest(

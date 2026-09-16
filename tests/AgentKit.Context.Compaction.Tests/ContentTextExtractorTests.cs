@@ -85,10 +85,9 @@ public sealed class ContentTextExtractorTests
     public void ExtractPartsText_WhenToolResultPartPresent_RecursesIntoResultContent()
     {
         var callId = new ToolCallId(Guid.NewGuid());
-        var tool = new ToolReference(new ToolId("t"), null, "tool");
+        var tool = new ToolReference(new ToolAlias("tool"), null, null);
         var outcome = new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty);
-        var resultPart = new ToolResultPart(
-            callId, tool, outcome, [new TextPart("nested result text", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var resultPart = new ToolResultPart(callId, tool, outcome, [new TextPart("nested result text", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
 
         var text = ContentTextExtractor.ExtractPartsText([resultPart]);
 

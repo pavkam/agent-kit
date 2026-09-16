@@ -433,7 +433,7 @@ public sealed class ModelCompactionStrategyTests
     [Fact]
     public async Task ProduceAsync_WhenModelRequestsTool_ReturnsNonRetryableFailure()
     {
-        var toolCall = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("t"), null, "t"), default, null, ExtensionData.Empty);
+        var toolCall = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("t"), null, null), default, null, ExtensionData.Empty);
         var model = ScriptedModel(TestFactory.CompletedAttempt(_modelRequestId, [toolCall], NormalizedStopReason.ToolUse));
         var strategy = Create(model: model);
 

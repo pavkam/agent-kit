@@ -106,7 +106,7 @@ internal static class TestFactory
         SessionAddress address, BranchId branchId, long callSequence, long resultSequence)
     {
         var callId = new ToolCallId(Guid.NewGuid());
-        var tool = new ToolReference(new ToolId("test-tool"), null, "test-tool");
+        var tool = new ToolReference(new ToolAlias("test-tool"), null, null);
 
         var callEntryId = new SessionEntryId(Guid.NewGuid());
         var callEntry = new MessageSessionEntry(
@@ -152,12 +152,7 @@ internal static class TestFactory
                 DateTimeOffset.UnixEpoch,
                 MessageState.Complete,
                 [
-                    new ToolResultPart(
-                        callId,
-                        tool,
-                        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
-                        [new TextPart("tool result", TextSemantics.Plain, ExtensionData.Empty)],
-                        ExtensionData.Empty)
+                    new ToolResultPart(callId, tool, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("tool result", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty)
                 ],
                 ExtensionData.Empty));
 
