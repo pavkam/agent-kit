@@ -4171,7 +4171,7 @@ namespace AgentKit
     }
     public interface IToolInvoker
     {
-        System.Threading.Tasks.Task<AgentKit.ToolInvocationResult> InvokeAsync(AgentKit.ToolCallRequest request, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<AgentKit.ResolvedToolInvocation> InvokeAsync(AgentKit.ToolCallRequest request, System.Threading.CancellationToken cancellationToken = default);
     }
     public interface IToolInvokerLease : System.IAsyncDisposable
     {
@@ -6390,6 +6390,13 @@ namespace AgentKit
         public AgentKit.ProcessResolveRequest Request { get; }
         public AgentKit.ContentHash StandardInputFingerprint { get; }
     }
+    public sealed class ResolvedToolInvocation : System.IEquatable<AgentKit.ResolvedToolInvocation>
+    {
+        public ResolvedToolInvocation(AgentKit.ToolReference tool, AgentKit.ToolResultProjectionPolicyReference projectionPolicy, AgentKit.ToolInvocationResult invocation) { }
+        public AgentKit.ToolInvocationResult Invocation { get; init; }
+        public AgentKit.ToolResultProjectionPolicyReference ProjectionPolicy { get; init; }
+        public AgentKit.ToolReference Tool { get; init; }
+    }
     public sealed class RetryContinuationBoundary : AgentKit.RunContinuationBoundary, System.IEquatable<AgentKit.RetryContinuationBoundary>
     {
         public RetryContinuationBoundary(AgentKit.TurnId turnId, AgentKit.ModelRequestId modelRequestId) { }
@@ -8108,11 +8115,11 @@ namespace AgentKit
     }
     public sealed class ToolCallRequest : System.IEquatable<AgentKit.ToolCallRequest>
     {
-        public ToolCallRequest(AgentKit.ToolId toolId, AgentKit.ToolExecutionContext context, System.Text.Json.JsonElement arguments, System.DateTimeOffset requestedAt) { }
+        public ToolCallRequest(AgentKit.ToolReference tool, AgentKit.ToolExecutionContext context, System.Text.Json.JsonElement arguments, System.DateTimeOffset requestedAt) { }
         public System.Text.Json.JsonElement Arguments { get; init; }
         public AgentKit.ToolExecutionContext Context { get; init; }
         public System.DateTimeOffset RequestedAt { get; init; }
-        public AgentKit.ToolId ToolId { get; init; }
+        public AgentKit.ToolReference Tool { get; init; }
     }
     public sealed class ToolCallResult : System.IEquatable<AgentKit.ToolCallResult>
     {
@@ -8471,10 +8478,11 @@ namespace AgentKit
     }
     public sealed class ToolReference : System.IEquatable<AgentKit.ToolReference>
     {
-        public ToolReference(AgentKit.ToolId id, AgentKit.ToolVersion? version, string name) { }
-        public AgentKit.ToolId Id { get; init; }
-        public string Name { get; init; }
-        public AgentKit.ToolVersion? Version { get; init; }
+        public ToolReference(AgentKit.ToolAlias providerAlias, AgentKit.ToolId? id, AgentKit.ToolVersion? version) { }
+        public AgentKit.ToolId? Id { get; }
+        public bool IsResolved { get; }
+        public AgentKit.ToolAlias ProviderAlias { get; init; }
+        public AgentKit.ToolVersion? Version { get; }
     }
     public sealed class ToolResultArtifactContent : AgentKit.ToolResultContent, System.IEquatable<AgentKit.ToolResultArtifactContent>
     {
@@ -8544,10 +8552,11 @@ namespace AgentKit
     }
     public sealed class ToolResultPart : AgentKit.ContentPart, System.IEquatable<AgentKit.ToolResultPart>
     {
-        public ToolResultPart(AgentKit.ToolCallId callId, AgentKit.ToolReference tool, AgentKit.ToolCallOutcome outcome, System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> content, AgentKit.ExtensionData extensions) { }
+        public ToolResultPart(AgentKit.ToolCallId callId, AgentKit.ToolReference tool, AgentKit.ToolCallOutcome outcome, System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> content, AgentKit.ToolResultProjectionInfo projection, AgentKit.ExtensionData extensions) { }
         public AgentKit.ToolCallId CallId { get; init; }
         public System.Collections.Immutable.ImmutableArray<AgentKit.ContentPart> Content { get; init; }
         public AgentKit.ToolCallOutcome Outcome { get; init; }
+        public AgentKit.ToolResultProjectionInfo Projection { get; init; }
         public AgentKit.ToolReference Tool { get; init; }
         public bool Equals(AgentKit.ToolResultPart? other) { }
         public override int GetHashCode() { }
@@ -8593,6 +8602,7 @@ namespace AgentKit
         public ToolResultProjectionPolicyReference(AgentKit.ToolResultProjectionPolicyKey key, AgentKit.ToolResultProjectionPolicyVersion version) { }
         public AgentKit.ToolResultProjectionPolicyKey Key { get; }
         public AgentKit.ToolResultProjectionPolicyVersion Version { get; }
+        public static AgentKit.ToolResultProjectionPolicyReference Default { get; }
     }
     public abstract class ToolResultProjectionPolicyResolution : System.IEquatable<AgentKit.ToolResultProjectionPolicyResolution>
     {
