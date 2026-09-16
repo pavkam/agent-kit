@@ -705,6 +705,76 @@ public sealed class SqliteBudgetLedgerTests: BudgetLedgerConformanceTests<Sqlite
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => throw new InvalidOperationException("logger failure");
     }
 
+    /// <summary>Verifies the generated log-state accessors work through the classic non-generic enumeration surface
+    /// that some third-party logging providers use instead of the generic key/value interface.</summary>
+    [Fact]
+    public async Task Operations_WhenLoggerEnumeratesStateViaLegacyEnumerable_ExercisesGeneratedStateAccessors()
+    {
+        var logger = new LegacyEnumeratingLogger();
+        var ledger = new SqliteBudgetLedgerConformanceFixture(logger).CreateLedger();
+        var created = await ledger.CreateScopeAsync(Request("legacy-enumerable-scope"), TestContext.Current.CancellationToken);
+        _ = created.ShouldBeOfType<BudgetLedgerScopeCreated>();
+        _ = await Should.ThrowAsync<BudgetLedgerReferenceUnavailableException>(async () => await ledger.GetSnapshotAsync(new BudgetLedgerScopeReference(new BudgetScopeId(Guid.NewGuid()), Request("legacy-enumerable-scope").OriginalRequest.Address), TestContext.Current.CancellationToken));
+        logger.CompletedCounts.ShouldNotBeEmpty();
+        logger.FailedCounts.ShouldNotBeEmpty();
+        logger.CompletedCounts.ShouldAllBe(count => count > 0);
+        logger.FailedCounts.ShouldAllBe(count => count > 0);
+    }
+
+    private sealed class LegacyEnumeratingLogger: ILogger<SqliteBudgetLedger>
+    {
+        internal List<int> CompletedCounts { get; } = [];
+        internal List<int> FailedCounts { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (state is not System.Collections.IEnumerable legacy)
+            {
+                return;
+            }
+
+            var count = 0;
+            foreach (var _ in legacy)
+            {
+                count++;
+            }
+
+            if (state is IReadOnlyList<KeyValuePair<string, object?>> indexed && indexed.Count > 0)
+            {
+                for (var index = 0; index < indexed.Count; index++)
+                {
+                    _ = indexed[index];
+                }
+
+                try
+                {
+                    _ = indexed[indexed.Count];
+                }
+                catch (IndexOutOfRangeException)
+                {
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                }
+            }
+
+            _ = state?.ToString();
+            _ = formatter(state, exception);
+
+            if (eventId.Id == 7070)
+            {
+                CompletedCounts.Add(count);
+            }
+            else if (eventId.Id == 7071)
+            {
+                FailedCounts.Add(count);
+            }
+        }
+    }
+
     /// <summary>Proves fixed keys preserve numeric ordering across scale and decimal boundaries.</summary>
     [Fact]
     public void MaximumKey_WhenValuesDiffer_PreservesNumericOrdering()
