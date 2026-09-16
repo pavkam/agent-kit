@@ -340,6 +340,180 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
         loaded.ShouldBeOfType<SessionLoaded>().Descriptor.Version.ShouldBe(descriptor.Version);
     }
 
+    // ---- Delete and deleted-create-retry coverage, using the reusable conformance fixture directly. ----
+
+    [Fact]
+    public async Task DeleteAsync_WhenSessionExists_RemovesAllRowsAndReturnsDeleted()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store);
+        var context = Coverage.SessionContext(descriptor.Address, 900);
+        var append = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("pre-delete"),
+            [Coverage.MessageEntry(descriptor, 901, 1, "before-delete")]);
+        _ = (await store.AppendAsync(
+            await Coverage.AuthorizeAsync(fixture, append, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken)).ShouldBeOfType<SessionAppended>();
+        var delete = Coverage.DeleteRequest(context, "delete-1");
+
+        var result = await store.DeleteAsync(
+            await Coverage.AuthorizeAsync(fixture, delete, SecurityOperationKind.StateMutation, SecurityEffect.Delete),
+            TestContext.Current.CancellationToken);
+        var loaded = await store.LoadAsync(
+            await Coverage.AuthorizeAsync(fixture, context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDeleted(descriptor.Address));
+        _ = loaded.ShouldBeOfType<SessionNotFound>();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenRetriedWithSameIdempotencyKey_ReturnsSameReceipt()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store);
+        var context = Coverage.SessionContext(descriptor.Address, 910);
+        var delete = Coverage.DeleteRequest(context, "delete-retry");
+
+        var first = await store.DeleteAsync(
+            await Coverage.AuthorizeAsync(fixture, delete, SecurityOperationKind.StateMutation, SecurityEffect.Delete),
+            TestContext.Current.CancellationToken);
+        var second = await store.DeleteAsync(
+            await Coverage.AuthorizeAsync(fixture, delete, SecurityOperationKind.StateMutation, SecurityEffect.Delete),
+            TestContext.Current.CancellationToken);
+
+        first.ShouldBe(new SessionDeleted(descriptor.Address));
+        second.ShouldBe(new SessionDeleted(descriptor.Address));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenRetriedWithDifferentEvidence_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store);
+        var context = Coverage.SessionContext(descriptor.Address, 920);
+        var otherContext = Coverage.SessionContext(descriptor.Address, 930);
+        var first = Coverage.DeleteRequest(context, "delete-evidence");
+        var second = Coverage.DeleteRequest(otherContext, "delete-evidence");
+
+        _ = await store.DeleteAsync(
+            await Coverage.AuthorizeAsync(fixture, first, SecurityOperationKind.StateMutation, SecurityEffect.Delete),
+            TestContext.Current.CancellationToken);
+        var result = await store.DeleteAsync(
+            await Coverage.AuthorizeAsync(fixture, second, SecurityOperationKind.StateMutation, SecurityEffect.Delete),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionDeleteFailed>().SafeMessage
+            .ShouldBe("The idempotency key was previously used with different request evidence.");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenSessionNeverExisted_ReturnsDeletedWithoutSideEffects()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var address = new SessionAddress(Coverage.Identifier<AgentId>(1), Coverage.Identifier<SessionId>(4));
+        var context = Coverage.SessionContext(address, 940);
+        var delete = Coverage.DeleteRequest(context, "delete-missing");
+
+        var result = await store.DeleteAsync(
+            await Coverage.AuthorizeAsync(fixture, delete, SecurityOperationKind.StateMutation, SecurityEffect.Delete),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDeleted(address));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenCallerTenantDiffersFromOwner_MasksExistenceAndDoesNotDelete()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store);
+        var foreignIdentity = Coverage.Identity("tenant-foreign", "foreign-user");
+        var foreignContext = Coverage.SessionContext(descriptor.Address, 950, foreignIdentity);
+        var delete = Coverage.DeleteRequest(foreignContext, "delete-foreign");
+
+        var result = await store.DeleteAsync(
+            await Coverage.AuthorizeAsync(fixture, delete, SecurityOperationKind.StateMutation, SecurityEffect.Delete),
+            TestContext.Current.CancellationToken);
+        var ownerContext = Coverage.SessionContext(descriptor.Address, 960);
+        var loaded = await store.LoadAsync(
+            await Coverage.AuthorizeAsync(fixture, ownerContext, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDeleted(descriptor.Address));
+        _ = loaded.ShouldBeOfType<SessionLoaded>();
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenRetriedAfterDeleteWithSameEvidence_ReturnsDeletedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var request = Coverage.CreateStoreRequest("create-then-delete");
+        var created = await store.CreateAsync(
+            await Coverage.AuthorizeAsync(fixture, request, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var descriptor = created.ShouldBeOfType<SessionCreated>().Descriptor;
+        var deleteContext = Coverage.SessionContext(descriptor.Address, 970);
+        _ = await store.DeleteAsync(
+            await Coverage.AuthorizeAsync(
+                fixture, Coverage.DeleteRequest(deleteContext, "delete-after-create"),
+                SecurityOperationKind.StateMutation, SecurityEffect.Delete),
+            TestContext.Current.CancellationToken);
+
+        var replay = await store.CreateAsync(
+            await Coverage.AuthorizeAsync(fixture, request, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+
+        replay.ShouldBeOfType<SessionCreateFailed>().SafeMessage.ShouldBe("The session created by this idempotency key was deleted.");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenRetriedAfterDeleteWithDifferentEvidence_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var request = Coverage.CreateStoreRequest("create-then-delete-2");
+        var created = await store.CreateAsync(
+            await Coverage.AuthorizeAsync(fixture, request, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var descriptor = created.ShouldBeOfType<SessionCreated>().Descriptor;
+        var deleteContext = Coverage.SessionContext(descriptor.Address, 980);
+        _ = await store.DeleteAsync(
+            await Coverage.AuthorizeAsync(
+                fixture, Coverage.DeleteRequest(deleteContext, "delete-after-create-2"),
+                SecurityOperationKind.StateMutation, SecurityEffect.Delete),
+            TestContext.Current.CancellationToken);
+        var differentConversation = Coverage.CreateStoreRequest(
+            "create-then-delete-2", new ConversationId(Guid.Parse("99999999-9999-9999-9999-999999999999")));
+
+        var replay = await store.CreateAsync(
+            await Coverage.AuthorizeAsync(fixture, differentConversation, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+
+        replay.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("The idempotency key was previously used with different request evidence.");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenAddressAlreadyPresentUnderDifferentIdempotencyKey_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        _ = await Coverage.CreateSessionAsync(fixture, store, "first-key");
+
+        var second = await store.CreateAsync(
+            await Coverage.AuthorizeAsync(
+                fixture, Coverage.CreateStoreRequest("second-key"), SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+
+        second.ShouldBeOfType<SessionCreateFailed>().SafeMessage.ShouldBe("The allocated session address is already present.");
+    }
+
     private static async Task<SessionPage> ReadFirstPageAsync(Harness harness, SessionDescriptor descriptor, SessionOperationContext context)
     {
         var result = await harness.Store.ReadAsync(
@@ -388,6 +562,211 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
             catch (IOException)
             {
             }
+        }
+    }
+
+    /// <summary>
+    /// Construction helpers for coverage-focused tests that exercise <see cref="SqliteSessionStoreConformanceFixture"/>
+    /// directly instead of the file-reopening <see cref="Harness"/>, mirroring the shared conformance suite's own
+    /// private helpers so lane, admission, and run-acceptance requests can be built for edge cases the shared suite
+    /// does not exercise.
+    /// </summary>
+    private static class Coverage
+    {
+        public static ValueTask<AuthorizedSessionStoreRequest<TRequest>> AuthorizeAsync<TRequest>(
+            SqliteSessionStoreConformanceFixture fixture, TRequest request, SecurityOperationKind kind, SecurityEffect effect)
+            where TRequest : class =>
+            fixture.AuthorizeAsync(request, kind, effect, TestContext.Current.CancellationToken);
+
+        public static async ValueTask<SessionDescriptor> CreateSessionAsync(
+            SqliteSessionStoreConformanceFixture fixture, ISessionStore store, string idempotencyKey = "create")
+        {
+            var request = CreateStoreRequest(idempotencyKey);
+            var result = await store.CreateAsync(
+                await AuthorizeAsync(fixture, request, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+                TestContext.Current.CancellationToken);
+            return result.ShouldBeOfType<SessionCreated>().Descriptor;
+        }
+
+        public static SessionStoreCreateRequest CreateStoreRequest(string idempotencyKey, ConversationId? conversationId = null)
+        {
+            var agentId = Identifier<AgentId>(1);
+            var identity = Identity();
+            var correlation = new BeforeRunOperationCorrelation(Identifier<OperationId>(2), null);
+            var authorization = Authorization(agentId, null, correlation, identity);
+            var logical = new SessionCreateRequest(
+                agentId, identity, authorization, conversationId ?? Identifier<ConversationId>(3),
+                new IdempotencyKey(idempotencyKey), ExtensionData.Empty);
+            var address = new SessionAddress(agentId, Identifier<SessionId>(4));
+            var context = new SessionOperationContext(
+                address.AgentId, address.SessionId, null, correlation, identity,
+                Authorization(address.AgentId, address.SessionId, correlation, identity));
+            return new SessionStoreCreateRequest(logical, address, context);
+        }
+
+        public static SessionOperationContext SessionContext(SessionAddress address, int offset, ExecutionIdentity? identity = null)
+        {
+            var used = identity ?? Identity();
+            var correlation = Correlation(offset);
+            return new SessionOperationContext(
+                address.AgentId, address.SessionId, null, correlation, used,
+                Authorization(address.AgentId, address.SessionId, correlation, used));
+        }
+
+        public static SessionOperationContext LaneContext(
+            SessionAddress address, ExecutionLaneId laneId, ExecutionIdentity identity, OperationCorrelation correlation) =>
+            new(address.AgentId, address.SessionId, laneId, correlation, identity,
+                Authorization(address.AgentId, address.SessionId, correlation, identity));
+
+        public static SessionDeleteRequest DeleteRequest(SessionOperationContext context, string idempotencyKey) =>
+            new(context, new IdempotencyKey(idempotencyKey));
+
+        public static MessageSessionEntry MessageEntry(
+            SessionDescriptor descriptor, int offset, long sequence, string text, BranchId? branchId = null)
+        {
+            var correlation = Correlation(offset);
+            var branch = branchId ?? descriptor.ActiveBranchId;
+            var message = new UserMessage(
+                Identifier<MessageId>(offset + 1), descriptor.Address.AgentId,
+                descriptor.Address.SessionId, descriptor.ConversationId, branch,
+                correlation.RunId, null, Timestamp(offset), MessageState.Complete,
+                [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+            return new MessageSessionEntry(
+                Identifier<SessionEntryId>(offset + 2), descriptor.Address, correlation,
+                branch, new SessionSequence(sequence), null, Timestamp(offset),
+                new SchemaVersion("1"), message);
+        }
+
+        public static SessionProfileReference Profile() => new(new SessionProfileKey("coverage"), new SessionProfileVersion(1));
+
+        public static RunConfigurationReference Configuration() =>
+            new(new ConfigurationVersion(1), new RunPolicyVersion(1), new ContentHash("sha256:coverage-configuration"));
+
+        public static SessionExecutionLaneProvisionRequest ProvisionRequest(
+            SessionOperationContext context, SessionBranchCursor branchCursor, SessionVersion expectedVersion,
+            SessionEntryId entryId, int offset, string idempotencyKey) =>
+            new(context, branchCursor, expectedVersion, entryId, Profile(), Configuration(), Timestamp(offset),
+                new IdempotencyKey(idempotencyKey));
+
+        public static SessionInputAdmissionRequest AdmissionRequest(
+            SessionOperationContext context, AdmissionId admissionId, InputId inputId, SessionEntryId entryId,
+            SessionVersion version, SessionLaneRevision laneRevision, SessionBranchCursor cursor, string key,
+            int maximumPendingInputs = 8)
+        {
+            var original = new AgentInput(
+                inputId, InputDelivery.FollowUp,
+                [new TextPart($"{key}-original", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+            var effective = new AgentInput(
+                inputId, InputDelivery.FollowUp,
+                [new TextPart($"{key}-effective", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+            var preprocessing = new InputPreprocessingManifest(
+                new ConfigurationVersion(1), new InputFingerprint($"sha256:{key}:original"),
+                new InputFingerprint($"sha256:{key}:effective"));
+            return new SessionInputAdmissionRequest(
+                context, admissionId, entryId, original, effective, preprocessing,
+                Timestamp(entryId.Value.GetHashCode()), version, laneRevision, cursor,
+                new IdempotencyKey($"{key}-admit"), maximumPendingInputs);
+        }
+
+        public static async ValueTask<(
+            SessionDescriptor Descriptor, SessionOperationContext Context, SessionExecutionLaneProvisioned Provisioned,
+            SessionInputAdmissionRequest Admission, AcceptedInput Accepted)> ProvisionAndAdmitAsync(
+            SqliteSessionStoreConformanceFixture fixture, ISessionStore store, int offset, string key)
+        {
+            var descriptor = await CreateSessionAsync(fixture, store, $"{key}-create");
+            var identity = Identity();
+            var laneId = Identifier<ExecutionLaneId>(offset);
+            var context = LaneContext(
+                descriptor.Address, laneId, identity, new BeforeRunOperationCorrelation(Identifier<OperationId>(offset + 1), null));
+            var provision = ProvisionRequest(
+                context, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version,
+                Identifier<SessionEntryId>(offset + 2), offset, $"{key}-provision");
+            var provisioned = (SessionExecutionLaneProvisioned) await store.ProvisionLaneAsync(
+                await AuthorizeAsync(fixture, provision, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+                TestContext.Current.CancellationToken);
+            var admission = AdmissionRequest(
+                context, Identifier<AdmissionId>(offset + 3), Identifier<InputId>(offset + 4),
+                Identifier<SessionEntryId>(offset + 5), provisioned.SessionVersion, provisioned.LaneRevision,
+                provisioned.BranchCursor, key);
+            var accepted = (AcceptedInput) await store.AdmitInputAsync(
+                await AuthorizeAsync(fixture, admission, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+                TestContext.Current.CancellationToken);
+            return (descriptor, context, provisioned, admission, accepted);
+        }
+
+        public static SessionRunStartRequest StartRequest(
+            (SessionDescriptor Descriptor, SessionOperationContext Context, SessionExecutionLaneProvisioned Provisioned,
+                SessionInputAdmissionRequest Admission, AcceptedInput Accepted) prepared,
+            int offset,
+            SessionOperationContext? context = null,
+            SessionVersion? expectedVersion = null,
+            SessionBranchCursor? branchCursor = null,
+            SessionLaneRevision? expectedLaneRevision = null,
+            ImmutableArray<AdmissionId>? selectedAdmissionIds = null,
+            AdmissionId? initiatingAdmissionId = null,
+            ImmutableArray<SessionEntryId>? entryIds = null,
+            ImmutableArray<MessageId>? messageIds = null,
+            string idempotencyKey = "accept")
+        {
+            var usedContext = context ?? prepared.Context;
+            var runId = Identifier<RunId>(offset);
+            var turnId = Identifier<TurnId>(offset + 1);
+            var inRunCorrelation = new InRunOperationCorrelation(usedContext.Correlation.OperationId, runId, turnId);
+            var inRunAuthorization = Authorization(
+                prepared.Descriptor.Address.AgentId, prepared.Descriptor.Address.SessionId, inRunCorrelation, usedContext.Identity);
+            return new SessionRunStartRequest(
+                usedContext, initiatingAdmissionId ?? prepared.Admission.AdmissionId,
+                selectedAdmissionIds ?? [prepared.Admission.AdmissionId],
+                prepared.Accepted.Receipt.AdmittedSequence,
+                expectedLaneRevision ?? new SessionLaneRevision(prepared.Provisioned.LaneRevision.Value + 1),
+                expectedVersion ?? new SessionVersion(prepared.Provisioned.SessionVersion.Value + 1),
+                branchCursor ?? new SessionBranchCursor(prepared.Descriptor.ActiveBranchId, prepared.Admission.EntryId),
+                null, runId, turnId, Identifier<SessionEntryId>(offset + 2),
+                entryIds ?? [Identifier<SessionEntryId>(offset + 3)], messageIds ?? [Identifier<MessageId>(offset + 4)],
+                Identifier<SessionEntryId>(offset + 5), new OperationStateRevision(1),
+                Profile(), Configuration(), inRunAuthorization, Timestamp(offset), new IdempotencyKey(idempotencyKey));
+        }
+
+        public static SessionRunReleaseRequest ReleaseRequest(
+            SessionOperationContext context, OperationStateRevision expectedStateRevision, SessionVersion expectedVersion,
+            string idempotencyKey) =>
+            new(context, expectedStateRevision, expectedVersion, new IdempotencyKey(idempotencyKey));
+
+        public static SecurityAuthorizationContext Authorization(
+            AgentId agentId, SessionId? sessionId, OperationCorrelation correlation, ExecutionIdentity identity) =>
+            new(new SecurityProfileKey("coverage"), new SecurityProfileVersion(1),
+                new SecurityPolicySnapshotReference(Identifier<SecurityPolicySnapshotId>(5),
+                    new SecurityPolicyVersion(1), new ContentHash("sha256:coverage-policy")),
+                new ComponentKey<ISecurityAuthority>("coverage"), new AgentDefinitionRevision(1),
+                new ConfigurationVersion(1), new SecurityAuthorizationScope(agentId, sessionId, correlation), identity);
+
+        public static ExecutionIdentity Identity(string tenant = "tenant-owner", string principal = "owner") =>
+            TestExecutionIdentity.Create(new TenantId(tenant), new PrincipalId(principal), ExecutionSubjectKind.Human);
+
+        public static InRunOperationCorrelation Correlation(int offset) =>
+            new(Identifier<OperationId>(offset), Identifier<RunId>(offset + 1), null);
+
+        public static DateTimeOffset Timestamp(int offset) => DateTimeOffset.UnixEpoch.AddSeconds(Math.Abs((long) offset) + 1);
+
+        public static T Identifier<T>(int value)
+        {
+            var guid = new Guid(value, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
+            return typeof(T) switch
+            {
+                var t when t == typeof(AgentId) => (T) (object) new AgentId(guid),
+                var t when t == typeof(SessionId) => (T) (object) new SessionId(guid),
+                var t when t == typeof(ConversationId) => (T) (object) new ConversationId(guid),
+                var t when t == typeof(OperationId) => (T) (object) new OperationId(guid),
+                var t when t == typeof(RunId) => (T) (object) new RunId(guid),
+                var t when t == typeof(TurnId) => (T) (object) new TurnId(guid),
+                var t when t == typeof(MessageId) => (T) (object) new MessageId(guid),
+                var t when t == typeof(SessionEntryId) => (T) (object) new SessionEntryId(guid),
+                var t when t == typeof(ExecutionLaneId) => (T) (object) new ExecutionLaneId(guid),
+                var t when t == typeof(AdmissionId) => (T) (object) new AdmissionId(guid),
+                var t when t == typeof(InputId) => (T) (object) new InputId(guid),
+                var t when t == typeof(SecurityPolicySnapshotId) => (T) (object) new SecurityPolicySnapshotId(guid),
+                _ => throw new NotSupportedException(typeof(T).Name),
+            };
         }
     }
 
