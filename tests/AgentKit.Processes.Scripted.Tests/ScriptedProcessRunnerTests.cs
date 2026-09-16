@@ -19,6 +19,95 @@ public sealed class ScriptedProcessRunnerTests
     }
 
     [Fact]
+    public void Constructor_WhenScenarioOperationIdentitiesCollide_ThrowsArgumentException()
+    {
+        var options = new ScriptedProcessOptions();
+        options.Scenarios.Add(new ScriptedProcessScenario(_operationId, Success("first"), TimeSpan.Zero));
+        options.Scenarios.Add(new ScriptedProcessScenario(_operationId, Success("second"), TimeSpan.Zero));
+        var exception = Should.Throw<ArgumentException>(() => new ScriptedProcessRunner(Resolver(), new TestGrantStore(), TimeProvider.System, Options.Create(options)));
+        exception.ParamName.ShouldBe("options");
+    }
+
+    [Fact]
+    public void Equality_WhenOperationIdResultAndDelayMatch_TreatsScenariosAsEqual()
+    {
+        var result = Success("done");
+        var first = new ScriptedProcessScenario(_operationId, result, TimeSpan.Zero);
+        var second = new ScriptedProcessScenario(_operationId, result, TimeSpan.Zero);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+        (first with { }).ShouldBe(first);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenResolverRevalidationChangesTheIntent_ReturnsResolutionFailedWithoutStartingTheScenario()
+    {
+        var resolver = Resolver();
+        var intent = (await resolver.ResolveAsync(Request(), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var changedResolver = new FakeProcessIntentResolver(
+            _ => new ProcessResolutionResult(ProcessResolutionStatus.ExecutableRejected, null, "changed before start"));
+        var runner = Runner(changedResolver, new TestGrantStore(), Success("never"), TimeSpan.Zero, TimeProvider.System);
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessRunStatus.ResolutionFailed);
+        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoScenarioIsConfiguredForTheOperation_ReturnsFailedWithoutConsumingTheGrant()
+    {
+        var resolver = Resolver();
+        var intent = (await resolver.ResolveAsync(Request(), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var store = new TestGrantStore();
+        var options = new ScriptedProcessOptions();
+        var runner = new ScriptedProcessRunner(resolver, store, TimeProvider.System, Options.Create(options));
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessRunStatus.Failed);
+        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.NotStarted);
+        store.Enforcements.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenResolverThrowsUnexpectedException_PropagatesWithoutStartingTheScenario()
+    {
+        var resolver = Resolver();
+        var intent = (await resolver.ResolveAsync(Request(), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var throwingResolver = new ThrowingProcessIntentResolver(new InvalidOperationException("boom"));
+        var runner = Runner(throwingResolver, new TestGrantStore(), Success("never"), TimeSpan.Zero, TimeProvider.System);
+        var action = async () => await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        var exception = await action.ShouldThrowAsync<InvalidOperationException>();
+        exception.Message.ShouldBe("boom");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenLoggerIsEnabled_EmitsCompletedStructuredEvent()
+    {
+        var resolver = Resolver();
+        var intent = (await resolver.ResolveAsync(Request(), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var options = new ScriptedProcessOptions();
+        options.Scenarios.Add(new ScriptedProcessScenario(_operationId, Success("done"), TimeSpan.Zero));
+        var logger = new RecordingLogger<ScriptedProcessRunner>();
+        var runner = new ScriptedProcessRunner(resolver, new TestGrantStore(), TimeProvider.System, Options.Create(options), logger);
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        logger.Snapshot().ShouldContain(static entry => entry.EventId.Id == 12100);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenLoggerIsEnabledAndResolverThrows_EmitsFailedStructuredEvent()
+    {
+        var resolver = Resolver();
+        var intent = (await resolver.ResolveAsync(Request(), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var throwingResolver = new ThrowingProcessIntentResolver(new InvalidOperationException("boom"));
+        var logger = new RecordingLogger<ScriptedProcessRunner>();
+        var options = new ScriptedProcessOptions();
+        options.Scenarios.Add(new ScriptedProcessScenario(_operationId, Success("never"), TimeSpan.Zero));
+        var runner = new ScriptedProcessRunner(throwingResolver, new TestGrantStore(), TimeProvider.System, Options.Create(options), logger);
+        var action = async () => await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        _ = await action.ShouldThrowAsync<InvalidOperationException>();
+        logger.Snapshot().ShouldContain(static entry => entry.EventId.Id == 12101);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenScenarioConfigured_ConsumesExactGrantAndReturnsDeclaredResult()
     {
         var resolver = Resolver();
