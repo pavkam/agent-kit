@@ -381,6 +381,1004 @@ public sealed class DefaultSessionCoordinatorTests
         activity.GetTagItem(AgentKitTagNames.TurnId).ShouldBeNull();
     }
 
+    [Fact]
+    public async Task ListAsync_WhenAuthorized_ForwardsExactRequestAndReturnsDirectoryPage()
+    {
+        var harness = new Harness();
+        var page = new SessionDirectoryPage([], null);
+        harness.Directory.OnList = _ => page;
+        var coordinator = harness.CreateCoordinator();
+        var request = TestFactory.DirectoryListRequest();
+
+        var result = await coordinator.ListAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeSameAs(page);
+        harness.Directory.ListRequests.ShouldHaveSingleItem().Request.ShouldBeSameAs(request);
+    }
+
+    [Fact]
+    public async Task ListAsync_WhenAuthorizationIsDenied_ReturnsUnavailableWithoutCallingDirectory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.ListAsync(TestFactory.DirectoryListRequest(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionDirectoryListUnavailable>().SafeMessage
+            .ShouldBe("Session discovery was not authorized.");
+        harness.Directory.ListRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenPageSizeExceedsMaximum_ReturnsFailedWithoutRouting()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var request = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 500);
+
+        var result = await coordinator.ReadAsync(request, TestFactory.Profile(maximumPageSize: 10),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionReadFailed>().SafeMessage
+            .ShouldBe("Requested page size 500 exceeds the configured maximum of 10.");
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task BranchAsync_WhenBranchSucceeds_PublishesBranchedEvent()
+    {
+        var sink = new FakeSessionEventSink();
+        var harness = new Harness(eventSinks: [sink]);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        var newBranchId = new BranchId(Guid.NewGuid());
+        harness.Store.OnBranch = _ => new SessionBranched(newBranchId, new SessionSequence(3));
+        var request = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(3),
+            new IdempotencyKey("branch"));
+
+        var result = await harness.CreateCoordinator()
+            .BranchAsync(request, TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        var branched = result.ShouldBeOfType<SessionBranched>();
+        branched.NewBranchId.ShouldBe(newBranchId);
+        var published = sink.Received.ShouldHaveSingleItem().ShouldBeOfType<SessionBranchedEvent>();
+        published.NewBranchId.ShouldBe(newBranchId);
+        published.ParentBranchId.ShouldBe(descriptor.ActiveBranchId);
+    }
+
+    [Fact]
+    public async Task BranchAsync_WhenBranchFails_DoesNotPublishEvent()
+    {
+        var sink = new FakeSessionEventSink();
+        var harness = new Harness(eventSinks: [sink]);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        harness.Store.OnBranch = _ => new SessionBranchFailed("no parent");
+        var request = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(3),
+            new IdempotencyKey("branch"));
+
+        var result = await harness.CreateCoordinator()
+            .BranchAsync(request, TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionBranchFailed>();
+        sink.Received.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenDeleteSucceeds_PublishesDeletedEvent()
+    {
+        var sink = new FakeSessionEventSink();
+        var harness = new Harness(eventSinks: [sink]);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        harness.Store.OnDelete = _ => new SessionDeleted(descriptor.Address);
+        var request = new SessionDeleteRequest(context, new IdempotencyKey("delete"));
+
+        var result = await harness.CreateCoordinator()
+            .DeleteAsync(request, TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionDeleted>();
+        var published = sink.Received.ShouldHaveSingleItem().ShouldBeOfType<SessionDeletedEvent>();
+        published.Address.ShouldBe(descriptor.Address);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenDeleteFails_DoesNotPublishEvent()
+    {
+        var sink = new FakeSessionEventSink();
+        var harness = new Harness(eventSinks: [sink]);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        harness.Store.OnDelete = _ => new SessionDeleteFailed("unavailable");
+        var request = new SessionDeleteRequest(context, new IdempotencyKey("delete"));
+
+        var result = await harness.CreateCoordinator()
+            .DeleteAsync(request, TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionDeleteFailed>();
+        sink.Received.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenCapabilitySelectedDifferentCoordinator_RejectsBeforeRouting()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var alternate = new FakeRunStateSessionCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), alternate, runCoordinator);
+        var address = TestFactory.Descriptor().Address;
+        var context = TestFactory.BeforeRunLaneContext(address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.ProvisionLaneAsync(TestFactory.LaneProvisionRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionExecutionLaneProvisionRejected>();
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenCapabilityMatchesThisCoordinator_ForwardsToStore()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        var context = TestFactory.BeforeRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.ProvisionLaneAsync(TestFactory.LaneProvisionRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionExecutionLaneProvisionRejected>();
+        _ = harness.Directory.LocateRequests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenCapabilitySelectedDifferentCoordinator_RejectsBeforeRouting()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var alternate = new FakeRunStateSessionCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), alternate, runCoordinator);
+        var address = TestFactory.Descriptor().Address;
+        var context = TestFactory.BeforeRunLaneContext(address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.AdmitInputAsync(TestFactory.InputAdmissionRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<RejectedInput>().Rejection.Kind.ShouldBe(InputRejectionKind.Unauthorized);
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenCapabilityMatchesThisCoordinator_ForwardsToStore()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        var context = TestFactory.BeforeRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.AdmitInputAsync(TestFactory.InputAdmissionRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<RejectedInput>();
+        _ = harness.Directory.LocateRequests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenCapabilitySelectedDifferentCoordinator_RejectsBeforeRouting()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var alternate = new FakeRunStateSessionCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), alternate, runCoordinator);
+        var address = TestFactory.Descriptor().Address;
+        var context = TestFactory.BeforeRunLaneContext(address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.AcceptRunAsync(
+            TestFactory.RunStartRequest(context, new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid())), capability,
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionRunStartRejected>();
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenCapabilityMatchesThisCoordinator_ForwardsToStore()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        var context = TestFactory.BeforeRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.AcceptRunAsync(
+            TestFactory.RunStartRequest(context, new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid())), capability,
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionRunStartRejected>();
+        _ = harness.Directory.LocateRequests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task LoadRunStateAsync_WhenCapabilitySelectedDifferentCoordinator_RejectsBeforeRouting()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var alternate = new FakeRunStateSessionCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), alternate, runCoordinator);
+        var address = TestFactory.Descriptor().Address;
+        var context = TestFactory.InRunLaneContext(address, new ExecutionLaneId(Guid.NewGuid()),
+            new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()));
+
+        var result = await coordinator.LoadRunStateAsync(TestFactory.RunStateRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionRunStateUnavailable>();
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task LoadRunStateAsync_WhenCapabilityMatchesThisCoordinator_ForwardsToStore()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        var context = TestFactory.InRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()),
+            new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()));
+
+        var result = await coordinator.LoadRunStateAsync(TestFactory.RunStateRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionRunStateUnavailable>();
+        _ = harness.Directory.LocateRequests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task ReleaseRunAsync_WhenCapabilitySelectedDifferentCoordinator_RejectsBeforeRouting()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var alternate = new FakeRunStateSessionCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), alternate, runCoordinator);
+        var address = TestFactory.Descriptor().Address;
+        var context = TestFactory.InRunLaneContext(address, new ExecutionLaneId(Guid.NewGuid()),
+            new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()));
+
+        var result = await coordinator.ReleaseRunAsync(TestFactory.RunReleaseRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunReleaseRejected>().Kind.ShouldBe(SessionRunReleaseRejectionKind.Unsupported);
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ReleaseRunAsync_WhenCapabilityMatchesThisCoordinator_ForwardsToStore()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        var context = TestFactory.InRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()),
+            new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()));
+
+        var result = await coordinator.ReleaseRunAsync(TestFactory.RunReleaseRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionRunReleaseRejected>();
+        _ = harness.Directory.LocateRequests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenRoutingIsDenied_InvokesTypedFailureFactory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var request = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 8);
+
+        var result = await coordinator.ReadAsync(request, TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionReadFailed>().SafeMessage
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task BranchAsync_WhenRoutingIsDenied_InvokesTypedFailureFactory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var request = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(0),
+            new IdempotencyKey("branch"));
+
+        var result = await coordinator.BranchAsync(request, TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionBranchFailed>().SafeMessage
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenRoutingIsDenied_InvokesTypedFailureFactory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var request = new SessionDeleteRequest(context, new IdempotencyKey("delete"));
+
+        var result = await coordinator.DeleteAsync(request, TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionDeleteFailed>().SafeMessage
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task LookupInputAsync_WhenCapabilityMatchesAndRoutingIsDenied_InvokesTypedFailureFactory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var address = TestFactory.Descriptor().Address;
+        var context = TestFactory.BeforeRunLaneContext(address, new ExecutionLaneId(Guid.NewGuid()));
+        var input = new AgentInput(new InputId(Guid.NewGuid()), InputDelivery.FollowUp,
+            [new TextPart("content", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var request = new SessionInputLookupRequest(context, input, new InputFingerprint("sha256:input"));
+
+        var result = await coordinator.LookupInputAsync(request, capability, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionInputLookupRejected>().SafeReason
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenCapabilityMatchesAndRoutingIsDenied_InvokesTypedFailureFactory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.BeforeRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.ProvisionLaneAsync(TestFactory.LaneProvisionRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionExecutionLaneProvisionRejected>().SafeMessage
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenCapabilityMatchesAndRoutingIsDenied_InvokesTypedFailureFactory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.BeforeRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.AdmitInputAsync(TestFactory.InputAdmissionRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<RejectedInput>();
+        rejected.Rejection.Kind.ShouldBe(InputRejectionKind.Unauthorized);
+        rejected.Rejection.SafeReason.ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenCapabilityMatchesAndRoutingIsDenied_InvokesTypedFailureFactory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.BeforeRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var result = await coordinator.AcceptRunAsync(
+            TestFactory.RunStartRequest(context, new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid())), capability,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunStartRejected>().SafeReason
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task LoadRunStateAsync_WhenCapabilityMatchesAndRoutingIsDenied_InvokesTypedFailureFactory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.InRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()),
+            new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()));
+
+        var result = await coordinator.LoadRunStateAsync(TestFactory.RunStateRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunStateUnavailable>().SafeReason
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task ReleaseRunAsync_WhenCapabilityMatchesAndRoutingIsDenied_InvokesTypedFailureFactory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.InRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()),
+            new RunId(Guid.NewGuid()), new TurnId(Guid.NewGuid()));
+
+        var result = await coordinator.ReleaseRunAsync(TestFactory.RunReleaseRequest(context), capability,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunReleaseRejected>().SafeReason
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenAlreadyCancelled_RecordsCorrelatedCancellationBeforeRouting()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.BeforeRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()));
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await coordinator.ProvisionLaneAsync(TestFactory.LaneProvisionRequest(context), capability,
+                cancellation.Token));
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenDirectoryThrows_RecordsCorrelatedFaultAndPropagates()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocate = static _ => throw new InvalidOperationException("directory outage");
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.BeforeRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()));
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await coordinator.ProvisionLaneAsync(TestFactory.LaneProvisionRequest(context), capability,
+                TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("directory outage");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenProfileRequiresDurableStoreAndDirectoryIsNotDurable_ReturnsFailed()
+    {
+        var harness = new Harness();
+        harness.Directory.DurableOverride = false;
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(),
+            TestFactory.Profile(requiresDurableStore: true), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("The session directory cannot satisfy the profile's durability requirement.");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenLookupGrantIsDenied_ReturnsFailed()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("Session creation-route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenLookupReturnsConflict_ReturnsFailedWithSafeMessage()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionCreationLocationConflict("replay conflict");
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage.ShouldBe("replay conflict");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenLookupIsDeniedByDirectory_ReturnsFailedWithSafeMessage()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionDirectoryCreationLookupDenied("denied lookup");
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage.ShouldBe("denied lookup");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenLookupIsUnavailable_ReturnsFailedWithSafeMessage()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionDirectoryCreationLookupUnavailable("store outage");
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage.ShouldBe("store outage");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenInitialStoreSelectionFails_ReturnsFailedWithSafeMessage()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionCreationLocationNotFound();
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile("missing-store"),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("The selected session store is unavailable.");
+        harness.SessionIds.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenRecordGrantIsDenied_ReturnsFailed()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionCreationLocationNotFound();
+        harness.Authority.DenyWhen = request =>
+            request.Audience == harness.Directory.SecurityAudience
+            && request.Kind == SecurityOperationKind.StateMutation
+            && request.Effect == SecurityEffect.Mutate;
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("Session creation-route recording was not authorized.");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenRecordCreateConflicts_ReturnsFailedWithSafeMessage()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionCreationLocationNotFound();
+        harness.Directory.OnRecordCreate = wrapper =>
+            new SessionLocationConflict(wrapper.Request.Location, wrapper.Request.Location.StoreKey);
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("The session creation route conflicts with an existing route.");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenRecordCreateIsDenied_ReturnsFailedWithSafeMessage()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionCreationLocationNotFound();
+        harness.Directory.OnRecordCreate = _ => new SessionDirectoryWriteDenied("write denied");
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage.ShouldBe("write denied");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenRecordCreateIsUnavailable_ReturnsFailedWithSafeMessage()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionCreationLocationNotFound();
+        harness.Directory.OnRecordCreate = _ => new SessionDirectoryWriteUnavailable("write outage");
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage.ShouldBe("write outage");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenCaptureCreateContextReturnsUnavailable_ReturnsFailed()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionCreationLocationNotFound();
+        harness.ProfileSelector.Override = static request =>
+            new SecurityAuthorizationCaptureUnavailable("capture failed");
+        harness.Directory.OnRecordCreate = wrapper => new SessionLocationRecorded(wrapper.Request.Location, existing: false);
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("Session-bound authorization capture is unavailable.");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenCapturedAuthorizationDoesNotMatchRequest_ReturnsFailed()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionCreationLocationNotFound();
+        harness.ProfileSelector.Override = request => new SecurityAuthorizationCaptured(
+            new SecurityAuthorizationContext(request.ProfileKey, new SecurityProfileVersion(999),
+                new SecurityPolicySnapshotReference(
+                    new SecurityPolicySnapshotId(Guid.Parse("55555555-5555-5555-5555-555555555555")),
+                    new SecurityPolicyVersion(1), new ContentHash("sha256:policy")),
+                new ComponentKey<ISecurityAuthority>("authority"), request.AgentDefinitionRevision,
+                request.ConfigurationVersion, request.Scope, request.Identity));
+        harness.Directory.OnRecordCreate = wrapper => new SessionLocationRecorded(wrapper.Request.Location, existing: false);
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("Session-bound authorization capture is unavailable.");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenFinalStoreGrantIsDenied_ReturnsFailed()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionCreationLocationNotFound();
+        harness.Authority.DenyWhen = request =>
+            request.Audience == harness.Store.SecurityAudience
+            && request.Kind == SecurityOperationKind.StateMutation
+            && request.Effect == SecurityEffect.Create;
+        harness.Directory.OnRecordCreate = wrapper => new SessionLocationRecorded(wrapper.Request.Location, existing: false);
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("Session store creation was not authorized.");
+        harness.Store.ReceivedCreates.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenExistingRouteStoreSelectionFails_ReturnsFailedWithSafeMessage()
+    {
+        var winner = Location("fake");
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = _ => new SessionCreationLocationLocated(winner);
+        var coordinator = harness.CreateCoordinator();
+        var profile = TestFactory.Profile(requiredStoreCapabilities: SessionStoreCapabilities.Snapshots);
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(winner.Address.AgentId), profile,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("The selected session store cannot satisfy the profile's capability requirement.");
+        harness.Store.ReceivedCreates.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteExistingAsync_WhenProfileRequiresDurableStoreAndDirectoryIsNotDurable_ReturnsFailed()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+
+        var result = await coordinator.LoadAsync(TestFactory.OperationContext(descriptor.Address),
+            TestFactory.Profile(requiresDurableStore: true), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage
+            .ShouldBe("The session directory cannot satisfy the profile's durability requirement.");
+        harness.Directory.LocateRequests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteExistingAsync_WhenRouteLookupReturnsNotFound_ReturnsFailedWithSafeMessage()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocationNotFound(descriptor.Address);
+
+        var result = await coordinator.LoadAsync(TestFactory.OperationContext(descriptor.Address),
+            TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage.ShouldBe("The session route is unavailable.");
+    }
+
+    [Fact]
+    public async Task ExecuteExistingAsync_WhenRouteLookupIsDenied_ReturnsFailedWithSafeMessage()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionDirectoryLookupDenied("route denied");
+
+        var result = await coordinator.LoadAsync(TestFactory.OperationContext(descriptor.Address),
+            TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage.ShouldBe("route denied");
+    }
+
+    [Fact]
+    public async Task ExecuteExistingAsync_WhenRouteLookupIsUnavailable_ReturnsFailedWithSafeMessage()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionDirectoryLookupUnavailable("route outage");
+
+        var result = await coordinator.LoadAsync(TestFactory.OperationContext(descriptor.Address),
+            TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage.ShouldBe("route outage");
+    }
+
+    [Fact]
+    public async Task ExecuteExistingAsync_WhenStoreSelectionFails_ReturnsFailedWithSafeMessage()
+    {
+        var harness = new Harness();
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        var coordinator = harness.CreateCoordinator();
+        var profile = TestFactory.Profile(requiredStoreCapabilities: SessionStoreCapabilities.Snapshots);
+
+        var result = await coordinator.LoadAsync(TestFactory.OperationContext(descriptor.Address), profile,
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage
+            .ShouldBe("The selected session store cannot satisfy the profile's capability requirement.");
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenAuthoritySelectionIsUnavailable_ReturnsFailed()
+    {
+        var harness = new Harness();
+        harness.AuthoritySelector.ReturnUnavailable = true;
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+
+        var result = await coordinator.LoadAsync(TestFactory.OperationContext(descriptor.Address),
+            TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenSelectedAuthorizationDiffersFromRequested_ReturnsFailed()
+    {
+        var harness = new Harness();
+        harness.AuthoritySelector.ReturnMismatchedAuthorization = true;
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+
+        var result = await coordinator.LoadAsync(TestFactory.OperationContext(descriptor.Address),
+            TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenRoutingIsDenied_InvokesTypedFailureFactory()
+    {
+        var harness = new Harness();
+        harness.Authority.Allow = false;
+        var descriptor = TestFactory.Descriptor();
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var request = new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version,
+            new IdempotencyKey("append"), [TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1)]);
+
+        var result = await harness.CreateCoordinator()
+            .AppendAsync(request, TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionAppendFailed>().SafeMessage
+            .ShouldBe("Session route lookup was not authorized.");
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenRoutingSucceeds_InvokesStoreOperation()
+    {
+        var harness = new Harness();
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        var page = new SessionPage([], new SessionSequence(0), hasMore: false);
+        harness.Store.OnRead = _ => page;
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var request = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 8);
+
+        var result = await harness.CreateCoordinator()
+            .ReadAsync(request, TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeSameAs(page);
+    }
+
+    [Fact]
+    public async Task LookupInputAsync_WhenCapabilityMatchesAndRoutingSucceeds_ForwardsToStore()
+    {
+        var harness = new Harness();
+        var coordinator = harness.CreateCoordinator();
+        var runCoordinator = new DefaultSessionRunCoordinator(
+            new GuidIdentifierGenerator<SessionLeaseId>(static value => new SessionLeaseId(value)),
+            TimeProvider.System, Options.Create(new AgentSessionOptions()));
+        var capability = new SessionExecutionCapability(TestFactory.Profile(), coordinator, runCoordinator);
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        var context = TestFactory.BeforeRunLaneContext(descriptor.Address, new ExecutionLaneId(Guid.NewGuid()));
+        var input = new AgentInput(new InputId(Guid.NewGuid()), InputDelivery.FollowUp,
+            [new TextPart("content", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var request = new SessionInputLookupRequest(context, input, new InputFingerprint("sha256:input"));
+
+        var result = await coordinator.LookupInputAsync(request, capability, TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<SessionInputLookupRejected>();
+        _ = harness.Directory.LocateRequests.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenStoreThrowsException_RecordsFaultAndPropagates()
+    {
+        var harness = new Harness();
+        var descriptor = TestFactory.Descriptor();
+        harness.Directory.OnLocate = _ => new SessionLocated(Location("fake", descriptor.Address));
+        harness.Store.OnAppend = static _ => throw new InvalidOperationException("store faulted");
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var request = new SessionAppendRequest(context, descriptor.ActiveBranchId, descriptor.Version,
+            new IdempotencyKey("append"), [TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1)]);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await harness.CreateCoordinator()
+                .AppendAsync(request, TestFactory.Profile(), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("store faulted");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenLookupReturnsUnsupportedResult_ReturnsFailedWithGenericMessage()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = static _ => new UnknownCreationLocationResult();
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("Session creation-route lookup returned an unsupported result.");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenRecordCreateReturnsUnsupportedResult_ReturnsFailedWithGenericMessage()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocateCreate = static _ => new SessionCreationLocationNotFound();
+        harness.Directory.OnRecordCreate = static _ => new UnknownDirectoryWriteResult();
+        var coordinator = harness.CreateCoordinator();
+
+        var result = await coordinator.CreateAsync(TestFactory.CreateRequest(), TestFactory.Profile(),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage
+            .ShouldBe("Session creation-route recording returned an unsupported result.");
+    }
+
+    [Fact]
+    public async Task ExecuteExistingAsync_WhenRouteLookupReturnsUnsupportedResult_ReturnsFailedWithGenericMessage()
+    {
+        var harness = new Harness();
+        harness.Directory.OnLocate = static _ => new UnknownLocationResult();
+        var coordinator = harness.CreateCoordinator();
+        var descriptor = TestFactory.Descriptor();
+
+        var result = await coordinator.LoadAsync(TestFactory.OperationContext(descriptor.Address),
+            TestFactory.Profile(), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage
+            .ShouldBe("Session route lookup returned an unsupported result.");
+    }
+
+    private sealed record UnknownCreationLocationResult: SessionCreationLocationResult;
+
+    private sealed record UnknownDirectoryWriteResult: SessionDirectoryWriteResult;
+
+    private sealed record UnknownLocationResult: SessionLocationResult;
+
     private static SessionLocation Location(string storeKey, SessionAddress? address = null) => new(
         address ?? new SessionAddress(new AgentId(Guid.Parse("11111111-1111-1111-1111-111111111111")),
             new SessionId(Guid.Parse("22222222-2222-2222-2222-222222222222"))),
@@ -390,8 +1388,6 @@ public sealed class DefaultSessionCoordinatorTests
     private sealed class Harness
     {
         private readonly TimeProvider _time;
-        private readonly RecordingProfileSelector _profileSelector;
-        private readonly RecordingAuthoritySelector _authoritySelector;
 
         public Harness(List<string>? order = null, IReadOnlyList<ISessionStore>? stores = null,
             IReadOnlyList<ISessionEventSink>? eventSinks = null, TimeProvider? timeProvider = null)
@@ -401,13 +1397,15 @@ public sealed class DefaultSessionCoordinatorTests
             Store = (FakeSessionStore) Stores[0];
             Directory = new RecordingDirectory();
             Authority = new RecordingAuthority(_time);
-            _profileSelector = new RecordingProfileSelector(order);
-            _authoritySelector = new RecordingAuthoritySelector(Authority);
+            ProfileSelector = new RecordingProfileSelector(order);
+            AuthoritySelector = new RecordingAuthoritySelector(Authority);
             EventSinks = eventSinks ?? [];
         }
 
         public RecordingDirectory Directory { get; }
         public RecordingAuthority Authority { get; }
+        public RecordingProfileSelector ProfileSelector { get; }
+        public RecordingAuthoritySelector AuthoritySelector { get; }
         public SequenceGenerator<SessionId> SessionIds { get; } = new(static value => new SessionId(value));
         public FakeSessionStore Store { get; }
         public IReadOnlyList<ISessionStore> Stores { get; }
@@ -427,8 +1425,8 @@ public sealed class DefaultSessionCoordinatorTests
             ILogger<DefaultSessionCoordinator>? logger) => new(
             directory,
             new DefaultSessionStoreSelector(Stores, NullLogger<DefaultSessionStoreSelector>.Instance),
-            _profileSelector,
-            _authoritySelector,
+            ProfileSelector,
+            AuthoritySelector,
             SessionIds,
             new SequenceGenerator<SecurityRequestId>(static value => new SecurityRequestId(value)),
             new SequenceGenerator<SecurityEnforcementIntentId>(static value => new SecurityEnforcementIntentId(value)),
@@ -437,14 +1435,17 @@ public sealed class DefaultSessionCoordinatorTests
 
     private sealed class RecordingDirectory: ISessionDirectory
     {
-        public bool Durable => false;
+        public bool Durable => DurableOverride;
         public ComponentId SecurityAudience { get; } = new("agentkit.session.tests.directory");
         public List<AuthorizedSessionDirectoryRequest<SessionOperationContext>> LocateRequests { get; } = [];
         public List<AuthorizedSessionDirectoryRequest<SessionCreateRequest>> LocateCreateRequests { get; } = [];
         public List<AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>> RecordCreateRequests { get; } = [];
+        public List<AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest>> ListRequests { get; } = [];
         public Func<AuthorizedSessionDirectoryRequest<SessionOperationContext>, SessionLocationResult>? OnLocate { get; set; }
         public Func<AuthorizedSessionDirectoryRequest<SessionCreateRequest>, SessionCreationLocationResult>? OnLocateCreate { get; set; }
         public Func<AuthorizedSessionDirectoryRequest<SessionDirectoryCreateRecordRequest>, SessionDirectoryWriteResult>? OnRecordCreate { get; set; }
+        public Func<AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest>, SessionDirectoryListResult>? OnList { get; set; }
+        public bool DurableOverride { get; set; }
 
         public ValueTask<SessionLocationResult> LocateAsync(
             AuthorizedSessionDirectoryRequest<SessionOperationContext> request, CancellationToken cancellationToken = default)
@@ -472,34 +1473,71 @@ public sealed class DefaultSessionCoordinatorTests
             return ValueTask.FromResult(OnRecordCreate?.Invoke(request)
                 ?? new SessionDirectoryWriteUnavailable("not configured"));
         }
+
+        public ValueTask<SessionDirectoryListResult> ListAsync(
+            AuthorizedSessionDirectoryRequest<SessionDirectoryListRequest> request,
+            CancellationToken cancellationToken = default)
+        {
+            ListRequests.Add(request);
+            return ValueTask.FromResult(OnList?.Invoke(request)
+                ?? new SessionDirectoryListUnavailable("not configured"));
+        }
     }
 
     private sealed class RecordingProfileSelector(List<string>? order): ISecurityProfileSelector
     {
+        public Func<SecurityAuthorizationCaptureRequest, SecurityAuthorizationCaptureResult>? Override { get; set; }
+
         public ValueTask<SecurityAuthorizationCaptureResult> SelectAsync(SecurityAuthorizationCaptureRequest request,
             CancellationToken cancellationToken = default)
         {
             order?.Add("capture");
-            return ValueTask.FromResult<SecurityAuthorizationCaptureResult>(new SecurityAuthorizationCaptured(
+            return ValueTask.FromResult(Override?.Invoke(request) ?? DefaultCapture(request));
+        }
+
+        private static SecurityAuthorizationCaptured DefaultCapture(SecurityAuthorizationCaptureRequest request)
+        {
+            return new SecurityAuthorizationCaptured(
                 new SecurityAuthorizationContext(request.ProfileKey, new SecurityProfileVersion(1),
                     new SecurityPolicySnapshotReference(
                         new SecurityPolicySnapshotId(Guid.Parse("55555555-5555-5555-5555-555555555555")),
                         new SecurityPolicyVersion(1), new ContentHash("sha256:policy")),
                     new ComponentKey<ISecurityAuthority>("authority"), request.AgentDefinitionRevision,
-                    request.ConfigurationVersion, request.Scope, request.Identity)));
+                    request.ConfigurationVersion, request.Scope, request.Identity));
         }
     }
 
     private sealed class RecordingAuthoritySelector(RecordingAuthority authority): ISecurityAuthoritySelector
     {
+        public bool ReturnUnavailable { get; set; }
+        public bool ReturnMismatchedAuthorization { get; set; }
+
         public ValueTask<SecurityAuthoritySelectionResult> SelectAsync(SecurityAuthorizationContext authorization,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<SecurityAuthoritySelectionResult>(new SecurityAuthoritySelected(authorization, authority));
+            CancellationToken cancellationToken = default)
+        {
+            if (ReturnUnavailable)
+            {
+                return ValueTask.FromResult<SecurityAuthoritySelectionResult>(
+                    new SecurityAuthoritySelectionUnavailable(authorization, "selection unavailable"));
+            }
+            if (ReturnMismatchedAuthorization)
+            {
+                var different = new SecurityAuthorizationContext(authorization.ProfileKey,
+                    new SecurityProfileVersion(999), authorization.PolicySnapshot, authorization.AuthorityKey,
+                    authorization.AgentDefinitionRevision, authorization.ConfigurationVersion, authorization.Scope,
+                    authorization.Identity);
+                return ValueTask.FromResult<SecurityAuthoritySelectionResult>(
+                    new SecurityAuthoritySelected(different, authority));
+            }
+            return ValueTask.FromResult<SecurityAuthoritySelectionResult>(
+                new SecurityAuthoritySelected(authorization, authority));
+        }
     }
 
     private sealed class RecordingAuthority(TimeProvider time): ISecurityAuthority
     {
         public bool Allow { get; set; } = true;
+        public Func<SecurityRequest, bool>? DenyWhen { get; set; }
         public List<SecurityRequest> Requests { get; } = [];
         public List<SecurityGrant> Grants { get; } = [];
 
@@ -507,7 +1545,7 @@ public sealed class DefaultSessionCoordinatorTests
             CancellationToken cancellationToken = default)
         {
             Requests.Add(request);
-            if (!Allow)
+            if (!Allow || (DenyWhen?.Invoke(request) ?? false))
             {
                 return ValueTask.FromResult<SecurityDecision>(new SecurityDenied(request.Id,
                     new SecurityPolicyVersion(1), new SecurityDenial("policy_denied", "denied")));
