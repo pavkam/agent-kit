@@ -1,0 +1,34 @@
+// Copyright (c) AgentKit contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+namespace AgentKit.Processes.Tests;
+
+/// <summary>Returns a fixed resolution result regardless of the request presented.</summary>
+internal sealed class FakeProcessIntentResolver(Func<ProcessResolveRequest, ProcessResolutionResult> resolve): IProcessIntentResolver
+{
+    public ValueTask<ProcessResolutionResult> ResolveAsync(ProcessResolveRequest request, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(resolve(request));
+}
+
+/// <summary>Throws from resolution to exercise the generic observability failure path.</summary>
+internal sealed class ThrowingProcessIntentResolver(Exception exception): IProcessIntentResolver
+{
+    public ValueTask<ProcessResolutionResult> ResolveAsync(ProcessResolveRequest request, CancellationToken cancellationToken = default) =>
+        throw exception;
+}
+
+/// <summary>Returns a fixed sandbox result for one declared profile regardless of the intent presented.</summary>
+internal sealed class FakeProcessSandboxProvider(SandboxProfileId profileId, Func<ResolvedProcessIntent, ProcessSandboxResult> prepare): IProcessSandboxProvider
+{
+    public SandboxProfileId ProfileId { get; } = profileId;
+
+    public ValueTask<ProcessSandboxResult> PrepareAsync(ResolvedProcessIntent intent, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(prepare(intent));
+}
+
+/// <summary>Throws from output storage to exercise the runner's defensive artifact-storage catch clause.</summary>
+internal sealed class ThrowingProcessOutputArtifactSink: IProcessOutputArtifactSink
+{
+    public Task<ProcessOutputArtifactResult> StoreAsync(ProcessOutputArtifactRequest request, CancellationToken cancellationToken = default) =>
+        throw new InvalidOperationException("Storage is unavailable.");
+}

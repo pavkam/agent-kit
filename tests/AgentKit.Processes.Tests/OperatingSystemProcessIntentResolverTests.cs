@@ -193,6 +193,226 @@ public sealed class OperatingSystemProcessIntentResolverTests: IDisposable
         result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
     }
 
+    [Fact]
+    public void Constructor_WhenAllowedExecutablePathIsBlank_ThrowsArgumentException()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var options = OptionsFor("/bin/sh", 1024);
+        options.AllowedExecutablePaths.Add("   ");
+
+        _ = Should.Throw<ArgumentException>(() => new OperatingSystemProcessIntentResolver(Options.Create(options)));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenExecutableIsADirectory_RejectsIntentWithoutThrowing()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var directoryAsExecutable = Path.Combine(_root, "directory-as-executable");
+        _ = Directory.CreateDirectory(directoryAsExecutable);
+        var resolver = CreateResolver(directoryAsExecutable);
+        var result = await resolver.ResolveAsync(Request(directoryAsExecutable, []), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessResolutionStatus.ExecutableRejected);
+    }
+
+    [Fact]
+    public void Constructor_WhenAllowedExecutableCannotBeCanonicalized_ThrowsArgumentException()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var options = OptionsFor("/bin/sh", 1024);
+        options.AllowedExecutablePaths.Add(Path.Combine(_root, "definitely-missing-executable"));
+
+        _ = Should.Throw<ArgumentException>(() => new OperatingSystemProcessIntentResolver(Options.Create(options)));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenArgumentCountExceedsConfiguredBound_RejectsIntent()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var options = OptionsFor("/bin/sh", 1024);
+        options.MaximumArgumentCount = 1;
+        var resolver = new OperatingSystemProcessIntentResolver(Options.Create(options));
+        var result = await resolver.ResolveAsync(Request("/bin/sh", ["-c", "true"]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenArgumentContainsNulCharacter_RejectsIntent()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var result = await CreateResolver("/bin/sh").ResolveAsync(
+            Request("/bin/sh", ["\0bad"]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenArgumentContainsALoneSurrogate_RejectsIntentWithoutThrowing()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var result = await CreateResolver("/bin/sh").ResolveAsync(
+            Request("/bin/sh", ["\uD800"]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenArgumentBytesExceedConfiguredBound_RejectsIntent()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var options = OptionsFor("/bin/sh", 1024);
+        options.MaximumArgumentBytes = 2;
+        var resolver = new OperatingSystemProcessIntentResolver(Options.Create(options));
+        var result = await resolver.ResolveAsync(Request("/bin/sh", ["abc"]), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenTimeoutExceedsConfiguredMaximum_RejectsIntent()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var result = await CreateResolver("/bin/sh").ResolveAsync(
+            Request("/bin/sh", [], timeout: TimeSpan.FromMinutes(30)), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenEnvironmentNameIsNotAllowed_RejectsIntent()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var result = await CreateResolver("/bin/sh").ResolveAsync(
+            Request("/bin/sh", [], environment: [new ProcessEnvironmentVariable("NOT_ALLOWED", "x")]),
+            TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenEnvironmentValueIsALoneSurrogate_RejectsIntentWithoutThrowing()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var options = OptionsFor("/bin/sh", 1024);
+        options.AllowedEnvironmentVariableNames.Add("A");
+        var resolver = new OperatingSystemProcessIntentResolver(Options.Create(options));
+        var result = await resolver.ResolveAsync(
+            Request("/bin/sh", [], environment: [new ProcessEnvironmentVariable("A", "\uD800")]),
+            TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenMultipleEnvironmentVariablesAreCaptured_OrdersThemCanonically()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var options = OptionsFor("/bin/sh", 1024);
+        options.AllowedEnvironmentVariableNames.Add("A");
+        options.AllowedEnvironmentVariableNames.Add("B");
+        var resolver = new OperatingSystemProcessIntentResolver(Options.Create(options));
+        var result = await resolver.ResolveAsync(
+            Request(
+                "/bin/sh",
+                [],
+                environment:
+                [
+                    new ProcessEnvironmentVariable("B", "2"),
+                    new ProcessEnvironmentVariable("A", "1"),
+                ]),
+            TestContext.Current.CancellationToken);
+        var intent = result.Intent.ShouldNotBeNull();
+        intent.Request.Environment.Select(static item => item.Name).ShouldBe(["A", "B"]);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenExecutableIsNotMarkedExecutable_RejectsIntent()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var notExecutable = Path.Combine(_root, "not-executable");
+        File.WriteAllText(notExecutable, "echo hi");
+        File.SetUnixFileMode(notExecutable, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        var resolver = CreateResolver(notExecutable);
+        var result = await resolver.ResolveAsync(Request(notExecutable, []), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessResolutionStatus.ExecutableRejected);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenExecutableExceedsConfiguredHashingBound_RejectsIntent()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var options = OptionsFor("/bin/sh", 1024);
+        options.MaximumExecutableBytes = 1;
+        var resolver = new OperatingSystemProcessIntentResolver(Options.Create(options));
+        var result = await resolver.ResolveAsync(Request("/bin/sh", []), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessResolutionStatus.ExecutableRejected);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("fingerprinted");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenConfiguredReadOnlyRootIsDeletedAfterConstruction_RejectsIntent()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var toolchain = Path.Combine(_root, "toolchain-transient");
+        _ = Directory.CreateDirectory(toolchain);
+        var options = OptionsFor("/bin/sh", 1024);
+        options.ReadOnlyToolchainRoots.Add("transient", toolchain);
+        var resolver = new OperatingSystemProcessIntentResolver(Options.Create(options));
+        Directory.Delete(toolchain);
+
+        var result = await resolver.ResolveAsync(Request("/bin/sh", []), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessResolutionStatus.InvalidIntent);
+    }
+
     private OperatingSystemProcessIntentResolver CreateResolver(string executable, long maximumOutputBytes = 1024) => new(Options.Create(OptionsFor(executable, maximumOutputBytes)));
     private OperatingSystemProcessOptions OptionsFor(string executable, long maximumOutputBytes, long maximumArtifactOutputBytes = 64 * 1024 * 1024)
     {

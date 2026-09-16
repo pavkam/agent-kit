@@ -25,6 +25,297 @@ public sealed class OperatingSystemProcessRunnerTests: IDisposable
     }
 
     [Fact]
+    public void Constructor_WhenSandboxProfileIdentitiesCollide_ThrowsWithExactParameterName()
+    {
+        var first = new FakeProcessSandboxProvider(
+            PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile,
+            static _ => throw new InvalidOperationException("not reached"));
+        var second = new FakeProcessSandboxProvider(
+            PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile,
+            static _ => throw new InvalidOperationException("not reached"));
+        var exception = Should.Throw<ArgumentException>(() => new OperatingSystemProcessRunner(
+            CreateResolver("/bin/sh"),
+            [first, second],
+            new TestGrantStore(),
+            TimeProvider.System,
+            Options.Create(OptionsFor("/bin/sh", 1024)),
+            null,
+            null));
+        exception.ParamName.ShouldBe("sandboxes");
+    }
+
+    [Fact]
+    public void Dispose_WhenCalledMoreThanOnce_IsIdempotent()
+    {
+        var runner = new OperatingSystemProcessRunner(
+            CreateResolver("/bin/sh"),
+            [new PlatformProcessSandboxProvider()],
+            new TestGrantStore(),
+            TimeProvider.System,
+            Options.Create(OptionsFor("/bin/sh", 1024)));
+        runner.Dispose();
+        runner.Dispose();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenResolverRevalidationFails_ReturnsResolutionFailedWithoutConsumingGrant()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(Request("/bin/sh", []), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var failingResolver = new FakeProcessIntentResolver(
+            static _ => new ProcessResolutionResult(ProcessResolutionStatus.ExecutableRejected, null, "rejected during revalidation"));
+        var store = new TestGrantStore();
+        using var runner = CreateRunner(failingResolver, store);
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessRunStatus.ResolutionFailed);
+        result.SafeMessage.ShouldBe("rejected during revalidation");
+        store.Enforcements.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenSandboxPreparationReportsUnavailable_ReturnsSandboxUnavailableWithoutConsumingGrant()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(Request("/bin/sh", []), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var passthroughResolver = new FakeProcessIntentResolver(
+            _ => new ProcessResolutionResult(ProcessResolutionStatus.Resolved, intent, null));
+        var sandbox = new FakeProcessSandboxProvider(
+            PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile,
+            static _ => new ProcessSandboxResult(ProcessSandboxStatus.Unavailable, null, "sandbox down"));
+        var store = new TestGrantStore();
+        using var runner = new OperatingSystemProcessRunner(
+            passthroughResolver,
+            [sandbox],
+            store,
+            TimeProvider.System,
+            Options.Create(OptionsFor("/bin/sh", 1024)));
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessRunStatus.SandboxUnavailable);
+        result.SafeMessage.ShouldBe("sandbox down");
+        store.Enforcements.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOperatingSystemRefusesProcessCreation_ReturnsFailedWithoutThrowing()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(Request("/bin/sh", []), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var passthroughResolver = new FakeProcessIntentResolver(
+            _ => new ProcessResolutionResult(ProcessResolutionStatus.Resolved, intent, null));
+        var missing = Path.Combine(_root, "definitely-missing-executable");
+        var sandbox = new FakeProcessSandboxProvider(
+            PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile,
+            _ => new ProcessSandboxResult(ProcessSandboxStatus.Ready, new ProcessSandboxLaunch(missing, []), null));
+        var store = new TestGrantStore();
+        using var runner = new OperatingSystemProcessRunner(
+            passthroughResolver,
+            [sandbox],
+            store,
+            TimeProvider.System,
+            Options.Create(OptionsFor("/bin/sh", 1024)));
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessRunStatus.Failed);
+        result.SafeMessage.ShouldBe("The operating system refused process creation.");
+        _ = store.Enforcements.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenResolverThrowsUnexpectedException_PropagatesWithoutStartingAProcess()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(Request("/bin/sh", []), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var throwingResolver = new ThrowingProcessIntentResolver(new InvalidOperationException("boom"));
+        using var runner = CreateRunner(throwingResolver, new TestGrantStore());
+        var action = async () => await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        var exception = await action.ShouldThrowAsync<InvalidOperationException>();
+        exception.Message.ShouldBe("boom");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenLoggerIsEnabled_EmitsCompletedStructuredEvent()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(Request("/bin/sh", ["-c", "true"]), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var logger = new RecordingLogger<OperatingSystemProcessRunner>();
+        using var runner = new OperatingSystemProcessRunner(
+            resolver,
+            [new PlatformProcessSandboxProvider()],
+            new TestGrantStore(),
+            TimeProvider.System,
+            Options.Create(OptionsFor("/bin/sh", 1024)),
+            logger);
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        logger.Snapshot().ShouldContain(static entry => entry.EventId.Id == 12000);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenLoggerIsEnabledAndResolverThrows_EmitsFailedStructuredEvent()
+    {
+        if (!IsSupported())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(Request("/bin/sh", []), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        var throwingResolver = new ThrowingProcessIntentResolver(new InvalidOperationException("boom"));
+        var logger = new RecordingLogger<OperatingSystemProcessRunner>();
+        using var runner = new OperatingSystemProcessRunner(
+            throwingResolver,
+            [new PlatformProcessSandboxProvider()],
+            new TestGrantStore(),
+            TimeProvider.System,
+            Options.Create(OptionsFor("/bin/sh", 1024)),
+            logger);
+        var action = async () => await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        _ = await action.ShouldThrowAsync<InvalidOperationException>();
+        logger.Snapshot().ShouldContain(static entry => entry.EventId.Id == 12001);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOutputArtifactSinkThrows_ReportsLossWithoutPropagating()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh", maximumOutputBytes: 4);
+        var intent = (await resolver.ResolveAsync(Request("/bin/sh", ["-c", "printf 0123456789"], maximumOutputBytes: 4), TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore(), maximumOutputBytes: 4, outputArtifacts: new ThrowingProcessOutputArtifactSink());
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        result.StandardOutputArtifact.ShouldBeNull();
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("could not be preserved completely");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenProcessIgnoresTermination_IsForciblyKilledAfterGracePeriod()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request(
+                "/bin/sh",
+                ["-c", "trap '' TERM; sleep 5"],
+                timeout: TimeSpan.FromMilliseconds(200),
+                grace: TimeSpan.FromMilliseconds(100)),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore());
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessRunStatus.TimedOut);
+        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.MayHaveOccurred);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenStandardInputIsProvided_DeliversItCompletelyBeforeClosingTheStream()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/cat");
+        var request = new ProcessResolveRequest(
+            new ProcessOperationId(Guid.NewGuid()),
+            "/bin/cat",
+            [],
+            null,
+            [],
+            [.. "hello standard input"u8],
+            PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile,
+            ProcessWorkspaceAccess.ReadWrite,
+            ProcessSideEffectClass.WorkspaceMutation,
+            ProcessChildPolicy.AllowSandboxed,
+            new ProcessResourceLimits(TimeSpan.FromSeconds(2), 1024, TimeSpan.FromMilliseconds(250)));
+        var intent = (await resolver.ResolveAsync(request, TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore());
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessRunStatus.Exited);
+        result.ExitCode.ShouldBe(0);
+        Encoding.UTF8.GetString(result.StandardOutputTail.AsSpan()).ShouldBe("hello standard input");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenStandardInputCannotBeDeliveredToAnAlreadyExitedProcess_ReportsFailureAndTerminatesCleanly()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var options = OptionsFor("/usr/bin/true", 1024);
+        options.MaximumInputBytes = 16 * 1024 * 1024;
+        var resolver = new OperatingSystemProcessIntentResolver(Options.Create(options));
+        var input = new byte[8 * 1024 * 1024];
+        var request = new ProcessResolveRequest(
+            new ProcessOperationId(Guid.NewGuid()),
+            "/usr/bin/true",
+            [],
+            null,
+            [],
+            [.. input],
+            PlatformProcessSandboxProvider.WorkspaceNoNetworkProfile,
+            ProcessWorkspaceAccess.ReadWrite,
+            ProcessSideEffectClass.WorkspaceMutation,
+            ProcessChildPolicy.AllowSandboxed,
+            new ProcessResourceLimits(TimeSpan.FromSeconds(2), 1024, TimeSpan.FromMilliseconds(250)));
+        var intent = (await resolver.ResolveAsync(request, TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore());
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBeOneOf(ProcessRunStatus.Cancelled, ProcessRunStatus.Failed, ProcessRunStatus.Exited);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenOrphanedChildKeepsOutputStreamsOpenAfterExit_ForciblyClosesThemWithinTheDrainBound()
+    {
+        if (!IsSupported() || !SandboxAvailable())
+        {
+            return;
+        }
+
+        var resolver = CreateResolver("/bin/sh");
+        var intent = (await resolver.ResolveAsync(
+            Request("/bin/sh", ["-c", "(sleep 2 &); exit 0"], grace: TimeSpan.FromMilliseconds(100)),
+            TestContext.Current.CancellationToken)).Intent.ShouldNotBeNull();
+        using var runner = CreateRunner(resolver, new TestGrantStore());
+        var result = await runner.RunAsync(new ProcessRunRequest(intent, TestGrantStore.Grant()), TestContext.Current.CancellationToken);
+        result.Status.ShouldBe(ProcessRunStatus.Failed);
+        result.EffectCertainty.ShouldBe(ProcessSideEffectCertainty.MayHaveOccurred);
+        result.SafeMessage.ShouldNotBeNull().ShouldContain("did not settle within the drain bound");
+    }
+
+    [Fact]
     public async Task RunAsync_WhenGrantDenied_StartsNothingAndUsesExactEnforcement()
     {
         if (!IsSupported() || !SandboxAvailable())

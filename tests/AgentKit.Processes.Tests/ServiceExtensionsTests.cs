@@ -40,4 +40,19 @@ public sealed class ServiceExtensionsTests
         _ = Should.Throw<OptionsValidationException>(
             () => provider.GetRequiredService<IOptions<OperatingSystemProcessOptions>>().Value);
     }
+
+    [Fact]
+    public void AddOperatingSystemProcesses_WhenReadOnlyToolchainRootPathIsRelative_FailsOptionsValidation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddOperatingSystemProcesses(Path.GetTempPath(), static options =>
+        {
+            options.AllowedExecutablePaths.Add("/bin/sh");
+            options.ReadOnlyToolchainRoots.Add("relative", "not-absolute");
+        });
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<OperatingSystemProcessOptions>>().Value);
+    }
 }
