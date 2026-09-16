@@ -14,6 +14,8 @@ public sealed class McpRemoteToolDescriptorTests
         var descriptor = new McpRemoteToolDescriptor(new McpToolName("weather.get"), new ToolVersion("2.1"));
         descriptor.Name.ShouldBe(new McpToolName("weather.get"));
         descriptor.Version.ShouldBe(new ToolVersion("2.1"));
+        (descriptor with { }).ShouldBe(descriptor);
+        descriptor.ToString().ShouldContain(nameof(McpRemoteToolDescriptor));
     }
 
     [Fact]

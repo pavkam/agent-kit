@@ -21,4 +21,16 @@ public sealed class McpRemoteToolTests
         var exception = Should.Throw<ArgumentException>(() => new McpRemoteTool(new McpToolName("tool"), default(ToolVersion)));
         exception.ParamName.ShouldBe("version");
     }
+
+    [Fact]
+    public void Equality_WhenNameAndVersionMatch_TreatsInstancesAsEqual()
+    {
+        var first = new McpRemoteTool(new McpToolName("weather.get"), new ToolVersion("2.1"));
+        var second = new McpRemoteTool(new McpToolName("weather.get"), new ToolVersion("2.1"));
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+        (first with { }).ShouldBe(first);
+        first.ToString().ShouldContain(nameof(McpRemoteTool));
+    }
 }

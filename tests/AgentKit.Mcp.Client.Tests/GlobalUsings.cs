@@ -8,8 +8,11 @@ global using System.Text.Json;
 global using AgentKit.Mcp;
 global using AgentKit.Mcp.Client;
 global using AgentKit.Observability;
+global using AgentKit.TestSupport;
 
 global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Logging;
+global using Microsoft.Extensions.Logging.Abstractions;
 
 global using Shouldly;
 

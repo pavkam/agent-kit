@@ -16,6 +16,8 @@ public sealed class McpClientToolCatalogSnapshotTests
         snapshot.Version.ShouldBe(new McpCatalogVersion(4));
         snapshot.ProtocolVersion.ShouldBe(McpProtocolVersions.July2026);
         snapshot.Tools.ShouldBe(tools);
+        (snapshot with { }).ShouldBe(snapshot);
+        snapshot.ToString().ShouldContain(nameof(McpClientToolCatalogSnapshot));
     }
 
     [Fact]

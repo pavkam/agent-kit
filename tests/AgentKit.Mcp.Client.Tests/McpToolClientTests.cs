@@ -234,6 +234,68 @@ public sealed class McpToolClientTests
     }
 
     [Fact]
+    public async Task LoggerFactory_WhenObservingTheCompleteLifecycle_EmitsEveryStructuredEvent()
+    {
+        var logger = new RecordingLogger<McpToolClientTests>();
+        var loggerFactory = new SingleLoggerFactory(logger);
+        var caller = CreateCaller([WeatherRemoteTool()]);
+        await using var client = await McpToolClientActivator.CreateAsync<WeatherTools>(caller, loggerFactory: loggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        _ = await client.CallAsync(tools => tools.GetAsync(new WeatherRequest("Porto"), default), TestContext.Current.CancellationToken);
+
+        using var cancellation = new CancellationTokenSource();
+        caller.CallHandler = (_, _, _, _) =>
+        {
+            cancellation.Cancel();
+            throw new OperationCanceledException(cancellation.Token);
+        };
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await client.CallAsync(tools => tools.GetAsync(new WeatherRequest("Porto"), default), cancellation.Token));
+
+        caller.CallHandler = static (_, _, _, _) => throw new InvalidOperationException("boom");
+        _ = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await client.CallAsync(tools => tools.GetAsync(new WeatherRequest("Porto"), default), TestContext.Current.CancellationToken));
+
+        using var refreshCancellation = new CancellationTokenSource();
+        caller.ListToolsHandler = async ct =>
+        {
+            refreshCancellation.Cancel();
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            return [];
+        };
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () => await client.RefreshAsync(refreshCancellation.Token));
+
+        caller.ListToolsHandler = static _ => ValueTask.FromResult<IReadOnlyList<McpRemoteTool>>([]);
+        _ = await Should.ThrowAsync<McpToolContractMismatchException>(async () => await client.RefreshAsync(TestContext.Current.CancellationToken));
+
+        var events = logger.Snapshot().Select(static entry => entry.EventId.Id).ToArray();
+        events.ShouldContain(13010); // CatalogPublished (initial activation)
+        events.ShouldContain(13020); // ToolCallCompleted
+        events.ShouldContain(13021); // ToolCallCancelled
+        events.ShouldContain(13022); // ToolCallFailed
+        events.ShouldContain(13011); // CatalogRefreshCancelled
+        events.ShouldContain(13012); // CatalogRefreshFailed
+    }
+
+    [Fact]
+    public async Task CallAsync_WhenCallerCancels_PropagatesCancellation()
+    {
+        var caller = CreateCaller([WeatherRemoteTool()]);
+        await using var client = await McpToolClientActivator.CreateAsync<WeatherTools>(caller, cancellationToken: TestContext.Current.CancellationToken);
+        using var cancellation = new CancellationTokenSource();
+        caller.CallHandler = (_, _, _, _) =>
+        {
+            cancellation.Cancel();
+            throw new OperationCanceledException(cancellation.Token);
+        };
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(async () =>
+            await client.CallAsync(tools => tools.GetAsync(new WeatherRequest("Faro"), default), cancellation.Token));
+
+        caller.CallCount.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task CallAsync_WhenCallerFails_PropagatesFailureWithoutRetry()
     {
         var caller = CreateCaller([WeatherRemoteTool()]);
@@ -331,6 +393,19 @@ public sealed class McpToolClientTests
 
         [McpTool("property.execute", "1")]
         public abstract Task<WeatherResponse> ExecuteAsync(WeatherRequest request);
+    }
+
+    private sealed class SingleLoggerFactory(ILogger logger): ILoggerFactory
+    {
+        public void AddProvider(ILoggerProvider provider)
+        {
+        }
+
+        public ILogger CreateLogger(string categoryName) => logger;
+
+        public void Dispose()
+        {
+        }
     }
 
     private sealed record RequestHolder(WeatherRequest Request);

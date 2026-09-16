@@ -10,11 +10,16 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
     <PackageReference Include="Microsoft.NET.Test.Sdk"/>
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage"/>
+    <PackageReference Include="ModelContextProtocol"/>
     <PackageReference Include="Shouldly"/>
     <PackageReference Include="xunit.v3"/>
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/AgentKit.Mcp.Client/AgentKit.Mcp.Client.csproj"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../AgentKit.Test.Shared/AgentKit.Test.Shared.csproj"/>
   </ItemGroup>
 </Project>
