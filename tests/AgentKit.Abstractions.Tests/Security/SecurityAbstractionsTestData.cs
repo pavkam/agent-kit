@@ -45,6 +45,14 @@ internal static class SecurityAbstractionsTestData
             Authorization(), new ComponentId("session"), SecurityOperationKind.StateRead, SecurityEffect.Observe,
             [Resource()], new InputFingerprint("sha256:input"), DateTimeOffset.UnixEpoch.AddMinutes(1));
 
+    public static ApprovalScopeBinding ScopeBinding() =>
+        new(Request(), new SecurityPolicyVersion(1), new SecurityRevocationVersion(1), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddMinutes(1), 1);
+
+    public static ApprovalResponse Response(ApprovalResolution resolution = ApprovalResolution.Approved) =>
+        new(new ApprovalResponseId(Guid.Parse("f0000000-0000-0000-0000-000000000008")),
+            new ApprovalRequestId(Guid.Parse("f0000000-0000-0000-0000-000000000009")),
+            ScopeBinding(), resolution, Identity(), DateTimeOffset.UnixEpoch);
+
     public static SecurityGrant Grant() =>
         new(
             new GrantId(Guid.Parse("f0000000-0000-0000-0000-000000000006")),
