@@ -3,6 +3,8 @@
 
 namespace AgentKit.Abstractions.Tests.Output;
 
+using System.Text.Json;
+
 using AgentKit;
 
 /// <summary>Verifies OutputDefinition behavior and contracts.</summary>
@@ -149,6 +151,18 @@ public sealed class OutputDefinitionTests
         definition.Mode.ShouldBe(OutputMode.Text);
         definition.Validators.ShouldBeEmpty();
         definition.EndStrategy.ShouldBe(OutputEndStrategy.Graceful);
+    }
+
+    [Fact]
+    public void GetHashCode_WhenAlternativesAndValidatorsAreNonEmpty_IncludesEveryElement()
+    {
+        using var document = JsonDocument.Parse("true");
+        var alternative = new OutputAlternative("primary", new JsonSchemaDocument("schema", new SchemaVersion("1"), document.RootElement));
+        var validator = new OutputValidatorReference("semantic");
+        var left = CreateDefinition(alternatives: [alternative], validators: [validator]);
+        var right = CreateDefinition(alternatives: [alternative], validators: [validator]);
+        left.ShouldBe(right);
+        left.GetHashCode().ShouldBe(right.GetHashCode());
     }
 
     private static OutputDefinition CreateDefinition(OutputDefinitionId? id = null, OutputDefinitionVersion? version = null, ImmutableArray<OutputAlternative>? alternatives = null, ImmutableArray<OutputValidatorReference>? validators = null) => CreateDefinitionCore(id ?? new OutputDefinitionId("output"), version ?? new OutputDefinitionVersion("1"), alternatives ?? [], validators ?? []);

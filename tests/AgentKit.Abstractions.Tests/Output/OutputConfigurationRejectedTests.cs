@@ -2,24 +2,26 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
 namespace AgentKit.Abstractions.Tests.Output;
-/// <summary>Verifies OutputSchemaPreflightRejected behavior and contracts.</summary>
-public sealed class OutputSchemaPreflightRejectedTests
+
+/// <summary>Verifies OutputConfigurationRejected behavior and contracts.</summary>
+public sealed class OutputConfigurationRejectedTests
 {
     [Fact]
-    public void ClosedResults_WhenRequiredEvidenceIsNull_RejectExactParameter() => Should.Throw<ArgumentNullException>(() => new OutputSchemaPreflightRejected(null!)).ParamName.ShouldBe("failure");
+    public void Constructor_WhenFailureIsNull_ThrowsExactParameter() =>
+        Should.Throw<ArgumentNullException>(() => new OutputConfigurationRejected(null!)).ParamName.ShouldBe("failure");
 
     [Fact]
     public void Constructor_WhenArgumentsAreValid_RoundTripsFailure()
     {
         var failure = OutputTestData.ConfigurationFailure();
-        var rejected = new OutputSchemaPreflightRejected(failure);
+        var rejected = new OutputConfigurationRejected(failure);
         rejected.Failure.ShouldBe(failure);
     }
 
     [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
-        var original = new OutputSchemaPreflightRejected(OutputTestData.ConfigurationFailure());
+        var original = new OutputConfigurationRejected(OutputTestData.ConfigurationFailure());
         var copy = original with { };
         copy.ShouldBe(original);
     }

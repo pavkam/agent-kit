@@ -47,5 +47,13 @@ public sealed class OutputSchemaEngineProfileTests
         });
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Profile();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static OutputSchemaEngineProfile Profile(ImmutableArray<JsonSchemaDialectId>? dialects = null, ImmutableArray<string>? assertions = null, ImmutableArray<string>? annotations = null) => new(new OutputSchemaProfileId("test"), new OutputSchemaProfileVersion(1), _dialect, dialects ?? [_dialect], assertions ?? ["type"], annotations ?? ["title"]);
 }

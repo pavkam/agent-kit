@@ -14,4 +14,21 @@ public sealed class OutputSchemaProcessingLimitsTests
         Should.Throw<ArgumentOutOfRangeException>(() => new OutputSchemaProcessingLimits(1, value, 1)).ParamName.ShouldBe("maximumDepth");
         Should.Throw<ArgumentOutOfRangeException>(() => new OutputSchemaProcessingLimits(1, 1, value)).ParamName.ShouldBe("maximumNodes");
     }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var limits = new OutputSchemaProcessingLimits(128, 4, 8);
+        limits.MaximumUtf8Bytes.ShouldBe(128);
+        limits.MaximumDepth.ShouldBe(4);
+        limits.MaximumNodes.ShouldBe(8);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new OutputSchemaProcessingLimits(128, 4, 8);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
