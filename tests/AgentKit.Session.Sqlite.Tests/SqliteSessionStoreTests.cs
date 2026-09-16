@@ -1439,6 +1439,172 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
     }
 
     [Fact]
+    public async Task ProvisionLaneAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "enforce-provision-create");
+        var laneId = Coverage.Identifier<ExecutionLaneId>(1800);
+        var context = Coverage.LaneContext(
+            descriptor.Address, laneId, Coverage.Identity(), new BeforeRunOperationCorrelation(Coverage.Identifier<OperationId>(1801), null));
+        var provision = Coverage.ProvisionRequest(
+            context, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version,
+            Coverage.Identifier<SessionEntryId>(1802), 1800, "enforce-provision");
+        var mismatched = await MismatchedStoreKeyAsync(fixture, provision, SecurityOperationKind.StateMutation, SecurityEffect.Create);
+
+        var result = await store.ProvisionLaneAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionExecutionLaneProvisionRejected>().SafeMessage
+            .ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "enforce-append-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1810);
+        var append = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("enforce-append"),
+            [Coverage.MessageEntry(descriptor, 1811, 1, "enforce")]);
+        var mismatched = await MismatchedStoreKeyAsync(fixture, append, SecurityOperationKind.StateMutation, SecurityEffect.Append);
+
+        var result = await store.AppendAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionAppendFailed>().SafeMessage.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "enforce-read-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1820);
+        var read = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10);
+        var mismatched = await MismatchedStoreKeyAsync(fixture, read, SecurityOperationKind.StateRead, SecurityEffect.Observe);
+
+        var result = await store.ReadAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionReadFailed>().SafeMessage.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task CreateBranchAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "enforce-branch-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1830);
+        var branch = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), new IdempotencyKey("enforce-branch"));
+        var mismatched = await MismatchedStoreKeyAsync(fixture, branch, SecurityOperationKind.StateMutation, SecurityEffect.Create);
+
+        var result = await store.CreateBranchAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionBranchFailed>().SafeMessage.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "enforce-delete-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1840);
+        var delete = Coverage.DeleteRequest(context, "enforce-delete");
+        var mismatched = await MismatchedStoreKeyAsync(fixture, delete, SecurityOperationKind.StateMutation, SecurityEffect.Delete);
+
+        var result = await store.DeleteAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionDeleteFailed>().SafeMessage.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task LookupInputAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "enforce-lookup-create");
+        var context = Coverage.LaneContext(
+            descriptor.Address, Coverage.Identifier<ExecutionLaneId>(1850), Coverage.Identity(),
+            new BeforeRunOperationCorrelation(Coverage.Identifier<OperationId>(1851), null));
+        var input = new AgentInput(
+            Coverage.Identifier<InputId>(1852), InputDelivery.FollowUp,
+            [new TextPart("lookup", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var lookup = new SessionInputLookupRequest(context, input, new InputFingerprint("sha256:enforce:lookup"));
+        var mismatched = await MismatchedStoreKeyAsync(fixture, lookup, SecurityOperationKind.StateRead, SecurityEffect.Observe);
+
+        var result = await store.LookupInputAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionInputLookupRejected>().SafeReason.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "enforce-admit-create");
+        var context = Coverage.LaneContext(
+            descriptor.Address, Coverage.Identifier<ExecutionLaneId>(1860), Coverage.Identity(),
+            new BeforeRunOperationCorrelation(Coverage.Identifier<OperationId>(1861), null));
+        var admission = Coverage.AdmissionRequest(
+            context, Coverage.Identifier<AdmissionId>(1862), Coverage.Identifier<InputId>(1863),
+            Coverage.Identifier<SessionEntryId>(1864), descriptor.Version, new SessionLaneRevision(1),
+            new SessionBranchCursor(descriptor.ActiveBranchId, null), "enforce-admit");
+        var mismatched = await MismatchedStoreKeyAsync(fixture, admission, SecurityOperationKind.StateMutation, SecurityEffect.Append);
+
+        var result = await store.AdmitInputAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<RejectedInput>().Rejection.SafeReason.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task LoadRunStateAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "enforce-run-state-create");
+        var context = Coverage.LaneContext(
+            descriptor.Address, Coverage.Identifier<ExecutionLaneId>(1870), Coverage.Identity(),
+            new InRunOperationCorrelation(Coverage.Identifier<OperationId>(1871), Coverage.Identifier<RunId>(1872), null));
+        var load = new SessionRunStateRequest(context);
+        var mismatched = await MismatchedStoreKeyAsync(fixture, load, SecurityOperationKind.StateRead, SecurityEffect.Observe);
+
+        var result = await store.LoadRunStateAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunStateUnavailable>().SafeReason.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task ReleaseRunAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "enforce-release-create");
+        var context = Coverage.LaneContext(
+            descriptor.Address, Coverage.Identifier<ExecutionLaneId>(1880), Coverage.Identity(),
+            new InRunOperationCorrelation(Coverage.Identifier<OperationId>(1881), Coverage.Identifier<RunId>(1882), null));
+        var release = Coverage.ReleaseRequest(context, new OperationStateRevision(1), descriptor.Version, "enforce-release");
+        var mismatched = await MismatchedStoreKeyAsync(fixture, release, SecurityOperationKind.StateMutation, SecurityEffect.Mutate);
+
+        var result = await store.ReleaseRunAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunReleaseRejected>().SafeReason.ShouldBe("The grant targets a different session store.");
+    }
+
+    /// <summary>Authorizes <paramref name="request"/> normally, then rebinds it to a store key the store never owns.</summary>
+    private static async Task<AuthorizedSessionStoreRequest<TRequest>> MismatchedStoreKeyAsync<TRequest>(
+        SqliteSessionStoreConformanceFixture fixture, TRequest request, SecurityOperationKind kind, SecurityEffect effect)
+        where TRequest : class
+    {
+        var authorized = await Coverage.AuthorizeAsync(fixture, request, kind, effect);
+        return new AuthorizedSessionStoreRequest<TRequest>(
+            authorized.Request, new SessionStoreKey("some-other-store"), authorized.Grant, authorized.Intent);
+    }
+
+    [Fact]
     public async Task AcceptRunAsync_WhenFencingTokenIsRequested_ReturnsRejectedForUnsupportedDistributedFencing()
     {
         await using var fixture = new SqliteSessionStoreConformanceFixture();
