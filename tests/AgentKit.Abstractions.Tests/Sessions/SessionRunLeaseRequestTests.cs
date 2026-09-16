@@ -3,25 +3,40 @@
 
 namespace AgentKit.Abstractions.Tests.Sessions;
 
-using AgentKit.TestSupport;
-
 /// <summary>Verifies SessionRunLeaseRequest behavior and contracts.</summary>
 public sealed class SessionRunLeaseRequestTests
 {
     [Fact]
-    public void SessionRunLeaseRequest_WhenArgumentsAreInvalid_ThrowsExactExceptionAndParamName()
+    public void Constructor_WhenContextIsNotInRun_ThrowsExactArgumentException()
     {
-        Should.Throw<ArgumentNullException>(() => new SessionRunLeaseRequest(null!, new OperationStateRevision(1))).ParamName.ShouldBe("context");
-        Should.Throw<ArgumentException>(() => new SessionRunLeaseRequest(Context(false, true), new OperationStateRevision(1))).ParamName.ShouldBe("context");
-        Should.Throw<ArgumentOutOfRangeException>(() => new SessionRunLeaseRequest(Context(true, true), default)).ParamName.ShouldBe("expectedStateRevision");
+        var exception = Should.Throw<ArgumentException>(() => new SessionRunLeaseRequest(SessionsTestData.BeforeRunContext(), new OperationStateRevision(1)));
+        exception.ParamName.ShouldBe("context");
     }
 
-    private static SessionOperationContext Context(bool inRun, bool laneBound)
+    [Fact]
+    public void Constructor_WhenExpectedStateRevisionIsDefault_ThrowsExactArgumentOutOfRangeException()
     {
-        var agentId = new AgentId(Guid.NewGuid());
-        var sessionId = new SessionId(Guid.NewGuid());
-        OperationCorrelation correlation = inRun ? new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null) : new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null);
-        var identity = TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human);
-        return new SessionOperationContext(agentId, sessionId, laneBound ? new ExecutionLaneId(Guid.NewGuid()) : null, correlation, identity, TestSecurityEvidence.Authorization(agentId, sessionId, correlation, identity));
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new SessionRunLeaseRequest(SessionsTestData.InRunContext(), default));
+        exception.ParamName.ShouldBe("expectedStateRevision");
+    }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_ExposesDerivedProperties()
+    {
+        var context = SessionsTestData.InRunContext();
+        var request = new SessionRunLeaseRequest(context, new OperationStateRevision(1));
+        request.AgentId.ShouldBe(context.AgentId);
+        request.SessionId.ShouldBe(context.SessionId);
+        request.ExecutionLaneId.ShouldBe(context.ExecutionLaneId!.Value);
+        request.OperationId.ShouldBe(SessionsTestData.OperationId);
+        request.RunId.ShouldBe(SessionsTestData.RunId);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionRunLeaseRequest(SessionsTestData.InRunContext(), new OperationStateRevision(1));
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 }
