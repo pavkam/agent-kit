@@ -35,4 +35,36 @@ public sealed class RedactedAuditValueTests
         Should.Throw<ArgumentOutOfRangeException>(() => RedactedAuditValue.FromOperationKind((SecurityOperationKind) 99)).ParamName.ShouldBe("kind");
         Should.Throw<ArgumentOutOfRangeException>(() => RedactedAuditValue.FromEffect((SecurityEffect) 99)).ParamName.ShouldBe("effect");
     }
+
+    [Fact]
+    public void FromPolicyId_WhenValid_RetainsTypedFact()
+    {
+        var value = RedactedAuditValue.FromPolicyId(new SecurityPolicyId("policy"));
+        value.Kind.ShouldBe(SecurityAuditValueKind.SecurityPolicyId);
+        value.Value.ShouldBe("policy");
+    }
+
+    [Fact]
+    public void FromComponentId_WhenValid_RetainsTypedFact()
+    {
+        var value = RedactedAuditValue.FromComponentId(new ComponentId("component"));
+        value.Kind.ShouldBe(SecurityAuditValueKind.ComponentId);
+        value.Value.ShouldBe("component");
+    }
+
+    [Fact]
+    public void FromOperationKind_WhenValid_RetainsEnumName()
+    {
+        var value = RedactedAuditValue.FromOperationKind(SecurityOperationKind.StateRead);
+        value.Kind.ShouldBe(SecurityAuditValueKind.OperationKind);
+        value.Value.ShouldBe(nameof(SecurityOperationKind.StateRead));
+    }
+
+    [Fact]
+    public void FromEffect_WhenValid_RetainsEnumName()
+    {
+        var value = RedactedAuditValue.FromEffect(SecurityEffect.Observe);
+        value.Kind.ShouldBe(SecurityAuditValueKind.Effect);
+        value.Value.ShouldBe(nameof(SecurityEffect.Observe));
+    }
 }
