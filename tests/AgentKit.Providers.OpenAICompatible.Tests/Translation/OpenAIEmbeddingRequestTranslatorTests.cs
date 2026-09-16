@@ -192,6 +192,36 @@ public sealed class OpenAIEmbeddingRequestTranslatorTests
     }
 
     [Fact]
+    public void Translate_WhenEncodingIsUndefined_ThrowsNotSupportedException()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)],
+            EmbeddingPurpose.Unspecified,
+            null,
+            (EmbeddingEncoding) 999,
+            EmbeddingTruncation.ProviderDefault,
+            ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(
+            () => new OpenAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest), Profile));
+    }
+
+    [Fact]
+    public void Translate_WhenPurposeIsUndefined_ThrowsNotSupportedException()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)],
+            (EmbeddingPurpose) 999,
+            null,
+            null,
+            EmbeddingTruncation.ProviderDefault,
+            ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(
+            () => new OpenAIEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest), ProfileWithPurposeSupport));
+    }
+
+    [Fact]
     public void Translate_WhenExtensionsAttemptToOverrideProtectedField_IgnoresOverride()
     {
         var hackedModel = new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes("hacked-model")]);

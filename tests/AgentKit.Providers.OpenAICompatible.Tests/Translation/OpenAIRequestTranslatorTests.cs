@@ -369,4 +369,75 @@ public sealed class OpenAIRequestTranslatorTests
         body["max_tokens"]!.GetValue<long>().ShouldBe(256);
         body.ContainsKey("max_completion_tokens").ShouldBeFalse();
     }
+
+    [Fact]
+    public void Translate_WhenTopPConfigured_SerializesTopP()
+    {
+        var settings = LlmRequestSettings.Default with { TopP = 0.5 };
+
+        var body = Translate([TestMessages.User("hi")], settings: settings);
+
+        body["top_p"]!.GetValue<double>().ShouldBe(0.5);
+    }
+
+    [Fact]
+    public void Translate_WhenUserMessageContainsUnsupportedPartKind_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => Translate([TestMessages.User(unknown)]));
+    }
+
+    [Fact]
+    public void Translate_WhenAssistantMessageContainsUnsupportedPartKind_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var assistant = TestMessages.Assistant(unknown);
+
+        _ = Should.Throw<NotSupportedException>(() => Translate([assistant]));
+    }
+
+    [Fact]
+    public void Translate_WhenToolMessageContainsNonToolResultPart_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var toolMessage = TestMessages.Tool(unknown);
+
+        _ = Should.Throw<NotSupportedException>(() => Translate([toolMessage]));
+    }
+
+    [Fact]
+    public void Translate_WhenToolResultContentContainsUnsupportedPartKind_ThrowsNotSupportedException()
+    {
+        var media = new MediaReferencePart(
+            new MediaReference(new MediaId(Guid.NewGuid()), MediaSourceKind.Uri, "image/png", new Uri("https://example.com/image.png"), [], sizeInBytes: null, hash: null, ExtensionData.Empty),
+            MediaSemantics.Input,
+            ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.Parse("00000000-0000-0000-0000-00000000000a")),
+            new ToolReference(new ToolAlias("read"), null, null),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+            [media],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+            ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => Translate([TestMessages.Tool(result)]));
+    }
+
+    [Fact]
+    public void Translate_WhenToolChoiceIsNamed_SerializesForcedFunctionName()
+    {
+        var body = Translate([TestMessages.User("hi")], LlmToolChoice.Named("get_weather"), [SampleTool]);
+
+        body["tool_choice"]!["type"]!.GetValue<string>().ShouldBe("function");
+        body["tool_choice"]!["function"]!["name"]!.GetValue<string>().ShouldBe("get_weather");
+    }
+
+    [Fact]
+    public void Translate_WhenToolChoiceModeIsUndefined_ThrowsNotSupportedException()
+    {
+        var undefinedChoice = new LlmToolChoice((LlmToolChoiceMode) 999, null);
+
+        _ = Should.Throw<NotSupportedException>(() => Translate([TestMessages.User("hi")], undefinedChoice, [SampleTool]));
+    }
 }
