@@ -102,7 +102,7 @@ public sealed class SkillToolPresentationFormatterTests
         var formatter = new SkillToolPresentationFormatter();
         var call = new ToolCallPart(
             new ToolCallId(Guid.Parse("80000000-0000-0000-0000-000000000008")),
-            new ToolReference(SkillTool.Id, formatter.Descriptor.Version, "skill"),
+            new ToolReference(new ToolAlias("skill"), SkillTool.Id, formatter.Descriptor.Version),
             document.RootElement.Clone(),
             null,
             ExtensionData.Empty);
@@ -121,12 +121,7 @@ public sealed class SkillToolPresentationFormatterTests
     {
         var formatter = new SkillToolPresentationFormatter();
         formatter.Descriptor.ShouldBe(tool.Descriptor);
-        var result = new ToolResultPart(
-            new ToolCallId(Guid.Parse("80000000-0000-0000-0000-000000000008")),
-            new ToolReference(SkillTool.Id, tool.Descriptor.Version, "skill"),
-            invocation.Outcome,
-            invocation.Content,
-            ExtensionData.Empty);
+        var result = new ToolResultPart(new ToolCallId(Guid.Parse("80000000-0000-0000-0000-000000000008")), new ToolReference(new ToolAlias("skill"), SkillTool.Id, tool.Descriptor.Version), invocation.Outcome, invocation.Content, new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
         return (await formatter.FormatAsync(
             new ToolPresentationRequest(
                 tool.Descriptor,

@@ -44,7 +44,7 @@ public sealed class SearchToolPresentationFormatterTests
     private static async Task<ToolPresentation?> FormatCall(string json)
     {
         using var document = JsonDocument.Parse(json);
-        var call = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(SearchTool.Id, null, "search"), document.RootElement, null, ExtensionData.Empty);
+        var call = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("search"), null, null), document.RootElement, null, ExtensionData.Empty);
         return await new SearchToolPresentationFormatter().FormatAsync(new ToolPresentationRequest(SearchTool.PresentationDescriptor, new ToolCallPresentationSource(call), new ToolPresentationBounds()), TestContext.Current.CancellationToken);
     }
 
@@ -52,8 +52,7 @@ public sealed class SearchToolPresentationFormatterTests
     {
         var outcome = new ToolCallOutcome(success ? ToolCallOutcomeKind.Success : ToolCallOutcomeKind.Failed,
             success ? ToolTerminalStatus.Succeeded : ToolTerminalStatus.TimedOut, SideEffectCertainty.PartiallyPerformed, false, reason, ExtensionData.Empty);
-        var result = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(SearchTool.Id, null, "search"), outcome,
-            [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)], ExtensionData.Empty);
+        var result = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("search"), null, null), outcome, [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
         return await new SearchToolPresentationFormatter().FormatAsync(new ToolPresentationRequest(SearchTool.PresentationDescriptor, new ToolResultPresentationSource(result), new ToolPresentationBounds()), TestContext.Current.CancellationToken);
     }
 }

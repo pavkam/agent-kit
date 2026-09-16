@@ -54,7 +54,7 @@ public sealed class CommandToolPresentationFormatterTests
     {
         var formatter = new CommandToolPresentationFormatter();
         using var document = JsonDocument.Parse("{\"command\":\"printf '<b>literal</b>'\",\"working_directory\":\"src/project\"}");
-        var call = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(CommandTool.Id, null, "command"),
+        var call = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("command"), null, null),
             document.RootElement, null, ExtensionData.Empty);
 
         var presentation = await formatter.FormatAsync(
@@ -70,10 +70,8 @@ public sealed class CommandToolPresentationFormatterTests
     private static ValueTask<ToolPresentation?> FormatResultAsync(string json)
     {
         var formatter = new CommandToolPresentationFormatter();
-        var result = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(CommandTool.Id, null, "command"),
-            new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed,
-                SideEffectCertainty.DefinitelyPerformed, false, "command failed", ExtensionData.Empty),
-            [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)], ExtensionData.Empty);
+        var result = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("command"), null, null), new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed,
+                SideEffectCertainty.DefinitelyPerformed, false, "command failed", ExtensionData.Empty), [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
         return formatter.FormatAsync(
             new ToolPresentationRequest(formatter.Descriptor, new ToolResultPresentationSource(result), new ToolPresentationBounds()),
             TestContext.Current.CancellationToken);

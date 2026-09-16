@@ -102,7 +102,7 @@ public sealed class QuestionToolPresentationFormatterTests
         var formatter = new QuestionToolPresentationFormatter();
         var call = new ToolCallPart(
             new ToolCallId(Guid.NewGuid()),
-            new ToolReference(QuestionTool.Id, null, "question"),
+            new ToolReference(new ToolAlias("question"), null, null),
             document.RootElement.Clone(),
             null,
             ExtensionData.Empty);
@@ -131,8 +131,9 @@ public sealed class QuestionToolPresentationFormatterTests
 
     private static ToolResultPart Result(ToolCallOutcome outcome, ImmutableArray<ContentPart> content) => new(
         new ToolCallId(Guid.NewGuid()),
-        new ToolReference(QuestionTool.Id, null, "question"),
+        new ToolReference(new ToolAlias("question"), null, null),
         outcome,
         content,
+        new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
         ExtensionData.Empty);
 }

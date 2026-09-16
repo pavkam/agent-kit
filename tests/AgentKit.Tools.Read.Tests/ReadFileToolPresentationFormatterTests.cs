@@ -14,13 +14,8 @@ public sealed class ReadFileToolPresentationFormatterTests
     {
         const string contents = "# heading\n\n    <b>literal</b>\nreturn value;\n";
         var formatter = new ReadFileToolPresentationFormatter();
-        var result = new ToolResultPart(
-            new ToolCallId(Guid.NewGuid()),
-            new ToolReference(ReadFileTool.Id, null, "read_file"),
-            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded,
-                SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
-            [new TextPart(contents, semantics, ExtensionData.Empty)],
-            ExtensionData.Empty);
+        var result = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("read_file"), null, null), new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded,
+                SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart(contents, semantics, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
 
         var presentation = await formatter.FormatAsync(
             new ToolPresentationRequest(formatter.Descriptor, new ToolResultPresentationSource(result), new ToolPresentationBounds()),
@@ -38,7 +33,7 @@ public sealed class ReadFileToolPresentationFormatterTests
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(new { path = "src/a.cs" }));
         var call = new ToolCallPart(
             new ToolCallId(Guid.NewGuid()),
-            new ToolReference(ReadFileTool.Id, new ToolVersion("1.0"), "read_file"),
+            new ToolReference(new ToolAlias("read_file"), ReadFileTool.Id, new ToolVersion("1.0")),
             document.RootElement,
             null,
             ExtensionData.Empty);

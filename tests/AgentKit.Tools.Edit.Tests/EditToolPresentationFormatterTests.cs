@@ -60,12 +60,7 @@ public sealed class EditToolPresentationFormatterTests
                 replace_all = false,
             })),
             TestContext.Current.CancellationToken);
-        var projected = new ToolResultPart(
-            new ToolCallId(Guid.NewGuid()),
-            new ToolReference(EditTool.Id, null, "edit"),
-            invocation.Outcome,
-            invocation.Content,
-            ExtensionData.Empty);
+        var projected = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("edit"), null, null), invocation.Outcome, invocation.Content, new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
 
         var presentation = await FormatResultAsync(projected, new ToolPresentationBounds());
 
@@ -99,12 +94,7 @@ public sealed class EditToolPresentationFormatterTests
             false,
             null,
             ExtensionData.Empty);
-        var result = new ToolResultPart(
-            new ToolCallId(Guid.NewGuid()),
-            new ToolReference(EditTool.Id, null, "edit"),
-            outcome,
-            [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)],
-            ExtensionData.Empty);
+        var result = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("edit"), null, null), outcome, [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
 
         var presentation = await FormatResultAsync(
             result,
@@ -120,7 +110,7 @@ public sealed class EditToolPresentationFormatterTests
     {
         using var document = JsonDocument.Parse(json);
         var formatter = new EditToolPresentationFormatter();
-        var call = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(EditTool.Id, null, "edit"),
+        var call = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("edit"), null, null),
             document.RootElement.Clone(), null, ExtensionData.Empty);
         return formatter.FormatAsync(
             new ToolPresentationRequest(formatter.Descriptor, new ToolCallPresentationSource(call), new ToolPresentationBounds()),

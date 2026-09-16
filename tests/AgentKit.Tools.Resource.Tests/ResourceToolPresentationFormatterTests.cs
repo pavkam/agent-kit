@@ -101,7 +101,7 @@ public sealed class ResourceToolPresentationFormatterTests
         var formatter = new ResourceToolPresentationFormatter();
         var call = new ToolCallPart(
             new ToolCallId(Guid.Parse("80000000-0000-0000-0000-000000000008")),
-            new ToolReference(ResourceTool.Id, formatter.Descriptor.Version, "resource"),
+            new ToolReference(new ToolAlias("resource"), ResourceTool.Id, formatter.Descriptor.Version),
             document.RootElement.Clone(),
             null,
             ExtensionData.Empty);
@@ -120,12 +120,7 @@ public sealed class ResourceToolPresentationFormatterTests
     {
         var formatter = new ResourceToolPresentationFormatter();
         formatter.Descriptor.ShouldBe(tool.Descriptor);
-        var result = new ToolResultPart(
-            new ToolCallId(Guid.Parse("80000000-0000-0000-0000-000000000008")),
-            new ToolReference(ResourceTool.Id, tool.Descriptor.Version, "resource"),
-            invocation.Outcome,
-            invocation.Content,
-            ExtensionData.Empty);
+        var result = new ToolResultPart(new ToolCallId(Guid.Parse("80000000-0000-0000-0000-000000000008")), new ToolReference(new ToolAlias("resource"), ResourceTool.Id, tool.Descriptor.Version), invocation.Outcome, invocation.Content, new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
         return (await formatter.FormatAsync(
             new ToolPresentationRequest(
                 tool.Descriptor,

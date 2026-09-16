@@ -58,7 +58,7 @@ public sealed class WriteFileToolPresentationFormatterTests
         var formatter = new WriteFileToolPresentationFormatter();
         var call = new ToolCallPart(
             new ToolCallId(Guid.NewGuid()),
-            new ToolReference(WriteFileTool.Id, null, "write_file"),
+            new ToolReference(new ToolAlias("write_file"), null, null),
             document.RootElement.Clone(),
             null,
             ExtensionData.Empty);

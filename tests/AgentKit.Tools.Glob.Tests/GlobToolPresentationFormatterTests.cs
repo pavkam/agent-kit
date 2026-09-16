@@ -40,7 +40,7 @@ public sealed class GlobToolPresentationFormatterTests
     private static async Task<ToolPresentation?> FormatCall(string json)
     {
         using var document = JsonDocument.Parse(json);
-        var call = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(GlobTool.Id, null, "glob"), document.RootElement, null, ExtensionData.Empty);
+        var call = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("glob"), null, null), document.RootElement, null, ExtensionData.Empty);
         return await new GlobToolPresentationFormatter().FormatAsync(new ToolPresentationRequest(GlobTool.PresentationDescriptor, new ToolCallPresentationSource(call), new ToolPresentationBounds()), TestContext.Current.CancellationToken);
     }
 
@@ -48,8 +48,7 @@ public sealed class GlobToolPresentationFormatterTests
     {
         var outcome = new ToolCallOutcome(success ? ToolCallOutcomeKind.Success : ToolCallOutcomeKind.Failed,
             success ? ToolTerminalStatus.Succeeded : ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyPerformed, false, reason, ExtensionData.Empty);
-        var result = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(GlobTool.Id, null, "glob"), outcome,
-            [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)], ExtensionData.Empty);
+        var result = new ToolResultPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("glob"), null, null), outcome, [new TextPart(json, TextSemantics.Code, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
         return await new GlobToolPresentationFormatter().FormatAsync(new ToolPresentationRequest(GlobTool.PresentationDescriptor, new ToolResultPresentationSource(result), new ToolPresentationBounds()), TestContext.Current.CancellationToken);
     }
 }
