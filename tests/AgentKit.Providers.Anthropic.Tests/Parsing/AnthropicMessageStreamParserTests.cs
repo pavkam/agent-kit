@@ -105,6 +105,256 @@ public sealed class AnthropicMessageStreamParserTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenUsageIsAbsent_ReportsNotReportedUsage()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        const string json = /*lang=json,strict*/ """
+            {"id":"msg_no_usage","type":"message","role":"assistant","model":"claude-sonnet-4-5-20250929","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn","stop_sequence":null}
+            """;
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Usage.ShouldBeSameAs(ModelUsage.NotReported);
+        observer.Events.OfType<ModelUsageUpdated>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenContentContainsRedactedThinkingBlock_EmitsRedactedReasoningPart()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        const string json = /*lang=json,strict*/ """
+            {"id":"msg_redacted","type":"message","role":"assistant","model":"claude-sonnet-4-5-20250929","content":[{"type":"redacted_thinking","data":"opaque_redacted_payload"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":1}}
+            """;
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var reasoning = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ReasoningPart>();
+        reasoning.Content.Visibility.ShouldBe(ReasoningVisibility.Redacted);
+        reasoning.Content.SignatureToken.ShouldBe("opaque_redacted_payload");
+        observer.Events.OfType<ModelPartDelta>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ParseBufferedAsync_WhenContentBlockKindIsUnrecognized_EmitsUnknownContentPart()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        const string json = /*lang=json,strict*/ """
+            {"id":"msg_unknown","type":"message","role":"assistant","model":"claude-sonnet-4-5-20250929","content":[{"type":"server_tool_use","id":"srvtool_1","name":"web_search"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":1}}
+            """;
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var unknown = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<UnknownContentPart>();
+        unknown.TypeName.ShouldBe("server_tool_use");
+        unknown.Payload.GetProperty("name").GetString().ShouldBe("web_search");
+        observer.Events.OfType<ModelPartDelta>().ShouldBeEmpty();
+    }
+
+    public static TheoryData<string, NormalizedStopReason> StopReasonMappings => new()
+    {
+        { "end_turn", NormalizedStopReason.Completed },
+        { "stop_sequence", NormalizedStopReason.Completed },
+        { "max_tokens", NormalizedStopReason.Length },
+        { "tool_use", NormalizedStopReason.ToolUse },
+        { "pause_turn", NormalizedStopReason.Deferred },
+        { "refusal", NormalizedStopReason.Error },
+        { "some_future_stop_reason", NormalizedStopReason.Error },
+    };
+
+    [Theory]
+    [MemberData(nameof(StopReasonMappings))]
+    public async Task ParseBufferedAsync_WhenStopReasonVaries_MapsToExpectedNormalizedStopReason(string stopReason, NormalizedStopReason expected)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var json = "{\"id\":\"msg_stop\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-5-20250929\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}],\"stop_reason\":\""
+            + stopReason
+            + "\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":5,\"output_tokens\":1}}";
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(expected);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenMessageStopArrivesWithoutAPrecedingMessageDelta_ReportsPendingStopReason()
+    {
+        // No message_delta ever carried a stop_reason, so the response's stop reason falls through to Pending
+        // rather than being reported as an arbitrary default.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+            event: content_block_delta
+            data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}
+
+            event: content_block_stop
+            data: {"type":"content_block_stop","index":0}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.Pending);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenMessageStopArrivesWithUnclosedContentBlock_ReturnsProtocolFailureWithPartialContent()
+    {
+        // message_stop can legitimately arrive without every content_block_stop first being observed; the block
+        // that never closed is a protocol violation, not a block silently promoted to complete.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+            event: content_block_delta
+            data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Partial"}}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider's streaming response ended before content block 0 was closed.");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Partial");
+        failed.Usage.ShouldNotBeNull().InputTokens.ShouldBe(10);
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenUnclosedContentBlockCoincidesWithInvalidUsage_RetainsNoUsageOnFailure()
+    {
+        // Invalid usage evidence must never mask the unclosed-block cause reported first; TryBuildRetainedUsage
+        // swallows the secondary validation failure and reports no usage instead of throwing.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":-1,"output_tokens":0}}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+            event: content_block_delta
+            data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Partial"}}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider's streaming response ended before content block 0 was closed.");
+        failed.Usage.ShouldBeNull();
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Partial");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenAllBlocksCloseButFinalUsageIsInvalid_ReturnsProtocolFailure()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+            event: content_block_delta
+            data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done"}}
+
+            event: content_block_stop
+            data: {"type":"content_block_stop","index":0}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":-1}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned invalid usage evidence.");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Done");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenStreamEndsWithInvalidUsageEvidence_RetainsNoUsageOnFailure()
+    {
+        // A negative token count fails ModelUsage's own validation; the interrupted-stream failure path must
+        // swallow that secondary validation error rather than letting it mask the real protocol-violation cause.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllBytes("responses/streaming_text.sse");
+        var withNegativeUsage = Encoding.UTF8.GetBytes(
+            Encoding.UTF8.GetString(payload).Replace("\"input_tokens\":10", "\"input_tokens\":-1", StringComparison.Ordinal));
+        var withoutStop = Encoding.UTF8.GetBytes(
+            Encoding.UTF8.GetString(withNegativeUsage).Replace("event: message_stop\ndata: {\"type\":\"message_stop\"}", string.Empty, StringComparison.Ordinal));
+        await using var stream = new MemoryStream(withoutStop);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Usage.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task ParseStreamingAsync_WhenToolArgumentsAreTruncatedByMaxTokens_ReturnsTypedFailureWithoutThrowing()
     {
         // Anthropic still sends content_block_stop after max_tokens truncates partial_json; the parser must return a typed failure.
