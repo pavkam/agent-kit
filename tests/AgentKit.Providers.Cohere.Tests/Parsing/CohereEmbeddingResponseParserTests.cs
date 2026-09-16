@@ -89,6 +89,59 @@ public sealed class CohereEmbeddingResponseParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_WhenUInt8Encoding_DecodesUnsignedQuantizedByteVector()
+    {
+        var parser = new CohereEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = File.OpenRead(TestResources.GetPath("responses/embedding_response_uint8.json"));
+        var result = await parser.ParseAsync(
+            body, CreateContext(EmbeddingEncoding.UInt8), inputs, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        var succeeded = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>();
+        var vector = succeeded.Vector.ShouldBeOfType<QuantizedByteVector>();
+        vector.Signed.ShouldBeFalse();
+        vector.Values.ShouldBe([5, 0, 120, 250]);
+        succeeded.Space.ElementType.ShouldBe(EmbeddingElementType.UInt8);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenBinaryEncoding_DecodesSignedPackedBinaryVectorWithBitDimensions()
+    {
+        var parser = new CohereEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+
+        await using var body = File.OpenRead(TestResources.GetPath("responses/embedding_response_binary.json"));
+        var result = await parser.ParseAsync(
+            body, CreateContext(EmbeddingEncoding.Binary), inputs, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<EmbeddingAttemptCompleted>();
+        var succeeded = completed.Response.Items[0].ShouldBeOfType<EmbeddingItemSucceeded>();
+        var vector = succeeded.Vector.ShouldBeOfType<PackedBinaryVector>();
+        vector.Signed.ShouldBeTrue();
+        vector.Values.ShouldBe([170, 5]);
+        succeeded.Space.Dimensions.ShouldBe(16);
+        succeeded.Space.ElementType.ShouldBe(EmbeddingElementType.Binary);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhenVectorEntryIsNotAJsonArray_FailsWithProtocolViolation()
+    {
+        var parser = new CohereEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+        const string payload = /*lang=json,strict*/ """{"id":"emb-bad","texts":["hello"],"embeddings":{"float":["not-an-array"]}}""";
+
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+        var result = await parser.ParseAsync(
+            body, CreateContext(EmbeddingEncoding.Float), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<JsonException>();
+    }
+
+    [Fact]
     public async Task ParseAsync_WhenUBinaryEncoding_DecodesUnsignedPackedBinaryVectorWithBitDimensions()
     {
         var parser = new CohereEmbeddingResponseParser();
