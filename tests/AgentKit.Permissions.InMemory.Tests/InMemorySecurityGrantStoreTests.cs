@@ -315,6 +315,22 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
     }
 
     [Fact]
+    public async Task ValidateAndConsumeAsync_WhenClockCancelsCallerWithIntent_LogsCancellationEvent()
+    {
+        using var source = new CancellationTokenSource();
+        var logger = new RecordingSecurityGrantStoreLogger();
+        var store = new InMemorySecurityGrantStore(new CancellingTimeProvider(_now, source), logger);
+        var grant = CreateGrant();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(
+            async () => await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), CreateIntent(), source.Token));
+
+        exception.CancellationToken.ShouldBe(source.Token);
+        logger.Events.ShouldContain(item => item.EventId.Id == 5026);
+    }
+
+    [Fact]
     public async Task ValidateAndConsumeAsync_WhenClockFails_ObservesFaultAndPreservesOriginalExceptionAndUse()
     {
         var clock = new SwitchableThrowingTimeProvider(_now);
@@ -435,6 +451,93 @@ public sealed class InMemorySecurityGrantStoreTests: SecurityGrantStoreConforman
         activity.GetTagItem(AgentKitTagNames.Outcome).ShouldBe("consumed");
         activity.TagObjects.Select(static tag => tag.Value).ShouldNotContain(grant.InputFingerprint.Value);
         outcomes.ShouldBe(["consumed"]);
+    }
+
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenGrantWasNeverRegistered_ReturnsUnknown()
+    {
+        var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
+        var grant = CreateGrant();
+
+        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(GrantConsumptionStatus.Unknown);
+        result.IntentReceipt.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenGrantWasNeverRegisteredWithIntent_ReturnsUnknown()
+    {
+        var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
+        var grant = CreateGrant();
+
+        var result = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), CreateIntent(), TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(GrantConsumptionStatus.Unknown);
+        result.IntentReceipt.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenPresentedGrantEvidenceDiffersWithFreshIntent_DoesNotConsumeUse()
+    {
+        var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
+        var grant = CreateGrant();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+        var tampered = grant with { Effect = SecurityEffect.Delete };
+
+        var rejected = await store.ValidateAndConsumeAsync(tampered, CreateEnforcement(grant), CreateIntent(), TestContext.Current.CancellationToken);
+        var valid = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), CreateIntent(2), TestContext.Current.CancellationToken);
+
+        rejected.Status.ShouldBe(GrantConsumptionStatus.Tampered);
+        rejected.RemainingUses.ShouldBe(1);
+        rejected.IntentReceipt.ShouldBeNull();
+        valid.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+    }
+
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenFreshIntentPresentsMismatchedEffect_DoesNotConsumeUse()
+    {
+        var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
+        var grant = CreateGrant();
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+        var mismatched = CreateEnforcement(grant) with
+        {
+            Resources = [new ProtectedResource(ProtectedResourceKind.File, "/workspace/other.txt")],
+        };
+
+        var mismatch = await store.ValidateAndConsumeAsync(grant, mismatched, CreateIntent(), TestContext.Current.CancellationToken);
+        var valid = await store.ValidateAndConsumeAsync(grant, CreateEnforcement(grant), CreateIntent(2), TestContext.Current.CancellationToken);
+
+        mismatch.Status.ShouldBe(GrantConsumptionStatus.Mismatch);
+        mismatch.RemainingUses.ShouldBe(1);
+        mismatch.IntentReceipt.ShouldBeNull();
+        valid.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+    }
+
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenFreshIntentPresentedAfterExhaustion_ReturnsExhausted()
+    {
+        var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
+        var grant = CreateGrant(allowedUses: 1);
+        var enforcement = CreateEnforcement(grant);
+        await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+        _ = await store.ValidateAndConsumeAsync(grant, enforcement, CreateIntent(), TestContext.Current.CancellationToken);
+
+        var exhausted = await store.ValidateAndConsumeAsync(grant, enforcement, CreateIntent(2), TestContext.Current.CancellationToken);
+
+        exhausted.Status.ShouldBe(GrantConsumptionStatus.Exhausted);
+        exhausted.RemainingUses.ShouldBe(0);
+        exhausted.IntentReceipt.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RevokeAsync_WhenGrantWasNeverRegistered_ReturnsFalse()
+    {
+        var store = new InMemorySecurityGrantStore(new FakeTimeProvider(_now));
+
+        var revoked = await store.RevokeAsync(new GrantId(Guid.Parse("50000000-0000-0000-0000-00000000000f")), TestContext.Current.CancellationToken);
+
+        revoked.ShouldBeFalse();
     }
 
     [Fact]
