@@ -57,7 +57,7 @@ public sealed class AzureOpenAIEmbeddingModelTests
     [Fact]
     public async Task GenerateAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
     {
-        const string hostileBody = """{ "error": { "code": "401", "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test.", "type": "invalid_request_error" } }""";
+        const string hostileBody = /*lang=json,strict*/ """{ "error": { "code": "401", "message": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test.", "type": "invalid_request_error" } }""";
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
         {
             Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),

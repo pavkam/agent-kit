@@ -233,7 +233,7 @@ public sealed class MistralAILlmModelTests
     [Fact]
     public async Task ExecuteAsync_WhenErrorBodyContainsHostileText_DoesNotExposeItAsSafeMessage()
     {
-        const string hostileBody = """{ "detail": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test." }""";
+        const string hostileBody = /*lang=json,strict*/ """{ "detail": "Authorization failed for sk-live-super-secret; internal tenant alice@example.test." }""";
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
         {
             Content = new StringContent(hostileBody, Encoding.UTF8, "application/json"),
