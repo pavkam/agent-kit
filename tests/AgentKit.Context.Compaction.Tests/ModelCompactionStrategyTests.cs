@@ -353,6 +353,76 @@ public sealed class ModelCompactionStrategyTests
     }
 
     [Fact]
+    public async Task ProduceAsync_WhenCoveredEntriesHaveNoExtractableText_SendsPlaceholderTranscript()
+    {
+        var model = ScriptedModel(TestFactory.CompletedTextAttempt(_modelRequestId, "the summary"));
+        var strategy = Create(model: model);
+        var address = Address();
+        var (call, _) = TestFactory.ToolCallPair(address, _branchId, 1, 2);
+        var source = Source([call]);
+        var cut = new CompactionCut(new CompactionSourceRange(call.Sequence, call.Sequence), new SessionSequence(2), [call.Id]);
+
+        _ = await strategy.ProduceAsync(
+            new CompactionStrategyRequest(TestFactory.Request(source.Context, _branchId, new SessionVersion(1), call.Sequence), source, cut),
+            TestContext.Current.CancellationToken);
+
+        var transcript = ((TextPart) model.ReceivedRequests.Single().Context.Messages[1].Parts[0]).Text;
+        transcript.ShouldBe("(no extractable text in covered entries)");
+    }
+
+    [Fact]
+    public async Task ProduceAsync_WhenCoveredHistoryContainsRuntimeMessage_LabelsItRuntime()
+    {
+        var model = ScriptedModel(TestFactory.CompletedTextAttempt(_modelRequestId, "the summary"));
+        var strategy = Create(model: model);
+        var address = Address();
+        var userEntry = TestFactory.MessageEntry(address, _branchId, 1, "alpha");
+        var runtimeEntry = RuntimeEntry(address, 2, "interrupted");
+        var source = Source([userEntry, runtimeEntry]);
+        var cut = new CompactionCut(new CompactionSourceRange(userEntry.Sequence, runtimeEntry.Sequence), new SessionSequence(3), [userEntry.Id, runtimeEntry.Id]);
+
+        _ = await strategy.ProduceAsync(
+            new CompactionStrategyRequest(TestFactory.Request(source.Context, _branchId, new SessionVersion(2), runtimeEntry.Sequence), source, cut),
+            TestContext.Current.CancellationToken);
+
+        var transcript = ((TextPart) model.ReceivedRequests.Single().Context.Messages[1].Parts[0]).Text;
+        transcript.ShouldContain("[runtime]\ninterrupted");
+    }
+
+    [Fact]
+    public async Task ProduceAsync_WhenCoveredHistoryContainsAnEarlierCompactionEntry_LabelsItEarlierSummary()
+    {
+        var model = ScriptedModel(TestFactory.CompletedTextAttempt(_modelRequestId, "the summary"));
+        var strategy = Create(model: model);
+        var address = Address();
+        var earlierSummaryEntry = CompactionEntry(address, 1, "previously summarized content");
+        var userEntry = TestFactory.MessageEntry(address, _branchId, 2, "alpha");
+        var source = Source([earlierSummaryEntry, userEntry]);
+        var cut = new CompactionCut(new CompactionSourceRange(earlierSummaryEntry.Sequence, userEntry.Sequence), new SessionSequence(3), [earlierSummaryEntry.Id, userEntry.Id]);
+
+        _ = await strategy.ProduceAsync(
+            new CompactionStrategyRequest(TestFactory.Request(source.Context, _branchId, new SessionVersion(2), userEntry.Sequence), source, cut),
+            TestContext.Current.CancellationToken);
+
+        var transcript = ((TextPart) model.ReceivedRequests.Single().Context.Messages[1].Parts[0]).Text;
+        transcript.ShouldContain("[earlier summary]\nprevious", Case.Insensitive);
+    }
+
+    [Fact]
+    public async Task ProduceAsync_WhenProviderStopReasonIsNoneOfTheHandledValues_ReportsItInTheFailureReason()
+    {
+        var model = ScriptedModel(TestFactory.CompletedTextAttempt(_modelRequestId, "unused", NormalizedStopReason.Error));
+        var strategy = Create(model: model);
+
+        var result = await strategy.ProduceAsync(StrategyRequest("alpha"), TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<CompactionStrategyFailed>();
+        failed.Failure.Retryable.ShouldBeFalse();
+        failed.Failure.SafeMessage.ShouldContain("stop reason");
+        failed.Failure.SafeMessage.ShouldContain(nameof(NormalizedStopReason.Error));
+    }
+
+    [Fact]
     public async Task ProduceAsync_WhenModelSelectionReportsNoCompatibleModel_ReturnsUnsupportedWithoutCallingModel()
     {
         var model = ScriptedModel();
@@ -636,6 +706,69 @@ public sealed class ModelCompactionStrategyTests
             MessageState.Complete,
             [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
             ExtensionData.Empty));
+
+    private MessageSessionEntry RuntimeEntry(SessionAddress address, long sequence, string text) => new(
+        new SessionEntryId(Guid.NewGuid()),
+        address,
+        TestFactory.Correlation(),
+        _branchId,
+        new SessionSequence(sequence),
+        null,
+        DateTimeOffset.UnixEpoch,
+        new SchemaVersion("1"),
+        new RuntimeMessage(
+            new MessageId(Guid.NewGuid()),
+            address.AgentId,
+            address.SessionId,
+            null,
+            _branchId,
+            null,
+            null,
+            DateTimeOffset.UnixEpoch,
+            MessageState.Complete,
+            [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty));
+
+    private CompactionSessionEntry CompactionEntry(SessionAddress address, long sequence, string summaryText)
+    {
+        var context = TestFactory.CompactionContext(_agentId, _sessionId);
+        var manifest = new CompactionManifest(
+            new CompactionManifestId(Guid.NewGuid()),
+            context,
+            _branchId,
+            new SessionVersion(1),
+            new CompactionSourceRange(new SessionSequence(1), new SessionSequence(1)),
+            new SessionSequence(sequence),
+            new CompactionProducer(new CompactionStrategyKey("test"), true, ExtensionData.Empty),
+            new ContextEpoch(0),
+            new CompactionSizeEstimate(1, 1, 1),
+            new CompactionSizeEstimate(1, 1, 1),
+            DateTimeOffset.UnixEpoch,
+            ExtensionData.Empty);
+        var checkpoint = new CompactionCheckpoint(
+            [new TextPart(summaryText, TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var record = new CompactionRecord(
+            context,
+            new SessionVersion(1),
+            new SessionVersion(sequence),
+            CompactionRecordStatus.Active,
+            manifest,
+            checkpoint,
+            null,
+            null,
+            DateTimeOffset.UnixEpoch,
+            ExtensionData.Empty);
+        return new CompactionSessionEntry(
+            new SessionEntryId(Guid.NewGuid()),
+            address,
+            TestFactory.Correlation(),
+            _branchId,
+            new SessionSequence(sequence),
+            null,
+            DateTimeOffset.UnixEpoch,
+            new SchemaVersion("1"),
+            record);
+    }
 
     private static ScriptedLlmModel ScriptedModel(params ModelAttemptResult[] results) => new(new ModelAlias("summarizer"), results);
 

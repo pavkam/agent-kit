@@ -759,6 +759,29 @@ public sealed class DefaultCompactorTests
     }
 
     [Fact]
+    public async Task CompactAsync_WhenStrategyThrowsUnexpectedly_PropagatesTheException()
+    {
+        var address = Address();
+        var entries = new[]
+        {
+            TestFactory.MessageEntry(address, _branchId, 1, "one"),
+        };
+        var strategy = new FakeCompactionStrategy
+        {
+            OnProduce = static _ => throw new InvalidOperationException("unexpected strategy failure"),
+        };
+        var (compactor, coordinator) = CreateCompactorWithFakes(strategy: strategy);
+        coordinator.Seed(entries);
+        var context = TestFactory.CompactionContext(_agentId, _sessionId);
+        var request = TestFactory.Request(context, _branchId, coordinator.Version, new SessionSequence(1), minimumRetainedEntries: 0);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await compactor.CompactAsync(request, TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("unexpected strategy failure");
+    }
+
+    [Fact]
     public async Task CompactAsync_WhenStrategyDeclinesToProduce_ReturnsCompactionRejected()
     {
         var address = Address();
