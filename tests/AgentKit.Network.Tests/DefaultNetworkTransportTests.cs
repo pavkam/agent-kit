@@ -76,6 +76,7 @@ public sealed class DefaultNetworkTransportTests
         using var transport = Transport(new TestGrantStore());
         var result = await transport.SendAsync(Request(Destination(server.Port)), TestContext.Current.CancellationToken);
         var received = result.ShouldBeOfType<NetworkResponseReceived>();
+        received.Response.Metadata.StatusCode.ShouldBe(200);
         using var reader = new StreamReader(received.Response.Content);
         (await reader.ReadToEndAsync(TestContext.Current.CancellationToken)).ShouldBe("hello");
         await received.Response.DisposeAsync();
@@ -95,6 +96,18 @@ public sealed class DefaultNetworkTransportTests
         var result = await transport.SendAsync(request, TestContext.Current.CancellationToken);
         var received = result.ShouldBeOfType<NetworkResponseReceived>();
         await received.Response.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenDeclaredContentLengthExceedsMaximum_ReturnsResponseLimitExceededWithoutReading()
+    {
+        await using var server = LoopbackServer.Start("HTTP/1.1 200 OK\r\nContent-Length: 9\r\nConnection: close\r\n\r\ntoo-large");
+        using var transport = Transport(new TestGrantStore());
+        var request = Request(Destination(server.Port), Bounds(maximumResponseBytes: 4));
+        var result = await transport.SendAsync(request, TestContext.Current.CancellationToken);
+        var limitExceeded = result.ShouldBeOfType<NetworkResponseLimitExceeded>();
+        limitExceeded.ObservedBytes.ShouldBe(9);
+        limitExceeded.MaximumBytes.ShouldBe(4);
     }
 
     [Fact]
@@ -136,6 +149,112 @@ public sealed class DefaultNetworkTransportTests
         var redirect = result.ShouldBeOfType<NetworkRedirectReceived>();
         redirect.Destination.Host.ShouldBe(new NormalizedHost("example.com"));
         redirect.CrossOrigin.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenSchemeIsExcludedByPolicy_ReturnsDeniedWithoutConnecting()
+    {
+        await using var server = LoopbackServer.Start("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        var store = new TestGrantStore();
+        var options = new AgentNetworkOptions
+        {
+            DestinationPolicy = new NetworkDestinationPolicy(["https"], null, allowPrivateAddresses: true),
+            AddressResolutionLifetime = TimeSpan.FromMinutes(1),
+        };
+        using var transport = new DefaultNetworkTransport(store, new FixedTimeProvider(), Options.Create(options));
+        var result = await transport.SendAsync(Request(Destination(server.Port)), TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<NetworkDenied>().SafeMessage.ShouldContain("excluded by the configured network policy");
+        server.AcceptedConnections.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenNoResolvedAddressIsStillValid_ReturnsDeniedWithoutConnecting()
+    {
+        await using var server = LoopbackServer.Start("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        using var transport = Transport(new TestGrantStore());
+        var expired = new NetworkAddress(IPAddress.Loopback, DateTimeOffset.UnixEpoch.AddMinutes(-2), DateTimeOffset.UnixEpoch.AddMinutes(-1));
+        var baseline = Request(Destination(server.Port));
+        var request = new NetworkRequest(baseline.Id, baseline.Method, baseline.Destination, baseline.Headers, baseline.Content, baseline.Bounds, [expired], baseline.Classification, baseline.Grant);
+        var result = await transport.SendAsync(request, TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<NetworkDenied>().SafeMessage.ShouldContain("No still-valid resolved address");
+        server.AcceptedConnections.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenConnectionIsRefused_ReturnsConnectionFailedWithCertainSideEffect()
+    {
+        var probe = new TcpListener(IPAddress.Loopback, 0);
+        probe.Start();
+        var port = ((IPEndPoint) probe.LocalEndpoint).Port;
+        probe.Stop();
+        using var transport = Transport(new TestGrantStore());
+        var result = await transport.SendAsync(Request(Destination(port)), TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<NetworkRequestFailed>();
+        failed.Kind.ShouldBe(NetworkFailureKind.ConnectionFailed);
+        failed.SideEffectCertain.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenServerSendsAMalformedResponse_ReturnsConnectionFailedWithoutCertainSideEffect()
+    {
+        await using var server = LoopbackServer.Start("not a valid HTTP response at all\r\n\r\n");
+        using var transport = Transport(new TestGrantStore());
+        var result = await transport.SendAsync(Request(Destination(server.Port)), TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<NetworkRequestFailed>();
+        failed.Kind.ShouldBe(NetworkFailureKind.ConnectionFailed);
+        failed.SideEffectCertain.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenResponseDeadlineElapsesBeforeAnyResponse_ReturnsTimedOutWithoutCertainSideEffect()
+    {
+        await using var server = LoopbackServer.StartHanging();
+        using var transport = Transport(new TestGrantStore());
+        var request = Request(Destination(server.Port), Bounds(responseTimeout: TimeSpan.FromMilliseconds(200)));
+        var result = await transport.SendAsync(request, TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<NetworkRequestFailed>();
+        failed.Kind.ShouldBe(NetworkFailureKind.Timeout);
+        failed.SideEffectCertain.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCallerCancelsWhileWaitingForResponse_ReturnsCancelledWithoutCertainSideEffect()
+    {
+        await using var server = LoopbackServer.StartHanging();
+        using var transport = Transport(new TestGrantStore());
+        using var cancellation = new CancellationTokenSource();
+        var request = Request(Destination(server.Port), Bounds(responseTimeout: TimeSpan.FromSeconds(30)));
+        var sendTask = transport.SendAsync(request, cancellation.Token);
+        await Task.Delay(TimeSpan.FromMilliseconds(100), TestContext.Current.CancellationToken);
+        await cancellation.CancelAsync();
+        var result = await sendTask;
+        var cancelled = result.ShouldBeOfType<NetworkCancelled>();
+        cancelled.SideEffectCertain.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenRequestHasHeadersAndContent_SendsThemToTheServer()
+    {
+        await using var server = LoopbackServer.Start("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        using var transport = Transport(new TestGrantStore());
+        var content = new NetworkRequestContent("text/plain", "payload"u8.ToArray());
+        var headers = new NetworkHeaderSet([new NetworkHeader("X-Test", "value")]);
+        var baseline = Request(Destination(server.Port));
+        var request = new NetworkRequest(baseline.Id, baseline.Method, baseline.Destination, headers, content, baseline.Bounds, baseline.ResolvedAddresses, baseline.Classification, baseline.Grant);
+        var result = await transport.SendAsync(request, TestContext.Current.CancellationToken);
+        var received = result.ShouldBeOfType<NetworkResponseReceived>();
+        received.Response.Metadata.StatusCode.ShouldBe(200);
+        await received.Response.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenActionThrowsUnexpectedException_PropagatesAfterObservingFailure()
+    {
+        var store = new TestGrantStore { OnIntentConsumption = static () => throw new InvalidOperationException("boom") };
+        using var transport = Transport(store);
+        var action = async () => await transport.SendAsync(Request(Destination(1)), TestContext.Current.CancellationToken);
+        var exception = await action.ShouldThrowAsync<InvalidOperationException>();
+        exception.Message.ShouldBe("boom");
     }
 
     private static DefaultNetworkTransport Transport(TestGrantStore store, TimeProvider? timeProvider = null) => new(store, timeProvider ?? new FixedTimeProvider(), Options.Create(OptionsForNetwork()));

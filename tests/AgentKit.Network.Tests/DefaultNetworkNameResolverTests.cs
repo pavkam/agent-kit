@@ -118,6 +118,53 @@ public sealed class DefaultNetworkNameResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_WhenSchemeIsExcludedByPolicy_ReturnsDeniedWithoutResolving()
+    {
+        var store = new TestGrantStore();
+        var options = new AgentNetworkOptions
+        {
+            DestinationPolicy = new NetworkDestinationPolicy(["https"], null, allowPrivateAddresses: true),
+            AddressResolutionLifetime = TimeSpan.FromMinutes(1),
+        };
+        var resolver = new DefaultNetworkNameResolver(store, new FixedTimeProvider(), Options.Create(options));
+        var result = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<NetworkResolutionDenied>().SafeMessage.ShouldContain("excluded by the configured network policy");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenHostnameCannotBeResolved_ReturnsDnsResolutionFailed()
+    {
+        var resolver = Resolver(new TestGrantStore());
+        var destination = new NetworkDestination("http", new NormalizedHost("definitely-invalid-host-name-agentkit-test-xyz123.invalid"), 443, NetworkRoute.Root);
+        var result = await resolver.ResolveAsync(ResolutionRequest(destination), TestContext.Current.CancellationToken);
+        var failed = result.ShouldBeOfType<NetworkResolutionFailed>();
+        failed.Kind.ShouldBe(NetworkFailureKind.DnsResolutionFailed);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenAllResolvedAddressesAreExcludedByPolicy_ReturnsDenied()
+    {
+        var options = new AgentNetworkOptions
+        {
+            DestinationPolicy = new NetworkDestinationPolicy(["http", "https"], null, allowPrivateAddresses: false),
+            AddressResolutionLifetime = TimeSpan.FromMinutes(1),
+        };
+        var resolver = new DefaultNetworkNameResolver(new TestGrantStore(), new FixedTimeProvider(), Options.Create(options));
+        var result = await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
+        result.ShouldBeOfType<NetworkResolutionDenied>().SafeMessage.ShouldContain("No resolved address is permitted");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenActionThrowsUnexpectedException_PropagatesAfterObservingFailure()
+    {
+        var store = new TestGrantStore { OnIntentConsumption = static () => throw new InvalidOperationException("boom") };
+        var resolver = Resolver(store);
+        var action = async () => await resolver.ResolveAsync(ResolutionRequest(Destination(443)), TestContext.Current.CancellationToken);
+        var exception = await action.ShouldThrowAsync<InvalidOperationException>();
+        exception.Message.ShouldBe("boom");
+    }
+
+    [Fact]
     public async Task ResolveAsync_WhenCapturedGrantIsRegistered_ConsumesItsExactAuthorizationEvidence()
     {
         var clock = new FixedTimeProvider();
