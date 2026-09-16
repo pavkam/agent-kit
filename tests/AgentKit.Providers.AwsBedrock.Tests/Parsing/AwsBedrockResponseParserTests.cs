@@ -85,6 +85,64 @@ public sealed class AwsBedrockResponseParserTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenContentBlockIsNeitherTextNorToolUse_WrapsAsUnknownContentPart()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        await using var body = new MemoryStream(
+            /*lang=json,strict*/ """{"output":{"message":{"role":"assistant","content":[{"image":{"format":"png","source":{"bytes":"AAAA"}}}]}},"stopReason":"end_turn"}"""u8.ToArray());
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var unknown = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<UnknownContentPart>();
+        unknown.TypeName.ShouldBe("unknown");
+    }
+
+    /// <summary>Verifies every documented Bedrock stop reason maps to its normalized stop reason, including unmapped and absent values.</summary>
+    [Theory]
+    [InlineData("stop_sequence", NormalizedStopReason.Completed)]
+    [InlineData("max_tokens", NormalizedStopReason.Length)]
+    [InlineData("model_context_window_exceeded", NormalizedStopReason.Length)]
+    [InlineData("guardrail_intervened", NormalizedStopReason.Error)]
+    [InlineData("content_filtered", NormalizedStopReason.Error)]
+    [InlineData("malformed_model_output", NormalizedStopReason.Error)]
+    [InlineData("malformed_tool_use", NormalizedStopReason.Error)]
+    [InlineData("some_future_reason", NormalizedStopReason.Error)]
+    public async Task ParseBufferedAsync_WhenStopReasonVaries_MapsToExpectedNormalizedStopReason(string stopReason, NormalizedStopReason expected)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_text.json")
+            .Replace("\"stopReason\": \"end_turn\"", $"\"stopReason\": \"{stopReason}\"", StringComparison.Ordinal);
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(expected);
+    }
+
+    /// <summary>Verifies a response with no stopReason at all is normalized as still pending rather than completed.</summary>
+    [Fact]
+    public async Task ParseBufferedAsync_WhenStopReasonIsAbsent_MapsToPending()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_text.json")
+            .Replace("\"stopReason\": \"end_turn\",", string.Empty, StringComparison.Ordinal);
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.Pending);
+    }
+
+    [Fact]
     public async Task ParseBufferedAsync_WhenNoContentBlocks_CompletesWithNoParts()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
@@ -326,6 +384,89 @@ public sealed class AwsBedrockResponseParserTests
         var terminal = observer.Events[^1].ShouldBeOfType<ModelResponseFailed>();
         terminal.PartialParts.ShouldBe(failed.PartialParts);
         observer.Events.Select(e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(i => (long) i));
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenEventPayloadIsMalformedJson_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", "{ not valid json"));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned a malformed streaming event.");
+        _ = failed.Failure.DiagnosticCause.ShouldBeAssignableTo<JsonException>();
+    }
+
+    /// <summary>Verifies a messageStop received while a content block never got its contentBlockStop fails closed rather than fabricating a completed block.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenMessageStopArrivesWithAnOpenContentBlock_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"text":"Hello"}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("messageStop", /*lang=json,strict*/ """{"stopReason":"end_turn"}"""));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider's streaming response ended before content block 0 was closed.");
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+    }
+
+    /// <summary>Verifies negative final usage evidence at messageStop fails closed rather than reporting fabricated usage.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenFinalUsageTokenCountIsNegative_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"text":"Hello world"}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockStop", /*lang=json,strict*/ """{"contentBlockIndex":0}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("messageStop", /*lang=json,strict*/ """{"stopReason":"end_turn"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("metadata", /*lang=json,strict*/ """{"usage":{"inputTokens":-1,"outputTokens":5,"totalTokens":4}}"""));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello world");
+    }
+
+    /// <summary>Verifies negative usage retained from an earlier metadata event is dropped (not reported) rather than propagated as a secondary failure when the stream later fails for another reason.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenStreamFailsAfterEarlierNegativeUsage_RetainsNoUsage()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AwsBedrockResponseParser(new SequentialToolCallIdGenerator());
+        var payload = AwsEventStreamTestEncoder.Concat(
+            AwsEventStreamTestEncoder.EncodeEvent("messageStart", /*lang=json,strict*/ """{"role":"assistant"}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", /*lang=json,strict*/ """{"contentBlockIndex":0,"delta":{"text":"Hello"}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("metadata", /*lang=json,strict*/ """{"usage":{"inputTokens":-1,"outputTokens":1,"totalTokens":0}}"""),
+            AwsEventStreamTestEncoder.EncodeEvent("contentBlockDelta", "{ not valid json"));
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Usage.ShouldBeNull();
     }
 
     [Fact]
