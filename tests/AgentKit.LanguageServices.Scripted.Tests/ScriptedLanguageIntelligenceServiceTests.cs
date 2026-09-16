@@ -10,11 +10,43 @@ public sealed class ScriptedLanguageIntelligenceServiceTests
 {
     private static readonly LanguageQueryId _queryId = new(Guid.Parse("50000000-0000-0000-0000-000000000005"));
     [Fact]
+    public void ScriptedLanguageScenario_WhenValuesMatch_TreatsInstancesAsEqual()
+    {
+        var result = Success(LanguageQueryKind.Diagnostics);
+        var first = new ScriptedLanguageScenario(_queryId, result, TimeSpan.Zero);
+        var second = new ScriptedLanguageScenario(_queryId, result, TimeSpan.Zero);
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+        (first with { }).ShouldBe(first);
+        first.ToString().ShouldContain(nameof(ScriptedLanguageScenario));
+    }
+
+    [Fact]
     public void Constructor_WhenIntentIdsIsNull_ThrowsWithExactParameterName()
     {
         var options = Options.Create(new ScriptedLanguageOptions());
         var exception = Should.Throw<ArgumentNullException>(() => new ScriptedLanguageIntelligenceService(new TestGrantStore(), TimeProvider.System, options, NullLogger<ScriptedLanguageIntelligenceService>.Instance, null!));
         exception.ParamName.ShouldBe("intentIds");
+    }
+
+    [Fact]
+    public void Constructor_WhenLoggerSuppliedWithoutIntentIds_RetainsUnambiguousSourceCompatibility() =>
+        _ = new ScriptedLanguageIntelligenceService(
+            new TestGrantStore(), TimeProvider.System, Options.Create(new ScriptedLanguageOptions()),
+            NullLogger<ScriptedLanguageIntelligenceService>.Instance);
+
+    [Fact]
+    public void Constructor_WhenScenarioQueryIdentitiesCollide_ThrowsWithExactParameterName()
+    {
+        var options = new ScriptedLanguageOptions();
+        options.Scenarios.Add(new ScriptedLanguageScenario(_queryId, Success(LanguageQueryKind.Diagnostics), TimeSpan.Zero));
+        options.Scenarios.Add(new ScriptedLanguageScenario(_queryId, Success(LanguageQueryKind.Hover), TimeSpan.Zero));
+
+        var exception = Should.Throw<ArgumentException>(() => new ScriptedLanguageIntelligenceService(
+            new TestGrantStore(), TimeProvider.System, Options.Create(options)));
+
+        exception.ParamName.ShouldBe("options");
     }
 
     [Fact]
@@ -112,6 +144,21 @@ public sealed class ScriptedLanguageIntelligenceServiceTests
     }
 
     [Fact]
+    public async Task QueryAsync_WhenGrantConsumptionThrowsUnexpectedly_PropagatesTheException()
+    {
+        var store = new TestGrantStore
+        {
+            OnConsume = static () => throw new InvalidOperationException("unexpected store failure"),
+        };
+        var service = Service(store, [new ScriptedLanguageScenario(_queryId, Success(LanguageQueryKind.Diagnostics), TimeSpan.Zero)]);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await service.QueryAsync(Request(), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("unexpected store failure");
+    }
+
+    [Fact]
     public async Task QueryAsync_WhenCallerCancelsDuringNonCooperativeConsumption_PropagatesWithoutScriptedResult()
     {
         using var cancellation = new CancellationTokenSource();
@@ -147,6 +194,42 @@ public sealed class ScriptedLanguageIntelligenceServiceTests
         result.Locations.Length.ShouldBe(1);
         result.Diagnostics.Length.ShouldBe(1);
         result.Complete.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task QueryAsync_WhenLoggerIsEnabled_EmitsCompletedStructuredEvent()
+    {
+        var logger = new RecordingLogger<ScriptedLanguageIntelligenceService>();
+        var options = new ScriptedLanguageOptions();
+        options.Scenarios.Add(new ScriptedLanguageScenario(_queryId, Success(LanguageQueryKind.Diagnostics), TimeSpan.Zero));
+        var service = new ScriptedLanguageIntelligenceService(
+            new TestGrantStore(), TimeProvider.System, Options.Create(options), logger,
+            new GuidSecurityEnforcementIntentIdGenerator());
+
+        var result = await service.QueryAsync(Request(), TestContext.Current.CancellationToken);
+
+        result.Status.ShouldBe(LanguageQueryStatus.Success);
+        logger.Snapshot().ShouldContain(static entry => entry.EventId.Id == 15000);
+    }
+
+    [Fact]
+    public async Task QueryAsync_WhenLoggerIsEnabledAndGrantConsumptionThrows_EmitsFailedStructuredEvent()
+    {
+        var logger = new RecordingLogger<ScriptedLanguageIntelligenceService>();
+        var options = new ScriptedLanguageOptions();
+        options.Scenarios.Add(new ScriptedLanguageScenario(_queryId, Success(LanguageQueryKind.Diagnostics), TimeSpan.Zero));
+        var store = new TestGrantStore
+        {
+            OnConsume = static () => throw new InvalidOperationException("boom"),
+        };
+        var service = new ScriptedLanguageIntelligenceService(
+            store, TimeProvider.System, Options.Create(options), logger,
+            new GuidSecurityEnforcementIntentIdGenerator());
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await service.QueryAsync(Request(), TestContext.Current.CancellationToken));
+
+        logger.Snapshot().ShouldContain(static entry => entry.EventId.Id == 15001);
     }
 
     [Fact]
