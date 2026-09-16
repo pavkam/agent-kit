@@ -155,7 +155,8 @@ public sealed class DefaultSecurityAuthoritySelectorTests
         using var meterListener = MeterListenerForSelector((_, tags) => outcomes.Add(OutcomeFrom(tags)), static (_, _) =>
         {
         });
-        var selector = Selector([]);
+        var logger = new RecordingLogger();
+        var selector = Selector([], logger: logger);
         _ = await selector.SelectAsync(Context(new ComponentKey<ISecurityAuthority>("security.missing")), TestContext.Current.CancellationToken);
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
@@ -163,6 +164,7 @@ public sealed class DefaultSecurityAuthoritySelectorTests
         _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "unavailable").ShouldHaveSingleItem();
         _ = stopped.Where(activity => activity.Status == ActivityStatusCode.Error && activity.GetTagItem(AgentKitTagNames.Outcome)?.ToString() == "cancelled").ShouldHaveSingleItem();
         outcomes.ShouldBe(["unavailable", "cancelled"], ignoreOrder: true);
+        logger.Messages.ShouldContain(message => message.Contains("unavailable", StringComparison.Ordinal));
     }
 
     [Theory]

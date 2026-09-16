@@ -180,6 +180,7 @@ public sealed class DefaultSecurityAuditDispatcherTests: SecurityAuditDispatcher
         var timeProvider = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
         var deliveryTimeout = TimeSpan.FromSeconds(1);
         var laterSink = new RecordingSink();
+        var logger = new RecordingLogger();
         var dispatcher = Dispatcher(
             SecurityAuditDelivery.Required,
             [
@@ -187,12 +188,14 @@ public sealed class DefaultSecurityAuditDispatcherTests: SecurityAuditDispatcher
                 Binding(SecurityAuditDelivery.Required, durable: true, laterSink),
             ],
             timeProvider: timeProvider,
+            logger: logger,
             deliveryTimeout: deliveryTimeout);
 
         var result = await dispatcher.DispatchAsync(Record(), TestContext.Current.CancellationToken);
 
         _ = result.ShouldBeOfType<SecurityAuditAccepted>();
         _ = laterSink.Records.ShouldHaveSingleItem();
+        logger.EventIds.ShouldContain(new EventId(5015));
     }
 
     [Fact]

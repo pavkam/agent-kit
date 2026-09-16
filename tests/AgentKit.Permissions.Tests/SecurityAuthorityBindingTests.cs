@@ -18,4 +18,32 @@ public sealed class SecurityAuthorityBindingTests
         invalidAuthority.GetType().ShouldBe(typeof(ArgumentNullException));
         invalidAuthority.ParamName.ShouldBe("authority");
     }
+
+    [Fact]
+    public void Equals_WhenKeyAndAuthorityMatch_AreStructurallyEqual()
+    {
+        var key = new ComponentKey<ISecurityAuthority>("security.primary");
+        var authority = new UninvokedSecurityAuthority();
+        var first = new SecurityAuthorityBinding(key, authority);
+        var second = new SecurityAuthorityBinding(key, authority);
+        var different = new SecurityAuthorityBinding(new ComponentKey<ISecurityAuthority>("security.other"), authority);
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+        first.ShouldNotBe(different);
+    }
+
+    [Fact]
+    public void With_WhenCopyingWithoutChanges_RetainsTheOriginalKeyAndAuthority()
+    {
+        var key = new ComponentKey<ISecurityAuthority>("security.primary");
+        var authority = new UninvokedSecurityAuthority();
+        var original = new SecurityAuthorityBinding(key, authority);
+
+        var copy = original with { };
+
+        copy.Key.ShouldBe(key);
+        copy.Authority.ShouldBeSameAs(authority);
+        copy.ShouldNotBeSameAs(original);
+    }
 }

@@ -3,6 +3,7 @@
 
 namespace AgentKit.Permissions.Tests;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 public sealed class SecurityAuthorityTests
@@ -440,6 +441,60 @@ public sealed class SecurityAuthorityTests
     }
 
     [Fact]
+    public async Task AuthorizeAsync_WhenAllowedDeniedCancelledOrFaulted_LogsTheirDistinctEvents()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var logger = new RecordingLogger();
+        var allowingAuthority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.Allow)],
+            new InMemorySecurityGrantStore(clock),
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            logger);
+        var denyingAuthority = new SecurityAuthority(
+            [],
+            new InMemorySecurityGrantStore(clock),
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            logger);
+        using var cts = new CancellationTokenSource();
+        var cancellingAuthority = new SecurityAuthority(
+            [new CancelingExternalPolicy(cts)],
+            new InMemorySecurityGrantStore(clock),
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            logger);
+        var faultingAuthority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
+            new InMemorySecurityGrantStore(clock),
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            new FaultingBroker(),
+            new StubApprovalRequestIdGenerator(),
+            new AcceptingAuditDispatcher(),
+            logger);
+
+        _ = await allowingAuthority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+        _ = await denyingAuthority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            async () => await cancellingAuthority.AuthorizeAsync(CreateRequest(), cts.Token));
+        // The broker's unguarded fault escapes AuthorizeCoreAsync into AuthorizeAsync's own catch(Exception), which
+        // is the only path that reaches AuthorizationFaulted from a validated request.
+        _ = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await faultingAuthority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken));
+
+        logger.EventIds.ShouldContain(5000);
+        logger.EventIds.ShouldContain(5001);
+        logger.EventIds.ShouldContain(5002);
+        logger.EventIds.ShouldContain(5003);
+        logger.EventIds.ShouldContain(5004);
+    }
+
+    [Fact]
     public async Task AuthorizeAsync_WhenDenied_EmitsSuccessfulDecisionActivityWithoutResources()
     {
         Activity? stopped = null;
@@ -574,6 +629,24 @@ public sealed class SecurityAuthorityTests
     {
         public ValueTask<ApprovalBrokerResult> RequestAsync(ApprovalRequest request, CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(result);
+    }
+
+    /// <summary>A broker whose unguarded fault escapes directly to the authority's outer catch.</summary>
+    private sealed class FaultingBroker: IApprovalBroker
+    {
+        public ValueTask<ApprovalBrokerResult> RequestAsync(ApprovalRequest request, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("broker failed");
+    }
+
+    private sealed class RecordingLogger: ILogger<SecurityAuthority>
+    {
+        public List<int> EventIds { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            EventIds.Add(eventId.Id);
     }
 
     private sealed class DenyingBroker: IApprovalBroker

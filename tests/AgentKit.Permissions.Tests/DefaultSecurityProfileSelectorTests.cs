@@ -101,6 +101,33 @@ public sealed class DefaultSecurityProfileSelectorTests
     }
 
     [Fact]
+    public async Task SelectAsync_WhenUnavailableCancelledOrFaulted_LogsTheirDistinctEvents()
+    {
+        var logger = new RecordingLogger();
+        var unavailableSelector = Selector(new RecordingReader(new SecurityProfilePublicationUnavailable("unavailable")), logger: logger);
+        var awaitingReader = new AwaitingReader();
+        var cancelledSelector = Selector(awaitingReader, logger: logger);
+        var faultedSelector = Selector(new ThrowingReader(new InvalidOperationException("boom")), logger: logger);
+        var request = Request();
+
+        _ = await unavailableSelector.SelectAsync(request, TestContext.Current.CancellationToken);
+
+        using var cancellation = new CancellationTokenSource();
+        var cancelledTask = cancelledSelector.SelectAsync(request, cancellation.Token).AsTask();
+        await awaitingReader.Started.Task.WaitAsync(TestContext.Current.CancellationToken);
+        await cancellation.CancelAsync();
+        awaitingReader.Completion.SetResult(new SecurityProfilePublicationFound(Publication(request)));
+        _ = await Should.ThrowAsync<OperationCanceledException>(cancelledTask);
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await faultedSelector.SelectAsync(request, TestContext.Current.CancellationToken));
+
+        logger.EventIds.ShouldContain(5018);
+        logger.EventIds.ShouldContain(5019);
+        logger.EventIds.ShouldContain(5020);
+    }
+
+    [Fact]
     public async Task SelectAsync_WhenRequestIsNull_ThrowsBeforeReaderOrClockEffects()
     {
         var reader = new RecordingReader(new SecurityProfilePublicationUnavailable("Unavailable."));
@@ -217,6 +244,20 @@ public sealed class DefaultSecurityProfileSelectorTests
         using var meterListener = MeterListenerForCapture((measurement, _) => count += measurement, (_, _) => durations++);
         var request = Request();
         var selector = Selector(new RecordingReader(new SecurityProfilePublicationFound(Publication(request))), new ThrowingTimeProvider(throwOnCall: 1), new ThrowingLogger());
+        var result = await selector.SelectAsync(request, TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<SecurityAuthorizationCaptured>();
+        count.ShouldBe(1);
+        durations.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task SelectAsync_WhenElapsedTimeObservationFailsAfterASuccessfulTimestamp_RecordsNoDuration()
+    {
+        var count = 0L;
+        var durations = 0;
+        using var meterListener = MeterListenerForCapture((measurement, _) => count += measurement, (_, _) => durations++);
+        var request = Request();
+        var selector = Selector(new RecordingReader(new SecurityProfilePublicationFound(Publication(request))), new ThrowingTimeProvider(throwOnCall: 2));
         var result = await selector.SelectAsync(request, TestContext.Current.CancellationToken);
         _ = result.ShouldBeOfType<SecurityAuthorizationCaptured>();
         count.ShouldBe(1);
