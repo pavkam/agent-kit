@@ -42,6 +42,62 @@ public sealed class ApprovalScopeBindingTests
         exception.ParamName.ShouldBe("expiresAt");
     }
 
+    [Fact]
+    public void Constructor_WhenRequestIsNull_ThrowsExactArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => new ApprovalScopeBinding(null!, new SecurityPolicyVersion(1), new SecurityRevocationVersion(1), _now, _now.AddMinutes(1), 1)).ParamName.ShouldBe("request");
+
+    [Fact]
+    public void Constructor_WhenAllowedUsesIsNotPositive_ThrowsExactArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => new ApprovalScopeBinding(CreateRequest(), new SecurityPolicyVersion(1), new SecurityRevocationVersion(1), _now, _now.AddMinutes(1), 0)).ParamName.ShouldBe("allowedUses");
+
+    [Fact]
+    public void Constructor_WhenExpiresAtIsNotAfterNotBefore_ThrowsExactArgumentOutOfRangeException() =>
+        Should.Throw<ArgumentOutOfRangeException>(() => new ApprovalScopeBinding(CreateRequest(), new SecurityPolicyVersion(1), new SecurityRevocationVersion(1), _now, _now, 1)).ParamName.ShouldBe("expiresAt");
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var request = CreateRequest();
+        var binding = Binding(request);
+        binding.Request.ShouldBe(request);
+        binding.PolicyVersion.ShouldBe(new SecurityPolicyVersion(1));
+        binding.RevocationVersion.ShouldBe(new SecurityRevocationVersion(1));
+        binding.NotBefore.ShouldBe(_now);
+        binding.ExpiresAt.ShouldBe(_now.AddMinutes(1));
+        binding.AllowedUses.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Equality_WhenSameValues_InstancesAreEqualWithMatchingHashCode()
+    {
+        var request = CreateRequest();
+        var first = Binding(request);
+        var second = Binding(request);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void Equality_WhenOtherIsNull_IsNotEqual() => Binding(CreateRequest()).Equals(null).ShouldBeFalse();
+
+    [Fact]
+    public void Equality_WhenPolicyVersionDiffers_IsNotEqual()
+    {
+        var request = CreateRequest();
+        Binding(request).ShouldNotBe(Binding(request, policyVersion: new SecurityPolicyVersion(2)));
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Binding(CreateRequest());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    private static ApprovalScopeBinding Binding(SecurityRequest request, SecurityPolicyVersion? policyVersion = null) =>
+        new(request, policyVersion ?? new SecurityPolicyVersion(1), new SecurityRevocationVersion(1), _now, _now.AddMinutes(1), 1);
+
     private static SecurityRequest CreateRequest(int requestedUses = 1)
     {
         var scope = new SecurityAuthorizationScope(
