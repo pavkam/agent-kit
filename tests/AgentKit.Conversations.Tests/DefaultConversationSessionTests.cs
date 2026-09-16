@@ -675,6 +675,111 @@ public sealed class DefaultConversationSessionTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenAssistantResponseIncludesReasoning_ProjectsAReasoningEvent()
+    {
+        var loop = new FakeAgentLoop
+        {
+            ResultFactory = request =>
+            {
+                var assistant = FakeMessages.Assistant(
+                    request,
+                    [new ReasoningPart(
+                        new ReasoningContent("thinking it through", ReasoningVisibility.Visible, null, ExtensionData.Empty),
+                        ExtensionData.Empty)]);
+                return new AgentLoopResult(
+                    request.AgentId, request.SessionId, request.BranchId, request.RunId,
+                    new AgentRunCompleted(assistant), [assistant], new SessionVersion(1));
+            },
+        };
+        using var session = CreateSession(loop: loop);
+
+        var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        result.Events.ShouldHaveSingleItem().ShouldBeOfType<ConversationReasoningEvent>()
+            .Text.ShouldBe("thinking it through");
+    }
+
+    [Theory]
+    [MemberData(nameof(IncompleteOutcomes))]
+    public async Task SendAsync_WhenLoopOutcomeIsIncomplete_DescribesEveryTypedOutcomeSafely(
+        AgentRunOutcome outcome, string expectedFragment)
+    {
+        var loop = new FakeAgentLoop
+        {
+            ResultFactory = request => new AgentLoopResult(
+                request.AgentId, request.SessionId, request.BranchId, request.RunId, outcome, [], new SessionVersion(1)),
+        };
+        using var session = CreateSession(loop: loop);
+
+        var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeFalse();
+        var description = result.Events.ShouldHaveSingleItem().ShouldBeOfType<ConversationAssistantTextEvent>();
+        description.Text.ShouldContain(expectedFragment);
+    }
+
+    public static TheoryData<AgentRunOutcome, string> IncompleteOutcomes()
+    {
+        var data = new TheoryData<AgentRunOutcome, string>
+        {
+            { new AgentRunSessionOperationFailed("store fault"), "session operation failed" },
+            { new AgentRunModelSelectionFailed("no usable model", []), "no usable model could be selected" },
+            {
+                new AgentRunContextPreparationFailed(new ContextPreparationFailure(
+                    ContextPreparationFailureKind.EmptyHistory, "history is empty", ExtensionData.Empty)),
+                "context preparation failed"
+            },
+            { new AgentRunCancelled("the caller cancelled"), "the caller cancelled" },
+            { new AgentRunIdle(), "ended idle" },
+            { new AgentRunInvalidState("inconsistent evidence"), "inconsistent evidence" },
+            {
+                new AgentRunOutputRejected(new OutputRejected(new OutputValidationFailure(
+                    OutputValidationFailureKind.ValidatorFailed, "output failed validation", []))),
+                "output was rejected"
+            },
+            {
+                new AgentRunOutputRejected(new OutputConfigurationRejected(new OutputSchemaConfigurationFailure(
+                    OutputSchemaConfigurationFailureKind.MalformedSchema, "schema is malformed", []))),
+                "output definition could not be applied"
+            },
+        };
+        return data;
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAppendConflicts_DescribesTheConflictWithBothVersions()
+    {
+        var coordinator = new FakeSessionCoordinator
+        {
+            AppendResult = new SessionAppendConflict(new SessionVersion(1), new SessionVersion(2)),
+        };
+        using var session = CreateSession(coordinator: coordinator);
+
+        var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeFalse();
+        result.Events.ShouldHaveSingleItem().ShouldBeOfType<ConversationAssistantTextEvent>()
+            .Text.ShouldContain("changed concurrently");
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAppendReportsSessionNotFound_DescribesItSafely()
+    {
+        var coordinator = new FakeSessionCoordinator
+        {
+            AppendResult = new SessionAppendNotFound(new SessionAddress(ConversationSessionOptionsFactory.AgentId, new SessionId(Guid.NewGuid()))),
+        };
+        using var session = CreateSession(coordinator: coordinator);
+
+        var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeFalse();
+        result.Events.ShouldHaveSingleItem().ShouldBeOfType<ConversationAssistantTextEvent>()
+            .Text.ShouldContain("not found");
+    }
+
+    [Fact]
     public async Task Dispose_WhenCalledDuringAnInFlightTurn_DoesNotReplaceTheTurnResultWithObjectDisposedException()
     {
         var loop = new FakeAgentLoop { Gate = new TaskCompletionSource(), EnteredSignal = new TaskCompletionSource() };
@@ -831,6 +936,71 @@ public sealed class DefaultConversationSessionTests
         terminal.Succeeded.ShouldBeFalse();
         terminal.Outcome.ShouldBe("cancelled");
         _ = observer.Events.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheObserverThrowsDeliveringTheTerminalEvent_StillReturnsTheTurnResult()
+    {
+        var observer = new RecordingConversationEventObserver { ThrowAfterRecording = true };
+        using var session = CreateSession();
+
+        var result = await session.SendAsync("hi", observer, TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        _ = observer.Events.OfType<ConversationTurnCompletedEvent>().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenSessionCannotBeLoadedDuringTheTurn_ReturnsFailureWithoutRunningTheLoop()
+    {
+        var coordinator = new FakeSessionCoordinator { LoadResult = new SessionLoadFailed("store unavailable") };
+        var loop = new FakeAgentLoop();
+        using var session = CreateSession(coordinator: coordinator, loop: loop);
+
+        var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeFalse();
+        result.Events.ShouldHaveSingleItem().ShouldBeOfType<ConversationAssistantTextEvent>()
+            .Text.ShouldContain("could not be loaded");
+        loop.CallCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheHistorySnapshotCannotBeCaptured_ReturnsFailureWithoutRunningTheLoop()
+    {
+        var coordinator = new FakeSessionCoordinator
+        {
+            ReadResultFactory = _ => new SessionReadFailed("snapshot unavailable"),
+        };
+        var loop = new FakeAgentLoop();
+        using var session = CreateSession(coordinator: coordinator, loop: loop);
+
+        var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeFalse();
+        result.Events.ShouldHaveSingleItem().ShouldBeOfType<ConversationAssistantTextEvent>()
+            .Text.ShouldContain("snapshot could not be captured");
+        loop.CallCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ReadHistoryAsync_WhenCancellationIsObservedAfterTheLockIsHeld_PropagatesOperationCanceledException()
+    {
+        // Unlike an already-cancelled token (which SemaphoreSlim.WaitAsync rejects before the try block even
+        // starts), this cancels only once the lock is held and a collaborator call is already in flight, so it
+        // exercises ReadHistoryAsync's own inner catch rather than the semaphore's own cancellation check.
+        var coordinator = new FakeSessionCoordinator();
+        var sessionId = new SessionId(Guid.NewGuid());
+        var selector = new FakeSecurityProfileSelector();
+        using var session = CreateSession(coordinator: coordinator, selector: selector);
+        _ = await session.OpenAsync(sessionId, TestContext.Current.CancellationToken);
+        using var cts = new CancellationTokenSource();
+        selector.CancelBeforeThrow = cts;
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            async () => await session.ReadHistoryAsync(new SessionSequence(0), 10, cts.Token));
+
+        coordinator.ReadCallCount.ShouldBe(0);
     }
 
     [Fact]
@@ -1210,6 +1380,59 @@ public sealed class DefaultConversationSessionTests
         page.NextCursor.ShouldBe(sessionId);
     }
 
+    [Fact]
+    public async Task PresentToolAsync_WhenNoPresenterIsConfigured_ReturnsNull()
+    {
+        using var session = CreateSession();
+        var call = FakeMessages.ToolCall("search", "{}");
+
+        var presentation = await session.PresentToolAsync(call, TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task PresentToolAsync_WhenThePresenterSucceeds_ReturnsItsPresentation()
+    {
+        var expected = new ToolPresentation([], ToolPresentationDisposition.Fallback);
+        var presenter = new ScriptedToolPresenter(_ => ValueTask.FromResult(expected));
+        using var session = CreateSession(toolPresenter: presenter);
+        var call = FakeMessages.ToolCall("search", "{}");
+
+        var presentation = await session.PresentToolAsync(call, TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeSameAs(expected);
+    }
+
+    [Fact]
+    public async Task PresentToolAsync_WhenThePresenterThrowsCancellation_Propagates()
+    {
+        var presenter = new ScriptedToolPresenter(static _ => throw new OperationCanceledException());
+        using var session = CreateSession(toolPresenter: presenter);
+        var call = FakeMessages.ToolCall("search", "{}");
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            async () => await session.PresentToolAsync(call, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task PresentToolAsync_WhenThePresenterFaults_ReturnsNullInsteadOfPropagating()
+    {
+        var presenter = new ScriptedToolPresenter(static _ => throw new InvalidOperationException("boom"));
+        using var session = CreateSession(toolPresenter: presenter);
+        var call = FakeMessages.ToolCall("search", "{}");
+
+        var presentation = await session.PresentToolAsync(call, TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    private sealed class ScriptedToolPresenter(Func<ToolPresentationRequest, ValueTask<ToolPresentation>> present): IToolPresenter
+    {
+        public ValueTask<ToolPresentation> PresentAsync(ToolPresentationRequest request, CancellationToken cancellationToken = default) =>
+            present(request);
+    }
+
     private static MessageSessionEntry HistoryEntry(
         SessionId sessionId,
         BranchId branchId,
@@ -1248,7 +1471,8 @@ public sealed class DefaultConversationSessionTests
         IAgentLoop? loop = null,
         Action<ConversationSessionOptions>? configureOptions = null,
         TimeProvider? timeProvider = null,
-        ConversationSessionOptions? options = null) =>
+        ConversationSessionOptions? options = null,
+        IToolPresenter? toolPresenter = null) =>
         new(
             coordinator ?? new FakeSessionCoordinator(),
             selector ?? new FakeSecurityProfileSelector(),
@@ -1264,7 +1488,9 @@ public sealed class DefaultConversationSessionTests
             new GuidIdentifierGenerator<MessageId>(static guid => new MessageId(guid)),
             new GuidIdentifierGenerator<SessionEntryId>(static guid => new SessionEntryId(guid)),
             timeProvider ?? new FakeTimeProvider(),
-            Options.Create(options ?? ConversationSessionOptionsFactory.Valid(configureOptions)));
+            Options.Create(options ?? ConversationSessionOptionsFactory.Valid(configureOptions)),
+            logger: null,
+            toolPresenter: toolPresenter);
 
     /// <summary>
     /// Builds a real <see cref="IServiceScopeFactory"/> whose scopes resolve <paramref name="loop"/> as the keyed

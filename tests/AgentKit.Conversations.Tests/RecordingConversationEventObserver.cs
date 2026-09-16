@@ -9,11 +9,16 @@ internal sealed class RecordingConversationEventObserver: IConversationEventObse
     /// <summary>Gets observed events in delivery order.</summary>
     internal List<ConversationEvent> Events { get; } = [];
 
+    /// <summary>Gets or sets whether every delivery throws after it is recorded, to exercise observer isolation.</summary>
+    internal bool ThrowAfterRecording { get; set; }
+
     /// <inheritdoc/>
     public ValueTask OnEventAsync(ConversationEvent conversationEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(conversationEvent);
         Events.Add(conversationEvent);
-        return ValueTask.CompletedTask;
+        return ThrowAfterRecording
+            ? throw new InvalidOperationException("observer failure")
+            : ValueTask.CompletedTask;
     }
 }

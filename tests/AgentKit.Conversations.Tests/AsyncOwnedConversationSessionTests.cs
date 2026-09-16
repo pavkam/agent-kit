@@ -55,10 +55,151 @@ public sealed class AsyncOwnedConversationSessionTests
         owner.DisposeCount.ShouldBe(1);
     }
 
+    [Fact]
+    public async Task OpenAsync_WhenInnerDoesNotOverrideIt_ReturnsRejectionFromTheCompatibleDefault()
+    {
+        var owner = new RecordingAsyncDisposable();
+        var sut = new AsyncOwnedConversationSession(new StubSession(), owner);
+
+        var result = await sut.OpenAsync(new SessionId(Guid.NewGuid()), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ConversationSessionOpenRejected>().SafeMessage.ShouldContain("does not support");
+        owner.Completion.SetResult();
+        await sut.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ListAsync_WhenInnerDoesNotOverrideIt_ReturnsUnavailableFromTheCompatibleDefault()
+    {
+        var owner = new RecordingAsyncDisposable();
+        var sut = new AsyncOwnedConversationSession(new StubSession(), owner);
+
+        var result = await sut.ListAsync(null, 10, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<ConversationSessionListUnavailable>().SafeMessage.ShouldContain("does not support");
+        owner.Completion.SetResult();
+        await sut.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task PresentToolAsync_WhenInnerDoesNotOverrideIt_ReturnsNullFromTheCompatibleDefault()
+    {
+        var owner = new RecordingAsyncDisposable();
+        var sut = new AsyncOwnedConversationSession(new StubSession(), owner);
+        var call = FakeMessages.ToolCall("search", "{}");
+
+        var presentation = await sut.PresentToolAsync(call, TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+        owner.Completion.SetResult();
+        await sut.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SendAsync_WithObserver_WhenInnerDoesNotOverrideIt_DeliversFallbackEventsThenSettledTerminal()
+    {
+        var owner = new RecordingAsyncDisposable();
+        var sut = new AsyncOwnedConversationSession(new StubSession(), owner);
+        var observer = new RecordingConversationEventObserver();
+
+        var result = await sut.SendAsync("hi", observer, TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        var terminal = observer.Events.OfType<ConversationTurnCompletedEvent>().ShouldHaveSingleItem();
+        terminal.Succeeded.ShouldBeTrue();
+        terminal.Outcome.ShouldBe("settled");
+        owner.Completion.SetResult();
+        await sut.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SendAsync_WithObserver_WhenInnerReportsFailure_DeliversAFailedTerminalEvent()
+    {
+        var owner = new RecordingAsyncDisposable();
+        var sut = new AsyncOwnedConversationSession(
+            new StubSession { SendOverride = static (_, _) => Task.FromResult(new ConversationTurnResult(false, [])) },
+            owner);
+        var observer = new RecordingConversationEventObserver();
+
+        var result = await sut.SendAsync("hi", observer, TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeFalse();
+        var terminal = observer.Events.OfType<ConversationTurnCompletedEvent>().ShouldHaveSingleItem();
+        terminal.Succeeded.ShouldBeFalse();
+        terminal.Outcome.ShouldBe("failed");
+        owner.Completion.SetResult();
+        await sut.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SendAsync_WithObserver_WhenInnerIsCancelled_DeliversACancelledTerminalEventAndPropagates()
+    {
+        var owner = new RecordingAsyncDisposable();
+        using var cts = new CancellationTokenSource();
+        var sut = new AsyncOwnedConversationSession(
+            new StubSession
+            {
+                SendOverride = (_, token) =>
+                {
+                    cts.Cancel();
+                    throw new OperationCanceledException(token.IsCancellationRequested ? token : cts.Token);
+                },
+            },
+            owner);
+        var observer = new RecordingConversationEventObserver();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            async () => await sut.SendAsync("hi", observer, cts.Token));
+
+        var terminal = observer.Events.OfType<ConversationTurnCompletedEvent>().ShouldHaveSingleItem();
+        terminal.Succeeded.ShouldBeFalse();
+        terminal.Outcome.ShouldBe("cancelled");
+        owner.Completion.SetResult();
+        await sut.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SendAsync_WithObserver_WhenInnerFaults_DeliversAFaultedTerminalEventAndPropagates()
+    {
+        var owner = new RecordingAsyncDisposable();
+        var fault = new InvalidOperationException("inner fault");
+        var sut = new AsyncOwnedConversationSession(
+            new StubSession { SendOverride = (_, _) => throw fault },
+            owner);
+        var observer = new RecordingConversationEventObserver();
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await sut.SendAsync("hi", observer, TestContext.Current.CancellationToken));
+
+        exception.ShouldBeSameAs(fault);
+        var terminal = observer.Events.OfType<ConversationTurnCompletedEvent>().ShouldHaveSingleItem();
+        terminal.Succeeded.ShouldBeFalse();
+        terminal.Outcome.ShouldBe("faulted");
+        owner.Completion.SetResult();
+        await sut.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SendAsync_WithObserver_WhenFallbackDeliveryFaults_StillReturnsTheCommittedResult()
+    {
+        var owner = new RecordingAsyncDisposable();
+        var sut = new AsyncOwnedConversationSession(new StubSession(), owner);
+        var observer = new RecordingConversationEventObserver { ThrowAfterRecording = true };
+
+        var result = await sut.SendAsync("hi", observer, TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        _ = observer.Events.OfType<ConversationTurnCompletedEvent>().ShouldHaveSingleItem();
+        owner.Completion.SetResult();
+        await sut.DisposeAsync();
+    }
+
     private sealed class StubSession: IConversationSession
     {
+        internal Func<string, CancellationToken, Task<ConversationTurnResult>>? SendOverride { get; set; }
+
         public Task<ConversationTurnResult> SendAsync(string userText, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ConversationTurnResult(true, []));
+            SendOverride?.Invoke(userText, cancellationToken) ?? Task.FromResult(new ConversationTurnResult(true, []));
     }
 
     private sealed class RecordingAsyncDisposable: IAsyncDisposable

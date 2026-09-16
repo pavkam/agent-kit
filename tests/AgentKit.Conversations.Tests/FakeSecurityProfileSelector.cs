@@ -12,11 +12,18 @@ internal sealed class FakeSecurityProfileSelector: ISecurityProfileSelector
     /// <summary>Gets or sets the result <see cref="SelectAsync"/> returns; a matching captured authorization by default.</summary>
     public SecurityAuthorizationCaptureResult? Result { get; set; }
 
+    /// <summary>
+    /// Gets or sets a token source cancelled just before the cancellation check, so a test can simulate
+    /// cancellation observed mid-call (after a lock is already held) rather than before the call ever starts.
+    /// </summary>
+    public CancellationTokenSource? CancelBeforeThrow { get; set; }
+
     public ValueTask<SecurityAuthorizationCaptureResult> SelectAsync(
         SecurityAuthorizationCaptureRequest request,
         CancellationToken cancellationToken = default)
     {
         CallCount++;
+        CancelBeforeThrow?.Cancel();
         cancellationToken.ThrowIfCancellationRequested();
         if (Result is not null)
         {
