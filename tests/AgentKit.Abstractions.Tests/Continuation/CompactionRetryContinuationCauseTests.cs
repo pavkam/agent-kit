@@ -173,4 +173,12 @@ public sealed class CompactionRetryContinuationCauseTests
 
     private static CompactionOperationContext ContextValue() => TestSecurityEvidence.CompactionContext(new CompactionId(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc")), _agentId, _sessionId, new InRunOperationCorrelation(_compactionOperationId, _runId, _turnId), TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human));
     private static CompactionOperationContext OtherContext() => TestSecurityEvidence.CompactionContext(new CompactionId(Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd")), _agentId, _sessionId, new InRunOperationCorrelation(_compactionOperationId, _runId, _turnId), TestExecutionIdentity.Create(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new CompactionRetryContinuationCause(_requestId, Compaction());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

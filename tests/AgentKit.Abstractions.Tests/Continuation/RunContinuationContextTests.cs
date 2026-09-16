@@ -106,6 +106,15 @@ public sealed class RunContinuationContextTests
     }
 
     [Fact]
+    public void Constructor_WhenRequiredStopOutcomeIsSuccessful_ThrowsExactArgumentException()
+    {
+        var exception = Should.Throw<ArgumentException>(() => new RunContinuationContext(
+            _agentId, _sessionId, _laneId, _operationId, _runId, AgentRunState.Driving, _revision, Cursor(), _cutoff,
+            new ConfigurationVersion(2), new RunPolicyVersion(1), new IdleContinuationBoundary(), new AgentRunIdle(), []));
+        exception.ParamName.ShouldBe("requiredStopOutcome");
+    }
+
+    [Fact]
     public void With_WhenApplied_ProducesEqualCopy()
     {
         var original = Context(new IdleContinuationBoundary(), []);

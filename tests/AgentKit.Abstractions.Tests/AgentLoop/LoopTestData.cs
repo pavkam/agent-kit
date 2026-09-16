@@ -97,6 +97,19 @@ internal static class LoopTestData
     public static CommittedToolResultReference ToolResultReference(int value = 1) =>
         new(new SessionEntryId(Guid.Parse($"b0000000-0000-0000-0000-0000000000{value:D2}")), new ToolCallId(Guid.Parse($"b1000000-0000-0000-0000-0000000000{value:D2}")), TurnId);
 
+    public static AgentDefinition Definition() =>
+        new(AgentId, new AgentDefinitionRevision(1), "agent", new ModelSelectionPolicy([new ModelAlias("chat")]),
+            ModelRequirements.None, [], [], LlmToolChoice.Auto, LlmRequestSettings.Default,
+            new RunPolicyDefaults(8, TimeSpan.FromMinutes(1)), ExtensionData.Empty,
+            new SecurityProfileKey("security"), new SessionProfileKey("session"));
+
+    public static EffectiveConfigurationSnapshot Configuration() =>
+        new(new ConfigurationVersion(1), new ContentHash("sha256:test-session-profile"), [], []);
+
+    public static AgentRunRequest RunRequestFromDefinition() =>
+        new(Definition(), SessionId, BranchId, RunId, Identity(), RunAuthorization(), SessionProfile(), Configuration(),
+            8, TimeSpan.FromMinutes(1), ExtensionData.Empty);
+
     public static ToolResultPart ToolResult() =>
         new(new ToolCallId(Guid.Parse("b0000000-0000-0000-0000-000000000009")), new ToolReference(new ToolAlias("t"), new ToolId("t"), new ToolVersion("1")),
             new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),

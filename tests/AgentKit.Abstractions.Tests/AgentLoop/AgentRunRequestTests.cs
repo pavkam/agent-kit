@@ -146,4 +146,66 @@ public sealed class AgentRunRequestTests
     }
 
     private static ModelSelectionPolicy Policy() => new([new ModelAlias("chat")]);
+
+    [Fact]
+    public void SecondConstructor_WhenAgentIsNull_ThrowsExactArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+            null!, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
+            LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), LoopTestData.Configuration(),
+            8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("agent");
+
+    [Fact]
+    public void SecondConstructor_WhenConfigurationIsNull_ThrowsExactArgumentNullException() =>
+        Should.Throw<ArgumentNullException>(() => new AgentRunRequest(
+            LoopTestData.Definition(), LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
+            LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), null!,
+            8, TimeSpan.FromMinutes(1), ExtensionData.Empty)).ParamName.ShouldBe("configuration");
+
+    [Fact]
+    public void SecondConstructor_WhenAgentRevisionDiffersFromAuthorization_ThrowsExactArgumentException()
+    {
+        var agent = LoopTestData.Definition() with { Revision = new AgentDefinitionRevision(2) };
+        var exception = Should.Throw<ArgumentException>(() => new AgentRunRequest(
+            agent, LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
+            LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), LoopTestData.Configuration(),
+            8, TimeSpan.FromMinutes(1), ExtensionData.Empty));
+        exception.ParamName.ShouldBe("agent");
+    }
+
+    [Fact]
+    public void SecondConstructor_WhenConfigurationVersionDiffersFromAuthorization_ThrowsExactArgumentException()
+    {
+        var configuration = new EffectiveConfigurationSnapshot(new ConfigurationVersion(2), new ContentHash("sha256:test-session-profile"), [], []);
+        _ = Should.Throw<ArgumentException>(() => new AgentRunRequest(
+            LoopTestData.Definition(), LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
+            LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), configuration,
+            8, TimeSpan.FromMinutes(1), ExtensionData.Empty));
+    }
+
+    [Fact]
+    public void SecondConstructor_WhenConfigurationFingerprintDiffersFromSessionProfile_ThrowsExactArgumentException()
+    {
+        var configuration = new EffectiveConfigurationSnapshot(new ConfigurationVersion(1), new ContentHash("sha256:other"), [], []);
+        _ = Should.Throw<ArgumentException>(() => new AgentRunRequest(
+            LoopTestData.Definition(), LoopTestData.SessionId, LoopTestData.BranchId, LoopTestData.RunId, LoopTestData.Identity(),
+            LoopTestData.RunAuthorization(), LoopTestData.SessionProfile(), configuration,
+            8, TimeSpan.FromMinutes(1), ExtensionData.Empty));
+    }
+
+    [Fact]
+    public void SecondConstructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var request = LoopTestData.RunRequestFromDefinition();
+        request.Agent.ShouldBe(LoopTestData.Definition());
+        request.AgentId.ShouldBe(LoopTestData.AgentId);
+        request.Configuration.ShouldBe(LoopTestData.Configuration());
+    }
+
+    [Fact]
+    public void SecondConstructor_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = LoopTestData.RunRequestFromDefinition();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
