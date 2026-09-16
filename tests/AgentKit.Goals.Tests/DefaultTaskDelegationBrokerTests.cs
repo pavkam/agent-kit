@@ -513,6 +513,43 @@ public sealed class DefaultTaskDelegationBrokerTests
     }
 
     [Fact]
+    public async Task DelegateAsync_WhenChannelRejectsTheSameDelegation_ReportsChannelRejectedOutcome()
+    {
+        var expected = new TaskDelegationRejected(
+            new DelegationId(Guid.Parse("10000000-0000-0000-0000-000000000001")), "The channel declined the delegation.");
+        var channel = new RecordingDelegationChannel
+        {
+            Result = _ => expected,
+        };
+        var logger = new RecordingDelegationLogger();
+        var broker = new DefaultTaskDelegationBroker(
+            new RecordingGrantStore(), channel,
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.Parse("e0000000-0000-0000-0000-000000000032"))),
+            new FixedTimeProvider(), logger);
+
+        var actual = await broker.DelegateAsync(Request(broker.SecurityAudience), TestContext.Current.CancellationToken);
+
+        actual.ShouldBeSameAs(expected);
+        logger.Events.ShouldHaveSingleItem().ShouldBe((23000, LogLevel.Information));
+    }
+
+    [Fact]
+    public async Task DelegateAsync_WhenTimestampMeasurementFails_StillDispatchesWithoutReportingElapsedTime()
+    {
+        var channel = new RecordingDelegationChannel();
+        var broker = new DefaultTaskDelegationBroker(
+            new RecordingGrantStore(), channel,
+            new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.Parse("e0000000-0000-0000-0000-000000000033"))),
+            new ThrowingTimestampTimeProvider(),
+            new RecordingDelegationLogger());
+
+        var result = await broker.DelegateAsync(Request(broker.SecurityAudience), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<TaskDelegationChildResult>();
+        _ = channel.Prompts.ShouldHaveSingleItem();
+    }
+
+    [Fact]
     public void Constructor_WhenGrantStoreIsNull_ThrowsWithExactParameterName()
     {
         var exception = Should.Throw<ArgumentNullException>(() => new DefaultTaskDelegationBroker(null!, new RecordingDelegationChannel(), new FixedSecurityEnforcementIntentIdGenerator(new SecurityEnforcementIntentId(Guid.Parse("e0000000-0000-0000-0000-000000000031"))), new FixedTimeProvider(), Microsoft.Extensions.Logging.Abstractions.NullLogger<DefaultTaskDelegationBroker>.Instance));
