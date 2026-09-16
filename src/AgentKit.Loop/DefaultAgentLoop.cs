@@ -817,6 +817,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     "The run reached its turn limit before this tool call could be invoked.",
                     ExtensionData.Empty),
                 [],
+                DefaultProjection(ToolTerminalStatus.Denied),
                 ExtensionData.Empty);
             resultParts.Add(rejected);
             await ObserveDetachedAsync(request, new AgentRunToolCallCompleted(turnId, rejected)).ConfigureAwait(false);
@@ -959,12 +960,23 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     new AgentRunToolCallStarted(turnId, toolCall),
                     cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
-                var invocationResult = await services.Tools.InvokeAsync(
-                    new ToolCallRequest(toolCall.Tool.Id, toolContext, toolCall.Arguments, _timeProvider.GetUtcNow()),
+                var resolved = await services.Tools.InvokeAsync(
+                    new ToolCallRequest(toolCall.Tool, toolContext, toolCall.Arguments, _timeProvider.GetUtcNow()),
                     cancellationToken).ConfigureAwait(false);
 
                 resultPart = new ToolResultPart(
-                    toolCall.CallId, toolCall.Tool, invocationResult.Outcome, invocationResult.Content, ExtensionData.Empty);
+                    toolCall.CallId,
+                    resolved.Tool,
+                    resolved.Invocation.Outcome,
+                    resolved.Invocation.Content,
+                    new ToolResultProjectionInfo(
+                        resolved.ProjectionPolicy,
+                        Enum.IsDefined(resolved.Invocation.Outcome.SourceStatus)
+                            ? []
+                            : [ToolResultProjectionLoss.StatusCoarsened],
+                        0,
+                        0),
+                    ExtensionData.Empty);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -993,6 +1005,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                         "The tool invocation faulted before it produced a result.",
                         ExtensionData.Empty),
                     [],
+                    DefaultProjection(ToolTerminalStatus.InvocationFailed),
                     ExtensionData.Empty);
             }
 
@@ -1292,7 +1305,24 @@ public sealed class DefaultAgentLoop: IAgentLoop
             "The run was cancelled before this tool call completed.",
             ExtensionData.Empty),
         [],
+        DefaultProjection(ToolTerminalStatus.Interrupted),
         ExtensionData.Empty);
+
+    /// <summary>
+    /// Builds projection provenance for a terminal result this loop settles directly (turn-limit rejection,
+    /// interruption, a dangling call, or an invoker fault) rather than one produced by an actual tool invocation.
+    /// </summary>
+    /// <param name="sourceStatus">The exact terminal status this loop is recording.</param>
+    /// <returns>
+    /// Projection provenance under the well-known default policy, recording
+    /// <see cref="ToolResultProjectionLoss.StatusCoarsened"/> only if a future loop change ever passes an
+    /// undefined status; every status this loop assigns directly is a defined, exact value.
+    /// </returns>
+    private static ToolResultProjectionInfo DefaultProjection(ToolTerminalStatus sourceStatus) => new(
+        ToolResultProjectionPolicyReference.Default,
+        Enum.IsDefined(sourceStatus) ? [] : [ToolResultProjectionLoss.StatusCoarsened],
+        0,
+        0);
 
     /// <summary>Delivers optional run progress without allowing presentation failure to alter run semantics.</summary>
     /// <param name="request">The run whose observer receives the event.</param>
@@ -1721,6 +1751,7 @@ public sealed class DefaultAgentLoop: IAgentLoop
                     "The run that requested this tool call ended before its result was committed; whether the tool ran is unknown.",
                     ExtensionData.Empty),
                 [],
+                DefaultProjection(ToolTerminalStatus.Interrupted),
                 ExtensionData.Empty))
             .ToImmutableArray();
         var toolMessage = new ToolMessage(

@@ -173,7 +173,7 @@ internal static class TestFactory
                 turnId,
                 DateTimeOffset.UnixEpoch,
                 MessageState.Complete,
-                [new ToolCallPart(callId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty)],
+                [new ToolCallPart(callId, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty)],
                 new AssistantResponseMetadata(
                     new ModelRequestId(Guid.NewGuid()),
                     new ProviderResponseIdentity(
@@ -289,7 +289,7 @@ internal static class TestFactory
     public static ModelAttemptCompleted CompletedWithToolCall(ModelRequestId requestId, ToolCallId callId, string toolName = "search") =>
         new(Response(
             requestId,
-            [new ToolCallPart(callId, new ToolReference(new ToolId(toolName), null, toolName), default, null, ExtensionData.Empty)],
+            [new ToolCallPart(callId, new ToolReference(new ToolAlias(toolName), null, null), default, null, ExtensionData.Empty)],
             NormalizedStopReason.ToolUse));
 
     public static ModelResponse Response(ModelRequestId requestId, ImmutableArray<ContentPart> parts, NormalizedStopReason stopReason) =>

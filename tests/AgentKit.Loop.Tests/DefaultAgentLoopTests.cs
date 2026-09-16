@@ -156,8 +156,8 @@ public sealed class DefaultAgentLoopTests
                 ? new ModelAttemptCompleted(TestFactory.Response(
                     requestId,
                     [
-                        new ToolCallPart(firstCallId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
-                        new ToolCallPart(secondCallId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                        new ToolCallPart(firstCallId, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty),
+                        new ToolCallPart(secondCallId, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty),
                     ],
                     NormalizedStopReason.ToolUse))
                 : TestFactory.CompletedWithText(requestId),
@@ -198,8 +198,8 @@ public sealed class DefaultAgentLoopTests
                 ? new ModelAttemptCompleted(TestFactory.Response(
                     requestId,
                     [
-                        new ToolCallPart(firstCallId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
-                        new ToolCallPart(secondCallId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                        new ToolCallPart(firstCallId, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty),
+                        new ToolCallPart(secondCallId, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty),
                     ],
                     NormalizedStopReason.ToolUse))
                 : TestFactory.CompletedWithText(requestId),
@@ -1338,6 +1338,63 @@ public sealed class DefaultAgentLoopTests
         toolResult.CallId.ShouldBe(callId);
         _ = result.NewMessages[2].ShouldBeOfType<AssistantMessage>();
         coordinator.Entries.Count.ShouldBe(4);
+
+        // The loop must project the invoker's own resolution (never the unresolved reference the model's call
+        // carried) into the committed ToolResultPart, together with projection provenance for that invocation.
+        toolResult.Tool.IsResolved.ShouldBeTrue();
+        toolResult.Tool.Id.ShouldBe(new ToolId("search"));
+        toolResult.Tool.ProviderAlias.ShouldBe(new ToolAlias("search"));
+        toolResult.Projection.Policy.ShouldBe(ToolResultProjectionPolicyReference.Default);
+        toolResult.Projection.Losses.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenToolInvokerCannotResolveTheRequestedAlias_CommitsUnresolvedReferenceWithUnknownToolOutcome()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var secondRequestId = new ModelRequestId(Guid.NewGuid());
+        var callCount = 0;
+
+        var loop = CreateLoop(
+            out var coordinator,
+            out var toolInvoker,
+            _ =>
+            {
+                callCount++;
+                return callCount == 1
+                    ? TestFactory.CompletedWithToolCall(requestId, callId, "hallucinated_tool")
+                    : TestFactory.CompletedWithText(secondRequestId);
+            },
+            resolvedToolHandler: static request => new ResolvedToolInvocation(
+                request.Tool,
+                ToolResultProjectionPolicyReference.Default,
+                new ToolInvocationResult(
+                    new ToolCallOutcome(
+                        ToolCallOutcomeKind.Rejected,
+                        ToolTerminalStatus.UnknownTool,
+                        SideEffectCertainty.DefinitelyNotPerformed,
+                        retryable: false,
+                        $"Tool '{request.Tool.ProviderAlias}' is not registered.",
+                        ExtensionData.Empty),
+                    [])));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+        _ = toolInvoker.ReceivedRequests.ShouldHaveSingleItem();
+        var toolMessage = result.NewMessages[1].ShouldBeOfType<ToolMessage>();
+        var toolResult = toolMessage.Parts[0].ShouldBeOfType<ToolResultPart>();
+        toolResult.CallId.ShouldBe(callId);
+        toolResult.Tool.IsResolved.ShouldBeFalse();
+        toolResult.Tool.Id.ShouldBeNull();
+        toolResult.Tool.ProviderAlias.ShouldBe(new ToolAlias("hallucinated_tool"));
+        toolResult.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Rejected);
+        toolResult.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.UnknownTool);
+        toolResult.Projection.Policy.ShouldBe(ToolResultProjectionPolicyReference.Default);
+        toolResult.Projection.Losses.ShouldBeEmpty();
     }
 
     [Fact]
@@ -1833,9 +1890,9 @@ public sealed class DefaultAgentLoopTests
         var response = new ModelAttemptCompleted(TestFactory.Response(
             requestId,
             [
-                new ToolCallPart(callId1, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
-                new ToolCallPart(callId2, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
-                new ToolCallPart(callId3, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                new ToolCallPart(callId1, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty),
+                new ToolCallPart(callId2, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty),
+                new ToolCallPart(callId3, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty),
             ],
             NormalizedStopReason.ToolUse));
         var loop = CreateLoop(out var coordinator, out var invoker, _ => response, toolHandler: _ =>
@@ -1880,8 +1937,8 @@ public sealed class DefaultAgentLoopTests
         var response = new ModelAttemptCompleted(TestFactory.Response(
             requestId,
             [
-                new ToolCallPart(callId1, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
-                new ToolCallPart(callId2, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                new ToolCallPart(callId1, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty),
+                new ToolCallPart(callId2, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty),
             ],
             NormalizedStopReason.ToolUse));
         var cancelledOutcome = new ToolCallOutcome(
@@ -2056,8 +2113,8 @@ public sealed class DefaultAgentLoopTests
         var response = new ModelAttemptCompleted(TestFactory.Response(
             requestId,
             [
-                new ToolCallPart(callId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
-                new ToolCallPart(callId, new ToolReference(new ToolId("search"), null, "search"), default, null, ExtensionData.Empty),
+                new ToolCallPart(callId, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty),
+                new ToolCallPart(callId, new ToolReference(new ToolAlias("search"), null, null), default, null, ExtensionData.Empty),
             ],
             NormalizedStopReason.ToolUse));
         var loop = CreateLoop(
@@ -2198,6 +2255,7 @@ public sealed class DefaultAgentLoopTests
         int maxTurns = 8,
         ToolInvocationResult? toolResult = null,
         Func<ToolCallRequest, ToolInvocationResult>? toolHandler = null,
+        Func<ToolCallRequest, ResolvedToolInvocation>? resolvedToolHandler = null,
         ModelResponseEvent? modelEvent = null,
         IContextAssembler? contextAssembler = null,
         IRunContinuationPolicy? continuationPolicy = null,
@@ -2208,7 +2266,9 @@ public sealed class DefaultAgentLoopTests
     {
         _ = maxTurns;
         coordinator = new FakeSessionCoordinator(_branchId);
-        toolInvoker = new FakeToolInvoker(toolHandler ?? (_ => toolResult ?? TestFactory.SuccessResult()));
+        toolInvoker = resolvedToolHandler is not null
+            ? new FakeToolInvoker(resolvedToolHandler)
+            : new FakeToolInvoker(toolHandler ?? (_ => toolResult ?? TestFactory.SuccessResult()));
         var adapter = new RespondingLlmModel(new ModelAlias("chat"), respond, modelEvent);
         var descriptor = TestFactory.Model();
 
