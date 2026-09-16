@@ -26,6 +26,25 @@ public sealed class SecurityAuthorizationCaptureRequestTests
         typeof(SecurityAuthorizationCaptureRequest).GetProperties().ShouldAllBe(property => property.SetMethod == null);
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var capture = Capture();
+        capture.Scope.ShouldBe(Scope());
+        capture.ProfileKey.ShouldBe(new SecurityProfileKey("default"));
+        capture.AgentDefinitionRevision.ShouldBe(new AgentDefinitionRevision(0));
+        capture.ConfigurationVersion.ShouldBe(new ConfigurationVersion(9));
+        capture.Identity.ShouldBe(Identity());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Capture();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static SecurityAuthorizationCaptureRequest Capture() => new(Scope(), new SecurityProfileKey("default"), new AgentDefinitionRevision(0), new ConfigurationVersion(9), Identity());
     private static AgentId AgentId() => new(Guid.Parse("22222222-2222-2222-2222-222222222222"));
     private static SessionId SessionId() => new(Guid.Parse("33333333-3333-3333-3333-333333333333"));

@@ -16,4 +16,20 @@ public sealed class SecurityAuthorizationCapturedTests
     [Fact]
     public void Properties_WhenApiShapeIsInspected_ExposeNoSetters() =>
         typeof(SecurityAuthorizationCaptured).GetProperties().ShouldAllBe(static property => property.SetMethod == null);
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var authorization = SecurityAbstractionsTestData.Authorization();
+        var captured = new SecurityAuthorizationCaptured(authorization);
+        captured.Authorization.ShouldBe(authorization);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SecurityAuthorizationCaptured(SecurityAbstractionsTestData.Authorization());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }
