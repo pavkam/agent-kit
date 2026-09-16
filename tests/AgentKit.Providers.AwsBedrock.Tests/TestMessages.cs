@@ -18,7 +18,10 @@ internal static class TestMessages
     private static readonly DateTimeOffset CreatedAt = new(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     /// <summary>Builds a <see cref="SystemMessage"/> containing a single text part.</summary>
-    public static SystemMessage System(string text) =>
+    public static SystemMessage System(string text) => System(new TextPart(text, TextSemantics.Plain, ExtensionData.Empty));
+
+    /// <summary>Builds a <see cref="SystemMessage"/> containing the given parts.</summary>
+    public static SystemMessage System(params ContentPart[] parts) =>
         new(
             new MessageId(Guid.NewGuid()),
             Agent,
@@ -29,7 +32,7 @@ internal static class TestMessages
             turnId: null,
             CreatedAt,
             MessageState.Complete,
-            [new TextPart(text, TextSemantics.Plain, ExtensionData.Empty)],
+            [.. parts],
             ExtensionData.Empty);
 
     /// <summary>Builds a <see cref="UserMessage"/> containing a single text part.</summary>

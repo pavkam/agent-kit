@@ -179,6 +179,213 @@ public sealed class AwsBedrockRequestTranslatorTests
     }
 
     [Fact]
+    public void Translate_WhenTopPIsSpecified_SetsTopPField()
+    {
+        var settings = LlmRequestSettings.Default with { TopP = 0.9 };
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.User("hi")],
+            [],
+            LlmToolChoice.Auto,
+            settings,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new AwsBedrockRequestTranslator().Translate(request);
+
+        body["inferenceConfig"]!["topP"]!.GetValue<double>().ShouldBe(0.9);
+    }
+
+    [Fact]
+    public void Translate_WhenSystemMessageContainsUnsupportedContentPart_ThrowsNotSupportedException()
+    {
+        var mediaPart = new MediaReferencePart(
+            new MediaReference(
+                new MediaId(Guid.NewGuid()),
+                MediaSourceKind.Uri,
+                "image/png",
+                new Uri("https://example.com/image.png"),
+                [],
+                sizeInBytes: null,
+                hash: null,
+                ExtensionData.Empty),
+            MediaSemantics.Input,
+            ExtensionData.Empty);
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.System(mediaPart)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AwsBedrockRequestTranslator().Translate(request));
+    }
+
+    [Fact]
+    public void Translate_WhenUserMessageContainsUnsupportedNonMediaContentPart_ThrowsNotSupportedException()
+    {
+        var structuredData = new StructuredDataPart(JsonDocument.Parse("{}").RootElement, schema: null, ExtensionData.Empty);
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.User(structuredData)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AwsBedrockRequestTranslator().Translate(request));
+    }
+
+    [Fact]
+    public void Translate_WhenAssistantMessageContainsPlainText_TranslatesTextContentBlock()
+    {
+        var assistant = TestMessages.Assistant(new TextPart("Here is my answer.", TextSemantics.Plain, ExtensionData.Empty));
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [assistant],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new AwsBedrockRequestTranslator().Translate(request);
+        var block = body["messages"]![0]!["content"]![0]!;
+
+        block["text"]!.GetValue<string>().ShouldBe("Here is my answer.");
+    }
+
+    [Fact]
+    public void Translate_WhenAssistantMessageContainsUnsupportedContentPart_ThrowsNotSupportedException()
+    {
+        var mediaPart = new MediaReferencePart(
+            new MediaReference(
+                new MediaId(Guid.NewGuid()),
+                MediaSourceKind.Uri,
+                "image/png",
+                new Uri("https://example.com/image.png"),
+                [],
+                sizeInBytes: null,
+                hash: null,
+                ExtensionData.Empty),
+            MediaSemantics.Output,
+            ExtensionData.Empty);
+        var assistant = TestMessages.Assistant(mediaPart);
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [assistant],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AwsBedrockRequestTranslator().Translate(request));
+    }
+
+    [Fact]
+    public void Translate_WhenToolMessageContainsUnsupportedContentPart_ThrowsNotSupportedException()
+    {
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [TestMessages.Tool(new TextPart("not a tool result", TextSemantics.Plain, ExtensionData.Empty))],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AwsBedrockRequestTranslator().Translate(request));
+    }
+
+    [Fact]
+    public void Translate_WhenToolResultContainsStructuredData_SerializesAsJsonBlock()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
+        var structuredData = new StructuredDataPart(
+            JsonDocument.Parse("""{"temperature":15,"unit":"celsius"}""").RootElement,
+            schema: null,
+            ExtensionData.Empty);
+        var toolMessage = TestMessages.Tool(
+            new ToolResultPart(
+                callId,
+                toolReference,
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+                [structuredData],
+                new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+                ExtensionData.Empty));
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [toolMessage],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new AwsBedrockRequestTranslator().Translate(request);
+        var block = body["messages"]![0]!["content"]![0]!["toolResult"]!["content"]![0]!;
+
+        block["json"]!["temperature"]!.GetValue<int>().ShouldBe(15);
+        block["json"]!["unit"]!.GetValue<string>().ShouldBe("celsius");
+    }
+
+    [Fact]
+    public void Translate_WhenToolResultContainsUnsupportedContentPart_ThrowsNotSupportedException()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
+        var mediaPart = new MediaReferencePart(
+            new MediaReference(
+                new MediaId(Guid.NewGuid()),
+                MediaSourceKind.Uri,
+                "image/png",
+                new Uri("https://example.com/image.png"),
+                [],
+                sizeInBytes: null,
+                hash: null,
+                ExtensionData.Empty),
+            MediaSemantics.Output,
+            ExtensionData.Empty);
+        var toolMessage = TestMessages.Tool(
+            new ToolResultPart(
+                callId,
+                toolReference,
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+                [mediaPart],
+                new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+                ExtensionData.Empty));
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.ClaudeSonnet,
+            [toolMessage],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new AwsBedrockRequestTranslator().Translate(request));
+    }
+
+    [Fact]
     public void Translate_WhenUserMessageContainsMedia_ThrowsNotSupportedException()
     {
         var mediaPart = new MediaReferencePart(
