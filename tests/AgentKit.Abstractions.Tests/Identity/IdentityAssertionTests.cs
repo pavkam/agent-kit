@@ -26,5 +26,13 @@ public sealed class IdentityAssertionTests
         first.GetHashCode().ShouldBe(second.GetHashCode());
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new IdentityAssertion(new IdentityIssuerId("issuer"), "subject", [], Evidence("issuer"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static AuthenticationEvidence Evidence(string issuer) => new(new AuthenticationEvidenceId("evidence"), new IdentityIssuerId(issuer), "mfa", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddHours(1), new AuthenticationEvidenceFingerprint(new ContentHash("safe-hash")));
 }

@@ -27,6 +27,14 @@ public sealed class SessionAddressTests
         address.SessionId.ShouldBe(SessionId);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionAddress(AgentId, SessionId);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static AgentId AgentId => new(_agentGuid);
     private static SessionId SessionId => new(_sessionGuid);
 }

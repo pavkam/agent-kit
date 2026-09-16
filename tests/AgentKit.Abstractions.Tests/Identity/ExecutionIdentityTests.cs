@@ -53,6 +53,26 @@ public sealed class ExecutionIdentityTests
         exception.ParamName.ShouldBe("version");
     }
 
+    [Fact]
+    public void Equals_WhenDelegationChainsMatch_HasEqualHashCode()
+    {
+        var claim = Claim();
+        var link = Link("tenant", "requester", claim, IdentityAssuranceLevel.Strong);
+        var first = new ExecutionIdentity(new TenantId("tenant"), new PrincipalId("impersonated"), ExecutionSubjectKind.Human, Evidence("issuer"), [claim], [link], IdentityAssuranceLevel.Basic, new IdentityVersion(1));
+        var second = new ExecutionIdentity(new TenantId("tenant"), new PrincipalId("impersonated"), ExecutionSubjectKind.Human, Evidence("issuer"), [claim], [link], IdentityAssuranceLevel.Basic, new IdentityVersion(1));
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var claim = Claim();
+        var original = new ExecutionIdentity(new TenantId("tenant"), new PrincipalId("principal"), ExecutionSubjectKind.Human, Evidence("issuer"), [claim], [], IdentityAssuranceLevel.Basic, new IdentityVersion(1));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static IdentityClaim Claim() => new(new IdentityIssuerId("issuer"), "role", "reader", IdentityClaimValueKind.Text);
     private static DelegationIdentityLink Link(string tenant, string principal, IdentityClaim claim, IdentityAssuranceLevel assurance) => new(new DelegationId(Guid.NewGuid()), new TenantId(tenant), new PrincipalId(principal), new IdentityIssuerId("issuer"), new AuthenticationEvidenceId("evidence"), new IdentityVersion(1), DateTimeOffset.UnixEpoch, [claim], assurance);
     private static AuthenticationEvidence Evidence(string issuer) => new(new AuthenticationEvidenceId("evidence"), new IdentityIssuerId(issuer), "mfa", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddHours(1), new AuthenticationEvidenceFingerprint(new ContentHash("safe-hash")));

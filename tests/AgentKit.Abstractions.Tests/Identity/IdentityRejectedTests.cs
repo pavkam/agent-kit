@@ -15,4 +15,13 @@ public sealed class IdentityRejectedTests
         var result = new IdentityRejected(failure);
         result.Failure.ShouldBeSameAs(failure);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var failure = new IdentityFailure(IdentityFailureKind.Expired, "Authentication evidence expired.", new IdentityIssuerId("issuer"));
+        var original = new IdentityRejected(failure);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

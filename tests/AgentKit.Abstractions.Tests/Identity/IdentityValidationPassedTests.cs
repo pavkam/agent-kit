@@ -10,4 +10,11 @@ public sealed class IdentityValidationPassedTests
 {
     [Fact]
     public void IdentityValidationPassed_Instance_IsShared() => IdentityValidationPassed.Instance.ShouldBeSameAs(IdentityValidationPassed.Instance);
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var copy = IdentityValidationPassed.Instance with { };
+        copy.ShouldBe(IdentityValidationPassed.Instance);
+    }
 }

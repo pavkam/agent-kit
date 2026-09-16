@@ -26,6 +26,64 @@ public sealed class DelegatedIdentityRequestTests
     }
 
     [Fact]
+    public void Constructor_WhenDelegationIdIsEmpty_ThrowsExactParameter()
+    {
+        var parent = Identity([Claim()]);
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() => new DelegatedIdentityRequest(default, parent, [], IdentityAssuranceLevel.Basic));
+        exception.ParamName.ShouldBe("delegationId");
+    }
+
+    [Fact]
+    public void Constructor_WhenParentIsNull_ThrowsExactParameter()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new DelegatedIdentityRequest(new DelegationId(Guid.NewGuid()), null!, [], IdentityAssuranceLevel.Basic));
+        exception.ParamName.ShouldBe("parent");
+    }
+
+    [Fact]
+    public void Constructor_WhenClaimsContainNull_ThrowsExactParameter()
+    {
+        var parent = Identity([Claim()]);
+        var exception = Should.Throw<ArgumentException>(() => new DelegatedIdentityRequest(new DelegationId(Guid.NewGuid()), parent, [null!], IdentityAssuranceLevel.Basic));
+        exception.ParamName.ShouldBe("claims");
+    }
+
+    [Fact]
+    public void Constructor_WhenCalledWithValidArguments_InitializesProperties()
+    {
+        var claim = Claim();
+        var parent = Identity([claim]);
+        var delegationId = new DelegationId(Guid.NewGuid());
+        var request = new DelegatedIdentityRequest(delegationId, parent, [claim], IdentityAssuranceLevel.Basic);
+        request.DelegationId.ShouldBe(delegationId);
+        request.Parent.ShouldBe(parent);
+        request.Claims.ShouldBe([claim]);
+        request.MaximumAssurance.ShouldBe(IdentityAssuranceLevel.Basic);
+    }
+
+    [Fact]
+    public void Equals_WhenSameValues_InstancesAreEqual()
+    {
+        var claim = Claim();
+        var parent = Identity([claim]);
+        var delegationId = new DelegationId(Guid.NewGuid());
+        var first = new DelegatedIdentityRequest(delegationId, parent, [claim], IdentityAssuranceLevel.Basic);
+        var second = new DelegatedIdentityRequest(delegationId, parent, [claim], IdentityAssuranceLevel.Basic);
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var claim = Claim();
+        var parent = Identity([claim]);
+        var original = new DelegatedIdentityRequest(new DelegationId(Guid.NewGuid()), parent, [claim], IdentityAssuranceLevel.Basic);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
     public void DelegatedIdentityRequest_PublicShape_HasNoTenantOrPrincipalOverride()
     {
         var properties = typeof(DelegatedIdentityRequest).GetProperties().Select(property => property.Name).ToArray();
