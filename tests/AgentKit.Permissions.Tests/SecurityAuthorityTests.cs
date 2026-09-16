@@ -316,6 +316,130 @@ public sealed class SecurityAuthorityTests
     }
 
     [Fact]
+    public async Task AuthorizeAsync_WhenApprovalRequiredWithoutCoordination_DeniesAsApprovalUnavailable()
+    {
+        var authority = CreateAuthority([new StubPolicy(SecurityPolicyResultKind.RequireApproval)]);
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("security.approval_unavailable");
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenApprovalExpires_DeniesWithApprovalExpiredCode()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var authority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
+            new InMemorySecurityGrantStore(clock),
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            new FixedBroker(new ApprovalBrokerExpired()),
+            new StubApprovalRequestIdGenerator(),
+            new AcceptingAuditDispatcher());
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("security.approval_expired");
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenApprovalResponseIdentifiesADifferentRequest_DeniesAsStale()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var authority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
+            store,
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            new MismatchedRequestIdBroker(),
+            new StubApprovalRequestIdGenerator(),
+            new AcceptingAuditDispatcher());
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<SecurityDenied>().Denial.Code.ShouldBe("security.approval_stale");
+        store.RegisterCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenRequiredApprovalAuditThrowsOperationCanceled_Propagates()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var authority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
+            new InMemorySecurityGrantStore(clock),
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            new ApprovingBroker(),
+            new StubApprovalRequestIdGenerator(),
+            new ThrowingAuditDispatcher(new OperationCanceledException()));
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            async () => await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenRequiredApprovalAuditThrowsException_DeniesAsAuditUnavailable()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var authority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
+            store,
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            new ApprovingBroker(),
+            new StubApprovalRequestIdGenerator(),
+            new ThrowingAuditDispatcher(new InvalidOperationException("boom")));
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        var denied = decision.ShouldBeOfType<SecurityDenied>();
+        denied.Denial.Code.ShouldBe("security.audit_unavailable");
+        denied.Denial.SafeMessage.ShouldBe("Required security audit failed.");
+        store.RegisterCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenRequiredApprovalAuditIsNotAccepted_DeniesAsAuditUnavailable()
+    {
+        var clock = new FakeTimeProvider(_now);
+        var store = new RecordingGrantStore(new InMemorySecurityGrantStore(clock));
+        var authority = new SecurityAuthority(
+            [new StubPolicy(SecurityPolicyResultKind.RequireApproval)],
+            store,
+            new StubGrantIdGenerator(),
+            clock,
+            Options.Create(new AgentPermissionOptions()),
+            new ApprovingBroker(),
+            new StubApprovalRequestIdGenerator(),
+            new RejectingAuditDispatcher());
+
+        var decision = await authority.AuthorizeAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        var denied = decision.ShouldBeOfType<SecurityDenied>();
+        denied.Denial.Code.ShouldBe("security.audit_unavailable");
+        denied.Denial.SafeMessage.ShouldBe("Required security audit was not accepted.");
+        store.RegisterCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AuthorizeAsync_WhenCallerTokenCancelsDuringPolicyEvaluation_PropagatesCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        var authority = CreateAuthority([new CancelingExternalPolicy(cts)]);
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            async () => await authority.AuthorizeAsync(CreateRequest(), cts.Token));
+    }
+
+    [Fact]
     public async Task AuthorizeAsync_WhenDenied_EmitsSuccessfulDecisionActivityWithoutResources()
     {
         Activity? stopped = null;
@@ -475,6 +599,54 @@ public sealed class SecurityAuthorityTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult<SecurityAuditDispatchResult>(new SecurityAuditAccepted());
+        }
+    }
+
+    private sealed class ThrowingAuditDispatcher(Exception exception): ISecurityAuditDispatcher
+    {
+        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(
+            SecurityAuditRecord record,
+            CancellationToken cancellationToken = default) =>
+            throw exception;
+    }
+
+    private sealed class RejectingAuditDispatcher: ISecurityAuditDispatcher
+    {
+        public ValueTask<SecurityAuditDispatchResult> DispatchAsync(
+            SecurityAuditRecord record,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<SecurityAuditDispatchResult>(
+                new SecurityAuditUnavailable("No compatible durable security audit sink is available."));
+    }
+
+    /// <summary>An approving broker whose response identifies a different approval request than the one asked about.</summary>
+    private sealed class MismatchedRequestIdBroker: IApprovalBroker
+    {
+        public ValueTask<ApprovalBrokerResult> RequestAsync(
+            ApprovalRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var response = new ApprovalResponse(
+                new ApprovalResponseId(Guid.Parse("90000000-0000-0000-0000-000000000009")),
+                new ApprovalRequestId(Guid.Parse("9a000000-0000-0000-0000-00000000000a")),
+                request.Binding,
+                ApprovalResolution.Approved,
+                request.Binding.Request.Identity,
+                request.CreatedAt.AddSeconds(1));
+            return ValueTask.FromResult<ApprovalBrokerResult>(new ApprovalBrokerApproved(response));
+        }
+    }
+
+    /// <summary>Cancels an externally observed token and rethrows using the exact same token the authority passed in.</summary>
+    private sealed class CancelingExternalPolicy(CancellationTokenSource externalCancellation): ISecurityPolicy
+    {
+        public ValueTask<SecurityPolicyResult> EvaluateAsync(
+            SecurityRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            externalCancellation.Cancel();
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new SecurityPolicyResult(SecurityPolicyResultKind.Allow, "test.allow", "Allowed by test policy."));
         }
     }
 

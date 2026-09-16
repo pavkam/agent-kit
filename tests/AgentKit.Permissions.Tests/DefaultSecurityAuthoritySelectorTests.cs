@@ -127,6 +127,20 @@ public sealed class DefaultSecurityAuthoritySelectorTests
     }
 
     [Fact]
+    public async Task SelectAsync_WhenElapsedTimeObservationFailsAfterASuccessfulTimestamp_RecordsNoDuration()
+    {
+        var key = new ComponentKey<ISecurityAuthority>("security.primary");
+        var count = 0L;
+        var durations = 0;
+        using var meterListener = MeterListenerForSelector((measurement, _) => count += measurement, (_, _) => durations++);
+        var selector = Selector([new SecurityAuthorityBinding(key, new DenyAllSecurityAuthority())], timeProvider: new ThrowingTimeProvider(throwOnCall: 2));
+        var result = await selector.SelectAsync(Context(key), TestContext.Current.CancellationToken);
+        _ = result.ShouldBeOfType<SecurityAuthoritySelected>();
+        count.ShouldBe(1);
+        durations.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task SelectAsync_WhenUnavailableOrCancelled_EmitsTruthfulErrorActivityAndBoundedOutcome()
     {
         var outcomes = new List<string>();
