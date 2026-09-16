@@ -728,6 +728,300 @@ public sealed class SqliteSecurityGrantStoreTests: SecurityGrantStoreConformance
         }
     }
 
+    /// <summary>Verifies consuming a grant that was never registered fails closed as unknown rather than as tampered or absent.</summary>
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenGrantWasNeverRegistered_ReturnsUnknown()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+            var store = CreateStore(Path.Combine(directory, "grants.db"), new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
+            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
+
+            var result = await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken);
+
+            result.Status.ShouldBe(GrantConsumptionStatus.Unknown);
+            result.IntentReceipt.ShouldBeNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>Verifies bootstrap over an existing schema-less target that disallows creation fails closed before mutation.</summary>
+    [Fact]
+    public async Task InitializeAsync_WhenExistingTargetIsUninitializedAndCreationIsDisallowed_RejectsAsSchemaUnsupported()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "grants.db");
+            using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString))
+            {
+                connection.Open();
+            }
+
+            var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: false);
+
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
+                async () => await store.InitializeAsync(TestContext.Current.CancellationToken));
+
+            exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.SchemaUnsupported);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>Verifies a database corrupted after initialization fails a subsequent bootstrap integrity check.</summary>
+    [Fact]
+    public async Task InitializeAsync_WhenDatabaseIsCorruptedAfterInitialization_RejectsAsCorruptEvidence()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "grants.db");
+            var instanceId = new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid());
+            var store = CreateStore(path, instanceId, TimeProvider.System, create: true);
+            await store.InitializeAsync(TestContext.Current.CancellationToken);
+
+            // Overstate the header's declared page count (big-endian bytes 28-31) so every ordinary table scan still
+            // succeeds against real, undamaged pages while PRAGMA quick_check reports the file as inconsistent.
+            var bytes = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(28, 4), 1_000);
+            await File.WriteAllBytesAsync(path, bytes, TestContext.Current.CancellationToken);
+            var reopened = CreateStore(path, instanceId, TimeProvider.System, create: false);
+
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
+                async () => await reopened.InitializeAsync(TestContext.Current.CancellationToken));
+
+            exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>Verifies exact-validation bootstrap requires WAL journaling even when identity and schema shape match.</summary>
+    [Fact]
+    public async Task InitializeAsync_WhenJournalModeIsNotWalUnderExactValidation_RejectsAsSchemaUnsupported()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "grants.db");
+            var instanceId = new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid());
+            var first = CreateStore(path, instanceId, TimeProvider.System, create: true);
+            await first.InitializeAsync(TestContext.Current.CancellationToken);
+            using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString))
+            {
+                connection.Open();
+                ExecuteScalar(connection, "PRAGMA journal_mode = DELETE;").ShouldBe("delete");
+            }
+
+            var second = CreateStore(path, instanceId, TimeProvider.System, create: false);
+
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
+                async () => await second.InitializeAsync(TestContext.Current.CancellationToken));
+
+            exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.SchemaUnsupported);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>Verifies a missing parent directory is rejected before any file or connection is opened.</summary>
+    [Fact]
+    public async Task RegisterAsync_WhenParentDirectoryDoesNotExist_RejectsAsOpenFailed()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "missing-parent", "grants.db");
+            var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: true);
+
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
+                async () => await store.RegisterAsync(TestGrantFactory.CreateGrant(DateTimeOffset.UnixEpoch), TestContext.Current.CancellationToken));
+
+            exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.OpenFailed);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>Verifies a symlinked ancestor directory in the target's path is rejected before any connection is opened.</summary>
+    [Fact]
+    public async Task RegisterAsync_WhenAnAncestorDirectoryIsASymbolicLink_RejectsAsOpenFailed()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var directory = CreateDirectory();
+        try
+        {
+            var realParent = Path.Combine(directory, "real-parent");
+            _ = Directory.CreateDirectory(realParent);
+            var linkedParent = Path.Combine(directory, "linked-parent");
+            _ = Directory.CreateSymbolicLink(linkedParent, realParent);
+            var path = Path.Combine(linkedParent, "grants.db");
+            var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: true);
+
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
+                async () => await store.RegisterAsync(TestGrantFactory.CreateGrant(DateTimeOffset.UnixEpoch), TestContext.Current.CancellationToken));
+
+            exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.OpenFailed);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>Verifies a main database path that is itself a symbolic link is rejected before any connection is opened.</summary>
+    [Fact]
+    public async Task RegisterAsync_WhenTheMainDatabasePathIsASymbolicLink_RejectsAsOpenFailed()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var directory = CreateDirectory();
+        try
+        {
+            var realPath = Path.Combine(directory, "real-grants.db");
+            using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = realPath }.ConnectionString))
+            {
+                connection.Open();
+            }
+
+            var linkedPath = Path.Combine(directory, "linked-grants.db");
+            _ = File.CreateSymbolicLink(linkedPath, realPath);
+            var store = CreateStore(linkedPath, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), TimeProvider.System, create: false);
+
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
+                async () => await store.RegisterAsync(TestGrantFactory.CreateGrant(DateTimeOffset.UnixEpoch), TestContext.Current.CancellationToken));
+
+            exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.OpenFailed);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>Verifies a persisted payload whose digest no longer matches its bytes is rejected as corrupt evidence.</summary>
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenPersistedDigestDoesNotMatchPayload_RejectsAsCorruptEvidence()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "grants.db");
+            var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+            var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
+            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
+            await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+            using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString))
+            {
+                connection.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText = "UPDATE security_grants SET payload_digest = randomblob(32);";
+                _ = command.ExecuteNonQuery();
+            }
+
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
+                async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken));
+
+            exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>Verifies a persisted payload that matches its digest but no longer decodes is mapped to corrupt evidence.</summary>
+    [Fact]
+    public async Task ValidateAndConsumeAsync_WhenPersistedPayloadIsUndecodableButDigestMatches_RejectsAsCorruptEvidence()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "grants.db");
+            var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+            var store = CreateStore(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), clock, create: true);
+            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            var grant = TestGrantFactory.CreateGrant(clock.GetUtcNow());
+            await store.RegisterAsync(grant, TestContext.Current.CancellationToken);
+            using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString))
+            {
+                connection.Open();
+                using var readCommand = connection.CreateCommand();
+                readCommand.CommandText = "SELECT payload FROM security_grants;";
+                var payload = (byte[]) readCommand.ExecuteScalar()!;
+                payload[5]++; // Corrupt the codec version byte immediately after the fixed magic.
+                using var updateCommand = connection.CreateCommand();
+                updateCommand.CommandText = "UPDATE security_grants SET payload = $payload, payload_digest = $digest;";
+                _ = updateCommand.Parameters.AddWithValue("$payload", payload);
+                _ = updateCommand.Parameters.AddWithValue("$digest", System.Security.Cryptography.SHA256.HashData(payload));
+                _ = updateCommand.ExecuteNonQuery();
+            }
+
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
+                async () => await store.ValidateAndConsumeAsync(grant, TestGrantFactory.CreateEnforcement(grant), TestContext.Current.CancellationToken));
+
+            exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.CorruptEvidence);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>Verifies a target locked exclusively by another connection is reported as a bounded busy failure.</summary>
+    [Fact]
+    public async Task RegisterAsync_WhenAnotherConnectionHoldsAnExclusiveLock_RejectsAsBusy()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "grants.db");
+            var settings = new SqliteSecurityGrantStoreSettings(TimeSpan.FromSeconds(1), 1_048_576, 1_048_576, 256, 256, 32);
+            var store = new SqliteSecurityGrantStore(
+                new SqliteSecurityGrantStoreTarget(path, new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid()), SqliteDatabaseOpenMode.CreateIfMissing, SqliteSchemaMode.ApplyKnownMigrations),
+                settings,
+                TimeProvider.System);
+            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            using var blocker = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString);
+            blocker.Open();
+            // BEGIN IMMEDIATE acquires a RESERVED write lock immediately, without requiring any write statement, so the
+            // adapter's own immediate-transaction open on a second connection blocks until the configured timeout elapses.
+            using var blockingTransaction = blocker.BeginTransaction(deferred: false);
+
+            var exception = await Should.ThrowAsync<SecurityGrantStoreUnavailableException>(
+                async () => await store.RegisterAsync(TestGrantFactory.CreateGrant(DateTimeOffset.UnixEpoch), TestContext.Current.CancellationToken));
+
+            exception.Kind.ShouldBe(SecurityGrantStoreFailureKind.Busy);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static SqliteSecurityGrantStore CreateStore(string path, SqliteSecurityGrantStoreInstanceId instanceId, TimeProvider clock, bool create, ILogger<SqliteSecurityGrantStore>? logger = null) => new(new SqliteSecurityGrantStoreTarget(path, instanceId, create ? SqliteDatabaseOpenMode.CreateIfMissing : SqliteDatabaseOpenMode.OpenExisting, create ? SqliteSchemaMode.ApplyKnownMigrations : SqliteSchemaMode.ValidateExact), SqliteSecurityGrantStoreSettings.CreateDefault(), clock, logger);
     private static string CreateDirectory() => TestTemporaryDirectory.Create();
     private static object? ExecuteScalar(SqliteConnection connection, string sql)

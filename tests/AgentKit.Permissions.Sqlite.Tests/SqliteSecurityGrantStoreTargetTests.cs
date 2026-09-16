@@ -30,4 +30,18 @@ public sealed class SqliteSecurityGrantStoreTargetTests
         impossible.ParamName.ShouldBe("schemaMode");
         directId.ParamName.ShouldBe("value");
     }
+
+    /// <summary>Verifies a non-destructive copy preserves every bootstrap coordinate.</summary>
+    [Fact]
+    public void With_WhenCopiedWithoutChanges_RetainsEveryCoordinate()
+    {
+        var instanceId = new SqliteSecurityGrantStoreInstanceId(Guid.NewGuid());
+        var path = Path.Combine(Path.GetTempPath(), "grants.db");
+        var original = new SqliteSecurityGrantStoreTarget(path, instanceId, SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact);
+
+        var copy = original with { };
+
+        copy.ShouldBe(original);
+        copy.ShouldNotBeSameAs(original);
+    }
 }

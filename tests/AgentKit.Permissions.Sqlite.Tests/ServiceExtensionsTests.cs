@@ -129,6 +129,21 @@ public sealed class ServiceExtensionsTests
             && descriptor.ImplementationType == typeof(SqliteSecurityGrantStore));
     }
 
+    /// <summary>Verifies more than one ambiguous unkeyed captured registration is rejected rather than arbitrarily chosen.</summary>
+    [Fact]
+    public void AddSqliteSecurityGrantStore_WhenMultipleUnkeyedTargetsAreAlreadyRegistered_ThrowsInvalidOperationException()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(CreateTarget(Path.Combine(Path.GetTempPath(), "first-grants.db")));
+        _ = services.AddSingleton(CreateTarget(Path.Combine(Path.GetTempPath(), "second-grants.db")));
+
+        var exception = Should.Throw<InvalidOperationException>(() => services.AddSqliteSecurityGrantStore(
+            CreateTarget(Path.Combine(Path.GetTempPath(), "third-grants.db")),
+            SqliteSecurityGrantStoreSettings.CreateDefault()));
+
+        exception.Message.ShouldContain(nameof(SqliteSecurityGrantStoreTarget));
+    }
+
     /// <summary>Verifies unrelated non-null keyed leaf configuration does not alter the unkeyed captured target.</summary>
     [Fact]
     public void AddSqliteSecurityGrantStore_WhenOtherKeyHasConfiguration_IgnoresKeyedEvidence()
