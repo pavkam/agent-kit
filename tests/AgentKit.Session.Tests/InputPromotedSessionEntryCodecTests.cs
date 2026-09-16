@@ -79,6 +79,98 @@ public sealed class InputPromotedSessionEntryCodecTests: SessionEntryCodecConfor
         _ = codec.Encode(entry).ShouldBeOfType<SessionEntryEncodeRejected>();
     }
 
+    [Fact]
+    public void Decode_WhenPayloadIsNotWellFormedJson_ReturnsRejectedWithParserReason()
+    {
+        var codec = PromotionCodec();
+        var wire = new SessionEntryWireEnvelope(codec.Descriptor.TypeId, Version, [.. "{not json"u8]);
+
+        var result = codec.Decode(wire);
+
+        result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason
+            .ShouldBe("The session-entry payload is not a bounded JSON object.");
+    }
+
+    [Fact]
+    public void Decode_WhenSequenceIsNotPositive_ReturnsMalformedRejection()
+    {
+        var codec = PromotionCodec();
+        var encoded = codec.Encode(PromotionEntry()).ShouldBeOfType<SessionEntryEncoded>();
+        var json = System.Text.Json.Nodes.JsonNode.Parse(encoded.Wire.Payload.AsSpan())!.AsObject();
+        json["sequence"] = 0;
+        var wire = new SessionEntryWireEnvelope(encoded.Wire.TypeId, encoded.Wire.SchemaVersion,
+            [.. System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(json)]);
+
+        var result = codec.Decode(wire);
+
+        result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason
+            .ShouldBe("The input-promotion payload is malformed.");
+    }
+
+    [Fact]
+    public void Decode_WhenAdmissionIdsFieldIsMissing_ReturnsMalformedRejection()
+    {
+        var codec = PromotionCodec();
+        var encoded = codec.Encode(PromotionEntry()).ShouldBeOfType<SessionEntryEncoded>();
+        var json = System.Text.Json.Nodes.JsonNode.Parse(encoded.Wire.Payload.AsSpan())!.AsObject();
+        _ = json.Remove("admissionIds");
+        var wire = new SessionEntryWireEnvelope(encoded.Wire.TypeId, encoded.Wire.SchemaVersion,
+            [.. System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(json)]);
+
+        var result = codec.Decode(wire);
+
+        result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason
+            .ShouldBe("The input-promotion payload is malformed.");
+    }
+
+    [Fact]
+    public void Decode_WhenAdmissionIdsIsEmptyArray_ReturnsMalformedRejection()
+    {
+        var codec = PromotionCodec();
+        var encoded = codec.Encode(PromotionEntry()).ShouldBeOfType<SessionEntryEncoded>();
+        var json = System.Text.Json.Nodes.JsonNode.Parse(encoded.Wire.Payload.AsSpan())!.AsObject();
+        json["admissionIds"] = new System.Text.Json.Nodes.JsonArray();
+        var wire = new SessionEntryWireEnvelope(encoded.Wire.TypeId, encoded.Wire.SchemaVersion,
+            [.. System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(json)]);
+
+        var result = codec.Decode(wire);
+
+        result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason
+            .ShouldBe("The input-promotion payload is malformed.");
+    }
+
+    [Fact]
+    public void Decode_WhenAdmissionIdEntryIsMalformed_ReturnsMalformedRejection()
+    {
+        var codec = PromotionCodec();
+        var encoded = codec.Encode(PromotionEntry()).ShouldBeOfType<SessionEntryEncoded>();
+        var json = System.Text.Json.Nodes.JsonNode.Parse(encoded.Wire.Payload.AsSpan())!.AsObject();
+        json["admissionIds"]![0] = "not-a-guid";
+        var wire = new SessionEntryWireEnvelope(encoded.Wire.TypeId, encoded.Wire.SchemaVersion,
+            [.. System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(json)]);
+
+        var result = codec.Decode(wire);
+
+        result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason
+            .ShouldBe("The input-promotion payload is malformed.");
+    }
+
+    [Fact]
+    public void Decode_WhenInitiatingAdmissionIsNotAmongAdmissionIds_ReturnsSemanticRejection()
+    {
+        var codec = PromotionCodec();
+        var encoded = codec.Encode(PromotionEntry()).ShouldBeOfType<SessionEntryEncoded>();
+        var json = System.Text.Json.Nodes.JsonNode.Parse(encoded.Wire.Payload.AsSpan())!.AsObject();
+        json["initiatingAdmissionId"] = Id(999).ToString();
+        var wire = new SessionEntryWireEnvelope(encoded.Wire.TypeId, encoded.Wire.SchemaVersion,
+            [.. System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(json)]);
+
+        var result = codec.Decode(wire);
+
+        result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason
+            .ShouldBe("The input-promotion payload violates semantic constraints.");
+    }
+
     private static InputPromotedSessionEntryCodec PromotionCodec() => new(TimeProvider.System, NullLogger<InputPromotedSessionEntryCodec>.Instance);
     private static Guid Id(int value) => Guid.Parse($"00000000-0000-0000-0000-{value:D12}");
     private static SessionEntryCodecLimits Limits(int maximumJsonDepth) => new(1_048_576, 64, 65_536, maximumJsonDepth);

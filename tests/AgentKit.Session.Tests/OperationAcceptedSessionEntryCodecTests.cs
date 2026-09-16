@@ -90,6 +90,20 @@ public sealed class OperationAcceptedSessionEntryCodecTests: SessionEntryCodecCo
     }
 
     [Fact]
+    public void Decode_WhenGuidArrayFieldIsMissingOrNotAnArray_ReturnsTypedRejection()
+    {
+        var codec = Codec();
+        var encoded = codec.Encode(OperationAcceptedSessionEntryCodecTestData.Entry()).ShouldBeOfType<SessionEntryEncoded>();
+        var missingField = JsonNode.Parse(encoded.Wire.Payload.AsSpan())!.AsObject();
+        _ = missingField["state"]!.AsObject().Remove("materializedEntryIds");
+        var notAnArray = JsonNode.Parse(encoded.Wire.Payload.AsSpan())!.AsObject();
+        notAnArray["state"]!["materializedEntryIds"] = 1;
+
+        _ = codec.Decode(Wire(encoded.Wire, missingField)).ShouldBeOfType<SessionEntryDecodeRejected>();
+        _ = codec.Decode(Wire(encoded.Wire, notAnArray)).ShouldBeOfType<SessionEntryDecodeRejected>();
+    }
+
+    [Fact]
     public void Encode_WhenCopiedBaseIdentityIsDefault_RejectsBeforeDiagnosticsEvidence()
     {
         var malformed = OperationAcceptedSessionEntryCodecTestData.Entry() with

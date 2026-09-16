@@ -234,6 +234,20 @@ public sealed class ExecutionLaneProvisionedSessionEntryCodecTests: SessionEntry
     }
 
     [Fact]
+    public void ExecutionLaneCodec_WhenProfileKeyIsBlank_ReturnsSemanticRejection()
+    {
+        var codec = LaneCodec();
+        var encoded = codec.Encode(LaneEntry()).ShouldBeOfType<SessionEntryEncoded>();
+        var json = Encoding.UTF8.GetString(encoded.Wire.Payload.AsSpan())
+            .Replace("\"sessionProfile\":{\"key\":\"default\"", "\"sessionProfile\":{\"key\":\"\"", StringComparison.Ordinal);
+
+        var result = codec.Decode(Wire(codec, json));
+
+        result.ShouldBeOfType<SessionEntryDecodeRejected>().Reason.ShouldBe(
+            "The execution-lane provisioning payload violates semantic constraints.");
+    }
+
+    [Fact]
     public void Codecs_WhenUsedConcurrently_RemainDeterministic()
     {
         var lane = LaneCodec();
