@@ -170,6 +170,20 @@ public sealed class InMemoryDurableLeaseManagerTests
     }
 
     [Fact]
+    public async Task AcquireAsync_WhenElapsedTimeMeasurementFails_StillGrantsOwnership()
+    {
+        // GetTimestamp succeeds for TryGetTimestamp's own call (unlike ThrowingTimestampTimeProvider
+        // below), so TryGetElapsedTime's independent failure boundary around its own GetTimestamp
+        // call is exercised instead of short-circuiting before ever calling it.
+        var manager = Manager(new ThrowingElapsedTimeProvider());
+
+        var result = await manager.AcquireAsync(
+            new ExecutionLeaseRequest(Address, WorkerA, TimeSpan.FromMinutes(1)), TestContext.Current.CancellationToken);
+
+        _ = result.ShouldBeOfType<ExecutionLeaseAcquired>();
+    }
+
+    [Fact]
     public async Task AcquireAsync_WhenTheClockAndLoggerFail_StillGrantsOwnership()
     {
         var manager = new InMemoryDurableLeaseManager(
@@ -259,6 +273,21 @@ public sealed class InMemoryDurableLeaseManagerTests
     }
 
     [Fact]
+    public async Task RenewAsync_WhenClockThrowsUnexpectedly_PropagatesAndReportsFailedOutcome()
+    {
+        var clock = new ToggleClockTimeProvider(Epoch);
+        var manager = Manager(clock);
+        var acquired = await manager.AcquireAsync(new ExecutionLeaseRequest(Address, WorkerA, TimeSpan.FromMinutes(1)), TestContext.Current.CancellationToken);
+        await using var lease = acquired.ShouldBeOfType<ExecutionLeaseAcquired>().Lease;
+        clock.ThrowOnGetUtcNow = true;
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await lease.RenewAsync(TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("clock failure during renewal");
+    }
+
+    [Fact]
     public async Task RenewAsync_WhenTheClockAndLoggerFail_StillReportsRenewal()
     {
         var manager = new InMemoryDurableLeaseManager(
@@ -342,6 +371,23 @@ public sealed class InMemoryDurableLeaseManagerTests
         public override DateTimeOffset GetUtcNow() => Epoch;
 
         public override long GetTimestamp() => throw new InvalidTimeZoneException("clock failure");
+    }
+
+    private sealed class ToggleClockTimeProvider(DateTimeOffset now): TimeProvider
+    {
+        internal bool ThrowOnGetUtcNow { get; set; }
+
+        public override DateTimeOffset GetUtcNow() =>
+            ThrowOnGetUtcNow ? throw new InvalidOperationException("clock failure during renewal") : now;
+    }
+
+    private sealed class ThrowingElapsedTimeProvider: TimeProvider
+    {
+        private int _calls;
+
+        public override DateTimeOffset GetUtcNow() => Epoch;
+
+        public override long GetTimestamp() => ++_calls == 1 ? 1 : throw new InvalidTimeZoneException("elapsed-time failure");
     }
 
     private sealed class ThrowingLogger<TCategory>: ILogger<TCategory>

@@ -420,6 +420,25 @@ public sealed class InMemoryDurableOperationJournalTests
         _ = evidence.ShouldBeOfType<RecoveryEvidenceLoaded>();
     }
 
+    [Fact]
+    public async Task WriteMethods_WhenElapsedTimeMeasurementFails_StillReturnTheirCommittedOutcome()
+    {
+        // GetTimestamp succeeds (unlike ThrowingTimeProvider above), so TryGetElapsedTime's own
+        // independent failure boundary around GetElapsedTime is exercised instead of short-circuiting
+        // before ever calling it.
+        var journal = new InMemoryDurableOperationJournal(new ThrowingElapsedTimeProvider(), new ThrowingLogger<InMemoryDurableOperationJournal>());
+
+        var started = await journal.RecordStartAsync(DurableJournalTestData.Start(TokenOne), TestContext.Current.CancellationToken);
+        var checkpointed = await journal.RecordCheckpointAsync(DurableJournalTestData.Checkpoint(TokenOne), TestContext.Current.CancellationToken);
+        var completed = await journal.RecordTerminalAsync(DurableJournalTestData.Result(TokenOne), TestContext.Current.CancellationToken);
+        var evidence = await journal.LoadEvidenceAsync(DurableJournalTestData.Address(), TestContext.Current.CancellationToken);
+
+        _ = started.ShouldBeOfType<DurableRecorded>();
+        _ = checkpointed.ShouldBeOfType<DurableRecorded>();
+        _ = completed.ShouldBeOfType<DurableRecorded>();
+        _ = evidence.ShouldBeOfType<RecoveryEvidenceLoaded>();
+    }
+
     private static InMemoryDurableOperationJournal Journal() => new(TimeProvider.System);
 
     private sealed class ThrowingTimeProvider: TimeProvider
@@ -427,6 +446,18 @@ public sealed class InMemoryDurableOperationJournalTests
         public override DateTimeOffset GetUtcNow() => DurableJournalTestData.Now;
 
         public override long GetTimestamp() => throw new InvalidTimeZoneException("clock failure");
+    }
+
+    private sealed class ThrowingElapsedTimeProvider: TimeProvider
+    {
+        private int _calls;
+
+        public override DateTimeOffset GetUtcNow() => DurableJournalTestData.Now;
+
+        // The first call captures the starting timestamp (TryGetTimestamp, unprotected against this
+        // failure mode); the second call is GetElapsedTime's own internal "now" fetch, which fails
+        // independently and exercises TryGetElapsedTime's own catch boundary.
+        public override long GetTimestamp() => ++_calls == 1 ? 1 : throw new InvalidTimeZoneException("elapsed-time failure");
     }
 
     private sealed class ThrowingLogger<TCategory>: ILogger<TCategory>
