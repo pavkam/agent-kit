@@ -123,4 +123,45 @@ public sealed class ServiceExtensionsTests
 
         services.Count(static descriptor => descriptor.ServiceType == typeof(ISessionStore)).ShouldBe(1);
     }
+
+    [Fact]
+    public void AddInMemorySessionDirectory_WhenServicesIsNull_ThrowsArgumentNullException()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Should.Throw<ArgumentNullException>(() => services.AddInMemorySessionDirectory(new ComponentId("directory")));
+
+        exception.ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddInMemorySessionDirectory_WhenSecurityAudienceIsBlank_ThrowsArgumentException()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Should.Throw<ArgumentException>(() => services.AddInMemorySessionDirectory(default));
+
+        exception.ParamName.ShouldBe("securityAudience");
+    }
+
+    [Fact]
+    public void AddInMemorySessionDirectory_WhenRegisteredWithoutAStore_ResolvesAWorkingDirectoryAndOwnIdentifierGenerator()
+    {
+        var services = new ServiceCollection();
+        var security = new TestSecurityHarness();
+        _ = services.AddSingleton<ISecurityGrantStore>(security);
+        _ = services.AddSingleton<ISecurityAuditDispatcher>(security);
+
+        _ = services.AddInMemorySessionDirectory(new ComponentId("standalone-directory"));
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true,
+        });
+
+        var directory = provider.GetRequiredService<ISessionDirectory>().ShouldBeOfType<InMemorySessionDirectory>();
+        directory.SecurityAudience.ShouldBe(new ComponentId("standalone-directory"));
+        _ = provider.GetRequiredService<IIdentifierGenerator<SecurityAuditRecordId>>();
+        _ = provider.GetRequiredService<TimeProvider>();
+    }
 }
