@@ -45,6 +45,14 @@ public sealed class GrantConsumptionResultTests
         return new SecurityEnforcementRequest(scope, identity, new ComponentId("session"), SecurityOperationKind.StateMutation, SecurityEffect.Mutate, [new ProtectedResource(ProtectedResourceKind.ApplicationState, resourceValue)], new InputFingerprint("sha256:input"), new SecurityRevocationVersion(1));
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed.");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static SecurityEnforcementIntentId IntentId() => new(Guid.Parse("40000000-0000-0000-0000-000000000004"));
     private static GrantId GrantId() => new(Guid.Parse("50000000-0000-0000-0000-000000000005"));
     private static SecurityRequestId RequestId() => new(Guid.Parse("60000000-0000-0000-0000-000000000006"));

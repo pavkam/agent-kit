@@ -56,6 +56,7 @@ public sealed class SecurityAuditRecordTests
         var approvalRequestId = new ApprovalRequestId(Guid.Parse("a6666666-6666-6666-6666-666666666666"));
         var fields = ImmutableDictionary<string, RedactedAuditValue>.Empty.Add("key", RedactedAuditValue.FromComponentId(new ComponentId("component")));
         var record = Record(grantId: grantId, approvalRequestId: approvalRequestId, fields: fields);
+        record.Id.ShouldBe(new SecurityAuditRecordId(Guid.Parse("a1111111-1111-1111-1111-111111111111")));
         record.Scope.ShouldBe(Scope());
         record.RequestId.ShouldBe(new SecurityRequestId(Guid.Parse("a4444444-4444-4444-4444-444444444444")));
         record.GrantId.ShouldBe(grantId);

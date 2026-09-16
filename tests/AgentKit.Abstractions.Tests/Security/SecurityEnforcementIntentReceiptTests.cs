@@ -34,4 +34,26 @@ public sealed class SecurityEnforcementIntentReceiptTests
     private static SecurityEnforcementIntentId IntentId() => new(Guid.Parse("40000000-0000-0000-0000-000000000004"));
     private static GrantId GrantId() => new(Guid.Parse("50000000-0000-0000-0000-000000000005"));
     private static SecurityRequestId RequestId() => new(Guid.Parse("60000000-0000-0000-0000-000000000006"));
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var fence = new FencingToken(1);
+        var consumedAt = DateTimeOffset.UnixEpoch;
+        var receipt = new SecurityEnforcementIntentReceipt(IntentId(), GrantId(), RequestId(), Enforcement(), fence, new ContentHash("sha256:effect"), consumedAt);
+        receipt.IntentId.ShouldBe(IntentId());
+        receipt.GrantId.ShouldBe(GrantId());
+        receipt.RequestId.ShouldBe(RequestId());
+        receipt.RequiredFence.ShouldBe(fence);
+        receipt.EffectFingerprint.ShouldBe(new ContentHash("sha256:effect"));
+        receipt.ConsumedAt.ShouldBe(consumedAt);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SecurityEnforcementIntentReceipt(IntentId(), GrantId(), RequestId(), Enforcement(), null, new ContentHash("sha256:effect"), DateTimeOffset.UnixEpoch);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

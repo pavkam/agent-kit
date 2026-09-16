@@ -17,4 +17,21 @@ public sealed class SecurityAuditSinkRegistrationTests
         Should.Throw<ArgumentException>(() => new SecurityAuditSinkRegistration([SecurityAuditEventKind.Decision, SecurityAuditEventKind.Decision], SecurityAuditDelivery.Required, true)).ParamName.ShouldBe("supportedEventKinds");
         Should.Throw<ArgumentOutOfRangeException>(() => new SecurityAuditSinkRegistration([SecurityAuditEventKind.Decision], (SecurityAuditDelivery) 99, true)).ParamName.ShouldBe("delivery");
     }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var registration = new SecurityAuditSinkRegistration([SecurityAuditEventKind.Decision], SecurityAuditDelivery.Required, true);
+        registration.SupportedEventKinds.ShouldBe([SecurityAuditEventKind.Decision]);
+        registration.Delivery.ShouldBe(SecurityAuditDelivery.Required);
+        registration.ProvidesDurableAcceptance.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SecurityAuditSinkRegistration([SecurityAuditEventKind.Decision], SecurityAuditDelivery.Required, true);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

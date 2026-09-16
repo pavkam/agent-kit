@@ -34,6 +34,14 @@ public sealed class SecurityAuthorizationContextTests
     }
 
     private static SecurityAuthorizationContext Context() => NewContext(new SecurityProfileKey("default"), new SecurityProfileVersion(2), Reference(), new ComponentKey<ISecurityAuthority>("authority"), new ConfigurationVersion(9), Scope(), Identity());
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Context();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
     private static SecurityAuthorizationContext NewContext(SecurityProfileKey profileKey, SecurityProfileVersion profileVersion, SecurityPolicySnapshotReference policySnapshot, ComponentKey<ISecurityAuthority> authorityKey, ConfigurationVersion configurationVersion, SecurityAuthorizationScope scope, ExecutionIdentity identity) => new(profileKey, profileVersion, policySnapshot, authorityKey, new AgentDefinitionRevision(0), configurationVersion, scope, identity);
     private static SecurityPolicySnapshotReference Reference() => new(SnapshotId(), PolicyVersion(), Hash());
     private static SecurityPolicySnapshotId SnapshotId() => new(Guid.Parse("11111111-1111-1111-1111-111111111111"));

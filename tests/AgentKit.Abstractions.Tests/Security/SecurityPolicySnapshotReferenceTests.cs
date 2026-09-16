@@ -29,4 +29,12 @@ public sealed class SecurityPolicySnapshotReferenceTests
     }
 
     private static SecurityPolicySnapshotReference Reference() => new(SnapshotId(), PolicyVersion(), Hash());
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Reference();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

@@ -25,4 +25,12 @@ public sealed class SecurityEnforcementIntentTests
     }
 
     private static SecurityEnforcementIntentId IntentId() => new(Guid.Parse("40000000-0000-0000-0000-000000000004"));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SecurityEnforcementIntent(IntentId(), null);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

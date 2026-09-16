@@ -28,6 +28,23 @@ public sealed class SecurityProfilePublicationTests
         typeof(SecurityProfilePublication).GetProperties().ShouldAllBe(static property => property.SetMethod == null);
     }
 
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var publication = Publication();
+        publication.ProfileKey.ShouldBe(ProfileKey());
+        publication.ProfileVersion.ShouldBe(ProfileVersion());
+        publication.AuthorityKey.ShouldBe(AuthorityKey());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Publication();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static SecurityProfilePublication Publication() => NewPublication(AgentId(), DefinitionRevision(), ConfigurationVersion(), ProfileKey(), ProfileVersion(), PolicySnapshot(), AuthorityKey());
     private static SecurityProfilePublication NewPublication(AgentId agentId, AgentDefinitionRevision agentDefinitionRevision, ConfigurationVersion configurationVersion, SecurityProfileKey profileKey, SecurityProfileVersion profileVersion, SecurityPolicySnapshotReference policySnapshot, ComponentKey<ISecurityAuthority> authorityKey) => new(agentId, agentDefinitionRevision, configurationVersion, profileKey, profileVersion, policySnapshot, authorityKey);
     private static AgentId AgentId() => new(Guid.Parse("a1111111-1111-1111-1111-111111111111"));

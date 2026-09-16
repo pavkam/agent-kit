@@ -67,4 +67,12 @@ public sealed class RedactedAuditValueTests
         value.Kind.ShouldBe(SecurityAuditValueKind.Effect);
         value.Value.ShouldBe(nameof(SecurityEffect.Observe));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = RedactedAuditValue.FromComponentId(new ComponentId("component"));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

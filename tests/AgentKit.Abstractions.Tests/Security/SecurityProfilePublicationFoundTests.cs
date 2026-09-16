@@ -31,4 +31,20 @@ public sealed class SecurityProfilePublicationFoundTests
         found.Publication.PolicySnapshot.ShouldBeSameAs(publication.PolicySnapshot);
         typeof(SecurityProfilePublicationFound).GetProperties().ShouldAllBe(static property => property.SetMethod == null);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var publication = new SecurityProfilePublication(
+            new AgentId(Guid.Parse("a1111111-1111-1111-1111-111111111111")),
+            new AgentDefinitionRevision(2), new ConfigurationVersion(3),
+            new SecurityProfileKey("security.primary"), new SecurityProfileVersion(4),
+            new SecurityPolicySnapshotReference(
+                new SecurityPolicySnapshotId(Guid.Parse("a2222222-2222-2222-2222-222222222222")),
+                new SecurityPolicyVersion(5), new ContentHash("sha256:policy")),
+            new ComponentKey<ISecurityAuthority>("authority.primary"));
+        var original = new SecurityProfilePublicationFound(publication);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

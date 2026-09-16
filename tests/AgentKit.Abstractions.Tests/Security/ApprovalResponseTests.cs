@@ -30,6 +30,8 @@ public sealed class ApprovalResponseTests
     public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
     {
         var response = SecurityAbstractionsTestData.Response();
+        response.Id.ShouldNotBe(default);
+        response.RequestId.ShouldNotBe(default);
         response.Binding.ShouldBe(SecurityAbstractionsTestData.ScopeBinding());
         response.Resolution.ShouldBe(ApprovalResolution.Approved);
         response.ApproverIdentity.ShouldBe(SecurityAbstractionsTestData.Identity());
