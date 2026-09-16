@@ -23,6 +23,19 @@ public sealed class AsyncOwnedConversationSessionTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenNoObserverIsSupplied_ForwardsThePlainOverload()
+    {
+        var owner = new RecordingAsyncDisposable();
+        var sut = new AsyncOwnedConversationSession(new StubSession(), owner);
+
+        var result = await sut.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        owner.Completion.SetResult();
+        await sut.DisposeAsync();
+    }
+
+    [Fact]
     public async Task DisposeAsync_WhenRepeated_SharesCompletionAndInvokesOwnerOnce()
     {
         var owner = new RecordingAsyncDisposable();

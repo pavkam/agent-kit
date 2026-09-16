@@ -25,4 +25,27 @@ public sealed class ConversationHistoryPageTests
         second.ShouldBe(first);
         second.GetHashCode().ShouldBe(first.GetHashCode());
     }
+
+    [Fact]
+    public void Equals_WhenPagesShareTheSameNonEmptyMessages_ReturnsTrueWithMatchingHashCode()
+    {
+        var message = new UserMessage(
+            new MessageId(Guid.NewGuid()),
+            new AgentId(Guid.NewGuid()),
+            new SessionId(Guid.NewGuid()),
+            null,
+            new BranchId(Guid.NewGuid()),
+            null,
+            null,
+            DateTimeOffset.UnixEpoch,
+            MessageState.Complete,
+            [new TextPart("hi", TextSemantics.Plain, ExtensionData.Empty)],
+            ExtensionData.Empty);
+        var messages = ImmutableArray.Create<AgentMessage>(message);
+        var first = new ConversationHistoryPage(messages, new SessionSequence(1), complete: true);
+        var second = new ConversationHistoryPage(messages, new SessionSequence(1), complete: true);
+
+        second.ShouldBe(first);
+        second.GetHashCode().ShouldBe(first.GetHashCode());
+    }
 }

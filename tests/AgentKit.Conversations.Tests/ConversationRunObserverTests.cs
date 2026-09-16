@@ -34,6 +34,57 @@ public sealed class ConversationRunObserverTests
     }
 
     [Fact]
+    public async Task OnEventAsync_WhenReasoningWasStreamed_DoesNotRepeatCompletedPart()
+    {
+        var observer = new RecordingConversationEventObserver();
+        var sut = CreateObserver(observer);
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var turnId = new TurnId(Guid.NewGuid());
+
+        await sut.OnEventAsync(
+            new AgentRunModelResponseEvent(
+                turnId,
+                new ModelPartDelta(requestId, 1, 0, new ReasoningContentDelta("thinking", ExtensionData.Empty))),
+            TestContext.Current.CancellationToken);
+        await sut.OnEventAsync(
+            new AgentRunModelResponseEvent(
+                turnId,
+                new ModelPartCompleted(
+                    requestId,
+                    2,
+                    0,
+                    new ReasoningPart(
+                        new ReasoningContent("thinking", ReasoningVisibility.Visible, null, ExtensionData.Empty),
+                        ExtensionData.Empty))),
+            TestContext.Current.CancellationToken);
+
+        observer.Events.ShouldHaveSingleItem().ShouldBeOfType<ConversationReasoningEvent>().Text.ShouldBe("thinking");
+    }
+
+    [Fact]
+    public async Task OnEventAsync_WhenProviderBuffersReasoning_ProjectsCompletedPart()
+    {
+        var observer = new RecordingConversationEventObserver();
+        var sut = CreateObserver(observer);
+        var requestId = new ModelRequestId(Guid.NewGuid());
+
+        await sut.OnEventAsync(
+            new AgentRunModelResponseEvent(
+                new TurnId(Guid.NewGuid()),
+                new ModelPartCompleted(
+                    requestId,
+                    1,
+                    0,
+                    new ReasoningPart(
+                        new ReasoningContent("buffered thought", ReasoningVisibility.Visible, null, ExtensionData.Empty),
+                        ExtensionData.Empty))),
+            TestContext.Current.CancellationToken);
+
+        observer.Events.ShouldHaveSingleItem().ShouldBeOfType<ConversationReasoningEvent>()
+            .Text.ShouldBe("buffered thought");
+    }
+
+    [Fact]
     public async Task OnEventAsync_WhenProviderBuffersText_ProjectsCompletedPart()
     {
         var observer = new RecordingConversationEventObserver();

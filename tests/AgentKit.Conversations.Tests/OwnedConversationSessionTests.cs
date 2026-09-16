@@ -23,6 +23,41 @@ public sealed class OwnedConversationSessionTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenNoObserverIsSupplied_ForwardsThePlainOverload()
+    {
+        var inner = new RecordingSession();
+        using var sut = new OwnedConversationSession(inner, new RecordingDisposable());
+
+        var result = await sut.SendAsync("hello", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        inner.LastOperation.ShouldBe("send");
+    }
+
+    [Fact]
+    public async Task PresentToolAsync_WhenCalled_ForwardsToTheInnerConversation()
+    {
+        var inner = new RecordingSession();
+        using var sut = new OwnedConversationSession(inner, new RecordingDisposable());
+        var call = FakeMessages.ToolCall("search", "{}");
+
+        var presentation = await sut.PresentToolAsync(call, TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeSameAs(inner.Presentation);
+        inner.LastPresentedPart.ShouldBeSameAs(call);
+    }
+
+    [Fact]
+    public async Task PresentToolAsync_WhenDisposed_ThrowsObjectDisposedException()
+    {
+        var sut = new OwnedConversationSession(new RecordingSession(), new RecordingDisposable());
+        sut.Dispose();
+
+        _ = await Should.ThrowAsync<ObjectDisposedException>(
+            async () => await sut.PresentToolAsync(FakeMessages.ToolCall("search", "{}")));
+    }
+
+    [Fact]
     public async Task OpenAsyncListAsyncAndReadHistoryAsync_WhenCalled_ForwardWithoutDefaultFallback()
     {
         var inner = new RecordingSession();
@@ -66,6 +101,8 @@ public sealed class OwnedConversationSessionTests
         internal int MaximumResults { get; private set; }
         internal SessionSequence HistoryCursor { get; private set; }
         internal int MaximumHistoryEntries { get; private set; }
+        internal ContentPart? LastPresentedPart { get; private set; }
+        internal ToolPresentation Presentation { get; } = new([], ToolPresentationDisposition.Fallback);
 
         public ValueTask<ConversationHistoryReadResult> ReadHistoryAsync(
             SessionSequence afterSequence,
@@ -116,6 +153,13 @@ public sealed class OwnedConversationSessionTests
             Observer = observer;
             CancellationToken = cancellationToken;
             return Task.FromResult(new ConversationTurnResult(true, []));
+        }
+
+        public ValueTask<ToolPresentation?> PresentToolAsync(ContentPart part, CancellationToken cancellationToken = default)
+        {
+            LastPresentedPart = part;
+            CancellationToken = cancellationToken;
+            return ValueTask.FromResult<ToolPresentation?>(Presentation);
         }
     }
 

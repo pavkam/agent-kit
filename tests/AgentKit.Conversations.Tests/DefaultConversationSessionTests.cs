@@ -5,6 +5,7 @@ namespace AgentKit.Conversations.Tests;
 
 using AgentKit.TestSupport;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 /// <summary>Verifies DefaultConversationSession behavior and contracts.</summary>
@@ -28,6 +29,91 @@ public sealed class DefaultConversationSessionTests
         var append = coordinator.LastAppendRequest.ShouldNotBeNull();
         append.ExpectedVersion.ShouldBe(new SessionVersion(1));
         append.Entries.ShouldHaveSingleItem().Sequence.ShouldBe(new SessionSequence(3));
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenFirstCalled_LogsSessionCreationTurnStartAndSettlement()
+    {
+        var logger = new RecordingLogger<DefaultConversationSession>();
+        using var session = CreateSession(logger: logger);
+
+        var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeTrue();
+        var entries = logger.Snapshot();
+        entries.ShouldContain(static entry => entry.EventId.Id == 24005);
+        var started = entries.Single(static entry => entry.EventId.Id == 24000);
+        started.State["AgentId"].ShouldBe(ConversationSessionOptionsFactory.AgentId);
+        var settled = entries.Single(static entry => entry.EventId.Id == 24001);
+        settled.State["EventCount"].ShouldBe(result.Events.Length);
+        entries.SelectMany(static entry => entry.State.Values.Select(static value => value?.ToString()).Append(entry.Message))
+            .ShouldNotContain("hi");
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenAppendDoesNotSucceed_LogsTurnAdmissionFailed()
+    {
+        var logger = new RecordingLogger<DefaultConversationSession>();
+        var coordinator = new FakeSessionCoordinator { AppendResult = new SessionAppendFailed("no capacity") };
+        using var session = CreateSession(coordinator: coordinator, logger: logger);
+
+        var result = await session.SendAsync("hi", TestContext.Current.CancellationToken);
+
+        result.Succeeded.ShouldBeFalse();
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 24002);
+        entry.Level.ShouldBe(LogLevel.Warning);
+        entry.State["AgentId"].ShouldBe(ConversationSessionOptionsFactory.AgentId);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenCancellationTokenIsAlreadyCancelled_LogsTurnCancelled()
+    {
+        var logger = new RecordingLogger<DefaultConversationSession>();
+        using var session = CreateSession(logger: logger);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        _ = await Should.ThrowAsync<OperationCanceledException>(
+            async () => await session.SendAsync("hi", cts.Token));
+
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 24003);
+        entry.Level.ShouldBe(LogLevel.Information);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenTheLoopThrowsANonCancellationException_LogsTurnFaulted()
+    {
+        var logger = new RecordingLogger<DefaultConversationSession>();
+        var fault = new InvalidOperationException("loop fault");
+        var loop = new FakeAgentLoop { ResultFactory = _ => throw fault };
+        using var session = CreateSession(loop: loop, logger: logger);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await session.SendAsync("hi", TestContext.Current.CancellationToken));
+
+        exception.ShouldBeSameAs(fault);
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 24004);
+        entry.Level.ShouldBe(LogLevel.Error);
+        entry.State["ErrorType"].ShouldBe(fault.GetType().FullName);
+    }
+
+    [Fact]
+    public async Task ReadHistoryAsync_WhenCoordinatorThrows_LogsHistoryReadFaulted()
+    {
+        var logger = new RecordingLogger<DefaultConversationSession>();
+        var coordinator = new FakeSessionCoordinator
+        {
+            ReadResultFactory = _ => throw new InvalidOperationException("stored conversation secret"),
+        };
+        var sessionId = new SessionId(Guid.NewGuid());
+        using var session = CreateSession(coordinator: coordinator, logger: logger);
+        _ = await session.OpenAsync(sessionId, TestContext.Current.CancellationToken);
+
+        _ = await session.ReadHistoryAsync(new SessionSequence(0), 10, TestContext.Current.CancellationToken);
+
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 24006);
+        entry.Level.ShouldBe(LogLevel.Warning);
+        entry.State["ErrorType"].ShouldBe(typeof(InvalidOperationException).FullName);
     }
 
     [Fact]
@@ -1472,7 +1558,8 @@ public sealed class DefaultConversationSessionTests
         Action<ConversationSessionOptions>? configureOptions = null,
         TimeProvider? timeProvider = null,
         ConversationSessionOptions? options = null,
-        IToolPresenter? toolPresenter = null) =>
+        IToolPresenter? toolPresenter = null,
+        Microsoft.Extensions.Logging.ILogger<DefaultConversationSession>? logger = null) =>
         new(
             coordinator ?? new FakeSessionCoordinator(),
             selector ?? new FakeSecurityProfileSelector(),
@@ -1489,7 +1576,7 @@ public sealed class DefaultConversationSessionTests
             new GuidIdentifierGenerator<SessionEntryId>(static guid => new SessionEntryId(guid)),
             timeProvider ?? new FakeTimeProvider(),
             Options.Create(options ?? ConversationSessionOptionsFactory.Valid(configureOptions)),
-            logger: null,
+            logger: logger,
             toolPresenter: toolPresenter);
 
     /// <summary>
