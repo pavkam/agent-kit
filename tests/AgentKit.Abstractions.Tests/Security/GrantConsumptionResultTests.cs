@@ -32,6 +32,8 @@ public sealed class GrantConsumptionResultTests
     {
         var result = new GrantConsumptionResult(GrantConsumptionStatus.Consumed, 0, "Consumed.");
         result.Status.ShouldBe(GrantConsumptionStatus.Consumed);
+        result.RemainingUses.ShouldBe(0);
+        result.SafeMessage.ShouldBe("Consumed.");
         result.IntentReceipt.ShouldBeNull();
     }
 
