@@ -402,6 +402,56 @@ public sealed class InMemorySessionDirectoryTests
     }
 
     [Fact]
+    public async Task RecordAsync_WhenAddressAlreadyBelongsToAnotherTenant_ReturnsDenied()
+    {
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore());
+        var owner = Context("tenant-a");
+        var ownerLocation = Location(owner.SessionId.ToString(), "store-a", owner.Identity.TenantId);
+        _ = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                new SessionDirectoryWriteRequest(owner, ownerLocation, new IdempotencyKey("record-cross-tenant-1")),
+                Grant(owner, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+        // Different tenant and a fresh idempotency key so the write-route lookup misses and falls through to the address check.
+        var otherTenant = Context("tenant-b", owner.SessionId);
+        var otherLocation = Location(owner.SessionId.ToString(), "store-a", otherTenant.Identity.TenantId);
+
+        var result = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                new SessionDirectoryWriteRequest(otherTenant, otherLocation, new IdempotencyKey("record-cross-tenant-2")),
+                Grant(otherTenant, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBe(new SessionDirectoryWriteDenied("The directory route cannot be recorded."));
+    }
+
+    [Fact]
+    public async Task RecordAsync_WhenExistingLocationMatchesOwnerButNewKeyTargetsDifferentStoreKey_ReturnsConflict()
+    {
+        var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore());
+        var context = Context();
+        var location = Location(context.SessionId.ToString(), "store-a", context.Identity.TenantId);
+        _ = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                new SessionDirectoryWriteRequest(context, location, new IdempotencyKey("record-diff-store-1")),
+                Grant(context, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+        var differentStoreLocation = Location(context.SessionId.ToString(), "store-b", context.Identity.TenantId);
+
+        // A fresh idempotency key against the same address, tenant, and owner but a different store key indexes
+        // a new write route, misses the previous-write replay check, and falls through to the store-key conflict.
+        var result = await directory.RecordAsync(
+            new AuthorizedSessionDirectoryRequest<SessionDirectoryWriteRequest>(
+                new SessionDirectoryWriteRequest(context, differentStoreLocation, new IdempotencyKey("record-diff-store-2")),
+                Grant(context, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), Intent()),
+            TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionLocationConflict>();
+        conflict.Existing.ShouldBe(location);
+        conflict.RequestedStoreKey.ShouldBe(new SessionStoreKey("store-b"));
+    }
+
+    [Fact]
     public async Task RecordAsync_WhenExistingLocationMatchesAndNewKeyRetried_ReturnsExistingAsExisting()
     {
         var directory = CreateDirectory(new RecordingAuditDispatcher(new SecurityAuditAccepted()), new RecordingGrantStore());
