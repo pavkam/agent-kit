@@ -15,13 +15,16 @@ public sealed class AcceptedToolCallTests
         var accepted = fixture.Accepted();
         accepted.AgentId.ShouldBe(fixture.AgentId);
         accepted.SessionId.ShouldBe(fixture.SessionId);
+        accepted.RunId.ShouldBe(fixture.RunId);
         accepted.TurnId.ShouldBe(fixture.TurnId);
         accepted.OperationId.ShouldBe(fixture.OperationId);
+        accepted.CallId.ShouldBe(fixture.CallId);
         accepted.Authorization.ShouldBe(fixture.Authorization);
         accepted.Acceptance.ShouldBe(fixture.Acceptance);
         accepted.ProviderAlias.ShouldBe(new ToolAlias("provider-tool"));
         accepted.ToolId.ShouldBe(fixture.ToolId);
         accepted.ToolVersion.ShouldBe(fixture.ToolVersion);
+        accepted.Effects.ShouldBe(fixture.Effects);
         accepted.ExternalIdempotencyKey.ShouldBeNull();
         accepted.Admission.ShouldBe(fixture.Admission);
         accepted.RequestedAt.ShouldBe(DateTimeOffset.UnixEpoch);
