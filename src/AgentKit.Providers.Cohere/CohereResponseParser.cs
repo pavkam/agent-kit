@@ -669,7 +669,7 @@ public sealed class CohereResponseParser: ICohereResponseParser
                 ExtensionData.Empty),
             SlotKind.ToolCall => new ToolCallPart(
                 slot.AssignedCallId,
-                new ToolReference(new ToolId(slot.ToolCallName!), null, slot.ToolCallName!),
+                new ToolReference(new ToolAlias(slot.ToolCallName!), null, null),
                 ProviderJson.ParseArguments(slot.ToolCallArguments.ToString()),
                 slot.ToolCallId is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
                 ExtensionData.Empty),
@@ -801,7 +801,7 @@ public sealed class CohereResponseParser: ICohereResponseParser
                 var arguments = ProviderJson.ParseArguments(function.Arguments);
                 var toolCallPart = new ToolCallPart(
                     callId,
-                    new ToolReference(new ToolId(name), null, name),
+                    new ToolReference(new ToolAlias(name), null, null),
                     arguments,
                     toolCall.Id is { Length: > 0 } id ? new ProviderToolCallId(id) : null,
                     ExtensionData.Empty);

@@ -46,7 +46,7 @@ public sealed class CohereRequestTranslatorTests
     public void Translate_WhenConversationHasToolUseAndResult_MatchesExpectedRequestBody()
     {
         var callId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000001"));
-        var toolReference = new ToolReference(new ToolId("get_weather"), null, "get_weather");
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
 
         var assistantMessage = TestMessages.Assistant(
             new ToolCallPart(
@@ -57,12 +57,7 @@ public sealed class CohereRequestTranslatorTests
                 ExtensionData.Empty));
 
         var toolMessage = TestMessages.Tool(
-            new ToolResultPart(
-                callId,
-                toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
-                [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)],
-                ExtensionData.Empty));
+            new ToolResultPart(callId, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("15 degrees and sunny", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty));
 
         var messages = ImmutableArray.Create<AgentMessage>(
             TestMessages.System("You are a weather assistant."),
@@ -341,21 +336,11 @@ public sealed class CohereRequestTranslatorTests
     {
         var callIdA = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000003"));
         var callIdB = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000004"));
-        var toolReference = new ToolReference(new ToolId("noop"), null, "noop");
+        var toolReference = new ToolReference(new ToolAlias("noop"), null, null);
 
         var toolMessage = TestMessages.Tool(
-            new ToolResultPart(
-                callIdA,
-                toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
-                [new TextPart("result a", TextSemantics.Plain, ExtensionData.Empty)],
-                ExtensionData.Empty),
-            new ToolResultPart(
-                callIdB,
-                toolReference,
-                new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, "boom", ExtensionData.Empty),
-                [],
-                ExtensionData.Empty));
+            new ToolResultPart(callIdA, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), [new TextPart("result a", TextSemantics.Plain, ExtensionData.Empty)], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty),
+            new ToolResultPart(callIdB, toolReference, new ToolCallOutcome(ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.Unknown, false, "boom", ExtensionData.Empty), [], new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty));
 
         var context = new LlmRequestContext(
             new ModelRequestId(Guid.NewGuid()),

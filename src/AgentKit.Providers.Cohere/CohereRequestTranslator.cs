@@ -205,7 +205,7 @@ public sealed class CohereRequestTranslator: ICohereRequestTranslator
                         ["type"] = "function",
                         ["function"] = new JsonObject
                         {
-                            ["name"] = toolCall.Tool.Name,
+                            ["name"] = toolCall.Tool.ProviderAlias.Value,
                             ["arguments"] = toolCall.Arguments.GetRawText(),
                         },
                     });
