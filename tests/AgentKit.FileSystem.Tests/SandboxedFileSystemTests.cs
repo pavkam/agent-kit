@@ -1012,6 +1012,22 @@ public sealed class SandboxedFileSystemTests: IDisposable
     }
 
     [Fact]
+    public async Task SearchAsync_WhenProjectionWindowWouldSplitAMultiByteCharacter_AdjustsBothEdgesToValidUtf8()
+    {
+        // "é" is 2 UTF-8 bytes (0xC3 0xA9); with MaximumLineBytes=29 the naive half-context math lands the
+        // leading edge on a continuation byte and the trailing edge mid-character, forcing both the
+        // leading-edge continuation-byte skip and the trailing shrink-until-valid retry.
+        await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemSearch, "a.txt"), $"{new string('é', 100)}needle{new string('é', 100)}", TestContext.Current.CancellationToken);
+        var fileSystem = CreateFileSystemSandboxedFileSystemSearch();
+        var request = new FileSearchRequest(null, new FileSearchPattern("needle", FileSearchPatternKind.Literal), new GlobPattern("**/*"), true, false, 10, 100, 1024 * 1024, 100, 29, TimeSpan.FromSeconds(10), TestSecurity.Grant());
+        var result = await fileSystem.SearchAsync(request, TestContext.Current.CancellationToken);
+        var match = result.Matches.ShouldHaveSingleItem();
+        match.LineText.ShouldContain("needle");
+        match.LineTextTruncated.ShouldBeTrue();
+        System.Text.Encoding.UTF8.GetByteCount(match.LineText).ShouldBeLessThanOrEqualTo(29);
+    }
+
+    [Fact]
     public async Task SearchAsync_WhenRequestExceedsHostCeiling_DeniesBeforeTraversal()
     {
         await File.WriteAllTextAsync(Path.Combine(_rootSandboxedFileSystemSearch, "a.txt"), "needle", TestContext.Current.CancellationToken);
