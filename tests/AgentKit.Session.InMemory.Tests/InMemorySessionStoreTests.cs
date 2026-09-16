@@ -1469,6 +1469,123 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
         result.ShouldBeOfType<SessionLoadFailed>().SafeMessage.ShouldBe("The enforcement intent fence differs from the session request.");
     }
 
+    private static AuthorizedSessionStoreRequest<TRequest> MismatchedStoreKey<TRequest>(
+        InMemorySessionStore store, TRequest request, SecurityOperationKind kind, SecurityEffect effect)
+        where TRequest : class
+    {
+        var authorized = TestSecurityHarness.For(store).Authorize(store, request, kind, effect);
+        return new AuthorizedSessionStoreRequest<TRequest>(authorized.Request, new SessionStoreKey("some-other-store"), authorized.Grant, authorized.Intent);
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        var (store, descriptor, context) = await SeedLaneContextAsync();
+        var provision = ProvisionRequest(context, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version, new SessionEntryId(Guid.NewGuid()), "enforce-provision");
+        var mismatched = MismatchedStoreKey(store, provision, SecurityOperationKind.StateMutation, SecurityEffect.Create);
+
+        var result = await store.ProvisionLaneAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionExecutionLaneProvisionRejected>().SafeMessage.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var read = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10);
+        var mismatched = MismatchedStoreKey(store, read, SecurityOperationKind.StateRead, SecurityEffect.Observe);
+
+        var result = await store.ReadAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionReadFailed>().SafeMessage.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task CreateBranchAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var branch = new SessionBranchRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), new IdempotencyKey("enforce-branch"));
+        var mismatched = MismatchedStoreKey(store, branch, SecurityOperationKind.StateMutation, SecurityEffect.Create);
+
+        var result = await store.CreateBranchAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionBranchFailed>().SafeMessage.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var delete = new SessionDeleteRequest(context, new IdempotencyKey("enforce-delete"));
+        var mismatched = MismatchedStoreKey(store, delete, SecurityOperationKind.StateMutation, SecurityEffect.Delete);
+
+        var result = await store.DeleteAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionDeleteFailed>().SafeMessage.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task LookupInputAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        var (store, _, context) = await SeedLaneContextAsync();
+        var input = new AgentInput(new InputId(Guid.NewGuid()), InputDelivery.FollowUp, [new TextPart("lookup", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var lookup = new SessionInputLookupRequest(context, input, new InputFingerprint("sha256:enforce:lookup"));
+        var mismatched = MismatchedStoreKey(store, lookup, SecurityOperationKind.StateRead, SecurityEffect.Observe);
+
+        var result = await store.LookupInputAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionInputLookupRejected>().SafeReason.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        var (store, _, context, provisioned) = await ProvisionLaneAsync("enforce-admit");
+        var admission = Admission(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), provisioned.SessionVersion, provisioned.LaneRevision, provisioned.BranchCursor, "enforce-admit");
+        var mismatched = MismatchedStoreKey(store, admission, SecurityOperationKind.StateMutation, SecurityEffect.Append);
+
+        var result = await store.AdmitInputAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<RejectedInput>().Rejection.SafeReason.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task LoadRunStateAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var laneId = new ExecutionLaneId(Guid.NewGuid());
+        var context = TestFactory.LaneContext(descriptor.Address, laneId, new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null), TestFactory.Identity());
+        var load = new SessionRunStateRequest(context);
+        var mismatched = MismatchedStoreKey(store, load, SecurityOperationKind.StateRead, SecurityEffect.Observe);
+
+        var result = await store.LoadRunStateAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunStateUnavailable>().SafeReason.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task ReleaseRunAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var laneId = new ExecutionLaneId(Guid.NewGuid());
+        var context = TestFactory.LaneContext(descriptor.Address, laneId, new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null), TestFactory.Identity());
+        var release = new SessionRunReleaseRequest(context, new OperationStateRevision(1), descriptor.Version, new IdempotencyKey("enforce-release"));
+        var mismatched = MismatchedStoreKey(store, release, SecurityOperationKind.StateMutation, SecurityEffect.Mutate);
+
+        var result = await store.ReleaseRunAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunReleaseRejected>().SafeReason.ShouldBe("The grant targets a different session store.");
+    }
+
     [Fact]
     public async Task AcceptRunAsync_WhenFencingTokenIsRequested_ReturnsRejectedForUnsupportedDistributedFencing()
     {
