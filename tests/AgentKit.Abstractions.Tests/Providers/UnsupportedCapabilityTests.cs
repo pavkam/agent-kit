@@ -46,5 +46,13 @@ public sealed class UnsupportedCapabilityTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void Initializer_WhenReasonIsValid_ReplacesValue()
+    {
+        var original = Capability();
+        var copy = original with { Reason = "updated" };
+        copy.Reason.ShouldBe("updated");
+    }
+
     private static UnsupportedCapability Capability() => new(ModelCapabilityKind.ToolCalls, "not supported");
 }

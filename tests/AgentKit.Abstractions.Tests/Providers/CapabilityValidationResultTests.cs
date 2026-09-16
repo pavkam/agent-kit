@@ -51,6 +51,15 @@ public sealed class CapabilityValidationResultTests
     }
 
     [Fact]
+    public void CapabilitiesDowngraded_Initializer_WhenAdjustmentsAreValid_ReplacesValue()
+    {
+        var original = Downgraded();
+        var replacement = new CapabilityAdjustment(ModelCapabilityKind.ParallelToolCalls, "parallel calls disabled");
+        var copy = original with { Adjustments = [replacement] };
+        copy.Adjustments.ShouldBe([replacement]);
+    }
+
+    [Fact]
     public void CapabilitiesUnsupported_WhenCapabilitiesAreDefaultOrEmpty_ThrowsExactArgumentException()
     {
         Should.Throw<ArgumentException>(() => new CapabilitiesUnsupported(default)).ParamName.ShouldBe("capabilities");
@@ -82,6 +91,15 @@ public sealed class CapabilityValidationResultTests
         var original = Unsupported();
         var copy = original with { };
         copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void CapabilitiesUnsupported_Initializer_WhenCapabilitiesAreValid_ReplacesValue()
+    {
+        var original = Unsupported();
+        var replacement = new UnsupportedCapability(ModelCapabilityKind.Streaming, "streaming not supported");
+        var copy = original with { Capabilities = [replacement] };
+        copy.Capabilities.ShouldBe([replacement]);
     }
 
     private static CapabilityAdjustment Adjustment() => new(ModelCapabilityKind.Streaming, "streaming disabled");

@@ -46,5 +46,13 @@ public sealed class CapabilityAdjustmentTests
         copy.ShouldBe(original);
     }
 
+    [Fact]
+    public void Initializer_WhenDescriptionIsValid_ReplacesValue()
+    {
+        var original = Adjustment();
+        var copy = original with { Description = "updated" };
+        copy.Description.ShouldBe("updated");
+    }
+
     private static CapabilityAdjustment Adjustment() => new(ModelCapabilityKind.Streaming, "streaming disabled");
 }
