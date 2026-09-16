@@ -187,6 +187,19 @@ public sealed class ServiceExtensionsTests
         _ = Should.Throw<InvalidOperationException>(() => services.AddSqliteBudgetLedger(new("/also/missing/b.db", new(Guid.NewGuid()), SqliteDatabaseOpenMode.OpenExisting, SqliteSchemaMode.ValidateExact), settings));
     }
 
+    /// <summary>Proves more than one directly registered target instance is rejected as an incoherent capture.</summary>
+    [Fact]
+    public void AddSqliteBudgetLedger_WhenMultipleTargetInstancesAlreadyRegistered_ThrowsInvalidOperation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(CreateTarget());
+        _ = services.AddSingleton(CreateTarget());
+
+        var exception = Should.Throw<InvalidOperationException>(() => services.AddSqliteBudgetLedger(CreateTarget(), SqliteBudgetLedgerSettings.CreateDefault()));
+
+        exception.Message.ShouldContain(nameof(SqliteBudgetLedgerTarget));
+    }
+
     private sealed class StubLedger: IBudgetLedger
     {
         public BudgetLedgerDescriptor Descriptor => new(false, BudgetLedgerConcurrencyDomain.ProcessLocal);
