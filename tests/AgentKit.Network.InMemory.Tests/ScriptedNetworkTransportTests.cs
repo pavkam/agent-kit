@@ -105,6 +105,28 @@ public sealed class ScriptedNetworkTransportTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenScenarioSucceeds_RecordsSuccessfulOutcome()
+    {
+        var transport = new ScriptedNetworkTransport(new TestGrantStore(), new FixedTimeProvider());
+        var metadata = new NetworkResponseMetadata(200, NetworkHeaderSet.Empty, 0);
+        var response = new NetworkResponseReceived(new ScriptedNetworkResponse(metadata, ReadOnlyMemory<byte>.Empty));
+        transport.Script(Destination(), response);
+        var result = await transport.SendAsync(Request(), TestContext.Current.CancellationToken);
+        result.ShouldBeSameAs(response);
+        await response.Response.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SendAsync_WhenActionThrowsUnexpectedException_PropagatesAfterObservingFailure()
+    {
+        var store = new TestGrantStore { OnIntentConsumption = static () => throw new InvalidOperationException("boom") };
+        var transport = new ScriptedNetworkTransport(store, new FixedTimeProvider());
+        var action = async () => await transport.SendAsync(Request(), TestContext.Current.CancellationToken);
+        var exception = await action.ShouldThrowAsync<InvalidOperationException>();
+        exception.Message.ShouldBe("boom");
+    }
+
+    [Fact]
     public async Task SendAsync_WhenAuthorized_TransfersEachOwnedOutcomeOnce()
     {
         var transport = new ScriptedNetworkTransport(new TestGrantStore(), new FixedTimeProvider());

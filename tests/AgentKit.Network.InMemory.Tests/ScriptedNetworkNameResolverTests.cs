@@ -101,6 +101,16 @@ public sealed class ScriptedNetworkNameResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_WhenActionThrowsUnexpectedException_PropagatesAfterObservingFailure()
+    {
+        var store = new TestGrantStore { OnIntentConsumption = static () => throw new InvalidOperationException("boom") };
+        var resolver = new ScriptedNetworkNameResolver(store, new FixedTimeProvider());
+        var action = async () => await resolver.ResolveAsync(ResolutionRequest(), TestContext.Current.CancellationToken);
+        var exception = await action.ShouldThrowAsync<InvalidOperationException>();
+        exception.Message.ShouldBe("boom");
+    }
+
+    [Fact]
     public async Task ResolveAsync_WhenNoScenarioExists_ReturnsTypedFailure()
     {
         var resolver = new ScriptedNetworkNameResolver(new TestGrantStore(), new FixedTimeProvider());
