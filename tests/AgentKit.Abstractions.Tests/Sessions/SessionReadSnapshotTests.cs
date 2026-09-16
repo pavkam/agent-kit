@@ -19,4 +19,12 @@ public sealed class SessionReadSnapshotTests
         snapshot.Version.ShouldBe(new SessionVersion(3));
         snapshot.UpperSequence.ShouldBe(new SessionSequence(8));
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionReadSnapshot(new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid())), new BranchId(Guid.NewGuid()), new SessionVersion(3), new SessionSequence(8));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

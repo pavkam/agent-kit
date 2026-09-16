@@ -12,6 +12,26 @@ public sealed class SessionCreateRequestTests
     private static readonly Guid _operationGuid = Guid.Parse("44444444-4444-4444-4444-444444444444");
     [Fact]
     public void SessionCreateRequest_Equality_WhenSameValues_InstancesAreEqual() => CreateRequest().ShouldBe(CreateRequest());
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = CreateRequest();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var identity = Identity();
+        var authorization = Authorization(CreationCorrelation(), null);
+        var request = new SessionCreateRequest(AgentId, identity, authorization, null, new IdempotencyKey("key"), ExtensionData.Empty);
+        request.Authorization.ShouldBe(authorization);
+        request.ConversationId.ShouldBeNull();
+        request.Extensions.ShouldBe(ExtensionData.Empty);
+    }
+
     private static AgentId AgentId => new(_agentGuid);
 
     private static ExecutionIdentity Identity() => TestSupport.TestExecutionIdentity.Create(new TenantId("t"), new PrincipalId("p"), ExecutionSubjectKind.Human);

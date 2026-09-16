@@ -17,7 +17,7 @@ public sealed class SessionPageTests
     [Fact]
     public void SessionPage_Equality_WhenSameValues_InstancesAreEqual()
     {
-        var entries = ImmutableArray.Create<SessionEntry>(MessageEntry());
+        ImmutableArray<SessionEntry> entries = [MessageEntry()];
         var first = new SessionPage(entries, new SessionSequence(1), hasMore: false);
         var second = new SessionPage(entries, new SessionSequence(1), hasMore: false);
         first.ShouldBe(second);
@@ -31,6 +31,14 @@ public sealed class SessionPageTests
         var page = new SessionPage([], new SessionSequence(5), hasMore: false, snapshot);
         page.ThroughSequence.ShouldBe(new SessionSequence(5));
         page.Snapshot.ShouldBeSameAs(snapshot);
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionPage([MessageEntry()], new SessionSequence(1), hasMore: false);
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 
     private static AgentId AgentId => new(_agentGuid);

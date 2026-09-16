@@ -10,4 +10,13 @@ public sealed class SessionRetentionDecisionTests
 {
     [Fact]
     public void SessionRetentionDecision_Equality_WhenSameValues_InstancesAreEqual() => new SessionRetentionDecision(SessionRetentionAction.Delete, "old").ShouldBe(new SessionRetentionDecision(SessionRetentionAction.Delete, "old"));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionRetentionDecision(SessionRetentionAction.Delete, "old");
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
 }

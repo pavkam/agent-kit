@@ -24,6 +24,38 @@ public sealed class SessionEventTests
         _ = deleted.ShouldBeOfType<SessionDeletedEvent>();
     }
 
+    [Fact]
+    public void SessionCreatedEvent_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionCreatedEvent(Address(), DateTimeOffset.UnixEpoch, Descriptor());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void SessionAppendedEvent_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionAppendedEvent(Address(), DateTimeOffset.UnixEpoch, BranchId, new SessionVersion(1), 1);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void SessionBranchedEvent_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionBranchedEvent(Address(), DateTimeOffset.UnixEpoch, BranchId, BranchId, new SessionSequence(1));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void SessionDeletedEvent_With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionDeletedEvent(Address(), DateTimeOffset.UnixEpoch);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static AgentId AgentId => new(_agentGuid);
     private static SessionId SessionId => new(_sessionGuid);
     private static BranchId BranchId => new(_branchGuid);

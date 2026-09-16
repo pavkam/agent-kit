@@ -15,6 +15,26 @@ public sealed class SessionBranchRequestTests
     private static readonly Guid _runGuid = Guid.Parse("55555555-5555-5555-5555-555555555555");
     [Fact]
     public void SessionBranchRequest_Equality_WhenSameValues_InstancesAreEqual() => BranchRequest().ShouldBe(BranchRequest());
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = BranchRequest();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var context = OperationContext();
+        var request = new SessionBranchRequest(context, BranchId, new SessionSequence(1), new IdempotencyKey("key"));
+        request.Context.ShouldBe(context);
+        request.ParentBranchId.ShouldBe(BranchId);
+        request.AtSequence.ShouldBe(new SessionSequence(1));
+        request.IdempotencyKey.ShouldBe(new IdempotencyKey("key"));
+    }
+
     private static AgentId AgentId => new(_agentGuid);
     private static SessionId SessionId => new(_sessionGuid);
     private static BranchId BranchId => new(_branchGuid);

@@ -132,6 +132,14 @@ public sealed class SessionEntryCodecDescriptorTests
         first.ShouldNotBe(second);
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Descriptor([Version1, Version2]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static readonly SessionEntryTypeId TypeId = new("agentkit.session.message");
     private static readonly SchemaVersion Version1 = new("1");
     private static readonly SchemaVersion Version2 = new("2");

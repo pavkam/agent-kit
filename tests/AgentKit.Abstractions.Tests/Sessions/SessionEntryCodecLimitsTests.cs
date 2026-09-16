@@ -33,4 +33,12 @@ public sealed class SessionEntryCodecLimitsTests
         limits.MaximumExtensionBytes.ShouldBe(int.MaxValue);
         limits.MaximumJsonDepth.ShouldBe(64);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionEntryCodecLimits(1024, 8, 512, 16);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

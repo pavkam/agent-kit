@@ -27,6 +27,15 @@ public sealed class SessionDescriptorTests
 
     [Fact]
     public void SessionDescriptor_Equality_WhenSameValues_InstancesAreEqual() => Descriptor().ShouldBe(Descriptor());
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Descriptor();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static AgentId AgentId => new(_agentGuid);
     private static SessionId SessionId => new(_sessionGuid);
     private static BranchId BranchId => new(_branchGuid);

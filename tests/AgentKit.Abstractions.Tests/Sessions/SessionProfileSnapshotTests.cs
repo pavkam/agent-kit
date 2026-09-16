@@ -88,4 +88,12 @@ public sealed class SessionProfileSnapshotTests
     }
 
     private static SessionProfileSnapshot Profile(int maximumAppendEntries = 8) => new(new SessionProfileReference(new SessionProfileKey("profile"), new SessionProfileVersion(1)), new ComponentKey<ISessionCoordinator>("coordinator"), new ComponentKey<ISessionRunCoordinator>("run-coordinator"), new SessionStoreKey("store"), SessionStoreCapabilities.None, requiresDurableStore: false, requiresDistributedFencing: false, new SessionRetentionProfileKey("retention"), SessionBusyBehavior.Reject, maximumAppendEntries, 16, verifySnapshotHashes: true, deleteOnDispose: false, new ContentHash("sha256:profile"));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = Create();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

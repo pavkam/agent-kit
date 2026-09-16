@@ -23,6 +23,27 @@ public sealed class SessionReadRequestTests
         var request = new SessionReadRequest(OperationContext(), BranchId, new SessionSequence(4), 10, snapshot);
         request.Snapshot.ShouldBeSameAs(snapshot);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = ReadRequest();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var context = OperationContext();
+        var request = new SessionReadRequest(context, BranchId, new SessionSequence(0), 10);
+        request.Context.ShouldBe(context);
+        request.BranchId.ShouldBe(BranchId);
+        request.FromSequenceExclusive.ShouldBe(new SessionSequence(0));
+        request.PageSize.ShouldBe(10);
+        request.Snapshot.ShouldBeNull();
+    }
+
     private static AgentId AgentId => new(_agentGuid);
     private static SessionId SessionId => new(_sessionGuid);
     private static BranchId BranchId => new(_branchGuid);

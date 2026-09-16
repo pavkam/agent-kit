@@ -14,6 +14,24 @@ public sealed class SessionDeleteRequestTests
     private static readonly Guid _runGuid = Guid.Parse("55555555-5555-5555-5555-555555555555");
     [Fact]
     public void SessionDeleteRequest_Equality_WhenSameValues_InstancesAreEqual() => DeleteRequest().ShouldBe(DeleteRequest());
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = DeleteRequest();
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
+    [Fact]
+    public void Constructor_WhenArgumentsAreValid_RoundTripsProperties()
+    {
+        var context = OperationContext();
+        var request = new SessionDeleteRequest(context, new IdempotencyKey("key"));
+        request.Context.ShouldBe(context);
+        request.IdempotencyKey.ShouldBe(new IdempotencyKey("key"));
+    }
+
     private static AgentId AgentId => new(_agentGuid);
     private static SessionId SessionId => new(_sessionGuid);
 

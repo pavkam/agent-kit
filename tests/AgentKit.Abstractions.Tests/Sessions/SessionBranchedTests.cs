@@ -11,5 +11,14 @@ public sealed class SessionBranchedTests
     private static readonly Guid _branchGuid = Guid.Parse("33333333-3333-3333-3333-333333333333");
     [Fact]
     public void SessionBranched_Equality_WhenSameValues_InstancesAreEqual() => new SessionBranched(BranchId, new SessionSequence(1)).ShouldBe(new SessionBranched(BranchId, new SessionSequence(1)));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionBranched(BranchId, new SessionSequence(1));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BranchId BranchId => new(_branchGuid);
 }

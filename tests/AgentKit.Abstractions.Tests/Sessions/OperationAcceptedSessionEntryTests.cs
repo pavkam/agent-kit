@@ -47,4 +47,14 @@ public sealed class OperationAcceptedSessionEntryTests
         var accepted = new OperationAcceptedSessionEntry(evidence.AcceptedEntryId, evidence.Address, evidence.InRunCorrelation, evidence.BranchId, new SessionSequence(4), evidence.MaterializedEntryId, DateTimeOffset.UnixEpoch, new SchemaVersion("1"), state);
         accepted.State.ShouldBe(state);
     }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var evidence = Evidence();
+        var state = State(evidence);
+        var original = new OperationAcceptedSessionEntry(evidence.AcceptedEntryId, evidence.Address, evidence.InRunCorrelation, evidence.BranchId, new SessionSequence(4), evidence.MaterializedEntryId, DateTimeOffset.UnixEpoch, new SchemaVersion("1"), state);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
 }

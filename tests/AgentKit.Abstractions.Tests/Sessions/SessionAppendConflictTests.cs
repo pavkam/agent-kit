@@ -10,4 +10,13 @@ public sealed class SessionAppendConflictTests
 {
     [Fact]
     public void SessionAppendConflict_Equality_WhenSameValues_InstancesAreEqual() => new SessionAppendConflict(new SessionVersion(1), new SessionVersion(2)).ShouldBe(new SessionAppendConflict(new SessionVersion(1), new SessionVersion(2)));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionAppendConflict(new SessionVersion(1), new SessionVersion(2));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
 }

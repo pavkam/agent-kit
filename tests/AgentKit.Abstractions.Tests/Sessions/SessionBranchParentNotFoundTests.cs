@@ -11,5 +11,14 @@ public sealed class SessionBranchParentNotFoundTests
     private static readonly Guid _branchGuid = Guid.Parse("33333333-3333-3333-3333-333333333333");
     [Fact]
     public void SessionBranchParentNotFound_Equality_WhenSameValues_InstancesAreEqual() => new SessionBranchParentNotFound(BranchId, new SessionSequence(1)).ShouldBe(new SessionBranchParentNotFound(BranchId, new SessionSequence(1)));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionBranchParentNotFound(BranchId, new SessionSequence(1));
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static BranchId BranchId => new(_branchGuid);
 }

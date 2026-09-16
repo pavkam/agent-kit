@@ -17,11 +17,19 @@ public sealed class SessionAppendedTests
     [Fact]
     public void SessionAppended_Equality_WhenSameValues_InstancesAreEqual()
     {
-        var entries = ImmutableArray.Create<SessionEntry>(MessageEntry());
+        ImmutableArray<SessionEntry> entries = [MessageEntry()];
         var first = new SessionAppended(new SessionVersion(1), entries);
         var second = new SessionAppended(new SessionVersion(1), entries);
         first.ShouldBe(second);
         first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionAppended(new SessionVersion(1), [MessageEntry()]);
+        var copy = original with { };
+        copy.ShouldBe(original);
     }
 
     private static AgentId AgentId => new(_agentGuid);

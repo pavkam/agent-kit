@@ -12,6 +12,15 @@ public sealed class SessionDeletedTests
     private static readonly Guid _sessionGuid = Guid.Parse("22222222-2222-2222-2222-222222222222");
     [Fact]
     public void SessionDeleted_Equality_WhenSameValues_InstancesAreEqual() => new SessionDeleted(Address()).ShouldBe(new SessionDeleted(Address()));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionDeleted(Address());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static AgentId AgentId => new(_agentGuid);
     private static SessionId SessionId => new(_sessionGuid);
 

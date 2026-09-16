@@ -87,6 +87,14 @@ public sealed class SessionEntryWireEnvelopeTests
         Should.Throw<ArgumentException>(() => new SessionEntryEncodeRejected(reason)).ParamName.ShouldBe("reason");
     }
 
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionEntryWireEnvelope(Type, Version, [1, 2]);
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static readonly SessionEntryTypeId Type = new("agentkit.session.test/v1");
     private static readonly SchemaVersion Version = new("agentkit.session.test/v1");
 

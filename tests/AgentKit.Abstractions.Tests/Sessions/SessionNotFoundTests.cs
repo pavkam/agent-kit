@@ -12,6 +12,15 @@ public sealed class SessionNotFoundTests
     private static readonly Guid _sessionGuid = Guid.Parse("22222222-2222-2222-2222-222222222222");
     [Fact]
     public void SessionNotFound_Equality_WhenSameValues_InstancesAreEqual() => new SessionNotFound(Address()).ShouldBe(new SessionNotFound(Address()));
+
+    [Fact]
+    public void With_WhenApplied_ProducesEqualCopy()
+    {
+        var original = new SessionNotFound(Address());
+        var copy = original with { };
+        copy.ShouldBe(original);
+    }
+
     private static AgentId AgentId => new(_agentGuid);
     private static SessionId SessionId => new(_sessionGuid);
 
