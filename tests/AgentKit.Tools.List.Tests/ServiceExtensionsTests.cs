@@ -20,4 +20,24 @@ public sealed class ServiceExtensionsTests
 
         _ = provider.GetServices<ITool>().ShouldHaveSingleItem().ShouldBeOfType<ListDirectoryTool>();
     }
+
+    [Fact]
+    public void AddListTool_WhenConfigureProvided_AppliesConfiguredBounds()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddListTool(static options => options.DefaultPageEntries = 5);
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IOptions<ListDirectoryToolOptions>>().Value.DefaultPageEntries.ShouldBe(5);
+    }
+
+    [Fact]
+    public void AddListTool_WhenBoundsInvalid_FailsOptionsValidation()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddListTool(static options => options.DefaultPageEntries = options.MaximumPageEntries + 1);
+        using var provider = services.BuildServiceProvider();
+
+        _ = Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<ListDirectoryToolOptions>>().Value);
+    }
 }

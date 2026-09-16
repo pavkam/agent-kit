@@ -22,6 +22,89 @@ public sealed class ListDirectoryToolTests
         reader.Requests.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("null")]
+    [InlineData("\"str\"")]
+    public async Task InvokeAsync_WhenArgumentsAreNotAnObject_DoesNotAuthorizeOrObserve(string json)
+    {
+        var reader = new FakeDirectoryReader();
+        var authority = new RecordingSecurityAuthority();
+        var tool = CreateTool(reader, authority);
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        authority.Requests.ShouldBeEmpty();
+        reader.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenPathIsWrongType_ReturnsInvalidArguments()
+    {
+        var reader = new FakeDirectoryReader();
+        var authority = new RecordingSecurityAuthority();
+        var tool = CreateTool(reader, authority);
+
+        var result = await tool.InvokeAsync(
+            Request(/*lang=json,strict*/ """{"path":1}"""), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        authority.Requests.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(/*lang=json,strict*/ "{\"maximum_entries\":\"1\"}")]
+    [InlineData(/*lang=json,strict*/ "{\"maximum_entries\":0}")]
+    [InlineData(/*lang=json,strict*/ "{\"maximum_entries\":-1}")]
+    [InlineData(/*lang=json,strict*/ "{\"maximum_entries\":100000}")]
+    public async Task InvokeAsync_WhenMaximumEntriesIsInvalid_ReturnsInvalidArguments(string json)
+    {
+        var reader = new FakeDirectoryReader();
+        var authority = new RecordingSecurityAuthority();
+        var tool = CreateTool(reader, authority);
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        authority.Requests.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(/*lang=json,strict*/ "{\"cursor\":1}")]
+    [InlineData(/*lang=json,strict*/ "{\"cursor\":{\"next_index\":1}}")]
+    [InlineData(/*lang=json,strict*/ "{\"cursor\":{\"snapshot\":\"sha256:x\"}}")]
+    [InlineData(/*lang=json,strict*/ "{\"cursor\":{\"snapshot\":\"sha256:x\",\"next_index\":\"1\"}}")]
+    [InlineData(/*lang=json,strict*/ "{\"cursor\":{\"snapshot\":\"sha256:x\",\"next_index\":0}}")]
+    [InlineData(/*lang=json,strict*/ "{\"cursor\":{\"snapshot\":\"\",\"next_index\":1}}")]
+    public async Task InvokeAsync_WhenCursorIsInvalid_ReturnsInvalidArguments(string json)
+    {
+        var reader = new FakeDirectoryReader();
+        var authority = new RecordingSecurityAuthority();
+        var tool = CreateTool(reader, authority);
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        authority.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenCursorIsValid_ForwardsExactCursorToReader()
+    {
+        var reader = new FakeDirectoryReader();
+        var authority = new RecordingSecurityAuthority();
+        var tool = CreateTool(reader, authority);
+
+        var result = await tool.InvokeAsync(
+            Request(/*lang=json,strict*/ """{"cursor":{"snapshot":"sha256:x","next_index":3}}"""),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.ShouldBe(ToolCallOutcomeKind.Success);
+        var request = reader.Requests.ShouldHaveSingleItem();
+        request.Continuation.ShouldBe(new DirectoryEnumerationCursor(new ContentHash("sha256:x"), 3));
+    }
+
     [Fact]
     public async Task InvokeAsync_WhenSecurityDenies_DoesNotObserveDirectory()
     {
