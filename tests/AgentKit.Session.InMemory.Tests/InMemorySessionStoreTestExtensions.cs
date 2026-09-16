@@ -49,5 +49,10 @@ internal static class InMemorySessionStoreTestExtensions
             SessionRunStateRequest request, CancellationToken cancellationToken = default) =>
             store.LoadRunStateAsync(TestSecurityHarness.For(store).Authorize(
                 store, request, SecurityOperationKind.StateRead, SecurityEffect.Observe), cancellationToken);
+
+        internal ValueTask<SessionRunReleaseResult> ReleaseRunAsync(
+            SessionRunReleaseRequest request, CancellationToken cancellationToken = default) =>
+            store.ReleaseRunAsync(TestSecurityHarness.For(store).Authorize(
+                store, request, SecurityOperationKind.StateMutation, SecurityEffect.Mutate), cancellationToken);
     }
 }

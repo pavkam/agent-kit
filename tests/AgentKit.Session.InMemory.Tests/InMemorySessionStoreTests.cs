@@ -877,4 +877,680 @@ public sealed class InMemorySessionStoreTests: SessionStoreConformanceTests<InMe
     }
 
     private static ActivityCollector CreateStoreOperationCollector(AgentId agentId, string operation) => new(static source => source.Name == AgentKitDiagnostics.ActivitySourceName, activity => activity.OperationName == AgentKitActivityNames.SessionStoreOperation && activity.GetTagItem(AgentKitTagNames.AgentId)?.Equals(agentId.ToString()) == true && activity.GetTagItem(AgentKitTagNames.SessionOperation)?.Equals(operation) == true);
+
+    // ---- CreateAsync: address collision without a matching idempotency key. ----
+
+    [Fact]
+    public async Task CreateAsync_WhenAllocatedAddressAlreadyPresentWithDifferentIdempotencyKey_ReturnsFailed()
+    {
+        var store = TestFactory.CreateStore();
+        var identity = TestFactory.Identity();
+        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
+        var security = TestSecurityHarness.For(store);
+        var first = ManualCreateRequest(address, identity, new IdempotencyKey("collision-first"));
+        _ = await store.CreateAsync(security.Authorize(store, first, SecurityOperationKind.StateMutation, SecurityEffect.Create), TestContext.Current.CancellationToken);
+        var second = ManualCreateRequest(address, identity, new IdempotencyKey("collision-second"));
+
+        var result = await store.CreateAsync(security.Authorize(store, second, SecurityOperationKind.StateMutation, SecurityEffect.Create), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionCreateFailed>().SafeMessage.ShouldBe("The allocated session address is already present.");
+    }
+
+    private static SessionStoreCreateRequest ManualCreateRequest(SessionAddress address, ExecutionIdentity identity, IdempotencyKey key)
+    {
+        var correlation = new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null);
+        var logical = new SessionCreateRequest(address.AgentId, identity, TestFactory.Authorization(address.AgentId, null, correlation, identity), null, key, ExtensionData.Empty);
+        var context = new SessionOperationContext(address.AgentId, address.SessionId, null, correlation, identity,
+            TestFactory.Authorization(address.AgentId, address.SessionId, correlation, identity));
+        return new SessionStoreCreateRequest(logical, address, context);
+    }
+
+    // ---- AppendAsync: entry and message identity reservation across separate append calls. ----
+
+    [Fact]
+    public async Task AppendAsync_WhenEntryIdentityAlreadyReserved_ReturnsFailed()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var entry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1, "first");
+        _ = await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(0), new IdempotencyKey("entry-reserved-1"), [entry]), TestContext.Current.CancellationToken);
+        var reused = entry with
+        {
+            Sequence = new SessionSequence(2),
+            Message = entry.Message with { Id = new MessageId(Guid.NewGuid()) },
+        };
+
+        var result = await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(1), new IdempotencyKey("entry-reserved-2"), [reused]), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionAppendFailed>().SafeMessage.ShouldBe("An appended entry identity is already reserved.");
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenMessageIdentityAlreadyReserved_ReturnsFailed()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var entry = TestFactory.MessageEntry(descriptor.Address, descriptor.ActiveBranchId, 1, "first");
+        _ = await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(0), new IdempotencyKey("message-reserved-1"), [entry]), TestContext.Current.CancellationToken);
+        var reused = entry with
+        {
+            Id = new SessionEntryId(Guid.NewGuid()),
+            Sequence = new SessionSequence(2),
+        };
+
+        var result = await store.AppendAsync(new SessionAppendRequest(context, descriptor.ActiveBranchId, new SessionVersion(1), new IdempotencyKey("message-reserved-2"), [reused]), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionAppendFailed>().SafeMessage.ShouldBe("An appended message identity is already reserved.");
+    }
+
+    // ---- ProvisionLaneAsync: idempotency, conflict, and stale-evidence rejections. ----
+
+    private static SessionProfileReference DefaultProfile() => new(new SessionProfileKey("default"), new SessionProfileVersion(1));
+
+    private static RunConfigurationReference DefaultConfiguration() =>
+        new(new ConfigurationVersion(1), new RunPolicyVersion(1), new ContentHash("sha256:configuration"));
+
+    private static SessionExecutionLaneProvisionRequest ProvisionRequest(
+        SessionOperationContext context, SessionBranchCursor cursor, SessionVersion version, SessionEntryId entryId, string key) =>
+        new(context, cursor, version, entryId, DefaultProfile(), DefaultConfiguration(), DateTimeOffset.UnixEpoch, new IdempotencyKey(key));
+
+    private static async Task<(InMemorySessionStore Store, SessionDescriptor Descriptor, SessionOperationContext Context)> SeedLaneContextAsync()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var identity = TestFactory.Identity();
+        var laneId = new ExecutionLaneId(Guid.NewGuid());
+        var context = TestFactory.LaneContext(descriptor.Address, laneId, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null), identity);
+        return (store, descriptor, context);
+    }
+
+    private static async Task<(InMemorySessionStore Store, SessionDescriptor Descriptor, SessionOperationContext Context, SessionExecutionLaneProvisioned Provisioned)> ProvisionLaneAsync(string key = "provision")
+    {
+        var (store, descriptor, context) = await SeedLaneContextAsync();
+        var provisioned = (SessionExecutionLaneProvisioned) await store.ProvisionLaneAsync(
+            ProvisionRequest(context, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version, new SessionEntryId(Guid.NewGuid()), key),
+            TestContext.Current.CancellationToken);
+        return (store, descriptor, context, provisioned);
+    }
+
+    private static async Task<(InMemorySessionStore Store, SessionDescriptor Descriptor, SessionOperationContext Context, SessionExecutionLaneProvisioned Provisioned, SessionInputAdmissionRequest Admission, AcceptedInput Accepted)> PrepareLaneAsync(string key = "prepare")
+    {
+        var (store, descriptor, context, provisioned) = await ProvisionLaneAsync(key);
+        var admission = Admission(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), provisioned.SessionVersion, provisioned.LaneRevision, provisioned.BranchCursor, key);
+        var accepted = (AcceptedInput) await store.AdmitInputAsync(admission, TestContext.Current.CancellationToken);
+        return (store, descriptor, context, provisioned, admission, accepted);
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenSessionDoesNotExist_ReturnsRejected()
+    {
+        var store = TestFactory.CreateStore();
+        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
+        var laneId = new ExecutionLaneId(Guid.NewGuid());
+        var context = TestFactory.LaneContext(address, laneId, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null), TestFactory.Identity());
+        var request = ProvisionRequest(context, new SessionBranchCursor(new BranchId(Guid.NewGuid()), null), new SessionVersion(0), new SessionEntryId(Guid.NewGuid()), "unavailable");
+
+        var result = await store.ProvisionLaneAsync(request, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionExecutionLaneProvisionRejected>().SafeMessage.ShouldBe("The session is unavailable.");
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenRetriedWithSameKeyAndEvidence_ReturnsExistingAsExisting()
+    {
+        var (store, descriptor, context) = await SeedLaneContextAsync();
+        var request = ProvisionRequest(context, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version, new SessionEntryId(Guid.NewGuid()), "replay");
+
+        var first = (SessionExecutionLaneProvisioned) await store.ProvisionLaneAsync(request, TestContext.Current.CancellationToken);
+        var second = await store.ProvisionLaneAsync(request, TestContext.Current.CancellationToken);
+
+        var replay = second.ShouldBeOfType<SessionExecutionLaneProvisioned>();
+        replay.Existing.ShouldBeTrue();
+        replay.ExecutionLaneId.ShouldBe(first.ExecutionLaneId);
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenRetriedWithSameKeyAndDifferentEvidence_ReturnsConflict()
+    {
+        var (store, descriptor, context) = await SeedLaneContextAsync();
+        var entryId = new SessionEntryId(Guid.NewGuid());
+        var request = ProvisionRequest(context, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version, entryId, "mismatch");
+        _ = await store.ProvisionLaneAsync(request, TestContext.Current.CancellationToken);
+        var changed = ProvisionRequest(context, new SessionBranchCursor(descriptor.ActiveBranchId, null), new SessionVersion(descriptor.Version.Value + 5), entryId, "mismatch");
+
+        var result = await store.ProvisionLaneAsync(changed, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionExecutionLaneProvisionConflict>().SafeMessage.ShouldBe("The provisioning idempotency key was reused with different evidence.");
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenLaneAlreadyProvisioned_ReturnsConflict()
+    {
+        var (store, descriptor, context) = await SeedLaneContextAsync();
+        _ = await store.ProvisionLaneAsync(ProvisionRequest(context, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version, new SessionEntryId(Guid.NewGuid()), "first"), TestContext.Current.CancellationToken);
+
+        var result = await store.ProvisionLaneAsync(ProvisionRequest(context, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version, new SessionEntryId(Guid.NewGuid()), "second"), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionExecutionLaneProvisionConflict>().SafeMessage.ShouldBe("The execution lane is already provisioned.");
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenExpectedVersionIsStale_ReturnsConflict()
+    {
+        var (store, descriptor, context) = await SeedLaneContextAsync();
+        _ = await store.ProvisionLaneAsync(ProvisionRequest(context, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version, new SessionEntryId(Guid.NewGuid()), "seed"), TestContext.Current.CancellationToken);
+        var otherLaneId = new ExecutionLaneId(Guid.NewGuid());
+        var otherContext = TestFactory.LaneContext(descriptor.Address, otherLaneId, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null), context.Identity);
+
+        var result = await store.ProvisionLaneAsync(ProvisionRequest(otherContext, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version, new SessionEntryId(Guid.NewGuid()), "stale-version"), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionExecutionLaneProvisionConflict>().SafeMessage.ShouldBe("The expected session version is stale.");
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenBranchCursorIsStale_ReturnsConflict()
+    {
+        var (store, descriptor, context, provisioned) = await ProvisionLaneAsync("cursor-seed");
+        var otherLaneId = new ExecutionLaneId(Guid.NewGuid());
+        var otherContext = TestFactory.LaneContext(descriptor.Address, otherLaneId, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null), context.Identity);
+        var staleCursor = new SessionBranchCursor(descriptor.ActiveBranchId, null);
+
+        var result = await store.ProvisionLaneAsync(ProvisionRequest(otherContext, staleCursor, provisioned.SessionVersion, new SessionEntryId(Guid.NewGuid()), "stale-cursor"), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionExecutionLaneProvisionConflict>().SafeMessage.ShouldBe("The branch cursor is stale or unavailable.");
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenBranchAlreadyOwnedByAnotherLane_ReturnsConflict()
+    {
+        var (store, descriptor, context, first) = await ProvisionLaneAsync("owner-seed");
+        var otherLaneId = new ExecutionLaneId(Guid.NewGuid());
+        var otherContext = TestFactory.LaneContext(descriptor.Address, otherLaneId, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null), context.Identity);
+
+        var result = await store.ProvisionLaneAsync(ProvisionRequest(otherContext, first.BranchCursor, first.SessionVersion, new SessionEntryId(Guid.NewGuid()), "owner-second"), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionExecutionLaneProvisionConflict>().SafeMessage.ShouldBe("The branch is already owned by another execution lane.");
+    }
+
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenEntryIdAlreadyReserved_ReturnsConflict()
+    {
+        var (store, descriptor, context, first) = await ProvisionLaneAsync("entry-seed");
+        var branchResult = (SessionBranched) await store.CreateBranchAsync(new SessionBranchRequest(TestFactory.OperationContext(descriptor.Address), descriptor.ActiveBranchId, new SessionSequence(0), new IdempotencyKey("entry-seed-fork")), TestContext.Current.CancellationToken);
+        var otherLaneId = new ExecutionLaneId(Guid.NewGuid());
+        var otherContext = TestFactory.LaneContext(descriptor.Address, otherLaneId, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null), context.Identity);
+        var expectedVersion = new SessionVersion(first.SessionVersion.Value + 1);
+        var reusedEntryId = new SessionEntryId(first.BranchCursor.LastEntryId!.Value.Value);
+
+        var result = await store.ProvisionLaneAsync(ProvisionRequest(otherContext, new SessionBranchCursor(branchResult.NewBranchId, null), expectedVersion, reusedEntryId, "entry-second"), TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionExecutionLaneProvisionConflict>().SafeMessage.ShouldBe("The provisioning entry identity is already reserved.");
+    }
+
+    // ---- AdmitInputAsync: idempotency, conflict, capacity, and staleness rejections. ----
+
+    private static SessionInputAdmissionRequest AdmissionWithLimit(
+        SessionOperationContext context, AdmissionId admissionId, InputId inputId, SessionEntryId entryId,
+        SessionVersion version, SessionLaneRevision laneRevision, SessionBranchCursor cursor, string key, int maximumPendingInputs)
+    {
+        var input = new AgentInput(inputId, InputDelivery.FollowUp, [new TextPart(key, TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        return new SessionInputAdmissionRequest(context, admissionId, entryId, input, input,
+            new InputPreprocessingManifest(new ConfigurationVersion(1), new InputFingerprint($"sha256:{key}:original"), new InputFingerprint($"sha256:{key}:effective")),
+            DateTimeOffset.UnixEpoch.AddSeconds(1), version, laneRevision, cursor, new IdempotencyKey(key), maximumPendingInputs);
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenSessionDoesNotExist_ReturnsRejected()
+    {
+        var store = TestFactory.CreateStore();
+        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
+        var laneId = new ExecutionLaneId(Guid.NewGuid());
+        var context = TestFactory.LaneContext(address, laneId, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null), TestFactory.Identity());
+        var admission = Admission(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), new SessionVersion(0), new SessionLaneRevision(1), new SessionBranchCursor(new BranchId(Guid.NewGuid()), null), "unavailable");
+
+        var result = await store.AdmitInputAsync(admission, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<RejectedInput>().Rejection.SafeReason.ShouldBe("The session is unavailable.");
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenRetriedWithSameIdempotencyKeyAndEvidence_ReturnsExistingReceipt()
+    {
+        var (store, _, context, provisioned) = await ProvisionLaneAsync("admit-replay");
+        var request = Admission(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), provisioned.SessionVersion, provisioned.LaneRevision, provisioned.BranchCursor, "admit-replay");
+
+        var first = (AcceptedInput) await store.AdmitInputAsync(request, TestContext.Current.CancellationToken);
+        var second = await store.AdmitInputAsync(request, TestContext.Current.CancellationToken);
+
+        var replay = second.ShouldBeOfType<AcceptedInput>();
+        replay.Receipt.Existing.ShouldBeTrue();
+        replay.Receipt.AdmissionId.ShouldBe(first.Receipt.AdmissionId);
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenRetriedWithSameIdempotencyKeyAndDifferentEvidence_ReturnsConflict()
+    {
+        var (store, _, context, provisioned) = await ProvisionLaneAsync("admit-mismatch");
+        var entryId = new SessionEntryId(Guid.NewGuid());
+        var first = Admission(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), entryId, provisioned.SessionVersion, provisioned.LaneRevision, provisioned.BranchCursor, "admit-mismatch");
+        _ = await store.AdmitInputAsync(first, TestContext.Current.CancellationToken);
+        var changed = new SessionInputAdmissionRequest(context, new AdmissionId(Guid.NewGuid()), entryId, first.OriginalPayload, first.EffectivePayload, first.Preprocessing, first.AdmittedAt, provisioned.SessionVersion, provisioned.LaneRevision, provisioned.BranchCursor, first.IdempotencyKey, first.MaximumPendingInputs);
+
+        var result = await store.AdmitInputAsync(changed, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<InputConflict>().SafeReason.ShouldBe("The admission idempotency key was reused with different evidence.");
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenSameInputAdmittedWithNewIdempotencyKeyAndMatchingEvidence_ReturnsExistingReceipt()
+    {
+        var (store, descriptor, context, provisioned) = await ProvisionLaneAsync("admit-input-replay");
+        var inputId = new InputId(Guid.NewGuid());
+        var first = Admission(context, new AdmissionId(Guid.NewGuid()), inputId, new SessionEntryId(Guid.NewGuid()), provisioned.SessionVersion, provisioned.LaneRevision, provisioned.BranchCursor, "admit-input-replay");
+        var firstAccepted = (AcceptedInput) await store.AdmitInputAsync(first, TestContext.Current.CancellationToken);
+        var currentVersion = new SessionVersion(provisioned.SessionVersion.Value + 1);
+        var currentRevision = new SessionLaneRevision(provisioned.LaneRevision.Value + 1);
+        var currentCursor = new SessionBranchCursor(descriptor.ActiveBranchId, first.EntryId);
+        var replay = new SessionInputAdmissionRequest(context, new AdmissionId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), first.OriginalPayload, first.EffectivePayload, first.Preprocessing, first.AdmittedAt, currentVersion, currentRevision, currentCursor, new IdempotencyKey("admit-input-replay-new-key"), first.MaximumPendingInputs);
+
+        var result = await store.AdmitInputAsync(replay, TestContext.Current.CancellationToken);
+
+        var accepted = result.ShouldBeOfType<AcceptedInput>();
+        accepted.Receipt.Existing.ShouldBeTrue();
+        accepted.Receipt.AdmissionId.ShouldBe(firstAccepted.Receipt.AdmissionId);
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenSameInputAdmittedWithNewIdempotencyKeyAndDifferentEvidence_ReturnsConflict()
+    {
+        var (store, descriptor, context, provisioned) = await ProvisionLaneAsync("admit-input-conflict");
+        var inputId = new InputId(Guid.NewGuid());
+        var first = Admission(context, new AdmissionId(Guid.NewGuid()), inputId, new SessionEntryId(Guid.NewGuid()), provisioned.SessionVersion, provisioned.LaneRevision, provisioned.BranchCursor, "admit-input-conflict");
+        _ = await store.AdmitInputAsync(first, TestContext.Current.CancellationToken);
+        var currentVersion = new SessionVersion(provisioned.SessionVersion.Value + 1);
+        var currentRevision = new SessionLaneRevision(provisioned.LaneRevision.Value + 1);
+        var currentCursor = new SessionBranchCursor(descriptor.ActiveBranchId, first.EntryId);
+        var differentPayload = new AgentInput(inputId, InputDelivery.FollowUp, [new TextPart("changed", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty);
+        var conflicting = new SessionInputAdmissionRequest(context, new AdmissionId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), differentPayload, differentPayload, first.Preprocessing, first.AdmittedAt, currentVersion, currentRevision, currentCursor, new IdempotencyKey("admit-input-conflict-new-key"), first.MaximumPendingInputs);
+
+        var result = await store.AdmitInputAsync(conflicting, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<InputConflict>().SafeReason.ShouldBe("The input identity was already admitted with different immutable evidence.");
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenExpectedVersionIsStale_ReturnsRejected()
+    {
+        var (store, _, context, provisioned) = await ProvisionLaneAsync("admit-stale-version");
+        var stale = Admission(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), new SessionVersion(provisioned.SessionVersion.Value + 99), provisioned.LaneRevision, provisioned.BranchCursor, "admit-stale-version");
+
+        var result = await store.AdmitInputAsync(stale, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<RejectedInput>().Rejection.SafeReason.ShouldBe("The expected session version is stale.");
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenLaneNotProvisioned_ReturnsRejected()
+    {
+        var (store, descriptor, context) = await SeedLaneContextAsync();
+        var admission = Admission(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), descriptor.Version, new SessionLaneRevision(1), new SessionBranchCursor(descriptor.ActiveBranchId, null), "no-lane");
+
+        var result = await store.AdmitInputAsync(admission, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<RejectedInput>().Rejection.SafeReason.ShouldBe("The execution lane is not provisioned.");
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenLaneRevisionIsStale_ReturnsRejected()
+    {
+        var (store, _, context, provisioned) = await ProvisionLaneAsync("admit-stale-revision");
+        var stale = Admission(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), provisioned.SessionVersion, new SessionLaneRevision(provisioned.LaneRevision.Value + 5), provisioned.BranchCursor, "admit-stale-revision");
+
+        var result = await store.AdmitInputAsync(stale, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<RejectedInput>().Rejection.SafeReason.ShouldBe("The expected lane revision or branch cursor is stale.");
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenEntryIdAlreadyReserved_ReturnsConflict()
+    {
+        var (store, descriptor, context, provisioned) = await ProvisionLaneAsync("admit-entry-reserved");
+        var reusedEntryId = new SessionEntryId(Guid.NewGuid());
+        var first = Admission(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), reusedEntryId, provisioned.SessionVersion, provisioned.LaneRevision, provisioned.BranchCursor, "admit-entry-reserved-first");
+        _ = await store.AdmitInputAsync(first, TestContext.Current.CancellationToken);
+        var currentVersion = new SessionVersion(provisioned.SessionVersion.Value + 1);
+        var currentRevision = new SessionLaneRevision(provisioned.LaneRevision.Value + 1);
+        var currentCursor = new SessionBranchCursor(descriptor.ActiveBranchId, first.EntryId);
+        var second = Admission(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), reusedEntryId, currentVersion, currentRevision, currentCursor, "admit-entry-reserved-second");
+
+        var result = await store.AdmitInputAsync(second, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<InputConflict>().SafeReason.ShouldBe("The admission entry identity is already reserved.");
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenPendingQueueIsFull_ReturnsQueueCapacityExceeded()
+    {
+        var (store, descriptor, context, provisioned) = await ProvisionLaneAsync("admit-capacity");
+        var first = AdmissionWithLimit(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), provisioned.SessionVersion, provisioned.LaneRevision, provisioned.BranchCursor, "admit-capacity-first", maximumPendingInputs: 1);
+        _ = await store.AdmitInputAsync(first, TestContext.Current.CancellationToken);
+        var currentVersion = new SessionVersion(provisioned.SessionVersion.Value + 1);
+        var currentRevision = new SessionLaneRevision(provisioned.LaneRevision.Value + 1);
+        var currentCursor = new SessionBranchCursor(descriptor.ActiveBranchId, first.EntryId);
+        var second = AdmissionWithLimit(context, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), currentVersion, currentRevision, currentCursor, "admit-capacity-second", maximumPendingInputs: 1);
+
+        var result = await store.AdmitInputAsync(second, TestContext.Current.CancellationToken);
+
+        var exceeded = result.ShouldBeOfType<QueueCapacityExceeded>();
+        exceeded.Limit.MaximumPendingInputs.ShouldBe(1);
+        exceeded.Limit.CurrentPendingInputs.ShouldBe(1);
+    }
+
+    // ---- AcceptRunAsync: rejections and conflicts beyond the primary success/replay path. ----
+
+    private static SessionRunStartRequest RunStartRequest(
+        SessionOperationContext context,
+        AdmissionId initiatingAdmissionId,
+        ImmutableArray<AdmissionId> selectedAdmissionIds,
+        SessionSequence promotionCutoff,
+        SessionLaneRevision expectedLaneRevision,
+        SessionVersion expectedVersion,
+        SessionBranchCursor branchCursor,
+        string idempotencyKey,
+        FencingToken? expectedFencingToken = null,
+        ImmutableArray<MessageId>? messageIds = null)
+    {
+        var runId = new RunId(Guid.NewGuid());
+        var turnId = new TurnId(Guid.NewGuid());
+        var inRunCorrelation = new InRunOperationCorrelation(context.Correlation.OperationId, runId, turnId);
+        var authorization = TestFactory.Authorization(context.AgentId, context.SessionId, inRunCorrelation, context.Identity);
+        return new SessionRunStartRequest(context, initiatingAdmissionId, selectedAdmissionIds, promotionCutoff,
+            expectedLaneRevision, expectedVersion, branchCursor, expectedFencingToken, runId, turnId,
+            new SessionEntryId(Guid.NewGuid()), [new SessionEntryId(Guid.NewGuid())],
+            messageIds ?? [new MessageId(Guid.NewGuid())], new SessionEntryId(Guid.NewGuid()),
+            new OperationStateRevision(1), DefaultProfile(), DefaultConfiguration(), authorization,
+            DateTimeOffset.UnixEpoch.AddSeconds(2), new IdempotencyKey(idempotencyKey));
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenSessionDoesNotExist_ReturnsRejected()
+    {
+        var store = TestFactory.CreateStore();
+        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
+        var laneId = new ExecutionLaneId(Guid.NewGuid());
+        var context = TestFactory.LaneContext(address, laneId, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null), TestFactory.Identity());
+        var admissionId = new AdmissionId(Guid.NewGuid());
+        var start = RunStartRequest(context, admissionId, [admissionId], new SessionSequence(1), new SessionLaneRevision(1), new SessionVersion(0), new SessionBranchCursor(new BranchId(Guid.NewGuid()), null), "accept-unavailable");
+
+        var result = await store.AcceptRunAsync(start, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunStartRejected>().SafeReason.ShouldBe("The session is unavailable.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenLaneDoesNotExist_ReturnsConflict()
+    {
+        var (store, descriptor, context) = await SeedLaneContextAsync();
+        var admissionId = new AdmissionId(Guid.NewGuid());
+        var start = RunStartRequest(context, admissionId, [admissionId], new SessionSequence(1), new SessionLaneRevision(1), descriptor.Version, new SessionBranchCursor(descriptor.ActiveBranchId, null), "accept-no-lane");
+
+        var result = await store.AcceptRunAsync(start, TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.LaneRevision);
+        conflict.SafeReason.ShouldBe("The selected lane does not exist.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenLaneRevisionIsStale_ReturnsConflict()
+    {
+        var (store, _, context, provisioned) = await ProvisionLaneAsync("accept-stale-revision");
+        var admissionId = new AdmissionId(Guid.NewGuid());
+        var start = RunStartRequest(context, admissionId, [admissionId], new SessionSequence(1), new SessionLaneRevision(provisioned.LaneRevision.Value + 5), provisioned.SessionVersion, provisioned.BranchCursor, "accept-stale-revision-start");
+
+        var result = await store.AcceptRunAsync(start, TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.LaneRevision);
+        conflict.SafeReason.ShouldBe("The selected lane revision is stale.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenBranchCursorIsStale_ReturnsConflict()
+    {
+        var (store, descriptor, context, provisioned) = await ProvisionLaneAsync("accept-stale-cursor");
+        var admissionId = new AdmissionId(Guid.NewGuid());
+        var staleCursor = new SessionBranchCursor(descriptor.ActiveBranchId, null);
+        var start = RunStartRequest(context, admissionId, [admissionId], new SessionSequence(1), provisioned.LaneRevision, provisioned.SessionVersion, staleCursor, "accept-stale-cursor-start");
+
+        var result = await store.AcceptRunAsync(start, TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.BranchCursor);
+        conflict.SafeReason.ShouldBe("The selected branch cursor is stale.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenSessionVersionIsStale_ReturnsConflict()
+    {
+        var (store, _, context, provisioned) = await ProvisionLaneAsync("accept-stale-version");
+        var admissionId = new AdmissionId(Guid.NewGuid());
+        var start = RunStartRequest(context, admissionId, [admissionId], new SessionSequence(1), provisioned.LaneRevision, new SessionVersion(provisioned.SessionVersion.Value + 99), provisioned.BranchCursor, "accept-stale-version-start");
+
+        var result = await store.AcceptRunAsync(start, TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.SessionVersion);
+        conflict.SafeReason.ShouldBe("The expected session version is stale.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenSelectedAdmissionBelongsToDifferentIdentity_ReturnsConflict()
+    {
+        var (store, descriptor, context, provisioned, admission, accepted) = await PrepareLaneAsync("accept-identity-mismatch");
+        var otherIdentity = TestExecutionIdentity.Create(context.Identity.TenantId, new PrincipalId("someone-else"), ExecutionSubjectKind.Human);
+        var otherContext = new SessionOperationContext(context.AgentId, context.SessionId, context.ExecutionLaneId, context.Correlation, otherIdentity,
+            TestFactory.Authorization(context.AgentId, context.SessionId, context.Correlation, otherIdentity));
+        var currentCursor = new SessionBranchCursor(descriptor.ActiveBranchId, admission.EntryId);
+        var start = RunStartRequest(otherContext, admission.AdmissionId, [admission.AdmissionId], accepted.Receipt.AdmittedSequence, new SessionLaneRevision(provisioned.LaneRevision.Value + 1), new SessionVersion(provisioned.SessionVersion.Value + 1), currentCursor, "accept-identity-mismatch-start");
+
+        var result = await store.AcceptRunAsync(start, TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.AdmissionIdentity);
+        conflict.SafeReason.ShouldBe("Every promoted admission must retain the exact authorized run identity.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenPromotionCutoffExcludesSelectedAdmission_ReturnsConflict()
+    {
+        var (store, descriptor, context, provisioned, admission, accepted) = await PrepareLaneAsync("accept-cutoff-exclude");
+        var lowCutoff = new SessionSequence(accepted.Receipt.AdmittedSequence.Value - 1);
+        var currentCursor = new SessionBranchCursor(descriptor.ActiveBranchId, admission.EntryId);
+        var start = RunStartRequest(context, admission.AdmissionId, [admission.AdmissionId], lowCutoff, new SessionLaneRevision(provisioned.LaneRevision.Value + 1), new SessionVersion(provisioned.SessionVersion.Value + 1), currentCursor, "accept-cutoff-exclude-start");
+
+        var result = await store.AcceptRunAsync(start, TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.PromotionPlan);
+        conflict.SafeReason.ShouldBe("The exact promotion plan is no longer eligible.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenMessageIdAlreadyReserved_ReturnsConflict()
+    {
+        var (store, descriptor, context, provisioned, admission, accepted) = await PrepareLaneAsync("accept-message-reuse");
+        var firstCursor = new SessionBranchCursor(descriptor.ActiveBranchId, admission.EntryId);
+        var firstStart = RunStartRequest(context, admission.AdmissionId, [admission.AdmissionId], accepted.Receipt.AdmittedSequence, new SessionLaneRevision(provisioned.LaneRevision.Value + 1), new SessionVersion(provisioned.SessionVersion.Value + 1), firstCursor, "accept-message-reuse-first");
+        var firstAccepted = (SessionRunAccepted) await store.AcceptRunAsync(firstStart, TestContext.Current.CancellationToken);
+        var reusedMessageId = firstStart.MessageIds[0];
+
+        var branch = (SessionBranched) await store.CreateBranchAsync(new SessionBranchRequest(TestFactory.OperationContext(descriptor.Address), descriptor.ActiveBranchId, new SessionSequence(0), new IdempotencyKey("accept-message-reuse-fork")), TestContext.Current.CancellationToken);
+        var secondLaneId = new ExecutionLaneId(Guid.NewGuid());
+        var secondContext = TestFactory.LaneContext(descriptor.Address, secondLaneId, new BeforeRunOperationCorrelation(new OperationId(Guid.NewGuid()), null), context.Identity);
+        var secondProvision = new SessionExecutionLaneProvisionRequest(secondContext, new SessionBranchCursor(branch.NewBranchId, null), new SessionVersion(firstAccepted.SessionVersion.Value + 1), new SessionEntryId(Guid.NewGuid()), DefaultProfile(), DefaultConfiguration(), DateTimeOffset.UnixEpoch, new IdempotencyKey("accept-message-reuse-second-provision"));
+        var secondProvisioned = (SessionExecutionLaneProvisioned) await store.ProvisionLaneAsync(secondProvision, TestContext.Current.CancellationToken);
+        var secondAdmission = Admission(secondContext, new AdmissionId(Guid.NewGuid()), new InputId(Guid.NewGuid()), new SessionEntryId(Guid.NewGuid()), secondProvisioned.SessionVersion, secondProvisioned.LaneRevision, secondProvisioned.BranchCursor, "accept-message-reuse-second-admit");
+        var secondAccepted = (AcceptedInput) await store.AdmitInputAsync(secondAdmission, TestContext.Current.CancellationToken);
+        var secondStart = RunStartRequest(secondContext, secondAdmission.AdmissionId, [secondAdmission.AdmissionId], secondAccepted.Receipt.AdmittedSequence, new SessionLaneRevision(secondProvisioned.LaneRevision.Value + 1), new SessionVersion(secondProvisioned.SessionVersion.Value + 1), new SessionBranchCursor(branch.NewBranchId, secondAdmission.EntryId), "accept-message-reuse-second-start", messageIds: [reusedMessageId]);
+
+        var result = await store.AcceptRunAsync(secondStart, TestContext.Current.CancellationToken);
+
+        var conflict = result.ShouldBeOfType<SessionRunStartConflict>();
+        conflict.Kind.ShouldBe(SessionRunStartConflictKind.PromotionPlan);
+        conflict.SafeReason.ShouldBe("A reserved message identity is already in use.");
+    }
+
+    // ---- ReleaseRunAsync: session- and lane-absence rejections. ----
+
+    [Fact]
+    public async Task ReleaseRunAsync_WhenSessionDoesNotExist_ReturnsRejected()
+    {
+        var store = TestFactory.CreateStore();
+        var address = new SessionAddress(new AgentId(Guid.NewGuid()), new SessionId(Guid.NewGuid()));
+        var laneId = new ExecutionLaneId(Guid.NewGuid());
+        var context = TestFactory.LaneContext(address, laneId, new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null), TestFactory.Identity());
+        var release = new SessionRunReleaseRequest(context, new OperationStateRevision(1), new SessionVersion(0), new IdempotencyKey("release-missing"));
+
+        var result = await store.ReleaseRunAsync(release, TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<SessionRunReleaseRejected>();
+        rejected.Kind.ShouldBe(SessionRunReleaseRejectionKind.LaneNotFound);
+        rejected.SafeReason.ShouldBe("The session is unavailable.");
+    }
+
+    [Fact]
+    public async Task ReleaseRunAsync_WhenLaneDoesNotExist_ReturnsRejected()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var laneId = new ExecutionLaneId(Guid.NewGuid());
+        var context = TestFactory.LaneContext(descriptor.Address, laneId, new InRunOperationCorrelation(new OperationId(Guid.NewGuid()), new RunId(Guid.NewGuid()), null), TestFactory.Identity());
+        var release = new SessionRunReleaseRequest(context, new OperationStateRevision(1), descriptor.Version, new IdempotencyKey("release-no-lane"));
+
+        var result = await store.ReleaseRunAsync(release, TestContext.Current.CancellationToken);
+
+        var rejected = result.ShouldBeOfType<SessionRunReleaseRejected>();
+        rejected.Kind.ShouldBe(SessionRunReleaseRejectionKind.LaneNotFound);
+        rejected.SafeReason.ShouldBe("The selected lane does not exist.");
+    }
+
+    // ---- EnforceAsync: protected-boundary edge cases the shared conformance suite does not exercise. ----
+
+    [Fact]
+    public async Task LoadAsync_WhenGrantTargetsADifferentStore_ReturnsTypedFailure()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var security = TestSecurityHarness.For(store);
+        var authorized = security.Authorize(store, context, SecurityOperationKind.StateRead, SecurityEffect.Observe);
+        var mismatched = new AuthorizedSessionStoreRequest<SessionOperationContext>(authorized.Request, new SessionStoreKey("some-other-store"), authorized.Grant, authorized.Intent);
+
+        var result = await store.LoadAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage.ShouldBe("The grant targets a different session store.");
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenEnforcementIntentFenceDiffersFromRequest_ReturnsTypedFailure()
+    {
+        var store = TestFactory.CreateStore();
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        var context = TestFactory.OperationContext(descriptor.Address);
+        var security = TestSecurityHarness.For(store);
+        var authorized = security.Authorize(store, context, SecurityOperationKind.StateRead, SecurityEffect.Observe);
+        var mismatched = new AuthorizedSessionStoreRequest<SessionOperationContext>(authorized.Request, authorized.StoreKey, authorized.Grant, new SecurityEnforcementIntent(authorized.Intent.Id, new FencingToken(1)));
+
+        var result = await store.LoadAsync(mismatched, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage.ShouldBe("The enforcement intent fence differs from the session request.");
+    }
+
+    [Fact]
+    public async Task AcceptRunAsync_WhenFencingTokenIsRequested_ReturnsRejectedForUnsupportedDistributedFencing()
+    {
+        var (store, _, context, provisioned, admission, accepted) = await PrepareLaneAsync("accept-fenced");
+        var start = RunStartRequest(context, admission.AdmissionId, [admission.AdmissionId], accepted.Receipt.AdmittedSequence, provisioned.LaneRevision, provisioned.SessionVersion, provisioned.BranchCursor, "accept-fenced-start", expectedFencingToken: new FencingToken(1));
+        var security = TestSecurityHarness.For(store);
+        var authorized = security.Authorize(store, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate);
+        var fenced = new AuthorizedSessionStoreRequest<SessionRunStartRequest>(authorized.Request, authorized.StoreKey, authorized.Grant, new SecurityEnforcementIntent(authorized.Intent.Id, new FencingToken(1)));
+
+        var result = await store.AcceptRunAsync(fenced, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunStartRejected>().SafeReason.ShouldBe("The selected session store does not support distributed fencing.");
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenGrantStoreThrowsUnexpectedException_ReturnsTypedFailure()
+    {
+        var security = new TestSecurityHarness();
+        var throwingGrants = new ThrowingSecurityGrantStore(security);
+        var store = new InMemorySessionStore(
+            new GuidIdentifierGenerator<BranchId>(static v => new BranchId(v)),
+            new GuidIdentifierGenerator<SecurityAuditRecordId>(static v => new SecurityAuditRecordId(v)),
+            security, throwingGrants, TimeProvider.System);
+        TestSecurityHarness.Register(store, security);
+        var descriptor = await TestFactory.CreateSessionAsync(store);
+        throwingGrants.ShouldThrow = true;
+        var context = TestFactory.OperationContext(descriptor.Address);
+
+        var result = await store.LoadAsync(context, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionLoadFailed>().SafeMessage.ShouldBe("A session-store authorization prerequisite is unavailable.");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenCoreOperationThrowsAfterSuccessfulAuthorization_PropagatesAndReportsFaulted()
+    {
+        var clock = new ThrowsAfterTimeProvider(TimeProvider.System, throwOnCall: 2);
+        var security = new TestSecurityHarness();
+        var logger = new RecordingSessionStoreLogger();
+        var store = new InMemorySessionStore(
+            new GuidIdentifierGenerator<BranchId>(static v => new BranchId(v)),
+            new GuidIdentifierGenerator<SecurityAuditRecordId>(static v => new SecurityAuditRecordId(v)),
+            security, security, clock, logger);
+        TestSecurityHarness.Register(store, security);
+        var request = TestFactory.CreateRequest();
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () => await store.CreateAsync(request, TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("Simulated clock failure.");
+        logger.Snapshot().ShouldContain(static item => item.EventId.Id == 16001);
+    }
+
+    /// <summary>Forwards to an authoritative grant store but can throw on the intent-aware overload to exercise EnforceAsync's catch-all path.</summary>
+    private sealed class ThrowingSecurityGrantStore(ISecurityGrantStore inner): ISecurityGrantStore
+    {
+        public bool ShouldThrow { get; set; }
+
+        public ValueTask RegisterAsync(SecurityGrant grant, CancellationToken cancellationToken = default) =>
+            inner.RegisterAsync(grant, cancellationToken);
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+            SecurityGrant grant, SecurityEnforcementRequest enforcement, CancellationToken cancellationToken = default) =>
+            inner.ValidateAndConsumeAsync(grant, enforcement, cancellationToken);
+
+        public ValueTask<GrantConsumptionResult> ValidateAndConsumeAsync(
+            SecurityGrant grant, SecurityEnforcementRequest enforcement, SecurityEnforcementIntent intent,
+            CancellationToken cancellationToken = default) =>
+            ShouldThrow
+                ? throw new InvalidOperationException("Simulated grant-store failure.")
+                : inner.ValidateAndConsumeAsync(grant, enforcement, intent, cancellationToken);
+
+        public ValueTask<bool> RevokeAsync(GrantId grantId, CancellationToken cancellationToken = default) =>
+            inner.RevokeAsync(grantId, cancellationToken);
+    }
+
+    /// <summary>A clock that throws starting from a configured call number, to exercise a post-authorization core-operation failure.</summary>
+    private sealed class ThrowsAfterTimeProvider(TimeProvider inner, int throwOnCall): TimeProvider
+    {
+        private int _calls;
+
+        public override DateTimeOffset GetUtcNow() => Interlocked.Increment(ref _calls) >= throwOnCall
+            ? throw new InvalidOperationException("Simulated clock failure.")
+            : inner.GetUtcNow();
+    }
 }
