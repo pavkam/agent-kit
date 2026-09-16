@@ -4,11 +4,11 @@
 namespace AgentKit.Tools;
 
 /// <summary>
-/// The default <see cref="IToolInvoker"/>: resolves a call against the
-/// registered <see cref="IToolCatalog"/>, authorizes it through the
-/// registered <see cref="IToolAuthorizer"/>, and invokes the resolved tool,
-/// translating every reachable failure into an ordinary
-/// <see cref="ToolInvocationResult"/>.
+/// The default <see cref="IToolInvoker"/>: resolves a call's requested
+/// <see cref="ToolReference"/> against the registered <see cref="IToolCatalog"/>,
+/// authorizes it through the registered <see cref="IToolAuthorizer"/>, and
+/// invokes the resolved tool, translating every reachable failure into an
+/// ordinary <see cref="ResolvedToolInvocation"/>.
 /// </summary>
 /// <remarks>
 /// This class never lets a tool's thrown exception propagate as a fault to
@@ -22,6 +22,14 @@ namespace AgentKit.Tools;
 /// rather than a terminal outcome for it. An implementation-thrown
 /// <see cref="OperationCanceledException"/> without caller cancellation is an
 /// ordinary failed invocation.
+/// </remarks>
+/// <remarks>
+/// Resolution is deliberately reduced to match the current <see cref="IToolCatalog"/>: when the requested
+/// reference does not already carry a resolved <see cref="ToolReference.Id"/>, its
+/// <see cref="ToolReference.ProviderAlias"/> text is the only candidate identity this catalog can attempt to
+/// resolve. A hallucinated or otherwise unregistered alias fails that lookup and reaches
+/// <see cref="ToolTerminalStatus.UnknownTool"/> with an unresolved reference; it is never treated as resolved
+/// merely because the text was syntactically usable as a <see cref="ToolId"/>.
 /// </remarks>
 public sealed class DefaultToolInvoker: IToolInvoker
 {
@@ -60,31 +68,42 @@ public sealed class DefaultToolInvoker: IToolInvoker
     }
 
     /// <inheritdoc/>
-    public async Task<ToolInvocationResult> InvokeAsync(ToolCallRequest request, CancellationToken cancellationToken = default)
+    public async Task<ResolvedToolInvocation> InvokeAsync(ToolCallRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         var context = request.Context;
+        var requestedTool = request.Tool;
+
+        // A reference that already carries a resolved identity (a caller that already knows the exact tool,
+        // rather than one parsed from a model's alias) is resolved by that identity directly; otherwise the
+        // provider alias is the only candidate this reduced catalog can attempt to resolve against.
+        var candidateId = requestedTool.Id ?? new ToolId(requestedTool.ProviderAlias.Value);
         using var activity = AgentKitDiagnostics.Activities.StartActivity(
             AgentKitActivityNames.ExecuteTool,
             ActivityKind.Internal,
             parentContext: Activity.Current?.Context ?? default,
-            tags: CreateActivityTags(request));
-        ToolLog.Started(_logger, context.ToolCallId, request.ToolId);
+            tags: CreateActivityTags(request, candidateId));
+        ToolLog.Started(_logger, context.ToolCallId, candidateId);
 
         ITool tool;
         ToolAuthorizationDecision authorization;
+        ToolReference resolvedTool;
         try
         {
-            if (!_catalog.TryResolve(request.ToolId, out var resolvedTool, out var descriptor))
+            if (!_catalog.TryResolve(candidateId, out var resolvedToolImpl, out var descriptor))
             {
                 activity.SetFailed("unknown_tool", "unknown_tool");
                 ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "unknown_tool"));
-                ToolLog.Unknown(_logger, context.ToolCallId, request.ToolId);
-                return Rejected(ToolTerminalStatus.UnknownTool, $"Tool '{request.ToolId}' is not registered.");
+                ToolLog.Unknown(_logger, context.ToolCallId, candidateId);
+                return new ResolvedToolInvocation(
+                    requestedTool,
+                    ToolResultProjectionPolicyReference.Default,
+                    Rejected(ToolTerminalStatus.UnknownTool, $"Tool '{candidateId}' is not registered."));
             }
 
-            tool = resolvedTool;
+            tool = resolvedToolImpl;
+            resolvedTool = new ToolReference(requestedTool.ProviderAlias, descriptor.Id, descriptor.Version);
             authorization = await _authorizer.AuthorizeAsync(
                 new ToolAuthorizationRequest(request.Context, descriptor), cancellationToken).ConfigureAwait(false);
         }
@@ -92,7 +111,7 @@ public sealed class DefaultToolInvoker: IToolInvoker
         {
             activity.SetFailed("cancelled", "cancellation");
             ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "cancelled"));
-            ToolLog.Cancelled(_logger, context.ToolCallId, request.ToolId);
+            ToolLog.Cancelled(_logger, context.ToolCallId, candidateId);
             throw;
         }
         catch (Exception exception)
@@ -101,20 +120,26 @@ public sealed class DefaultToolInvoker: IToolInvoker
             // failure (definitely not performed), never an exception that would orphan the model's tool call.
             activity.SetFailed("failed", exception.GetType().FullName ?? exception.GetType().Name);
             ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "failed"));
-            ToolLog.Failed(_logger, context.ToolCallId, request.ToolId, exception.GetType().FullName ?? exception.GetType().Name);
-            return new ToolInvocationResult(
-                new ToolCallOutcome(
-                    ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed,
-                    false, $"Tool '{request.ToolId}' could not be resolved or authorized.", ExtensionData.Empty),
-                []);
+            ToolLog.Failed(_logger, context.ToolCallId, candidateId, exception.GetType().FullName ?? exception.GetType().Name);
+            return new ResolvedToolInvocation(
+                requestedTool,
+                ToolResultProjectionPolicyReference.Default,
+                new ToolInvocationResult(
+                    new ToolCallOutcome(
+                        ToolCallOutcomeKind.Failed, ToolTerminalStatus.InvocationFailed, SideEffectCertainty.DefinitelyNotPerformed,
+                        false, $"Tool '{candidateId}' could not be resolved or authorized.", ExtensionData.Empty),
+                    []));
         }
 
         if (authorization is ToolAuthorizationDenied denied)
         {
             activity.SetFailed("denied", "permission_denied");
             ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "denied"));
-            ToolLog.Denied(_logger, context.ToolCallId, request.ToolId);
-            return Rejected(ToolTerminalStatus.Denied, denied.SafeMessage);
+            ToolLog.Denied(_logger, context.ToolCallId, candidateId);
+            return new ResolvedToolInvocation(
+                resolvedTool,
+                ToolResultProjectionPolicyReference.Default,
+                Rejected(ToolTerminalStatus.Denied, denied.SafeMessage));
         }
 
         var invocationRequest = new ToolInvocationRequest(request.Context, request.Arguments, request.RequestedAt);
@@ -133,14 +158,14 @@ public sealed class DefaultToolInvoker: IToolInvoker
             }
 
             ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, outcome));
-            ToolLog.Completed(_logger, context.ToolCallId, request.ToolId, result.Outcome.Kind);
-            return result;
+            ToolLog.Completed(_logger, context.ToolCallId, candidateId, result.Outcome.Kind);
+            return new ResolvedToolInvocation(resolvedTool, ToolResultProjectionPolicyReference.Default, result);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             activity.SetFailed("cancelled", "cancellation");
             ToolMetrics.Calls.Add(1, new KeyValuePair<string, object?>(AgentKitTagNames.Outcome, "cancelled"));
-            ToolLog.Cancelled(_logger, context.ToolCallId, request.ToolId);
+            ToolLog.Cancelled(_logger, context.ToolCallId, candidateId);
             throw;
         }
         catch (Exception exception)
@@ -150,13 +175,16 @@ public sealed class DefaultToolInvoker: IToolInvoker
             ToolLog.Failed(
                 _logger,
                 context.ToolCallId,
-                request.ToolId,
+                candidateId,
                 exception.GetType().FullName ?? exception.GetType().Name);
-            return Failed($"Tool '{request.ToolId}' threw an unhandled exception during invocation.");
+            return new ResolvedToolInvocation(
+                resolvedTool,
+                ToolResultProjectionPolicyReference.Default,
+                Failed($"Tool '{candidateId}' threw an unhandled exception during invocation."));
         }
     }
 
-    private static ActivityTagsCollection CreateActivityTags(ToolCallRequest request)
+    private static ActivityTagsCollection CreateActivityTags(ToolCallRequest request, ToolId candidateId)
     {
         Debug.Assert(request is not null, "A validated request is required to create tool activity tags.");
         var tags = new ActivityTagsCollection
@@ -165,7 +193,7 @@ public sealed class DefaultToolInvoker: IToolInvoker
             { AgentKitTagNames.AgentId, request.Context.AgentId.ToString() },
             { AgentKitTagNames.SessionId, request.Context.SessionId?.ToString() },
             { AgentKitTagNames.ToolCallId, request.Context.ToolCallId.ToString() },
-            { AgentKitTagNames.ToolName, request.ToolId.ToString() },
+            { AgentKitTagNames.ToolName, candidateId.ToString() },
             { AgentKitTagNames.OperationId, request.Context.Correlation.OperationId.ToString() },
         };
 

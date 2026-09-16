@@ -40,7 +40,7 @@ internal static class TestFactory
         ExtensionData.Empty);
 
     public static ToolCallRequest CallRequest(ToolId toolId, JsonElement? arguments = null) => new(
-        toolId,
+        new ToolReference(new ToolAlias(toolId.Value), null, null),
         ExecutionContext(),
         arguments ?? JsonDocument.Parse("{}").RootElement,
         DateTimeOffset.UnixEpoch);

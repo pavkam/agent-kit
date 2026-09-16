@@ -4,11 +4,11 @@
 namespace AgentKit;
 
 /// <summary>
-/// Orchestrates one complete tool call: resolving it against an
-/// <see cref="IToolCatalog"/>, authorizing it through an
+/// Orchestrates one complete tool call: resolving <see cref="ToolCallRequest.Tool"/>
+/// against an <see cref="IToolCatalog"/>, authorizing it through an
 /// <see cref="IToolAuthorizer"/>, invoking the resolved <see cref="ITool"/>,
 /// and translating every outcome — including an unknown tool, a denial, or
-/// an unexpected exception — into one <see cref="ToolInvocationResult"/>.
+/// an unexpected exception — into one <see cref="ResolvedToolInvocation"/>.
 /// </summary>
 /// <remarks>
 /// An invoker composes exactly one <see cref="IToolCatalog"/> and one
@@ -27,12 +27,12 @@ namespace AgentKit;
 public interface IToolInvoker
 {
     /// <summary>Resolves, authorizes, and invokes one tool call.</summary>
-    /// <param name="request">The call request.</param>
+    /// <param name="request">The call request, whose <see cref="ToolCallRequest.Tool"/> may be unresolved.</param>
     /// <param name="cancellationToken">A token used to cancel the call.</param>
-    /// <returns>A task producing the terminal outcome and result content.</returns>
+    /// <returns>A task producing the resolved-or-not tool reference alongside the terminal outcome and result content.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
     /// <exception cref="OperationCanceledException">
     /// <paramref name="cancellationToken"/> is canceled before the call settles.
     /// </exception>
-    public Task<ToolInvocationResult> InvokeAsync(ToolCallRequest request, CancellationToken cancellationToken = default);
+    public Task<ResolvedToolInvocation> InvokeAsync(ToolCallRequest request, CancellationToken cancellationToken = default);
 }

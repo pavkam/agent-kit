@@ -65,7 +65,7 @@ public sealed class ToolPresenterTests
     [Fact]
     public async Task PresentAsync_WhenProjectedArgumentsAreUndefined_ReturnsExplicitFallback()
     {
-        var call = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("custom"), null, "custom"), default, null, ExtensionData.Empty);
+        var call = new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("custom"), null, null), default, null, ExtensionData.Empty);
 
         var result = await new ToolPresenter([]).PresentAsync(
             new ToolPresentationRequest(null, new ToolCallPresentationSource(call), new ToolPresentationBounds()),
@@ -174,12 +174,13 @@ public sealed class ToolPresenterTests
     private static ToolCallPart Call(string id, string json)
     {
         using var document = JsonDocument.Parse(json);
-        return new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId(id), new ToolVersion("1.0"), id), document.RootElement.Clone(), null, ExtensionData.Empty);
+        return new ToolCallPart(new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias(id), new ToolId(id), new ToolVersion("1.0")), document.RootElement.Clone(), null, ExtensionData.Empty);
     }
 
     private static ToolResultPart Result(ImmutableArray<ContentPart> content) => new(
-        new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolId("custom"), new ToolVersion("1.0"), "custom"),
-        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), content, ExtensionData.Empty);
+        new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("custom"), new ToolId("custom"), new ToolVersion("1.0")),
+        new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty), content,
+        new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
 
     private static ToolDescriptor Descriptor(string id, string description = "Test descriptor", string sourceId = "tests")
     {

@@ -11,9 +11,16 @@ using AgentKit;
 public sealed class ToolCallRequestTests
 {
     [Fact]
+    public void ToolCallRequest_Constructor_WhenToolNull_ThrowsArgumentNullException()
+    {
+        var exception = Should.Throw<ArgumentNullException>(() => new ToolCallRequest(null!, ExecutionContext(), default, DateTimeOffset.UnixEpoch));
+        exception.ParamName.ShouldBe("tool");
+    }
+
+    [Fact]
     public void ToolCallRequest_Constructor_WhenContextNull_ThrowsArgumentNullException()
     {
-        var exception = Should.Throw<ArgumentNullException>(() => new ToolCallRequest(new ToolId("t"), null!, default, DateTimeOffset.UnixEpoch));
+        var exception = Should.Throw<ArgumentNullException>(() => new ToolCallRequest(new ToolReference(new ToolAlias("t"), null, null), null!, default, DateTimeOffset.UnixEpoch));
         exception.ParamName.ShouldBe("context");
     }
 
@@ -22,8 +29,9 @@ public sealed class ToolCallRequestTests
     {
         var context = ExecutionContext();
         var arguments = JsonDocument.Parse("{}").RootElement;
-        var request = new ToolCallRequest(new ToolId("t"), context, arguments, DateTimeOffset.UnixEpoch);
-        request.ToolId.ShouldBe(new ToolId("t"));
+        var tool = new ToolReference(new ToolAlias("t"), null, null);
+        var request = new ToolCallRequest(tool, context, arguments, DateTimeOffset.UnixEpoch);
+        request.Tool.ShouldBe(tool);
         request.Context.ShouldBe(context);
         request.RequestedAt.ShouldBe(DateTimeOffset.UnixEpoch);
     }
