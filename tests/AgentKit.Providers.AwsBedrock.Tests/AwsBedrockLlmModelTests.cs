@@ -596,6 +596,139 @@ public sealed class AwsBedrockLlmModelTests
         observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
     }
 
+    /// <summary>Verifies a translator that cannot honor the request's settings fails with a typed invalid-request outcome without ever sending the HTTP request.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTranslationThrowsNotSupportedException_FailsWithInvalidRequestWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
+        var model = CreateModel(handler, CreateCredentials(), options: new AwsBedrockProviderOptions { Region = "us-east-1", PreferStreaming = false });
+        var settings = LlmRequestSettings.Default with { ParallelToolCalls = false };
+        var request = CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1), settings: settings);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.SafeMessage.ShouldBe("The request could not be translated for the Bedrock Converse wire format.");
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<NotSupportedException>();
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies caller cancellation while the request is still being sent (before any response headers arrive) returns one cancelled outcome.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenCallerCancelsWhileSendIsInFlight_ReturnsCancelledResult()
+    {
+        var handler = new GatedSendHttpMessageHandler();
+        var model = CreateModel(handler, CreateCredentials());
+        var observer = new RecordingModelResponseObserver();
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, cancellation.Token);
+        (await Task.WhenAny(handler.Entered, pending)).ShouldBe(handler.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseCancelled>();
+    }
+
+    /// <summary>Verifies the request deadline elapsing while the request is still being sent is a typed timeout, not a caller cancellation.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineElapsesWhileSendIsInFlight_ReturnsTypedTimeoutFailure()
+    {
+        var handler = new GatedSendHttpMessageHandler();
+        var timeProvider = new FakeTimeProvider(Now);
+        var model = CreateModel(handler, CreateCredentials(), timeProvider: timeProvider);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddSeconds(5)), observer, TestContext.Current.CancellationToken);
+        await handler.Entered;
+        timeProvider.Advance(TimeSpan.FromSeconds(6));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.SafeMessage.ShouldBe("The request did not complete before its deadline.");
+    }
+
+    /// <summary>Verifies the request deadline elapsing while the provider's error response body is still being received returns a typed timeout retaining the HTTP evidence.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineElapsesDuringErrorBodyRead_ReturnsTypedTimeoutFailureRetainingHttpEvidence()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StreamContent(body) });
+        var timeProvider = new FakeTimeProvider(Now);
+        var model = CreateModel(handler, CreateCredentials(), timeProvider: timeProvider);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddSeconds(5)), observer, TestContext.Current.CancellationToken);
+        await body.Entered;
+        timeProvider.Advance(TimeSpan.FromSeconds(6));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.StatusCode.ShouldBe(429);
+        failed.Failure.SafeMessage.ShouldBe("The provider error response was not received before the request deadline.");
+    }
+
+    /// <summary>Verifies a bare transport timeout (neither the caller nor the deadline) while reading the provider's error body still yields a typed timeout retaining the HTTP evidence.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTransportTimesOutDuringErrorBodyRead_ReturnsTypedTimeoutFailureRetainingHttpEvidence()
+    {
+        var body = new FaultingReadStream(static () => new OperationCanceledException("The transport's own read timeout elapsed."));
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StreamContent(body) });
+        var model = CreateModel(handler, CreateCredentials());
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.StatusCode.ShouldBe(429);
+        failed.Failure.SafeMessage.ShouldBe("The transport timed out while the provider error response was being received.");
+    }
+
+    /// <summary>Verifies the request deadline elapsing while the successful response body is still streaming in returns a typed timeout.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineElapsesDuringSuccessfulBodyRead_ReturnsTypedTimeoutFailure()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) });
+        var timeProvider = new FakeTimeProvider(Now);
+        var options = new AwsBedrockProviderOptions { Region = "us-east-1", PreferStreaming = true };
+        var model = CreateModel(handler, CreateCredentials(), timeProvider: timeProvider, options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddSeconds(5)), observer, TestContext.Current.CancellationToken);
+        await body.Entered;
+        timeProvider.Advance(TimeSpan.FromSeconds(6));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.SafeMessage.ShouldBe("The response was not fully received before the request's deadline.");
+    }
+
+    /// <summary>Verifies a bare transport timeout (neither the caller nor the deadline) while reading the successful response body still yields a typed timeout.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTransportTimesOutDuringSuccessfulBodyRead_ReturnsTypedTimeoutFailure()
+    {
+        var body = new FaultingReadStream(static () => new OperationCanceledException("The transport's own read timeout elapsed."));
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) });
+        var options = new AwsBedrockProviderOptions { Region = "us-east-1", PreferStreaming = true };
+        var model = CreateModel(handler, CreateCredentials(), options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.ClaudeSonnet, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.SafeMessage.ShouldBe("The transport timed out while the response body was being received.");
+    }
+
     /// <summary>Returns the first <paramref name="frameCount"/> complete AWS event-stream frames of a recorded body, using each frame's big-endian total-length prelude.</summary>
     private static byte[] TakeLeadingFrames(byte[] payload, int frameCount)
     {
