@@ -7,10 +7,57 @@ namespace AgentKit.Tools.Glob.Tests;
 public sealed class GlobToolPresentationFormatterTests
 {
     [Fact]
+    public void Descriptor_WhenAccessed_MatchesGlobToolPresentationDescriptor()
+    {
+        var formatter = new GlobToolPresentationFormatter();
+
+        formatter.Descriptor.ShouldBeSameAs(GlobTool.PresentationDescriptor);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenSourceIsUnrecognized_ReturnsNull()
+    {
+        var formatter = new GlobToolPresentationFormatter();
+
+        var presentation = await formatter.FormatAsync(
+            new ToolPresentationRequest(formatter.Descriptor, new UnsupportedPresentationSource(), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task FormatAsync_WhenCallHasScopeAndExclusions_ShowsActualRequest()
     {
         var presentation = await FormatCall(/*lang=json,strict*/ """{"pattern":"**/*.cs","base_path":"src","exclude_patterns":["**/obj/**"]}""");
         presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("Glob **/*.cs under src; excluding **/obj/**");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenCallOmitsBasePathAndExclusions_ShowsBareGlobPreview()
+    {
+        var presentation = await FormatCall(/*lang=json,strict*/ """{"pattern":"**/*.cs"}""");
+
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("Glob **/*.cs");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenCallMissingPattern_ReturnsNull()
+    {
+        var presentation = await FormatCall(/*lang=json,strict*/ """{"base_path":"src"}""");
+
+        presentation.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(/*lang=json,strict*/ """{"pattern":"*.cs","base_path":1}""")]
+    [InlineData(/*lang=json,strict*/ """{"pattern":"*.cs","exclude_patterns":"not-an-array"}""")]
+    [InlineData(/*lang=json,strict*/ """{"pattern":"*.cs","exclude_patterns":[1]}""")]
+    public async Task FormatAsync_WhenCallOptionsAreMalformed_ReturnsNull(string json)
+    {
+        var presentation = await FormatCall(json);
+
+        presentation.ShouldBeNull();
     }
 
     [Fact]
@@ -34,6 +81,47 @@ public sealed class GlobToolPresentationFormatterTests
     public async Task FormatAsync_WhenSuccessfulPayloadMalformed_DeclinesToGenericFallback()
     {
         var presentation = await FormatResult(/*lang=json,strict*/ """{"matches":"wrong"}""", success: true);
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenFailedPayloadMalformed_FallsBackToFailureReason()
+    {
+        var presentation = await FormatResult(/*lang=json,strict*/ """{"matches":"wrong"}""", success: false, "Denied.");
+
+        presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text.ShouldBe("Denied.");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenMatchesContainsNonStringItem_DeclinesToGenericFallback()
+    {
+        var presentation = await FormatResult(
+            /*lang=json,strict*/ """{"status":"Succeeded","matches":[1],"visited_entries":1,"complete":true}""",
+            success: true);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultContentIsNotOneTextPart_ReturnsNull()
+    {
+        var outcome = new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.NewGuid()), new ToolReference(new ToolAlias("glob"), null, null), outcome, [],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0), ExtensionData.Empty);
+
+        var presentation = await new GlobToolPresentationFormatter().FormatAsync(
+            new ToolPresentationRequest(GlobTool.PresentationDescriptor, new ToolResultPresentationSource(result), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultProjectionIsNotJson_ReturnsNull()
+    {
+        var presentation = await FormatResult("not json", success: true);
+
         presentation.ShouldBeNull();
     }
 

@@ -12,6 +12,9 @@ public sealed class GlobToolTests
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"exclude_patterns\":[\"../bin/**\"]}")]
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"exclude_patterns\":[42]}")]
     [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"maximum_results\":10001}")]
+    [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"base_path\":1}")]
+    [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"base_path\":\"../escape\"}")]
+    [InlineData(/*lang=json,strict*/ "{\"pattern\":\"**/*.cs\",\"exclude_patterns\":\"not-an-array\"}")]
     public async Task InvokeAsync_WhenArgumentsInvalid_DoesNotAuthorizeOrObserve(string json)
     {
         var globber = new FakeFileGlobber();
@@ -25,6 +28,30 @@ public sealed class GlobToolTests
         result.Outcome.SideEffectCertainty.ShouldBe(SideEffectCertainty.DefinitelyNotPerformed);
         authority.Requests.ShouldBeEmpty();
         globber.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenExcludePatternsExceedsMaximumCount_ReturnsInvalidArguments()
+    {
+        var globber = new FakeFileGlobber();
+        var authority = new RecordingSecurityAuthority();
+        var tool = CreateTool(globber, authority);
+        var excludePatterns = Enumerable.Range(0, 101).Select(static index => $"pattern-{index}/**");
+        var json = JsonSerializer.Serialize(new { pattern = "**/*.cs", exclude_patterns = excludePatterns });
+
+        var result = await tool.InvokeAsync(Request(json), TestContext.Current.CancellationToken);
+
+        result.Outcome.SourceStatus.ShouldBe(ToolTerminalStatus.InvalidArguments);
+        authority.Requests.ShouldBeEmpty();
+        globber.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Descriptor_WhenAccessed_MatchesPresentationDescriptor()
+    {
+        var tool = CreateTool(new FakeFileGlobber(), new RecordingSecurityAuthority());
+
+        tool.Descriptor.ShouldBeSameAs(GlobTool.PresentationDescriptor);
     }
 
     [Fact]
