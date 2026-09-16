@@ -92,6 +92,47 @@ public sealed class DefaultRunContinuationPolicyTests: RunContinuationPolicyConf
         Activity.Current.ShouldBeSameAs(parent);
     }
 
+    [Theory]
+    [InlineData(AgentRunState.Cancelling)]
+    [InlineData(AgentRunState.Failing)]
+    [InlineData(AgentRunState.Settling)]
+    [InlineData(AgentRunState.Settled)]
+    public async Task DecideAsync_WhenStateIsAlreadySettlingOrSettled_HaltsInvalidStateWithoutEvaluatingTheBoundary(AgentRunState state)
+    {
+        var fixture = CreateFixture();
+        var decision = await fixture.Policy.DecideAsync(
+            fixture.CreateContext(new IdleContinuationBoundary(), [], state: state), TestContext.Current.CancellationToken);
+
+        var halt = decision.ShouldBeOfType<HaltRun>();
+        halt.Outcome.ShouldBeOfType<AgentRunInvalidState>().SafeMessage.ShouldContain(state.ToString());
+    }
+
+    [Fact]
+    public async Task DecideAsync_WhenRetryBoundaryIsSafeButNoRetryEvidenceExists_HaltsInvalidState()
+    {
+        var fixture = CreateFixture();
+        var boundary = new RetryContinuationBoundary(
+            new TurnId(Guid.NewGuid()), new ModelRequestId(Guid.NewGuid()));
+        var decision = await fixture.Policy.DecideAsync(
+            fixture.CreateContext(boundary, [], state: AgentRunState.WaitingRetry), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunInvalidState>()
+            .SafeMessage.ShouldContain("retry boundary");
+    }
+
+    [Fact]
+    public async Task DecideAsync_WhenDeferredBoundaryIsSafeButNoCompletionEvidenceExists_HaltsInvalidState()
+    {
+        var fixture = CreateFixture();
+        var boundary = new DeferredContinuationBoundary(
+            new TurnId(Guid.NewGuid()), new ModelRequestId(Guid.NewGuid()), new OperationId(Guid.NewGuid()));
+        var decision = await fixture.Policy.DecideAsync(
+            fixture.CreateContext(boundary, [], state: AgentRunState.SuspendedDeferred), TestContext.Current.CancellationToken);
+
+        decision.ShouldBeOfType<HaltRun>().Outcome.ShouldBeOfType<AgentRunInvalidState>()
+            .SafeMessage.ShouldContain("deferred boundary");
+    }
+
     private static OutputRetryRequired CreateRetry() => new(new OutputRepairInstruction("Repair output."), new OutputValidationFailure(OutputValidationFailureKind.ValidatorFailed, "Rejected.", []));
     private static ActivityListener CreateThrowingListener(bool throwOnStart) => new()
     {

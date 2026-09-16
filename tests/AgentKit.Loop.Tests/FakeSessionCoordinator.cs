@@ -83,6 +83,12 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
     public ConversationId? ConversationId { get; set; }
 
     /// <summary>
+    /// Gets or sets an override invoked instead of the normal load behavior, letting tests script a load failure
+    /// or a descriptor whose address does not match the requested context.
+    /// </summary>
+    public Func<SessionOperationContext, SessionLoadResult>? LoadOverride { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether appended entries must carry the
     /// exact next whole-session sequence numbers, as both first-party stores
     /// require (<c>NextSequence + i + 1</c>). Off by default so legacy tests
@@ -247,19 +253,21 @@ internal sealed class FakeSessionCoordinator: ISessionCoordinator
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(profile);
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<SessionLoadResult>(new SessionLoaded(new SessionDescriptor(
-            context.ToAddress(),
-            ConversationId,
-            context.Identity.TenantId,
-            context.Identity.PrincipalId,
-            profile.DefaultStoreKey,
-            BranchId,
-            Version,
-            SessionLifecycleState.Active,
-            DateTimeOffset.UnixEpoch,
-            DateTimeOffset.UnixEpoch,
-            new SchemaVersion("1"),
-            ExtensionData.Empty)));
+        return LoadOverride is not null
+            ? ValueTask.FromResult(LoadOverride(context))
+            : ValueTask.FromResult<SessionLoadResult>(new SessionLoaded(new SessionDescriptor(
+                context.ToAddress(),
+                ConversationId,
+                context.Identity.TenantId,
+                context.Identity.PrincipalId,
+                profile.DefaultStoreKey,
+                BranchId,
+                Version,
+                SessionLifecycleState.Active,
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch,
+                new SchemaVersion("1"),
+                ExtensionData.Empty)));
     }
 
     /// <inheritdoc/>

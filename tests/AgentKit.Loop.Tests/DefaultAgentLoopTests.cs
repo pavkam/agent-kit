@@ -951,6 +951,143 @@ public sealed class DefaultAgentLoopTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenSessionLoadDoesNotReturnSessionLoaded_ReturnsAgentRunSessionOperationFailed()
+    {
+        var loop = CreateLoop(out var coordinator, out _, static _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())));
+        coordinator.LoadOverride = static _ => new SessionLoadFailed("store unavailable");
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        result.NewMessages.ShouldBeEmpty();
+        result.FinalVersion.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenLoadedDescriptorAddressDiffersFromTheRequestedContext_ReturnsAgentRunSessionOperationFailed()
+    {
+        var loop = CreateLoop(out var coordinator, out _, static _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())));
+        var otherAgentId = new AgentId(Guid.NewGuid());
+        coordinator.LoadOverride = context => new SessionLoaded(new SessionDescriptor(
+            new SessionAddress(otherAgentId, context.SessionId),
+            null,
+            context.Identity.TenantId,
+            context.Identity.PrincipalId,
+            new SessionStoreKey("test-store"),
+            _branchId,
+            new SessionVersion(0),
+            SessionLifecycleState.Active,
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch,
+            new SchemaVersion("1"),
+            ExtensionData.Empty));
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        result.NewMessages.ShouldBeEmpty();
+        result.FinalVersion.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenHistoryPagesReportDifferentSnapshots_ReturnsAgentRunSessionOperationFailed()
+    {
+        var loop = CreateLoop(out var coordinator, out _, static _ => TestFactory.CompletedWithText(new ModelRequestId(Guid.NewGuid())));
+        var first = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1);
+        var second = TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 2);
+        var snapshotA = new SessionReadSnapshot(new SessionAddress(_agentId, _sessionId), _branchId, new SessionVersion(1), new SessionSequence(2));
+        var snapshotB = new SessionReadSnapshot(new SessionAddress(_agentId, _sessionId), _branchId, new SessionVersion(2), new SessionSequence(2));
+        var page = 0;
+        coordinator.ReadOverride = _ => ++page switch
+        {
+            1 => new SessionPage([first], new SessionSequence(1), true, snapshotA),
+            _ => new SessionPage([second], new SessionSequence(2), false, snapshotB),
+        };
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        result.NewMessages.ShouldBeEmpty();
+        result.FinalVersion.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheRebaseReadReportsDifferentSnapshotsAcrossPages_ReturnsAgentRunSessionOperationFailed()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var loop = CreateLoop(out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId));
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        coordinator.ConditionalAppendOverride = request =>
+        {
+            coordinator.SimulateConcurrentAppend([TestFactory.SeedToolFactEntry(_agentId, _sessionId, _branchId, 2)]);
+            return new SessionAppendConflict(request.ExpectedVersion, coordinator.Version);
+        };
+        var snapshotA = new SessionReadSnapshot(new SessionAddress(_agentId, _sessionId), _branchId, new SessionVersion(1), new SessionSequence(2));
+        var snapshotB = new SessionReadSnapshot(new SessionAddress(_agentId, _sessionId), _branchId, new SessionVersion(2), new SessionSequence(2));
+        var rebasePage = 0;
+        coordinator.ConditionalReadOverride = request =>
+        {
+            if (request.FromSequenceExclusive.Value == 0)
+            {
+                // History loading (from sequence 0) uses the normal fake behavior.
+                return null;
+            }
+
+            // The rebase read reports two pages with different pinned snapshots, which the loop must reject.
+            return ++rebasePage switch
+            {
+                1 => new SessionPage(
+                    [TestFactory.SeedToolFactEntry(_agentId, _sessionId, _branchId, 2)], new SessionSequence(1), true, snapshotA),
+                _ => new SessionPage(
+                    [], new SessionSequence(2), false, snapshotB),
+            };
+        };
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunSessionOperationFailed>();
+        _ = coordinator.ReceivedAppends.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheModelAdapterThrowsANonCancellationException_PropagatesItAndLogsTheFault()
+    {
+        var logger = new TestSupport.RecordingLogger<DefaultAgentLoop>();
+        var fault = new InvalidOperationException("adapter fault");
+        var loop = CreateLoop(out var coordinator, out _, _ => throw fault, logger: logger);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+        var request = TestFactory.RunRequest(_agentId, _sessionId, _branchId);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => loop.RunAsync(request, _services, TestContext.Current.CancellationToken));
+
+        exception.ShouldBeSameAs(fault);
+        var entry = logger.Snapshot().Single(static entry => entry.EventId.Id == 1004);
+        entry.Level.ShouldBe(Microsoft.Extensions.Logging.LogLevel.Error);
+        entry.State["RunId"].ShouldBe(request.RunId);
+        entry.State["ErrorType"].ShouldBe(fault.GetType().FullName);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoObserverIsSuppliedButTheModelStreams_DeliversToTheNoOpObserverWithoutFailing()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var streamed = new ModelPartDelta(requestId, 1, 0, new TextContentDelta("partial"));
+        var loop = CreateLoop(
+            out var coordinator, out _, _ => TestFactory.CompletedWithText(requestId), modelEvent: streamed);
+        coordinator.Seed([TestFactory.SeedUserMessageEntry(_agentId, _sessionId, _branchId, 1)]);
+
+        var result = await loop.RunAsync(
+            TestFactory.RunRequest(_agentId, _sessionId, _branchId), _services, TestContext.Current.CancellationToken);
+
+        _ = result.Outcome.ShouldBeOfType<AgentRunCompleted>();
+    }
+
+    [Fact]
     public async Task RunAsync_WhenRunAuthorizationCannotBeCaptured_ReturnsAgentRunAuthorizationUnavailableBeforeAnyEffect()
     {
         var selector = new FakeSecurityProfileSelector
