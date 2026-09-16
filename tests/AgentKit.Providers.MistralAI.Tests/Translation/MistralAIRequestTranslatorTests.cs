@@ -166,6 +166,205 @@ public sealed class MistralAIRequestTranslatorTests
     }
 
     [Fact]
+    public void Translate_WhenTopPIsSpecified_SetsTopPField()
+    {
+        var settings = LlmRequestSettings.Default with { TopP = 0.9 };
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.MistralLarge,
+            [TestMessages.User("hi")],
+            [],
+            LlmToolChoice.Auto,
+            settings,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new MistralAIRequestTranslator().Translate(request, useStreaming: false);
+
+        body["top_p"]!.GetValue<double>().ShouldBe(0.9);
+    }
+
+    [Fact]
+    public void Translate_WhenSystemMessageHasMultipleTextParts_JoinsThemWithBlankLine()
+    {
+        var system = new SystemMessage(
+            new MessageId(Guid.NewGuid()),
+            new AgentId(Guid.NewGuid()),
+            new SessionId(Guid.NewGuid()),
+            conversationId: null,
+            new BranchId(Guid.NewGuid()),
+            runId: null,
+            turnId: null,
+            DateTimeOffset.UtcNow,
+            MessageState.Complete,
+            [
+                new TextPart("First paragraph.", TextSemantics.Plain, ExtensionData.Empty),
+                new TextPart("Second paragraph.", TextSemantics.Plain, ExtensionData.Empty),
+            ],
+            ExtensionData.Empty);
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.MistralLarge,
+            [system],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new MistralAIRequestTranslator().Translate(request, useStreaming: false);
+
+        body["messages"]![0]!["content"]!.GetValue<string>().ShouldBe("First paragraph.\n\nSecond paragraph.");
+    }
+
+    [Fact]
+    public void Translate_WhenAssistantMessageContainsPlainText_TranslatesTextContentChunk()
+    {
+        var assistant = TestMessages.Assistant(new TextPart("Here is my answer.", TextSemantics.Plain, ExtensionData.Empty));
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.MistralLarge,
+            [assistant],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new MistralAIRequestTranslator().Translate(request, useStreaming: false);
+        var chunk = body["messages"]![0]!["content"]![0]!;
+
+        chunk["type"]!.GetValue<string>().ShouldBe("text");
+        chunk["text"]!.GetValue<string>().ShouldBe("Here is my answer.");
+    }
+
+    [Fact]
+    public void Translate_WhenAssistantMessageContainsUnsupportedContentPart_ThrowsNotSupportedException()
+    {
+        var mediaPart = new MediaReferencePart(
+            new MediaReference(
+                new MediaId(Guid.NewGuid()),
+                MediaSourceKind.Uri,
+                "image/png",
+                new Uri("https://example.com/image.png"),
+                [],
+                sizeInBytes: null,
+                hash: null,
+                ExtensionData.Empty),
+            MediaSemantics.Output,
+            ExtensionData.Empty);
+        var assistant = TestMessages.Assistant(mediaPart);
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.MistralLarge,
+            [assistant],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new MistralAIRequestTranslator().Translate(request, useStreaming: false));
+    }
+
+    [Fact]
+    public void Translate_WhenToolResultContainsStructuredData_SerializesStructuredDataAsContent()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
+        var structuredData = new StructuredDataPart(
+            JsonDocument.Parse("""{"temperature":15,"unit":"celsius"}""").RootElement,
+            schema: null,
+            ExtensionData.Empty);
+        var toolMessage = TestMessages.Tool(
+            new ToolResultPart(
+                callId,
+                toolReference,
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+                [structuredData],
+                new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+                ExtensionData.Empty));
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.MistralLarge,
+            [toolMessage],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new MistralAIRequestTranslator().Translate(request, useStreaming: false);
+        var content = JsonNode.Parse(body["messages"]![0]!["content"]!.GetValue<string>())!;
+
+        content["temperature"]!.GetValue<int>().ShouldBe(15);
+        content["unit"]!.GetValue<string>().ShouldBe("celsius");
+    }
+
+    [Fact]
+    public void Translate_WhenToolResultContainsUnsupportedContentPart_ThrowsNotSupportedException()
+    {
+        var callId = new ToolCallId(Guid.NewGuid());
+        var toolReference = new ToolReference(new ToolAlias("get_weather"), null, null);
+        var mediaPart = new MediaReferencePart(
+            new MediaReference(
+                new MediaId(Guid.NewGuid()),
+                MediaSourceKind.Uri,
+                "image/png",
+                new Uri("https://example.com/image.png"),
+                [],
+                sizeInBytes: null,
+                hash: null,
+                ExtensionData.Empty),
+            MediaSemantics.Output,
+            ExtensionData.Empty);
+        var toolMessage = TestMessages.Tool(
+            new ToolResultPart(
+                callId,
+                toolReference,
+                new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+                [mediaPart],
+                new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+                ExtensionData.Empty));
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.MistralLarge,
+            [toolMessage],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new MistralAIRequestTranslator().Translate(request, useStreaming: false));
+    }
+
+    [Fact]
+    public void Translate_WhenToolChoiceIsAutoAndToolsArePresent_SerializesAutoString()
+    {
+        var tool = new LlmToolDefinition(new ToolId("noop"), "noop", null, JsonDocument.Parse("{}").RootElement);
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.MistralLarge,
+            [TestMessages.User("hi")],
+            [tool],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new MistralAIRequestTranslator().Translate(request, useStreaming: false);
+
+        body["tool_choice"]!.GetValue<string>().ShouldBe("auto");
+    }
+
+    [Fact]
     public void Translate_WhenUserMessageContainsMedia_ThrowsNotSupportedException()
     {
         var mediaPart = new MediaReferencePart(

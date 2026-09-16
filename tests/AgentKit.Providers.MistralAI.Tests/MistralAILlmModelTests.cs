@@ -591,4 +591,193 @@ public sealed class MistralAILlmModelTests
         observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
         observer.Events.Select(static e => e.Sequence).ShouldBe(Enumerable.Range(0, observer.Events.Count).Select(static i => (long) i));
     }
+
+    /// <summary>Verifies a translator that cannot derive a distinct wire tool-call identifier fails with a typed invalid-request outcome without ever sending the HTTP request.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTranslationThrowsNotSupportedException_FailsWithInvalidRequestWithoutSendingHttpRequest()
+    {
+        var handler = StubHttpMessageHandler.FromFixture(HttpStatusCode.OK, "responses/buffered_text.json");
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), options: new MistralAIProviderOptions { BaseAddress = new Uri("https://api.mistral.test/v1/"), PreferStreaming = false });
+
+        var victimCallId = new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000040"));
+        var toolReference = new ToolReference(new ToolAlias("noop"), null, null);
+        var blockers = Enumerable.Range(0, 16)
+            .Select(disambiguator => new ToolCallPart(
+                new ToolCallId(Guid.Parse($"00000000-0000-0000-0000-0000000001{disambiguator:x2}")),
+                toolReference,
+                JsonDocument.Parse("{}").RootElement,
+                new ProviderToolCallId(MistralAIToolCallIdCodec.Encode(victimCallId, disambiguator)),
+                ExtensionData.Empty))
+            .ToArray<ContentPart>();
+        var victim = new ToolCallPart(victimCallId, toolReference, JsonDocument.Parse("{}").RootElement, providerCallId: null, ExtensionData.Empty);
+
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.MistralLarge,
+            [TestMessages.Assistant(blockers), TestMessages.Assistant(victim)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, Now.AddMinutes(1), ProviderRequestOptions.Empty);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(request, observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.InvalidRequest);
+        failed.Failure.SafeMessage.ShouldBe("The request could not be translated for the Mistral AI Chat Completions wire format.");
+        _ = failed.Failure.DiagnosticCause.ShouldBeOfType<NotSupportedException>();
+        handler.Requests.ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies an error body with no 'detail' field at all yields no provider error evidence rather than throwing.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenErrorBodyHasNoDetailField_ReturnsFailureWithNoProviderErrorEvidence()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent(/*lang=json,strict*/ """{ "message": "unauthorized" }""", Encoding.UTF8, "application/json"),
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBeNull();
+    }
+
+    /// <summary>Verifies a 'detail' field of an unexpected JSON kind (neither string nor array) yields no provider error evidence rather than throwing.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDetailFieldIsUnexpectedJsonKind_ReturnsFailureWithNoProviderErrorEvidence()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent(/*lang=json,strict*/ """{ "detail": 42 }""", Encoding.UTF8, "application/json"),
+        });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failure = result.ShouldBeOfType<ModelAttemptFailed>().Failure;
+        failure.Kind.ShouldBe(ProviderFailureKind.Authentication);
+        ProviderErrorMessageEvidence.TryRead(failure.Extensions).ShouldBeNull();
+    }
+
+    /// <summary>Verifies caller cancellation while the request is still being sent (before any response headers arrive) returns one cancelled outcome.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenCallerCancelsWhileSendIsInFlight_ReturnsCancelledResult()
+    {
+        var handler = new GatedSendHttpMessageHandler();
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")));
+        var observer = new RecordingModelResponseObserver();
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1)), observer, cancellation.Token);
+        (await Task.WhenAny(handler.Entered, pending)).ShouldBe(handler.Entered);
+        await cancellation.CancelAsync();
+        var result = await pending;
+
+        var cancelled = result.ShouldBeOfType<ModelAttemptCancelled>();
+        cancelled.Cancellation.Kind.ShouldBe(ProviderFailureKind.Cancellation);
+        _ = observer.Events[^1].ShouldBeOfType<ModelResponseCancelled>();
+    }
+
+    /// <summary>Verifies the request deadline elapsing while the request is still being sent is a typed timeout, not a caller cancellation.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineElapsesWhileSendIsInFlight_ReturnsTypedTimeoutFailure()
+    {
+        var handler = new GatedSendHttpMessageHandler();
+        var timeProvider = new FakeTimeProvider(Now);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), timeProvider: timeProvider);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddSeconds(5)), observer, TestContext.Current.CancellationToken);
+        await handler.Entered;
+        timeProvider.Advance(TimeSpan.FromSeconds(6));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.SafeMessage.ShouldBe("The request did not complete before its deadline.");
+    }
+
+    /// <summary>Verifies the request deadline elapsing while the provider's error response body is still being received returns a typed timeout retaining the HTTP evidence.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineElapsesDuringErrorBodyRead_ReturnsTypedTimeoutFailureRetainingHttpEvidence()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StreamContent(body) });
+        var timeProvider = new FakeTimeProvider(Now);
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), timeProvider: timeProvider);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddSeconds(5)), observer, TestContext.Current.CancellationToken);
+        await body.Entered;
+        timeProvider.Advance(TimeSpan.FromSeconds(6));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.StatusCode.ShouldBe(429);
+        failed.Failure.SafeMessage.ShouldBe("The provider error response was not received before the request deadline.");
+    }
+
+    /// <summary>Verifies a bare transport timeout (neither the caller nor the deadline) while reading the provider's error body still yields a typed timeout retaining the HTTP evidence.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTransportTimesOutDuringErrorBodyRead_ReturnsTypedTimeoutFailureRetainingHttpEvidence()
+    {
+        var body = new FaultingReadStream(static () => new OperationCanceledException("The transport's own read timeout elapsed."));
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StreamContent(body) });
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")));
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.StatusCode.ShouldBe(429);
+        failed.Failure.SafeMessage.ShouldBe("The transport timed out while the provider error response was being received.");
+    }
+
+    /// <summary>Verifies the request deadline elapsing while the successful response body is still streaming in returns a typed timeout.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenDeadlineElapsesDuringSuccessfulBodyRead_ReturnsTypedTimeoutFailure()
+    {
+        var body = new GatedReadStream();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) });
+        var timeProvider = new FakeTimeProvider(Now);
+        var options = new MistralAIProviderOptions { BaseAddress = new Uri("https://api.mistral.test/v1/"), PreferStreaming = true };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), timeProvider: timeProvider, options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        var pending = model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddSeconds(5)), observer, TestContext.Current.CancellationToken);
+        await body.Entered;
+        timeProvider.Advance(TimeSpan.FromSeconds(6));
+        var result = await pending;
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.SafeMessage.ShouldBe("The response was not fully received before the request's deadline.");
+    }
+
+    /// <summary>Verifies a bare transport timeout (neither the caller nor the deadline) while reading the successful response body still yields a typed timeout.</summary>
+    [Fact]
+    public async Task ExecuteAsync_WhenTransportTimesOutDuringSuccessfulBodyRead_ReturnsTypedTimeoutFailure()
+    {
+        var body = new FaultingReadStream(static () => new OperationCanceledException("The transport's own read timeout elapsed."));
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) });
+        var options = new MistralAIProviderOptions { BaseAddress = new Uri("https://api.mistral.test/v1/"), PreferStreaming = true };
+        var model = CreateModel(handler, new StaticProviderCredentialSource(new ApiKeyProviderCredential("mistral-test-key")), options: options);
+        var observer = new RecordingModelResponseObserver();
+
+        var result = await model.ExecuteAsync(CreateRequest(TestModels.MistralLarge, Now.AddMinutes(1)), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.Timeout);
+        failed.Failure.SafeMessage.ShouldBe("The transport timed out while the response body was being received.");
+    }
 }
