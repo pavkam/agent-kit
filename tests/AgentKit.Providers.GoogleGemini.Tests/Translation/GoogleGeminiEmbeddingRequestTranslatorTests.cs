@@ -114,6 +114,26 @@ public sealed class GoogleGeminiEmbeddingRequestTranslatorTests
     }
 
     [Fact]
+    public void Translate_WhenTruncationIsUndefined_ThrowsNotSupportedException()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)], EmbeddingPurpose.Unspecified, null, null, (EmbeddingTruncation) 999, ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(
+            () => new GoogleGeminiEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest)));
+    }
+
+    [Fact]
+    public void Translate_WhenPurposeIsUndefined_ThrowsNotSupportedException()
+    {
+        var embeddingRequest = new EmbeddingRequest(
+            [new TextEmbeddingInput("hi", null)], (EmbeddingPurpose) 999, null, null, EmbeddingTruncation.ProviderDefault, ExtensionData.Empty);
+
+        _ = Should.Throw<NotSupportedException>(
+            () => new GoogleGeminiEmbeddingRequestTranslator().Translate(CreateRequest(embeddingRequest)));
+    }
+
+    [Fact]
     public void Translate_WhenExtensionsAttemptToOverrideProtectedField_IgnoresOverride()
     {
         var hackedRequests = new ExtensionValue([.. JsonSerializer.SerializeToUtf8Bytes(Array.Empty<object>())]);

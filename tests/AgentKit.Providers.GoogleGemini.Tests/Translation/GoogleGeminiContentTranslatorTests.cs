@@ -537,4 +537,181 @@ public sealed class GoogleGeminiContentTranslatorTests
         // The envelope tags the notice so it is never indistinguishable from a plain user message.
         part["text"]!.GetValue<string>().ShouldNotBe("The run was interrupted.");
     }
+
+    [Fact]
+    public void Translate_WhenTopPConfigured_SerializesTopP()
+    {
+        var settings = LlmRequestSettings.Default with { TopP = 0.5 };
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [TestMessages.User("hi")],
+            [],
+            LlmToolChoice.Auto,
+            settings,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new GoogleGeminiContentTranslator().Translate(request);
+
+        body["generationConfig"]!["topP"]!.GetValue<double>().ShouldBe(0.5);
+    }
+
+    [Fact]
+    public void Translate_WhenSystemMessageContainsNonTextPart_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var system = TestMessages.System("prefix") with { Parts = [unknown] };
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [system],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new GoogleGeminiContentTranslator().Translate(request));
+    }
+
+    [Fact]
+    public void Translate_WhenUserMessageContainsUnsupportedPartKind_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [TestMessages.User(unknown)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new GoogleGeminiContentTranslator().Translate(request));
+    }
+
+    [Fact]
+    public void Translate_WhenAssistantMessageContainsUnsupportedPartKind_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var assistant = TestMessages.Assistant(unknown);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [assistant],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new GoogleGeminiContentTranslator().Translate(request));
+    }
+
+    [Fact]
+    public void Translate_WhenToolMessageContainsNonToolResultPart_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [TestMessages.Tool(unknown)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new GoogleGeminiContentTranslator().Translate(request));
+    }
+
+    [Fact]
+    public void Translate_WhenToolResultContainsStructuredData_SerializesParsedJsonAsResult()
+    {
+        using var json = JsonDocument.Parse("""{"status":"ok"}""");
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000004")),
+            new ToolReference(new ToolAlias("check"), null, null),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+            [new StructuredDataPart(json.RootElement, null, ExtensionData.Empty)],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+            ExtensionData.Empty);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [TestMessages.Tool(result)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new GoogleGeminiContentTranslator().Translate(request);
+        var response = body["contents"]![0]!["parts"]![0]!["functionResponse"]!["response"]!;
+
+        response["result"]!["status"]!.GetValue<string>().ShouldBe("ok");
+    }
+
+    [Fact]
+    public void Translate_WhenToolResultContentContainsUnsupportedPartKind_ThrowsNotSupportedException()
+    {
+        var unknown = new UnknownContentPart("vendor.special", JsonDocument.Parse("{}").RootElement, ExtensionData.Empty);
+        var result = new ToolResultPart(
+            new ToolCallId(Guid.Parse("00000000-0000-0000-0000-000000000005")),
+            new ToolReference(new ToolAlias("check"), null, null),
+            new ToolCallOutcome(ToolCallOutcomeKind.Success, ToolTerminalStatus.Succeeded, SideEffectCertainty.DefinitelyPerformed, false, null, ExtensionData.Empty),
+            [unknown],
+            new ToolResultProjectionInfo(ToolResultProjectionPolicyReference.Default, [], 0, 0),
+            ExtensionData.Empty);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [TestMessages.Tool(result)],
+            [],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new GoogleGeminiContentTranslator().Translate(request));
+    }
+
+    [Fact]
+    public void Translate_WhenToolChoiceIsAuto_SerializesAutoMode()
+    {
+        var tool = new LlmToolDefinition(new ToolId("noop"), "noop", null, JsonDocument.Parse("{}").RootElement);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [TestMessages.User("hi")],
+            [tool],
+            LlmToolChoice.Auto,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        var body = new GoogleGeminiContentTranslator().Translate(request);
+
+        body["toolConfig"]!["functionCallingConfig"]!["mode"]!.GetValue<string>().ShouldBe("AUTO");
+    }
+
+    [Fact]
+    public void Translate_WhenToolChoiceModeIsUndefined_ThrowsNotSupportedException()
+    {
+        var tool = new LlmToolDefinition(new ToolId("noop"), "noop", null, JsonDocument.Parse("{}").RootElement);
+        var undefinedChoice = new LlmToolChoice((LlmToolChoiceMode) 999, null);
+        var context = new LlmRequestContext(
+            new ModelRequestId(Guid.NewGuid()),
+            TestModels.GeminiFlash,
+            [TestMessages.User("hi")],
+            [tool],
+            undefinedChoice,
+            LlmRequestSettings.Default,
+            ExtensionData.Empty);
+        var request = new LlmModelRequest(context, attempt: 1, DateTimeOffset.UtcNow.AddMinutes(1), ProviderRequestOptions.Empty);
+
+        _ = Should.Throw<NotSupportedException>(() => new GoogleGeminiContentTranslator().Translate(request));
+    }
 }
