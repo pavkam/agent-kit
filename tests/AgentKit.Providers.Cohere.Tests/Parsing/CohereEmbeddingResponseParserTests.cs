@@ -126,6 +126,22 @@ public sealed class CohereEmbeddingResponseParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_WhenRequestedEncodingFieldIsNotAJsonArray_FailsWithProtocolViolation()
+    {
+        var parser = new CohereEmbeddingResponseParser();
+        var inputs = ImmutableArray.Create<EmbeddingInput>(new TextEmbeddingInput("hello", null));
+        const string payload = /*lang=json,strict*/ """{"id":"emb-bad-shape","texts":["hello"],"embeddings":{"float":"not-an-array"}}""";
+
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+        var result = await parser.ParseAsync(
+            body, CreateContext(EmbeddingEncoding.Float), inputs, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<EmbeddingAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider response's 'embeddings.float' field was not a JSON array.");
+    }
+
+    [Fact]
     public async Task ParseAsync_WhenVectorEntryIsNotAJsonArray_FailsWithProtocolViolation()
     {
         var parser = new CohereEmbeddingResponseParser();

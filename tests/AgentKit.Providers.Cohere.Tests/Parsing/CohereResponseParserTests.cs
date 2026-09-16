@@ -115,6 +115,24 @@ public sealed class CohereResponseParserTests
     }
 
     [Fact]
+    public async Task ParseBufferedAsync_WhenToolCallArgumentsAreMalformedJson_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_tool_use.json")
+            .Replace("\"{\\\"location\\\": \\\"Paris\\\"}\"", "\"{bad json\"", StringComparison.Ordinal);
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned malformed tool-call arguments.");
+        _ = failed.Failure.DiagnosticCause.ShouldBeAssignableTo<JsonException>();
+    }
+
+    [Fact]
     public async Task ParseBufferedAsync_WhenBodyIsNotJson_FailsWithProtocolViolation()
     {
         var requestId = new ModelRequestId(Guid.NewGuid());
@@ -332,5 +350,291 @@ public sealed class CohereResponseParserTests
         var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
         var failed = result.ShouldBeOfType<ModelAttemptFailed>();
         failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+    }
+
+    /// <summary>Verifies unmodeled wire fields (a content event's tool-use plan text, and message-end's error text) deserialize without disturbing the normal parse outcome.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenEventsCarryToolPlanAndErrorFieldsNotYetRoundTripped_StillCompletesNormally()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-unmodeled-fields", "delta": {"message": {"role": "assistant", "tool_plan": "I will answer directly."}}}
+
+            data: {"type": "content-start", "index": 0, "delta": {"message": {"content": {"type": "text", "text": ""}}}}
+
+            data: {"type": "content-delta", "index": 0, "delta": {"message": {"content": {"text": "Hello"}}}}
+
+            data: {"type": "content-end", "index": 0}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "COMPLETE", "error": null, "usage": {"tokens": {"input_tokens": 1, "output_tokens": 1}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+    }
+
+    /// <summary>Verifies a content-delta arriving without a preceding content-start still infers its slot kind and materializes it.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenContentDeltaArrivesWithoutContentStart_InfersTextSlotAndMaterializesIt()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-no-content-start", "delta": {"message": {"role": "assistant"}}}
+
+            data: {"type": "content-delta", "index": 0, "delta": {"message": {"content": {"text": "Hi"}}}}
+
+            data: {"type": "content-end", "index": 0}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "COMPLETE", "usage": {"tokens": {"input_tokens": 1, "output_tokens": 1}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hi");
+    }
+
+    /// <summary>Verifies a tool-call-delta arriving without a preceding tool-call-start still accumulates and materializes the call.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolCallDeltaArrivesWithoutToolCallStart_AccumulatesAndMaterializesTheCall()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-no-tool-start", "delta": {"message": {"role": "assistant"}}}
+
+            data: {"type": "tool-call-delta", "index": 0, "delta": {"message": {"tool_calls": {"id": "call_x", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}}}}}
+
+            data: {"type": "tool-call-end", "index": 0}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "TOOL_CALL", "usage": {"tokens": {"input_tokens": 1, "output_tokens": 1}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.Tool.ProviderAlias.Value.ShouldBe("get_weather");
+        toolCall.ProviderCallId.ShouldBe(new ProviderToolCallId("call_x"));
+    }
+
+    /// <summary>Verifies malformed accumulated tool-call arguments discovered at a mid-stream tool-call-end fail closed rather than fabricating {}.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolCallEndArgumentsAreMalformedJson_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-bad-args", "delta": {"message": {"role": "assistant"}}}
+
+            data: {"type": "tool-call-start", "index": 0, "delta": {"message": {"tool_calls": {"id": "call_bad", "type": "function", "function": {"name": "get_weather", "arguments": "{bad json"}}}}}
+
+            data: {"type": "tool-call-end", "index": 0}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "TOOL_CALL", "usage": {"tokens": {"input_tokens": 1, "output_tokens": 1}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.Failure.SafeMessage.ShouldBe("The provider returned malformed tool-call arguments.");
+        failed.PartialParts.OfType<ToolCallPart>().ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies malformed accumulated tool-call arguments discovered only at final flush (no tool-call-end ever arrived) fail closed.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolCallNeverClosedAndArgumentsAreMalformedAtMessageEnd_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-bad-args-open", "delta": {"message": {"role": "assistant"}}}
+
+            data: {"type": "tool-call-start", "index": 0, "delta": {"message": {"tool_calls": {"id": "call_bad", "type": "function", "function": {"name": "get_weather", "arguments": "{bad json"}}}}}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "TOOL_CALL", "usage": {"tokens": {"input_tokens": 1, "output_tokens": 1}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.OfType<ToolCallPart>().ShouldBeEmpty();
+    }
+
+    /// <summary>Verifies a content block that never received an explicit content-end is still implicitly closed and materialized at message-end.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenContentBlockNeverReceivesExplicitContentEnd_IsImplicitlyClosedAtMessageEnd()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-no-content-end", "delta": {"message": {"role": "assistant"}}}
+
+            data: {"type": "content-start", "index": 0, "delta": {"message": {"content": {"type": "text", "text": ""}}}}
+
+            data: {"type": "content-delta", "index": 0, "delta": {"message": {"content": {"text": "Hello"}}}}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "COMPLETE", "usage": {"tokens": {"input_tokens": 1, "output_tokens": 1}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+    }
+
+    /// <summary>Verifies negative streaming usage evidence discovered at final usage construction fails closed rather than reporting fabricated usage.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenFinalUsageTokenCountIsNegativeFraction_FailsWithProtocolViolation()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/streaming_text.sse")
+            .Replace("\"input_tokens\": 10", "\"input_tokens\": -0.5", StringComparison.Ordinal);
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var failed = result.ShouldBeOfType<ModelAttemptFailed>();
+        failed.Failure.Kind.ShouldBe(ProviderFailureKind.ProtocolViolation);
+        failed.PartialParts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello!");
+        observer.Events.ShouldNotContain(e => e is ModelResponseCompleted);
+    }
+
+    /// <summary>Verifies a content-delta arriving after its slot's content-end is a no-op rather than reopening or corrupting the closed part.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenContentDeltaArrivesAfterContentEnd_IsIgnoredWithoutReopeningTheSlot()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-late-delta", "delta": {"message": {"role": "assistant"}}}
+
+            data: {"type": "content-start", "index": 0, "delta": {"message": {"content": {"type": "text", "text": ""}}}}
+
+            data: {"type": "content-delta", "index": 0, "delta": {"message": {"content": {"text": "Hello"}}}}
+
+            data: {"type": "content-end", "index": 0}
+
+            data: {"type": "content-delta", "index": 0, "delta": {"message": {"content": {"text": "!!!"}}}}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "COMPLETE", "usage": {"tokens": {"input_tokens": 1, "output_tokens": 1}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Hello");
+    }
+
+    /// <summary>Verifies a tool-call-delta arriving after its slot's tool-call-end is a no-op rather than reopening or corrupting the closed call.</summary>
+    [Fact]
+    public async Task ParseStreamingAsync_WhenToolCallDeltaArrivesAfterToolCallEnd_IsIgnoredWithoutReopeningTheSlot()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = Encoding.UTF8.GetBytes(
+            """
+            data: {"type": "message-start", "id": "c14c80c3-late-tool-delta", "delta": {"message": {"role": "assistant"}}}
+
+            data: {"type": "tool-call-start", "index": 0, "delta": {"message": {"tool_calls": {"id": "call_x", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}}}}}
+
+            data: {"type": "tool-call-end", "index": 0}
+
+            data: {"type": "tool-call-delta", "index": 0, "delta": {"message": {"tool_calls": {"function": {"arguments": "IGNORED"}}}}}
+
+            data: {"type": "message-end", "delta": {"finish_reason": "TOOL_CALL", "usage": {"tokens": {"input_tokens": 1, "output_tokens": 1}}}}
+
+
+            """);
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var toolCall = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ToolCallPart>();
+        toolCall.Arguments.GetRawText().ShouldBe("{}");
+    }
+
+    /// <summary>Verifies every documented Cohere finish reason maps to its normalized stop reason, including unmapped and absent values.</summary>
+    [Theory]
+    [InlineData("STOP_SEQUENCE", NormalizedStopReason.Completed)]
+    [InlineData("MAX_TOKENS", NormalizedStopReason.Length)]
+    [InlineData("ERROR", NormalizedStopReason.Error)]
+    [InlineData("TIMEOUT", NormalizedStopReason.Error)]
+    [InlineData("SOME_FUTURE_REASON", NormalizedStopReason.Error)]
+    public async Task ParseBufferedAsync_WhenFinishReasonVaries_MapsToExpectedNormalizedStopReason(string finishReason, NormalizedStopReason expected)
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_text.json")
+            .Replace("\"finish_reason\": \"COMPLETE\"", $"\"finish_reason\": \"{finishReason}\"", StringComparison.Ordinal);
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(expected);
+    }
+
+    /// <summary>Verifies a response with no finish_reason at all is normalized as still pending rather than completed.</summary>
+    [Fact]
+    public async Task ParseBufferedAsync_WhenFinishReasonIsAbsent_MapsToPending()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new CohereResponseParser(new SequentialToolCallIdGenerator());
+        var payload = TestResources.ReadAllText("responses/buffered_text.json")
+            .Replace("\"finish_reason\": \"COMPLETE\",", string.Empty, StringComparison.Ordinal);
+        await using var body = new MemoryStream(Encoding.UTF8.GetBytes(payload));
+
+        var result = await parser.ParseBufferedAsync(body, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.StopReason.ShouldBe(NormalizedStopReason.Pending);
     }
 }
