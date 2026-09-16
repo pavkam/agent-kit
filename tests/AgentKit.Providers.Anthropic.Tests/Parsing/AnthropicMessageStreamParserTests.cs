@@ -360,6 +360,143 @@ public sealed class AnthropicMessageStreamParserTests
         reasoning.Content.SignatureToken.ShouldBe("sig_omitted");
     }
 
+    [Fact]
+    public async Task ParseStreamingAsync_WhenRedactedThinkingBlock_EmitsRedactedReasoningPart()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":0,"content_block":{"type":"redacted_thinking","data":"opaque_redacted_payload"}}
+
+            event: content_block_stop
+            data: {"type":"content_block_stop","index":0}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var reasoning = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ReasoningPart>();
+        reasoning.Content.Visibility.ShouldBe(ReasoningVisibility.Redacted);
+        reasoning.Content.Text.ShouldBeNull();
+        reasoning.Content.SignatureToken.ShouldBe("opaque_redacted_payload");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenContentBlockKindIsUnrecognized_EmitsUnknownContentPart()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"srvtool_1","name":"web_search"}}
+
+            event: content_block_stop
+            data: {"type":"content_block_stop","index":0}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var unknown = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<UnknownContentPart>();
+        unknown.TypeName.ShouldBe("server_tool_use");
+        unknown.Payload.GetProperty("name").GetString().ShouldBe("web_search");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenTextBlockStartsWithNonEmptyText_EmitsInitialDeltaImmediately()
+    {
+        // Anthropic's documented contract opens text/thinking blocks empty, but a compatible or future dialect
+        // could populate the opening block directly; the parser must not silently drop that content.
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Immediate"}}
+
+            event: content_block_stop
+            data: {"type":"content_block_stop","index":0}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<TextPart>().Text.ShouldBe("Immediate");
+        var delta = observer.Events.OfType<ModelPartDelta>().ShouldHaveSingleItem().Delta.ShouldBeOfType<TextContentDelta>();
+        delta.Text.ShouldBe("Immediate");
+    }
+
+    [Fact]
+    public async Task ParseStreamingAsync_WhenThinkingBlockStartsWithNonEmptyThinking_EmitsInitialDeltaImmediately()
+    {
+        var requestId = new ModelRequestId(Guid.NewGuid());
+        var observer = new RecordingModelResponseObserver();
+        var parser = new AnthropicMessageStreamParser(new SequentialToolCallIdGenerator());
+        var payload = /*lang=text*/ """
+            event: message_start
+            data: {"type":"message_start","message":{"id":"message","model":"claude","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"Already thinking","signature":"sig_start"}}
+
+            event: content_block_stop
+            data: {"type":"content_block_stop","index":0}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """u8.ToArray();
+        await using var stream = new MemoryStream(payload);
+
+        var result = await parser.ParseStreamingAsync(stream, CreateContext(requestId), observer, TestContext.Current.CancellationToken);
+
+        var completed = result.ShouldBeOfType<ModelAttemptCompleted>();
+        var reasoning = completed.Response.Parts.ShouldHaveSingleItem().ShouldBeOfType<ReasoningPart>();
+        reasoning.Content.Text.ShouldBe("Already thinking");
+        reasoning.Content.SignatureToken.ShouldBe("sig_start");
+        var delta = observer.Events.OfType<ModelPartDelta>().ShouldHaveSingleItem().Delta.ShouldBeOfType<ReasoningContentDelta>();
+        delta.Text.ShouldBe("Already thinking");
+    }
+
     [Theory]
     [MemberData(nameof(ChunkSizes))]
     public async Task ParseStreamingAsync_WhenDeltaTypeIsUnknown_EmitsProviderContentDeltaAndKeepsBlockContent(int chunkSize)
