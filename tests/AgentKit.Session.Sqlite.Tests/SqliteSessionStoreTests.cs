@@ -6,8 +6,10 @@ namespace AgentKit.Session.Sqlite.Tests;
 using System.Text.Json;
 
 using AgentKit.Conformance;
+using AgentKit.Session;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
 /// <summary>Runs the reusable protected session-store contract against durable SQLite.</summary>
@@ -722,6 +724,32 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
             .ShouldBe("The provisioning entry identity is already reserved.");
     }
 
+    [Fact]
+    public async Task ProvisionLaneAsync_WhenProvisioningEntryHasNoCodec_ReturnsRejectedWithoutMutation()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture(
+            new RejectingCodecCatalog(typeof(ExecutionLaneProvisionedSessionEntry)));
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "lane-no-codec-create");
+        var laneId = Coverage.Identifier<ExecutionLaneId>(1080);
+        var context = Coverage.LaneContext(
+            descriptor.Address, laneId, Coverage.Identity(), new BeforeRunOperationCorrelation(Coverage.Identifier<OperationId>(1081), null));
+        var provision = Coverage.ProvisionRequest(
+            context, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version,
+            Coverage.Identifier<SessionEntryId>(1082), 1080, "lane-no-codec");
+
+        var result = await store.ProvisionLaneAsync(
+            await Coverage.AuthorizeAsync(fixture, provision, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var loaded = await store.LoadAsync(
+            await Coverage.AuthorizeAsync(fixture, context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionExecutionLaneProvisionRejected>().SafeMessage
+            .ShouldBe("Entry at position 0 has no durable codec in the selected session store: Forced rejection for coverage test.");
+        loaded.ShouldBeOfType<SessionLoaded>().Descriptor.Version.ShouldBe(descriptor.Version);
+    }
+
     // ---- AdmitInputAsync edge cases the shared conformance suite does not exercise. ----
 
     [Fact]
@@ -928,6 +956,57 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
             TestContext.Current.CancellationToken);
 
         _ = result.ShouldBeOfType<QueueCapacityExceeded>();
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenStoredAdmissionEvidenceDiffers_ReturnsConflict()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture();
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1190, "admit-evidence-diff");
+        // Reuses the already-admitted original input identity, but with structurally different canonical content.
+        var conflicting = new SessionInputAdmissionRequest(
+            prepared.Context, Coverage.Identifier<AdmissionId>(1196), Coverage.Identifier<SessionEntryId>(1197),
+            new AgentInput(prepared.Admission.OriginalPayload.Id, InputDelivery.FollowUp,
+                [new TextPart("different-text", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty),
+            new AgentInput(prepared.Admission.OriginalPayload.Id, InputDelivery.FollowUp,
+                [new TextPart("different-text", TextSemantics.Plain, ExtensionData.Empty)], ExtensionData.Empty),
+            prepared.Admission.Preprocessing, Coverage.Timestamp(1198), prepared.Provisioned.SessionVersion,
+            prepared.Provisioned.LaneRevision, prepared.Provisioned.BranchCursor, new IdempotencyKey("admit-evidence-diff-retry"), 8);
+
+        var result = await store.AdmitInputAsync(
+            await Coverage.AuthorizeAsync(fixture, conflicting, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<InputConflict>().SafeReason
+            .ShouldBe("The input identity was already admitted with different immutable evidence.");
+    }
+
+    [Fact]
+    public async Task AdmitInputAsync_WhenEntryHasNoCodec_ReturnsRejectedWithoutMutation()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture(new RejectingCodecCatalog(typeof(InputAdmittedSessionEntry)));
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "admit-no-codec-create");
+        var laneId = Coverage.Identifier<ExecutionLaneId>(1600);
+        var context = Coverage.LaneContext(
+            descriptor.Address, laneId, Coverage.Identity(), new BeforeRunOperationCorrelation(Coverage.Identifier<OperationId>(1601), null));
+        var provision = Coverage.ProvisionRequest(
+            context, new SessionBranchCursor(descriptor.ActiveBranchId, null), descriptor.Version,
+            Coverage.Identifier<SessionEntryId>(1602), 1600, "admit-no-codec-provision");
+        var provisioned = (SessionExecutionLaneProvisioned) await store.ProvisionLaneAsync(
+            await Coverage.AuthorizeAsync(fixture, provision, SecurityOperationKind.StateMutation, SecurityEffect.Create),
+            TestContext.Current.CancellationToken);
+        var admission = Coverage.AdmissionRequest(
+            context, Coverage.Identifier<AdmissionId>(1603), Coverage.Identifier<InputId>(1604),
+            Coverage.Identifier<SessionEntryId>(1605), provisioned.SessionVersion, provisioned.LaneRevision,
+            provisioned.BranchCursor, "admit-no-codec");
+
+        var result = await store.AdmitInputAsync(
+            await Coverage.AuthorizeAsync(fixture, admission, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<RejectedInput>().Rejection.Kind.ShouldBe(InputRejectionKind.InvalidInput);
     }
 
     // ---- AcceptRunAsync edge cases the shared conformance suite does not exercise. ----
@@ -1375,6 +1454,26 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
             .ShouldBe("The selected session store does not support distributed fencing.");
     }
 
+    [Fact]
+    public async Task AcceptRunAsync_WhenAcceptedEntryHasNoCodec_ReturnsRejectedWithoutMutation()
+    {
+        await using var fixture = new SqliteSessionStoreConformanceFixture(new RejectingCodecCatalog(typeof(OperationAcceptedSessionEntry)));
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var prepared = await Coverage.ProvisionAndAdmitAsync(fixture, store, 1610, "accept-no-codec");
+        var start = Coverage.StartRequest(prepared, 1620);
+
+        var result = await store.AcceptRunAsync(
+            await Coverage.AuthorizeAsync(fixture, start, SecurityOperationKind.StateMutation, SecurityEffect.Mutate),
+            TestContext.Current.CancellationToken);
+        var loaded = await store.LoadAsync(
+            await Coverage.AuthorizeAsync(fixture, prepared.Context, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+            TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<SessionRunStartRejected>().SafeReason.ShouldContain("Forced rejection for coverage test.");
+        loaded.ShouldBeOfType<SessionLoaded>().Descriptor.Version
+            .ShouldBe(new SessionVersion(prepared.Provisioned.SessionVersion.Value + 1));
+    }
+
     private static async Task<SessionPage> ReadFirstPageAsync(Harness harness, SessionDescriptor descriptor, SessionOperationContext context)
     {
         var result = await harness.Store.ReadAsync(
@@ -1403,6 +1502,40 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
         SessionEntryId Id, SessionAddress Address, OperationCorrelation Correlation, BranchId BranchId,
         SessionSequence Sequence, SessionEntryId? CausalParentId, DateTimeOffset RecordedAt, SchemaVersion SchemaVersion)
         : SessionEntry(Id, Address, Correlation, BranchId, Sequence, CausalParentId, RecordedAt, SchemaVersion);
+
+    /// <summary>
+    /// Wraps the real first-party codec catalog but forces <see cref="Encode"/> to reject one exact entry runtime
+    /// type, so a test can exercise a store operation's codec-preflight failure without an entry kind that has no
+    /// codec at all.
+    /// </summary>
+    private sealed class RejectingCodecCatalog: ISessionEntryCodecCatalog
+    {
+        private readonly SessionEntryCodecCatalog _inner;
+        private readonly Type _rejectedType;
+
+        public RejectingCodecCatalog(Type rejectedType)
+        {
+            _rejectedType = rejectedType;
+            _inner = new SessionEntryCodecCatalog(
+                [
+                    new ExecutionLaneProvisionedSessionEntryCodec(
+                        TimeProvider.System, NullLogger<ExecutionLaneProvisionedSessionEntryCodec>.Instance),
+                    new InputPromotedSessionEntryCodec(TimeProvider.System, NullLogger<InputPromotedSessionEntryCodec>.Instance),
+                    new OperationAcceptedSessionEntryCodec(TimeProvider.System, NullLogger<OperationAcceptedSessionEntryCodec>.Instance),
+                    new MessageSessionEntryCodec(),
+                    new InputAdmittedSessionEntryCodec(),
+                    new CompactionSessionEntryCodec(),
+                ],
+                TimeProvider.System);
+        }
+
+        public SessionEntryEncodeResult Encode(SessionEntry entry) =>
+            entry.GetType() == _rejectedType
+                ? new SessionEntryEncodeRejected("Forced rejection for coverage test.")
+                : _inner.Encode(entry);
+
+        public SessionEntryDecodeResult Decode(SessionEntryWireEnvelope wire) => _inner.Decode(wire);
+    }
 
     private sealed class TempDirectory: IDisposable
     {

@@ -20,6 +20,24 @@ public sealed class SqliteSessionStoreConformanceFixture:
     private readonly string _directory = Path.Combine("/tmp", $"agentkit-session-{Guid.NewGuid():N}");
     private InMemorySecurityGrantStore? _grants;
     private SqliteSessionStore? _store;
+    private readonly ISessionEntryCodecCatalog? _entryCodecs;
+
+    /// <summary>Initializes a fixture that composes the store with the default first-party codec catalog.</summary>
+    public SqliteSessionStoreConformanceFixture()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a fixture that pre-registers <paramref name="entryCodecs"/> ahead of
+    /// <c>AddSqliteSessionStore</c>'s own <c>TryAddSingleton</c> registration, so a test can force a chosen entry
+    /// kind's encode to fail without otherwise changing store composition.
+    /// </summary>
+    /// <param name="entryCodecs">The non-null codec catalog the composed store uses instead of the default one.</param>
+    public SqliteSessionStoreConformanceFixture(ISessionEntryCodecCatalog entryCodecs)
+    {
+        ArgumentNullException.ThrowIfNull(entryCodecs);
+        _entryCodecs = entryCodecs;
+    }
 
     /// <inheritdoc/>
     public ValueTask<ISessionStore> CreateAsync(CancellationToken cancellationToken = default)
@@ -33,6 +51,11 @@ public sealed class SqliteSessionStoreConformanceFixture:
             _grants = new InMemorySecurityGrantStore(_timeProvider);
             _ = services.AddSingleton<ISecurityGrantStore>(_grants);
             _ = services.AddSingleton<ISecurityAuditDispatcher>(this);
+            if (_entryCodecs is not null)
+            {
+                _ = services.AddSingleton(_entryCodecs);
+            }
+
             _ = services.AddSqliteSessionStore(new SqliteSessionStoreTarget(
                 Path.Combine(_directory, "sessions.db"),
                 new SqliteSessionStoreInstanceId(Guid.NewGuid()),
