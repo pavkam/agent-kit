@@ -700,6 +700,86 @@ public sealed class ComponentInfrastructureGraphMaterializerTests
             .ShouldContain("agentkit.component-dependency.cycle");
     }
 
+    [Fact]
+    public void Materialize_WhenTwoOwnersDependOnTheSameUnresolvableInfrastructure_ReportsDiagnosticOnce()
+    {
+        var factoryCalls = 0;
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<IExternal>(
+            _ =>
+            {
+                factoryCalls++;
+                return new External();
+            });
+        var snapshot = Snapshot(
+            services,
+            RootRegistration(InfrastructureDependency<IExternal>()),
+            CollectionRootRegistration(InfrastructureDependency<IExternal>()));
+
+        var (Registrations, Diagnostics, _) = ComponentInfrastructureGraphMaterializer.Materialize(snapshot);
+
+        Diagnostics.Count(static item => item.Code == "agentkit.component-infrastructure.opaque-factory")
+            .ShouldBe(1);
+        Registrations.Length.ShouldBe(2);
+        factoryCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Materialize_WhenNonGenericDescriptorImplementationDoesNotImplementTheContract_ReportsInvalidRegistration()
+    {
+        var services = new ServiceCollection
+        {
+            new ServiceDescriptor(typeof(IExternal), typeof(UnrelatedToExternal), ServiceLifetime.Singleton),
+        };
+        var snapshot = Snapshot(services, RootRegistration(InfrastructureDependency<IExternal>()));
+
+        var (_, Diagnostics, _) = ComponentInfrastructureGraphMaterializer.Materialize(snapshot);
+
+        Diagnostics.Select(static item => item.Code)
+            .ShouldContain("agentkit.component-infrastructure.registration-invalid");
+    }
+
+    [Fact]
+    public void Materialize_WhenOpenGenericImplementationIsRegisteredForANonGenericContract_ReportsInvalidGenericEvidence()
+    {
+        var services = new ServiceCollection
+        {
+            new ServiceDescriptor(typeof(INonGenericFromOpenGeneric), typeof(OpenGenericImplementingNonGeneric<>), ServiceLifetime.Singleton),
+        };
+        var snapshot = Snapshot(services, RootRegistration(InfrastructureDependency<INonGenericFromOpenGeneric>()));
+
+        var (_, Diagnostics, _) = ComponentInfrastructureGraphMaterializer.Materialize(snapshot);
+
+        Diagnostics.Select(static item => item.Code)
+            .ShouldContain("agentkit.component-infrastructure.generic-closure-invalid");
+    }
+
+    [Fact]
+    public void Materialize_WhenClosedGenericImplementationDoesNotImplementTheRequestedConstruction_ReportsInvalidGenericEvidence()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton(typeof(IGenericExternal<>), typeof(ArrayWrappingExternal<>));
+        var snapshot = Snapshot(services, RootRegistration(InfrastructureDependency<IGenericExternal<string>>()));
+
+        var (_, Diagnostics, _) = ComponentInfrastructureGraphMaterializer.Materialize(snapshot);
+
+        Diagnostics.Select(static item => item.Code)
+            .ShouldContain("agentkit.component-infrastructure.generic-closure-invalid");
+    }
+
+    [Fact]
+    public void Materialize_WhenConstructorHasAnUnsupportedCollectionElementType_ReportsUnsupportedDependency()
+    {
+        var services = new ServiceCollection();
+        _ = services.AddSingleton<IExternal, UnsupportedCollectionElementExternal>();
+        var snapshot = Snapshot(services, RootRegistration(InfrastructureDependency<IExternal>()));
+
+        var (_, Diagnostics, _) = ComponentInfrastructureGraphMaterializer.Materialize(snapshot);
+
+        Diagnostics.Select(static item => item.Code)
+            .ShouldContain("agentkit.component-infrastructure.dependency-unsupported");
+    }
+
     private static ComponentRegistrationSnapshot Snapshot(
         IServiceCollection services,
         params ComponentRegistrationDescriptor[] registrations) => new(
@@ -927,6 +1007,19 @@ public sealed class ComponentInfrastructureGraphMaterializerTests
     private sealed class OptionalBackEdge(IInfrastructureRoot? root = null): IExternal
     {
         public IInfrastructureRoot? Root { get; } = root;
+    }
+
+    private sealed class UnrelatedToExternal;
+
+    private interface INonGenericFromOpenGeneric;
+
+    private sealed class OpenGenericImplementingNonGeneric<T>: INonGenericFromOpenGeneric;
+
+    private sealed class ArrayWrappingExternal<T>: IGenericExternal<T[]>;
+
+    private sealed class UnsupportedCollectionElementExternal(IEnumerable<int> values): IExternal
+    {
+        public IEnumerable<int> Values { get; } = values;
     }
 
     private enum TestMode

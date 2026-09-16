@@ -35,4 +35,15 @@ public sealed class AgentKitCompositionOptionsTests
         exception.GetType().ShouldBe(typeof(ArgumentOutOfRangeException));
         exception.ParamName.ShouldBe("maximumDerivedInfrastructureRegistrations");
     }
+
+    [Fact]
+    public void Equality_WhenBoundsMatch_TreatsInstancesAsEqual()
+    {
+        var first = new AgentKitCompositionOptions(5);
+        var second = new AgentKitCompositionOptions(5);
+
+        first.ShouldBe(second);
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+        (first with { }).ShouldBe(first);
+    }
 }

@@ -195,6 +195,34 @@ public sealed class ComponentDependencyGraphValidatorTests
     }
 
     [Fact]
+    public void Validate_WhenCyclePathSearchMustBacktrackFromADeadEndChord_StillFindsTheCompleteCycle()
+    {
+        // Root0 depends only on Root1. Root1 tries a "chord" dependency on Root2 first (which only
+        // leads back to the already-visited Root1 and dead-ends), and only reaches the real
+        // Root3 -> Root4 -> Root0 cycle-closing path through its second declared dependency. This
+        // forces the cycle-path search to exhaust and pop the Root2 frame before it can find the cycle.
+        var diagnostics = ComponentDependencyGraphValidator.Validate([
+            Registration(Reference<IBacktrackRoot0>(), typeof(BacktrackRoot0), ServiceLifetime.Singleton,
+                Dependency(Reference<IBacktrackRoot1>())),
+            Registration(Reference<IBacktrackRoot1>(), typeof(BacktrackRoot1), ServiceLifetime.Singleton,
+                Dependency(Reference<IBacktrackRoot2>()),
+                Dependency(Reference<IBacktrackRoot3>())),
+            Registration(Reference<IBacktrackRoot2>(), typeof(BacktrackRoot2), ServiceLifetime.Singleton,
+                Dependency(Reference<IBacktrackRoot1>())),
+            Registration(Reference<IBacktrackRoot3>(), typeof(BacktrackRoot3), ServiceLifetime.Singleton,
+                Dependency(Reference<IBacktrackRoot4>())),
+            Registration(Reference<IBacktrackRoot4>(), typeof(BacktrackRoot4), ServiceLifetime.Singleton,
+                Dependency(Reference<IBacktrackRoot0>())),
+        ]);
+
+        var cycle = diagnostics.Single(static diagnostic => diagnostic.Code == "agentkit.component-dependency.cycle");
+        cycle.SafeMessage.ShouldContain(typeof(IBacktrackRoot0).FullName!);
+        cycle.SafeMessage.ShouldContain(typeof(IBacktrackRoot1).FullName!);
+        cycle.SafeMessage.ShouldContain(typeof(IBacktrackRoot3).FullName!);
+        cycle.SafeMessage.ShouldContain(typeof(IBacktrackRoot4).FullName!);
+    }
+
+    [Fact]
     public void Validate_WhenFactoryOperationReentersOwner_ReportsCycle()
     {
         var owner = Reference<IRoot>();
@@ -369,4 +397,16 @@ public sealed class ComponentDependencyGraphValidatorTests
     private sealed class A: IA;
     private sealed class B: IB;
     private sealed class C: IC;
+
+    private interface IBacktrackRoot0;
+    private interface IBacktrackRoot1;
+    private interface IBacktrackRoot2;
+    private interface IBacktrackRoot3;
+    private interface IBacktrackRoot4;
+
+    private sealed class BacktrackRoot0: IBacktrackRoot0;
+    private sealed class BacktrackRoot1: IBacktrackRoot1;
+    private sealed class BacktrackRoot2: IBacktrackRoot2;
+    private sealed class BacktrackRoot3: IBacktrackRoot3;
+    private sealed class BacktrackRoot4: IBacktrackRoot4;
 }

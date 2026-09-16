@@ -19,6 +19,32 @@ public sealed class NonBlockingInstrumentTests
     }
 
     [Fact]
+    public void GetOrCreate_WhenFactoryProducesNull_ReturnsNullAndPermitsRetry()
+    {
+        var cache = new NonBlockingInstrument<object>();
+        var expected = new object();
+
+        var first = cache.GetOrCreate(static () => null!);
+        var second = cache.GetOrCreate(() => expected);
+
+        first.ShouldBeNull();
+        second.ShouldBeSameAs(expected);
+    }
+
+    [Fact]
+    public void GetOrCreate_WhenFactoryThrows_ReturnsNullAndPermitsRetry()
+    {
+        var cache = new NonBlockingInstrument<object>();
+        var expected = new object();
+
+        var first = cache.GetOrCreate(static () => throw new InvalidOperationException("factory failure"));
+        var second = cache.GetOrCreate(() => expected);
+
+        first.ShouldBeNull();
+        second.ShouldBeSameAs(expected);
+    }
+
+    [Fact]
     public void GetOrCreate_WhenInstrumentPublishedReentersProviderBuild_DoesNotDeadlockOrLoseProvider()
     {
         const string meterName = "AgentKit.Tests.NonBlockingInstrument.Reentrant";

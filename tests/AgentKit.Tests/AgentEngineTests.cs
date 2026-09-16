@@ -52,6 +52,58 @@ public sealed class AgentEngineTests
     }
 
     [Fact]
+    public async Task GetAgentAsync_WhenCatalogReportsAnInvalidDefinition_ThrowsWithDiagnostics()
+    {
+        var agentId = new AgentId(Guid.NewGuid());
+        var resolution = new InvalidAgentDefinition(
+            agentId,
+            [new CompositionDiagnostic("agentkit.test.invalid", "The definition selects a missing component.")]);
+        var services = new ServiceCollection();
+        _ = services.AddAgentKit();
+        _ = services.AddSingleton<ISecurityProfileSelector>(new TestSecurityProfileSelector());
+        _ = services.AddSingleton<IAgentDefinitionCatalog>(new FixedResolutionAgentDefinitionCatalog(resolution));
+        await using var provider = services.BuildServiceProvider();
+        await using var engine = new AgentEngine(provider, ownedProvider: null, Composition());
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await engine.GetAgentAsync(agentId, TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain(agentId.ToString());
+        exception.Message.ShouldContain("The definition selects a missing component.");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenNoRunProfileIsPinnedForTheDefinition_RejectsWithoutCreatingARunOrScope()
+    {
+        var definition = CompositionTestData.Definition(new AgentId(Guid.NewGuid()));
+        var catalog = new MutableAgentDefinitionCatalog(definition);
+        var runIds = new CountingRunIdGenerator();
+        var builder = AgentEngine.CreateBuilder();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton<IAgentDefinitionCatalog>(catalog));
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton<IIdentifierGenerator<RunId>>(runIds));
+        _ = builder.Services.AddKeyedScoped<IAgentLoop>(
+            AgentLoopComponentDefaults.LoopKeyValue, (_, _) => new ScopedRecordingAgentLoop(new AdmissionRunEffects()));
+        CompositionTestData.AddRunServicesFakes(builder.Services);
+        CompositionTestData.AddRunProfiles(builder.Services, definition);
+        await using var successfullyBuilt = builder.Build();
+        await using var provider = builder.Services.BuildServiceProvider();
+        await using var engine = new AgentEngine(
+            provider,
+            ownedProvider: null,
+            new AgentCompositionSnapshot(
+                new AgentRunProfilePublicationSnapshot([]),
+                successfullyBuilt.ComponentRegistrations));
+        var agent = (await engine.GetAgentAsync(definition.Id, TestContext.Current.CancellationToken))!;
+
+        var exception = await Should.ThrowAsync<AgentAdmissionRejectedException>(
+            async () => await agent.RunAsync(CompositionTestData.RunOptions(), TestContext.Current.CancellationToken));
+
+        exception.Rejection.AgentId.ShouldBe(definition.Id);
+        exception.Rejection.Reason.ShouldContain("no pinned run-profile publication");
+        runIds.Created.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task GetAgentsAsync_ReturnsEveryPublishedDefinition()
     {
         var second = CompositionTestData.Definition(new AgentId(Guid.NewGuid()), "second");

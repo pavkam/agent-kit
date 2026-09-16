@@ -113,6 +113,17 @@ public sealed class ComponentRegistrationSnapshotTests
         snapshot.Registrations.ShouldBeEmpty();
     }
 
+    [Fact]
+    public void Equality_WhenComparedWithItself_ReportsEqualAndPreservesRecordContract()
+    {
+        var snapshot = new ComponentRegistrationSnapshot([], []);
+
+        snapshot.Equals(snapshot).ShouldBeTrue();
+        snapshot.GetHashCode().ShouldBe(snapshot.GetHashCode());
+        (snapshot with { }).Services.ShouldBe(snapshot.Services);
+        snapshot.ToString().ShouldContain(nameof(ComponentRegistrationSnapshot));
+    }
+
     private static ComponentRegistrationDescriptor Registration(ServiceLifetime lifetime) => new(
         ComponentContractReference.Unkeyed<ILeaf>(), typeof(Leaf), lifetime, []);
 

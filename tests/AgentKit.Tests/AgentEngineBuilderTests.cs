@@ -38,6 +38,22 @@ public sealed class AgentEngineBuilderTests
     }
 
     [Fact]
+    public void Build_WhenRequiredServiceDescriptorExistsButItsFactoryProducesNull_RejectsAsMissing()
+    {
+        // ValidateComponentRegistrations proves exactly one unkeyed TimeProvider descriptor exists from
+        // metadata alone, without invoking it. AgentCompositionValidator.Validate's own Resolve<TService>
+        // then actually asks the built provider for the service; this is the only way its "missing" branch
+        // is reachable, since a single descriptor whose factory produces null still passes the earlier count-only
+        // metadata check.
+        var builder = CompositionTestData.RunnableBuilder();
+        _ = builder.Services.Replace(ServiceDescriptor.Singleton<TimeProvider>(static _ => null!));
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.time.missing");
+    }
+
+    [Fact]
     public void Build_WhenRequiredSecurityGrantStoreWasRemoved_RejectsBeforeApplicationFactories()
     {
         var applicationFactoryCalls = 0;
@@ -615,6 +631,26 @@ public sealed class AgentEngineBuilderTests
         _ = builder.Services.AddAgentRunProfilePublication(CompositionTestData.RunProfile(definition));
         var exception = Should.Throw<ArgumentException>(builder.Build);
         exception.ParamName.ShouldBe("publications");
+    }
+
+    [Fact]
+    public void Build_WhenCustomReaderSnapshotContainsDuplicateCoordinatesWithoutItsOwnGuard_RejectsComposition()
+    {
+        // AgentRunProfilePublicationSnapshot itself performs no duplicate check, and the default reader
+        // guards against duplicates in its own constructor. This exercises AgentCompositionValidator's own
+        // defensive duplicate detection, which only a non-default IAgentRunProfilePublicationReader
+        // implementation without that same guard can ever reach.
+        var definition = CompositionTestData.Definition();
+        var first = CompositionTestData.RunProfile(definition);
+        var second = CompositionTestData.RunProfile(definition);
+        var reader = new MutableRunProfilePublicationReader(
+            new AgentRunProfilePublicationSnapshot([first, second]),
+            new AgentRunProfilePublicationFound(first));
+        var builder = Builder(definition, reader);
+
+        var exception = Should.Throw<AgentCompositionException>(builder.Build);
+
+        exception.Diagnostics.ShouldContain(diagnostic => diagnostic.Code == "agentkit.run-profile.duplicate");
     }
 
     [Fact]
