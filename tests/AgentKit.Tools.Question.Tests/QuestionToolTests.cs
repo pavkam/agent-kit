@@ -23,6 +23,8 @@ public sealed class QuestionToolTests
     [InlineData( /*lang=json,strict*/"{\"question\":\"Q\",\"options\":[{\"id\":\"x\",\"label\":\"X\",\"description\":\"D\"},{\"id\":\"x\",\"label\":\"Y\",\"description\":\"E\"}]}")]
     [InlineData( /*lang=json,strict*/"{\"question\":\"Q\",\"options\":[{\"id\":\"x\",\"label\":\"X\",\"description\":\"D\"},{\"id\":\"y\",\"label\":\"Y\",\"description\":\"E\"}],\"extra\":true}")]
     [InlineData( /*lang=json,strict*/"{\"question\":\"Q\",\"options\":[{\"id\":\"x\",\"label\":\"X\",\"description\":\"D\"},{\"id\":\"y\",\"label\":\"Y\",\"description\":\"E\"}],\"timeout_seconds\":0}")]
+    [InlineData( /*lang=json,strict*/"{\"question\":\"Q\",\"options\":[{\"id\":123,\"label\":\"X\",\"description\":\"D\"},{\"id\":\"y\",\"label\":\"Y\",\"description\":\"E\"}]}")]
+    [InlineData( /*lang=json,strict*/"{\"question\":\"Q\",\"options\":[{\"id\":\"x\",\"label\":\"X\",\"description\":\"D\"},{\"id\":\"y\",\"label\":\"Y\",\"description\":\"E\"}],\"allow_free_text\":\"yes\"}")]
     public async Task InvokeAsync_WhenArgumentsInvalid_PerformsNoIdentityAllocationAuthorizationOrPublication(string json)
     {
         var broker = new RecordingQuestionBroker();
@@ -35,6 +37,14 @@ public sealed class QuestionToolTests
         ids.Calls.ShouldBe(0);
         authority.Requests.ShouldBeEmpty();
         broker.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Descriptor_WhenRead_ExposesStableIdentity()
+    {
+        var tool = Tool(new RecordingQuestionBroker(), new RecordingSecurityAuthority());
+
+        tool.Descriptor.Id.ShouldBe(QuestionTool.Id);
     }
 
     [Fact]

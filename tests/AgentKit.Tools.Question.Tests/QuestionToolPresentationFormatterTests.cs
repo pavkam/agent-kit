@@ -96,6 +96,115 @@ public sealed class QuestionToolPresentationFormatterTests
         presentation.Parts[0].Text.ShouldNotContain("A long prompt");
     }
 
+    [Fact]
+    public async Task FormatAsync_WhenSourceKindIsUnsupported_ReturnsNull()
+    {
+        var formatter = new QuestionToolPresentationFormatter();
+
+        var presentation = await formatter.FormatAsync(
+            new ToolPresentationRequest(formatter.Descriptor, new UnsupportedPresentationSource(), new ToolPresentationBounds()),
+            TestContext.Current.CancellationToken);
+
+        presentation.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenOptionItemIsMalformed_ReturnsMalformedFallback()
+    {
+        const string json = /*lang=json,strict*/ """
+            {"question":"Q","options":[{"id":"a","label":"A","description":"First"},{"id":"b","label":"B"}]}
+            """;
+
+        var presentation = await FormatCallAsync(json, new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenAllowFreeTextAndTimeoutOmitted_UsesDefaults()
+    {
+        const string json = /*lang=json,strict*/ """
+            {"question":"Q","options":[{"id":"a","label":"A","description":"First"},{"id":"b","label":"B","description":"Second"}]}
+            """;
+
+        var presentation = await FormatCallAsync(json, new ToolPresentationBounds());
+
+        var text = presentation.ShouldNotBeNull().Parts.ShouldHaveSingleItem().Text;
+        text.ShouldContain("Free-text answer: not allowed");
+        text.ShouldContain("Response deadline: host default");
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenAllowFreeTextHasWrongType_ReturnsMalformedFallback()
+    {
+        const string json = /*lang=json,strict*/ """
+            {"question":"Q","options":[{"id":"a","label":"A","description":"First"},{"id":"b","label":"B","description":"Second"}],"allow_free_text":"yes"}
+            """;
+
+        var presentation = await FormatCallAsync(json, new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenTimeoutSecondsHasWrongType_ReturnsMalformedFallback()
+    {
+        const string json = /*lang=json,strict*/ """
+            {"question":"Q","options":[{"id":"a","label":"A","description":"First"},{"id":"b","label":"B","description":"Second"}],"timeout_seconds":"soon"}
+            """;
+
+        var presentation = await FormatCallAsync(json, new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultHasNoTextContent_ReturnsSafeTruncatedEvidence()
+    {
+        var presentation = await FormatResultAsync(Success([]), new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Truncated);
+        presentation.OmittedCharacters.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultProjectionShapeIsMalformed_ReturnsMalformedFallback()
+    {
+        const string projection = /*lang=json,strict*/ """{"question_id":"q"}""";
+
+        var presentation = await FormatResultAsync(
+            Success([new TextPart(projection, TextSemantics.Code, ExtensionData.Empty)]),
+            new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenFreeTextHasWrongType_ReturnsMalformedFallback()
+    {
+        const string projection = /*lang=json,strict*/ """
+            {"question_id":"q","selected_option_id":"rolling","selected_option_label":"Rolling","free_text":42}
+            """;
+
+        var presentation = await FormatResultAsync(
+            Success([new TextPart(projection, TextSemantics.Code, ExtensionData.Empty)]),
+            new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    [Fact]
+    public async Task FormatAsync_WhenResultProjectionIsNotValidJson_ReturnsMalformedFallback()
+    {
+        var presentation = await FormatResultAsync(
+            Success([new TextPart("not json", TextSemantics.Code, ExtensionData.Empty)]),
+            new ToolPresentationBounds());
+
+        presentation.ShouldNotBeNull().Disposition.ShouldBe(ToolPresentationDisposition.Fallback);
+    }
+
+    private sealed record UnsupportedPresentationSource: ToolPresentationSource;
+
     private static ValueTask<ToolPresentation?> FormatCallAsync(string json, ToolPresentationBounds bounds)
     {
         using var document = JsonDocument.Parse(json);
