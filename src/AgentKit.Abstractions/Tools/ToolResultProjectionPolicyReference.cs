@@ -30,4 +30,10 @@ public sealed record ToolResultProjectionPolicyReference
     /// <summary>Gets the selected published policy revision.</summary>
     /// <value>A positive immutable revision.</value>
     public ToolResultProjectionPolicyVersion Version { get; }
+
+    /// <summary>Gets the well-known reference used when no richer policy selection has captured a different one.</summary>
+    /// <value>A stable reference to the framework's baseline projection policy at its first published revision.</value>
+    public static ToolResultProjectionPolicyReference Default { get; } = new(
+        new ToolResultProjectionPolicyKey("agentkit.tools.default-projection"),
+        new ToolResultProjectionPolicyVersion(1));
 }

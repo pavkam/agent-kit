@@ -20,12 +20,13 @@ public sealed record ToolResultPart: ContentPart
 {
     /// <summary>Initializes a new instance of the <see cref="ToolResultPart"/> record.</summary>
     /// <param name="callId">The call identity this result answers.</param>
-    /// <param name="tool">The tool that was resolved and invoked.</param>
+    /// <param name="tool">The tool that was requested and, when resolution succeeded, invoked.</param>
     /// <param name="outcome">The terminal disposition of the call.</param>
     /// <param name="content">The ordered result content returned to the model.</param>
+    /// <param name="projection">The projection provenance for this bounded durable/model-facing view.</param>
     /// <param name="extensions">Provider-specific or forward-compatible data.</param>
     /// <exception cref="ArgumentNullException">
-    /// <paramref name="tool"/>, <paramref name="outcome"/>, or
+    /// <paramref name="tool"/>, <paramref name="outcome"/>, <paramref name="projection"/>, or
     /// <paramref name="extensions"/> is null.
     /// </exception>
     /// <exception cref="ArgumentException">
@@ -36,17 +37,20 @@ public sealed record ToolResultPart: ContentPart
         ToolReference tool,
         ToolCallOutcome outcome,
         ImmutableArray<ContentPart> content,
+        ToolResultProjectionInfo projection,
         ExtensionData extensions)
         : base(extensions)
     {
         ArgumentNullException.ThrowIfNull(tool);
         ArgumentNullException.ThrowIfNull(outcome);
         ArgumentException.ThrowIfContainsNull(content);
+        ArgumentNullException.ThrowIfNull(projection);
 
         CallId = callId;
         Tool = tool;
         Outcome = outcome;
         Content = content;
+        Projection = projection;
     }
 
     /// <summary>Gets the call identity this result answers.</summary>
@@ -95,6 +99,20 @@ public sealed record ToolResultPart: ContentPart
         }
     }
 
+    /// <summary>Gets the projection provenance for this bounded durable/model-facing view.</summary>
+    /// <exception cref="ArgumentNullException">
+    /// The value assigned during initialization or non-destructive mutation is null.
+    /// </exception>
+    public ToolResultProjectionInfo Projection
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
+
     /// <inheritdoc/>
     public bool Equals(ToolResultPart? other) =>
         other is not null
@@ -102,6 +120,7 @@ public sealed record ToolResultPart: ContentPart
         && Tool.Equals(other.Tool)
         && Outcome.Equals(other.Outcome)
         && Content.SequenceEqual(other.Content)
+        && Projection.Equals(other.Projection)
         && Extensions.Equals(other.Extensions);
 
     /// <inheritdoc/>
@@ -116,6 +135,7 @@ public sealed record ToolResultPart: ContentPart
             hash.Add(part);
         }
 
+        hash.Add(Projection);
         hash.Add(Extensions);
         return hash.ToHashCode();
     }
