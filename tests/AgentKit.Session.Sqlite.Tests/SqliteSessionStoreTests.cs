@@ -1474,6 +1474,83 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
             .ShouldBe(new SessionVersion(prepared.Provisioned.SessionVersion.Value + 1));
     }
 
+    // ---- Persisted-payload decode failures and post-preflight encode inconsistency. ----
+
+    [Fact]
+    public async Task ReadAsync_WhenPersistedEntryDecodesToRejected_ThrowsJsonException()
+    {
+        // A committed entry that later becomes unreadable (for example after a codec is retired) must fail the
+        // read as a typed exception rather than silently dropping or misinterpreting the row.
+        var rejectedTypeId = new SessionEntryTypeId("agentkit.session/message");
+        await using var fixture = new SqliteSessionStoreConformanceFixture(
+            new DecodeRejectingCodecCatalog(rejectedTypeId, new SessionEntryDecodeRejected("Simulated malformed payload.")));
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "read-decode-rejected-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1700);
+        var entry = Coverage.MessageEntry(descriptor, 1701, 1, "will-not-decode");
+        var append = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("read-decode-rejected"), [entry]);
+        _ = (await store.AppendAsync(
+            await Coverage.AuthorizeAsync(fixture, append, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken)).ShouldBeOfType<SessionAppended>();
+        var read = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10);
+
+        var exception = await Should.ThrowAsync<JsonException>(async () =>
+            await store.ReadAsync(
+                await Coverage.AuthorizeAsync(fixture, read, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+                TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("Simulated malformed payload.");
+    }
+
+    [Fact]
+    public async Task ReadAsync_WhenPersistedEntryHasNoAvailableCodec_ThrowsJsonException()
+    {
+        var rejectedTypeId = new SessionEntryTypeId("agentkit.session/message");
+        await using var fixture = new SqliteSessionStoreConformanceFixture(
+            new DecodeRejectingCodecCatalog(
+                rejectedTypeId,
+                new SessionEntryOpaque(new SessionEntryWireEnvelope(rejectedTypeId, new SchemaVersion("1"), [0]))));
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "read-decode-opaque-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1710);
+        var entry = Coverage.MessageEntry(descriptor, 1711, 1, "will-be-opaque");
+        var append = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("read-decode-opaque"), [entry]);
+        _ = (await store.AppendAsync(
+            await Coverage.AuthorizeAsync(fixture, append, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+            TestContext.Current.CancellationToken)).ShouldBeOfType<SessionAppended>();
+        var read = new SessionReadRequest(context, descriptor.ActiveBranchId, new SessionSequence(0), 10);
+
+        var exception = await Should.ThrowAsync<JsonException>(async () =>
+            await store.ReadAsync(
+                await Coverage.AuthorizeAsync(fixture, read, SecurityOperationKind.StateRead, SecurityEffect.Observe),
+                TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("no available codec");
+    }
+
+    [Fact]
+    public async Task AppendAsync_WhenCodecRejectsEntryAfterPreflightSucceeded_ThrowsInvalidOperationException()
+    {
+        // A defensive check: InsertEntryAsync re-encodes the already-preflighted entry and must fail loudly,
+        // rather than silently persisting a different payload, if a codec somehow disagrees with its own preflight.
+        await using var fixture = new SqliteSessionStoreConformanceFixture(new FlakyEncodeCodecCatalog(typeof(MessageSessionEntry)));
+        var store = await fixture.CreateAsync(TestContext.Current.CancellationToken);
+        var descriptor = await Coverage.CreateSessionAsync(fixture, store, "append-flaky-codec-create");
+        var context = Coverage.SessionContext(descriptor.Address, 1720);
+        var entry = Coverage.MessageEntry(descriptor, 1721, 1, "flaky");
+        var append = new SessionAppendRequest(
+            context, descriptor.ActiveBranchId, descriptor.Version, new IdempotencyKey("append-flaky-codec"), [entry]);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await store.AppendAsync(
+                await Coverage.AuthorizeAsync(fixture, append, SecurityOperationKind.StateMutation, SecurityEffect.Append),
+                TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("The codec catalog rejected an entry that the caller's preflight already proved encodable.");
+    }
+
     private static async Task<SessionPage> ReadFirstPageAsync(Harness harness, SessionDescriptor descriptor, SessionOperationContext context)
     {
         var result = await harness.Store.ReadAsync(
@@ -1503,6 +1580,19 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
         SessionSequence Sequence, SessionEntryId? CausalParentId, DateTimeOffset RecordedAt, SchemaVersion SchemaVersion)
         : SessionEntry(Id, Address, Correlation, BranchId, Sequence, CausalParentId, RecordedAt, SchemaVersion);
 
+    /// <summary>Builds the same first-party codec set the store's own DI registration installs.</summary>
+    private static SessionEntryCodecCatalog RealCodecCatalog() => new(
+        [
+            new ExecutionLaneProvisionedSessionEntryCodec(
+                TimeProvider.System, NullLogger<ExecutionLaneProvisionedSessionEntryCodec>.Instance),
+            new InputPromotedSessionEntryCodec(TimeProvider.System, NullLogger<InputPromotedSessionEntryCodec>.Instance),
+            new OperationAcceptedSessionEntryCodec(TimeProvider.System, NullLogger<OperationAcceptedSessionEntryCodec>.Instance),
+            new MessageSessionEntryCodec(),
+            new InputAdmittedSessionEntryCodec(),
+            new CompactionSessionEntryCodec(),
+        ],
+        TimeProvider.System);
+
     /// <summary>
     /// Wraps the real first-party codec catalog but forces <see cref="Encode"/> to reject one exact entry runtime
     /// type, so a test can exercise a store operation's codec-preflight failure without an entry kind that has no
@@ -1510,28 +1600,59 @@ public sealed class SqliteSessionStoreTests: SessionStoreConformanceTests<Sqlite
     /// </summary>
     private sealed class RejectingCodecCatalog: ISessionEntryCodecCatalog
     {
-        private readonly SessionEntryCodecCatalog _inner;
+        private readonly SessionEntryCodecCatalog _inner = RealCodecCatalog();
         private readonly Type _rejectedType;
 
-        public RejectingCodecCatalog(Type rejectedType)
-        {
-            _rejectedType = rejectedType;
-            _inner = new SessionEntryCodecCatalog(
-                [
-                    new ExecutionLaneProvisionedSessionEntryCodec(
-                        TimeProvider.System, NullLogger<ExecutionLaneProvisionedSessionEntryCodec>.Instance),
-                    new InputPromotedSessionEntryCodec(TimeProvider.System, NullLogger<InputPromotedSessionEntryCodec>.Instance),
-                    new OperationAcceptedSessionEntryCodec(TimeProvider.System, NullLogger<OperationAcceptedSessionEntryCodec>.Instance),
-                    new MessageSessionEntryCodec(),
-                    new InputAdmittedSessionEntryCodec(),
-                    new CompactionSessionEntryCodec(),
-                ],
-                TimeProvider.System);
-        }
+        public RejectingCodecCatalog(Type rejectedType) => _rejectedType = rejectedType;
 
         public SessionEntryEncodeResult Encode(SessionEntry entry) =>
             entry.GetType() == _rejectedType
                 ? new SessionEntryEncodeRejected("Forced rejection for coverage test.")
+                : _inner.Encode(entry);
+
+        public SessionEntryDecodeResult Decode(SessionEntryWireEnvelope wire) => _inner.Decode(wire);
+    }
+
+    /// <summary>
+    /// Wraps the real first-party codec catalog but forces <see cref="Decode"/> to report a chosen outcome for one
+    /// exact wire type identity, so a test can exercise a persisted, already-committed entry that later becomes
+    /// unreadable (for example after a codec is retired) without corrupting raw database bytes directly.
+    /// </summary>
+    private sealed class DecodeRejectingCodecCatalog: ISessionEntryCodecCatalog
+    {
+        private readonly SessionEntryCodecCatalog _inner = RealCodecCatalog();
+        private readonly SessionEntryTypeId _rejectedTypeId;
+        private readonly SessionEntryDecodeResult _forcedResult;
+
+        public DecodeRejectingCodecCatalog(SessionEntryTypeId rejectedTypeId, SessionEntryDecodeResult forcedResult)
+        {
+            _rejectedTypeId = rejectedTypeId;
+            _forcedResult = forcedResult;
+        }
+
+        public SessionEntryEncodeResult Encode(SessionEntry entry) => _inner.Encode(entry);
+
+        public SessionEntryDecodeResult Decode(SessionEntryWireEnvelope wire) =>
+            wire.TypeId == _rejectedTypeId ? _forcedResult : _inner.Decode(wire);
+    }
+
+    /// <summary>
+    /// Wraps the real first-party codec catalog but rejects the second and later <see cref="Encode"/> call for one
+    /// exact entry runtime type, simulating a codec that behaves inconsistently between the store's preflight
+    /// encode and <see cref="SqliteSessionUnitOfWork.InsertEntryAsync"/>'s own encode of the same already-validated
+    /// entry.
+    /// </summary>
+    private sealed class FlakyEncodeCodecCatalog: ISessionEntryCodecCatalog
+    {
+        private readonly SessionEntryCodecCatalog _inner = RealCodecCatalog();
+        private readonly Type _flakyType;
+        private int _calls;
+
+        public FlakyEncodeCodecCatalog(Type flakyType) => _flakyType = flakyType;
+
+        public SessionEntryEncodeResult Encode(SessionEntry entry) =>
+            entry.GetType() == _flakyType && Interlocked.Increment(ref _calls) > 1
+                ? new SessionEntryEncodeRejected("Forced post-preflight rejection for coverage test.")
                 : _inner.Encode(entry);
 
         public SessionEntryDecodeResult Decode(SessionEntryWireEnvelope wire) => _inner.Decode(wire);
